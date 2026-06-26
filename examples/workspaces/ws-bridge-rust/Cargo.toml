@@ -14,6 +14,7 @@
 resolver = "2"
 members = [
     "src/talker_pkg",
+    "src/native_entry",
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 

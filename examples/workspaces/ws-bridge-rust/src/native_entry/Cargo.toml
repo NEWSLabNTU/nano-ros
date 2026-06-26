@@ -1,0 +1,30 @@
+[package]
+name = "native_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the zenoh↔cyclonedds bridge on the native host."
+
+[[bin]]
+name = "native_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+# `nros::main!` macro — detects the [[bridge]] + emits the bridge entry.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# The data-driven bridge runtime the macro calls (run_from_config_str).
+nros-bridge = { path = "../../../../../packages/bridge/nros-bridge", features = ["std", "config"] }
+# POSIX platform symbols (wake / clock) the backends + executor need.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
+# The two RMW backends — linked here so they self-register on the native host
+# (`nros_rmw_register_backend!` .init_array ctor). The bridge opens one session
+# per backend via `Executor::open_multi`.
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
