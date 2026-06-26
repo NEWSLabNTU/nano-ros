@@ -416,7 +416,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 
     // Phase 266 (W6) — bake the boot config blob so the session name is both
     // readable by a post-link tool and passed to the runner at startup.
-    emit_boot_config_static(&mut out, plan);
+    emit_boot_config_static(&mut out, plan)?;
     out.push('\n');
 
     let board = board_cpp_path(&plan.board);

@@ -127,7 +127,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 
     // Phase 266 (W5b) — bake the boot config blob so the session name is both
     // readable by a post-link tool and passed to the runner at startup.
-    emit_boot_config_static(&mut out, plan);
+    emit_boot_config_static(&mut out, plan)?;
     out.push('\n');
 
     out.push_str("int main(int argc, char** argv) {\n");

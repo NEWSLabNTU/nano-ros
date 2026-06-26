@@ -267,12 +267,27 @@ impl PlanNode {
 /// all fields are zero / unset — `nros_boot_config_node_name` returns NULL and
 /// the runner falls back to the unified `"node"` default.
 ///
+/// # Errors
+///
+/// Returns `Err` if the resolved node name exceeds 63 bytes (the
+/// `nros_baked_boot_config.node_name` C field is `char node_name[64]`, which
+/// must hold the string **and** a NUL terminator). The caller receives a clear
+/// diagnostic rather than a confusing C-compiler array-initialiser error.
+///
 /// Callers must have already emitted `#include <nros/boot_config.h>`.
-pub fn emit_boot_config_static(out: &mut String, plan: &Plan) {
+pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), String> {
     use std::fmt::Write as _;
     let (set_flags, node_name) = if plan.nodes.len() == 1 {
         let n = &plan.nodes[0];
         let raw = n.name.as_deref().unwrap_or(&n.exec);
+        // Guard: the C field is `char node_name[64]` — 63 usable bytes + NUL.
+        if raw.len() > 63 {
+            return Err(format!(
+                "node name '{}' is {} bytes; the .nros_boot_config node_name field holds at most 63 bytes + NUL",
+                raw,
+                raw.len(),
+            ));
+        }
         // Escape the literal for embedding in a C string — backslash and quote.
         let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
         ("NROS_BOOT_SET_NODE_NAME", escaped)
@@ -296,6 +311,7 @@ pub fn emit_boot_config_static(out: &mut String, plan: &Plan) {
              .namespace_ = \"\",\n\
          }};",
     );
+    Ok(())
 }
 
 /// Sanitise a pkg name into a valid identifier (`-` → `_`).
@@ -603,5 +619,69 @@ mod tests {
         assert!(body.contains(&format!("{}", dep_a.display())));
         // Space in dep_b should be escaped.
         assert!(body.contains("dir\\ with\\ space"));
+    }
+
+    /// Helper that builds a single-node [`Plan`] with the given node name.
+    fn single_node_plan(name: &str) -> Plan {
+        Plan {
+            board: "native".into(),
+            nodes: vec![PlanNode {
+                pkg: "test_pkg".into(),
+                exec: name.into(),
+                name: None,
+                namespace: None,
+                class_name: None,
+                class_header: None,
+                lang: None,
+                shape: None,
+                host: None,
+                qos_overrides: Vec::new(),
+            }],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
+        }
+    }
+
+    /// Phase 266 (W6) — a node name of exactly 63 bytes must succeed (fits in
+    /// `char node_name[64]` with one byte left for the NUL terminator).
+    #[test]
+    fn boot_config_node_name_63_bytes_ok() {
+        let name = "a".repeat(63);
+        assert_eq!(name.len(), 63);
+        let plan = single_node_plan(&name);
+        let mut out = String::new();
+        assert!(
+            emit_boot_config_static(&mut out, &plan).is_ok(),
+            "63-byte name should be accepted"
+        );
+        assert!(
+            out.contains(&name),
+            "emitted output must contain the node name"
+        );
+    }
+
+    /// Phase 266 (W6) — a node name of 64 bytes must be rejected with a clear
+    /// error message (the C field only holds 63 usable bytes + NUL).
+    #[test]
+    fn boot_config_node_name_64_bytes_err() {
+        let name = "b".repeat(64);
+        assert_eq!(name.len(), 64);
+        let plan = single_node_plan(&name);
+        let mut out = String::new();
+        let err =
+            emit_boot_config_static(&mut out, &plan).expect_err("64-byte name must be rejected");
+        assert!(
+            err.contains("64 bytes"),
+            "error should mention the byte count; got: {err}"
+        );
+        assert!(
+            err.contains("node_name"),
+            "error should mention the field name; got: {err}"
+        );
+        assert!(
+            err.contains("63 bytes"),
+            "error should mention the 63-byte limit; got: {err}"
+        );
     }
 }
