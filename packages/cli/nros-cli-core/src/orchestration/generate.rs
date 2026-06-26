@@ -2588,6 +2588,64 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
     out.push_str("}\n");
 }
 
+/// phase-267 W1b/S1 — the reusable cross-RMW bridge entry support fns, for the
+/// LIVE native-Rust emitter (`nros-build`) to splice into a `[[bridge]]` entry.
+///
+/// Returns `None` for a non-bridge plan (so the caller emits the ordinary
+/// single-session entry, byte-identical). For an `is_bridge()` plan it emits, as
+/// a self-contained `String`:
+///   * `SESSION_SPECS` — one `nros::SessionSpec` per `plan.build.transports`
+///     entry (rmw + locator + domain), consumed by `Executor::open_multi`.
+///   * `register_backends()` — `nros_rmw_<x>::register()` per bound RMW
+///     (W0 cyclone gating applies).
+///   * `build_executor_bridge()` — `register_backends()` then
+///     `Executor::open_multi(&SESSION_SPECS)`.
+///   * `register_bridges(executor)` — the RFC-0009 relay (one bridge node per
+///     endpoint via `session_idx`, a generic sub→pub per `(topic, ordered
+///     endpoint pair)` with `nros-bridge` `bridge_origin` echo suppression).
+///
+/// This is the single source of truth for the bridge relay codegen; the
+/// (dead) `build_generated_package` entry path emits the same shape inline and
+/// is slated for removal once this drives the live path (phase-267 S5).
+pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
+    if !plan.build.is_bridge() {
+        return None;
+    }
+    let mut out = String::new();
+
+    // SESSION_SPECS — one spec per transport (mirrors the inline emission in
+    // `render_generated_tables`; kept local to avoid perturbing the live
+    // non-bridge path until S5 DRYs them).
+    out.push_str(&format!(
+        "pub static SESSION_SPECS: [nros::SessionSpec<'static>; {}] = [\n",
+        plan.build.transports.len()
+    ));
+    for t in &plan.build.transports {
+        let rmw = t.rmw.as_deref().unwrap_or(plan.build.rmw.as_str());
+        let canonical = normalize_rmw(rmw).unwrap_or(rmw);
+        let locator = t.locator.as_deref().unwrap_or("");
+        let domain = match t.domain {
+            Some(d) => format!(".domain_id({d})"),
+            None => String::new(),
+        };
+        out.push_str(&format!(
+            "    nros::SessionSpec::new({canonical:?}, {locator:?}){domain},\n"
+        ));
+    }
+    out.push_str("];\n\n");
+
+    render_backend_register_fn(&mut out, plan);
+
+    out.push_str("\npub fn build_executor_bridge() -> Result<nros::Executor, nros::NodeError> {\n");
+    out.push_str("    register_backends();\n");
+    out.push_str("    nros::Executor::open_multi(&SESSION_SPECS)\n");
+    out.push_str("}\n");
+
+    render_register_bridges_fn(&mut out, plan);
+
+    Some(out)
+}
+
 fn render_native_component_ffi(out: &mut String, plan: &NrosPlan) {
     let native_components = plan
         .components
@@ -5326,6 +5384,36 @@ mod net_fragment_tests {
         );
         // Declared ⇒ passes.
         assert!(validate_bridges(&bridge_plan(&["/chatter"], true)).is_ok());
+    }
+
+    /// phase-267 W1b/S1 — the reusable bridge-entry codegen the LIVE emitter
+    /// will splice: a bridge plan yields the full support set; a non-bridge plan
+    /// yields `None` (so the ordinary single-session entry stays byte-identical).
+    #[test]
+    fn render_bridge_entry_fns_emits_open_multi_and_relay() {
+        let out = render_bridge_entry_fns(&bridge_plan(&["/chatter"], true))
+            .expect("a bridge plan yields the entry fns");
+        // SESSION_SPECS (one spec per transport) + the multi-session opener.
+        assert!(out.contains("pub static SESSION_SPECS"), "{out}");
+        assert!(
+            out.contains("nros::Executor::open_multi(&SESSION_SPECS)"),
+            "{out}"
+        );
+        assert!(out.contains("pub fn build_executor_bridge"), "{out}");
+        // Backend registration + the RFC-0009 relay with the bridge_origin codec.
+        assert!(out.contains("pub fn register_backends"), "{out}");
+        assert!(out.contains("pub fn register_bridges"), "{out}");
+        assert!(out.contains("nros::bridge::parse_bridge_origin"), "{out}");
+
+        // A non-bridge plan opts out — no multi-session entry emitted.
+        assert!(render_bridge_entry_fns(&bridge_plan(&["/chatter"], true)).is_some());
+        let mut single = bridge_plan(&["/chatter"], true);
+        single.bridges.clear();
+        single.build.transports.clear();
+        assert!(
+            render_bridge_entry_fns(&single).is_none(),
+            "non-bridge plan must not emit a bridge entry"
+        );
     }
 
     #[test]

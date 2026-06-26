@@ -73,6 +73,22 @@ pub fn emit_run_plan(plan: &NrosPlan) -> String {
     out
 }
 
+/// phase-267 W1b/S1 — the cross-RMW bridge entry fns for a `[[bridge]]` plan, or
+/// `None` for an ordinary single-session plan.
+///
+/// This is the **carrier** that brings the (proven, unit-tested) RFC-0009 bridge
+/// relay codegen into the LIVE native-Rust entry path: `nros-build` already holds
+/// the full [`NrosPlan`] (with `build.transports` + `plan.bridges`, populated by
+/// the planner), so it can emit the bridge support set
+/// ([`nros_cli_core::orchestration::generate::render_bridge_entry_fns`]:
+/// `SESSION_SPECS` + `register_backends` + `build_executor_bridge` +
+/// `register_bridges`). S2 wires the `nros::main!` OwnedSpin entry to splice this
+/// + drive `Executor::open_multi`; until then this is reachable but unused (no
+/// behaviour change for non-bridge plans, which get `None`).
+pub fn emit_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
+    nros_cli_core::orchestration::generate::render_bridge_entry_fns(plan)
+}
+
 /// Render `run_plan_register_dispatch(executor)` — the framework-target
 /// (RTIC + Embassy, Phase 216) sibling of [`emit_run_plan`].
 ///
