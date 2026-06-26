@@ -69,6 +69,11 @@ pub struct DeployOverlay {
     /// boot `ExecutorConfig` by the board, so unlike `locator` this IS honored on
     /// hosted boards (locator stays env-driven; node name is a launch identity).
     pub node_name: Option<&'static str>,
+    /// Issue #101 / RFC-0045 — the patchable baked boot-config static
+    /// (`.nros_boot_config`), emitted by `nros::main!` for embedded targets and
+    /// read by the board to resolve node_name/locator/domain. `None` on hosted /
+    /// when the macro emits no static.
+    pub boot_config: Option<&'static nros_platform_api::BakedBootConfig>,
 }
 
 /// Per-board boot driver.

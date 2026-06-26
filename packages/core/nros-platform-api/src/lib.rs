@@ -55,9 +55,14 @@
 
 use core::ffi::{c_int, c_void};
 
+pub mod boot_config;
 pub mod wake;
 pub mod xorshift32;
 
+pub use boot_config::{
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
+    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION,
+};
 pub use wake::{WAKE_STORAGE_ALIGN, WAKE_STORAGE_BYTES, Wake, WakeInitError, WakeReason};
 
 // ============================================================================

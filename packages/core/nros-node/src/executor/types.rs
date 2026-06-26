@@ -993,127 +993,21 @@ impl GuardConditionHandle {
 }
 
 // ============================================================================
-// BakedBootConfig — RFC-0045 "Single embedded bake site"
+// BakedBootConfig re-import — RFC-0045 "Single embedded bake site"
+//
+// The type and its consts live in nros-platform-api so that nros-platform's
+// DeployOverlay can hold a `&'static BakedBootConfig` without a dep cycle.
+// Re-imported here so BootConfig::from_baked (below) can reference the type.
 // ============================================================================
 
-/// 0x4E524243 = ASCII "NRBC". A post-link tool scans for this magic to locate
-/// the struct in a firmware image.
-pub const NROS_BOOT_CONFIG_MAGIC: u32 = 0x4E52_4243;
-
-/// Layout version — lets the resolver reject a mismatched baked struct.
-pub const NROS_BOOT_CONFIG_VERSION: u16 = 1;
-
-// `set_flags` bit assignments in `BakedBootConfig`.
-/// Bit 0 — `node_name` field is set.
-pub const BOOT_SET_NODE_NAME: u16 = 1 << 0;
-/// Bit 1 — `locator` field is set.
-pub const BOOT_SET_LOCATOR: u16 = 1 << 1;
-/// Bit 2 — `domain_id` field is set.
-pub const BOOT_SET_DOMAIN: u16 = 1 << 2;
-/// Bit 3 — `namespace` field is set.
-pub const BOOT_SET_NAMESPACE: u16 = 1 << 3;
-
-/// Build-time-baked boot config, emitted (in W4) into the `.nros_boot_config`
-/// linker section by the entry macro / cmake. Fixed-size + pointer-free so a
-/// future post-link tool can patch it in place (RFC-0045). The resolver reads
-/// it on embedded via `BootConfig::from_baked`.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct BakedBootConfig {
-    /// 0x4E524243 = b"NRBC". A post-link tool scans for this to locate the struct.
-    pub magic: u32,
-    /// Layout version (start at 1) — lets the tool/reader reject mismatched layouts.
-    pub version: u16,
-    /// One bit per field that is baked-set (else the reader yields `None` → resolver
-    /// default). bit0 = node_name, bit1 = locator, bit2 = domain_id, bit3 = namespace.
-    pub set_flags: u16,
-    /// ROS 2 domain ID (valid only when `BOOT_SET_DOMAIN` bit is set).
-    pub domain_id: u32,
-    /// NUL-padded UTF-8; the trailing NUL bytes are not part of the value.
-    pub node_name: [u8; 64],
-    /// NUL-padded UTF-8 middleware locator; the trailing NUL bytes are not part of
-    /// the value.
-    pub locator: [u8; 96],
-    /// NUL-padded UTF-8 node namespace; the trailing NUL bytes are not part of the
-    /// value.
-    pub namespace: [u8; 64],
-}
-
-/// Copy `s` bytes into a zero-padded `[u8; N]` array at compile time.
-///
-/// A string longer than `N` bytes is a **compile-time** error (const panic).
-/// Never silently truncated.
-const fn pack<const N: usize>(s: &str) -> [u8; N] {
-    let bytes = s.as_bytes();
-    if bytes.len() > N {
-        panic!("BakedBootConfig: string field exceeds its fixed-size buffer");
-    }
-    let mut buf = [0u8; N];
-    let mut i = 0;
-    while i < bytes.len() {
-        buf[i] = bytes[i];
-        i += 1;
-    }
-    buf
-}
-
-impl BakedBootConfig {
-    /// Pack baked fields at compile time.  `None` → field unset (bit clear,
-    /// bytes zeroed).  A string longer than its fixed buffer is a
-    /// **compile-time** error (const panic) — never silently truncated.
-    ///
-    /// `must be const fn` so W4's entry macro can use it in a `static` initializer.
-    pub const fn new(
-        node_name: Option<&str>,
-        locator: Option<&str>,
-        domain_id: Option<u32>,
-        namespace: Option<&str>,
-    ) -> BakedBootConfig {
-        let mut flags: u16 = 0;
-
-        let node_name_bytes: [u8; 64] = match node_name {
-            Some(s) => {
-                flags |= BOOT_SET_NODE_NAME;
-                pack::<64>(s)
-            }
-            None => [0u8; 64],
-        };
-
-        let locator_bytes: [u8; 96] = match locator {
-            Some(s) => {
-                flags |= BOOT_SET_LOCATOR;
-                pack::<96>(s)
-            }
-            None => [0u8; 96],
-        };
-
-        let domain_id_val: u32 = match domain_id {
-            Some(d) => {
-                flags |= BOOT_SET_DOMAIN;
-                d
-            }
-            None => 0,
-        };
-
-        let namespace_bytes: [u8; 64] = match namespace {
-            Some(s) => {
-                flags |= BOOT_SET_NAMESPACE;
-                pack::<64>(s)
-            }
-            None => [0u8; 64],
-        };
-
-        BakedBootConfig {
-            magic: NROS_BOOT_CONFIG_MAGIC,
-            version: NROS_BOOT_CONFIG_VERSION,
-            set_flags: flags,
-            domain_id: domain_id_val,
-            node_name: node_name_bytes,
-            locator: locator_bytes,
-            namespace: namespace_bytes,
-        }
-    }
-}
+// Re-export so `nros-node` consumers that used `nros_node::BakedBootConfig` etc.
+// continue to compile. The nros-node lib.rs re-export uses nros_platform_api
+// directly, but internal users in other nros-node submodules see these via
+// `use types::*`.
+pub use nros_platform_api::{
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
+    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION,
+};
 
 /// Find the length of the non-NUL prefix in `buf`.
 ///
@@ -1138,7 +1032,7 @@ impl<'a> BootConfig<'a> {
     /// Each `Option` is `Some` iff its `set_flags` bit is set; string values are
     /// the bytes up to the first NUL (or full buffer if no NUL).  Invalid UTF-8 in
     /// a set field is treated as unset for that field.
-    pub fn from_baked(baked: &'a BakedBootConfig) -> BootConfig<'a> {
+    pub fn from_baked(baked: &'a nros_platform_api::BakedBootConfig) -> BootConfig<'a> {
         // Validate the fingerprint.
         if baked.magic != NROS_BOOT_CONFIG_MAGIC || baked.version != NROS_BOOT_CONFIG_VERSION {
             return BootConfig::default();
@@ -1387,11 +1281,15 @@ mod boot_config_tests {
 }
 
 // ============================================================================
-// BakedBootConfig unit tests (no_std-compatible, but run under std test runner)
+// BakedBootConfig round-trip tests (no_std-compatible, run under std test runner)
+//
+// These test the full round-trip BakedBootConfig::new → BootConfig::from_baked.
+// Pure BakedBootConfig::new / pack unit tests live in nros-platform-api.
 // ============================================================================
 
 #[cfg(test)]
 mod baked_boot_config_tests {
+    // BakedBootConfig + consts come from nros_platform_api via super::*.
     use super::*;
 
     // ── T-BB1: round-trip — typical mixed case ────────────────────────────────

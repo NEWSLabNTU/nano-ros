@@ -1710,6 +1710,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             domain_id: #domain_id,
             transport: #transport,
             node_name: #node_name,
+            boot_config: ::core::option::Option::None,
         }
     }
 }
