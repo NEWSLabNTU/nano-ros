@@ -152,6 +152,14 @@ impl SpinOptions {
 }
 
 // ============================================================================
+// Configuration constants and defaults
+// ============================================================================
+
+/// Default middleware locator for hosted environments.
+#[cfg(feature = "std")]
+const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
+
+// ============================================================================
 // ExecutorConfig
 // ============================================================================
 
@@ -273,7 +281,7 @@ fn env_cache() -> &'static EnvCache {
                     std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
                 })
             })
-            .unwrap_or_else(|_| std::string::String::from("tcp/127.0.0.1:7447"));
+            .unwrap_or_else(|_| std::string::String::from(DEFAULT_LOCATOR));
         let domain_id = std::env::var("ROS_DOMAIN_ID")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -342,6 +350,10 @@ impl ExecutorConfig<'static> {
 ///
 /// Fields are resolved **independently**: an env locator and a baked
 /// `node_name` can both apply in the same call.
+///
+/// Note: `mode` (session mode) is **not** configurable through `BootConfig`.
+/// `BootConfig` carries only `node_name`, `locator`, `domain_id`, and `namespace`.
+/// Session mode falls through to the env-cache default (`SessionMode::Client`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BootConfig<'a> {
     /// Node name override.  Maps to [`ExecutorConfig::node_name`].
@@ -370,6 +382,12 @@ impl<'a> ExecutorConfig<'a> {
     /// store as [`ExecutorConfig::from_env`]).  Passing
     /// `BootConfig::default()` with `hosted_env=true` is therefore
     /// equivalent to calling `from_env()` directly.
+    ///
+    /// **Note on env coupling:** The env-presence checks below
+    /// (`NROS_LOCATOR`/`ZENOH_LOCATOR`/`ROS_DOMAIN_ID`) must stay in sync
+    /// with the env vars that [`env_cache()`] reads. If a new locator or
+    /// domain env var is added there, add the corresponding presence check
+    /// here too.
     pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> {
         // ── hosted path (std only) ──────────────────────────────────────────
         #[cfg(feature = "std")]
@@ -394,7 +412,7 @@ impl<'a> ExecutorConfig<'a> {
                     l
                 } else {
                     // Hosted compiled default matches from_env()'s fallback.
-                    "tcp/127.0.0.1:7447"
+                    DEFAULT_LOCATOR
                 },
                 mode: env.mode,
                 domain_id: if domain_id_from_env {
@@ -1099,11 +1117,6 @@ mod boot_config_tests {
 
     /// When `hosted_env=true` and `NROS_LOCATOR` is set in the process
     /// environment, the env value must win over a baked locator.
-    ///
-    /// The assertion uses `from_env().locator` as an oracle so the test is
-    /// robust to whatever value was already cached in `EnvCache`'s OnceLock:
-    /// both `resolve` and `from_env` draw from the same cache, so they are
-    /// always consistent.
     #[test]
     fn env_overrides_baked_on_hosted() {
         let _g = env_lock().lock().unwrap();
@@ -1116,15 +1129,20 @@ mod boot_config_tests {
         let resolved = ExecutorConfig::resolve(baked, true);
         let env_cfg = ExecutorConfig::from_env();
 
-        // Env must win: result matches the env-cache value.
-        assert_eq!(
-            resolved.locator, env_cfg.locator,
-            "env locator should win over baked locator"
-        );
-        // Explicitly verify baked was NOT returned.
+        // Load-bearing assertion: baked value did NOT win.
+        // `env_cache()` is a process-global OnceLock, so the exact env string
+        // is only observable when this test initializes the cache first.
+        // The key check is that the baked locator was not returned.
         assert_ne!(
             resolved.locator, "tcp/baked:9999",
             "baked locator must not override env"
+        );
+
+        // Secondary check: env value matches the cache (both draw from
+        // the same source, so they are always consistent).
+        assert_eq!(
+            resolved.locator, env_cfg.locator,
+            "env locator should win over baked locator"
         );
     }
 
