@@ -109,8 +109,8 @@ use core::{
 
 use heapless::spsc::{Consumer, Producer, Queue};
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchRuntime, RticBoardEntry,
-    SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DeployOverlay, DispatchStrategy, NodeDispatchRuntime,
+    RticBoardEntry, SignaledCallback,
 };
 
 // Re-export the cortex-m / cortex-m-rt entry attribute + defmt
@@ -338,6 +338,101 @@ impl BoardExit for RticStm32F4 {
 }
 
 // ---------------------------------------------------------------
+// Private init helper — single-sources the hardware bringup body
+// shared by `init_hardware` (env-var node name) and
+// `init_hardware_with_deploy` (boot_config node name).
+// ---------------------------------------------------------------
+
+/// Core STM32F4 RTIC bringup: clocks → HAL init → RMW register →
+/// `Executor::open` → SPSC split.  `node_name` is the caller-resolved
+/// string (from `option_env!` on the non-deploy path, or from
+/// `deploy.boot_config` on the deploy path).
+///
+/// Phase 216.B.2 follow-up — transport config (locator / domain_id)
+/// still comes from `option_env!` / `Config::nucleo_f429zi()` defaults.
+/// Only the node-name source changes between the two call paths.
+fn rtic_stm32f4_init(
+    device: stm32f4xx_hal::pac::Peripherals,
+    core: cortex_m::Peripherals,
+    node_name: &'static str,
+) -> (::nros::Executor, RticRuntime) {
+    // Step 1–2: hardware bringup via the direct-exec sibling.
+    //
+    // Transport config (locator / domain_id) comes from build-time env
+    // vars via `option_env!` with a fallback to the board's
+    // `Config::nucleo_f429zi()` defaults (today `tcp/192.168.1.1:7447`,
+    // domain 0). Locator and domain are deliberately NOT sourced from
+    // `deploy.boot_config` here (the RTIC board's
+    // `qemu_config_with_overlay` / `qemu_config` pattern is the
+    // authoritative locator/domain source for bare-metal boards; see
+    // the sibling `nros-board-rtic-mps2-an385`).
+    //
+    // Override knobs:
+    //   - `NROS_LOCATOR`   — overrides `config.zenoh_locator`
+    //   - `NROS_DOMAIN_ID` — overrides `config.domain_id` (parsed decimal)
+    let mut config = nros_board_stm32f4::Config::nucleo_f429zi();
+    if let Some(loc) = option_env!("NROS_LOCATOR") {
+        config = config.zenoh_locator(loc);
+    }
+    if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_decimal_u32) {
+        config = config.domain_id(d);
+    }
+
+    let _syst = nros_board_stm32f4::init_hardware(&config, device, core);
+
+    // Step 3: explicit RMW backend registration (bare-metal
+    // has no `.init_array` walk). `nros_rmw_zenoh::register`
+    // is idempotent w.r.t. double-register (returns
+    // `Err(AlreadyRegistered)`); we panic on any other error
+    // so a probe-attached run surfaces the failure loudly.
+    // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
+    // feature so the board can build DDS-/XRCE-only.
+    #[cfg(feature = "rmw-zenoh")]
+    match nros_rmw_zenoh::register() {
+        Ok(()) => {}
+        Err(e) => {
+            defmt::error!(
+                "RticStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
+                defmt::Debug2Format(&e)
+            );
+            panic!("nros_rmw_zenoh::register failed");
+        }
+    }
+
+    // Step 4: open the Executor against the configured
+    // locator + domain. The proc-macro emit stashes the
+    // returned value in RTIC `#[local]` storage owned by
+    // `__nros_spin`. The values flow through the
+    // `BoardConfig` accessors so a future `nros.toml` reader
+    // can swap in without touching the call shape.
+    let exec_config = ::nros::ExecutorConfig::new(
+        <nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::zenoh_locator(&config),
+    )
+    .domain_id(<nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::domain_id(&config))
+    .node_name(node_name);
+    let executor = match ::nros::Executor::open(&exec_config) {
+        Ok(e) => e,
+        Err(err) => {
+            defmt::error!(
+                "RticStm32F4::init_hardware: Executor::open failed: {:?}",
+                defmt::Debug2Format(&err)
+            );
+            panic!("Executor::open failed");
+        }
+    };
+
+    // Step 5: split the dispatch SPSC + stash the consumer half.
+    // The proc-macro emit fishes the consumer out via
+    // `take_dispatch_consumer()` from the `__nros_dispatch`
+    // task's `#[init]` setup.
+    let (producer, consumer) =
+        take_dispatch_queue().expect("RticStm32F4::init_hardware: dispatch queue already claimed");
+    stash_dispatch_consumer(consumer);
+
+    (executor, RticRuntime::with_producer(producer))
+}
+
+// ---------------------------------------------------------------
 // RticBoardEntry impl — Phase 216.B.2 trait surface.
 // ---------------------------------------------------------------
 
@@ -383,151 +478,29 @@ impl RticBoardEntry for RticStm32F4 {
     const DISPATCHERS: &'static [&'static str] = &["USART1", "USART2"];
 
     fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Executor, Self::Runtime) {
-        // Phase 216.B.2 follow-up — real bringup body. Steps
-        // mirror the pre-migration Pattern A escape-hatch
-        // (`examples/stm32f4/rust/talker-rtic/src/main.rs` before
-        // commit `a7620ab43`):
-        //
-        //   1. Build a board `Config` (NUCLEO-F429ZI defaults today;
-        //      a future follow-up threads `[[transport]]`/`[node]`
-        //      knobs from `nros.toml` via `BoardTransportConfig`).
-        //   2. Delegate to the direct-exec sibling's
-        //      `nros_board_stm32f4::init_hardware(&config, device, core)`
-        //      — that fn brings up clocks (HSE → 168 MHz), DWT
-        //      cycle counter, `nros_platform_stm32f4::sleep`, then
-        //      (under `ethernet`) RMII pin mux + `stm32_eth` +
-        //      smoltcp Interface + IP + SmoltcpBridge + the network
-        //      poll-callback wiring. Single-source the bringup so
-        //      a fix in the direct-exec board propagates here too.
-        //      Drops the returned `SYST` peripheral — RTIC's
-        //      dispatchers run on USART1/USART2 (per
-        //      [`Self::DISPATCHERS`]), and the proc-macro emit's
-        //      `__nros_spin` task doesn't need a monotonic. A
-        //      future follow-up may surface the `SYST` for users
-        //      who want `rtic-monotonics::systick`; today it's
-        //      unused.
-        //   3. Register the RMW backend before `Executor::open` —
-        //      bare-metal targets don't walk `.init_array`, so the
-        //      backend has to be wired explicitly (same call the
-        //      legacy Pattern A example made directly).
-        //   4. `Executor::open` with a config derived from the
-        //      board `Config`. The proc-macro emit (Phase 216.B.3)
-        //      stashes the returned `Executor` in RTIC `#[local]`
-        //      storage owned by `__nros_spin`.
-        //   5. Split the dispatch SPSC queue and stash the
-        //      consumer half on `DISPATCH_CONSUMER_SLOT` so the
-        //      macro-emitted `__nros_dispatch` task can claim it
-        //      (the two halves can't ride together in the
-        //      `(Executor, Runtime)` tuple — see the doc-comment
-        //      on `DISPATCH_CONSUMER_SLOT`).
-        //
-        // ### What's still placeholder
-        //
-        // - `RticRuntime::register_dispatch_slot_dyn` /
-        //   `RticRuntime::spin_once` still return `Err(())` — the
-        //   proc-macro emit (216.B.3) wraps an
-        //   `ExecutorNodeRuntime`-style sink and forwards through.
-        // - `Config` is hardcoded to `nucleo_f429zi()`. The
-        //   `nros.toml` → `BoardTransportConfig` plumbing is a
-        //   separate follow-up; today the locator + IP / MAC come
-        //   from the board's default preset.
-        // - The macro-emitted `__nros_spin` task body is still
-        //   `core::future::pending` (not real `executor.spin_once`);
-        //   that lands alongside the per-Node trampoline registration
-        //   in the next 216.B wave. The executor is built here so
-        //   the macro emit + dep graph compile against the real
-        //   `Self::Executor` type, even though the spin task hasn't
-        //   driven it yet.
-
-        // Step 1–2: hardware bringup via the direct-exec sibling.
-        //
-        // Phase 216 follow-up — transport config (locator / domain_id /
-        // node name) comes from build-time env vars via [`option_env!`]
-        // with a fallback to the board's `Config::nucleo_f429zi()`
-        // defaults (which already impl `nros_platform::BoardConfig` +
-        // `BoardTransportConfig`). The env-var seam is the pragmatic
-        // interim between the previous hardcoded
-        // `tcp/127.0.0.1:7447` (now removed — the fallback comes from
-        // the board `Config`) and a full `nros.toml` →
-        // [`nros_platform::BoardTransportConfig`] reader (which needs
-        // a codegen-driven Entry pkg landing first).
-        //
-        // The override knobs:
-        //
-        //   - `NROS_LOCATOR` — overrides `config.zenoh_locator` (the
-        //     `BoardConfig::zenoh_locator()` accessor)
-        //   - `NROS_DOMAIN_ID` — overrides `config.domain_id` (parsed
-        //     decimal, matching `Config::from_toml`)
-        //   - `NROS_NODE_NAME` — overrides the previously hardcoded
-        //     `"nros"` node name on `ExecutorConfig`
-        //
-        // Default behaviour (no env override): the locator + domain
-        // come from `nros_board_stm32f4::Config::nucleo_f429zi()`
-        // (today `tcp/192.168.1.1:7447`, domain 0); the node name
-        // stays `"nros"`. That matches the pre-followup behaviour for
-        // a fresh `cargo check`.
-        let mut config = nros_board_stm32f4::Config::nucleo_f429zi();
-        if let Some(loc) = option_env!("NROS_LOCATOR") {
-            config = config.zenoh_locator(loc);
-        }
-        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_decimal_u32) {
-            config = config.domain_id(d);
-        }
+        // Phase 216.B.2 follow-up — transport config (locator / domain_id)
+        // from build-time env vars; node name falls back to the
+        // board-historical default `"nros"`. The deploy-overlay path
+        // (issue #98 / RFC-0045) goes through `init_hardware_with_deploy`.
         let node_name: &'static str = option_env!("NROS_NODE_NAME").unwrap_or("nros");
+        rtic_stm32f4_init(device, core, node_name)
+    }
 
-        let _syst = nros_board_stm32f4::init_hardware(&config, device, core);
-
-        // Step 3: explicit RMW backend registration (bare-metal
-        // has no `.init_array` walk). `nros_rmw_zenoh::register`
-        // is idempotent w.r.t. double-register (returns
-        // `Err(AlreadyRegistered)`); we panic on any other error
-        // so a probe-attached run surfaces the failure loudly.
-        // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
-        // feature so the board can build DDS-/XRCE-only.
-        #[cfg(feature = "rmw-zenoh")]
-        match nros_rmw_zenoh::register() {
-            Ok(()) => {}
-            Err(e) => {
-                defmt::error!(
-                    "RticStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
-                    defmt::Debug2Format(&e)
-                );
-                panic!("nros_rmw_zenoh::register failed");
-            }
-        }
-
-        // Step 4: open the Executor against the configured
-        // locator + domain. The proc-macro emit stashes the
-        // returned value in RTIC `#[local]` storage owned by
-        // `__nros_spin`. The values flow through the
-        // `BoardConfig` accessors so a future `nros.toml` reader
-        // can swap in without touching the call shape.
-        let exec_config = ::nros::ExecutorConfig::new(
-            <nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::zenoh_locator(&config),
-        )
-        .domain_id(<nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::domain_id(&config))
-        .node_name(node_name);
-        let executor = match ::nros::Executor::open(&exec_config) {
-            Ok(e) => e,
-            Err(err) => {
-                defmt::error!(
-                    "RticStm32F4::init_hardware: Executor::open failed: {:?}",
-                    defmt::Debug2Format(&err)
-                );
-                panic!("Executor::open failed");
-            }
-        };
-
-        // Step 5: split the dispatch SPSC + stash the consumer
-        // half. Unchanged from the 216.B.2 skeleton — the proc-
-        // macro emit fishes the consumer out via
-        // `take_dispatch_consumer()` from the `__nros_dispatch`
-        // task's `#[init]` setup.
-        let (producer, consumer) = take_dispatch_queue()
-            .expect("RticStm32F4::init_hardware: dispatch queue already claimed");
-        stash_dispatch_consumer(consumer);
-
-        (executor, RticRuntime::with_producer(producer))
+    /// Issue #98 / RFC-0045 — override the default-delegate impl to read the
+    /// node name from the baked `.nros_boot_config` in `deploy.boot_config`,
+    /// falling back to the board-historical `"nros"`.  Locator and domain keep
+    /// their env-var / `nucleo_f429zi()` origin (unchanged from before W4e).
+    fn init_hardware_with_deploy(
+        device: Self::Pac,
+        core: Self::Core,
+        deploy: &DeployOverlay,
+    ) -> (Self::Executor, Self::Runtime) {
+        let node_name = deploy
+            .boot_config
+            .map(::nros::BootConfig::from_baked)
+            .and_then(|b| b.node_name)
+            .unwrap_or("nros");
+        rtic_stm32f4_init(device, core, node_name)
     }
 }
 

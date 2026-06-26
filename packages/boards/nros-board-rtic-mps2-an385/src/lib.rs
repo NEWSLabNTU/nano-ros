@@ -209,7 +209,15 @@ fn qemu_config_with_overlay(
 
 /// Shared RTIC `#[init]` body: bring up the board from `config`, register the
 /// linked RMW backend, open the executor, and build the dispatch runtime.
-fn init_with_config(config: nros_board_mps2_an385::Config) -> (::nros::Executor, RticRuntime) {
+///
+/// `deploy` — the `[package.metadata.nros.deploy.<board>]` overlay; `None` on
+/// the no-deploy code path.  Issue #98 / RFC-0045 — node name comes from
+/// `deploy.boot_config` (the baked `.nros_boot_config`), falling back to the
+/// board-historical default `"nros-rtic-mps2"`.
+fn init_with_config(
+    config: nros_board_mps2_an385::Config,
+    deploy: Option<&nros_platform::DeployOverlay>,
+) -> (::nros::Executor, RticRuntime) {
     nros_board_mps2_an385::init_hardware(&config);
 
     // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
@@ -223,7 +231,14 @@ fn init_with_config(config: nros_board_mps2_an385::Config) -> (::nros::Executor,
         }
     }
 
-    let node_name = option_env!("NROS_NODE_NAME").unwrap_or("nros-rtic-mps2");
+    // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
+    // when a deploy overlay is present; fall back to the board-historical
+    // default so undeployed firmware keeps its prior identity.
+    let node_name = deploy
+        .and_then(|d| d.boot_config)
+        .map(::nros::BootConfig::from_baked)
+        .and_then(|b| b.node_name)
+        .unwrap_or("nros-rtic-mps2");
     let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
         .domain_id(config.domain_id)
         .node_name(node_name);
@@ -254,7 +269,7 @@ impl RticBoardEntry for RticMps2An385 {
     const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];
 
     fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
-        init_with_config(qemu_config())
+        init_with_config(qemu_config(), None)
     }
 
     fn init_hardware_with_deploy(
@@ -262,7 +277,7 @@ impl RticBoardEntry for RticMps2An385 {
         _core: Self::Core,
         deploy: &nros_platform::DeployOverlay,
     ) -> (Self::Executor, Self::Runtime) {
-        init_with_config(qemu_config_with_overlay(deploy))
+        init_with_config(qemu_config_with_overlay(deploy), Some(deploy))
     }
 }
 
