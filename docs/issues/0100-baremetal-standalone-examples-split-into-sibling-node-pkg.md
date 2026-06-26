@@ -72,10 +72,33 @@ in-place, no sibling-walk, no special-casing.
 - `examples/qemu-arm-baremetal/rust/` — 15 `*_pkg` sibling dirs.
 - `examples/stm32f4/rust/` — 7 `*_pkg` sibling dirs.
 - `examples/esp32`, `examples/qemu-esp32-baremetal` — 0 (already single-crate; spot-check).
-- Reference (correct shape): `examples/native/rust/talker` — own `package.xml` + `generated/`,
-  no sibling.
+- Reference (correct shape): `examples/qemu-esp32-baremetal/rust/talker` — single-crate
+  declarative (`[lib]` node + `[[bin]]` entry, both `.entry`+`.node` metadata, own
+  `package.xml` + `generated/`, patch in `.cargo/config.toml`). (`native/rust/talker` is the
+  *imperative* shape — not a mirror for the declarative `nros::main!()` embedded examples.)
 
 Mechanical but broad; land per-example so each `just <plat>` / copy-out is verified.
+
+## Progress (waves)
+
+Per-example collapse recipe (declarative `nros::main!()` shape): move `<pkg>/package.xml`
+→ `<entry>/package.xml` (rename `<name>` to the entry crate); move `<pkg>/src/lib.rs` node
+logic → `<entry>/src/lib.rs` (replaces the `pub use <pkg>::register` re-export); in
+`<entry>/Cargo.toml` drop the `<pkg>` path-dep, add the node's `nros-log` + `std_msgs` deps +
+`[package.metadata.nros.node]` (class re-pathed to the entry crate), remove the hand
+`[patch.crates-io]`; `rm` the `<pkg>/` sibling; `nros sync` writes the managed patch into
+`<entry>/.cargo/config.toml` → own `generated/`. Build-verify thumbv7m.
+
+- **W1** `8cf597523` — `qemu-arm-baremetal/rust/talker` (pilot).
+- **W2** `563350f0d` — `qemu-arm-baremetal/rust/listener`.
+- **W3** `fb3b7b15b` — `qemu-arm-baremetal/rust/{serial-talker,serial-listener,talker-xrce}`.
+
+Done: 5 baremetal declarative examples (all build-verified). **Remaining:**
+qemu-arm-baremetal RTIC splits (action/service/talker/listener `*-rtic` + `*-rtic-mixed`, ~9
+— RTIC shape, study one first), the two e2e-fixture `*_pkg` (phase216-rtic-e2e,
+qemu-baremetal-main-e2e — test infra, confirm in-scope), and `stm32f4/rust/` (7, mostly
+declarative). Then drop the now-redundant two-pass codegen loop in `just/qemu-baremetal.just`
+once every baremetal example is self-contained.
 
 ## Evidence
 
