@@ -109,17 +109,19 @@ embassy stm32f4 board `init_hardware` is a `todo!()` stub; reproduced on un-coll
 unchanged by the collapse. The talker/listener nodes use a local `PlaceholderInt32` (no
 std_msgs), so their managed set is just nros-core/nros-serdes.
 
-**Remaining: stm32f4 action + service pairs (W6c/d) — the cross-pkg case.**
-`action-client-rtic`/`service-client-rtic` `use stm32f4_{action,service}_server_pkg::Placeholder*`
-(a hand-written `PlaceholderAct`/`PlaceholderSrv` `RosAction`/`RosService` + `PlaceholderInt32`
-defined in the SERVER pkg, ~lines 146-196 of `action_server_pkg/src/lib.rs`). Recipe per pair:
-collapse the server normally (placeholder stays in `*-server-rtic/src/lib.rs`); collapse the
-client by moving its node lib in AND **inlining a copy of the placeholder block** (+ its
-`use` imports), replacing the `use stm32f4_*_server_pkg::Placeholder*;` line — duplication is
-correct for standalone copy-out. Delete both `*_pkg` dirs after.
+- **W6c** `749504cf8` — stm32f4 `action-server-rtic` + `action-client-rtic` (cross-pkg:
+  inlined `PlaceholderAct` into the client; dropped the client's vestigial
+  `example_interfaces` depend).
+- **W6d** `07d3265fb` — stm32f4 `service-server-rtic` + `service-client-rtic` (cross-pkg:
+  inlined `PlaceholderSrv`).
 
-Plus: baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e, qemu-baremetal-main-e2e — test infra,
-confirm in-scope).
+**stm32f4 lane: DONE — zero `*_pkg` dirs remain.** All 23 user examples (14 baremetal +
+9 stm32f4) are self-contained + build-verified (embassy entries `cargo check`; their link is
+a pre-existing board-stub issue, unchanged).
+
+**Remaining (W7):** the two baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e,
+qemu-baremetal-main-e2e — test infra, confirm in-scope), then drop the now-redundant two-pass
+codegen loop in `just/qemu-baremetal.just` and close this issue.
 
 Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
 are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
