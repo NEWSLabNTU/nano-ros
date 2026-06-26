@@ -2,8 +2,9 @@
 
 Status: **In progress (2026-06-26)** — W0 done; W1 done (investigation — the live
 entry emitter, not the bake record, is the gap); **W1b route (a): S1 done
-(`5c98511dc`); S2–S6 remaining** (live bridge entry emitter — the phase's
-heart); W2–W5 remaining. ·
+(`5c98511dc`); S2 BLOCKED** — the macro can't host a bridge (0083 dep ban +
+no entity resolution), so `nros::main!` bridges are infeasible; bridges need a
+build.rs Entry (B1) regardless. Decision pending. ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -156,9 +157,35 @@ one emitter:**
   emitter (which already holds the full `NrosPlan`) can now produce the bridge
   entry — reachable but unused until S2 splices it. Unit-tested; cli-core suite
   green (395), no non-bridge behaviour change.
-- **S2 — multi-session entry.** Add an `Executor::open_multi(SESSION_SPECS)`
-  board/runtime entry variant (vs the single-session `Executor::open` +
-  single-rmw board `run`). `SESSION_SPECS` baked from `plan.build.transports`.
+- **S2 — multi-session entry. BLOCKED (2026-06-26) — the macro cannot host a
+  bridge; route (a)'s "`nros::main!` for bridges" UX is infeasible.** Findings:
+  - `nros-macros` deliberately does NOT dep `nros-build`/`nros-cli-core` (issue
+    0083 — it pulled the whole planner/codegen and bloated the proc-macro); it
+    deps only `toml` + `nros-launch-parser` + `nros-pkg-index`. So the macro
+    cannot call `render_bridge_entry_fns` (the relay codegen).
+  - The macro builds `register_calls` from `pkg_idents` (launch node pkgs) and
+    never resolves per-node **entities/topics** — the data a bridge relay needs.
+    The full `NrosPlan` (entities, topics, bridges) lives only in the build.rs /
+    `nros-build` path.
+  - The native (OwnedSpin) entry is macro-emitted INLINE, not via `nros-build`.
+    So the S1 carrier (`nros-build`) feeds the *framework* (RTIC/Embassy) build.rs
+    path, not the native macro path.
+
+  **Conclusion:** a bridge entry must use the build.rs + `include!` shape (where
+  the full plan lives), reusing the S1 carrier — `nros::main!` bridges are not
+  supported without re-bloating the macro (reversing 0083). This contradicts the
+  UX rationale that picked route (a) over (b): bridges get a different, build.rs-
+  shaped Entry regardless. **Decision needed** (the route (a)/(b) tradeoff shifts):
+  - **(B1) build.rs bridge Entry, reuse S1** — the bridge Entry pkg has a
+    `build.rs` that calls `nros-build` to emit `build_executor_bridge` +
+    `register_bridges` to `OUT_DIR`; `main.rs` `include!`s it + drives
+    `open_multi`. Architecturally correct (plan lives in build.rs); reuses S1; a
+    distinct (non-`nros::main!`) Entry shape for bridges.
+  - **(B2) re-bloat the macro** — re-add a (heavy) plan-resolution + codegen dep
+    to `nros-macros` so `nros::main!` can emit bridges inline. Reverses 0083;
+    bloats every entry's compile.
+  Recommend **(B1)** — keeps the macro lean, reuses S1, plan lives where the data
+  is. The original `Executor::open_multi` work below proceeds under (B1).
 - **S3 — relay.** Port `build_executor_bridge` + `render_register_bridges_fn`
   (generic sub→pub per `(topic, ordered endpoint pair)` + `nros-bridge`
   `bridge_origin` echo codec) into the live emitter; emit only for `is_bridge()`.
