@@ -15,12 +15,22 @@ path = "src/main.rs"
 # `RticBoardEntry::init_hardware`). The deploy key also feeds
 # `nros check` (Phase 216.D.1) — which validates the Node pkg's
 # `DISPATCH = Inline` against the RTIC framework's matrix entry.
+# Self-contained standalone example (issue 0100): node logic in this crate's
+# lib.rs (`nros::node!(ServiceClient)` → `register_dispatch`); `node_pkgs`
+# self-references this crate. The `PlaceholderSrv` type (was imported from the
+# sibling service_server_pkg) is inlined into lib.rs for copy-out independence.
+[lib]
+crate-type = ["rlib"]
+
 [package.metadata.nros.entry]
 deploy = "rtic-stm32f4"
-# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
-# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
-# generated RTIC `#[init]` body.
-node_pkgs = ["stm32f4_service_client_pkg"]
+node_pkgs = ["stm32f4-rtic-service-client"]
+
+[package.metadata.nros.node]
+class = "stm32f4_rtic_service_client::ServiceClient"
+name = "service_client"
+default_namespace = "/"
+dispatch = "inline"
 
 [dependencies]
 # Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits
@@ -37,14 +47,6 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
 nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }
-# Phase 216.B.5 Node pkg — board-agnostic service client (Inline
-# dispatch — see the pkg's lib.rs module doc for the
-# `try_recv()`-polling rationale). Listed as a dep so the bin target
-# links the rlib that exports `register` / `nros::node!()`-emitted
-# trampolines, mirroring the `stm32f4_service_server_pkg` link from
-# `service-server-rtic`.
-stm32f4_service_client_pkg = { path = "../service_client_pkg" }
-
 # RTIC runtime — re-listed because the macro-emitted body references
 # `::rtic::app`, `#[task]`, etc. by absolute path. The Entry pkg owns
 # the rtic version pin (`2.1` matches `nros-board-rtic-stm32f4`).

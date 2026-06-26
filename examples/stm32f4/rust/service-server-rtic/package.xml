@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>stm32f4_service_server_pkg</name>
+  <name>stm32f4_rtic_service_server</name>
   <version>0.1.0</version>
   <description>STM32F4 service-server Node pkg (Phase 216 node-lib; consumed by the embassy + rtic Entry pkgs)</description>
   <maintainer email="dev@example.com">Developer</maintainer>

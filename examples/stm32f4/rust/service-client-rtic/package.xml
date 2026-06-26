@@ -5,7 +5,6 @@
   <description>RTIC service client example for nros on STM32F4</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
-  <depend>example_interfaces</depend>
   <export>
     <build_type>ament_cargo</build_type>
   </export>

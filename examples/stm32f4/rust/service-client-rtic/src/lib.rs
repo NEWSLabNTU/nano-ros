@@ -53,7 +53,6 @@ use nros::{
     Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult,
 };
-use stm32f4_service_server_pkg::PlaceholderSrv;
 
 /// Service client component — calls `/echo` requests. Phase 216.B.5
 /// skeleton.
@@ -117,3 +116,41 @@ impl ExecutableNode for ServiceClient {
 }
 
 nros::node!(ServiceClient);
+
+// Placeholder service type (issue 0100) — inlined from the former sibling
+// `service_server_pkg` so this example is self-contained for copy-out. Minimal
+// `RosService` stand-in (Request + Reply both `PlaceholderInt32`, a 4-byte LE
+// `i32`) so `create_service_client_for_name` type-checks without dragging in
+// `example_interfaces`. The server side keeps an identical copy.
+#[derive(Copy, Clone)]
+pub struct PlaceholderInt32 {
+    pub data: i32,
+}
+
+impl nros::Serialize for PlaceholderInt32 {
+    fn serialize(&self, _writer: &mut nros::CdrWriter) -> Result<(), nros::SerError> {
+        Ok(())
+    }
+}
+
+impl nros::Deserialize for PlaceholderInt32 {
+    fn deserialize(_reader: &mut nros::CdrReader) -> Result<Self, nros::DeserError> {
+        Ok(Self { data: 0 })
+    }
+}
+
+impl nros::RosMessage for PlaceholderInt32 {
+    const TYPE_NAME: &'static str = "std_msgs/msg/Int32";
+    const TYPE_HASH: &'static str = "";
+}
+
+/// Placeholder service — Request + Reply both [`PlaceholderInt32`].
+pub struct PlaceholderSrv;
+
+impl nros::RosService for PlaceholderSrv {
+    type Request = PlaceholderInt32;
+    type Reply = PlaceholderInt32;
+
+    const SERVICE_NAME: &'static str = "service_server_pkg/srv/Echo";
+    const SERVICE_HASH: &'static str = "";
+}
