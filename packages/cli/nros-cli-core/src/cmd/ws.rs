@@ -260,6 +260,24 @@ struct WsPkg {
     is_patch_consumer: bool,
 }
 
+impl WsPkg {
+    /// True iff this pkg needs a `[patch.crates-io]` authority — a Rust pkg
+    /// that builds against the generated msg crates / nros-* runtime via
+    /// cargo, so cargo must resolve those path-patches from its authority.
+    ///
+    /// Phase-265 W5b: a pkg that BOTH defines msgs (`is_msg_pkg`, e.g. an
+    /// inline `msg/` dir) AND carries a hand `Cargo.toml` is still a consumer
+    /// — `native/custom-msg`, `zephyr .../talker-aemv8r`. The old filter
+    /// excluded `is_msg_pkg`, silently dropping these ("no Rust consumer
+    /// pkgs"). Pure interface packages never carry a *source* `Cargo.toml`
+    /// (the crate is generated into `generated/`), so `is_rust_pkg` already
+    /// excludes them without the `!is_msg_pkg` guard. `is_patch_consumer`
+    /// still excludes path-dep import targets (the Entry→Component walk).
+    fn needs_patch_authority(&self) -> bool {
+        self.is_rust_pkg && self.is_patch_consumer
+    }
+}
+
 pub fn run_sync(args: SyncArgs) -> Result<()> {
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
@@ -374,7 +392,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Also generate AMENT deps for every Rust consumer (pkg.xml deps).
     let rust_consumers: Vec<&WsPkg> = scan
         .iter()
-        .filter(|p| p.is_rust_pkg && !p.is_msg_pkg && p.is_patch_consumer)
+        .filter(|p| p.needs_patch_authority())
         .collect();
     for c in &rust_consumers {
         codegen_ament_deps_for(
@@ -402,10 +420,20 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     let mut authority_to_pkgs: HashMap<PathBuf, Vec<String>> = HashMap::new();
     for c in &rust_consumers {
         let authority = find_patch_authority(&c.dir, &ws_root)?;
+        // Workspace mode keeps the locked shared-root topology (`3f07dd9f7`):
+        // every consumer's authority carries the full emitted set. Single-pkg
+        // mode is dependency-aware — only the msg crates this consumer
+        // transitively depends on (its `<depend>` closure), so a node's
+        // unconsumed self-codegen crate never lands a broken patch entry.
+        let pkgs_for: Vec<String> = if single_pkg_mode {
+            emitted_msg_dep_closure(&c.deps, &all_emitted, &build_root)
+        } else {
+            all_emitted.clone()
+        };
         authority_to_pkgs
             .entry(authority)
             .or_default()
-            .extend(all_emitted.iter().cloned());
+            .extend(pkgs_for);
     }
     let nano_ros_path = args
         .nano_ros_path
@@ -1132,6 +1160,57 @@ fn nros_crate_subpath(name: &str) -> Option<String> {
     }
 }
 
+/// Crate names in a generated msg crate's `[dependencies]` /
+/// `[build-dependencies]` / `[dev-dependencies]` tables (registry + path).
+/// Used to walk the emitted msg-crate dep graph. toml_edit, like W2.
+fn cargo_dependency_names(cargo_body: &str) -> Vec<String> {
+    let Ok(doc) = cargo_body.parse::<toml_edit::DocumentMut>() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for table in ["dependencies", "build-dependencies", "dev-dependencies"] {
+        if let Some(t) = doc.get(table).and_then(|i| i.as_table_like()) {
+            for (k, _) in t.iter() {
+                out.push(k.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Phase-265 W5b — the transitive closure of `seeds` over the emitted msg-crate
+/// dependency graph, intersected with `emitted`. A standalone consumer's patch
+/// should carry only the generated msg crates it actually depends on (its
+/// `package.xml` `<depend>` rows + their transitive msg deps) — NOT every crate
+/// the sync run emitted. This excludes a node's own auto-generated self-crate
+/// when nothing consumes it (e.g. `native/custom-msg` hand-codes its msgs inline
+/// and uses `std_msgs`; its `msg/` dir still triggers self-codegen, but the
+/// unconsumed self-crate must not land a broken `[patch.crates-io]` path entry).
+fn emitted_msg_dep_closure(seeds: &[String], emitted: &[String], build_root: &Path) -> Vec<String> {
+    let set: HashSet<&str> = emitted.iter().map(String::as_str).collect();
+    let mut result: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = seeds
+        .iter()
+        .filter(|s| set.contains(s.as_str()))
+        .cloned()
+        .collect();
+    while let Some(c) = stack.pop() {
+        if !result.insert(c.clone()) {
+            continue;
+        }
+        if let Ok(body) = std::fs::read_to_string(build_root.join(&c).join("Cargo.toml")) {
+            for d in cargo_dependency_names(&body) {
+                if set.contains(d.as_str()) && !result.contains(&d) {
+                    stack.push(d);
+                }
+            }
+        }
+    }
+    let mut v: Vec<String> = result.into_iter().collect();
+    v.sort();
+    v
+}
+
 /// Phase 265 (issue 0094) — the managed `(crate_name, relative_path)` patch entries
 /// for a consumer authority, in emit order (generated msg crates first, then the
 /// deduped + alphabetised runtime crates). Single source of the managed-set + path
@@ -1484,7 +1563,7 @@ fn run_list(args: ListArgs) -> Result<()> {
         if p.is_msg_pkg {
             kinds.0 += 1;
         }
-        if p.is_rust_pkg && !p.is_msg_pkg {
+        if p.needs_patch_authority() {
             kinds.1 += 1;
         }
         println!(
@@ -1641,8 +1720,8 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
             );
             warnings += 1;
         }
-        // (c) rust consumer: is the patch authority Cargo.toml sane?
-        if pkg.is_rust_pkg && !pkg.is_msg_pkg {
+        // (c) rust consumer: is the patch authority config sane?
+        if pkg.needs_patch_authority() {
             match find_patch_authority(&pkg.dir, &ws_root) {
                 Ok(a) => {
                     let cfg = a
@@ -1689,6 +1768,86 @@ mod patch_block_tests {
     fn strip_managed_block_noop_without_markers() {
         let body = "[package]\nname = \"x\"\n";
         assert_eq!(strip_managed_block(body), body);
+    }
+
+    fn wspkg(name: &str, is_msg: bool, is_rust: bool, is_consumer: bool) -> WsPkg {
+        WsPkg {
+            name: name.to_string(),
+            dir: PathBuf::from(format!("/ws/{name}")),
+            manifest: PathBuf::from(format!("/ws/{name}/package.xml")),
+            is_msg_pkg: is_msg,
+            is_rust_pkg: is_rust,
+            deps: Vec::new(),
+            is_patch_consumer: is_consumer,
+        }
+    }
+
+    /// Phase-265 W5b — a Rust node that ALSO defines msgs (inline `msg/` dir,
+    /// e.g. `native/custom-msg`) is still a patch consumer; the old
+    /// `!is_msg_pkg` guard wrongly dropped it ("no Rust consumer pkgs").
+    #[test]
+    fn node_with_msg_dir_is_a_patch_consumer() {
+        // is_rust + is_msg + consumer → needs an authority (the fix).
+        assert!(wspkg("custom_msg", true, true, true).needs_patch_authority());
+        // pure interface pkg (no source Cargo.toml) → excluded by is_rust.
+        assert!(!wspkg("std_msgs", true, false, true).needs_patch_authority());
+        // plain rust consumer → included.
+        assert!(wspkg("talker", false, true, true).needs_patch_authority());
+        // path-dep import target (Entry→Component walk) → not an authority.
+        assert!(!wspkg("component", false, true, false).needs_patch_authority());
+    }
+
+    /// `cargo_dependency_names` collects keys across the three dep tables.
+    #[test]
+    fn cargo_dependency_names_spans_all_dep_tables() {
+        let body = r#"
+[dependencies]
+std_msgs = "*"
+nros = { path = "../nros" }
+[build-dependencies]
+cc = "1"
+[dev-dependencies]
+proptest = "1"
+"#;
+        let mut got = cargo_dependency_names(body);
+        got.sort();
+        assert_eq!(got, vec!["cc", "nros", "proptest", "std_msgs"]);
+    }
+
+    /// The closure keeps only seeds reachable through the emitted graph and
+    /// drops a node's unconsumed self-crate. Hermetic: writes a tiny
+    /// `generated/<crate>/Cargo.toml` graph under a temp build root.
+    #[test]
+    fn closure_excludes_unconsumed_self_crate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // std_msgs depends on builtin_interfaces; the self-crate depends on
+        // nothing emitted and is referenced by no one.
+        for (c, deps) in [
+            ("std_msgs", "builtin_interfaces = \"*\"\n"),
+            ("builtin_interfaces", ""),
+            ("native_rs_custom_msg", ""),
+        ] {
+            let dir = root.join(c);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!("[package]\nname = \"{c}\"\n\n[dependencies]\n{deps}"),
+            )
+            .unwrap();
+        }
+        let emitted = vec![
+            "builtin_interfaces".to_string(),
+            "native_rs_custom_msg".to_string(),
+            "std_msgs".to_string(),
+        ];
+        // Seed with the consumer's `<depend>` (std_msgs only).
+        let got = emitted_msg_dep_closure(&["std_msgs".to_string()], &emitted, root);
+        assert_eq!(
+            got,
+            vec!["builtin_interfaces".to_string(), "std_msgs".to_string()],
+            "closure must reach builtin_interfaces but exclude the unconsumed self-crate"
+        );
     }
 
     /// Phase 220.E — consumer Cargo.toml scanner finds every
