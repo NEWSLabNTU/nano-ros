@@ -99,8 +99,27 @@ logic → `<entry>/src/lib.rs` (replaces the `pub use <pkg>::register` re-export
   listener-rtic, listener-rtic-mixed, action-{client,server}-rtic, service-{client,server}-rtic).
 
 **qemu-arm-baremetal user examples: DONE** (6 declarative + 8 RTIC = 14, all build-verified).
-Remaining: the two baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e, qemu-baremetal-main-e2e —
-test infra), and all of `stm32f4/rust/` except `talker` (W4).
+- **W6a** `f543ea375` — stm32f4 `listener-rtic`, `listener-embassy` (clean single-node).
+- **W6b** `57f1ff4f5` — stm32f4 `talker-rtic` + `talker-embassy` (SHARED `stm32f4_talker_pkg`
+  duplicated into both entries).
+
+stm32f4 build notes: rtic entries `cargo build` (thumbv7em); **embassy** entries only
+`cargo check` — their full-link failure (missing platform C symbols) is PRE-EXISTING (the
+embassy stm32f4 board `init_hardware` is a `todo!()` stub; reproduced on un-collapsed HEAD),
+unchanged by the collapse. The talker/listener nodes use a local `PlaceholderInt32` (no
+std_msgs), so their managed set is just nros-core/nros-serdes.
+
+**Remaining: stm32f4 action + service pairs (W6c/d) — the cross-pkg case.**
+`action-client-rtic`/`service-client-rtic` `use stm32f4_{action,service}_server_pkg::Placeholder*`
+(a hand-written `PlaceholderAct`/`PlaceholderSrv` `RosAction`/`RosService` + `PlaceholderInt32`
+defined in the SERVER pkg, ~lines 146-196 of `action_server_pkg/src/lib.rs`). Recipe per pair:
+collapse the server normally (placeholder stays in `*-server-rtic/src/lib.rs`); collapse the
+client by moving its node lib in AND **inlining a copy of the placeholder block** (+ its
+`use` imports), replacing the `use stm32f4_*_server_pkg::Placeholder*;` line — duplication is
+correct for standalone copy-out. Delete both `*_pkg` dirs after.
+
+Plus: baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e, qemu-baremetal-main-e2e — test infra,
+confirm in-scope).
 
 Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
 are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
