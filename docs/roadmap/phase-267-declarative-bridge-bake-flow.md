@@ -1,8 +1,9 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
-Status: **In progress (2026-06-26)** — W0 done; W1 done (as an investigation that
-inverted the plan — the live entry emitter, not the bake record, is the gap);
-W2–W5 + the new emitter wave remaining. · Implements
+Status: **In progress (2026-06-26)** — W0 done; W1 done (investigation — the live
+entry emitter, not the bake record, is the gap); **W1b route (a) chosen + scoped
+into S1–S6** (live bridge entry emitter — the phase's heart); W2–W5 remaining. ·
+Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
 Completes [phase-263](phase-263-complete-workspace-examples.md) Track B / B3
@@ -118,6 +119,60 @@ contains `Executor::open_multi` + the per-topic generic-sub→pub relay with
 > **Re-sequence.** Old W1 (bake thin-record) is dropped — not consumed. Old W2
 > (metadata→topics) and W3 (build lane) stand. The new heart is the emitter route
 > above (was implicit in old W3); W4 (descriptors) + W5 (runtime) unchanged.
+
+## W1b — Live bridge entry emitter. **ROUTE (a) CHOSEN (2026-06-26).**
+
+Decided after a UX + maintainability comparison: **(a) teach the live path a
+bridge entry shape**, not (b) revive the dead `generate.rs`/`build_generated_package`.
+
+Rationale: (a) keeps bridges building via `nros::main!` + `cargo build` like every
+other workspace (one build path, one mental model) and leaves ONE live entry
+emitter — the proven relay (~150 lines: `build_executor_bridge` +
+`render_register_bridges_fn` (59) + `SESSION_SPECS`) ports over and the stranded
+`generate.rs` copy gets deleted. (b) would entrench two parallel entry emitters
+(reversing the consolidation that made `generate.rs` dead) and add a bridge-only
+build workflow. (a)'s cost is cheap because the macro already opens an `Executor`
+(`main_macro.rs:1094`).
+
+**Constraints found while mapping (a) — it spans macro + board-entry + deps, not
+one emitter:**
+- The `nros::main!` macro is **bridge-blind**: it resolves only the launch node
+  set (`register_calls` from `pkg_idents`, `main_macro.rs:679`) — it never reads
+  `system.toml`'s `[[bridge]]`/`[[domain]]`, so it has no `plan.bridges`. The full
+  `NrosPlan` (with bridges) lives in the `nros-build` build.rs helper
+  (`emit.rs::emit_run_plan`, which DOES take `plan: &NrosPlan`).
+- The native (`Framework::OwnedSpin`) entry registers the board's **single** rmw
+  (`main_macro.rs:948-954` — the board's `run()` opens a single-session `Executor`
+  + calls its one `nros_rmw_<x>::register()`). A bridge needs `Executor::open_multi`
+  + BOTH backends registered — the board run path doesn't expose that.
+
+**Sub-steps:**
+- **S1 — carrier.** Get `plan.bridges` / `build.transports` to the native entry
+  codegen. Preferred: emit the bridge relay from `nros-build/emit.rs` (it already
+  has the full `NrosPlan`), and have the macro's OwnedSpin branch call that emitted
+  fn — keeps bridge resolution out of the proc-macro. (Alternative: teach the
+  macro to read `system.toml` bridges via a shared resolver crate.)
+- **S2 — multi-session entry.** Add an `Executor::open_multi(SESSION_SPECS)`
+  board/runtime entry variant (vs the single-session `Executor::open` +
+  single-rmw board `run`). `SESSION_SPECS` baked from `plan.build.transports`.
+- **S3 — relay.** Port `build_executor_bridge` + `render_register_bridges_fn`
+  (generic sub→pub per `(topic, ordered endpoint pair)` + `nros-bridge`
+  `bridge_origin` echo codec) into the live emitter; emit only for `is_bridge()`.
+- **S4 — deps + backend register.** The bridge Entry pkg deps both backends
+  (board zenoh + `nros-rmw-cyclonedds-sys`) and registers both before
+  `open_multi` (the W0 `render_one_backend`/`render_backend_register_fn` cyclone
+  wiring is the reference; it must reach the LIVE emitter, not the dead one).
+- **S5 — delete the dead path.** Remove `build_generated_package` + the stranded
+  `generate.rs` bridge relay once the live path emits it — single source of truth.
+- **S6 — build + gated runtime test** (folds into W3/W5).
+
+**Acceptance:** `cargo build` of the `ws-bridge-rust` `native_entry` (plain
+`nros::main!`) links both backends and its generated entry contains
+`Executor::open_multi` + the relay; bridges build with no special workflow.
+
+> **Note.** W1b is the phase's heart and a multi-component effort (proc-macro +
+> board entry + runtime + deps). W2 (metadata→topics) feeds S3's topic list; do W2
+> alongside S1–S3.
 
 ## W2 — Component metadata so forwarded topics resolve
 
