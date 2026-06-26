@@ -1035,8 +1035,14 @@ fn forwarded_topics(instances: &[Value]) -> Vec<String> {
                 .into_iter()
                 .flatten()
             {
-                let kind = ent.get("kind").and_then(Value::as_str).unwrap_or("");
-                if kind != "publisher" && kind != "subscriber" {
+                // Plan entities are tagged by `role` ("publisher"/"subscriber");
+                // accept `kind` too for hand-built fixtures.
+                let role = ent
+                    .get("role")
+                    .or_else(|| ent.get("kind"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if role != "publisher" && role != "subscriber" {
                     continue;
                 }
                 if let Some(name) = ent.get("resolved_name").and_then(Value::as_str)

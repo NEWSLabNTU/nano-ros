@@ -278,6 +278,78 @@ impl WsPkg {
     }
 }
 
+/// phase-267 W1c/C3e — generate `<bringup>/nros-bridge.toml` for every bringup
+/// whose `system.toml` declares a `[[bridge]]`. Plans the bringup (resolving each
+/// bridge topic NAME to its ROS type from the node pkgs' synthetic `publishes`
+/// metadata — pre-build, no sidecar), then renders the runtime bridge config the
+/// entry's `nros_bridge::run_from_config` consumes. No bridge ⇒ no file written
+/// (and a stale one is removed). Non-bridge workspaces never plan here.
+fn generate_bridge_configs(
+    ws_root: &std::path::Path,
+    scan: &[WsPkg],
+    build_root: &std::path::Path,
+    verbose: bool,
+) -> Result<()> {
+    for pkg in scan {
+        let system_toml = pkg.dir.join("system.toml");
+        if !system_toml.is_file() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&system_toml).unwrap_or_default();
+        let has_bridge = toml::from_str::<toml::Value>(&raw)
+            .ok()
+            .and_then(|v| {
+                v.get("bridge")
+                    .and_then(|b| b.as_array())
+                    .map(|a| !a.is_empty())
+            })
+            .unwrap_or(false);
+        let dest = pkg.dir.join("nros-bridge.toml");
+        if !has_bridge {
+            continue;
+        }
+
+        let input = crate::orchestration::launch_synth::resolve_launch(&pkg.dir, None, None)
+            .wrap_err_with(|| format!("ws sync: resolve launch for bridge bringup {}", pkg.name))?;
+        let materialised = input.materialise()?;
+        let output = crate::orchestration::planner::plan_system(
+            crate::orchestration::planner::PlanOptions {
+                system_pkg: pkg.name.clone(),
+                workspace_root: ws_root.to_path_buf(),
+                launch_file: materialised.path.clone(),
+                record_file: None,
+                out_root: build_root.join(&pkg.name).join("nros-bridge-plan"),
+                metadata_files: Vec::new(),
+                manifest_files: Vec::new(),
+                launch_args: Vec::new(),
+                rmw: None,
+                target: None,
+            },
+        )
+        .wrap_err_with(|| format!("ws sync: plan bridge bringup {}", pkg.name))?;
+
+        let plan_json = std::fs::read_to_string(&output.plan_path)?;
+        let plan: crate::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
+            .wrap_err_with(|| format!("ws sync: parse plan for bridge bringup {}", pkg.name))?;
+
+        match crate::orchestration::generate::render_bridge_runtime_config(&plan) {
+            Some(cfg) => {
+                std::fs::write(&dest, cfg)
+                    .wrap_err_with(|| format!("ws sync: write {}", dest.display()))?;
+                if verbose {
+                    println!("ws sync: wrote {}", dest.display());
+                }
+            }
+            // A `[[bridge]]` whose plan carried no resolvable bridge — drop any
+            // stale file so the entry doesn't boot an outdated config.
+            None => {
+                let _ = std::fs::remove_file(&dest);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn run_sync(args: SyncArgs) -> Result<()> {
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
@@ -390,10 +462,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         }
     }
     // Also generate AMENT deps for every Rust consumer (pkg.xml deps).
-    let rust_consumers: Vec<&WsPkg> = scan
-        .iter()
-        .filter(|p| p.needs_patch_authority())
-        .collect();
+    let rust_consumers: Vec<&WsPkg> = scan.iter().filter(|p| p.needs_patch_authority()).collect();
     for c in &rust_consumers {
         codegen_ament_deps_for(
             &c.deps,
@@ -404,6 +473,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             args.verbose,
         )?;
     }
+
+    // phase-267 W1c/C3e — for each bringup declaring a `[[bridge]]`, plan it
+    // (topic names→types resolve from the node pkgs' synthetic `publishes`
+    // metadata, no build) and write `<bringup>/nros-bridge.toml` — the file the
+    // entry's `nros_bridge::run_from_config` consumes at runtime.
+    generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
 
     if rust_consumers.is_empty() {
         println!("ws sync: no Rust consumer pkgs — patch tables not written.");
@@ -1676,7 +1751,10 @@ fn run_clean(args: CleanArgs) -> Result<()> {
             continue;
         }
         if args.dry_run {
-            println!("ws clean: WOULD strip managed patches from {}", cfg.display());
+            println!(
+                "ws clean: WOULD strip managed patches from {}",
+                cfg.display()
+            );
             continue;
         }
         // Re-render with an empty managed set → evicts every nros-managed key + drops
