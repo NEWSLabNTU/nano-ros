@@ -760,6 +760,38 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     }
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
+    // W4b — bake the single-node boot identity into a `NROS_BOOT_CONFIG` static
+    // placed in the `.nros_boot_config` linker section (bare-metal only; hosted
+    // gets a plain `#[unsafe(no_mangle)] #[used]` static that is still referenceable).
+    // The static is emitted once, before `body_ts`, so `&NROS_BOOT_CONFIG`
+    // resolves in every framework arm's `deploy_overlay_ts` use site.
+    let boot_config_static_ts = {
+        let node_name_opt = match &deploy_overlay_lit.node_name {
+            Some(s) => quote! { ::core::option::Option::Some(#s) },
+            None => quote! { ::core::option::Option::None },
+        };
+        let locator_opt = match &deploy_overlay_lit.locator {
+            Some(s) => quote! { ::core::option::Option::Some(#s) },
+            None => quote! { ::core::option::Option::None },
+        };
+        let domain_opt = match deploy_overlay_lit.domain_id {
+            Some(d) => quote! { ::core::option::Option::Some(#d) },
+            None => quote! { ::core::option::Option::None },
+        };
+        quote! {
+            #[used]
+            #[cfg_attr(target_os = "none", link_section = ".nros_boot_config")]
+            #[unsafe(no_mangle)]
+            static NROS_BOOT_CONFIG: ::nros::BakedBootConfig =
+                ::nros::BakedBootConfig::new(
+                    #node_name_opt,
+                    #locator_opt,
+                    #domain_opt,
+                    ::core::option::Option::None,
+                );
+        }
+    };
+
     // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
     // framework. FreeRTOS / threadx-linux have a C runtime that calls `main`,
     // so they keep the `extern "C" fn main`. A pure bare-metal Cortex-M image
@@ -1528,6 +1560,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // when any tracked file changes.
         #( #tracked_consts )*
 
+        // W4b — baked boot-config static; emitted before the framework
+        // body so `&NROS_BOOT_CONFIG` is in scope at every overlay use site.
+        #boot_config_static_ts
+
         #body_ts
     };
 
@@ -1710,7 +1746,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             domain_id: #domain_id,
             transport: #transport,
             node_name: #node_name,
-            boot_config: ::core::option::Option::None,
+            boot_config: ::core::option::Option::Some(&NROS_BOOT_CONFIG),
         }
     }
 }
