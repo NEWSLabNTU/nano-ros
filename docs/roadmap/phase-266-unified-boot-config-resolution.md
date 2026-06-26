@@ -4,6 +4,24 @@ Implements **[RFC-0045](../design/0045-unified-boot-config-resolution.md)**. Clo
 **[#101](../issues/0101-board-boot-config-not-unified.md)** and the all-boards remainder of
 **[#98](../issues/0098-nros-main-ignores-component-node-name.md)**.
 
+## Status (2026-06-27)
+
+**W1–W4 (the Rust unification): LANDED on main** (`…a314b02eb`). Node naming now resolves
+through one path on **all 10 boards** (hosted, OwnedSpin embedded, NuttX + new
+`run_with_deploy`, RTIC, Embassy); the three languages still funnel into the one shared
+`RmwConfig` → `CffiRmw::open` sink. Verified by `just check` (green pre- and post-rebase) +
+a whole-branch review (fixed: NuttX `from_env`-arm dropped `boot_config`; RTIC-mps2
+`option_env` fallback; edition-2024 `unsafe(link_section)` on bare-metal). This closes the
+Rust scope of **#98** (was honored on 2/10 boards, now all) and the Rust core of **#101**.
+
+Build-verification gaps (pre-existing, environmental, not code defects): NuttX-riscv /
+mps2-an385-freertos / threadx-qemu-riscv64 full builds need `just nuttx setup` / FreeRTOS
+sources; the ARM/host siblings build clean and the per-board edit is uniform.
+
+**Remaining: W5 (C), W6 (C++), W7 (cleanup)** — the C/C++ session-naming source decision
+(`nros_support_init_named` / `nros_cpp_init` / codegen-entry) is a parallel-stack effort,
+deliberately deferred from the Rust land.
+
 ## Why
 
 `node_name` + `locator` + `domain_id` are assembled in three places (Rust/C/C++) from four

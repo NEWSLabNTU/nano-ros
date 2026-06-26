@@ -66,12 +66,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#98** — [`nros::main!` ignores `system.toml` component `name`, registers node as
   `/node`](0098-nros-main-ignores-component-node-name.md): the board opened the primary
   session under the `from_env()` default `"node"`, so `ros2 node list` showed `/node` not
-  the configured component name. **Single-node launch fixed** (2026-06-25) — the name is
-  threaded via `DeployOverlay.node_name`, so `ros2 node list` shows `/param_talker`. **But a
-  board audit (2026-06-26) found the fix lands on only 2 of ~10 boards** — every embedded board
-  hardcodes `"nros_app"` or (NuttX) drops the overlay entirely; RTIC/Embassy use compile-time
-  env. Plus the multi-node case stays open. One symptom of the broader boot-config divergence
-  in #101. Surfaced from the phase-264 W4c known limitation.
+  the configured component name. **Single-node node naming now RESOLVED ON ALL BOARDS**
+  (2026-06-27, phase-266 W1–W4 landed) — the unified resolver applies the baked
+  `.nros_boot_config` name on hosted, OwnedSpin, NuttX (gained `run_with_deploy`), RTIC, and
+  Embassy (was 2/10 in the 2026-06-26 audit). Remaining: multi-node per-node naming + the C/C++
+  session-naming half (phase-266 W5/W6, tracked with #101). Surfaced from the phase-264 W4c
+  known limitation.
 - **#99** — [declarative `[[bridge]]` does not
   forward](0099-declarative-bridge-planner-population.md): the whole cross-RMW bridge pipeline
   (schema, `PlanBridge`/`PlanTransport` IR, `validate_bridges` + relay codegen, `nros-bridge`
@@ -91,8 +91,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   unified](0101-board-boot-config-not-unified.md): node_name + locator + domain resolve four
   different ways across boards (runtime env / baked `Config` / compile-time `option_env!` /
   NuttX drops the overlay entirely), so the same `system.toml` + `[deploy.*]` yields different
-  runtime identity per target. #98 node-naming is one symptom (works on 2/10 boards). Fix:
-  one `DeployOverlay`→`ExecutorConfig` path applied before `Executor::open` on every board.
+  runtime identity per target. **Rust core RESOLVED** (2026-06-27, phase-266 W1–W4): one
+  `ExecutorConfig::resolve` path + the `.nros_boot_config` bake site, adopted by every Rust
+  board (NuttX gained `run_with_deploy`). Remaining: C/C++ session naming (W5/W6) + cleanup
+  (W7, merge dup `board_path_for` maps + `setup_transport`).
 - **#102** — [~60 examples ship untested; advanced capabilities
   native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
   single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native

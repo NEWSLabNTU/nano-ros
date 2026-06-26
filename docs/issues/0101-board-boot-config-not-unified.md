@@ -12,6 +12,21 @@ related: [phase-244, rfc-0004, rfc-0014, rfc-0045]
 > and the `.nros_boot_config` single bake site. Read it for the rationale; this issue tracks the
 > work.
 
+## Status (2026-06-27)
+
+**Rust core: RESOLVED** ([phase-266](../roadmap/phase-266-unified-boot-config-resolution.md)
+W1–W4, landed `…a314b02eb`). One resolver (`ExecutorConfig::resolve`, precedence A) now owns
+node_name; every Rust board (hosted, OwnedSpin, NuttX +`run_with_deploy`, RTIC, Embassy)
+resolves it from the single `.nros_boot_config` bake site instead of the former four ad-hoc
+mechanisms. NuttX gained the missing `run_with_deploy`. `just check` green + whole-branch review.
+
+**Still open:** (1) **C/C++ session naming** — `nros_support_init_named` / `nros_cpp_init` /
+codegen-entry don't yet pass the configured name (phase-266 W5/W6); (2) **locator/domain** are
+threaded but, on hosted, deliberately stay env-authoritative (the resolver maps node_name; full
+overlay-authority for locator/domain is a follow-up); (3) **cleanup** — merge the two
+`board_path_for` maps + resolve the near-dead `setup_transport` (phase-266 W7). This issue stays
+`open` until W5–W7 land.
+
 ## Summary
 
 How a board obtains its boot `ExecutorConfig` — **node name, locator, domain id** — is

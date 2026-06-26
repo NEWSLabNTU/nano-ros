@@ -7,6 +7,19 @@ area: core
 related: [phase-264, rfc-0004]
 ---
 
+## Status (2026-06-27)
+
+**Single-node node naming: RESOLVED ON ALL BOARDS** (phase-266 W1–W4, landed `…a314b02eb`).
+The 2026-06-26 finding below (fix on only 2/10 boards) is closed: the unified resolver
+(RFC-0045 / phase-266) now applies the baked `.nros_boot_config` node name on every board —
+hosted, OwnedSpin embedded, NuttX (which gained a `run_with_deploy` override), RTIC, and
+Embassy. Verified by `just check` + whole-branch review. **Still deferred:** multi-node
+per-node graph naming (N components share one primary session) — see Fix direction; that, plus
+the C/C++ session-naming half, are tracked in phase-266 W5/W6 and #101. The historical detail
+below is retained for context.
+
+---
+
 ## Status (2026-06-26)
 
 **Single-node launch on POSIX/Native: RESOLVED.** A single-node launch threads the
