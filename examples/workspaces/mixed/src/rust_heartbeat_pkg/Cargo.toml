@@ -20,9 +20,11 @@ default_namespace = "/"
 # only functional features (`std`/`alloc`, the `rmw-cffi` vtable, ROS
 # edition).
 [dependencies]
+# phase-263 C2c — no `std` feature: the node body uses only the nros API + a u32 counter, so
+# it stays `no_std` (alloc-only) and compiles for both host (native/threadx-linux) and the
+# genuinely-no_std embedded Rust targets (thumbv7m FreeRTOS, x86_64-unknown-none Zephyr).
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
-    "std",
     "rmw-cffi",
     "ros-humble",
 ] }
