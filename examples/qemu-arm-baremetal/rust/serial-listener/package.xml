@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>serial_listener_pkg</name>
+  <name>qemu_serial_listener</name>
   <version>0.1.0</version>
   <description>Node package for the QEMU serial listener example (std_msgs/Int32 on /chatter)</description>
   <maintainer email="dev@example.com">Developer</maintainer>

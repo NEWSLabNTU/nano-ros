@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>xrce_talker_pkg</name>
+  <name>qemu_serial_talker</name>
   <version>0.1.0</version>
-  <description>Node package for the QEMU XRCE talker example (std_msgs/Int32 on /chatter)</description>
+  <description>Node package for the QEMU serial talker example (std_msgs/Int32 on /chatter)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>std_msgs</depend>
