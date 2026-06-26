@@ -92,13 +92,24 @@ logic → `<entry>/src/lib.rs` (replaces the `pub use <pkg>::register` re-export
 - **W1** `8cf597523` — `qemu-arm-baremetal/rust/talker` (pilot).
 - **W2** `563350f0d` — `qemu-arm-baremetal/rust/listener`.
 - **W3** `fb3b7b15b` — `qemu-arm-baremetal/rust/{serial-talker,serial-listener,talker-xrce}`.
+- **W4** `c6284c3a1` — `stm32f4/rust/talker` (the one clean 1:1 in stm32f4).
 
-Done: 5 baremetal declarative examples (all build-verified). **Remaining:**
-qemu-arm-baremetal RTIC splits (action/service/talker/listener `*-rtic` + `*-rtic-mixed`, ~9
-— RTIC shape, study one first), the two e2e-fixture `*_pkg` (phase216-rtic-e2e,
-qemu-baremetal-main-e2e — test infra, confirm in-scope), and `stm32f4/rust/` (7, mostly
-declarative). Then drop the now-redundant two-pass codegen loop in `just/qemu-baremetal.just`
-once every baremetal example is self-contained.
+Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
+are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
+
+- **RTIC** (qemu-arm-baremetal `*-rtic` + `*-rtic-mixed` ≈9; stm32f4 `*-rtic` ≈5) — the
+  `#[rtic::app]` Entry integrates the node differently than `nros::main!()`; study one first.
+- **Embassy** (stm32f4 `talker-embassy`, `listener-embassy`) — Embassy executor shape.
+- **Shared node pkgs** — stm32f4 `talker_pkg` is path-dep'd by BOTH `talker-rtic` and
+  `talker-embassy`; `listener_pkg` by multiple. A 1:1 fold is impossible; collapse must
+  DUPLICATE the node logic into each Entry (acceptable for standalone copy-out examples).
+- **Cross-pkg deps** — stm32f4 `action_client_pkg → action_server_pkg`,
+  `service_client_pkg → service_server_pkg` (a node pkg path-deps another node pkg).
+- **e2e fixtures** — `phase216-rtic-e2e`, `qemu-baremetal-main-e2e` (`*_pkg`): test infra,
+  confirm in-scope before touching.
+
+Final step (after every baremetal example is self-contained): drop the now-redundant two-pass
+codegen loop in `just/qemu-baremetal.just` (the split was its only reason to exist).
 
 ## Evidence
 
