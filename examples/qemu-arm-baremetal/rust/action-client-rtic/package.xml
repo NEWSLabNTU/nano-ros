@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>talker_rtic_mixed_pkg</name>
+  <name>qemu_rtic_action_client</name>
   <version>0.1.0</version>
-  <description>Node package for the QEMU mixed-priority RTIC talker example (std_msgs/Int32 on /chatter)</description>
+  <description>Node package for the QEMU RTIC action client example (example_interfaces/Fibonacci on /fibonacci)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
-  <depend>std_msgs</depend>
+  <depend>example_interfaces</depend>
   <export>
     <build_type>ament_cargo</build_type>
   </export>

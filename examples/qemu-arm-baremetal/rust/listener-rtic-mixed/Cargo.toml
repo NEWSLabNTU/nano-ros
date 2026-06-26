@@ -11,12 +11,21 @@ name = "qemu-rtic-mixed-listener"
 test = false
 bench = false
 
-# Phase 244.D1 Wave B — Entry pkg shape. The node set comes from the
-# `node_pkgs` key (RTIC entries have no src/lib.rs re-export); the board boot
-# scaffold is supplied by `nros::main!()` + `nros-board-rtic-mps2-an385`.
+# Self-contained standalone example (issue 0100): node logic in this crate's
+# lib.rs (`nros::node!` -> `register_dispatch`); `node_pkgs` self-references
+# this crate; `main.rs` is the `nros::main!()` RTIC Entry.
+[lib]
+crate-type = ["rlib"]
+
 [package.metadata.nros.entry]
 deploy = "rtic-mps2-an385"
-node_pkgs = ["listener_rtic_mixed_pkg"]
+node_pkgs = ["qemu-rtic-mixed-listener"]
+
+[package.metadata.nros.node]
+class = "qemu_rtic_mixed_listener::ListenerNode"
+name = "qemu_rtic_mixed_listener"
+default_namespace = "/"
+dispatch = "deferred"
 
 # Phase 244.D1 — per-example net overlay applied onto the board's baked
 # `qemu_config`. This listener must NOT share its ip with the talker on the
@@ -29,6 +38,9 @@ netmask = "255.255.255.0"
 domain_id = 0
 
 [dependencies]
+# Node deps folded in from the former listener_rtic_mixed_pkg (issue 0100).
+nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+std_msgs = { version = "*", default-features = false }
 # nros Executor API — ffi-sync enables critical_section guards around FFI calls.
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
 
@@ -38,8 +50,6 @@ nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rt
 # RMW backend (zenoh-pico) linked + registered by the board Entry.
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
-# Application node package (declares the /chatter subscription).
-listener_rtic_mixed_pkg = { path = "../listener_rtic_mixed_pkg" }
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers).
 mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
@@ -79,15 +89,3 @@ strip = true
 # README's "standalone copy-out template" promise. Canonical in-tree builds
 # also pass via the root `exclude = [...]` list (belt-and-braces).
 [workspace]
-
-[patch.crates-io]
-# The message crates live in the Node pkg (`generated/` moved there in the
-# Phase 244.D1 Wave B migration). cargo only honors `[patch.crates-io]` from the
-# build-root manifest, and this Entry pkg is that root, so the patch is mirrored
-# here pointing at the Node pkg's `generated/` dir.
-# === BEGIN nros-managed [patch.crates-io] ===
-builtin_interfaces = { path = "../listener_rtic_mixed_pkg/generated/builtin_interfaces" }
-std_msgs = { path = "../listener_rtic_mixed_pkg/generated/std_msgs" }
-nros-core = { path = "../../../../packages/core/nros-core" }
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }
-# === END nros-managed [patch.crates-io] ===
