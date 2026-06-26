@@ -77,6 +77,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-waker"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "bare-metal"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -269,7 +278,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
- "thiserror",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -365,6 +374,16 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "eyre"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cd915d99f24784cdc19fd37ef22b97e3ff0ae756c7e492e9fbfe897d61e2aec"
+dependencies = [
+ "indenter",
+ "once_cell",
 ]
 
 [[package]]
@@ -479,6 +498,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indenter"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "964de6e86d545b246d84badc0fef527924ace5134f30641c203ef52ba83f58d5"
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,7 +571,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "mps2-an385-pac"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -568,28 +593,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros"
+version = "0.5.0"
+dependencies = [
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
+ "nros-platform",
+ "nros-rmw",
+ "nros-rmw-cffi",
+ "nros-serdes",
+ "paste",
+ "portable-atomic",
+ "portable-atomic-util",
+]
+
+[[package]]
 name = "nros-baremetal-common"
-version = "0.1.0"
+version = "0.4.0"
 
 [[package]]
 name = "nros-board-common"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-build-paths",
  "serde",
  "toml 0.8.23",
 ]
 
 [[package]]
 name = "nros-board-stm32f4"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
+ "nros",
  "nros-board-common",
+ "nros-log",
  "nros-platform",
  "nros-platform-stm32f4",
+ "nros-rmw-zenoh",
  "nros-smoltcp",
  "smoltcp",
  "stm32-eth",
@@ -599,8 +645,94 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-build-paths"
+version = "0.5.0"
+
+[[package]]
+name = "nros-core"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+ "log",
+ "nros-serdes",
+]
+
+[[package]]
+name = "nros-launch-parser"
+version = "0.5.0"
+dependencies = [
+ "eyre",
+ "nros-pkg-index",
+ "quick-xml",
+]
+
+[[package]]
+name = "nros-log"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-macros"
+version = "0.5.0"
+dependencies = [
+ "nros-launch-parser",
+ "nros-orchestration-ir",
+ "nros-pkg-index",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "nros-node"
+version = "0.5.0"
+dependencies = [
+ "atomic-waker",
+ "heapless",
+ "nros-core",
+ "nros-log",
+ "nros-params",
+ "nros-platform-api",
+ "nros-rmw",
+ "nros-rmw-cffi",
+ "nros-serdes",
+ "portable-atomic",
+ "portable-atomic-util",
+]
+
+[[package]]
+name = "nros-orchestration-ir"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
+name = "nros-pkg-index"
+version = "0.5.0"
+dependencies = [
+ "eyre",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "nros-platform"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
@@ -610,18 +742,18 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
 ]
 
 [[package]]
 name = "nros-platform-mps2-an385"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cortex-m",
  "cortex-m-semihosting",
@@ -634,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-stm32f4"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cortex-m",
  "defmt 0.3.100",
@@ -646,12 +778,62 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
+name = "nros-rmw-cffi"
+version = "0.5.0"
+dependencies = [
+ "cc",
+ "nros-rmw",
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-rmw-zenoh"
+version = "0.5.0"
+dependencies = [
+ "atomic-waker",
+ "heapless",
+ "nros-core",
+ "nros-platform",
+ "nros-rmw",
+ "nros-rmw-cffi",
+ "portable-atomic",
+ "zpico-sys",
+]
+
+[[package]]
+name = "nros-serdes"
+version = "0.5.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
 name = "nros-smoltcp"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-zpico-build"
+version = "0.5.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "nros-board-common",
+ "nros-build-paths",
+ "pkg-config",
 ]
 
 [[package]]
@@ -673,6 +855,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -683,6 +871,15 @@ name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+
+[[package]]
+name = "portable-atomic-util"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618"
+dependencies = [
+ "portable-atomic",
+]
 
 [[package]]
 name = "powerfmt"
@@ -732,6 +929,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -772,6 +978,15 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys",
+]
+
+[[package]]
+name = "same-file"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
+dependencies = [
+ "winapi-util",
 ]
 
 [[package]]
@@ -911,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "stm32f4-usart"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "zpico-serial",
 ]
@@ -974,11 +1189,31 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.18",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1130,6 +1365,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "walkdir"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
+dependencies = [
+ "same-file",
+ "winapi-util",
+]
+
+[[package]]
 name = "wasip2"
 version = "1.0.3+wasi-0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1179,6 +1424,15 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap",
  "semver 1.0.28",
+]
+
+[[package]]
+name = "winapi-util"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]
@@ -1313,21 +1567,19 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zpico-alloc"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "zpico-serial"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "zpico-sys",
 ]
 
 [[package]]
 name = "zpico-sys"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
- "cbindgen",
- "cc",
- "nros-board-common",
- "pkg-config",
+ "nros-smoltcp",
+ "nros-zpico-build",
 ]

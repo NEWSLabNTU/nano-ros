@@ -189,7 +189,7 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
         E: core::fmt::Debug,
     {
         let cfg = Config::default();
-        nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(cfg, setup)
+        nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(cfg, None, setup)
     }
 
     /// Phase 245 B0 / issue #48 — apply the `nros::main!()` deploy overlay
@@ -197,6 +197,9 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
     /// gateway / netmask / domain_id) onto `Config::default()` before boot, so the
     /// Entry pkg's deploy metadata stops being inert. Fields the deploy block omits
     /// keep the board default.
+    ///
+    /// Issue #98 / RFC-0045 — also threads `deploy.boot_config` so the node name
+    /// comes from the baked `.nros_boot_config`.
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
@@ -204,6 +207,7 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
     {
         nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(
             config_with_overlay(deploy),
+            deploy.boot_config,
             setup,
         )
     }
@@ -219,12 +223,19 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
 /// which runs the post-kernel body (open executor + `setup` + spin) on
 /// `Config::default()`. The cargo/zenoh path uses `nros::main!()` /
 /// `BoardEntry::run` instead and never reaches here.
+///
+/// CycloneDDS-path note: no `nros::main!()` macro emits a baked boot config for
+/// this path, so `boot_config = None` (keeps the `"nros_app"` default).
 pub fn run_app_thread<F, E>(setup: F) -> !
 where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-    nros_board_threadx::run_app_thread::<ThreadxQemuRiscv64, Config, F, E>(Config::default(), setup)
+    nros_board_threadx::run_app_thread::<ThreadxQemuRiscv64, Config, F, E>(
+        Config::default(),
+        None,
+        setup,
+    )
 }
 
 /// Phase 245 B0 — overlay the `nros::main!()` deploy block onto `Config::default()`.

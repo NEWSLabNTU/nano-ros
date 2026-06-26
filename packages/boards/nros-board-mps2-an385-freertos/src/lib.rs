@@ -261,7 +261,7 @@ impl nros_platform::BoardEntry for Mps2An385 {
         // Mirror legacy `run()` — wire the semihosting log writer
         // before any task spawns. Idempotent.
         register_log_writer();
-        nros_board_freertos::run_entry::<Mps2An385, F, E>(Config::default(), setup)
+        nros_board_freertos::run_entry::<Mps2An385, F, E>(Config::default(), None, setup)
     }
 
     /// Issue #48 cause 1 — apply the `nros::main!()` deploy overlay
@@ -271,13 +271,20 @@ impl nros_platform::BoardEntry for Mps2An385 {
     /// `tcp/10.0.2.2:7451` on guest `10.0.2.15`) instead of the inert
     /// compiled-in `192.0.3.x` default. Fields the deploy block omits keep the
     /// board default.
+    ///
+    /// Issue #98 / RFC-0045 — also threads `deploy.boot_config` to the family
+    /// driver so the node name comes from the baked `.nros_boot_config`.
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
         register_log_writer();
-        nros_board_freertos::run_entry::<Mps2An385, F, E>(config_with_overlay(deploy), setup)
+        nros_board_freertos::run_entry::<Mps2An385, F, E>(
+            config_with_overlay(deploy),
+            deploy.boot_config,
+            setup,
+        )
     }
 }
 
@@ -327,6 +334,7 @@ impl Mps2An385 {
         register_log_writer();
         nros_board_freertos::run_tiers_entry::<Mps2An385, F, E>(
             config_with_overlay(deploy),
+            deploy.boot_config,
             tiers,
             setup,
         )

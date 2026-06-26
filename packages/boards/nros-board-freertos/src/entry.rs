@@ -44,7 +44,7 @@
 
 use core::ffi::c_void;
 
-use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
+use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
 use crate::{
     Config,
@@ -81,6 +81,8 @@ const POLL_TASK_STACK: u32 = 256;
 
 struct AppContext<F> {
     config: Config,
+    /// Issue #98 / RFC-0045 — baked `.nros_boot_config` for node-name resolution.
+    boot_config: Option<&'static BakedBootConfig>,
     closure: F,
 }
 
@@ -118,9 +120,22 @@ where
     // closure returns Ok, the app task drops into a spin loop; the
     // scheduler never lets `main` return so the loop runs for the
     // firmware lifetime.
-    let exec_cfg = ::nros::ExecutorConfig::new(ctx.config.zenoh_locator)
-        .domain_id(ctx.config.domain_id)
-        .node_name("nros_app");
+    // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`; locator
+    // + domain unchanged from the board Config (NOT env vars — embedded getenv has
+    // no host trampoline on QEMU).
+    let baked = ctx
+        .boot_config
+        .map(::nros::BootConfig::from_baked)
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        ::nros::BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(ctx.config.zenoh_locator),
+            domain_id: Some(ctx.config.domain_id),
+            namespace: None,
+        },
+        /* hosted_env = */ false,
+    );
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -311,6 +326,8 @@ unsafe extern "C" {
 /// Heap context for the boot (per-tier) app task.
 struct AppContextTiers<F> {
     config: Config,
+    /// Issue #98 / RFC-0045 — baked `.nros_boot_config` for node-name resolution.
+    boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
     setup: F,
 }
@@ -393,9 +410,20 @@ where
     // location (`crt`) BEFORE handing out `SessionHandle`s — the handle aliases
     // `crt`'s owned session, and `crt` never moves again (the boot spin loop
     // below never returns), so the spawned tasks' pointers stay valid.
-    let exec_cfg = ::nros::ExecutorConfig::new(ctx.config.zenoh_locator)
-        .domain_id(ctx.config.domain_id)
-        .node_name("nros_app");
+    // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`.
+    let baked = ctx
+        .boot_config
+        .map(::nros::BootConfig::from_baked)
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        ::nros::BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(ctx.config.zenoh_locator),
+            domain_id: Some(ctx.config.domain_id),
+            namespace: None,
+        },
+        /* hosted_env = */ false,
+    );
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -478,8 +506,12 @@ where
 /// session (RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `tiers` are the
 /// macro-baked `&'static [TierSpec]`; `setup` is the register-only `run_plan`
 /// (invoked once per tier, hence `Fn + Copy`).
+///
+/// `boot_config` — the baked `.nros_boot_config` static, supplied by the
+/// per-board `run_tiers` (issue #98 / RFC-0045). `None` keeps `"nros_app"`.
 pub fn run_tiers_entry<B, F, E>(
     config: Config,
+    boot_config: Option<&'static BakedBootConfig>,
     tiers: &'static [TierSpec<'static>],
     setup: F,
 ) -> core::result::Result<(), E>
@@ -507,6 +539,7 @@ where
             ptr,
             AppContextTiers {
                 config,
+                boot_config,
                 tiers,
                 setup,
             },
@@ -568,7 +601,7 @@ fn init_network(config: &Config) -> FrResult<()> {
 ///         E: core::fmt::Debug,
 ///     {
 ///         let cfg = Config::default();
-///         nros_board_freertos::run_entry::<MyBoard, F, E>(cfg, setup)
+///         nros_board_freertos::run_entry::<MyBoard, F, E>(cfg, None, setup)
 ///     }
 /// }
 /// ```
@@ -591,7 +624,15 @@ fn init_network(config: &Config) -> FrResult<()> {
 /// fails and we `exit_failure` defensively. The `Ok(())` arm exists
 /// only so the function signature lines up with the trait; it is
 /// unreachable in a working build.
-pub fn run_entry<B, F, E>(config: Config, setup: F) -> core::result::Result<(), E>
+///
+/// `boot_config` — the baked `.nros_boot_config` static, passed from the
+/// per-board `run_with_deploy` (issue #98 / RFC-0045). `None` keeps the
+/// historical `"nros_app"` node-name default.
+pub fn run_entry<B, F, E>(
+    config: Config,
+    boot_config: Option<&'static BakedBootConfig>,
+    setup: F,
+) -> core::result::Result<(), E>
 where
     B: BoardInit + BoardPrint + BoardExit,
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
@@ -634,6 +675,7 @@ where
             ptr,
             AppContext {
                 config,
+                boot_config,
                 closure: setup,
             },
         );

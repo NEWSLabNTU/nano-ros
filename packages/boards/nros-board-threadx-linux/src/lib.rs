@@ -148,7 +148,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         // the slot for any pre-kernel logging.
         crate::node::register_log_writer_public();
         let cfg = Config::default();
-        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, setup)
+        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, None, setup)
     }
 
     /// Issue #48 cause 1 / Phase 244 E5 — apply the `nros::main!()` deploy overlay
@@ -157,6 +157,9 @@ impl nros_platform::BoardEntry for ThreadxLinux {
     /// dials the deploy-named endpoint instead of the inert compiled-in default.
     /// Fields the deploy block omits keep the board default. (NSOS routes through
     /// the host kernel, so `locator`/`domain_id` are the load-bearing fields here.)
+    ///
+    /// Issue #98 / RFC-0045 — also threads `deploy.boot_config` so the node name
+    /// comes from the baked `.nros_boot_config`.
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
@@ -165,6 +168,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         crate::node::register_log_writer_public();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(
             config_with_overlay(deploy),
+            deploy.boot_config,
             setup,
         )
     }

@@ -26,9 +26,9 @@
 //! requires the esp-hal entry registration; a bare `extern "C" fn main`
 //! would not boot), so this crate only provides the board ZST + driver.
 
-use nros::{ExecutorConfig, node_runtime::ExecutorNodeRuntime};
+use nros::{BootConfig, ExecutorConfig, node_runtime::ExecutorNodeRuntime};
 use nros_platform::{
-    BoardEntry, BoardExit, BoardInit, BoardPrint, NodeDispatchRuntime, RuntimeCtx,
+    BakedBootConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, NodeDispatchRuntime, RuntimeCtx,
 };
 
 use crate::config::Config;
@@ -102,7 +102,7 @@ impl BoardEntry for Esp32QemuEntry {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        Self::run_with_config(Self::default_config(), setup)
+        Self::run_with_config(Self::default_config(), None, setup)
     }
 
     /// Phase 244 E5 / issue #48 — overlay the `nros::main!()` deploy block
@@ -111,6 +111,9 @@ impl BoardEntry for Esp32QemuEntry {
     /// deploy-named endpoint instead of the inert compiled-in default. Fields the
     /// deploy block omits keep the board default. (`netmask` maps to the board's
     /// CIDR `prefix`, left at default; the smoltcp `mac_addr` stays board-internal.)
+    ///
+    /// Issue #98 / RFC-0045 — also threads `deploy.boot_config` so the node name
+    /// comes from the baked `.nros_boot_config`.
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
@@ -129,7 +132,7 @@ impl BoardEntry for Esp32QemuEntry {
         if let Some(d) = deploy.domain_id {
             config.domain_id = d;
         }
-        Self::run_with_config(config, setup)
+        Self::run_with_config(config, deploy.boot_config, setup)
     }
 }
 
@@ -150,7 +153,14 @@ impl Esp32QemuEntry {
     }
 
     /// Shared boot body for [`BoardEntry::run`] + [`BoardEntry::run_with_deploy`].
-    fn run_with_config<F, E>(config: Config, setup: F) -> Result<(), E>
+    ///
+    /// `boot_config` — the baked `.nros_boot_config` static, forwarded from
+    /// `run_with_deploy` (issue #98 / RFC-0045). `None` keeps `"nros_app"`.
+    fn run_with_config<F, E>(
+        config: Config,
+        boot_config: Option<&'static BakedBootConfig>,
+        setup: F,
+    ) -> Result<(), E>
     where
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
@@ -168,14 +178,21 @@ impl Esp32QemuEntry {
         #[cfg(feature = "rmw-zenoh")]
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
-        // Open the executor + wrap it in the dispatch runtime. Locator /
-        // domain come from `Config` (NOT env — embedded libc `getenv`
-        // has no host trampoline on QEMU). `clock_us` feeds the timer
-        // wheel the talker's 1 Hz publisher rides on.
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("nros_app")
-            .clock_us(nros_platform_esp32_qemu::clock::clock_us);
+        // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
+        // (a launch that names the node overrides the board default); locator /
+        // domain come from `Config` (NOT env — embedded libc `getenv` has no
+        // host trampoline on QEMU). `clock_us` feeds the timer wheel.
+        let baked = boot_config.map(BootConfig::from_baked).unwrap_or_default();
+        let exec_config = ExecutorConfig::resolve(
+            BootConfig {
+                node_name: baked.node_name.or(Some("nros_app")),
+                locator: Some(config.zenoh_locator),
+                domain_id: Some(config.domain_id),
+                namespace: None,
+            },
+            /* hosted_env = */ false,
+        )
+        .clock_us(nros_platform_esp32_qemu::clock::clock_us);
         let executor = match nros::Executor::open(&exec_config) {
             Ok(executor) => executor,
             Err(err) => {

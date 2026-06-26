@@ -48,7 +48,7 @@
 use core::ffi::c_void;
 
 use nros_board_common::ThreadxConfig;
-use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
 
 unsafe extern "C" {
     fn nros_threadx_set_config(
@@ -71,6 +71,8 @@ unsafe extern "C" {
 /// Wrapper passed through the ThreadX thread `void *` arg.
 struct AppContext<C, F> {
     config: C,
+    /// Issue #98 / RFC-0045 — baked `.nros_boot_config` for node-name resolution.
+    boot_config: Option<&'static BakedBootConfig>,
     closure: F,
 }
 
@@ -114,8 +116,9 @@ where
     // entry runs once and `run_app_thread` consumes both.
     let closure = unsafe { core::ptr::read(&ctx.closure) };
     let config = unsafe { core::ptr::read(&ctx.config) };
+    let boot_config = ctx.boot_config;
 
-    run_app_thread::<B, C, F, E>(config, closure)
+    run_app_thread::<B, C, F, E>(config, boot_config, closure)
 }
 
 /// Phase 245 — the post-kernel app-thread body, factored out of
@@ -133,7 +136,14 @@ where
 /// an `ExecutorNodeRuntime`, run the user `setup` (the `nros::node!()`-emitted
 /// `register`), then spin for the firmware lifetime. Diverges (`-> !`): the
 /// ThreadX scheduler never lets the app thread exit.
-pub fn run_app_thread<B, C, F, E>(config: C, setup: F) -> !
+///
+/// `boot_config` — the baked `.nros_boot_config` static (issue #98 / RFC-0045).
+/// Pass `None` for the bare-metal CycloneDDS path (no macro, no baked config).
+pub fn run_app_thread<B, C, F, E>(
+    config: C,
+    boot_config: Option<&'static BakedBootConfig>,
+    setup: F,
+) -> !
 where
     B: BoardPrint + BoardExit,
     C: ThreadxConfig,
@@ -147,15 +157,22 @@ where
         tx_thread_sleep(200);
     }
 
-    // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-    // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
-    // body can register components against a live RMW session.
-    // Locator + domain_id come from the per-board `ThreadxConfig` (the
-    // overlay's TOML / default), NOT env vars — embedded libc `getenv`
-    // has no host trampoline.
-    let exec_cfg = ::nros::ExecutorConfig::new(config.zenoh_locator())
-        .domain_id(config.domain_id())
-        .node_name("nros_app");
+    // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
+    // (a launch that names the node overrides the board default); locator +
+    // domain_id come from the per-board `ThreadxConfig` (NOT env vars —
+    // embedded libc `getenv` has no host trampoline).
+    let baked = boot_config
+        .map(::nros::BootConfig::from_baked)
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        ::nros::BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(config.zenoh_locator()),
+            domain_id: Some(config.domain_id()),
+            namespace: None,
+        },
+        /* hosted_env = */ false,
+    );
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -212,7 +229,7 @@ where
 ///         E: core::fmt::Debug,
 ///     {
 ///         let cfg = Config::default();
-///         nros_board_threadx::run_entry::<MyBoard, Config, F, E>(cfg, setup)
+///         nros_board_threadx::run_entry::<MyBoard, Config, F, E>(cfg, None, setup)
 ///     }
 /// }
 /// ```
@@ -241,7 +258,15 @@ where
 /// `exit_failure` defensively. The `Ok(())` arm exists only so the
 /// function signature lines up with the trait; it is unreachable in
 /// a working build.
-pub fn run_entry<B, C, F, E>(config: C, setup: F) -> core::result::Result<(), E>
+///
+/// `boot_config` — the baked `.nros_boot_config` static, passed from
+/// the per-board `run_with_deploy` (issue #98 / RFC-0045). `None`
+/// keeps the historical `"nros_app"` node-name default.
+pub fn run_entry<B, C, F, E>(
+    config: C,
+    boot_config: Option<&'static BakedBootConfig>,
+    setup: F,
+) -> core::result::Result<(), E>
 where
     B: BoardInit + BoardPrint + BoardExit,
     C: ThreadxConfig,
@@ -298,6 +323,7 @@ where
             ptr,
             AppContext {
                 config,
+                boot_config,
                 closure: setup,
             },
         );

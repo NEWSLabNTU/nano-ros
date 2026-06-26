@@ -14,9 +14,10 @@
 //! (`__register_linked_rmw()` before `BoardEntry::run_with_deploy`), so this
 //! board stays RMW-agnostic — it never names a concrete backend.
 
-use nros::{Executor, ExecutorConfig, node_runtime::ExecutorNodeRuntime};
+use nros::{BootConfig, Executor, ExecutorConfig, node_runtime::ExecutorNodeRuntime};
 use nros_platform::{
-    BoardEntry, BoardExit, BoardInit, BoardPrint, DeployOverlay, NodeDispatchRuntime, RuntimeCtx,
+    BakedBootConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, DeployOverlay,
+    NodeDispatchRuntime, RuntimeCtx,
 };
 
 use crate::{Config, node::Stm32F4};
@@ -82,7 +83,11 @@ fn config_with_overlay(deploy: &DeployOverlay) -> Config {
 
 /// Shared boot body: hardware/network bring-up → executor → runtime → user
 /// setup → spin. Never returns on the happy path.
-fn boot<F, E>(cfg: Config, setup: F) -> Result<(), E>
+///
+/// `boot_config` — the baked `.nros_boot_config` static from `nros::main!()`,
+/// supplied by `run_with_deploy` (issue #98 / RFC-0045). `None` when called from
+/// the no-deploy `run` path (keeps historical `"nros_app"` default).
+fn boot<F, E>(cfg: Config, boot_config: Option<&'static BakedBootConfig>, setup: F) -> Result<(), E>
 where
     F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
@@ -108,11 +113,20 @@ where
         Stm32F4::exit_failure();
     }
 
-    // Locator + domain come from the board Config (deploy overlay or default),
-    // NOT env vars — bare-metal libc has no host `getenv` on the target.
-    let exec_cfg = ExecutorConfig::new(cfg.zenoh_locator)
-        .domain_id(cfg.domain_id)
-        .node_name("nros_app");
+    // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config` (a
+    // launch that names the node overrides the board default); locator/domain
+    // unchanged from the board's existing config (NOT env vars — bare-metal
+    // libc has no host `getenv` on the target).
+    let baked = boot_config.map(BootConfig::from_baked).unwrap_or_default();
+    let exec_cfg = ExecutorConfig::resolve(
+        BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(cfg.zenoh_locator),
+            domain_id: Some(cfg.domain_id),
+            namespace: None,
+        },
+        /* hosted_env = */ false,
+    );
     let executor = match Executor::open(&exec_cfg) {
         Ok(executor) => executor,
         Err(err) => {
@@ -143,7 +157,7 @@ impl BoardEntry for Stm32F4 {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        boot(Config::default(), setup)
+        boot(Config::default(), None, setup)
     }
 
     fn run_with_deploy<F, E>(deploy: &DeployOverlay, setup: F) -> Result<(), E>
@@ -151,6 +165,6 @@ impl BoardEntry for Stm32F4 {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        boot(config_with_overlay(deploy), setup)
+        boot(config_with_overlay(deploy), deploy.boot_config, setup)
     }
 }
