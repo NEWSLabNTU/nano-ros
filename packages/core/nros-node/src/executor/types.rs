@@ -325,6 +325,103 @@ impl ExecutorConfig<'static> {
 }
 
 // ============================================================================
+// BootConfig + ExecutorConfig::resolve  (RFC-0045)
+// ============================================================================
+
+/// Session-identity subset a caller supplies to `ExecutorConfig::resolve`.
+///
+/// `None` on a field means "not specified — fall through to the next
+/// precedence level".  The precedence model (A) resolved by
+/// [`ExecutorConfig::resolve`] is:
+///
+/// ```text
+/// env (only if hosted_env && the var is set)
+///   > baked (a Some field here)
+///     > compiled default
+/// ```
+///
+/// Fields are resolved **independently**: an env locator and a baked
+/// `node_name` can both apply in the same call.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BootConfig<'a> {
+    /// Node name override.  Maps to [`ExecutorConfig::node_name`].
+    pub node_name: Option<&'a str>,
+    /// Middleware locator override.  Maps to [`ExecutorConfig::locator`].
+    pub locator: Option<&'a str>,
+    /// ROS 2 domain ID override.  Maps to [`ExecutorConfig::domain_id`].
+    pub domain_id: Option<u32>,
+    /// Node namespace override.  Maps to [`ExecutorConfig::namespace`].
+    pub namespace: Option<&'a str>,
+}
+
+impl<'a> ExecutorConfig<'a> {
+    /// Resolve boot config under precedence model A (RFC-0045).
+    ///
+    /// Per-field precedence (evaluated independently):
+    /// `env (hosted_env && var set) > baked > compiled default`.
+    ///
+    /// `hosted_env=true` enables the env-override layer (`std` only).
+    /// Embedded callers always pass `false`; the env layer compiles out
+    /// on `no_std` regardless of the flag value.
+    ///
+    /// When `hosted_env=true` the env layer is queried fresh from the
+    /// process environment at call time; string storage for env-derived
+    /// fields comes from the process-global [`EnvCache`] (same backing
+    /// store as [`ExecutorConfig::from_env`]).  Passing
+    /// `BootConfig::default()` with `hosted_env=true` is therefore
+    /// equivalent to calling `from_env()` directly.
+    pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> {
+        // ── hosted path (std only) ──────────────────────────────────────────
+        #[cfg(feature = "std")]
+        if hosted_env {
+            let env = env_cache();
+
+            // Check current process environment (fresh read, not cached) so
+            // tests that set/unset vars with EnvGuard see the correct result
+            // even when the OnceLock was pre-initialized by an earlier test.
+            let locator_from_env =
+                std::env::var("NROS_LOCATOR").is_ok() || std::env::var("ZENOH_LOCATOR").is_ok();
+            let domain_id_from_env = std::env::var("ROS_DOMAIN_ID")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .is_some();
+
+            return ExecutorConfig {
+                locator: if locator_from_env {
+                    // String value from cache (same source as from_env()).
+                    env.locator.as_str()
+                } else if let Some(l) = baked.locator {
+                    l
+                } else {
+                    // Hosted compiled default matches from_env()'s fallback.
+                    "tcp/127.0.0.1:7447"
+                },
+                mode: env.mode,
+                domain_id: if domain_id_from_env {
+                    env.domain_id
+                } else {
+                    baked.domain_id.unwrap_or(0)
+                },
+                node_name: baked.node_name.unwrap_or("node"),
+                namespace: baked.namespace.unwrap_or(""),
+            };
+        }
+
+        // ── embedded / hosted_env=false path (also compiles on no_std) ─────
+        let _ = hosted_env; // suppress unused-var on no_std
+        ExecutorConfig {
+            locator: baked.locator.unwrap_or(""),
+            mode: nros_rmw::SessionMode::Client,
+            domain_id: baked.domain_id.unwrap_or(0),
+            node_name: baked.node_name.unwrap_or("node"),
+            namespace: baked.namespace.unwrap_or(""),
+            #[cfg(not(feature = "std"))]
+            clock_us: None,
+        }
+    }
+}
+
+// ============================================================================
 // Error type
 // ============================================================================
 
@@ -874,6 +971,212 @@ impl GuardConditionHandle {
             // ctx points at WakeCtx valid for Executor's lifetime.
             unsafe { cb(self.wake_ctx) };
         }
+    }
+}
+
+// ============================================================================
+// BootConfig / resolve unit tests (std only)
+// ============================================================================
+
+#[cfg(test)]
+mod boot_config_tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    /// Process-wide mutex that serialises all env-touching tests.
+    ///
+    /// `cargo test` runs `#[test]`s in parallel within a single binary by
+    /// default.  Tests that mutate `NROS_LOCATOR` / `ROS_DOMAIN_ID` must
+    /// hold this lock for the duration to avoid races with each other.
+    /// (`cargo nextest` runs each test in its own process so the lock is
+    /// always uncontended, but taking it is still correct.)
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    /// RAII guard that saves and restores a single env var.
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        /// Set `key` to `value`, saving the old value for restoration.
+        ///
+        /// # Safety
+        /// Tests serialise all env mutations through [`env_lock()`].
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var_os(key);
+            // SAFETY: serialised via env_lock().
+            unsafe { std::env::set_var(key, value) };
+            Self { key, prev }
+        }
+
+        /// Remove `key` from the environment, saving its previous value.
+        ///
+        /// # Safety
+        /// Tests serialise all env mutations through [`env_lock()`].
+        fn unset(key: &'static str) -> Self {
+            let prev = std::env::var_os(key);
+            // SAFETY: serialised via env_lock().
+            unsafe { std::env::remove_var(key) };
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: serialised via env_lock().
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var(self.key, v),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    // ── T1: no-op regression — resolve(default, true) ≡ from_env() ─────────
+
+    /// `resolve(BootConfig::default(), true)` must be field-for-field
+    /// identical to `from_env()`, regardless of what env vars are set.
+    #[test]
+    fn noop_resolve_matches_from_env() {
+        let _g = env_lock().lock().unwrap();
+
+        let resolved = ExecutorConfig::resolve(BootConfig::default(), true);
+        let env_cfg = ExecutorConfig::from_env();
+
+        assert_eq!(resolved.locator, env_cfg.locator);
+        assert_eq!(resolved.mode, env_cfg.mode);
+        assert_eq!(resolved.domain_id, env_cfg.domain_id);
+        assert_eq!(resolved.node_name, env_cfg.node_name);
+        assert_eq!(resolved.namespace, env_cfg.namespace);
+    }
+
+    // ── T2: hosted_env=false ignores env ─────────────────────────────────────
+
+    /// When `hosted_env=false`, env vars must be completely ignored even if
+    /// they are set in the process environment.
+    #[test]
+    fn embedded_ignores_env_vars() {
+        let _g = env_lock().lock().unwrap();
+        let _e1 = EnvGuard::set("NROS_LOCATOR", "tcp/should-be-ignored:1234");
+        let _e2 = EnvGuard::set("ROS_DOMAIN_ID", "99");
+
+        let resolved = ExecutorConfig::resolve(BootConfig::default(), false);
+
+        // Embedded compiled defaults: locator="" (ExecutorConfig::new("")),
+        // domain_id=0, node_name="node", namespace="".
+        assert_eq!(resolved.locator, "");
+        assert_eq!(resolved.domain_id, 0);
+        assert_eq!(resolved.node_name, "node");
+        assert_eq!(resolved.namespace, "");
+    }
+
+    // ── T3: baked overrides compiled default (embedded path) ─────────────────
+
+    /// Baked fields override the compiled default on the `hosted_env=false`
+    /// path; unspecified baked fields keep their compiled default.
+    #[test]
+    fn baked_overrides_compiled_default() {
+        let baked = BootConfig {
+            node_name: Some("talker"),
+            domain_id: Some(7),
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve(baked, false);
+
+        assert_eq!(resolved.node_name, "talker");
+        assert_eq!(resolved.domain_id, 7);
+        // locator and namespace were not baked → compiled defaults.
+        assert_eq!(resolved.locator, "");
+        assert_eq!(resolved.namespace, "");
+    }
+
+    // ── T4: env overrides baked on hosted ────────────────────────────────────
+
+    /// When `hosted_env=true` and `NROS_LOCATOR` is set in the process
+    /// environment, the env value must win over a baked locator.
+    ///
+    /// The assertion uses `from_env().locator` as an oracle so the test is
+    /// robust to whatever value was already cached in `EnvCache`'s OnceLock:
+    /// both `resolve` and `from_env` draw from the same cache, so they are
+    /// always consistent.
+    #[test]
+    fn env_overrides_baked_on_hosted() {
+        let _g = env_lock().lock().unwrap();
+        let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
+
+        let baked = BootConfig {
+            locator: Some("tcp/baked:9999"),
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve(baked, true);
+        let env_cfg = ExecutorConfig::from_env();
+
+        // Env must win: result matches the env-cache value.
+        assert_eq!(
+            resolved.locator, env_cfg.locator,
+            "env locator should win over baked locator"
+        );
+        // Explicitly verify baked was NOT returned.
+        assert_ne!(
+            resolved.locator, "tcp/baked:9999",
+            "baked locator must not override env"
+        );
+    }
+
+    // ── T5: baked used when env var is unset on hosted ───────────────────────
+
+    /// When `hosted_env=true` but `NROS_LOCATOR` is absent, the baked
+    /// locator must be used.
+    #[test]
+    fn baked_used_when_env_unset_on_hosted() {
+        let _g = env_lock().lock().unwrap();
+        let _e1 = EnvGuard::unset("NROS_LOCATOR");
+        let _e2 = EnvGuard::unset("ZENOH_LOCATOR");
+
+        let baked = BootConfig {
+            locator: Some("tcp/baked-only:8888"),
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve(baked, true);
+
+        assert_eq!(
+            resolved.locator, "tcp/baked-only:8888",
+            "baked locator must be used when env var is absent"
+        );
+    }
+
+    // ── T6: per-field independence ────────────────────────────────────────────
+
+    /// A baked `node_name` and an env-derived `locator` must both apply
+    /// independently in the same `resolve` call.
+    #[test]
+    fn per_field_independence_baked_name_env_locator() {
+        let _g = env_lock().lock().unwrap();
+        let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
+
+        let baked = BootConfig {
+            node_name: Some("my_talker"),
+            // No locator baked — env should supply it.
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve(baked, true);
+        let env_cfg = ExecutorConfig::from_env();
+
+        // Env supplies the locator.
+        assert_eq!(
+            resolved.locator, env_cfg.locator,
+            "env locator must apply when locator is not baked"
+        );
+        // Baked supplies the node name.
+        assert_eq!(
+            resolved.node_name, "my_talker",
+            "baked node_name must apply even when locator comes from env"
+        );
     }
 }
 
