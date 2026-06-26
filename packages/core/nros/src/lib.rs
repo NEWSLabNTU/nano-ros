@@ -519,10 +519,11 @@ pub mod internals {
 
 // Re-export types that don't depend on RMW (always available)
 pub use nros_node::{
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
     BootConfig, ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet,
-    InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger,
+    InvocationMode, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawCancelCallback,
+    RawGoalCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
+    SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
 };
 
 // Re-export RMW-dependent types (require an active transport backend)

@@ -162,10 +162,12 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
 // Re-export types that don't depend on RMW (always available)
 pub use executor::{
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
     BootConfig, ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet,
-    InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawGoalCallback,
-    RawResponseCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+    InvocationMode, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError,
+    RawAcceptedCallback, RawCancelCallback, RawGoalCallback, RawResponseCallback,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+    SpinPeriodPollingResult, Trigger,
 };
 
 // Re-export RMW-dependent executor types

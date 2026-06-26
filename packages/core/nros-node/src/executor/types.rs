@@ -993,6 +993,194 @@ impl GuardConditionHandle {
 }
 
 // ============================================================================
+// BakedBootConfig — RFC-0045 "Single embedded bake site"
+// ============================================================================
+
+/// 0x4E524243 = ASCII "NRBC". A post-link tool scans for this magic to locate
+/// the struct in a firmware image.
+pub const NROS_BOOT_CONFIG_MAGIC: u32 = 0x4E52_4243;
+
+/// Layout version — lets the resolver reject a mismatched baked struct.
+pub const NROS_BOOT_CONFIG_VERSION: u16 = 1;
+
+// `set_flags` bit assignments in `BakedBootConfig`.
+/// Bit 0 — `node_name` field is set.
+pub const BOOT_SET_NODE_NAME: u16 = 1 << 0;
+/// Bit 1 — `locator` field is set.
+pub const BOOT_SET_LOCATOR: u16 = 1 << 1;
+/// Bit 2 — `domain_id` field is set.
+pub const BOOT_SET_DOMAIN: u16 = 1 << 2;
+/// Bit 3 — `namespace` field is set.
+pub const BOOT_SET_NAMESPACE: u16 = 1 << 3;
+
+/// Build-time-baked boot config, emitted (in W4) into the `.nros_boot_config`
+/// linker section by the entry macro / cmake. Fixed-size + pointer-free so a
+/// future post-link tool can patch it in place (RFC-0045). The resolver reads
+/// it on embedded via `BootConfig::from_baked`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct BakedBootConfig {
+    /// 0x4E524243 = b"NRBC". A post-link tool scans for this to locate the struct.
+    pub magic: u32,
+    /// Layout version (start at 1) — lets the tool/reader reject mismatched layouts.
+    pub version: u16,
+    /// One bit per field that is baked-set (else the reader yields `None` → resolver
+    /// default). bit0 = node_name, bit1 = locator, bit2 = domain_id, bit3 = namespace.
+    pub set_flags: u16,
+    /// ROS 2 domain ID (valid only when `BOOT_SET_DOMAIN` bit is set).
+    pub domain_id: u32,
+    /// NUL-padded UTF-8; the trailing NUL bytes are not part of the value.
+    pub node_name: [u8; 64],
+    /// NUL-padded UTF-8 middleware locator; the trailing NUL bytes are not part of
+    /// the value.
+    pub locator: [u8; 96],
+    /// NUL-padded UTF-8 node namespace; the trailing NUL bytes are not part of the
+    /// value.
+    pub namespace: [u8; 64],
+}
+
+/// Copy `s` bytes into a zero-padded `[u8; N]` array at compile time.
+///
+/// A string longer than `N` bytes is a **compile-time** error (const panic).
+/// Never silently truncated.
+const fn pack<const N: usize>(s: &str) -> [u8; N] {
+    let bytes = s.as_bytes();
+    if bytes.len() > N {
+        panic!("BakedBootConfig: string field exceeds its fixed-size buffer");
+    }
+    let mut buf = [0u8; N];
+    let mut i = 0;
+    while i < bytes.len() {
+        buf[i] = bytes[i];
+        i += 1;
+    }
+    buf
+}
+
+impl BakedBootConfig {
+    /// Pack baked fields at compile time.  `None` → field unset (bit clear,
+    /// bytes zeroed).  A string longer than its fixed buffer is a
+    /// **compile-time** error (const panic) — never silently truncated.
+    ///
+    /// `must be const fn` so W4's entry macro can use it in a `static` initializer.
+    pub const fn new(
+        node_name: Option<&str>,
+        locator: Option<&str>,
+        domain_id: Option<u32>,
+        namespace: Option<&str>,
+    ) -> BakedBootConfig {
+        let mut flags: u16 = 0;
+
+        let node_name_bytes: [u8; 64] = match node_name {
+            Some(s) => {
+                flags |= BOOT_SET_NODE_NAME;
+                pack::<64>(s)
+            }
+            None => [0u8; 64],
+        };
+
+        let locator_bytes: [u8; 96] = match locator {
+            Some(s) => {
+                flags |= BOOT_SET_LOCATOR;
+                pack::<96>(s)
+            }
+            None => [0u8; 96],
+        };
+
+        let domain_id_val: u32 = match domain_id {
+            Some(d) => {
+                flags |= BOOT_SET_DOMAIN;
+                d
+            }
+            None => 0,
+        };
+
+        let namespace_bytes: [u8; 64] = match namespace {
+            Some(s) => {
+                flags |= BOOT_SET_NAMESPACE;
+                pack::<64>(s)
+            }
+            None => [0u8; 64],
+        };
+
+        BakedBootConfig {
+            magic: NROS_BOOT_CONFIG_MAGIC,
+            version: NROS_BOOT_CONFIG_VERSION,
+            set_flags: flags,
+            domain_id: domain_id_val,
+            node_name: node_name_bytes,
+            locator: locator_bytes,
+            namespace: namespace_bytes,
+        }
+    }
+}
+
+/// Find the length of the non-NUL prefix in `buf`.
+///
+/// Returns the index of the first `0` byte, or `buf.len()` if there is none.
+fn nul_len(buf: &[u8]) -> usize {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] == 0 {
+            return i;
+        }
+        i += 1;
+    }
+    buf.len()
+}
+
+impl<'a> BootConfig<'a> {
+    /// Read a baked config into the plain-field `BootConfig` the resolver consumes.
+    ///
+    /// Returns all-`None` (→ resolver uses compiled defaults) if `magic`/`version`
+    /// don't match — defensive against a corrupt or zero-initialised section.
+    ///
+    /// Each `Option` is `Some` iff its `set_flags` bit is set; string values are
+    /// the bytes up to the first NUL (or full buffer if no NUL).  Invalid UTF-8 in
+    /// a set field is treated as unset for that field.
+    pub fn from_baked(baked: &'a BakedBootConfig) -> BootConfig<'a> {
+        // Validate the fingerprint.
+        if baked.magic != NROS_BOOT_CONFIG_MAGIC || baked.version != NROS_BOOT_CONFIG_VERSION {
+            return BootConfig::default();
+        }
+
+        let node_name = if baked.set_flags & BOOT_SET_NODE_NAME != 0 {
+            let len = nul_len(&baked.node_name);
+            core::str::from_utf8(&baked.node_name[..len]).ok()
+        } else {
+            None
+        };
+
+        let locator = if baked.set_flags & BOOT_SET_LOCATOR != 0 {
+            let len = nul_len(&baked.locator);
+            core::str::from_utf8(&baked.locator[..len]).ok()
+        } else {
+            None
+        };
+
+        let domain_id = if baked.set_flags & BOOT_SET_DOMAIN != 0 {
+            Some(baked.domain_id)
+        } else {
+            None
+        };
+
+        let namespace = if baked.set_flags & BOOT_SET_NAMESPACE != 0 {
+            let len = nul_len(&baked.namespace);
+            core::str::from_utf8(&baked.namespace[..len]).ok()
+        } else {
+            None
+        };
+
+        BootConfig {
+            node_name,
+            locator,
+            domain_id,
+            namespace,
+        }
+    }
+}
+
+// ============================================================================
 // BootConfig / resolve unit tests (std only)
 // ============================================================================
 
@@ -1196,6 +1384,178 @@ mod boot_config_tests {
             "baked node_name must apply even when locator comes from env"
         );
     }
+}
+
+// ============================================================================
+// BakedBootConfig unit tests (no_std-compatible, but run under std test runner)
+// ============================================================================
+
+#[cfg(test)]
+mod baked_boot_config_tests {
+    use super::*;
+
+    // ── T-BB1: round-trip — typical mixed case ────────────────────────────────
+
+    /// Pack node_name + locator + domain_id (namespace absent), then unpack and
+    /// verify each field matches.  The absent namespace must be None.
+    #[test]
+    fn round_trip_typical() {
+        let baked = BakedBootConfig::new(
+            Some("param_talker"),
+            Some("tcp/10.0.0.5:7447"),
+            Some(7),
+            None,
+        );
+        let cfg = BootConfig::from_baked(&baked);
+
+        assert_eq!(cfg.node_name, Some("param_talker"));
+        assert_eq!(cfg.locator, Some("tcp/10.0.0.5:7447"));
+        assert_eq!(cfg.domain_id, Some(7));
+        assert_eq!(cfg.namespace, None);
+    }
+
+    // ── T-BB2: all-None — no fields set ──────────────────────────────────────
+
+    /// When every argument is None the set_flags must be zero and from_baked
+    /// must return all-None.
+    #[test]
+    fn all_none_round_trips_to_default() {
+        let baked = BakedBootConfig::new(None, None, None, None);
+        assert_eq!(baked.set_flags, 0);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+        assert_eq!(cfg.locator, None);
+        assert_eq!(cfg.domain_id, None);
+        assert_eq!(cfg.namespace, None);
+    }
+
+    // ── T-BB3: bad magic → all-None ──────────────────────────────────────────
+
+    /// A BakedBootConfig with a wrong magic word must be treated as unrecognised
+    /// and from_baked must return all-None.
+    #[test]
+    fn bad_magic_returns_default() {
+        let mut baked =
+            BakedBootConfig::new(Some("talker"), Some("tcp/1.2.3.4:7447"), Some(1), None);
+        baked.magic = 0; // corrupt the fingerprint
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+        assert_eq!(cfg.locator, None);
+        assert_eq!(cfg.domain_id, None);
+        assert_eq!(cfg.namespace, None);
+    }
+
+    // ── T-BB4: bad version → all-None ────────────────────────────────────────
+
+    /// A BakedBootConfig with the right magic but a wrong version must likewise
+    /// return all-None.
+    #[test]
+    fn bad_version_returns_default() {
+        let mut baked = BakedBootConfig::new(Some("talker"), None, None, None);
+        baked.version = 99; // future/unknown version
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+    }
+
+    // ── T-BB5: NUL-trim — short string round-trips without trailing NULs ─────
+
+    /// A node_name shorter than 64 bytes must unpack to exactly the original
+    /// string, with no trailing NUL characters in the &str.
+    #[test]
+    fn nul_trim_short_name() {
+        let name = "robot";
+        let baked = BakedBootConfig::new(Some(name), None, None, None);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, Some(name));
+        assert_eq!(cfg.node_name.unwrap().len(), name.len());
+    }
+
+    // ── T-BB6: each field independent ────────────────────────────────────────
+
+    /// Setting only node_name leaves the others None.
+    #[test]
+    fn only_node_name_set() {
+        let baked = BakedBootConfig::new(Some("solo"), None, None, None);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, Some("solo"));
+        assert_eq!(cfg.locator, None);
+        assert_eq!(cfg.domain_id, None);
+        assert_eq!(cfg.namespace, None);
+    }
+
+    /// Setting only locator leaves the others None.
+    #[test]
+    fn only_locator_set() {
+        let baked = BakedBootConfig::new(None, Some("tcp/127.0.0.1:7447"), None, None);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+        assert_eq!(cfg.locator, Some("tcp/127.0.0.1:7447"));
+        assert_eq!(cfg.domain_id, None);
+        assert_eq!(cfg.namespace, None);
+    }
+
+    /// Setting only domain_id leaves the others None.
+    #[test]
+    fn only_domain_id_set() {
+        let baked = BakedBootConfig::new(None, None, Some(42), None);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+        assert_eq!(cfg.locator, None);
+        assert_eq!(cfg.domain_id, Some(42));
+        assert_eq!(cfg.namespace, None);
+    }
+
+    /// Setting only namespace leaves the others None.
+    #[test]
+    fn only_namespace_set() {
+        let baked = BakedBootConfig::new(None, None, None, Some("/robot"));
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, None);
+        assert_eq!(cfg.locator, None);
+        assert_eq!(cfg.domain_id, None);
+        assert_eq!(cfg.namespace, Some("/robot"));
+    }
+
+    // ── T-BB7: full-buffer-length string (boundary) ───────────────────────────
+
+    /// A node_name of exactly 64 bytes must compile and round-trip correctly
+    /// (the buffer is fully populated with no NUL terminator, so nul_len
+    /// returns 64 and the whole buffer is the string value).
+    #[test]
+    fn full_64_byte_name_round_trips() {
+        // Exactly 64 ASCII bytes.
+        let name = "abcdefghijklmnopqrstuvwxyz012345abcdefghijklmnopqrstuvwxyz012345";
+        assert_eq!(name.len(), 64);
+        let baked = BakedBootConfig::new(Some(name), None, None, None);
+        let cfg = BootConfig::from_baked(&baked);
+        assert_eq!(cfg.node_name, Some(name));
+    }
+
+    // ── T-BB8: set_flags bit-pattern is exact ─────────────────────────────────
+
+    /// Verify the set_flags bitmask matches the expected bit positions.
+    #[test]
+    fn set_flags_bits_correct() {
+        let baked = BakedBootConfig::new(
+            Some("n"), // bit 0
+            None,
+            Some(0),  // bit 2
+            Some(""), // bit 3
+        );
+        assert_eq!(
+            baked.set_flags,
+            BOOT_SET_NODE_NAME | BOOT_SET_DOMAIN | BOOT_SET_NAMESPACE
+        );
+    }
+
+    // ── Compile-failure comment ───────────────────────────────────────────────
+    // Uncommenting the line below must FAIL to compile because the string
+    // exceeds the 64-byte node_name buffer.  Do NOT uncomment in CI.
+    //
+    // const _: BakedBootConfig = BakedBootConfig::new(
+    //     Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // 65 A's
+    //     None, None, None,
+    // );
 }
 
 // ============================================================================
