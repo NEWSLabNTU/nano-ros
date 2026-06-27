@@ -329,7 +329,9 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   (C+C++ + no_std Rust, thumbv7m), C2c-mixed-zephyr (C+C++/Rust, native_sim west lane) —
   **10 GREEN e2e tests**. C2b-nuttx BUILD blocker RESOLVED
   (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with seams
-  resolved), runtime QEMU-console pending (host issue) — the ONLY remaining gap. See below.**
+  resolved). The nuttx "runtime console issue" was a MISDIAGNOSIS (2026-06-27): the runtime WORKS
+  (rust talker boots + publishes 0,1,2,3 with a host zenohd up) — the only remaining C2 item is to
+  build the ws-c nuttx ENTRY + bake its locator + add a zenohd-backed e2e. See below.**
   Two-agent framework
   exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
@@ -455,16 +457,26 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       the original blocker symptom is gone). This is the NuttX analog of how Zephyr (C2d) compiles
       each component as a separate static lib. Back-compat: empty `APP_EXTRA_SOURCE_PKGS` → the
       original single-archive behavior (the single-node carrier compiles its node as a direct
-      source, no component lib in `LINK_LIBRARIES`, so the new extraction never fires). RUNTIME
-      BISECTED to a HOST-WIDE nuttx-qemu console issue — NOT the entry: a freshly-built STANDALONE
-      single-node `examples/qemu-arm-nuttx/c/talker` is EQUALLY silent here, and `-d int` shows the
-      kernel running normally (AArch32 svc→sys switch, timer IRQs, exception returns — no faults),
-      yet the pl011 UART → stdio path emits nothing (not even the early "NuttX" banner) across BOTH
-      the patched qemu 11.0.0 AND apt qemu 6.2.0, with a correct console config
-      (`CONFIG_DEV_CONSOLE`/`CONFIG_UART1_PL011`/`CONFIG_UART1_SERIAL_CONSOLE`). So the multi-node
-      entry boots + runs identically to the proven standalone; the silence is a host/qemu-nuttx
-      provisioning matter orthogonal to C2b, verifiable in CI (where the standalone nuttx e2e
-      passes). No fixture/test yet — scaffold lands as WIP. **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
+      source, no component lib in `LINK_LIBRARIES`, so the new extraction never fires).
+      **RUNTIME — the earlier "HOST-WIDE nuttx-qemu console issue" was a MISDIAGNOSIS (DISPROVEN
+      2026-06-27). The NuttX runtime WORKS.** Direct evidence on patched qemu 11.0.0
+      (`-M virt -cpu cortex-a7 -nographic`): the generic `$NUTTX_DIR/nuttx` NSH image boots + prints
+      `NuttShell (NSH) / nsh>` and accepts (delayed) piped stdin; the prebuilt rust talker
+      (`examples/qemu-arm-nuttx/rust/talker/.../release/nuttx-rs-talker`) AUTO-RUNS, prints
+      `nros NuttX platform starting (IP: 10.0.2.30, zenoh: tcp/10.0.2.2:7452)`, and — with a host
+      zenohd up (`build/zenohd/zenohd --listen tcp/0.0.0.0:7452 --no-multicast-scouting`; 10.0.2.2 =
+      the slirp gateway → host) — connects, declares the `/chatter` publisher, and **PUBLISHES
+      0,1,2,3**. The prior "silence" was simply booting with NO router: the app fails fast with
+      `Application error: Transport(ConnectionFailed)` (it DID print — the kernel/console were never
+      the problem). So console + app auto-run + virtio-net + zenoh publish all work; the multi-node
+      ENTRY is just not built/tested locally. Its ONLY runtime risk is the recurring **locator-bake**
+      pitfall: `nano-ros-board-nuttx-qemu-arm.cmake` has NO `NROS_ENTRY_LOCATOR` bake (only a
+      comment), so the LAUNCH path must thread the slirp locator (`tcp/10.0.2.2:7452`) into the cargo
+      `nros-nuttx-ffi` kernel build, else the entry defaults to `""` → discovery → the same
+      ConnectionFailed. **NEXT (the one remaining C2 item): build the ws-c nuttx entry, bake the
+      locator, add a zenohd-backed e2e (`ZenohRouter` on 7452 + native observer) mirroring the
+      freertos/zephyr mixed entries.** No existing nuttx test boots an app against a host zenohd (the
+      build-only + dgram/mcast cross-qemu tests don't). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
       `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
       entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
       emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir
