@@ -1,11 +1,24 @@
 ---
 id: 106
 title: "RMW backend `.init_array` self-register ctor is dead-stripped when an Entry deps but never references the backend crate → `Executor::open_multi` fails `Transport(InvalidArgument)`"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-267, rfc-0009]
+resolved_in: "0d205c1f7 (2026-06-28)"
 ---
+
+> **RESOLVED (2026-06-28, `0d205c1f7`)** via option 2. `nros::main!` now reads the
+> bridge's RMWs from `system.toml` (`parse_bridge_rmws`: `[[bridge]]` endpoints
+> resolved through `[[domain]]` rmws) and emits `::nros_rmw_<x>::register();` for
+> each in the generated bridge `main`, before `run_from_config_str` — so the
+> backend's self-register ctor is reachable + retained. rmw→crate map mirrors the
+> orchestration codegen (zenoh→`nros_rmw_zenoh`, cyclonedds→`nros_rmw_cyclonedds_sys`,
+> xrce→`nros_rmw_xrce_cffi`). The hand `extern crate … as _` workaround in
+> `ws-bridge-rust/native_entry` is removed. Verified by `-Zunpretty=expanded` (the
+> generated `main` carries both `register()` calls) + 4 unit tests. Full runtime
+> `open_multi` still chains on #99 (generate `nros-bridge.toml`) + #107 (Cyclone
+> descriptor staging), but the dead-strip root cause is gone.
 
 ## Summary
 
