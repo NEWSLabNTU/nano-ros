@@ -127,6 +127,9 @@ fn test_transport_config() {
         locator: Some("tcp/127.0.0.1:7447"),
         mode: SessionMode::Client,
         properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     assert!(config.locator.unwrap().contains("7447"));

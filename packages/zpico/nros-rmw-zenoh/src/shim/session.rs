@@ -82,6 +82,12 @@ fn append_tls_env_to_locator(
 /// There are no background threads.
 pub struct ZenohSession {
     context: Context,
+    /// Fix #104 — node liveliness token declared at session open so the
+    /// primary node is visible in `ros2 node list`.  A dropped
+    /// `LivelinessToken` is immediately undeclared, so we MUST hold it
+    /// for the entire session lifetime.  `None` when `config.node_name`
+    /// is empty or `should_declare_liveliness()` returns `false`.
+    node_liveliness: Option<LivelinessToken>,
     /// Phase 124.B.3 — executor wake callback. Installed by
     /// `set_wake_callback`; non-null after the runtime has wired
     /// the executor through the cffi vtable. Invoked by
@@ -218,11 +224,29 @@ impl ZenohSession {
         // Register the reply waker callback for async service client support
         super::service::register_reply_waker();
 
-        Ok(Self {
+        // Fix #104 — declare the node liveliness token so the primary node
+        // appears in `ros2 node list`.  Build the session first (token is
+        // None), then immediately declare it while the session is live.
+        let mut session = Self {
             context,
+            node_liveliness: None,
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
-        })
+        };
+
+        if !config.node_name.is_empty() {
+            // Treat empty namespace as root "/" — that is what the keyexpr
+            // builder expects for a top-level node.
+            let ns = if config.namespace.is_empty() {
+                "/"
+            } else {
+                config.namespace
+            };
+            session.node_liveliness =
+                session.declare_node_liveliness(config.domain_id, ns, config.node_name);
+        }
+
+        Ok(session)
     }
 
     /// Check if the session is open

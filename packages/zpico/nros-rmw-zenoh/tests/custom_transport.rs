@@ -88,6 +88,9 @@ fn custom_locator_routes_through_user_vtable() {
         locator: Some("custom/anywhere"),
         mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     // ZenohTransport::open returns ConnectionFailed because the

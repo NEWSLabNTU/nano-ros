@@ -104,6 +104,9 @@ fn open_session() -> Option<nros_rmw_zenoh::ZenohSession> {
         locator: Some(locator.as_str()),
         mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
     ZenohTransport::open(&config).ok()
 }

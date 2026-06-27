@@ -27,6 +27,9 @@
 //!     locator: Some("tcp/192.168.1.1:7447"),
 //!     mode: SessionMode::Client,
 //!     properties: &[],
+//!     node_name: "my_node",
+//!     namespace: "",
+//!     domain_id: 0,
 //! };
 //!
 //! // Open session

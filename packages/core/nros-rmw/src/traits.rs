@@ -741,6 +741,18 @@ pub struct TransportConfig<'a> {
     /// - `"listen"` - Listen endpoint (e.g., `"tcp/0.0.0.0:0"`)
     /// - `"add_timestamp"` - Add timestamps to messages (`"true"` or `"false"`)
     pub properties: &'a [(&'a str, &'a str)],
+    /// Node name for ROS 2 graph discovery liveliness token.
+    ///
+    /// Empty string (`""`) means no node-liveliness token is declared (preserves
+    /// the pre-#104 behaviour). Non-empty causes the session to declare a
+    /// `@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>` token on open.
+    pub node_name: &'a str,
+    /// Node namespace for the liveliness token (e.g., `""` or `"/ns1"`).
+    ///
+    /// Empty string is treated as root `"/"` by the keyexpr builder.
+    pub namespace: &'a str,
+    /// ROS 2 domain ID used in the liveliness token key expression.
+    pub domain_id: u32,
 }
 
 impl Default for TransportConfig<'_> {
@@ -749,6 +761,9 @@ impl Default for TransportConfig<'_> {
             locator: None,
             mode: SessionMode::Client,
             properties: &[],
+            node_name: "",
+            namespace: "",
+            domain_id: 0,
         }
     }
 }

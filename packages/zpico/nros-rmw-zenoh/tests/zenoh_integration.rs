@@ -25,6 +25,9 @@ fn test_session_open_close_peer() {
         locator: None,
         mode: SessionMode::Peer,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let result = ZenohTransport::open(&config);
@@ -88,6 +91,9 @@ fn test_pubsub_loopback() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let mut session = match ZenohTransport::open(&config) {
@@ -175,6 +181,9 @@ fn test_pubsub_separate_sessions() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     // Open subscriber session
@@ -243,6 +252,9 @@ fn test_multiple_publishers() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let mut session = match ZenohTransport::open(&config) {
@@ -275,6 +287,9 @@ fn test_multiple_subscribers() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let mut session = match ZenohTransport::open(&config) {
@@ -315,6 +330,9 @@ fn test_transport_config_with_properties() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: props,
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     assert_eq!(config.properties.len(), 2);
@@ -340,6 +358,9 @@ fn test_session_open_peer_with_scouting_disabled() {
         locator: None,
         mode: SessionMode::Peer,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let result = ZenohTransport::open(&config);
@@ -373,6 +394,9 @@ fn test_session_open_with_env_scouting_disabled() {
         locator: None,
         mode: SessionMode::Peer,
         properties: &[], // Empty — env var should fill in
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let result = ZenohTransport::open(&config);
@@ -407,6 +431,9 @@ fn test_session_explicit_props_override_env() {
         locator: None,
         mode: SessionMode::Peer,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let result = ZenohTransport::open(&config);
@@ -441,6 +468,9 @@ fn test_pubsub_loopback_with_scouting_disabled() {
         locator: Some(ROUTER_LOCATOR),
         mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
     };
 
     let mut session = match ZenohTransport::open(&config) {

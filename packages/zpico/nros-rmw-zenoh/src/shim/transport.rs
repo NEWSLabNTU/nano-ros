@@ -58,6 +58,9 @@ impl Rmw for ZenohRmw {
             locator: Some(config.locator),
             mode: config.mode,
             properties: &[],
+            node_name: config.node_name,
+            namespace: config.namespace,
+            domain_id: config.domain_id,
         };
         ZenohSession::new(&transport_config)
     }
