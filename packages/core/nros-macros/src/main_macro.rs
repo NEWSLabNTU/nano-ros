@@ -386,6 +386,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // the macro emits a `run_from_config_str(include_str!(<that file>))` main
     // instead of the ordinary register/spin entry. Holds the absolute path.
     let mut bridge_config_path: Option<PathBuf> = None;
+    // Issue 0106 — the RMW backends a `[[bridge]]` Entry uses, read from
+    // `system.toml` (resolved via `[[bridge]]` endpoints + `[[domain]]` rmws).
+    // The macro emits `nros_rmw_<x>::register()` for each so the linker doesn't
+    // dead-strip the backend's self-register `.init_array` ctor (the data-driven
+    // `run_from_config` path references no backend symbol on its own).
+    let mut bridge_rmws: Vec<String> = Vec::new();
     // Phase 264 W4a — per-node launch `<param name=… value=…/>` initials, parallel to
     // `pkg_idents` (launch arm only). Each entry is the baked `(name, value)` slice that
     // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
@@ -469,6 +475,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         if cfg.exists() {
                             tracked.push(cfg.clone());
                             bridge_config_path = Some(cfg);
+                            // Issue 0106 — collect the bridge's RMW backends so
+                            // the entry force-registers them (anti dead-strip).
+                            bridge_rmws = read_bridge_rmws(&st);
                         }
                     }
                 }
@@ -1582,9 +1591,25 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     if let Some(cfg_path) = &bridge_config_path {
         let cfg_lit = cfg_path.to_string_lossy();
         let cfg_lit = cfg_lit.as_ref();
+        // Issue 0106 — explicitly `register()` each bridge RMW backend so the
+        // linker can't dead-strip its self-register `.init_array` ctor. The
+        // `run_from_config` body references no backend symbol, so without this
+        // the backend is dropped and `open_multi` fails `Transport(
+        // InvalidArgument)` (null vtable). Mirrors the board boot path's
+        // `nros_rmw_<x>::register()` (Phase 248 C5a). Unknown rmw names map to
+        // nothing (the data-driven config still drives the actual open).
+        let register_calls: Vec<proc_macro2::TokenStream> = bridge_rmws
+            .iter()
+            .filter_map(|rmw| rmw_crate_ident(rmw))
+            .map(|crate_ident| {
+                let id = Ident::new(crate_ident, Span::call_site());
+                quote! { let _ = ::#id::register(); }
+            })
+            .collect();
         let expanded = quote! {
             #( #tracked_consts )*
             fn main() -> ::core::result::Result<(), ::nros_bridge::ConfigError> {
+                #( #register_calls )*
                 ::nros_bridge::run_from_config_str(::core::include_str!(#cfg_lit))
             }
         };
@@ -1607,6 +1632,68 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     };
 
     Ok(expanded)
+}
+
+/// Issue 0106 — map an `system.toml` rmw name to the backend crate ident the
+/// Entry deps (so the macro can emit `nros_rmw_<x>::register()`). Mirrors the
+/// orchestration codegen map (`generate.rs` ~2785). `None` for unknown names.
+fn rmw_crate_ident(rmw: &str) -> Option<&'static str> {
+    match rmw {
+        "zenoh" => Some("nros_rmw_zenoh"),
+        "cyclonedds" => Some("nros_rmw_cyclonedds_sys"),
+        "xrce" => Some("nros_rmw_xrce_cffi"),
+        _ => None,
+    }
+}
+
+/// Issue 0106 — the set of RMW backends a `[[bridge]]` system uses, read from
+/// `system.toml`: each `[[bridge]]` endpoint (`from`/`to`) is either an
+/// `"<rmw>:<domain>"` literal or a bare `<domain>` name resolved through the
+/// `[[domain]]` `rmw` field. De-duped, order-preserving. Best-effort (a parse
+/// error / missing key yields an empty list — the data-driven config still
+/// drives the open; this only affects the anti-dead-strip `register()` calls).
+fn read_bridge_rmws(system_toml: &Path) -> Vec<String> {
+    match std::fs::read_to_string(system_toml) {
+        Ok(raw) => parse_bridge_rmws(&raw),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Pure half of [`read_bridge_rmws`] — parse the rmw set from `system.toml` text.
+fn parse_bridge_rmws(raw: &str) -> Vec<String> {
+    let Ok(v) = toml::from_str::<toml::Value>(raw) else {
+        return Vec::new();
+    };
+    let domain_rmw = |name: &str| -> Option<String> {
+        v.get("domain")
+            .and_then(|d| d.as_array())?
+            .iter()
+            .find(|item| item.get("name").and_then(|n| n.as_str()) == Some(name))
+            .and_then(|d| d.get("rmw"))
+            .and_then(|r| r.as_str())
+            .map(String::from)
+    };
+    let mut rmws: Vec<String> = Vec::new();
+    if let Some(bridges) = v.get("bridge").and_then(|b| b.as_array()) {
+        for bridge in bridges {
+            for key in ["from", "to"] {
+                let Some(ep) = bridge.get(key).and_then(|e| e.as_str()) else {
+                    continue;
+                };
+                let rmw = match ep.split_once(':') {
+                    Some((r, _)) => Some(r.to_string()),
+                    None => domain_rmw(ep),
+                };
+                if let Some(r) = rmw
+                    && !r.is_empty()
+                    && !rmws.contains(&r)
+                {
+                    rmws.push(r);
+                }
+            }
+        }
+    }
+    rmws
 }
 
 /// Phase 216 final wave — read `[package.metadata.nros.entry]
@@ -2202,5 +2289,80 @@ mod custom_tasks_parser_tests {
             msg.contains("custom_tasks") && msg.contains("list of fn idents"),
             "diagnostic should mention custom_tasks list, got: {msg}"
         );
+    }
+}
+
+#[cfg(test)]
+mod bridge_rmw_tests {
+    use super::{parse_bridge_rmws, rmw_crate_ident};
+
+    #[test]
+    fn rmw_crate_ident_maps_known_backends() {
+        assert_eq!(rmw_crate_ident("zenoh"), Some("nros_rmw_zenoh"));
+        assert_eq!(
+            rmw_crate_ident("cyclonedds"),
+            Some("nros_rmw_cyclonedds_sys")
+        );
+        assert_eq!(rmw_crate_ident("xrce"), Some("nros_rmw_xrce_cffi"));
+        assert_eq!(rmw_crate_ident("unknown"), None);
+    }
+
+    /// Endpoints resolved via `[[domain]]` rmw (the `demo_bringup` shape).
+    #[test]
+    fn parse_bridge_rmws_resolves_domains() {
+        let toml = r#"
+[[domain]]
+name = "zen"
+rmw = "zenoh"
+id = 0
+
+[[domain]]
+name = "dds"
+rmw = "cyclonedds"
+id = 5
+
+[[bridge]]
+name = "gw"
+from = "zenoh:zen"
+to = "cyclonedds:dds"
+"#;
+        // "<rmw>:<domain>" literal form takes the prefix directly.
+        assert_eq!(
+            parse_bridge_rmws(toml),
+            vec!["zenoh".to_string(), "cyclonedds".to_string()]
+        );
+    }
+
+    /// Bare endpoint names resolve through the `[[domain]]` rmw field, and the
+    /// result is de-duped + order-preserving.
+    #[test]
+    fn parse_bridge_rmws_bare_endpoints_dedup() {
+        let toml = r#"
+[[domain]]
+name = "a"
+rmw = "zenoh"
+
+[[domain]]
+name = "b"
+rmw = "xrce"
+
+[[bridge]]
+from = "a"
+to = "b"
+
+[[bridge]]
+from = "b"
+to = "a"
+"#;
+        assert_eq!(
+            parse_bridge_rmws(toml),
+            vec!["zenoh".to_string(), "xrce".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_bridge_rmws_no_bridge_is_empty() {
+        assert!(parse_bridge_rmws("[system]\nname = \"x\"\n").is_empty());
+        assert!(parse_bridge_rmws("not valid toml {{{").is_empty());
     }
 }
