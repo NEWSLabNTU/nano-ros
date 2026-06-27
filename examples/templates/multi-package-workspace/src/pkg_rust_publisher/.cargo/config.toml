@@ -5,5 +5,7 @@
 # multi-package workspace (deferred to A.10 follow-up).
 
 [patch.crates-io]
-nros-core = { path = "../../../../../packages/core/nros-core" }
-nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
+nros-core = { path = "../../../../../packages/core/nros-core" }  # nros-managed
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }  # nros-managed
+builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
+std_msgs = { path = "generated/std_msgs" }  # nros-managed
