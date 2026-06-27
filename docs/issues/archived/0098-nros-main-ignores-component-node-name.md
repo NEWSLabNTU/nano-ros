@@ -1,10 +1,11 @@
 ---
 id: 98
 title: "`nros::main!` runtime ignores `system.toml` component `name` — node registers under executor default (`/node`)"
-status: open
+status: resolved
 type: bug
 area: core
-related: [phase-264, rfc-0004]
+related: [phase-264, rfc-0004, rfc-0045, phase-266]
+resolved_in: "phase-266 (a314b02eb Rust, b2c3e63f1 C/C++)"
 ---
 
 ## Status (2026-06-27)

@@ -1,10 +1,11 @@
 ---
 id: 101
 title: "Per-board boot config (node_name + locator + domain) resolves 4 different ways — not unified"
-status: open
+status: resolved
 type: tech-debt
 area: core
-related: [phase-244, rfc-0004, rfc-0014, rfc-0045]
+related: [phase-244, rfc-0004, rfc-0014, rfc-0045, phase-266]
+resolved_in: "phase-266 (a314b02eb Rust, b2c3e63f1 C/C++)"
 ---
 
 > **Design: [RFC-0045](../design/0045-unified-boot-config-resolution.md)** (Draft, 2026-06-26)

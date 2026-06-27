@@ -56,22 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   the same-process publisher/client (zenoh does not loop a session's own publications back
   to itself). External processes receive normally. The phase-263 A1 service and B1 safety
   demos are therefore cross-process (separate entries).
-- **#97** — [`nros codegen entry` (C/C++) is native-only — no embedded board
-  runners](0097-codegen-entry-cpp-native-only-no-embedded-runners.md): the multi-node LAUNCH
-  entry emitter always emits `int main()` → `nros_board_native_run_components`, so a CMake
-  workspace Entry can't target an embedded board (links but SIGSEGVs under the RTOS startup).
-  The single-node `node_register` carrier emits board-correct shapes via per-platform templates;
-  the LAUNCH emitter needs the same. Blocks phase-263 C2 (embedded C/C++/mixed workspace
-  entries). Includes two ready-to-reapply cmake fixes found during the C2a spike.
-- **#98** — [`nros::main!` ignores `system.toml` component `name`, registers node as
-  `/node`](0098-nros-main-ignores-component-node-name.md): the board opened the primary
-  session under the `from_env()` default `"node"`, so `ros2 node list` showed `/node` not
-  the configured component name. **Single-node node naming now RESOLVED ON ALL BOARDS**
-  (2026-06-27, phase-266 W1–W4 landed) — the unified resolver applies the baked
-  `.nros_boot_config` name on hosted, OwnedSpin, NuttX (gained `run_with_deploy`), RTIC, and
-  Embassy (was 2/10 in the 2026-06-26 audit). Remaining: multi-node per-node naming + the C/C++
-  session-naming half (phase-266 W5/W6, tracked with #101). Surfaced from the phase-264 W4c
-  known limitation.
 - **#99** — [declarative `[[bridge]]` does not
   forward](0099-declarative-bridge-planner-population.md): the whole cross-RMW bridge pipeline
   (schema, `PlanBridge`/`PlanTransport` IR, `validate_bridges` + relay codegen, `nros-bridge`
@@ -80,14 +64,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `plan.build.transports` + `plan.bridges` — it emits only `bridged_rmws`. So a bridged system
   links both backends but `is_bridge()` is false and the relay codegen (gated on non-empty
   `plan.bridges`) never fires. Bounded planner transform. Blocks phase-263 B3 (`ws-bridge-rust`).
-- **#101** — [per-board boot config not
-  unified](0101-board-boot-config-not-unified.md): node_name + locator + domain resolve four
-  different ways across boards (runtime env / baked `Config` / compile-time `option_env!` /
-  NuttX drops the overlay entirely), so the same `system.toml` + `[deploy.*]` yields different
-  runtime identity per target. **Rust core RESOLVED** (2026-06-27, phase-266 W1–W4): one
-  `ExecutorConfig::resolve` path + the `.nros_boot_config` bake site, adopted by every Rust
-  board (NuttX gained `run_with_deploy`). Remaining: C/C++ session naming (W5/W6) + cleanup
-  (W7, merge dup `board_path_for` maps + `setup_transport`).
 - **#102** — [~60 examples ship untested; advanced capabilities
   native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
   single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native
@@ -129,7 +105,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   already fixed for `.eh_frame_hdr`. Fix: add a `.nros_boot_config > FLASH` output section before
   `.data` (+ audit threadx/nuttx/esp32 hand linker scripts). Surfaced post-issue-0100.
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#104** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#98** + **#101** —
+boot-config unification ([archived/0098](archived/0098-nros-main-ignores-component-node-name.md),
+[archived/0101](archived/0101-board-boot-config-not-unified.md)): node_name/locator/domain resolved
+four ways across boards → one `ExecutorConfig::resolve` path + a single `.nros_boot_config` bake
+site read by Rust, C, and C++; node naming now works on all 10 boards + 3 languages (verified
+`/param_talker`, `/talker`). Fixed in phase-266 (`a314b02eb` Rust, `b2c3e63f1` C/C++); residuals
+split to #105. **#97** — [`nros codegen entry` embedded
+runners](archived/0097-codegen-entry-cpp-native-only-no-embedded-runners.md): C/C++ LAUNCH entry
+was native-only; resolved by phase-263 C2a embedded runners. **#104** —
 [C entries invisible in `ros2 node list`](archived/0104-c-nodes-no-graph-liveliness.md): the ROS 2
 node liveliness token was never declared on any path (`declare_node_liveliness` had zero callers),
 so nodes appeared only via entity-liveliness inference — and C entries were invisible entirely.
