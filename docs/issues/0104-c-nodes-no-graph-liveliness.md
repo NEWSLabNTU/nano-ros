@@ -1,46 +1,69 @@
 ---
 id: 104
-title: "C `create_node` nodes never appear in `ros2 node list` — no liveliness token"
+title: "C entries are invisible in `ros2 node list`; node liveliness token never declared on any path"
 status: open
 type: bug
 area: rmw
-related: [phase-266, rfc-0019]
+related: [phase-266, rfc-0019, rfc-0005]
 ---
 
 ## Summary
 
-Nodes created from C via `nros_cpp_node_create(executor, name, ns, &node)` are struct-only —
-they do not declare a zenoh/RMW **node liveliness token**, so they never appear in `ros2 node
-list` (or `ros2 node info`), regardless of name. The C entry's primary *session* IS now named
-correctly (phase-266 W5 names it from `.nros_boot_config`), but the per-node C nodes have no
-graph presence at all. C++ nodes via `nros::create_node` / the typed component path declare
-liveliness and DO appear.
+Two related defects, found + verified investigating phase-266 (2026-06-27):
+
+1. **The node-level liveliness token is never declared on ANY path (C / C++ / Rust).**
+   `ZenohSession::declare_node_liveliness(domain_id, namespace, node_name)` exists
+   (`packages/zpico/nros-rmw-zenoh/src/shim/session.rs:287`; keyexpr
+   `@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>` at `shim/mod.rs:394`) but has **no callers**.
+   `Executor::open` only *stores* the identity via `set_node_identity`
+   (`nros-node/src/executor/spin.rs:127`, `:1272`); it never declares the token. So a node
+   appears in `ros2 node list` ONLY as a side effect of **entity** liveliness — i.e. because a
+   publisher/subscriber it creates carries the node name in its keyexpr. An entity-less node is
+   invisible.
+
+2. **C entries are entirely invisible — even nodes that DO publish.** A native C workspace entry
+   (running, actively publishing) shows **nothing** in `ros2 node list` — not even the primary
+   node. The C entity-creation path doesn't propagate node identity to its entity liveliness, so
+   no usable liveliness reaches the graph (`nros-c/src/executor.rs:73-77`: "without identity, no
+   liveliness token is declared and rmw_zenoh subscribers won't discover the entity"). C++ entries
+   show their node because their entities declare liveliness WITH the name.
 
 ## Evidence
 
-Found during phase-266 W5/W6 (2026-06-27): after threading the launch node name into the C
-session, a native **C++** workspace entry correctly shows its node in `ros2 node list`
-(`/talker`), but the analogous **C** entry's `nros_cpp_node_create` nodes do not show. The
-C-side seam is documented as struct-only (no liveliness) — see the `nros_cpp_node_create` path
-and the W5b/W6 implementer note ("`nros_cpp_node_create` is struct-only, no liveliness token").
+- Native **C++** single-node entry → `ros2 node list` = `/talker` (phase-266 W6, verified).
+- Native **C** entry (talker+listener, publishing — `[c_talker_pkg] sent: N` in its log) →
+  `ros2 node list` = **empty** (verified 2026-06-27, same zenohd + pinned rmw_zenoh harness).
+- `declare_node_liveliness` defined at `session.rs:287`, zero call sites across the tree.
+- `RmwConfig` carries `node_name`/`namespace` (`nros-rmw/src/traits.rs:788`) but
+  `TransportConfig` (`nros-rmw-zenoh/src/shim/transport.rs:56`) drops them, so the backend never
+  has what `declare_node_liveliness` needs.
 
 ## Impact
 
-- C nodes are invisible to ROS 2 graph introspection (`ros2 node list/info`, rqt_graph).
-  Topics/services still work (those declare their own liveliness via pub/sub creation), but the
-  *node* entry is missing.
-- This is orthogonal to naming (phase-266 #98/#101): even with the correct session name, the C
-  per-node graph entry is absent.
+- **C users: nodes are undiscoverable** in `ros2 node list` / `ros2 node info` / rqt_graph
+  (topics still route via entity liveliness, but graph introspection shows nothing). Significant.
+- **All languages:** an entity-less node (lifecycle-only, timer-only before first publish) has no
+  graph presence, because node liveliness is never declared independently of entities.
 
 ## Fix direction
 
-Have the C `create_node` path declare the same node-liveliness token the C++/Rust node-creation
-path declares (the rmw_zenoh node admin/liveliness keyexpr keyed on domain + namespace + node
-name). Likely a small addition in the C node-create FFI (`nros-c` / `nros-cpp` `nros_cpp_node_create`)
-to call the existing node-liveliness declaration that the Rust/C++ node path already uses. Verify
-with `ros2 node list` against a native C entry.
+Declare the node liveliness token explicitly, the proper way:
+- Thread `node_name`/`namespace` from `RmwConfig` → `TransportConfig` → the zenoh session
+  (`transport.rs:56`), then call `ZenohSession::declare_node_liveliness(domain, ns, name)` once
+  the primary session opens (in `ZenohRmw::open` or right after `Executor::open`'s
+  `set_node_identity`, `spin.rs:~121`). This makes the primary node discoverable for ALL
+  languages, entity-less included.
+- For secondary nodes (`create_node` reusing the primary — see #105), declare a node-liveliness
+  token per distinct node once per-node sessions/identity land.
+- Separately ensure the **C** entity-creation path propagates node identity so C entities declare
+  liveliness (the `nros-c/executor.rs` propagation the comment describes) — needed even before the
+  node-token fix, since today C is invisible.
+
+Verify: native C entry shows `/talker` in `ros2 node list`; a publish-less Rust/C++ node also
+appears.
 
 ## Notes
 
-Separated out of #101 (boot-config unification) so that issue can close on its node-naming scope.
-This is a graph-visibility defect, not a naming one.
+Split from #101 (boot-config naming) — this is graph *visibility*, not naming. The original
+framing ("C `create_node` struct-only") was too narrow: the node-liveliness token is missing
+everywhere, and C is invisible entirely (not just per-node).

@@ -107,11 +107,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
-- **#104** — [C `create_node` nodes never appear in `ros2 node
-  list`](0104-c-nodes-no-graph-liveliness.md): C nodes via `nros_cpp_node_create` are struct-only
-  (no RMW liveliness token), so they have no ROS graph presence regardless of name (C++/Rust nodes
-  do appear). The C session is named correctly (phase-266 W5) but per-node C entries are invisible.
-  Split from #101 — a graph-visibility defect, not naming.
+- **#104** — [C entries invisible in `ros2 node list`; node liveliness never
+  declared](0104-c-nodes-no-graph-liveliness.md): verified — a native C entry (running +
+  publishing) shows NOTHING in `ros2 node list`. Two defects: (1) `ZenohSession::declare_node_liveliness`
+  exists but is never called on ANY path — nodes appear only via *entity* liveliness inference, so
+  C++/Rust nodes show only because they publish; (2) the C entity path doesn't propagate node
+  identity, so C is invisible entirely. Fix: thread `RmwConfig` node id → session, declare the
+  node token. Split from #101 — graph visibility, not naming.
 - **#105** — [multi-node entry collapses to one graph
   node](0105-multi-node-per-node-graph-naming.md): N components on one `Executor` share the primary
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
