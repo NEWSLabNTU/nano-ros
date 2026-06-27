@@ -95,17 +95,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   Cyclone consumer stages explicitly; the schema-free `run_from_config` can't, so it relies on the
   broken fallback. Blocks phase-267 C6 forwarding. Fix: make the baked ctor stage in consumers, or
   wire `nros codegen cyclonedds-descriptors` into the bridge flow.
-- **#108** — [FreeRTOS MPS2-AN385 linker omits `.nros_boot_config` →
-  overlaps `.data`](0108-freertos-linker-missing-nros-boot-config-section.md): `just ci` →
-  `build-test-fixtures` fails linking `qemu_freertos_entry` —
-  `rust-lld: section .nros_boot_config load address range overlaps with .data`. Phase-266 W4c
-  (`8088e77c0`) added the baked `.nros_boot_config` section (`nros::main!()`, RFC-0045) but the
-  FreeRTOS board's hand linker `nros-board-mps2-an385-freertos/config/mps2_an385.ld` never placed
-  it (cortex-m-rt's `link.x` absorbs it for the bare-metal/RTIC entries). Same class the `.ld`
-  already fixed for `.eh_frame_hdr`. Fix: add a `.nros_boot_config > FLASH` output section before
-  `.data` (+ audit threadx/nuttx/esp32 hand linker scripts). Surfaced post-issue-0100.
-
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#98** + **#101** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#108** —
+[FreeRTOS MPS2-AN385 linker omits
+`.nros_boot_config`](archived/0108-freertos-linker-missing-nros-boot-config-section.md): the
+phase-266 baked `.nros_boot_config` section (`8088e77c0`) overlapped `.data` because the FreeRTOS
+board's hand linker `mps2_an385.ld` never placed it → `build-test-fixtures` failed linking
+`qemu_freertos_entry`. Fixed (`5a6407bd2`) by adding a `.nros_boot_config > FLASH` section before
+`.data` (mirroring the script's `.eh_frame_hdr` fix); `just freertos::build-examples` now builds
+the entry green. **#98** + **#101** —
 boot-config unification ([archived/0098](archived/0098-nros-main-ignores-component-node-name.md),
 [archived/0101](archived/0101-board-boot-config-not-unified.md)): node_name/locator/domain resolved
 four ways across boards → one `ExecutorConfig::resolve` path + a single `.nros_boot_config` bake

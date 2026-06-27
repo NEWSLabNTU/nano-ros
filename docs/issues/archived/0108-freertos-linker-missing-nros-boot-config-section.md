@@ -1,11 +1,21 @@
 ---
 id: 108
 title: "FreeRTOS MPS2-AN385 linker script omits `.nros_boot_config` → overlaps `.data`, fixture build fails"
-status: open
+status: resolved
 type: bug
 area: freertos
 related: [phase-266, rfc-0045]
+resolved_in: "5a6407bd2 (2026-06-28)"
 ---
+
+> **RESOLVED (2026-06-28, `5a6407bd2`).** Added a `.nros_boot_config :
+> { KEEP(*(.nros_boot_config*)) } > FLASH` output section to
+> `nros-board-mps2-an385-freertos/config/mps2_an385.ld`, placed before `.data`
+> (between `.eh_frame_hdr` and `.eh_frame`, so it precedes `_etext`) — mirroring
+> the `.eh_frame_hdr` fix the same script already carried for this overlap class.
+> Verified end-to-end: `just freertos::build-examples` builds `qemu_freertos_entry`
+> green (links + `built:`), zero `.nros_boot_config overlaps .data`. (Needed
+> `CARGO_INCREMENTAL=0` to dodge an unrelated local rustc incremental-cache ICE.)
 
 ## Summary
 
