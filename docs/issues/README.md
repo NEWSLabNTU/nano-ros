@@ -107,6 +107,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
+- **#104** — [C `create_node` nodes never appear in `ros2 node
+  list`](0104-c-nodes-no-graph-liveliness.md): C nodes via `nros_cpp_node_create` are struct-only
+  (no RMW liveliness token), so they have no ROS graph presence regardless of name (C++/Rust nodes
+  do appear). The C session is named correctly (phase-266 W5) but per-node C entries are invisible.
+  Split from #101 — a graph-visibility defect, not naming.
+- **#105** — [multi-node entry collapses to one graph
+  node](0105-multi-node-per-node-graph-naming.md): N components on one `Executor` share the primary
+  session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
+  one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
+  needs a per-node session or per-node liveliness token (decide with per-node param scoping).
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
