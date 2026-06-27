@@ -71,27 +71,22 @@ build:
     echo "Building QEMU ARM examples..."
     _qemu_tomls="$(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort)"
-    # Phase 244.D1 — TWO passes. The entry+node-pkg split (an Entry crate whose
-    # `[patch.crates-io]` points at a SIBLING `../<pkg>/generated/*`) means the
-    # entry's `cargo build` needs the node pkg's `generated/` to already exist.
-    # `find | sort` lists the entry (`foo-rtic`) BEFORE its pkg (`foo_rtic_pkg`,
-    # `-` < `_`), so a single sync-then-build loop builds the entry before the
-    # pkg is codegen'd and cargo fails to read the dangling patch path. Pass 1
-    # codegens every package.xml-bearing node pkg; pass 2 then builds every crate.
-    # (Examples that path-dep generated message crates — std_msgs/example_interfaces/
-    # action_msgs via the gitignored `generated/` dirs — resolve their patch only
-    # after pass 1.)
+    # Issue 0100 — single sync-then-build pass. The former two-pass split existed
+    # only because the Entry+Node-pkg shape had an Entry whose `[patch]` pointed
+    # at a SIBLING `../<pkg>/generated/*`, so every entry had to wait for its
+    # sibling pkg's codegen (pass 1) before building (pass 2). Every example is
+    # now a single self-contained crate (its own `package.xml` + `generated/` +
+    # `.cargo/config.toml` patch, no sibling walk-up), so each dir's own
+    # `nros sync` produces exactly the `generated/` its own `cargo build` needs —
+    # sync + build fold into one pass.
     for toml in $_qemu_tomls; do
         dir="$(dirname "$toml")"
         if [ -f "$dir/package.xml" ]; then
-            echo "  ws sync $dir"
+            echo "  sync $dir"
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
-    done
-    for toml in $_qemu_tomls; do
-        dir="$(dirname "$toml")"
         echo "  build $dir"
         (cd "$dir" && cargo build $cargo_profile_args)
     done

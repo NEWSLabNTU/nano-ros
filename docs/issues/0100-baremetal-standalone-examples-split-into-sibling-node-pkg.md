@@ -1,11 +1,20 @@
 ---
 id: 100
 title: "Baremetal standalone examples split into a sibling node pkg — break the copy-out self-containment contract"
-status: open
+status: resolved
 type: bug
 area: testing
-related: [phase-244, rfc-0026]
+related: [phase-244, rfc-0026, phase-265]
+resolved_in: "issue-0100 W1–W7 (2026-06-27)"
 ---
+
+> **RESOLVED (2026-06-27).** Every `examples/qemu-arm-baremetal/rust/*` and
+> `examples/stm32f4/rust/*` Entry/Node split (25 packages across 23 user examples + 2 e2e
+> fixtures) was collapsed into a single self-contained crate over waves W1–W7 — no `*_pkg`
+> sibling dir remains, no example path-deps or `[patch]`es up into a sibling, and the
+> redundant two-pass codegen loop in `just/qemu-baremetal.just` was merged to one pass. See
+> the per-wave log below. Build-verified (RTIC/declarative `cargo build`; Embassy `cargo
+> check` — their full-link failure is a pre-existing board-stub `todo!()`, unrelated).
 
 ## Summary
 
@@ -119,9 +128,16 @@ std_msgs), so their managed set is just nros-core/nros-serdes.
 9 stm32f4) are self-contained + build-verified (embassy entries `cargo check`; their link is
 a pre-existing board-stub issue, unchanged).
 
-**Remaining (W7):** the two baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e,
-qemu-baremetal-main-e2e — test infra, confirm in-scope), then drop the now-redundant two-pass
-codegen loop in `just/qemu-baremetal.just` and close this issue.
+- **W7a** `82985ad0b` — the two baremetal e2e-fixture splits (`qemu-baremetal-main-e2e` ⇐
+  `qemu_baremetal_e2e_pkg`, declarative; `phase216-rtic-e2e` ⇐ `phase216_rtic_e2e_pkg`, RTIC).
+  Neither has a package.xml or msg dep → pure structural fold; entry binary/dir unchanged so
+  the fixtures.toml rows + `baremetal_run_plan_runtime` E2E test still resolve.
+- **W7b** — merged the two-pass codegen loop in `just/qemu-baremetal.just` `build` recipe to a
+  single sync-then-build pass (the split was its only reason to exist). Verified: `just
+  qemu::build` builds all 14 examples + the testing bins + qemu-smoltcp-bridge green (RC=0).
+
+**DONE — issue resolved.** Zero `*_pkg` sibling dirs across baremetal + stm32f4; every example
+is a single self-contained crate; the two-pass loop is gone.
 
 Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
 are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
