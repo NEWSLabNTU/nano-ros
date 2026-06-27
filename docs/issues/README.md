@@ -119,6 +119,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   Cyclone consumer stages explicitly; the schema-free `run_from_config` can't, so it relies on the
   broken fallback. Blocks phase-267 C6 forwarding. Fix: make the baked ctor stage in consumers, or
   wire `nros codegen cyclonedds-descriptors` into the bridge flow.
+- **#108** — [FreeRTOS MPS2-AN385 linker omits `.nros_boot_config` →
+  overlaps `.data`](0108-freertos-linker-missing-nros-boot-config-section.md): `just ci` →
+  `build-test-fixtures` fails linking `qemu_freertos_entry` —
+  `rust-lld: section .nros_boot_config load address range overlaps with .data`. Phase-266 W4c
+  (`8088e77c0`) added the baked `.nros_boot_config` section (`nros::main!()`, RFC-0045) but the
+  FreeRTOS board's hand linker `nros-board-mps2-an385-freertos/config/mps2_an385.ld` never placed
+  it (cortex-m-rt's `link.x` absorbs it for the bare-metal/RTIC entries). Same class the `.ld`
+  already fixed for `.eh_frame_hdr`. Fix: add a `.nros_boot_config > FLASH` output section before
+  `.data` (+ audit threadx/nuttx/esp32 hand linker scripts). Surfaced post-issue-0100.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#104** —
 [C entries invisible in `ros2 node list`](archived/0104-c-nodes-no-graph-liveliness.md): the ROS 2
