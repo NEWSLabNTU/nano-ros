@@ -525,6 +525,53 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$wscpp_zenoh_locator" "" "$wscpp_conf_files" "$wscpp_extra_cmake_defs" \
             "$wscpp_sig" "$wscpp_sig_file" 0 "$pristine"
     fi
+
+    # phase-263 C2c-zephyr — the MIXED WORKSPACE entry (C talker + C++ listener + Rust
+    # heartbeat). Same native_sim/NSOS west path as the cpp entry; the Zephyr application dir
+    # is examples/workspaces/mixed/src/zephyr_entry. The entry sets NROS_WS_RUST_NODE_DIRS so
+    # the nano-ros module bundles the Rust node into the nros_ws_runtime umbrella staticlib
+    # (single Rust runtime). Distinct zenohd port (17843). Consumed by
+    # tests/mixed_zephyr_entry_e2e.rs.
+    wsmx_board="native_sim/native/64"
+    wsmx_lang="mixed"
+    wsmx_lang_tag="mixed"
+    wsmx_role="entry"
+    wsmx_rmw="zenoh"
+    wsmx_build_name="build-ws-mixed-entry-zenoh"
+    wsmx_build_dir="$build_root/$wsmx_build_name"
+    wsmx_src="workspaces/mixed/src/zephyr_entry"
+    wsmx_src_dir="$nros_root/examples/$wsmx_src"
+    wsmx_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wsmx_zenoh_locator="tcp/127.0.0.1:17843"
+    wsmx_id="zephyr/native_sim/native/64/workspace-entry-mixed"
+    wsmx_target="fixture/zephyr/native_sim/native/64/workspace-entry-mixed"
+    wsmx_filter_haystack="$wsmx_board $wsmx_build_name $wsmx_src $wsmx_conf_files $wsmx_id"
+    if [ -z "$fixture_filter" ] || [[ "$wsmx_filter_haystack" =~ $fixture_filter ]]; then
+        selected=$((selected + 1))
+        wsmx_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wsmx_extra_cmake_defs="$wsmx_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wsmx_zenoh_locator\""
+        wsmx_extra_cmake_defs="$wsmx_extra_cmake_defs -DCONF_FILE=$wsmx_conf_files"
+        wsmx_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wsmx_sccache_launcher=1
+            wsmx_extra_cmake_defs="$wsmx_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wsmx_sig_file="$wsmx_build_dir/.nros-zephyr-fixture.sig"
+        wsmx_sig="$(printf '%s\n' \
+            "board=$wsmx_board" \
+            "src=$wsmx_src" \
+            "xrce_port=" \
+            "conf_files=$wsmx_conf_files" \
+            "zenoh_locator=$wsmx_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wsmx_sccache_launcher")"
+        emit_record fixture "$wsmx_id" "$wsmx_target" "$wsmx_board" "$wsmx_lang" "$wsmx_lang_tag" "$wsmx_role" "$wsmx_rmw" \
+            "$wsmx_src" "$wsmx_src_dir" "$wsmx_build_name" "$wsmx_build_dir" "$log_dir/${wsmx_build_name}.log" "" \
+            "$wsmx_zenoh_locator" "" "$wsmx_conf_files" "$wsmx_extra_cmake_defs" \
+            "$wsmx_sig" "$wsmx_sig_file" 0 "$pristine"
+    fi
 fi
 
 if [ "$selected" -eq 0 ]; then

@@ -19,7 +19,9 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
 }
 
 ::nros::Result Listener::configure(::nros::Node& node) {
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    // `::setvbuf`, not `std::setvbuf` — Zephyr picolibc declares it only at global scope
+    // (phase-263 C2c-zephyr; same fix as the cpp workspace listener).
+    ::setvbuf(stdout, nullptr, _IONBF, 0);
     // The typed `Publisher<Int32>` registers the DDS-mangled keyexpr, so the
     // raw sub must match on `Int32::TYPE_NAME` (240.1 finding).
     return ::nros::bind_subscription_raw<Listener, &Listener::on_raw>(

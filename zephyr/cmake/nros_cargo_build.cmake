@@ -130,7 +130,7 @@ endfunction()
 #   e.g., nros-c → nros_c_cargo, nros-cpp → nros_cpp_cargo
 # =============================================================================
 function(nros_cargo_build)
-    cmake_parse_arguments(ARG "" "PACKAGE;FEATURES" "" ${ARGN})
+    cmake_parse_arguments(ARG "" "PACKAGE;FEATURES;MANIFEST_PATH" "" ${ARGN})
 
     if(NOT ARG_PACKAGE)
         message(FATAL_ERROR "nros_cargo_build: PACKAGE is required")
@@ -140,6 +140,16 @@ function(nros_cargo_build)
 
     set(NROS_REPO_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..)
     set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust)
+
+    # phase-263 C2c-zephyr — a workspace with a Rust node bundles nros-cpp + every node into
+    # the synthesised `nros_ws_runtime` umbrella crate (single-runtime invariant). That crate
+    # lives OUTSIDE the nros workspace (its own `[workspace]`), so the caller passes its
+    # MANIFEST_PATH; everything else (target / profile / cross-cc / build-std env) is shared.
+    if(ARG_MANIFEST_PATH)
+        set(_cargo_manifest "${ARG_MANIFEST_PATH}")
+    else()
+        set(_cargo_manifest "${NROS_REPO_DIR}/Cargo.toml")
+    endif()
 
     # Determine library filename from package name
     string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
@@ -173,7 +183,7 @@ function(nros_cargo_build)
     set(CARGO_ARGS
         build
         -p ${ARG_PACKAGE}
-        --manifest-path ${NROS_REPO_DIR}/Cargo.toml
+        --manifest-path ${_cargo_manifest}
         --target-dir ${CARGO_TARGET_DIR}
         --no-default-features
     )

@@ -321,7 +321,6 @@ if(CONFIG_NROS_CPP_API)
             FEATURES "${_nros_c_for_cpp_features}"
         )
         add_dependencies(app nros_c_cargo_build)
-        zephyr_library_link_libraries(nros_c_cargo)
     endif()
 
     # Build nros-cpp static library via Cargo
@@ -331,8 +330,62 @@ if(CONFIG_NROS_CPP_API)
     )
     add_dependencies(app nros_cpp_cargo_build)
 
-    # Link the built library
-    zephyr_library_link_libraries(nros_cpp_cargo)
+    # phase-263 C2c-zephyr — a MIXED workspace (C + C++ + Rust node) bundles nros-cpp + every
+    # workspace Rust node into the synthesised `nros_ws_runtime` umbrella staticlib (the
+    # single-runtime invariant: ONE Rust staticlib, one nros-rmw-cffi REGISTRY — a node in its
+    # own staticlib would split it). The entry CMakeLists sets NROS_WS_RUST_NODE_DIRS (a list of
+    # node pkg dirs) BEFORE find_package(Zephyr). nros-c / nros-cpp above are still BUILT (their
+    # build.rs writes the per-build headers the C/C++ TUs include) but NOT linked — the umbrella
+    # (which deps nros-cpp, hence nros-c) is the single linked archive, so the node libs' nros
+    # refs resolve from it without double-defining nros-rmw-cffi's REGISTRY. Mirrors the
+    # cmake/Corrosion lane's archive swap (NanoRosRuntimeCrate.cmake).
+    set(_nros_link_umbrella FALSE)
+    if(NROS_WS_RUST_NODE_DIRS)
+        set(_nros_link_umbrella TRUE)
+    endif()
+
+    if(_nros_link_umbrella)
+        include("${NROS_REPO_DIR}/cmake/NanoRosRuntimeCrate.cmake")
+        set(NANO_ROS_ROOT "${NROS_REPO_DIR}")
+        # Backend key for the umbrella's force-link anchor (zenoh/xrce bundle a Rust rlib).
+        if(CONFIG_NROS_RMW_XRCE)
+            set(_umb_backend "xrce")
+        elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+            set(_umb_backend "cyclone")
+        else()
+            set(_umb_backend "zenoh")
+        endif()
+        # native_sim uses the host std triple → std umbrella; a real Zephyr board is no_std.
+        set(_umb_no_std TRUE)
+        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+            set(_umb_no_std FALSE)
+        endif()
+        string(REPLACE "," ";" _umb_feats "${_nros_cpp_features}")
+        nros_write_runtime_umbrella_crate(
+            OUT_DIR      "${CMAKE_BINARY_DIR}/nros_ws_runtime"
+            BACKEND      "${_umb_backend}"
+            NO_STD       "${_umb_no_std}"
+            NODE_DIRS    ${NROS_WS_RUST_NODE_DIRS}
+            CPP_FEATURES ${_umb_feats})
+        nros_cargo_build(
+            PACKAGE       nros_ws_runtime
+            MANIFEST_PATH "${CMAKE_BINARY_DIR}/nros_ws_runtime/Cargo.toml"
+        )
+        # Headers (nros-c / nros-cpp build.rs byproducts) must be ready before the umbrella
+        # build's TUs / the entry TU compile.
+        add_dependencies(nros_ws_runtime_cargo_build nros_cpp_cargo_build)
+        if(TARGET nros_c_cargo_build)
+            add_dependencies(nros_ws_runtime_cargo_build nros_c_cargo_build)
+        endif()
+        add_dependencies(app nros_ws_runtime_cargo_build)
+        zephyr_library_link_libraries(nros_ws_runtime_cargo)
+    else()
+        # Link nros-c (log glue) + nros-cpp directly (pure-C / pure-C++ / pure-Rust entries).
+        if(NOT CONFIG_NROS_C_API AND TARGET nros_c_cargo)
+            zephyr_library_link_libraries(nros_c_cargo)
+        endif()
+        zephyr_library_link_libraries(nros_cpp_cargo)
+    endif()
 
     # Phase 168.4 — same backend staticlib link as the C-API branch
     # above. `nros-cpp`'s `rmw-zenoh-cffi` feature does NOT pull

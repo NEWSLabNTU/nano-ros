@@ -326,11 +326,11 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
   C+C++/Rust), C2d-zephyr C (native_sim, west lane), C2c-zephyr C++ (native_sim), C2c-mixed-freertos
-  (C+C++ + no_std Rust, thumbv7m) — 9 GREEN e2e tests. C2b-nuttx BUILD blocker RESOLVED
+  (C+C++ + no_std Rust, thumbv7m), C2c-mixed-zephyr (C+C++/Rust, native_sim west lane) —
+  **10 GREEN e2e tests**. C2b-nuttx BUILD blocker RESOLVED
   (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with seams
-  resolved), runtime QEMU-console pending (host issue). BLOCKED: C2c-mixed-zephyr (no_std node fix
-  applies, but the rust_cargo_application/nano_ros_entry entry-point conflict needs a
-  Rust-node-as-staticlib mode in zephyr-lang-rust). See below.** Two-agent framework
+  resolved), runtime QEMU-console pending (host issue) — the ONLY remaining gap. See below.**
+  Two-agent framework
   exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
@@ -490,9 +490,8 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       comment was conservative). Back-compat verified: the host umbrella keeps `std` (CMAKE_
       CROSSCOMPILING false), so the threadx-linux mixed entry + the non-mixed freertos C/C++ e2e
       all still pass. The same no_std-node + umbrella-cross path is the foundation for any embedded
-      Rust-mixed workspace. **mixed on Zephyr remains BLOCKED** (native_sim Rust = x86_64-unknown-
-      none no_std too — same node fix applies — PLUS the rust_cargo_application/nano_ros_entry
-      entry-point conflict, which needs a Rust-node-as-staticlib mode in zephyr-lang-rust). **C2d — zephyr C: build + native_sim
+      Rust-mixed workspace — and the SAME crate-writer now drives the Zephyr/west lane
+      (C2c-mixed-zephyr DONE, below). **C2d — zephyr C: build + native_sim
       runtime delivery PROVEN (2026-06-26), approach A.** The Zephyr build model is
       fundamentally different (west lane, `find_package(Zephyr)` → monolithic `app` target, not
       add_executable + nros_platform_link_app), so `nano_ros_entry` gained a zephyr branch — the
@@ -533,16 +532,34 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       the real culprit (an unresolved `-lstd_msgs__nano_ros_cpp` on Zephyr). All back-compat (the
       cmake-lane cpp threadx/freertos e2e still pass).
 
-      **C2c-zephyr mixed: BLOCKED (2026-06-26) — double wall, worse than mixed-FreeRTOS.** (1)
-      std-vs-no_std: native_sim Rust targets `x86_64-unknown-none` (bare-metal **no_std**), NOT
-      the host std triple — `modules/lang/rust/CMakeLists.txt:74`. The earlier note here was
-      WRONG: native_sim does NOT sidestep the no_std wall like threadx-linux's host triple did.
-      `rust_heartbeat_pkg` needs `std` → can't compile. (2) Architecture: `rust_cargo_application()`
-      (whole-app Rust: provides `main.c` + `rust_main`) and `nano_ros_entry()` (provides `int main`)
-      both OWN the entry point — mutually exclusive; zephyr-lang-rust has no "Rust node as a linked
-      staticlib" mode, and the `nros_ws_runtime` umbrella is host-only. Unblock = no_std Rust node
-      + new zephyr-specific Rust-staticlib bundling infra (a standalone subproject). Design + gaps
-      captured here + in 0097.
+      **C2c-zephyr mixed: DONE (2026-06-27)** — `tests/mixed_zephyr_entry_e2e.rs` GREEN (13.7s):
+      a C talker + C++ listener + Rust heartbeat in ONE native_sim `zephyr.exe`, delivering
+      `/chatter` cross-process (port 17843). The earlier "double wall" verdict was BOTH points
+      wrong:
+      (1) **native_sim Rust = `x86_64-unknown-linux-gnu` (the HOST STD triple)**, not
+      `x86_64-unknown-none` — `nros_detect_rust_target()` in `zephyr/cmake/nros_cargo_build.cmake`
+      maps `CONFIG_BOARD_NATIVE_SIM` to the linux-gnu triple (the `modules/lang/rust` no_std note
+      was about a real board, not native_sim). So the no_std node fix from mixed-FreeRTOS *also*
+      isn't even needed on native_sim — the node compiles std, exactly like the mixed-native and
+      threadx-linux entries.
+      (2) **No entry-point conflict.** The Zephyr ENTRY path does NOT use `rust_cargo_application()`
+      — `nano_ros_entry(BOARD zephyr)` (C2d) already puts the generated `int main` into `app`. The
+      only real gap: the west lane built plain `nros-cpp` and never BUNDLED the workspace Rust node.
+      Fix (low blast radius, opt-in): the `nros_ws_runtime` umbrella crate synthesis was factored
+      out of `NanoRosRuntimeCrate.cmake` into `nros_write_runtime_umbrella_crate` (NO_STD +
+      CPP_FEATURES now explicit args, so native_sim picks std while a real board picks no_std), and
+      the zephyr `nros_cargo_build` gained a `MANIFEST_PATH` option. `zephyr/CMakeLists.txt`, gated
+      on `NROS_WS_RUST_NODE_DIRS` (set by the mixed entry BEFORE `find_package(Zephyr)`), synthesises
+      + builds the umbrella (nros-cpp + the node, one staticlib) and links THAT in place of plain
+      nros-cpp/nros-c — the west-lane analog of the cmake-lane archive swap. nros-c/nros-cpp stay
+      BUILT (their build.rs writes the per-build headers) but unlinked; `NanoRos::NanoRosCpp` isn't
+      a target on Zephyr, so the node libs resolve their nros refs from the single umbrella at `app`
+      link (no REGISTRY split). The mixed cpp_listener_pkg needed the same two C2c-cpp portability
+      fixes that were latent until it first built on Zephyr: `::setvbuf` and the `if(TARGET
+      std_msgs__nano_ros_cpp)` guard. **All C2 embedded entries that have a host/sim path now
+      deliver runtime; the SAME umbrella crate-writer serves both the Corrosion and the west lanes.**
+      Back-compat: the cmake-lane refactor is a pure extraction (cmake-lane keeps NO_STD ==
+      CMAKE_CROSSCOMPILING); c/cpp zephyr entries take the non-umbrella else-branch unchanged.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 

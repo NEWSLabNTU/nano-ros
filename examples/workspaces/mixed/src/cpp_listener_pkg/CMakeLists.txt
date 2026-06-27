@@ -21,5 +21,11 @@ nano_ros_node_register(
     CLASS   cpp_listener_pkg::Listener
     SOURCES src/Listener.cpp)
 
-target_link_libraries(cpp_listener_pkg_listener_component
-    PUBLIC std_msgs__nano_ros_cpp)
+# phase-263 C2c-zephyr — guard with `if(TARGET)`: on Zephyr the generated interface is
+# whole-archived into `app` (the Zephyr generator), NOT exposed as a `std_msgs__nano_ros_cpp`
+# lib, so an unconditional link becomes an unresolved `-lstd_msgs__nano_ros_cpp`; the component
+# gets the headers via the `app` include mirror instead. (Same fix as the cpp workspace.)
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(cpp_listener_pkg_listener_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()
