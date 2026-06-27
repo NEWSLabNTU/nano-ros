@@ -70,6 +70,21 @@ SECTIONS
         *(.eh_frame_hdr)
         . = ALIGN(4);
     } > FLASH
+
+    /* Baked boot config (phase-266 / RFC-0045, issue #108) — `nros::main!()`
+     * emits the node name + deploy overlay into `.nros_boot_config` via
+     * `#[link_section]`. Read-only; MUST get a FLASH load address or it falls to
+     * the default output and overlaps .data/RAM — exactly the class fixed above
+     * for .eh_frame_hdr (`section .nros_boot_config load address range overlaps
+     * with .data`). cortex-m-rt's link.x absorbs it for the bare-metal/RTIC
+     * entries; this hand FreeRTOS script must place it explicitly. */
+    .nros_boot_config :
+    {
+        KEEP(*(.nros_boot_config))
+        KEEP(*(.nros_boot_config*))
+        . = ALIGN(4);
+    } > FLASH
+
     .eh_frame :
     {
         *(.eh_frame)
