@@ -9,8 +9,9 @@ runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codege
 declarative zenoh↔cyclonedds bridge BUILDS end-to-end via the clean flow (no
 build.rs, no user bridge code): talker declares `publishes` → `nros sync`
 resolves /chatter→type → `nros-bridge.toml` → plain `nros::main!` macro emits
-`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. Only C6
-(gated runtime e2e) remains.** ·
+`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. **C6
+(runtime) BLOCKED — `run_from_config`+`open_multi`+cyclonedds is untested + has 3
+gaps (open_multi InvalidArgument, DDS type-mangling, descriptor staging); see C6.** ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -330,7 +331,38 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   `nros sync` + `cargo build` links both backends (cyclone via the Entry's
   `nros-rmw-cyclonedds-sys` dep). Build-verify.
 - **C6 — gated runtime e2e** (folds W5): zenohd + the entry + a stock
-  `rmw_cyclonedds_cpp` peer sees `/chatter`.
+  `rmw_cyclonedds_cpp` peer sees `/chatter`. Reference test:
+  `packages/testing/nros-tests/tests/bridge_zenoh_to_cyclonedds.rs` (zenohd +
+  `talker_binary` + bridge + nano cyclone listener / stock ros2 echo, gated).
+
+  **BLOCKED (2026-06-27) — the `run_from_config` cyclonedds path is untested + has
+  3 runtime gaps.** Env prepared (zenohd `build/zenohd/zenohd`, the entry builds,
+  the reference test identified); runtime-smoking `ws-bridge-rust/native_entry`
+  against zenohd surfaced:
+  1. **`open_multi` + cyclonedds → `OpenSession(Transport(InvalidArgument))`.**
+     `nros_bridge::run_from_config` opens via eager `Executor::open_multi`, which
+     has **never been runtime-tested** (only codegen-SHAPE tests assert the
+     emitted `open_multi(&SESSION_SPECS)` string; `orchestration_generate.rs`). The
+     WORKING imperative bridge (`bins/bridge-zenoh-to-cyclonedds-fwd`) uses
+     `open_with_rmw` (primary) + lazy `node_builder().rmw("cyclonedds").domain_id()
+     .build()` (extra session), NOT `open_multi`. `open_multi`'s cyclone-extra path
+     needs debugging (cyclone `session_open` itself only returns INVALID_ARGUMENT
+     on a null `out` — so the fault is in `open_multi`'s wiring of the extra
+     session, or the zenoh primary spec).
+  2. **Type-name form.** `render_bridge_runtime_config` emits the ROS type
+     `"std_msgs/msg/Int32"`, but the raw zenoh keyexpr + Cyclone topic need the
+     DDS-MANGLED `"std_msgs::msg::dds_::Int32_"` (the imperative bin's `TYPE_NAME`).
+     The resolver must mangle ROS→DDS for the `nros-bridge.toml` `type`.
+  3. **Descriptor staging.** `run_from_config` does NOT stage the Cyclone
+     `dds_topic_descriptor_t` (the imperative bin calls
+     `nros_rmw::register_type_descriptor`). `std_msgs/msg/Int32` is baked into
+     `nros-rmw-cyclonedds-sys/build.rs` by default, but under the MANGLED name —
+     verify the baked default key matches, else `run_from_config` needs to stage
+     it (it has no schema; the baked default is the only no-schema path).
+  These are real gaps in the data-driven bridge (`config.rs`) cyclone path,
+  exercised here for the first time. C6 = fix them + the gated test. The BUILD
+  (C1–C5) + the resolution flow + the zenoh↔zenoh / zenoh↔xrce `run_from_config`
+  paths are unaffected.
 
 **Cleanup:** remove the now-unused `render_bridge_entry_fns` + `emit_bridge_entry_fns`
 (S1) and, once the runtime path lands, the dead `build_generated_package` relay.
