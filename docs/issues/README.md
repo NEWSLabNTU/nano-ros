@@ -80,13 +80,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `plan.build.transports` + `plan.bridges` — it emits only `bridged_rmws`. So a bridged system
   links both backends but `is_bridge()` is false and the relay codegen (gated on non-empty
   `plan.bridges`) never fires. Bounded planner transform. Blocks phase-263 B3 (`ws-bridge-rust`).
-- **#100** — [baremetal standalone examples split into a sibling node
-  pkg](0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md): the
-  `qemu-arm-baremetal`/`stm32f4` rust examples are an Entry binary that path-deps + `[patch]`es
-  up into a sibling `*_pkg` dir holding the node + `package.xml` + `generated/`, so copying the
-  example dir out doesn't build (walk-up to a sibling example breaks the standalone copy-out
-  contract). Fix: collapse into one self-contained crate like `examples/native/rust/talker`.
-  Surfaced from `just check` dep-chain / `native::check` binding failures.
 - **#101** — [per-board boot config not
   unified](0101-board-boot-config-not-unified.md): node_name + locator + domain resolve four
   different ways across boards (runtime env / baked `Config` / compile-time `option_env!` /
@@ -134,7 +127,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   broken fallback. Blocks phase-267 C6 forwarding. Fix: make the baked ctor stage in consumers, or
   wire `nros codegen cyclonedds-descriptors` into the bridge flow.
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#100** —
+[baremetal standalone examples split into a sibling node
+pkg](archived/0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md): the
+`qemu-arm-baremetal`/`stm32f4` rust examples were an Entry binary path-dep'ing + `[patch]`ing
+up into a sibling `*_pkg`, breaking copy-out. Collapsed all 25 packages (23 user examples + 2
+e2e fixtures) into single self-contained crates over W1–W7 (declarative, RTIC `node_pkgs`
+self-reference, Embassy, shared-pkg duplication, cross-pkg placeholder inlining), and merged
+the now-redundant two-pass baremetal build loop. Also: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
 the `[patch.crates-io]` rewriter was a line scanner, not a TOML parser (duplicate table on
 the quoted `[patch."crates-io"]` form; dropped patches for explicit `[dependencies.<name>]`).
