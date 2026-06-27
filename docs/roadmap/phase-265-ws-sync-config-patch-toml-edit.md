@@ -1,8 +1,9 @@
 # Phase 265 — `ws sync` writes `[patch.crates-io]` to `.cargo/config.toml` via toml_edit
 
-Status: **In progress (2026-06-24)** — W1–W4 + W5a done; W5b partial (standalone
-example migration landed for the clean cases; embedded build sweep + classifier-edge
-packages remain). Issue 0094 resolved at W4. · Resolves
+Status: **Complete (2026-06-27)** — W1–W5 + tail W1/W2 done; every sync-driven consumer
+patch lives in `.cargo/config.toml`. Entry/Node-split fixtures collapsed + migrated via
+issue 0100. Remaining Cargo.toml patches are all outside the sync model (root / no-pkgxml /
+templated / west) and intentionally left. Issue 0094 resolved at W4. · Resolves
 [issue 0094](../issues/0094-ws-sync-toml-line-scanner-fragility.md)
 · RFC-0023/0024 (binding layouts), RFC-0026 (workspace model).
 
@@ -35,12 +36,23 @@ packages remain). Issue 0094 resolved at W4. · Resolves
 >   So phase acceptance "rebuild native + ≥1 embedded lane" is met with real builds; the
 >   other embedded lanes stay `cargo metadata` resolve-verified. (The C-workspace fixture
 >   stage has an unrelated pre-existing cmake `mv .args.tmp` glitch — not patch-related.)
->   **Remaining tail:** broader QEMU/SDK build sweep of the other lanes, and the Entry/Node-split firmware
->   roots (qemu-arm-baremetal `*`, stm32f4 — Entry pkg lacks `package.xml`, so the patch
->   authority ≠ the synced pkg; tracked as [issue 0100](../issues/0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md),
->   whose fix collapses the split into one self-contained crate — which then auto-migrates via
->   single-pkg sync like `custom-msg`) + px4 xrce (`px4_msgs`, no ament pkg). These keep their
->   hand Cargo.toml patch and still build — a distinct topology problem, not a classifier gap.
+> - **tail W1** `1cc771279` — migrated the 8 remaining single-pkg `MANAGED+pkgxml` consumers
+>   (6 `nros-bench` bins, `cdr-roundtrip-qemu`, `multi-package-workspace/pkg_rust_publisher`):
+>   Cargo.toml patch → `.cargo/config.toml`; all resolve rc=0, qemu bins build green.
+> - **tail W2** `cebc03249` — `local-msg-package/rust_consumer` via WORKSPACE-mode sync (it is a
+>   colcon template workspace; single-pkg sync missed the local `local_msgs`/`extra_msgs`
+>   siblings — syncing the root patches all of them). rc=0.
+> - **Entry/Node-split fixtures (qemu-arm-baremetal `*`, stm32f4) — DONE** via
+>   [issue 0100](../issues/0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md)
+>   (W1–W7): collapsed to self-contained crates, then auto-migrated through single-pkg sync.
+>
+> **End state.** Every sync-driven consumer patch now lives in `.cargo/config.toml`. The
+> `[patch.crates-io]` tables that remain in a `Cargo.toml` are all OUTSIDE the sync model and
+> intentionally left: the workspace **root** `Cargo.toml` (not an example); **px4 xrce** ×3 +
+> `nros-tests/bins/declarative-safety-listener` (no `package.xml` — hand patches, not
+> sync-managed); `nros-tests/fixtures/orchestration_tiers_freertos` (a `@NANO_ROS_ROOT@`-templated
+> fixture, substituted at build time); and `examples/workspaces/rust/src/zephyr_entry` (west-built,
+> workspace-excluded). None is written by `nros sync`, so none reopens the issue-0094 class.
 
 > **Goal.** Stop `nros ws sync` from editing a consumer `Cargo.toml`. It writes its
 > `[patch.crates-io]` into a **`.cargo/config.toml`** instead, using a format-preserving
