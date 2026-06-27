@@ -119,6 +119,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
+- **#106** — [RMW backend self-register ctor
+  dead-stripped](0106-backend-self-register-ctor-dead-stripped.md): a binary that DEPS but never
+  REFERENCES a backend crate gets its `#[used]` `.init_array` self-register ctor stripped →
+  `CffiSession::open_named` resolves a null vtable → `open_multi` fails `Transport(InvalidArgument)`.
+  Surfaced building the phase-267 declarative bridge (`run_from_config` relies on self-register
+  alone). Workaround: `extern crate <backend> as _;` force-link; recommended fix: `nros::main!`
+  emits the register calls for the bridge's RMWs.
+- **#107** — [Cyclone baked-default descriptor not
+  auto-staged](0107-cyclone-baked-descriptor-not-auto-staged.md): the universal-fallback
+  `std_msgs/Int32` descriptor (`nros-rmw-cyclonedds-sys/build.rs`, `+whole-archive`) does not
+  stage in a consumer binary → `find_descriptor` null → `PublisherCreationFailed`. Every working
+  Cyclone consumer stages explicitly; the schema-free `run_from_config` can't, so it relies on the
+  broken fallback. Blocks phase-267 C6 forwarding. Fix: make the baked ctor stage in consumers, or
+  wire `nros codegen cyclonedds-descriptors` into the bridge flow.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):

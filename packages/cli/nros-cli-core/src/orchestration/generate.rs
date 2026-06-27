@@ -2479,7 +2479,11 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan) -> Option<String> {
             let Some(iface) = resolve_topic_interface(plan, topic) else {
                 continue;
             };
-            let type_name = format!("{}/{}", iface.package, iface.name);
+            // The DDS-mangled WIRE type name (`std_msgs::msg::dds_::Int32_`) — the
+            // form a typed publisher's zenoh keyexpr uses AND the Cyclone topic
+            // needs. The ROS form (`std_msgs/msg/Int32`) does NOT match the wire,
+            // so the raw sub/pub would never connect / Cyclone rejects the topic.
+            let type_name = interface_type_name(iface);
             let _ = write!(
                 bridges_toml,
                 "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{fi}\", topic = {topic:?} }}\nto = {{ node = \"s{ti}\", topic = {topic:?} }}\n"

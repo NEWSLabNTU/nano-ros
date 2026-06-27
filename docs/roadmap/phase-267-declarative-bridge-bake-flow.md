@@ -9,9 +9,11 @@ runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codege
 declarative zenoh↔cyclonedds bridge BUILDS end-to-end via the clean flow (no
 build.rs, no user bridge code): talker declares `publishes` → `nros sync`
 resolves /chatter→type → `nros-bridge.toml` → plain `nros::main!` macro emits
-`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. **C6
-(runtime) BLOCKED — `run_from_config`+`open_multi`+cyclonedds is untested + has 3
-gaps (open_multi InvalidArgument, DDS type-mangling, descriptor staging); see C6.** ·
+`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. **C6 (runtime)
+diagnosed — 3 gaps, 2 FIXED: backend force-link (issue 0106, `extern crate as _`)
++ DDS type-mangling (`interface_type_name` in the resolver). Gap 3 (cyclone
+descriptor not auto-staged, issue 0107) BLOCKS forwarding — the bridge builds +
+opens both sessions, cyclone egress pub fails pending 0107.** ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -363,6 +365,27 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   exercised here for the first time. C6 = fix them + the gated test. The BUILD
   (C1–C5) + the resolution flow + the zenoh↔zenoh / zenoh↔xrce `run_from_config`
   paths are unaffected.
+
+  **Fixes landed (2026-06-27) — full runtime diagnosis, 2 of 3 fixed:**
+  - **Gap 1 (open_multi InvalidArgument) — FIXED + issue 0106.** Root cause: the
+    backend `.init_array` self-register ctor is dead-stripped because the Entry
+    DEPS but never REFERENCES the backend crate → `open_named` resolves a null
+    vtable → InvalidArgument. Fix: `ws-bridge-rust/native_entry` `extern crate
+    nros_rmw_{zenoh,cyclonedds_sys} as _;` force-links them (confirmed: open_multi
+    then succeeds). Issue 0106 recommends `nros::main!` emit the register calls so
+    the Entry stays boilerplate-free.
+  - **Gap 2 (type form) — FIXED.** `render_bridge_runtime_config` now emits the
+    DDS-mangled wire type (`interface_type_name` → `std_msgs::msg::dds_::Int32_`)
+    instead of the ROS form, so the raw zenoh keyexpr + Cyclone topic match.
+  - **Gap 3 (descriptor staging) — issue 0107, BLOCKS forwarding.** Confirmed: the
+    Cyclone egress pub fails `PublisherCreationFailed` because the baked
+    `std_msgs/Int32` descriptor does not auto-stage in the consumer binary, and
+    `run_from_config` is schema-free (can't stage). Adding explicit
+    `register_type_descriptor` (mirroring the imperative bin) makes the entry RUN
+    (spins, no error) — proving gaps 1+2 are otherwise sufficient. Fix in 0107
+    (auto-stage the baked default, or wire `nros codegen cyclonedds-descriptors`).
+  **Net:** the bridge BUILDS, FORCE-LINKS + REGISTERS both backends, OPENS both
+  sessions, and is one descriptor-staging fix (0107) from end-to-end forwarding.
 
 **Cleanup:** remove the now-unused `render_bridge_entry_fns` + `emit_bridge_entry_fns`
 (S1) and, once the runtime path lands, the dead `build_generated_package` relay.
