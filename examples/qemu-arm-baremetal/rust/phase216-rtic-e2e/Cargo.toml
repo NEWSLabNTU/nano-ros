@@ -11,14 +11,28 @@ name = "qemu-rtic-main-e2e"
 test = false
 bench = false
 
+# Self-contained standalone fixture (issue 0100): node logic in this crate's
+# lib.rs (`nros::node!(E2eNode)` → `register_dispatch`); `node_pkgs`
+# self-references this crate. `main.rs` is the `nros::main!()` RTIC Entry.
+[lib]
+crate-type = ["rlib"]
+
 [package.metadata.nros.entry]
 deploy = "rtic-mps2-an385"
-node_pkgs = ["phase216_rtic_e2e_pkg"]
+node_pkgs = ["qemu-rtic-main-e2e"]
+
+[package.metadata.nros.node]
+class = "qemu_rtic_main_e2e::E2eNode"
+name = "phase216_rtic_e2e"
+default_namespace = "/"
+dispatch = "deferred"
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385", features = ["e2e-synthetic-callback"] }
-phase216_rtic_e2e_pkg = { path = "../phase216_rtic_e2e_pkg" }
+# Plain MPS2-AN385 board — the node calls its `exit_success()` to signal the
+# QEMU semihosting E2E pass (was a transitive dep via the node pkg).
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }
 mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

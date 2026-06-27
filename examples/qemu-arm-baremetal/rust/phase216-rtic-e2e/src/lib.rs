@@ -1,3 +1,11 @@
+//! Phase 216.B RTIC `nros::main!()` E2E node.
+//!
+//! Self-contained standalone fixture (issue 0100): the node logic lives in this
+//! crate's `lib.rs` (was a sibling `phase216_rtic_e2e_pkg`); `main.rs` is the
+//! `nros::main!()` RTIC Entry. The synthetic `__nros_e2e` callback (fired by the
+//! board's `e2e-synthetic-callback` feature) signals a clean QEMU semihosting
+//! exit on the first delivery.
+
 #![no_std]
 
 use nros::{

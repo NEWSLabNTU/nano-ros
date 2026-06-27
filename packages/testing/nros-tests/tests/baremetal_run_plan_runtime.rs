@@ -11,10 +11,10 @@
 //!
 //! ## Fixture
 //!
-//! `examples/qemu-arm-baremetal/rust/qemu-baremetal-main-e2e/` (Entry) +
-//! `qemu_baremetal_e2e_pkg/` (Node). The Entry is the 5-line `nros::main!()`
-//! shape (`#![no_std]/#![no_main]/panic` + the macro); the macro owns the whole
-//! boot scaffold.
+//! `examples/qemu-arm-baremetal/rust/qemu-baremetal-main-e2e/` — a single
+//! self-contained crate (issue 0100): `main.rs` is the 5-line `nros::main!()`
+//! Entry (`#![no_std]/#![no_main]/panic` + the macro), `lib.rs` is the node
+//! (`nros::node!(E2eNode)`); the macro owns the whole boot scaffold.
 //!
 //! ## Proof (no peer required — mirrors the posix/freertos two-arm gate)
 //!
