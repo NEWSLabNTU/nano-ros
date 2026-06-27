@@ -1,10 +1,28 @@
 ---
 id: 104
 title: "C entries are invisible in `ros2 node list`; node liveliness token never declared on any path"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-266, rfc-0019, rfc-0005]
+resolved_in: "194babcf1"
+---
+
+## Resolution (2026-06-27, `194babcf1`)
+
+The primary node now declares its ROS 2 node liveliness token at session open, so C, C++, and
+Rust entries appear in `ros2 node list`. Fix: added `node_name`/`namespace`/`domain_id` to
+`TransportConfig` (`nros-rmw`), threaded them from `RmwConfig` in `ZenohRmw::open`
+(`nros-rmw-zenoh`), and `ZenohSession::new` now calls `declare_node_liveliness` and **holds** the
+returned `LivelinessToken` for the session's lifetime (a dropped token would undeclare). Verified
+over the wire: a native C entry that previously showed **empty** `ros2 node list` now shows
+`/node`; Rust + C++ no regression; `just check` green.
+
+**Residuals (separate, NOT this issue):** per-node liveliness tokens for the individual
+`create_node` components (so a multi-node entry shows `/talker` + `/listener` rather than one
+`/node`) → **#105**. C-side entity identity propagation (so a C node's topics associate with it in
+`ros2 node info` / `ros2 topic list`) — a smaller follow-up; the node itself is now visible.
+
 ---
 
 ## Summary
