@@ -76,6 +76,10 @@ fn append_tls_env_to_locator(
 // ZenohSession
 // ============================================================================
 
+/// Maximum number of distinct per-node NN liveliness tokens the session will
+/// hold.  Sized to match the executor's per-process node cap.
+const MAX_PER_NODE_LIVELINESS: usize = 16;
+
 /// Zenoh session wrapping nros-rmw-zenoh Context
 ///
 /// This session requires manual polling via `spin_once()` or `poll()`.
@@ -88,6 +92,18 @@ pub struct ZenohSession {
     /// for the entire session lifetime.  `None` when `config.node_name`
     /// is empty or `should_declare_liveliness()` returns `false`.
     node_liveliness: Option<LivelinessToken>,
+    /// The node name used for the #104 primary token (from
+    /// `TransportConfig::node_name` at open).  Stored so that
+    /// `drop_primary_node_liveliness_if_superseded` can compare it against
+    /// per-node names from W2 entity creation and decide whether to drop the
+    /// primary (multi-node case) or keep it (single-node case).
+    primary_node_name: heapless::String<64>,
+    /// Phase 268 W2 — one NN liveliness token per distinct node name seen
+    /// via entity creation, so each launch component appears as its own node
+    /// in `ros2 node list`.  Bounded; held for the session lifetime (dropping
+    /// a token undeclares it).
+    per_node_liveliness:
+        heapless::Vec<(heapless::String<64>, LivelinessToken), MAX_PER_NODE_LIVELINESS>,
     /// Phase 124.B.3 — executor wake callback. Installed by
     /// `set_wake_callback`; non-null after the runtime has wired
     /// the executor through the cffi vtable. Invoked by
@@ -227,9 +243,13 @@ impl ZenohSession {
         // Fix #104 — declare the node liveliness token so the primary node
         // appears in `ros2 node list`.  Build the session first (token is
         // None), then immediately declare it while the session is live.
+        let mut primary_node_name: heapless::String<64> = heapless::String::new();
+        let _ = primary_node_name.push_str(config.node_name);
         let mut session = Self {
             context,
             node_liveliness: None,
+            primary_node_name,
+            per_node_liveliness: heapless::Vec::new(),
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         };
@@ -352,6 +372,55 @@ impl ZenohSession {
             None
         }
     }
+
+    /// Phase 268 W2 — lazily declare a per-node NN liveliness token the first
+    /// time an entity for `node_name` is created.
+    ///
+    /// Subsequent calls for the same name are no-ops (dedup).  The token is
+    /// held in `per_node_liveliness` for the session lifetime; dropping it
+    /// would undeclare the node in `ros2 node list`.
+    fn ensure_node_liveliness(&mut self, domain_id: u32, namespace: &str, node_name: &str) {
+        if node_name.is_empty() {
+            return;
+        }
+        // Dedup: already declared for this name.
+        if self
+            .per_node_liveliness
+            .iter()
+            .any(|(n, _)| n.as_str() == node_name)
+        {
+            return;
+        }
+        // Treat empty namespace as root "/" — same as the #104 primary path.
+        let ns = if namespace.is_empty() { "/" } else { namespace };
+        if let Some(tok) = self.declare_node_liveliness(domain_id, ns, node_name) {
+            let mut key: heapless::String<64> = heapless::String::new();
+            let _ = key.push_str(node_name);
+            let _ = self.per_node_liveliness.push((key, tok)); // silent overflow past MAX
+            // Gate: a per-node token with a DIFFERENT name supersedes the
+            // primary `/node` phantom — drop it so multi-node launches show
+            // only their components, not a spurious "node" entry.
+            self.drop_primary_node_liveliness_if_superseded(node_name);
+        }
+    }
+
+    /// Phase 268 W2 — drop the #104 primary node liveliness token when a
+    /// per-node token with a DIFFERENT name has been declared.
+    ///
+    /// **Single-node case**: the one component's name matches the primary name
+    /// (e.g. primary `"talker"` + per-node `"talker"`) → keep primary.
+    ///
+    /// **Multi-node case**: primary generic name (e.g. `"node"`) differs from
+    /// the per-node name (e.g. `"talker"`) → drop primary → `ros2 node list`
+    /// shows only `/talker` + `/listener`, not a spurious `/node`.
+    fn drop_primary_node_liveliness_if_superseded(&mut self, new_name: &str) {
+        if self.node_liveliness.is_some()
+            && !self.primary_node_name.is_empty()
+            && self.primary_node_name.as_str() != new_name
+        {
+            self.node_liveliness = None; // Drop → immediately undeclares the NN token.
+        }
+    }
 }
 
 impl Session for ZenohSession {
@@ -367,6 +436,10 @@ impl Session for ZenohSession {
         qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
+        // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
+        if let Some(node_name) = topic.node_name {
+            self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
+        }
         let liveliness_token = self
             .should_declare_liveliness()
             .then_some(())
@@ -394,6 +467,10 @@ impl Session for ZenohSession {
         qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
+        // Phase 268 W2 — ensure a per-node NN token for this subscriber's node.
+        if let Some(node_name) = topic.node_name {
+            self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
+        }
         let liveliness_token = self
             .should_declare_liveliness()
             .then_some(())
@@ -426,6 +503,10 @@ impl Session for ZenohSession {
         // Thread it through once zenoh-pico exposes per-endpoint QoS.
         let _ = qos;
         let mut server = ZenohServiceServer::new(&self.context, service, None)?;
+        // Phase 268 W2 — ensure a per-node NN token for this server's node.
+        if let Some(node_name) = service.node_name {
+            self.ensure_node_liveliness(service.domain_id, service.namespace, node_name);
+        }
         let liveliness_token = self
             .should_declare_liveliness()
             .then_some(())
@@ -456,6 +537,10 @@ impl Session for ZenohSession {
         // slot — the requested service QoS cannot be applied to the
         // querier yet. Thread it once zenoh-pico exposes per-endpoint QoS.
         let _ = qos;
+        // Phase 268 W2 — ensure a per-node NN token for this client's node.
+        if let Some(node_name) = service.node_name {
+            self.ensure_node_liveliness(service.domain_id, service.namespace, node_name);
+        }
         let liveliness_token = self
             .should_declare_liveliness()
             .then_some(())
