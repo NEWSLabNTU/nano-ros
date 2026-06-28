@@ -487,10 +487,18 @@ fn node_impl(input: TokenStream) -> TokenStream {
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
             let executor = runtime.runtime.executor_handle();
             // SAFETY: `executor` is the runtime sink's live `*mut Executor`
-            // (or null, which `install_node_typed_with_params` rejects as an error).
-            // W4a — `runtime.params` carries the launch-baked `<param>` initials so the
-            // node's `register`/`init` observes its compile-time launch values.
-            match unsafe { ::nros::install_node_typed_with_params::<#node_ty>(executor, runtime.params) } {
+            // (or null, which `install_node_typed_with_node_identity` rejects as an error).
+            // W4a — `runtime.params` carries the launch-baked `<param>` initials.
+            // Phase 268 W1 — `runtime.node_identity` carries the launch `<node name= namespace=>`
+            // baked by `nros::main!` so `ExecutorSink::create_node` uses the injected identity
+            // instead of the `NodeOptions` default (RFC-0046). `None` → backward-compatible.
+            match unsafe {
+                ::nros::install_node_typed_with_node_identity::<#node_ty>(
+                    executor,
+                    runtime.params,
+                    runtime.node_identity,
+                )
+            } {
                 0 => ::core::result::Result::Ok(()),
                 // Issue 0095 — `-2` is executor callback-table exhaustion; surface
                 // the actionable `NROS_EXECUTOR_MAX_CBS` knob, not opaque NodeRegister.

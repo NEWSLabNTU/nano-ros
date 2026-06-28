@@ -397,6 +397,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
     // self-bringup arm (no launch file → no `<param>`).
     let mut node_param_bakes: Vec<Vec<(String, String)>> = Vec::new();
+    // Phase 268 W1 — per-node launch `<node name= namespace=>` identity, parallel to
+    // `node_param_bakes` (launch arm only). Each entry is the baked `(name, namespace)`
+    // pair that `ExecutorSink::create_node` uses instead of the `NodeOptions` default
+    // (RFC-0046). Empty (`None`) in the self-bringup arm.
+    let mut node_identity_bakes: Vec<(String, String)> = Vec::new();
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = match &args.launch {
@@ -613,6 +618,22 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     .clone()
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| node.exec.clone());
+
+                // Phase 268 W1 — bake the launch `<node name= namespace=>` identity
+                // (RFC-0046). The instance name is already resolved above (same logic as
+                // the W4a param rail). Namespace: `node.namespace` when present and
+                // non-empty; default `"/"` (ROS convention). `NodeSpec::namespace` is
+                // `Option<String>` in the launch parser.
+                {
+                    let baked_name = instance.clone();
+                    let baked_ns = node
+                        .namespace
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("/")
+                        .to_string();
+                    node_identity_bakes.push((baked_name, baked_ns));
+                }
                 let groups = read_node_callback_groups(&cargo_toml);
                 if !groups.is_empty() {
                     node_groups.insert(instance.clone(), groups);
@@ -712,8 +733,25 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 let v = LitStr::new(value, Span::call_site());
                 quote! { (#n, #v) }
             });
+            // Phase 268 W1 — set `runtime.node_identity` to this node's launch
+            // `<node name= namespace=>` identity before the register call (RFC-0046).
+            // `None` in the self-bringup arm (no launch, `node_identity_bakes` empty) so
+            // no identity leaks between components (same discipline as the params reset).
+            let identity_emit = match node_identity_bakes.get(i) {
+                Some((name, ns)) => {
+                    let n = LitStr::new(name, Span::call_site());
+                    let s = LitStr::new(ns, Span::call_site());
+                    quote! {
+                        runtime.node_identity = ::core::option::Option::Some((#n, #s));
+                    }
+                }
+                None => quote! {
+                    runtime.node_identity = ::core::option::Option::None;
+                },
+            };
             quote! {
                 runtime.params = &[ #( #param_lits ),* ];
+                #identity_emit
                 ::#ident::register(runtime)?;
             }
         })

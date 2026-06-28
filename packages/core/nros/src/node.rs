@@ -3291,4 +3291,73 @@ mod tests {
         assert_eq!(client.source_name.as_str(), "/navigate");
         assert!(client.callback_id.is_none());
     }
+
+    // Phase 268 W1 — unit test: launch node_identity injection overrides NodeOptions
+    // default (RFC-0046). Uses a `CapturingRuntime` that applies the same
+    // `match self.node_identity` logic as `ExecutorSink::create_node` and records the
+    // resolved (name, namespace). No executor needed — tests the design contract.
+    // Uses `MetadataString` (heapless::String re-export) to stay no_std-compatible.
+    #[test]
+    fn node_identity_injected_wins_over_node_options() {
+        /// Minimal NodeRuntime that applies the Phase 268 W1 identity override
+        /// (same logic as `ExecutorSink::create_node`) and records the resolved values.
+        struct CapturingRuntime {
+            node_identity: Option<(&'static str, &'static str)>,
+            resolved_name: MetadataString,
+            resolved_ns: MetadataString,
+        }
+        impl NodeRuntime for CapturingRuntime {
+            fn create_node(&mut self, _id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
+                // Mirror ExecutorSink::create_node override logic (RFC-0046).
+                let (name, ns) = match self.node_identity {
+                    Some((n, s)) => (n, s),
+                    None => (options.name, options.namespace),
+                };
+                self.resolved_name.clear();
+                let _ = self.resolved_name.push_str(name);
+                self.resolved_ns.clear();
+                let _ = self.resolved_ns.push_str(ns);
+                Ok(())
+            }
+            fn create_entity(&mut self, _m: EntityMetadata) -> NodeResult<()> {
+                Ok(())
+            }
+            fn record_callback_effect(
+                &mut self,
+                _id: CallbackId<'_>,
+                _kind: crate::node_metadata::CallbackEffectKind,
+                _entity: EntityId<'_>,
+            ) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+
+        // (a) Injected identity wins over NodeOptions default.
+        let mut rt_a = CapturingRuntime {
+            node_identity: Some(("launched", "/ns")),
+            resolved_name: MetadataString::new(),
+            resolved_ns: MetadataString::new(),
+        };
+        {
+            let mut ctx = NodeContext::new("test_node", &mut rt_a);
+            ctx.create_node(NodeOptions::new("default").namespace("/d"))
+                .unwrap();
+        }
+        assert_eq!(rt_a.resolved_name.as_str(), "launched");
+        assert_eq!(rt_a.resolved_ns.as_str(), "/ns");
+
+        // (b) None → NodeOptions default stands (backward-compatible).
+        let mut rt_b = CapturingRuntime {
+            node_identity: None,
+            resolved_name: MetadataString::new(),
+            resolved_ns: MetadataString::new(),
+        };
+        {
+            let mut ctx = NodeContext::new("test_node", &mut rt_b);
+            ctx.create_node(NodeOptions::new("default").namespace("/d"))
+                .unwrap();
+        }
+        assert_eq!(rt_b.resolved_name.as_str(), "default");
+        assert_eq!(rt_b.resolved_ns.as_str(), "/d");
+    }
 }

@@ -309,6 +309,7 @@ impl ExecutorNodeRuntime {
             executor: &mut self.executor,
             cell: cell.clone(),
             nodes: Vec::new(),
+            node_identity: None, // direct API — no launch injection
         };
         let sink_dyn: &mut dyn NodeRuntime = &mut sink;
         let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -590,6 +591,10 @@ struct ExecutorSink<'a> {
     cell: Arc<ComponentCell>,
     /// Per-registration node mapping: stable id → executor `NodeId`.
     nodes: Vec<(String, nros_node::executor::NodeId)>,
+    /// Phase 268 W1 — launch-injected node identity `(name, namespace)` baked by
+    /// `nros::main!` per component. When `Some`, `create_node` uses this identity
+    /// instead of the `NodeOptions` default; `None` → default stands (backward-compat).
+    node_identity: Option<(&'static str, &'static str)>,
 }
 
 impl ExecutorSink<'_> {
@@ -606,10 +611,17 @@ impl NodeRuntime for ExecutorSink<'_> {
         if self.nodes.iter().any(|(s, _)| s.as_str() == id.as_str()) {
             return Err(NodeDeclError::Runtime);
         }
+        // Phase 268 W1 — launch wins over the NodeOptions default (RFC-0046).
+        // When `nros::main!` injected an identity for this component, use it;
+        // otherwise fall back to what the Node declared in its `create_node` call.
+        let (name, ns) = match self.node_identity {
+            Some((n, s)) => (n, s),
+            None => (options.name, options.namespace),
+        };
         let node_id = self
             .executor
-            .node_builder(options.name)
-            .namespace(options.namespace)
+            .node_builder(name)
+            .namespace(ns)
             .domain_id(options.domain_id)
             .build()
             .map_err(decl_err_from_node)?;
@@ -1302,6 +1314,7 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
 fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     executor: &mut Executor,
     params: &'p [(&'p str, &'p str)],
+    node_identity: Option<(&'static str, &'static str)>,
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
@@ -1327,6 +1340,8 @@ where
         executor: &mut *executor,
         cell: cell.clone(),
         nodes: Vec::new(),
+        // Phase 268 W1 — thread the per-component identity bake (RFC-0046).
+        node_identity,
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -1403,12 +1418,33 @@ pub unsafe fn install_node_typed_with_params<C: ExecutableNode + 'static>(
 where
     C::State: 'static,
 {
+    // SAFETY: forwarded per this fn's contract; no identity injection.
+    unsafe { install_node_typed_with_node_identity::<C>(executor, params, None) }
+}
+
+/// Phase 268 W1 — same as [`install_node_typed_with_params`] but also injects the
+/// launch `<node name= namespace=>` identity so `ExecutorSink::create_node` uses it
+/// instead of the `NodeOptions` default (RFC-0046). `None` → backward-compatible
+/// (NodeOptions stands). `nros::node!()` calls this variant to carry the identity from
+/// `RuntimeCtx::node_identity` set by `nros::main!` per component. `params` and
+/// `node_identity` strings must outlive the call (both are `'static` in the macro emit).
+///
+/// # Safety
+/// `executor` must be the live `*mut Executor` handle a typed entry passes, valid for the call.
+pub unsafe fn install_node_typed_with_node_identity<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+    params: &[(&str, &str)],
+    node_identity: Option<(&'static str, &'static str)>,
+) -> i32
+where
+    C::State: 'static,
+{
     if executor.is_null() {
         return -1;
     }
     // SAFETY: per the fn contract, `executor` is the live `*mut Executor` handle.
     let exec: &mut Executor = unsafe { &mut *(executor as *mut Executor) };
-    match register_node_borrowed::<C>(exec, params) {
+    match register_node_borrowed::<C>(exec, params, node_identity) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro
         // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque

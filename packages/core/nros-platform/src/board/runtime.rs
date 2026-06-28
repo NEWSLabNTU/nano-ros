@@ -198,6 +198,14 @@ pub struct RuntimeCtx<'a> {
     /// embedded boards.
     pub env: &'a [(&'a str, &'a str)],
 
+    /// Phase 268 W1 — launch-injected node identity `(name, namespace)` for
+    /// the NEXT `register()` call, set by `nros::main!` per component before
+    /// each `<pkg>::register(runtime)?` call. `None` → the node's own
+    /// `create_node(NodeOptions::new("…"))` default stands (backward-compatible).
+    /// Reset to `None` after every register in the self-bringup arm so a prior
+    /// component's identity never leaks into the next (RFC-0046).
+    pub node_identity: Option<(&'static str, &'static str)>,
+
     /// Node runtime sink. `BoardEntry::run` populates this with
     /// the live `ExecutorNodeRuntime`-backed impl before invoking
     /// the user `setup` closure. The codegen-emitted
@@ -218,6 +226,7 @@ impl core::fmt::Debug for RuntimeCtx<'_> {
             .field("params", &self.params)
             .field("remaps", &self.remaps)
             .field("env", &self.env)
+            .field("node_identity", &self.node_identity)
             .field("runtime", &"<dyn NodeDispatchRuntime>")
             .finish()
     }
@@ -236,6 +245,7 @@ impl<'a> RuntimeCtx<'a> {
             params: &[],
             remaps: &[],
             env: &[],
+            node_identity: None,
             runtime,
         }
     }
@@ -252,6 +262,7 @@ impl<'a> RuntimeCtx<'a> {
             params,
             remaps,
             env,
+            node_identity: None,
             runtime,
         }
     }
