@@ -44,12 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#95** — [Executor `MAX_CBS` overflow → opaque `NodeRegister`, no per-entry sizing
-  knob](0095-executor-max-cbs-overflow-opaque-noderegister.md): a topology declaring more
-  callback entries than the build-time `NROS_EXECUTOR_MAX_CBS` (default 4) fails as an
-  opaque `NodeRegister("<pkg>")` with the underlying `BufferTooSmall` discarded; and the
-  workspace-global cargo `[env]` is the only lever to raise it (bloats lean embedded
-  entries). Found running the phase-263 A1 showcase.
+- **#110** — [No per-entry way to size the executor callback table
+  (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
+  `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
+  `[env]` is the only lever to raise it, so raising it for a fat native entry also bloats lean
+  RAM-bound embedded entries in the same workspace. Wants a topology-derived const-generic
+  `Executor` or a per-entry build knob. Split from #95 (diagnostic half resolved).
 - **#96** — [In-process (same-executor) node-to-node delivery does not happen — pub/sub
   AND service](0096-in-process-same-executor-service-roundtrip-broken.md): two nodes on
   one `Executor`/session do not talk — a same-process subscriber/queryable never receives
@@ -73,7 +73,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#99** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#95** —
+[executor `MAX_CBS` overflow → opaque
+`NodeRegister`](archived/0095-executor-max-cbs-overflow-opaque-noderegister.md): a topology
+declaring more callbacks than `NROS_EXECUTOR_MAX_CBS` (default 4) failed as an opaque
+`NodeRegister("<pkg>")` with the underlying capacity error discarded at every collapse seam.
+Fixed the diagnostic half (gap A): a distinct `NodeError::ExecutorFull` threads source
+(`next_entry_slot`) → `NodeDeclError::ExecutorFull` → install `-2` → the `nros::node!` register
+wrapper → `RuntimeError::ExecutorFull(<pkg>)`, whose `Display` names the actionable
+`NROS_EXECUTOR_MAX_CBS` knob (arena overflow keeps `BufferTooSmall`; modes now distinguishable,
+regression-locked in `executor/tests.rs`). Per-entry sizing ergonomics (gap B) split to #110.
+Also: **#99** —
 [declarative `[[bridge]]` does not
 forward](archived/0099-declarative-bridge-planner-population.md): the cross-RMW bridge
 orchestration is complete + verified end-to-end — the planner emits `build.transports` +

@@ -2282,7 +2282,10 @@ impl Executor {
         self.entries
             .iter()
             .position(|e| e.is_none())
-            .ok_or(NodeError::BufferTooSmall)
+            // Issue 0095 — the callback-entry table (`NROS_EXECUTOR_MAX_CBS`,
+            // default 4) is full. Distinct from `BufferTooSmall` so the register
+            // seam can tell the user to raise the knob.
+            .ok_or(NodeError::ExecutorFull)
     }
 
     /// Typed buffered subscription core (the `node_mut(id).subscription(t)

@@ -1,10 +1,12 @@
 ---
 id: 95
 title: "Executor `MAX_CBS` overflow surfaces as an opaque `NodeRegister(<pkg>)` with no cause, and has no per-entry sizing knob"
-status: open
+status: resolved
 type: bug
 area: core
 related: [phase-263, phase-264]
+resolves: [95]
+split: [110]
 ---
 
 ## Summary
@@ -71,3 +73,39 @@ workspace boot only the minimal talker+listener launch, so they keep the default
   (e.g. a generated `const` the entry passes to a const-generic `Executor`), or at
   least a per-entry build knob the entry's `Cargo.toml` metadata can carry, so cargo
   `[env]` global-ness stops being the only lever.
+
+## Resolution (gap A — done)
+
+The opaque-diagnostic gap is fixed by threading a **distinct capacity error**
+through every collapse seam, end to end:
+
+1. `Executor::next_entry_slot` (`nros-node/src/executor/spin.rs`) — the capacity
+   source — now returns the new `NodeError::ExecutorFull`
+   (`nros-node/src/executor/types.rs`) instead of the generic `BufferTooSmall`.
+   The arena-overflow path keeps `BufferTooSmall`, so the two failure modes are
+   now distinguishable (regression-locked by `test_entry_slots_exhausted` vs the
+   arena-overflow test in `executor/tests.rs`).
+2. `nros/src/node_runtime.rs` — new `decl_err_from_node` helper maps
+   `NodeError::ExecutorFull → NodeDeclError::ExecutorFull` (a new variant in
+   `nros/src/node.rs`) at the slot-allocating `create_entity` sites; other
+   `NodeError`s still fold to `NodeDeclError::Runtime`.
+3. `install_node_typed_with_params` (same file) returns a distinct **`-2`** for
+   `NodeDeclError::ExecutorFull` (vs `-1` for everything else).
+4. The `nros::node!` register wrapper (`nros-macros/src/lib.rs`) maps `-2` →
+   the new `RuntimeError::ExecutorFull(<pkg>)` (`nros-platform/src/board/runtime.rs`),
+   whose `Display` reads:
+   `node '<pkg>' register failed: executor callback table full — raise
+   NROS_EXECUTOR_MAX_CBS (build-time env, default 4)`.
+
+A first-time runner now sees the actionable knob name instead of an opaque
+`NodeRegister("<pkg>")`. `cargo test -p nros-node --lib` green (179);
+`nros-node`/`nros-macros`/`nros` clippy clean.
+
+## Deferred (gap B — split to #110)
+
+The per-entry sizing ergonomics (deriving `MAX_CBS`/`ARENA_SIZE` from the baked
+topology, or a per-entry build knob, so workspace-global cargo `[env]` stops being
+the only lever) is architectural and independent of the diagnostic fix. Tracked
+separately as **#110**. The phase-263 A1 fixture workaround
+(`NROS_EXECUTOR_MAX_CBS = "8"` for `workspace-rust-native-showcase`) stays in place
+until #110 lands.

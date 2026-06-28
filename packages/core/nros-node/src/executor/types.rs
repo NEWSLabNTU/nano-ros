@@ -490,6 +490,11 @@ pub enum NodeError {
     /// called when the per-Executor node table is full
     /// (`NROS_EXECUTOR_MAX_NODES` reached).
     NodeTableFull,
+    /// Issue 0095 — the executor's fixed callback-entry table is full
+    /// (`NROS_EXECUTOR_MAX_CBS`, default 4): a timer / subscription / service /
+    /// action could not claim a slot. Distinct from `BufferTooSmall` so the
+    /// register seam can name the knob.
+    ExecutorFull,
     /// Phase 104.C.2 — requested RMW backend does not match the
     /// Executor's open session (single-session restriction lifts in
     /// Phase 104.C.3 when the per-Node session cache lands).

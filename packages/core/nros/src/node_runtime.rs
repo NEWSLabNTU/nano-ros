@@ -612,7 +612,7 @@ impl NodeRuntime for ExecutorSink<'_> {
             .namespace(options.namespace)
             .domain_id(options.domain_id)
             .build()
-            .map_err(|_| NodeDeclError::Runtime)?;
+            .map_err(decl_err_from_node)?;
         self.nodes.push((String::from(id.as_str()), node_id));
         Ok(())
     }
@@ -643,7 +643,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         metadata.type_name,
                         metadata.type_hash,
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 let id_owned = String::from(metadata.id.as_str());
                 self.cell.publishers.borrow_mut().push((id_owned, handle));
                 Ok(())
@@ -673,7 +673,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                                 dispatch_into_cell_with_integrity(&cell_s, &cb_s, payload, status);
                             },
                         )
-                        .map_err(|_| NodeDeclError::Runtime)?;
+                        .map_err(decl_err_from_node)?;
                     return Ok(());
                 }
                 self.executor
@@ -686,7 +686,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             dispatch_into_cell(&cell, &cb_id_owned, payload);
                         },
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 Ok(())
             }
             EntityKind::Timer => {
@@ -704,7 +704,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             dispatch_into_cell(&cell, &cb_id_owned, &[]);
                         },
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 Ok(())
             }
             // Phase 212.M-F.23 — service / action client + server dispatch on
@@ -733,7 +733,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         service_server_trampoline,
                         ctx,
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 Ok(())
             }
             EntityKind::ServiceClient => {
@@ -748,7 +748,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         None,
                         core::ptr::null_mut(),
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 self.cell
                     .service_clients
                     .borrow_mut()
@@ -789,7 +789,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             context: ctx,
                         },
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 self.cell
                     .action_servers
                     .borrow_mut()
@@ -835,7 +835,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             context: ctx,
                         },
                     )
-                    .map_err(|_| NodeDeclError::Runtime)?;
+                    .map_err(decl_err_from_node)?;
                 self.cell
                     .action_clients
                     .borrow_mut()
@@ -856,7 +856,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     if self.executor.params().is_none() {
                         self.executor
                             .register_parameter_services()
-                            .map_err(|_| NodeDeclError::Runtime)?;
+                            .map_err(decl_err_from_node)?;
                     }
                     let value = param_default_to_value(metadata.parameter_default.as_ref());
                     self.executor
@@ -1202,9 +1202,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         let executor = unsafe { &mut *self.executor };
         let core = unsafe { executor.action_client_core_mut(entry_index) }
             .ok_or(NodeDeclError::Runtime)?;
-        let goal_id = core
-            .send_goal_raw(goal_cdr)
-            .map_err(|_| NodeDeclError::Runtime)?;
+        let goal_id = core.send_goal_raw(goal_cdr).map_err(decl_err_from_node)?;
         // rclcpp-style: request the result immediately. The server queues the
         // get_result request until the goal terminates, then replies — the
         // executor's spin auto-delivers it to the bound result callback (the
@@ -1290,6 +1288,17 @@ impl ActionExecutor for RuntimeActions<'_> {
 /// W0-B target) or stash it to drive `tick` (service-client/action nodes; phase-257 D2).
 /// The node self-creates its node (its `Node::NAME`) on the shared executor (phase-257
 /// D7 Option C — Rust nodes in a foreign entry self-name, no entry-side qos-override).
+/// Issue 0095 — preserve executor callback-table exhaustion through the
+/// `NodeError → NodeDeclError` collapse so the register seam (and ultimately
+/// the `nros::main!` entry) can name `NROS_EXECUTOR_MAX_CBS` instead of an
+/// opaque `NodeRegister`. Every other `NodeError` stays `Runtime`.
+fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
+    match e {
+        nros_node::NodeError::ExecutorFull => NodeDeclError::ExecutorFull,
+        _ => NodeDeclError::Runtime,
+    }
+}
+
 fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     executor: &mut Executor,
     params: &'p [(&'p str, &'p str)],
@@ -1401,6 +1410,10 @@ where
     let exec: &mut Executor = unsafe { &mut *(executor as *mut Executor) };
     match register_node_borrowed::<C>(exec, params) {
         Ok(_cell) => 0,
+        // Issue 0095 — distinct code for executor-table exhaustion so the macro
+        // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque
+        // `NodeRegister`. Every other failure stays the generic `-1`.
+        Err(NodeDeclError::ExecutorFull) => -2,
         Err(_) => -1,
     }
 }

@@ -38,6 +38,11 @@ pub enum NodeDeclError {
     MissingExport,
     /// Generated runtime rejected the declaration.
     Runtime,
+    /// The executor's fixed callback-entry table is full — a timer /
+    /// subscription / service / action could not claim a slot (issue 0095).
+    /// Carries the capacity cause through the `NodeError → NodeDeclError`
+    /// collapse so the register seam can name `NROS_EXECUTOR_MAX_CBS`.
+    ExecutorFull,
 }
 
 impl NodeDeclError {
@@ -57,6 +62,10 @@ impl NodeDeclError {
             }
             Self::MissingExport => MISSING_NODE_EXPORT_ERROR,
             Self::Runtime => "component runtime rejected declaration",
+            Self::ExecutorFull => {
+                "executor callback table full — raise NROS_EXECUTOR_MAX_CBS \
+                 (build-time, default 4)"
+            }
         }
     }
 }

@@ -492,6 +492,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
             // node's `register`/`init` observes its compile-time launch values.
             match unsafe { ::nros::install_node_typed_with_params::<#node_ty>(executor, runtime.params) } {
                 0 => ::core::result::Result::Ok(()),
+                // Issue 0095 — `-2` is executor callback-table exhaustion; surface
+                // the actionable `NROS_EXECUTOR_MAX_CBS` knob, not opaque NodeRegister.
+                -2 => ::core::result::Result::Err(
+                    ::nros::__macro_support::nros_platform::RuntimeError::ExecutorFull(#pkg_name_lit),
+                ),
                 _ => ::core::result::Result::Err(
                     ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister(#pkg_name_lit),
                 ),

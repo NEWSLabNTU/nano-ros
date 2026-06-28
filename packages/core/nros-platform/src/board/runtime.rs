@@ -321,6 +321,12 @@ pub enum RuntimeError {
     /// `<node pkg=…>` convention.
     NodeRegister(&'static str),
 
+    /// Issue 0095 — a node's `register` failed specifically because the
+    /// executor's fixed callback-entry table (`NROS_EXECUTOR_MAX_CBS`) is full.
+    /// Distinct from the opaque [`NodeRegister`](Self::NodeRegister) so the user
+    /// sees the actionable knob. The string carries the node pkg name.
+    ExecutorFull(&'static str),
+
     /// The hosted Entry spin loop failed or did not observe the
     /// requested runtime condition before its bounded test deadline.
     Spin,
@@ -330,6 +336,11 @@ impl core::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::NodeRegister(msg) => write!(f, "node register failed: {msg}"),
+            Self::ExecutorFull(msg) => write!(
+                f,
+                "node '{msg}' register failed: executor callback table full — \
+                 raise NROS_EXECUTOR_MAX_CBS (build-time env, default 4)"
+            ),
             Self::Spin => write!(f, "entry spin failed"),
         }
     }

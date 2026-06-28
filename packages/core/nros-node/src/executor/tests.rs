@@ -1097,7 +1097,8 @@ fn test_entry_slots_exhausted() {
             .unwrap();
     }
 
-    // 5th registration should fail — all 4 slots are taken.
+    // 5th registration should fail — all 4 slots are taken. Issue 0095:
+    // distinct `ExecutorFull` (capacity), not the generic `BufferTooSmall`.
     let result = executor
         .node_mut(nid)
         .subscription("/e")
@@ -1105,7 +1106,7 @@ fn test_entry_slots_exhausted() {
         .typed::<TestMsg>()
         .rx_buffer::<64>()
         .build(|_msg: &TestMsg| {});
-    assert_eq!(result, Err(NodeError::BufferTooSmall));
+    assert_eq!(result, Err(NodeError::ExecutorFull));
 }
 
 #[test]
