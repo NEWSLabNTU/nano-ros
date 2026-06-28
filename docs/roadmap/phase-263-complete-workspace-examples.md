@@ -99,7 +99,18 @@ default. Sequence so each wave is shippable on its own.
   env override (default `/chatter`) so it can subscribe `/sum`. The combined
   `native_showcase_entry` is left as-is (its in-process service nodes are non-functional
   per 0096; documented, no fixture/test).
-  **Remaining:** project to C / C++ / mixed.
+  **C DONE (2026-06-28)** — `tests/c_service_roundtrip_xprocess_e2e.rs` GREEN. New
+  `c_add_server_pkg` (`AddServer` — `nros_cpp_service_server_register` on `/add_two_ints`; the
+  callback lifts the proven `examples/native/c/service-server` deserialize→compute→serialize
+  using the generated `example_interfaces` C srv bindings) + `c_add_client_pkg` (`AddClient` —
+  the C component service client is **POLL-model**: `nros_cpp_service_client_send_request` in one
+  tick, `try_recv_reply` the next, NOT Rust's blocking `call_for_name`, since a component
+  callback must never block the executor; a wait-counter resends pre-discovery drops). Two
+  single-node entries (`native_service_{server,client}_entry` + `service_{server,client}.launch
+  .xml`) for the 2-process topology (0096), fixtures `workspace-c-native-service-{server,client}`,
+  catalog entries in `system.toml`. The test asserts the CLIENT's stdout shows the
+  server-computed sums `1,2,3` (a=0,1,2 + b=1) — the reply crossing from the separate server
+  process IS the round-trip proof (no 3rd subscriber needed). **Remaining:** project to C++ / mixed.
   Port from `examples/native/{rust,c,cpp}/service-*`.
 - **A2 — parameters. RUST DONE (2026-06-20/24, via phase-264 W4).** Was BLOCKED (no
   runtime parameter-VALUE read on `CallbackCtx`); phase-264 W4 added

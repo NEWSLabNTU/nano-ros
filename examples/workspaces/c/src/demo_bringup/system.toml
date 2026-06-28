@@ -14,6 +14,21 @@ pkg = "c_listener_pkg"
 class = "c_listener_pkg::Listener"
 name = "listener"
 
+# phase-263 A1 (services, C) — AddTwoInts round-trip components. Listed in the catalog; the
+# default system.launch.xml stays talker+listener. They run as TWO processes (issue 0096 — an
+# in-process server+client can't talk): native_service_{server,client}_entry each boot a
+# one-node launch (service_{server,client}.launch.xml). add_client calls add_server on
+# /add_two_ints each tick (a=0,1,2…, b=1 → sums 1,2,3…) and republishes the sum on /sum.
+[[component]]
+pkg = "c_add_server_pkg"
+class = "c_add_server_pkg::AddServer"
+name = "add_server"
+
+[[component]]
+pkg = "c_add_client_pkg"
+class = "c_add_client_pkg::AddClient"
+name = "add_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
