@@ -1,11 +1,29 @@
 ---
 id: 99
 title: "Declarative `[[bridge]]` in system.toml does not forward — the planner emits neither `build.transports` nor `plan.bridges`, so the (code-complete) bridge codegen never fires"
-status: open
+status: resolved
 type: bug
 area: cli
 related: [phase-263, phase-267, rfc-0009]
+resolved_in: "phase-267 (W0/C1–C5) + 14b7a4cc3 (2026-06-28)"
 ---
+
+> **RESOLVED (2026-06-28).** The orchestration/build flow is complete + verified
+> end-to-end. The planner transform (W0) emits `build.transports` + `plan.bridges`
+> from `system.toml`; `nros sync` resolves topic→type via **synthetic node
+> metadata** (`[[package.metadata.nros.node.publishes]]`, no build/sidecar) and
+> writes `<bringup>/nros-bridge.toml`; plain `nros::main!` emits
+> `run_from_config_str(include_str!)` + (issue 0106) the backend `register()`
+> calls; `cargo build` links. Verified: `nros sync` on `ws-bridge-rust` generates
+> the bridge config (zenoh↔cyclonedds, `/chatter` → `std_msgs::msg::dds_::Int32_`)
+> and `native_entry` builds. (A stale `nros` binary masked this during the study —
+> a fresh build produces `bridges=1, interfaces=1, transports=2`.) The one
+> remaining latent bug — the synthetic publisher type leaking the `msg` namespace
+> (`pkg/msg/Name` → `name="msg/Name"`) — is fixed in `14b7a4cc3`.
+>
+> Full runtime **forwarding** (a stock `rmw_cyclonedds_cpp` peer echoing `/chatter`)
+> chains only on **#107** (Cyclone descriptor not auto-staged for the egress pub).
+> The declarative-bridge *orchestration* that #99 was about is done.
 
 ## Summary
 

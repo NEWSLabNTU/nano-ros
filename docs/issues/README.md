@@ -56,14 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   the same-process publisher/client (zenoh does not loop a session's own publications back
   to itself). External processes receive normally. The phase-263 A1 service and B1 safety
   demos are therefore cross-process (separate entries).
-- **#99** — [declarative `[[bridge]]` does not
-  forward](0099-declarative-bridge-planner-population.md): the whole cross-RMW bridge pipeline
-  (schema, `PlanBridge`/`PlanTransport` IR, `validate_bridges` + relay codegen, `nros-bridge`
-  echo codec, `open_multi` runtime) is code-complete + unit-tested (RFC-0009), but the
-  **planner** never translates `system.toml`'s `[[bridge]]`/`[[domain]]` into
-  `plan.build.transports` + `plan.bridges` — it emits only `bridged_rmws`. So a bridged system
-  links both backends but `is_bridge()` is false and the relay codegen (gated on non-empty
-  `plan.bridges`) never fires. Bounded planner transform. Blocks phase-263 B3 (`ws-bridge-rust`).
 - **#102** — [~60 examples ship untested; advanced capabilities
   native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
   single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native
@@ -81,14 +73,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#106** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#99** —
+[declarative `[[bridge]]` does not
+forward](archived/0099-declarative-bridge-planner-population.md): the cross-RMW bridge
+orchestration is complete + verified end-to-end — the planner emits `build.transports` +
+`plan.bridges`; `nros sync` resolves topic→type via synthetic node metadata
+(`[[package.metadata.nros.node.publishes]]`) → `nros-bridge.toml`; plain `nros::main!` emits
+`run_from_config_str` + the backend `register()` (#106); `cargo build` links. Done in phase-267
+(W0/C1–C5) + `14b7a4cc3` (synthetic type `pkg/msg/Name` namespace fix); full runtime forwarding
+verified (phase-267 W-B, #107). Also: **#106** —
 [RMW backend self-register ctor
 dead-stripped](archived/0106-backend-self-register-ctor-dead-stripped.md): a bridge Entry
 referenced no backend symbol, so the linker dead-stripped the `nros-rmw-*` crates' `.init_array`
 self-register ctors → `open_multi` null vtable → `Transport(InvalidArgument)`. Fixed (`0d205c1f7`):
 `nros::main!` reads the bridge's RMWs from `system.toml` and emits `nros_rmw_<x>::register()` in
 the generated `main` (no per-Entry `extern crate` boilerplate). Verified via macro expansion + 4
-unit tests; full runtime `open_multi` chains on #99 + #107. Also: **#107** —
+unit tests; full runtime `open_multi` chains on #107. Also: **#107** —
 [Cyclone descriptor not staged in a schema-free
 bridge](archived/0107-cyclone-baked-descriptor-not-auto-staged.md): `run_from_config`'s Cyclone
 egress failed `PublisherCreationFailed` (no descriptor, and `std_msgs/Int32` is NOT baked);
