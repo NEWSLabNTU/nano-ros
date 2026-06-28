@@ -869,8 +869,16 @@ fn summary_to_synthetic_json(summary: &CargoComponentSummary) -> JsonValue {
             let arr: Vec<JsonValue> = decls
                 .iter()
                 .map(|d| {
-                    // ROS type `"pkg/msg/Name"` (or `"pkg/Name"`) → {package, name}.
-                    let (package, name) = d.type_name.split_once('/').unwrap_or(("", &d.type_name));
+                    // ROS type `"pkg/msg/Name"` (or `"pkg/Name"`) → {package, name}:
+                    // package = first segment, name = LAST segment (drop the
+                    // `msg`/`srv`/`action` namespace middle). `split_once` alone
+                    // left `name = "msg/Name"` for the 3-part form → mis-resolve.
+                    let segs: Vec<&str> = d.type_name.split('/').collect();
+                    let (package, name) = match segs.as_slice() {
+                        [pkg, .., n] => (*pkg, *n),
+                        [n] => ("", *n),
+                        _ => ("", d.type_name.as_str()),
+                    };
                     let id = format!(
                         "{prefix}_{}",
                         d.topic.trim_start_matches('/').replace('/', "_")
@@ -1030,7 +1038,9 @@ mod tests {
         assert_eq!(pubs.len(), 1);
         assert_eq!(pubs[0]["topic"], "/chatter");
         assert_eq!(pubs[0]["type"]["package"], "std_msgs");
-        assert_eq!(pubs[0]["type"]["name"], "msg/Int32");
+        // Issue 0099 — 3-part `pkg/msg/Name` drops the `msg` namespace middle
+        // (was wrongly `"msg/Int32"`, which mis-resolved bridge topic types).
+        assert_eq!(pubs[0]["type"]["name"], "Int32");
         assert_eq!(pubs[0]["type"]["kind"], "message");
         // No subscribers declared → key omitted (keeps non-declaring nodes
         // byte-identical to pre-C3 synthetic JSON).
@@ -1605,6 +1615,51 @@ source_metadata = "metadata/talker.json"
         assert_eq!(synth[0].1["executable"], "talker");
         assert_eq!(synth[0].1["language"], "c");
         assert_eq!(synth[0].1["class"], "c_talker_pkg::Talker");
+    }
+
+    /// Issue 0099 — a node's declared `publishes` (Cargo `[[package.metadata.
+    /// nros.node.publishes]]`) becomes a synthetic `publishers` entity, and a
+    /// 3-part ROS type `pkg/msg/Name` splits to `{package: pkg, name: Name}`
+    /// (NOT `name: "msg/Name"` — the bug that mis-resolved bridge topics).
+    #[test]
+    fn synthetic_publisher_type_drops_msg_namespace() {
+        let s = Scratch::new("0099pub");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/Cargo.toml",
+            r#"[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[package.metadata.nros.node.publishes]]
+topic = "/chatter"
+type = "std_msgs/msg/Int32"
+"#,
+        );
+
+        let ws = Workspace::discover(&s.0).unwrap();
+        let synth = ws.synthetic_metadata_artifacts();
+        assert_eq!(synth.len(), 1);
+        let pubs = synth[0].1["publishers"]
+            .as_array()
+            .expect("publishers array");
+        assert_eq!(pubs.len(), 1);
+        assert_eq!(pubs[0]["topic"], "/chatter");
+        assert_eq!(pubs[0]["type"]["package"], "std_msgs");
+        assert_eq!(pubs[0]["type"]["name"], "Int32");
+        assert_eq!(pubs[0]["type"]["kind"], "message");
     }
 
     #[test]
