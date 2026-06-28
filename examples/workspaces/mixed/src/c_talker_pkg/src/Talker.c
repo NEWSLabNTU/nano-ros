@@ -11,6 +11,7 @@
 #include <stdio.h>
 
 #include <nros/component.h>
+#include <nros/log.h> /* A5 — node logging via the nros-log facade */
 
 typedef struct {
     _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
@@ -36,6 +37,10 @@ static void on_tick(void* ctx) {
     if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
         printf("[c_talker_pkg] sent: %d\n", (int)self->count);
     }
+    /* A5 — log each tick via the nros-log facade. `nros_log_default_logger()` is the built-in
+     * DEFAULT_LOGGER (level Info; NULL would DROP the record). The first emit lazy-installs the
+     * default sink → the posix platform writer → "[INFO] nros: c_talker logging seq=N". */
+    NROS_LOG_INFO(nros_log_default_logger(), "c_talker logging seq=%d", (int)self->count);
     self->count++;
 }
 

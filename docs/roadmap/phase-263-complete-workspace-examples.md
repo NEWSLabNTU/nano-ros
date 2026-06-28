@@ -202,7 +202,17 @@ default. Sequence so each wave is shippable on its own.
   the chain board boot-time `init` → global sink → `DEFAULT_LOGGER.dispatch` → host
   stdout. `tests/logging_workspace_e2e.rs` asserts ≥3 log lines on the entry stdout
   (PASS). Logging is process-local (no subscriber, unlike pub/sub delivery — issue
-  0096). Remaining: project to C / C++ / mixed.
+  0096).
+  **C / C++ / mixed DONE (2026-06-29)** — `tests/{c,cpp,mixed}_logging_workspace_e2e.rs` GREEN. Each
+  workspace's existing `talker` now logs `"<lang>_talker logging seq=<n>"` each tick via the C/C++
+  facade `NROS_LOG_INFO(nros_log_default_logger(), …)`; booting the existing `native_entry` shows
+  `[INFO] nros: <lang>_talker logging seq=N` and the test asserts ≥3. **KEY C/C++ finding:**
+  `NROS_LOG_INFO(NULL, …)` silently **DROPS** the record (`nros_log_emit` returns early on a NULL
+  logger) — a real logger handle is required; `nros_log_default_logger()` is the built-in
+  `DEFAULT_LOGGER` (level Info). No core change needed: the first emit lazy-installs the default
+  sink (`ensure_default_sinks`), and nros-c/nros-cpp share one `nros_log` (same crate-hash symbol,
+  deduped at link), so the C-side emit reaches the strong posix platform writer. (An initial
+  attempt to init the sink in the C++ native board was reverted — redundant with the lazy install.)
 
 ### Track B — Advanced workspaces (new, single-purpose, separate dirs)
 Each is a minimal product-shaped workspace demonstrating ONE differentiator end-to-end.
