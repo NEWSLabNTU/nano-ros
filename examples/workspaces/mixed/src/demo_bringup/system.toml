@@ -14,6 +14,18 @@ pkg = "cpp_listener_pkg"
 class = "cpp_listener_pkg::Listener"
 name = "listener"
 
+# phase-263 A1 (services, MIXED) — cross-language AddTwoInts: a C server + a C client (catalog
+# only; run as the two native_service_{server,client}_entry processes — issue 0096).
+[[component]]
+pkg = "c_add_server_pkg"
+class = "c_add_server_pkg::AddServer"
+name = "add_server"
+
+[[component]]
+pkg = "c_add_client_pkg"
+class = "c_add_client_pkg::AddClient"
+name = "add_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

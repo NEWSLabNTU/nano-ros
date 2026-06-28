@@ -121,7 +121,25 @@ default. Sequence so each wave is shippable on its own.
   at link — a codegen-dedup gap (the C path hand-rolls raw CDR so it dodges it). Print-only keeps
   the demo to one interface pkg; the round-trip is still proven by the printed server-computed
   sums. Two single-node entries + `service_{server,client}.launch.xml`, fixtures
-  `workspace-cpp-native-service-{server,client}`. **Remaining:** project to mixed.
+  `workspace-cpp-native-service-{server,client}`.
+  **MIXED DONE (2026-06-28)** — `tests/mixed_service_roundtrip_xprocess_e2e.rs` GREEN. The mixed
+  workspace runs a **C server + a C client** (`c_add_server_pkg` + `c_add_client_pkg`, reused from
+  the C workspace). **Cross-language note:** a cpp service pkg in the MIXED (umbrella) workspace
+  is BLOCKED on a codegen gap — `nros_find_interfaces(LANGUAGE CPP)` over-generates the full
+  interface set incl. `action_msgs`, whose per-pkg cpp FFI crate references `builtin_interfaces`
+  types not in scope (`cannot find type builtin_interfaces_msg_time_t`); it compiles in the
+  single-language cpp workspace but not under the mixed multi-pkg generation. So the cross-LANGUAGE
+  service pair (e.g. C server + cpp client) is deferred to that codegen fix; the demo is C+C, with
+  cross-language preserved at the workspace level (C talker + C++ listener + Rust heartbeat).
+  **Infra fix landed en route:** the mixed (umbrella) workspace did NOT clean-build at all — the
+  per-build nros-c / nros-cpp sizes headers (`*_OPAQUE_U64S` / `NROS_GUARD_CONDITION_SIZE`) were
+  never mirrored, because the umbrella archive swap left `nros_{c,cpp}-static` unlinked so their
+  mirror custom targets (`nros_{c,cpp}_config_header`) were never pulled into the build graph (the
+  C/C++ components then read the source-tree `#error` stub). Latent (the committed fixtures are
+  inputsig-cached + never fully rebuild); a `rm -rf` exposed it. Fix: `NanoRosRuntimeCrate.cmake`
+  keeps both mirror custom targets as ordered prereqs of the umbrella crate (the prior code kept
+  only `cargo-build_nros_cpp`, whose POST_BUILD has no real Ninja edge → raced). Now the mixed
+  workspace clean-builds (both passes green). **A1 services: C / C++ / mixed all DONE.**
   Port from `examples/native/{rust,c,cpp}/service-*`.
 - **A2 — parameters. RUST DONE (2026-06-20/24, via phase-264 W4).** Was BLOCKED (no
   runtime parameter-VALUE read on `CallbackCtx`); phase-264 W4 added

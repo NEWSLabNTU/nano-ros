@@ -303,4 +303,26 @@ function(nros_synth_runtime_umbrella)
     if(TARGET cargo-build_nros_ws_runtime AND TARGET cargo-build_nros_cpp)
         add_dependencies(cargo-build_nros_ws_runtime cargo-build_nros_cpp)
     endif()
+
+    # phase-263 A1 (mixed) — the SAME for the nros-C per-build header. A C Node pkg in a MIXED
+    # workspace compiles a C component that `#include <nros/nros_generated.h>` →
+    # `<nros/nros_config_generated.h>` (the *_OPAQUE_U64S / *_SIZE macros). Unlike nros-cpp's
+    # POST_BUILD mirror, nros-c mirrors via a SEPARATE custom target `nros_c_config_header`
+    # (Issue 0088 — a real Ninja edge, not a POST_BUILD side effect). With the umbrella archive
+    # swap nothing links `nros_c-static`, so that mirror target is never pulled into the build and
+    # the C component reads the source-tree stub (`SESSION_OPAQUE_U64S undeclared`). This was
+    # latent — exposed only on a FULL clean rebuild (C component objects are otherwise
+    # inputsig-cached). Keep the mirror target in the graph so the C header populates before the C
+    # components compile. (Targets `nros_c_config_header`, the COPY — not `cargo-build_nros_c`,
+    # which only writes the byproduct into the cargo dir, not the mirror.)
+    if(TARGET cargo-build_nros_ws_runtime AND TARGET nros_c_config_header)
+        add_dependencies(cargo-build_nros_ws_runtime nros_c_config_header)
+    endif()
+    # nros-cpp ALSO exposes a real-edge mirror custom target (`nros_cpp_config_header`); the
+    # cargo-build_nros_cpp dep above only orders against the POST_BUILD (no edge → a parallel
+    # clean build races the cpp component ahead of the mirror copy → `NROS_GUARD_CONDITION_SIZE`
+    # / `nros_cpp_config_generated.h` stub). Pull the real mirror target into the graph too.
+    if(TARGET cargo-build_nros_ws_runtime AND TARGET nros_cpp_config_header)
+        add_dependencies(cargo-build_nros_ws_runtime nros_cpp_config_header)
+    endif()
 endfunction()
