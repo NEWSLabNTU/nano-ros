@@ -12,10 +12,11 @@
 //! `main`, so the linker can't dead-strip their `.init_array` self-register ctors
 //! (issue 0106 — previously needed a hand `extern crate … as _` force-link here).
 //!
-//! KNOWN RUNTIME GAP (issue 0107): the Cyclone egress publisher creation still
-//! fails (`PublisherCreationFailed`) because the baked `std_msgs/Int32` topic
-//! descriptor does not auto-stage in a consumer binary; `run_from_config` has no
-//! schema to stage it. The bridge BUILDS + opens both sessions; full forwarding
-//! is blocked on 0107.
+//! Forwarding is GREEN (phase-267 W-B): `nros sync` carries the forwarded type's
+//! flat field schema in `nros-bridge.toml`, and `run_from_config` stages the
+//! Cyclone descriptor at runtime via `register_type_descriptor` (issue 0107) and
+//! pins each session's `domain_id` (issue 0109). Verified end-to-end: a stock
+//! `rmw_cyclonedds_cpp` subscriber receives `std_msgs/Int32` forwarded
+//! zenoh→cyclonedds.
 
 nros::main!(launch = "demo_bringup");

@@ -1710,7 +1710,9 @@ name = "nros-bridge"
 version = "0.5.0"
 dependencies = [
  "nros-node",
+ "nros-rmw",
  "nros-rmw-cffi",
+ "nros-serdes",
  "serde",
  "toml 0.9.12+spec-1.1.0",
 ]

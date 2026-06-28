@@ -81,13 +81,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-- **#107** — [Cyclone baked-default descriptor not
-  auto-staged](0107-cyclone-baked-descriptor-not-auto-staged.md): the universal-fallback
-  `std_msgs/Int32` descriptor (`nros-rmw-cyclonedds-sys/build.rs`, `+whole-archive`) does not
-  stage in a consumer binary → `find_descriptor` null → `PublisherCreationFailed`. Every working
-  Cyclone consumer stages explicitly; the schema-free `run_from_config` can't, so it relies on the
-  broken fallback. Blocks phase-267 C6 forwarding. Fix: make the baked ctor stage in consumers, or
-  wire `nros codegen cyclonedds-descriptors` into the bridge flow.
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#106** —
 [RMW backend self-register ctor
 dead-stripped](archived/0106-backend-self-register-ctor-dead-stripped.md): a bridge Entry
@@ -95,7 +88,16 @@ referenced no backend symbol, so the linker dead-stripped the `nros-rmw-*` crate
 self-register ctors → `open_multi` null vtable → `Transport(InvalidArgument)`. Fixed (`0d205c1f7`):
 `nros::main!` reads the bridge's RMWs from `system.toml` and emits `nros_rmw_<x>::register()` in
 the generated `main` (no per-Entry `extern crate` boilerplate). Verified via macro expansion + 4
-unit tests; full runtime `open_multi` chains on #99 + #107. Also: **#108** —
+unit tests; full runtime `open_multi` chains on #99 + #107. Also: **#107** —
+[Cyclone descriptor not staged in a schema-free
+bridge](archived/0107-cyclone-baked-descriptor-not-auto-staged.md): `run_from_config`'s Cyclone
+egress failed `PublisherCreationFailed` (no descriptor, and `std_msgs/Int32` is NOT baked);
+resolved at phase-267 W-B (fix B) — `nros sync` carries the flat field schema in `nros-bridge.toml`
+and the runtime stages the descriptor via `register_type_descriptor` (self-consistent offsets,
+no user build.rs). Also **#109** — [config bridge extra session ignores
+`domain_id`](archived/0109-config-bridge-extra-session-ignores-domain.md): `create_node_on`
+dropped the configured domain so every extra RMW participant opened on domain 0; fixed with
+`create_node_on_with_domain`. Also: **#108** —
 [FreeRTOS MPS2-AN385 linker omits
 `.nros_boot_config`](archived/0108-freertos-linker-missing-nros-boot-config-section.md): the
 phase-266 baked `.nros_boot_config` section (`8088e77c0`) overlapped `.data` because the FreeRTOS

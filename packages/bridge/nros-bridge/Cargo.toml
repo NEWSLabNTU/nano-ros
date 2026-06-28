@@ -20,7 +20,7 @@ alloc = ["nros-node/alloc"]
 # Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +
 # `serde`; requires `std` because both crates do.
-config = ["std", "dep:toml", "dep:serde"]
+config = ["std", "dep:toml", "dep:serde", "dep:nros-rmw", "dep:nros-serdes"]
 # Phase 128.F.5 — C/C++ bridge ABI. Emits `nros_init_multi`,
 # `nros_pubsub_bridge_*` symbols matching `<nros/bridge.h>`. Requires
 # `alloc` (every entity handle is boxed).
@@ -29,6 +29,11 @@ cffi = ["alloc", "dep:nros-rmw-cffi"]
 [dependencies]
 nros-node = { workspace = true, default-features = false, features = ["rmw-cffi"] }
 nros-rmw-cffi = { workspace = true, optional = true }
+# config-only — runtime Cyclone descriptor staging (phase-267 W-B1): the
+# data-driven bridge stages a `dds_topic_descriptor_t` from the field schema
+# carried in `nros-bridge.toml` via `nros_rmw::register_type_descriptor`.
+nros-rmw = { workspace = true, default-features = false, optional = true }
+nros-serdes = { workspace = true, default-features = false, optional = true }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 

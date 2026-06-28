@@ -109,12 +109,127 @@ struct BridgeCfg {
     type_hash: String,
     from: BridgeEndpointCfg,
     to: BridgeEndpointCfg,
+    /// phase-267 W-B1 — ROS-form type name (`std_msgs/msg/Int32`) used to stage
+    /// the Cyclone descriptor. `type` above is the DDS-mangled wire form
+    /// (`std_msgs::msg::dds_::Int32_`) that pub/sub creation expects; the C
+    /// descriptor builder mangles this ROS form into the same wire name and
+    /// dual-keys the registry, so `find_descriptor(mangled)` matches. Empty
+    /// when the dest backend needs no staged descriptor (e.g. zenoh-only).
+    #[serde(default)]
+    ros_type: String,
+    /// phase-267 W-B1 — flat field schema of the forwarded message, emitted by
+    /// `nros sync` from the `.msg`. Drives runtime descriptor staging via
+    /// [`nros_rmw::register_type_descriptor`]. Offsets are NOT carried (they
+    /// are target-/compile-time only via `offset_of!`); the bridge computes a
+    /// self-consistent C packing at startup, which is all the raw-forward path
+    /// needs (it round-trips through the descriptor's own `m_size` buffer).
+    #[serde(default)]
+    fields: Vec<FieldCfg>,
+}
+
+/// One `{ name, type }` entry of a [`BridgeCfg::fields`] schema. `type` is the
+/// `.msg` primitive name (`int32`, `float64`, `string`, …).
+#[derive(serde::Deserialize, Debug, Clone)]
+struct FieldCfg {
+    name: String,
+    #[serde(rename = "type")]
+    ty: String,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
 struct BridgeEndpointCfg {
     node: String,
     topic: String,
+}
+
+/// Map a `.msg` primitive type name to a [`FieldType`]. Only the leaf types a
+/// flat schema can carry are supported; nested / array / sequence fields are
+/// rejected (the data-driven bridge demo forwards flat messages — richer
+/// schemas need the typed `register::<M>` path). phase-267 W-B1.
+fn field_type_from_str(s: &str) -> Result<nros_serdes::schema::FieldType, ConfigError> {
+    use nros_serdes::schema::FieldType as F;
+    Ok(match s {
+        "bool" | "boolean" => F::Bool,
+        "uint8" | "octet" | "byte" | "char" => F::Uint8,
+        "int8" => F::Int8,
+        "uint16" => F::Uint16,
+        "int16" => F::Int16,
+        "uint32" => F::Uint32,
+        "int32" => F::Int32,
+        "uint64" => F::Uint64,
+        "int64" => F::Int64,
+        "float32" | "float" => F::Float32,
+        "float64" | "double" => F::Float64,
+        "string" => F::String,
+        "wstring" => F::WString,
+        other => {
+            return Err(ConfigError::Parse(format!(
+                "unsupported bridge field type {other:?} (flat primitive/string only)"
+            )));
+        }
+    })
+}
+
+/// Byte `(size, align)` of a leaf [`FieldType`] in the synthesised descriptor
+/// struct. Mirrors `dynamic_type_builder.cpp::primitive_size_align`; strings are
+/// pointer-sized. Only needs to be self-consistent — the raw-forward path
+/// round-trips through the descriptor's own `m_size` buffer, never a host
+/// struct, so these offsets need not match any Rust `offset_of!`. phase-267 W-B1.
+fn leaf_size_align(ty: &nros_serdes::schema::FieldType) -> (usize, usize) {
+    use nros_serdes::schema::FieldType as F;
+    match ty {
+        F::Bool | F::Uint8 | F::Int8 => (1, 1),
+        F::Uint16 | F::Int16 => (2, 2),
+        F::Uint32 | F::Int32 | F::Float32 => (4, 4),
+        F::Uint64 | F::Int64 | F::Float64 => (8, 8),
+        // string / wstring carry a `char*` in the synthesised struct.
+        _ => (
+            core::mem::size_of::<*const u8>(),
+            core::mem::align_of::<*const u8>(),
+        ),
+    }
+}
+
+/// Build a `'static` [`Field`] slice from a bridge `fields` schema, computing a
+/// self-consistent C packing for the offsets. Field names are NUL-terminated
+/// and leaked (the C descriptor borrows them for the lifetime of the process —
+/// the bridge runs forever, so the leak is bounded + intentional). phase-267 W-B1.
+fn build_static_fields(
+    fields: &[FieldCfg],
+) -> Result<&'static [nros_serdes::schema::Field], ConfigError> {
+    use nros_serdes::schema::Field;
+    let mut out: Vec<Field> = Vec::with_capacity(fields.len());
+    let mut running = 0usize;
+    for f in fields {
+        let ty = field_type_from_str(&f.ty)?;
+        let (size, align) = leaf_size_align(&ty);
+        let offset = running.div_ceil(align) * align;
+        running = offset + size;
+        let name: &'static str = Box::leak(format!("{}\0", f.name).into_boxed_str());
+        out.push(Field { name, ty, offset });
+    }
+    Ok(Box::leak(out.into_boxed_slice()))
+}
+
+/// Stage the Cyclone descriptor for a bridge whose dest needs one, before the
+/// raw publisher is created (`publisher_create` → `find_descriptor`). No-op when
+/// the bridge carries no `fields` (e.g. zenoh→zenoh). On a non-Cyclone build the
+/// registrar is absent and `register_type_descriptor` is itself a no-op.
+/// phase-267 W-B1.
+fn stage_descriptor(b: &BridgeCfg) -> Result<(), ConfigError> {
+    if b.fields.is_empty() {
+        return Ok(());
+    }
+    if b.ros_type.is_empty() {
+        return Err(ConfigError::Parse(format!(
+            "bridge for {:?} carries a field schema but no `ros_type` to stage it under",
+            b.type_name
+        )));
+    }
+    let fields = build_static_fields(&b.fields)?;
+    let reg_name: &'static str = Box::leak(format!("{}\0", b.ros_type).into_boxed_str());
+    nros_rmw::register_type_descriptor(reg_name, fields)
+        .map_err(|e| ConfigError::BuildEntity(format!("stage descriptor {:?}: {e:?}", b.ros_type)))
 }
 
 /// Load `path` and run an Executor bound to whatever nodes / bridges
@@ -168,7 +283,7 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
     // constructed via `create_node_on` calls below.
     for n in &cfg.node {
         let _ = exec
-            .create_node_on(n.name.as_str(), n.rmw.as_str())
+            .create_node_on_with_domain(n.name.as_str(), n.rmw.as_str(), Some(n.domain_id))
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", n.name)))?;
     }
 
@@ -180,9 +295,11 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
     for b in &cfg.bridge {
         let src_rmw = node_rmw(&cfg.node, &b.from.node)?;
         let dst_rmw = node_rmw(&cfg.node, &b.to.node)?;
+        let src_domain = node_domain(&cfg.node, &b.from.node)?;
+        let dst_domain = node_domain(&cfg.node, &b.to.node)?;
 
         let mut src_node = exec
-            .create_node_on(b.from.node.as_str(), src_rmw)
+            .create_node_on_with_domain(b.from.node.as_str(), src_rmw, Some(src_domain))
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", b.from.node)))?;
         let sub = src_node
             .create_subscription_raw(
@@ -193,8 +310,13 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
             .map_err(|e| ConfigError::BuildEntity(format!("sub on {}: {e:?}", b.from.node)))?;
         drop(src_node);
 
+        // Stage the dest descriptor BEFORE the raw publisher — `publisher_create`
+        // resolves it via `find_descriptor` and fails `PublisherCreationFailed`
+        // (issue 0107) otherwise. No-op for backends/types that carry no schema.
+        stage_descriptor(b)?;
+
         let mut dst_node = exec
-            .create_node_on(b.to.node.as_str(), dst_rmw)
+            .create_node_on_with_domain(b.to.node.as_str(), dst_rmw, Some(dst_domain))
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", b.to.node)))?;
         let pubr = dst_node
             .create_publisher_raw(
@@ -236,6 +358,17 @@ fn node_rmw<'a>(nodes: &'a [NodeCfg], name: &str) -> Result<&'a str, ConfigError
         .ok_or_else(|| ConfigError::UnknownNode(name.into()))
 }
 
+/// Configured domain id of a `[[node]]`. An extra RMW session's participant
+/// domain follows the node builder's `domain_id`, not the `SessionSpec`'s, so
+/// the bridge must thread it explicitly (phase-267 issue 0109).
+fn node_domain(nodes: &[NodeCfg], name: &str) -> Result<u32, ConfigError> {
+    nodes
+        .iter()
+        .find(|n| n.name == name)
+        .map(|n| n.domain_id)
+        .ok_or_else(|| ConfigError::UnknownNode(name.into()))
+}
+
 /// Trait-object façade so [`run_from_config`] can store bridges of
 /// different `RX_BUF` / `TX_BUF` generic instantiations in one Vec.
 trait PumpableBridge {
@@ -245,5 +378,56 @@ trait PumpableBridge {
 impl<const RX: usize, const TX: usize> PumpableBridge for PubSubBridge<RX, TX> {
     fn pump(&mut self) -> Result<usize, nros_node::NodeError> {
         PubSubBridge::pump(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fc(name: &str, ty: &str) -> FieldCfg {
+        FieldCfg {
+            name: name.into(),
+            ty: ty.into(),
+        }
+    }
+
+    #[test]
+    fn build_static_fields_packs_self_consistent_offsets() {
+        // phase-267 W-B1 — int8 then int32: int8 at 0, int32 aligned to 4. The
+        // raw-forward path only needs self-consistent C packing (it round-trips
+        // through the descriptor's own buffer), not the host `offset_of!`.
+        let fields = build_static_fields(&[fc("flag", "int8"), fc("count", "int32")]).unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].offset, 0);
+        assert_eq!(fields[1].offset, 4);
+        // Names are NUL-terminated for the C descriptor.
+        assert_eq!(fields[0].name, "flag\0");
+        assert_eq!(fields[1].name, "count\0");
+    }
+
+    #[test]
+    fn field_type_from_str_rejects_unknown() {
+        assert!(field_type_from_str("int32").is_ok());
+        assert!(field_type_from_str("not_a_type").is_err());
+    }
+
+    #[test]
+    fn stage_descriptor_errs_when_fields_present_without_ros_type() {
+        let b = BridgeCfg {
+            type_name: "std_msgs::msg::dds_::Int32_".into(),
+            type_hash: String::new(),
+            from: BridgeEndpointCfg {
+                node: "s0".into(),
+                topic: "/c".into(),
+            },
+            to: BridgeEndpointCfg {
+                node: "s1".into(),
+                topic: "/c".into(),
+            },
+            ros_type: String::new(),
+            fields: vec![fc("data", "int32")],
+        };
+        assert!(stage_descriptor(&b).is_err());
     }
 }

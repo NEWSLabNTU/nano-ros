@@ -1,11 +1,32 @@
 ---
 id: 107
 title: "Cyclone egress in a schema-free data-driven bridge (`run_from_config`) fails `PublisherCreationFailed` — no descriptor staged, and user payload types are NOT baked"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-267, rfc-0009]
 ---
+
+## Resolution (2026-06-28, phase-267 W-B, fix direction B)
+
+Fixed by carrying the message's flat field schema in `nros-bridge.toml` and
+staging the Cyclone descriptor at runtime — no user build.rs, no baked type.
+
+- **W-B2** (`nros sync`): `render_bridge_runtime_config` reads the forwarded
+  type's `Message::FIELDS` from the generated crate and emits
+  `ros_type = "std_msgs/msg/Int32"` + `fields = [{ name = "data", type = "int32" }]`
+  per `[[bridge]]`.
+- **W-B1** (`nros_bridge::run_from_config`): builds a `&'static [Field]` (leaked,
+  NUL-terminated names, self-consistent C-packed offsets) and calls
+  `nros_rmw::register_type_descriptor(ros_type, fields)` BEFORE
+  `create_publisher_raw`. Offsets need not match the host `offset_of!`: the raw
+  path deserialises into a `calloc(desc->m_size)` buffer and re-serialises from
+  it (`publisher.cpp::publisher_publish_raw`), so any self-consistent layout
+  round-trips.
+
+Verified end-to-end: native_entry declarative bridge forwards `std_msgs/Int32`
+zenoh→cyclonedds; a stock `rmw_cyclonedds_cpp` subscriber on domain 5 receives.
+(A separate domain-plumbing bug surfaced during verification — see issue 0109.)
 
 ## Summary (corrected 2026-06-27 after study)
 

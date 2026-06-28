@@ -2445,15 +2445,15 @@ fn render_register_all_fn(out: &mut String, plan: &NrosPlan) {
 /// (`resolve_topic_interface`). The opaque RIHS `type_hash` is unsupported across
 /// nano-ros (a universal placeholder), so it is left empty — cyclone matches via
 /// its baked descriptor, the other backends by name.
-pub fn render_bridge_runtime_config(plan: &NrosPlan) -> Option<String> {
+pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) -> Option<String> {
     use core::fmt::Write as _;
     if plan.bridges.is_empty() {
         return None;
     }
     // Intern each distinct session to a stable `s<idx>` node name.
     let mut sessions: Vec<(String, u32, Option<String>)> = Vec::new();
-    let mut intern = |sessions: &mut Vec<(String, u32, Option<String>)>,
-                      ep: &super::plan::PlanBridgeEndpoint|
+    let intern = |sessions: &mut Vec<(String, u32, Option<String>)>,
+                  ep: &super::plan::PlanBridgeEndpoint|
      -> usize {
         let rmw = normalize_rmw(&ep.rmw)
             .unwrap_or(ep.rmw.as_str())
@@ -2484,14 +2484,19 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan) -> Option<String> {
             // needs. The ROS form (`std_msgs/msg/Int32`) does NOT match the wire,
             // so the raw sub/pub would never connect / Cyclone rejects the topic.
             let type_name = interface_type_name(iface);
+            // phase-267 W-B2 — carry the ROS type + flat field schema so the
+            // runtime can stage a Cyclone descriptor (issue 0107). Empty for a
+            // non-flat message → bridge stages nothing (honest fail on Cyclone).
+            let (ros_type, fields) = read_bridge_field_schema(ws_root, iface);
+            let schema = render_bridge_schema_lines(&ros_type, &fields);
             let _ = write!(
                 bridges_toml,
-                "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{fi}\", topic = {topic:?} }}\nto = {{ node = \"s{ti}\", topic = {topic:?} }}\n"
+                "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{fi}\", topic = {topic:?} }}\nto = {{ node = \"s{ti}\", topic = {topic:?} }}\n{schema}"
             );
             if b.bidirectional {
                 let _ = write!(
                     bridges_toml,
-                    "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{ti}\", topic = {topic:?} }}\nto = {{ node = \"s{fi}\", topic = {topic:?} }}\n"
+                    "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{ti}\", topic = {topic:?} }}\nto = {{ node = \"s{fi}\", topic = {topic:?} }}\n{schema}"
                 );
             }
         }
@@ -4253,6 +4258,109 @@ fn interface_type_name(interface: &super::schema::InterfaceRef) -> String {
     format!("{}::{}::dds_::{}_", interface.package, namespace, name)
 }
 
+/// Render the `ros_type` + `fields` TOML lines for a `[[bridge]]` block, or an
+/// empty string when there is no flat schema to stage. phase-267 W-B2.
+fn render_bridge_schema_lines(ros_type: &str, fields: &[(String, String)]) -> String {
+    if fields.is_empty() {
+        return String::new();
+    }
+    let entries: Vec<String> = fields
+        .iter()
+        .map(|(n, ty)| format!("{{ name = {n:?}, type = {ty:?} }}"))
+        .collect();
+    format!(
+        "ros_type = {ros_type:?}\nfields = [{}]\n",
+        entries.join(", ")
+    )
+}
+
+/// phase-267 W-B2 — read the flat field schema of a forwarded message from the
+/// generated crate's `Message::FIELDS` const, so `nros sync` can carry it into
+/// `nros-bridge.toml` for runtime Cyclone descriptor staging (issue 0107). The
+/// generated crate is the codegen's canonical schema output and is always
+/// present at sync time at `<ws>/generated/<pkg>/src/<kind>/<snake>.rs`.
+///
+/// Returns `(ros_type, fields)` where `fields` is `[(field_name, msg_primitive)]`.
+/// Returns an empty `fields` vec (still a valid `ros_type`) when the message has
+/// a non-flat field (nested / array / sequence) the flat schema can't carry, or
+/// when the generated source is missing — the bridge then stages nothing and a
+/// Cyclone dest surfaces the honest `PublisherCreationFailed`.
+fn read_bridge_field_schema(
+    ws_root: &std::path::Path,
+    interface: &super::schema::InterfaceRef,
+) -> (String, Vec<(String, String)>) {
+    let (namespace, name) = split_interface_name(&interface.name);
+    let ros_type = format!("{}/{}", interface.package, interface.name);
+    let snake = rosidl_codegen::utils::to_snake_case(name);
+    let src = ws_root
+        .join("generated")
+        .join(&interface.package)
+        .join("src")
+        .join(namespace)
+        .join(format!("{snake}.rs"));
+    let Ok(text) = std::fs::read_to_string(&src) else {
+        return (ros_type, Vec::new());
+    };
+    (ros_type, parse_fields_const(&text))
+}
+
+/// Extract `(name, msg_primitive)` pairs from a generated message module's
+/// `const FIELDS` block. Sequential scan: each `Field` literal writes `name:`
+/// then `ty: …FieldType::Variant`. A non-primitive variant aborts (returns
+/// empty) — the flat bridge schema only carries primitives + strings. phase-267 W-B2.
+fn parse_fields_const(text: &str) -> Vec<(String, String)> {
+    let Some(start) = text.find("const FIELDS") else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut pending: Option<String> = None;
+    for line in text[start..].lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("name:") {
+            // `name: "data",` → data
+            if let Some(n) = rest.split('"').nth(1) {
+                pending = Some(n.to_string());
+            }
+        } else if let Some(idx) = t.find("FieldType::") {
+            let variant: String = t[idx + "FieldType::".len()..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let Some(prim) = field_variant_to_primitive(&variant) else {
+                return Vec::new(); // non-flat field — can't carry in the flat schema
+            };
+            if let Some(n) = pending.take() {
+                out.push((n, prim.to_string()));
+            }
+        } else if t == "];" && !out.is_empty() {
+            break; // end of the FIELDS array
+        }
+    }
+    out
+}
+
+/// Map a `nros_serdes::FieldType` variant name to its `.msg` primitive name
+/// (the form `nros-bridge.toml` carries + `config.rs::field_type_from_str`
+/// accepts). Returns `None` for non-flat variants. phase-267 W-B2.
+fn field_variant_to_primitive(variant: &str) -> Option<&'static str> {
+    Some(match variant {
+        "Bool" => "bool",
+        "Uint8" => "uint8",
+        "Int8" => "int8",
+        "Uint16" => "uint16",
+        "Int16" => "int16",
+        "Uint32" => "uint32",
+        "Int32" => "int32",
+        "Uint64" => "uint64",
+        "Int64" => "int64",
+        "Float32" => "float32",
+        "Float64" => "float64",
+        "String" => "string",
+        "WString" => "wstring",
+        _ => return None,
+    })
+}
+
 fn interface_type_hash(interface: &super::schema::InterfaceRef) -> String {
     format!("{}/{}", interface.package, interface.name)
 }
@@ -5497,8 +5605,13 @@ mod net_fragment_tests {
     /// (topic, direction), with the ROS type resolved from the plan.
     #[test]
     fn render_bridge_runtime_config_resolves_nodes_topics_and_type() {
-        let toml = render_bridge_runtime_config(&bridge_plan(&["/chatter"], true))
-            .expect("a bridge plan yields a runtime config");
+        // ws_root points nowhere → no generated crate → no field schema lines,
+        // so the node/bridge/type assertions below stay schema-agnostic.
+        let toml = render_bridge_runtime_config(
+            &bridge_plan(&["/chatter"], true),
+            std::path::Path::new("/nonexistent"),
+        )
+        .expect("a bridge plan yields a runtime config");
         // Two distinct sessions → two [[node]] (the `bridge_plan` fixture is a
         // two-zenoh-router gateway, so both rmws are zenoh on distinct domains).
         assert_eq!(toml.matches("[[node]]").count(), 2, "{toml}");
@@ -5515,7 +5628,46 @@ mod net_fragment_tests {
         // Non-bridge plan → None.
         let mut single = bridge_plan(&["/chatter"], true);
         single.bridges.clear();
-        assert!(render_bridge_runtime_config(&single).is_none());
+        assert!(
+            render_bridge_runtime_config(&single, std::path::Path::new("/nonexistent")).is_none()
+        );
+    }
+
+    #[test]
+    fn parse_fields_const_extracts_name_and_primitive() {
+        // phase-267 W-B2 — mirrors the generated `Message::FIELDS` shape; a drift
+        // in the codegen template that breaks this also breaks bridge staging.
+        // Exact multi-line layout the codegen emits (one property per line).
+        let src = "\
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: \"r\",
+            ty: ::nros_serdes::FieldType::Float32,
+            offset: ::core::mem::offset_of!(ColorRGBA, r),
+        },
+        ::nros_serdes::Field {
+            name: \"a\",
+            ty: ::nros_serdes::FieldType::Float64,
+            offset: ::core::mem::offset_of!(ColorRGBA, a),
+        },
+];";
+        assert_eq!(
+            parse_fields_const(src),
+            vec![
+                ("r".to_string(), "float32".to_string()),
+                ("a".to_string(), "float64".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_fields_const_aborts_on_non_flat_field() {
+        // A nested / sequence field can't ride the flat schema → empty (the
+        // bridge then stages nothing rather than a wrong descriptor).
+        let src = "const FIELDS: &[Field] = &[\
+            Field { name: \"stamp\", ty: ::nros_serdes::FieldType::Nested(&TIME), offset: 0 },\
+        ];";
+        assert!(parse_fields_const(src).is_empty());
     }
 
     #[test]

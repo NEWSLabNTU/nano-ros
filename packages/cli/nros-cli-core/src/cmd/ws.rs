@@ -332,7 +332,7 @@ fn generate_bridge_configs(
         let plan: crate::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
             .wrap_err_with(|| format!("ws sync: parse plan for bridge bringup {}", pkg.name))?;
 
-        match crate::orchestration::generate::render_bridge_runtime_config(&plan) {
+        match crate::orchestration::generate::render_bridge_runtime_config(&plan, ws_root) {
             Some(cfg) => {
                 std::fs::write(&dest, cfg)
                     .wrap_err_with(|| format!("ws sync: write {}", dest.display()))?;

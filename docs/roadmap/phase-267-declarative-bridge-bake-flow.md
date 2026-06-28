@@ -1,19 +1,21 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
-Status: **In progress (2026-06-26)** — W0 done; W1 done (investigation — the live
-entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
+Status: **FORWARDING GREEN (2026-06-28)** — W0 done; W1 done (investigation — the
+live entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
 2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
 + plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
 runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codegen
-+ S1 superseded.) **C1–C5 DONE (2026-06-27) — the
-declarative zenoh↔cyclonedds bridge BUILDS end-to-end via the clean flow (no
++ S1 superseded.) **C1–C5 DONE (2026-06-27); C6 + W-B DONE (2026-06-28) — the
+declarative zenoh↔cyclonedds bridge FORWARDS end-to-end.** Clean flow (no
 build.rs, no user bridge code): talker declares `publishes` → `nros sync`
-resolves /chatter→type → `nros-bridge.toml` → plain `nros::main!` macro emits
-`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. **C6 (runtime)
-diagnosed — 3 gaps, 2 FIXED: backend force-link (issue 0106, `extern crate as _`)
-+ DDS type-mangling (`interface_type_name` in the resolver). Gap 3 (cyclone
-descriptor not auto-staged, issue 0107) BLOCKS forwarding — the bridge builds +
-opens both sessions, cyclone egress pub fails pending 0107.** ·
+resolves /chatter→type **+ flat field schema** → `nros-bridge.toml` → plain
+`nros::main!` emits `run_from_config_str(include_str!)` → `cargo build` links
+cyclone+zenoh → runtime stages the Cyclone descriptor + pins per-session domains
+→ a stock `rmw_cyclonedds_cpp` subscriber receives the forwarded `std_msgs/Int32`.
+**C6 runtime gaps all FIXED:** backend force-link (issue 0106, `extern crate as _`)
++ DDS type-mangling (`interface_type_name`) + descriptor staging via config field
+schema (**fix B**, issue 0107, W-B1/W-B2) + per-session domain plumbing (issue
+0109). ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -377,15 +379,33 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   - **Gap 2 (type form) — FIXED.** `render_bridge_runtime_config` now emits the
     DDS-mangled wire type (`interface_type_name` → `std_msgs::msg::dds_::Int32_`)
     instead of the ROS form, so the raw zenoh keyexpr + Cyclone topic match.
-  - **Gap 3 (descriptor staging) — issue 0107, BLOCKS forwarding.** Confirmed: the
-    Cyclone egress pub fails `PublisherCreationFailed` because the baked
-    `std_msgs/Int32` descriptor does not auto-stage in the consumer binary, and
-    `run_from_config` is schema-free (can't stage). Adding explicit
-    `register_type_descriptor` (mirroring the imperative bin) makes the entry RUN
-    (spins, no error) — proving gaps 1+2 are otherwise sufficient. Fix in 0107
-    (auto-stage the baked default, or wire `nros codegen cyclonedds-descriptors`).
-  **Net:** the bridge BUILDS, FORCE-LINKS + REGISTERS both backends, OPENS both
-  sessions, and is one descriptor-staging fix (0107) from end-to-end forwarding.
+  - **Gap 3 (descriptor staging) — issue 0107, FIXED at W-B (below).**
+
+## W-B — Descriptor staging via config field schema (fix B). **DONE (2026-06-28).**
+
+Chosen over the typed-macro path (A) and the generated-crate path (C) for being
+fully data-driven + dep-lean — `nros-bridge.toml` becomes self-describing and the
+Entry needs no msg-crate deps. Key insight that makes B clean: the raw-forward
+path deserialises CDR into a `calloc(desc->m_size)` buffer and re-serialises from
+it, so the descriptor offsets only need to be **self-consistent**, not match any
+host `offset_of!` — sync emits field name+type, the runtime computes a C packing.
+
+- **W-B1 (`nros-bridge` runtime).** `BridgeCfg` gains `ros_type` + `fields`
+  (`[{name,type}]`). `run_from_config` builds a `&'static [Field]` (leaked,
+  NUL-terminated names, packed offsets) and calls
+  `nros_rmw::register_type_descriptor(ros_type, fields)` before
+  `create_publisher_raw`. No-op for schema-less bridges (zenoh↔zenoh).
+- **W-B2 (`nros sync`).** `render_bridge_runtime_config(plan, ws_root)` reads the
+  forwarded type's `Message::FIELDS` from the generated crate
+  (`generated/<pkg>/src/<kind>/<snake>.rs`) and emits `ros_type` +
+  `fields`. Registers nothing for non-flat (nested/array/sequence) messages.
+- **W-B3 (e2e + a new bug).** Verified zenoh talker → zenohd → native_entry
+  declarative bridge → stock `rmw_cyclonedds_cpp` subscriber on domain 5 receives
+  `std_msgs/Int32` (7/7 samples). Surfaced + fixed **issue 0109**: `create_node_on`
+  dropped the configured `domain_id` so the cyclone egress opened on domain 0;
+  added `Executor::create_node_on_with_domain` and threaded each `[[node]]`'s
+  domain through `run_from_config`.
+  **Net: end-to-end forwarding GREEN.**
 
 **Cleanup:** remove the now-unused `render_bridge_entry_fns` + `emit_bridge_entry_fns`
 (S1) and, once the runtime path lands, the dead `build_generated_package` relay.

@@ -1924,12 +1924,32 @@ impl Executor {
     /// backend is registered.
     #[cfg(feature = "rmw-cffi")]
     pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<NodeHandle<'_>, NodeError> {
+        self.create_node_on_with_domain(name, rmw, None)
+    }
+
+    /// Like [`create_node_on`](Self::create_node_on) but pins the extra
+    /// session's domain id. Required for a multi-domain config-driven bridge:
+    /// an extra RMW session's participant domain follows the **node builder's**
+    /// `domain_id` (`resolve_session_slot` → `domain_id.unwrap_or(0)`), NOT the
+    /// `SessionSpec`'s — so without this an egress on a non-zero domain silently
+    /// opens on domain 0 and never matches its receiver (phase-267 issue 0109).
+    /// `None` preserves the legacy domain-0 default.
+    pub fn create_node_on_with_domain(
+        &mut self,
+        name: &str,
+        rmw: &str,
+        domain_id: Option<u32>,
+    ) -> Result<NodeHandle<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
         // Register the Node (opens an extra session under `rmw` if
         // none exists yet for that backend).
-        let id = self.node_builder(name).rmw(rmw).build()?;
+        let mut builder = self.node_builder(name).rmw(rmw);
+        if let Some(d) = domain_id {
+            builder = builder.domain_id(d);
+        }
+        let id = builder.build()?;
         let session_idx = self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx;
 
         let mut node_name = heapless::String::<64>::new();
