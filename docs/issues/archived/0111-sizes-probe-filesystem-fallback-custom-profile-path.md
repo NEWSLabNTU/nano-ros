@@ -1,11 +1,29 @@
 ---
 id: 111
 title: "`nros-sizes-build` filesystem fallback searches `PROFILE` (`release`) not the real profile dir (`nros-fast-release`) → rlib never found"
-status: open
+status: resolved
 type: bug
 area: core
 related: [phase-118]
 ---
+
+## Resolution
+
+Added `profile_dir_name()` to `packages/core/nros-sizes-build/src/lib.rs`: it derives
+the real profile-directory name from `OUT_DIR` (the path component immediately before
+`build`), the same walk `cargo_target_dir()` already does. `find_dep_rlib_filesystem`
+now uses it in place of the lossy `PROFILE` env var, falling back to `PROFILE` only when
+`OUT_DIR` is absent. The fallback now searches `<target>/<triple>/nros-fast-release/deps`
+and finds the rlib. Unit test `profile_dir_name_reads_custom_profile_from_out_dir` covers
+the custom-profile, host-build, and no-`build`-ancestor cases.
+
+**Verified end-to-end on the affected dev box:** with the isolated probe still SIGSEGVing
+(unrelated, see memory `box-fixture-sizes-probe-sigsegv`), the corrected fallback now
+locates the rlib — the `EXECUTOR_SIZE probe returned 0` failure is gone (`segv=0`,
+`probe-returned-0=0`), and all **Rust + C** zephyr fixtures build (16 `libnros.a` links).
+The remaining zephyr **C++** fixture failures are a *separate* pre-existing issue — Zephyr's
+minimal C++ library lacks `<string>`, which `component_node.hpp` includes unconditionally —
+tracked as #112.
 
 ## Summary
 

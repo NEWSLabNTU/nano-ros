@@ -170,7 +170,17 @@ fn find_dep_rlib_filesystem(crate_name: &str, symbol_prefix: &str) -> Result<Pat
     let target_dir = cargo_target_dir()?;
     let triple = env::var("TARGET").ok();
     let host = env::var("HOST").ok();
-    let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    // Issue 0111 — use the real profile *directory* name (e.g.
+    // `nros-fast-release`), NOT the `PROFILE` env var. cargo only ever sets
+    // `PROFILE` to `debug`/`release`, but a custom profile writes its
+    // artifacts to a target subdir named after the profile itself — so
+    // `PROFILE` misdirects this search (it would look in `release/deps` while
+    // the rlib lives in `nros-fast-release/deps`). `OUT_DIR` carries the true
+    // profile dir as the path component before `build`, mirrored from
+    // `cargo_target_dir`. Fall back to `PROFILE` only when `OUT_DIR` is absent.
+    let profile = profile_dir_name()
+        .or_else(|| env::var("PROFILE").ok())
+        .unwrap_or_else(|| "debug".to_string());
 
     let mut searched = Vec::new();
     if let Some(triple) = triple.as_deref() {
@@ -833,6 +843,28 @@ fn rustc_host_triple() -> Result<String, Error> {
 ///
 /// Order: `CARGO_TARGET_DIR` env override → walk `OUT_DIR` for the
 /// `<target>/[triple]/<profile>/build/` ancestor → `cargo metadata`.
+/// The real target *profile directory* name (e.g. `nros-fast-release`),
+/// derived from `OUT_DIR`. Issue 0111: the `PROFILE` env var only ever reports
+/// `debug`/`release`, so it cannot name a custom profile's artifact dir.
+/// `OUT_DIR` is `<target>/<triple>?/<profile-dir>/build/<pkg>-<hash>/out`, so
+/// the path component immediately before `build` is the profile dir. Returns
+/// `None` when `OUT_DIR` is unset or has no `build` ancestor.
+fn profile_dir_name() -> Option<String> {
+    let out = PathBuf::from(env::var("OUT_DIR").ok()?);
+    let mut p = out.as_path();
+    while let Some(parent) = p.parent() {
+        if parent.file_name().and_then(|s| s.to_str()) == Some("build") {
+            return parent
+                .parent()
+                .and_then(|d| d.file_name())
+                .and_then(|s| s.to_str())
+                .map(String::from);
+        }
+        p = parent;
+    }
+    None
+}
+
 pub fn cargo_target_dir() -> Result<PathBuf, Error> {
     if let Ok(dir) = env::var("CARGO_TARGET_DIR")
         && !dir.is_empty()
@@ -893,6 +925,37 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn profile_dir_name_reads_custom_profile_from_out_dir() {
+        let _g = env_lock();
+        let prior = env::var_os("OUT_DIR");
+        // Issue 0111: a custom-profile cross-compiled OUT_DIR. The profile dir
+        // (`nros-fast-release`) must win over what `PROFILE` (`release`) reports.
+        unsafe {
+            env::set_var(
+                "OUT_DIR",
+                "/w/target/thumbv7m-none-eabi/nros-fast-release/build/nros-cpp-abc123/out",
+            );
+        }
+        assert_eq!(profile_dir_name().as_deref(), Some("nros-fast-release"));
+        // Host build (no triple component): still finds the profile dir.
+        unsafe {
+            env::set_var("OUT_DIR", "/w/target/release/build/nros-deadbeef/out");
+        }
+        assert_eq!(profile_dir_name().as_deref(), Some("release"));
+        // No `build` ancestor → None.
+        unsafe {
+            env::set_var("OUT_DIR", "/nowhere/at/all");
+        }
+        assert_eq!(profile_dir_name(), None);
+        unsafe {
+            match prior {
+                Some(v) => env::set_var("OUT_DIR", v),
+                None => env::remove_var("OUT_DIR"),
+            }
+        }
     }
 
     #[test]

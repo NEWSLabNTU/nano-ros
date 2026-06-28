@@ -44,12 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#111** — [`nros-sizes-build` filesystem fallback searches `PROFILE` not the real profile
-  dir](0111-sizes-probe-filesystem-fallback-custom-profile-path.md): the fallback builds search
-  paths from `PROFILE` (only ever `debug`/`release`), but custom profiles like
-  `nros-fast-release` write to a dir named after the profile → rlib never found → `EXECUTOR_SIZE`
-  probe times out and `nros-cpp` fails. Latent; bites when the isolated probe fails (e.g. rustc
-  SIGSEGV under fat-LTO) and the fallback runs. Fix: derive the profile-dir from `OUT_DIR`.
+- **#112** — [`nros-cpp` `component_node.hpp` includes `<string>` unconditionally — fails on
+  Zephyr minimal C++ lib](0112-zephyr-cpp-component-node-requires-string-minimal-libcpp.md):
+  Zephyr C++ entries compile against the minimal libcpp (`-nostdinc++`, no `<string>`), but the
+  phase-242.7 `std::string`-keyed parameter overloads pulled `<string>` into a header every C++
+  entry includes → all 12 zephyr C++ fixtures fail. Rust/C unaffected. Fix: gate the include +
+  overloads behind a `full-libcpp` capability. Surfaced after #111 unblocked the zephyr leg.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -79,7 +79,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#95** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#111** —
+[`nros-sizes-build` filesystem fallback searched the wrong profile
+dir](archived/0111-sizes-probe-filesystem-fallback-custom-profile-path.md): the fallback built
+rlib search paths from `PROFILE` (only ever `debug`/`release`), so for the custom
+`nros-fast-release` profile it looked in `release/deps` while the rlib was in
+`nros-fast-release/deps` → `EXECUTOR_SIZE` probe timed out → `nros-cpp` failed. Fixed with a
+`profile_dir_name()` helper deriving the real profile dir from `OUT_DIR` (the component before
+`build`). Verified end-to-end: the affected dev box's zephyr Rust + C fixtures now build; the
+remaining zephyr C++ `<string>` failures split to #112. Also: **#95** —
 [executor `MAX_CBS` overflow → opaque
 `NodeRegister`](archived/0095-executor-max-cbs-overflow-opaque-noderegister.md): a topology
 declaring more callbacks than `NROS_EXECUTOR_MAX_CBS` (default 4) failed as an opaque
