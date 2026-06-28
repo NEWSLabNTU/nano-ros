@@ -4,8 +4,22 @@ title: "Multi-node entry collapses to one graph node — per-node naming needs p
 status: open
 type: enhancement
 area: core
-related: [phase-266, rfc-0045, rfc-0004]
+related: [phase-266, rfc-0045, rfc-0046, rfc-0004]
 ---
+
+> **Design (2026-06-28).** Studied: one zenoh session CAN host N graph nodes — the NN liveliness
+> keyexpr (`@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>`, `mod.rs:410`) identifies a node by its
+> **name**, not the session id (`0/0` is protocol version, not a node-id slot). So the fix is
+> **per-node liveliness tokens on the shared session**, NOT a session per node. Two halves:
+> - **Graph half (this issue):** add `node_liveliness: Option<LivelinessToken>` to `NodeRecord`;
+>   in `NodeBuilder::build()` declare a token per `create_node` (token held for the node's life —
+>   a dropped token undeclares). Plus: gate the #104 primary `/node` token off when ≥1 named
+>   component exists (else a 2-node launch shows `/node` + `/talker` + `/listener`).
+> - **Naming half ([RFC-0046](../design/0046-launch-authoritative-node-identity.md)):** the per-node
+>   name is **launch-authoritative** (`<node name= namespace=>` overrides the code default),
+>   resolved at the shared `Executor::node_builder` site, uniform across Rust/C/C++. Stops Rust
+>   hardcoding `create_node` names.
+> Together → a multi-node entry shows its components named from the launch, uniformly.
 
 ## Summary
 
