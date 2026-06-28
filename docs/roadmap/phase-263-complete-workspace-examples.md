@@ -293,11 +293,16 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
   is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
   an RTOS deploy (freertos/threadx) where priorities are real tasks.
-- **B3 — `ws-bridge-rust`. PARTIAL (2026-06-25) — engine landed; cascade spun into
+- **B3 — `ws-bridge-rust`. DONE (2026-06-28) via
   [phase-267](phase-267-declarative-bridge-bake-flow.md).** A cross-RMW gateway
-  **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml. The bake→entry→
-  build cascade (gaps 1–4 below) is now tracked as phase-267 (W1–W5); the engine
-  foundations (W0) landed here. **Landed this session:** (Step 1) the planner transform
+  **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml — **forwards
+  end-to-end** (a stock `rmw_cyclonedds_cpp` subscriber receives `std_msgs/Int32`
+  published over zenoh). The cascade landed as phase-267: planner transform +
+  synthetic node metadata resolve the bridge (issue #99), `nros::main!` emits
+  `run_from_config_str` + backend `register()` (#106), and `run_from_config` stages
+  the Cyclone descriptor from the config field schema (#107) on the correct domain
+  (#109). Only a *gated automated* test remains (deferred). The historical gap
+  analysis below is retained for context. The engine foundations (W0) landed here. **Landed this session:** (Step 1) the planner transform
   (`system.{bridges,domains}` → `build.transports` + `plan.bridges`, issue #99
   step 0) — `nros plan` on `ws-bridge-rust` emits a correct bridge plan; (cyclone
   codegen) native Rust entries now link + register `nros-rmw-cyclonedds-sys`

@@ -412,6 +412,12 @@ host `offset_of!` — sync emits field name+type, the runtime computes a C packi
 
 ## W2 — Component metadata so forwarded topics resolve
 
+**DONE (2026-06-27, C1–C5).** Resolved via SYNTHETIC node metadata, not the
+baked-relay path below: node pkgs declare `[[package.metadata.nros.node.publishes]]`,
+the planner reads them into `plan.interfaces` → `resolve_topic_interface`, so
+`plan.bridges[0].topics == ["/chatter"]` (`std_msgs/Int32`) with no separate
+metadata-collection build. Proven by the W-B e2e. (Original gap analysis below.)
+
 **Gap:** `forwarded_topics` resolves the bridge's topic list from the plan's
 `interfaces`, which come from per-component publisher/subscriber metadata. A
 launch-only `nros plan` (or a metadata-less bake) leaves `interfaces=[]` →
@@ -426,6 +432,14 @@ surfaces in `interfaces`, so `plan.bridges[0].topics == ["/chatter"]`.
 `validate_bridges` passes (topic resolves to `std_msgs/Int32`).
 
 ## W3 — Pure-cargo baked Rust entry build lane
+
+**SUPERSEDED (W1c design pivot).** The config-driven runtime bridge uses a PLAIN
+`nros::main!` entry + `run_from_config_str` — there is no baked
+`build_generated_package` relay to build, so this whole lane is moot. `cargo build`
+of `native_entry` links both backends directly (verified). **The one real residual
+is a `[[workspace_fixture]]` lane for `ws-bridge-rust` in `examples/fixtures.toml`
++ a cyclonedds-gated CI build** — deferred to the test wave (with W5). (Original
+baked-relay plan below, kept for context.)
 
 **Gap:** existing Rust workspaces build the `nros::main!` macro entry (no bridge
 relay). The bridge needs the BAKED orchestration entry (`build_generated_package`
@@ -446,6 +460,16 @@ add a `[[workspace_fixture]]` lane (`examples/fixtures.toml`) for
 
 ## W4 — Per-type cyclone descriptor staging in the generated relay
 
+**SUPERSEDED by W-B (fix B), DONE for flat types (2026-06-28).** Staging happens
+in the config-driven runtime, not a generated relay: `nros sync` carries the flat
+field schema in `nros-bridge.toml` and `run_from_config` stages the descriptor via
+`register_type_descriptor` (self-consistent offsets — no idlc, no `M::FIELDS` dep on
+the Entry). **Residual:** non-flat messages (nested / array / sequence) are not yet
+stageable (`parse_fields_const` bails → no schema emitted); a bridge forwarding e.g.
+`geometry_msgs/Pose` stages nothing. Follow-up — extend the schema emit + the
+runtime field builder to nested/sequence (or fall back to the typed
+`register::<M>` path for those). (Original idlc-relay plan below, kept for context.)
+
 **Gap:** cyclone egress rejects a raw publisher whose type descriptor is not
 registered. The generated `register_bridges` creates raw pubs by `(name, hash)`
 only. Baked types (`std_msgs/Int32`, `rmw_dds_common_graph`) work; arbitrary
@@ -464,6 +488,15 @@ egress publisher without error.
 
 ## W5 — Runtime e2e (gated) + `ws-bridge-rust` completion
 
+**PARTIAL — forwarding PROVEN, automated test DEFERRED (2026-06-28).** The runtime
+forward is verified MANUALLY: zenoh talker → zenohd → `native_entry` → stock
+`rmw_cyclonedds_cpp` subscriber on the cyclone domain receives `std_msgs/Int32`
+(7/7 samples, honoring #53 egress-domain + #67 raw path). The `ws-bridge-rust`
+README + phase-263 B3 are flipped to DONE; issue #99 resolved upstream. **Remaining:
+codify the manual e2e as a gated fixture test** (a `[[workspace_fixture]]` build
+lane + a runtime test mirroring `bridge_zenoh_to_cyclonedds.rs`, gated on a live
+DDS peer / cyclonedds submodule) — own follow-up wave. (Original plan below.)
+
 **Work:** boot zenohd + the baked `ws-bridge-rust` entry (talker + bridge) + a
 stock `rmw_cyclonedds_cpp` subscriber; assert `ros2 topic echo /chatter` receives
 the talker's counter — proving cross-RMW forward + ROS 2 interop. Honor #53
@@ -476,16 +509,19 @@ cleanly otherwise.
 
 ## Sequencing
 
-W1 → W2 → W3 unblock a *building* Int32 bridge (the visible milestone); W4 is
-additive (non-baked types); W5 is the gated runtime proof. W1 is the immediate
-blocker (the bake plan must carry the bridge before anything downstream sees it).
+**Actual path (post-W1c pivot):** W0 (engine) → W1 (investigation) → W1c (config-driven
+design) → C1–C5 (build end-to-end) → W-B (descriptor staging, fix B) → forwarding
+GREEN. The original W2→W3 baked-relay sequence was superseded: W2 folded into the
+synthetic-metadata resolver, W3 (baked entry) became moot (plain `nros::main!`), W4
+became W-B. Only the gated automated test (W5 residual) remains.
 
 ## Acceptance (phase)
 
-- `examples/workspaces/ws-bridge-rust` builds via the documented bake flow, its
-  generated entry linking both backends with the `register_bridges` relay.
-- A gated runtime test proves zenoh→cyclonedds forwarding to a stock ROS 2 peer.
-- Issue #99 resolved; phase-263 B3 flipped to DONE.
-- The xrce variant (`zenoh↔xrce`) is reachable by the same flow (xrce is a wired
-  Rust backend with lazy type registration — needs W1–W3, skips W4) — a
-  lower-build-cost sibling, optional.
+- [x] `examples/workspaces/ws-bridge-rust` builds via the documented config-driven
+  flow (plain `nros::main!` + `run_from_config_str`), linking both backends.
+- [x] zenoh→cyclonedds forwarding to a stock ROS 2 peer — **proven manually** (7/7
+  `std_msgs/Int32`); a *gated automated* test is the one remaining follow-up.
+- [x] Issue #99 resolved (upstream); phase-263 B3 + `ws-bridge-rust` README flipped
+  to DONE.
+- [ ] Non-flat forwarded types (W4 residual) + the xrce variant (`zenoh↔xrce`) —
+  additive follow-ups; xrce skips W-B (lazy type registration).
