@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#111** — [`nros-sizes-build` filesystem fallback searches `PROFILE` not the real profile
+  dir](0111-sizes-probe-filesystem-fallback-custom-profile-path.md): the fallback builds search
+  paths from `PROFILE` (only ever `debug`/`release`), but custom profiles like
+  `nros-fast-release` write to a dir named after the profile → rlib never found → `EXECUTOR_SIZE`
+  probe times out and `nros-cpp` fails. Latent; bites when the isolated probe fails (e.g. rustc
+  SIGSEGV under fat-LTO) and the fallback runs. Fix: derive the profile-dir from `OUT_DIR`.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
