@@ -85,7 +85,12 @@ build-examples:
     # build.rs kernel-lib link). `NUTTX_DIR` must reach both the board
     # crate's build.rs and the entry's build.rs.
     export NUTTX_DIR="$nuttx_dir"
+    export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
     NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    # phase-263 C2b — the multi-node C workspace Entry (talker + listener linked into the NuttX
+    # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
+    # tests/c_nuttx_entry_e2e.rs (cross-process /chatter delivery, baked slirp locator 17861).
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

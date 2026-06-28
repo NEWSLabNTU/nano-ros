@@ -238,6 +238,7 @@ static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new
 /// phase-263 C2b — cached path to the FreeRTOS (QEMU MPS2-AN385) C workspace embedded
 /// entry (`nano_ros_entry(BOARD mps2-an385-freertos …)`, the first QEMU-cross entry).
 static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached paths to the C++ embedded workspace entries (threadx-linux host
 /// sim + FreeRTOS QEMU), the C++ siblings of the C2a/C2b C entries.
@@ -902,6 +903,25 @@ pub fn build_freertos_workspace_c_entry() -> TestResult<&'static Path> {
                 "c",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2b — the NuttX (QEMU arm-virt) C workspace embedded entry (cached). The
+/// multi-node talker + listener are linked INTO the NuttX kernel by the cargo `nros-nuttx-ffi`
+/// build (the bootable `armv7a-nuttx-eabihf` ELF); the connect locator (`tcp/10.0.2.2:<port>`,
+/// dialed through the QEMU slirp gateway) is baked via the NanoRosEntry COMPILE_DEFINITIONS
+/// ferried into the cc-rs entry-TU compile. Built into its own `build-workspace-fixtures-nuttx`
+/// dir via the `<entry>_build` cargo target (the host `add_executable` is EXCLUDE_FROM_ALL).
+pub fn build_nuttx_workspace_c_entry() -> TestResult<&'static Path> {
+    NUTTX_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-nuttx",
+                "c",
+                "build-workspace-fixtures-nuttx",
+                "nuttx_entry",
             )
         })
         .map(|p| p.as_path())

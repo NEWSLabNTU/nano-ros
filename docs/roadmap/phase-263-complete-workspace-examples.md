@@ -326,12 +326,15 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
   C+C++/Rust), C2d-zephyr C (native_sim, west lane), C2c-zephyr C++ (native_sim), C2c-mixed-freertos
-  (C+C++ + no_std Rust, thumbv7m), C2c-mixed-zephyr (C+C++/Rust, native_sim west lane) —
-  **10 GREEN e2e tests**. C2b-nuttx BUILD blocker RESOLVED
-  (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with seams
-  resolved). The nuttx "runtime console issue" was a MISDIAGNOSIS (2026-06-27): the runtime WORKS
-  (rust talker boots + publishes 0,1,2,3 with a host zenohd up) — the only remaining C2 item is to
-  build the ws-c nuttx ENTRY + bake its locator + add a zenohd-backed e2e. See below.**
+  (C+C++ + no_std Rust, thumbv7m), C2c-mixed-zephyr (C+C++/Rust, native_sim west lane),
+  C2b-nuttx C (QEMU arm-virt, multi-node into the kernel) — **11 GREEN e2e tests, C2 COMPLETE**.
+  C2b-nuttx was the last: the BUILD blocker was resolved 2026-06-26 (per-`NROS_PKG_NAME` wall —
+  per-source cc-rs); the "runtime console issue" was a MISDIAGNOSIS (2026-06-27, the runtime WORKS);
+  and the entry RUNTIME landed 2026-06-28 (`tests/c_nuttx_entry_e2e.rs` GREEN — talker+listener in
+  one NuttX kernel deliver `/chatter` cross-process) once the locator-bake ORDERING was fixed (the
+  NuttX board ferries COMPILE_DEFINITIONS at CONFIGURE time, so `NROS_ENTRY_LOCATOR` must be set
+  BEFORE the link pass) and the workspace build targets `<entry>_build` (the cargo kernel ELF) to
+  skip the EXCLUDE_FROM_ALL host `add_executable` link. See below.**
   Two-agent framework
   exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
@@ -469,14 +472,23 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       0,1,2,3**. The prior "silence" was simply booting with NO router: the app fails fast with
       `Application error: Transport(ConnectionFailed)` (it DID print — the kernel/console were never
       the problem). So console + app auto-run + virtio-net + zenoh publish all work; the multi-node
-      ENTRY is just not built/tested locally. Its ONLY runtime risk is the recurring **locator-bake**
-      pitfall: `nano-ros-board-nuttx-qemu-arm.cmake` has NO `NROS_ENTRY_LOCATOR` bake (only a
-      comment), so the LAUNCH path must thread the slirp locator (`tcp/10.0.2.2:7452`) into the cargo
-      `nros-nuttx-ffi` kernel build, else the entry defaults to `""` → discovery → the same
-      ConnectionFailed. **NEXT (the one remaining C2 item): build the ws-c nuttx entry, bake the
-      locator, add a zenohd-backed e2e (`ZenohRouter` on 7452 + native observer) mirroring the
-      freertos/zephyr mixed entries.** No existing nuttx test boots an app against a host zenohd (the
-      build-only + dgram/mcast cross-qemu tests don't). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
+      ENTRY is just not built/tested locally. **ENTRY RUNTIME DONE (2026-06-28,
+      `tests/c_nuttx_entry_e2e.rs` GREEN — the C talker + listener in ONE NuttX kernel deliver
+      `/chatter` 0..18 cross-process to a native observer over the slirp gateway; port 17861).** Two
+      gaps closed: (1) **locator-bake ORDERING.** The LAUNCH path DID bake `NROS_ENTRY_LOCATOR` (via
+      `target_compile_definitions`), but the NuttX board overlay's `nros_platform_link_app` ferries
+      the entry target's `COMPILE_DEFINITIONS` into the cargo cc-rs kernel build AT CONFIGURE TIME,
+      and that ferry ran BEFORE the locator block — so the entry baked the `<nros/main.hpp>` default
+      (`tcp/127.0.0.1:7447`) and never reached the router (FreeRTOS/ThreadX link at BUILD time, so
+      their order never mattered — masking the bug). Fix: set the `NROS_ENTRY_LOCATOR` def BEFORE the
+      embedded link pass in `NanoRosEntry.cmake` (back-compat verified — freertos/threadx C entries
+      still bake their locators + their e2e still pass). (2) **build target.** The workspace fixture
+      build forced `cmake --build --target <entry>`, which on NuttX triggers the host `add_executable`
+      link (`nros_board_link_app` marks it EXCLUDE_FROM_ALL, but an explicit `--target` still links
+      it → undefined `main`/`nros_cpp_*` on the host toolchain). Fix: target `<entry>_build` (the
+      cargo kernel-ELF custom target) on NuttX, mirroring the standalone `all`-build. New
+      `workspace-c-nuttx` fixture row + `build_nuttx_workspace_c_entry()` resolver + the `just nuttx
+      build-examples` C lane. **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
       `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
       entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
       emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir

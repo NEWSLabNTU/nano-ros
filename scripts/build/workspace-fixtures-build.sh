@@ -149,8 +149,20 @@ build_workspace() {
             echo "     cmake -S . -B $build_subdir ${cmake_args[*]}"
             nros_cmake_configure_if_needed . "$build_subdir" "${cmake_args[@]}"
 
-            echo "     cmake --build $build_subdir --target $entry"
-            cmake --build "$build_subdir" --target "$entry"
+            # phase-263 C2b — on NuttX the entry's real artifact is the NuttX KERNEL ELF
+            # produced by the cargo `<entry>_build` custom target (cross arm-none-eabi-gcc link),
+            # NOT the cmake `add_executable(<entry>)` — which `nros_board_link_app` marks
+            # EXCLUDE_FROM_ALL but whose explicit `--target <entry>` link would still fire on the
+            # HOST toolchain and fail (the generated C++ entry TU + component archives reference
+            # the cargo-only nros_cpp_* / backend symbols). Target `<entry>_build` so only the
+            # cargo path runs (steps that emit + copy the kernel ELF), mirroring the standalone
+            # NuttX `all`-build which skips the EXCLUDE_FROM_ALL host exe.
+            local build_target="$entry"
+            if [ "$platform" = "nuttx" ]; then
+                build_target="${entry}_build"
+            fi
+            echo "     cmake --build $build_subdir --target $build_target"
+            cmake --build "$build_subdir" --target "$build_target"
             local built_path
             built_path="$(find "$build_subdir" -type f -name "$entry" -perm -111 | sort | head -n 1 || true)"
             if [ -n "$built_path" ]; then

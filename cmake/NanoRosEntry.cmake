@@ -270,6 +270,34 @@ function(nano_ros_entry)
         nros_platform_link_app(${_NRA_NAME})
     endif()
 
+    # phase-263 C2b — bake the connect locator BEFORE the embedded link pass. On NuttX the
+    # board overlay's `nros_platform_link_app` FERRIES the target's COMPILE_DEFINITIONS into the
+    # cargo cc-rs kernel build AT CONFIGURE TIME, so `NROS_ENTRY_LOCATOR` must already be on the
+    # target when the link pass runs — otherwise the entry TU bakes the `<nros/main.hpp>` default
+    # (tcp/127.0.0.1:7447) and never connects to the host router. (FreeRTOS/ThreadX link at BUILD
+    # time, so their order is immaterial — but setting it here is correct for them too; the later
+    # block then only does the FreeRTOS app-config TU + header-mirror ordering.) Zephyr is exempt
+    # (Kconfig locator). Precedence: -DNROS_ENTRY_LOCATOR cache > LOCATOR arg > per-board default
+    # (threadx-linux dials host loopback; QEMU boards dial the slirp host 10.0.2.2).
+    set(_nra_locator "")
+    if(TARGET ${_NRA_NAME}
+       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NOT _nra_is_zephyr
+       AND DEFINED NANO_ROS_BOARD
+       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
+        if(DEFINED NROS_ENTRY_LOCATOR)
+            set(_nra_locator "${NROS_ENTRY_LOCATOR}")
+        elseif(_NRA_LOCATOR)
+            set(_nra_locator "${_NRA_LOCATOR}")
+        elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
+            set(_nra_locator "tcp/127.0.0.1:7447")
+        else()
+            set(_nra_locator "tcp/10.0.2.2:7447")
+        endif()
+        target_compile_definitions(${_NRA_NAME} PRIVATE
+            "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+    endif()
+
     # phase-263 C2 (issue 0097) — embedded LAUNCH Entry link pass. The standalone
     # `nano_ros_node_register` carrier calls `nros_platform_link_app` for the embedded
     # boards (startup source + app_define + linker script + kernel/netstack umbrella +
@@ -313,24 +341,12 @@ function(nano_ros_entry)
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
        AND DEFINED NANO_ROS_BOARD
        AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
-        # (1) locator. phase-263 C2d — Zephyr is EXEMPT: its connect locator threads in
-        # via the compile-time `CONFIG_NROS_ZENOH_LOCATOR` Kconfig (read through the
-        # `NROS_ENTRY_LOCATOR` default in `<nros/main.hpp>`); a baked `-DNROS_ENTRY_LOCATOR`
-        # would OVERRIDE that Kconfig. The FreeRTOS `NROS_APP_CONFIG` TU is likewise
-        # board-startup-only, so both are skipped on Zephyr.
+        # (1) locator — baked earlier (BEFORE the link pass, for the NuttX configure-time
+        # COMPILE_DEFINITIONS ferry). `_nra_locator` is in scope here. Zephyr is EXEMPT (its
+        # locator threads via the `CONFIG_NROS_ZENOH_LOCATOR` Kconfig), so the earlier block left
+        # `_nra_locator` empty for it; the FreeRTOS `NROS_APP_CONFIG` TU below is board-startup-only
+        # and likewise skipped on Zephyr.
         if(NOT _nra_is_zephyr)
-            if(DEFINED NROS_ENTRY_LOCATOR)
-                set(_nra_locator "${NROS_ENTRY_LOCATOR}")
-            elseif(_NRA_LOCATOR)
-                set(_nra_locator "${_NRA_LOCATOR}")
-            elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
-                set(_nra_locator "tcp/127.0.0.1:7447")
-            else()
-                set(_nra_locator "tcp/10.0.2.2:7447")
-            endif()
-            target_compile_definitions(${_NRA_NAME} PRIVATE
-                "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
-
             # (1b) phase-263 C2b — FreeRTOS `NROS_APP_CONFIG` TU. The board's `startup.c`
             # reads `NROS_APP_CONFIG` (LAN9118/lwIP bring-up + FreeRTOS task prio/stacks);
             # unlike ThreadX (whose `nros_platform_link_app` bakes its own app config) the

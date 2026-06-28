@@ -421,6 +421,21 @@ entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17601" }
 
+# phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
+# the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
+# 10.0.2.2; the baked NROS_ENTRY_LOCATOR is ferried into the cc-rs entry-TU compile via the
+# board overlay's COMPILE_DEFINITIONS pass. Consumed by tests/c_nuttx_entry_e2e.rs (port 17861).
+[[workspace_fixture]]
+id = "workspace-c-nuttx"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "nuttx_entry"
+build_subdir = "build-workspace-fixtures-nuttx"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17861" }
+
 [[workspace_fixture]]
 id = "workspace-cpp-native"
 platform = "native"
