@@ -63,6 +63,39 @@ Grounded review of `examples/workspaces/*` + the `multi_pkg_workspace_*` fixture
 
 ## Tracks & waves
 
+### Projection status + plan (2026-06-29)
+
+The Rust reference is DONE for every Track-A feature and every Track-B advanced workspace; the
+open work is **projecting Rust → C / C++ / mixed**, each with a runtime test. Done so far:
+
+- **C2 embedded entries — COMPLETE** (11 GREEN: threadx/freertos/zephyr C·C++·mixed + nuttx C).
+- **A1 services — C / C++ / mixed DONE** (`{c,cpp,mixed}_service_roundtrip_xprocess_e2e`). Found +
+  fixed the umbrella clean-build header-mirror infra bug; documented the cpp-in-mixed `action_msgs`
+  codegen gap (mixed uses C+C).
+- **A5 logging — C / C++ / mixed DONE** (`{c,cpp,mixed}_logging_workspace_e2e`). Found:
+  `NROS_LOG_INFO(NULL,…)` drops the record → use `nros_log_default_logger()`.
+
+Remaining projection waves (each ≈ or larger than A1), in order:
+
+1. **A2 parameters** → new single-purpose `ws-params-{c,cpp,mixed}` (mirrors `ws-params-rust`, NOT a
+   starter extension). RISK: the Rust live read is `ctx.parameter::<T>(name)` on the component ctx;
+   verify a C / C++ **component** param-read equivalent exists (the C API has a node-local
+   `nros_param_server_t` in `parameter.h`, but the live-read-on-component-tick surface may be a gap
+   — scope before building, file an issue if missing).
+2. **A4 actions** → `action_server_pkg` + `action_client_pkg` per lang (poll-model client, like
+   services but with goal/feedback/result). The C/C++ component action seams exist
+   (`nros_cpp_action_server_*` / `bind_action_server_raw`, `create_action_client_raw`).
+3. **A3 lifecycle** → managed-node demo + ROS 2-interop test (`ros2 lifecycle get` → `active`).
+   Historically gated on the macro wiring `[lifecycle]`; verify the C/C++ entry path supports it.
+4. **Track B advanced** → `ws-{safety,realtime,qos,custom-msg}` projected to C / cpp (lang-agnostic
+   `ws-bridge` / `ws-launch` already shared). Largest remaining bucket.
+
+Recurring patterns established by A1/A5 (reuse): poll-model component clients (a callback must never
+block); raw-CDR in C dodges the multi-interface cpp codegen gap; cross-process service/round-trip
+topology per issue 0096; new fixtures in `examples/fixtures.toml` + resolvers in
+`binaries/mod.rs` + a `nros-tests` consumer; **editing a source file AFTER its fixture build
+invalidates the inputsig — rebuild before running the test**.
+
 ### Track A — Starter workspaces (extend the existing four)
 Per language, add the everyday-ROS feature node-pkgs and a `showcase` launch that
 composes them; keep `system.launch.xml` (talker+listener) as the untouched minimal
