@@ -188,8 +188,13 @@ default. Sequence so each wave is shippable on its own.
   `250` on the wire, proving the W4c live-read chain) + `tests/params.rs` (the `ros2
   param set` reconfig round-trip). Verified: the params entry builds clean (declare +
   live-read node compiles + links); `param_live_read_e2e` compiles + is fixture-wired
-  (runtime green is CI-side, via the prebuilt+stamped workspace fixture). **Remaining:**
-  project to C / C++ / mixed (Track C/D).
+  (runtime green is CI-side, via the prebuilt+stamped workspace fixture).
+  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0112.** The C/C++ component shape has no
+  launch-parameter readback: the component-install seam (`configure(node, executor, self)`) carries
+  no param context, `emit_c.rs`/`emit_cpp.rs` don't bake `<param>` or wire `[param_services]`, and
+  there's no `ctx.parameter`-equivalent accessor on the C/C++ component. Faithful projection needs
+  core API work (extend the seam + entry codegen + a component param accessor), not a projection —
+  so A2-C/C++/mixed is parked behind 0112. Projection continues with A4 actions.
 - **A3 — lifecycle. RUST DONE (2026-06-20, via phase-264 W2).** Was gated (the macro
   didn't wire `[lifecycle]`); phase-264 W2 fixed that, so the new
   `examples/workspaces/ws-lifecycle-rust` (a managed system: `[lifecycle] autostart =
