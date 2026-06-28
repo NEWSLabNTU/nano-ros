@@ -20,6 +20,18 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
+# phase-263 A1 (services, C++) — AddTwoInts round-trip components (catalog only; run as the two
+# native_service_{server,client}_entry processes — issue 0096).
+[[component]]
+pkg = "cpp_add_server_pkg"
+class = "cpp_add_server_pkg::AddServer"
+name = "add_server"
+
+[[component]]
+pkg = "cpp_add_client_pkg"
+class = "cpp_add_client_pkg::AddClient"
+name = "add_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

@@ -232,6 +232,8 @@ static NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new
 static NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
 /// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
@@ -889,6 +891,32 @@ pub fn build_native_workspace_c_service_client_entry() -> TestResult<&'static Pa
             build_workspace_cmake_entry(
                 "workspace-c-native-service-client",
                 "c",
+                "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A1 (services, C++) — the AddTwoInts service SERVER single-node entry (cached).
+pub fn build_native_workspace_cpp_service_server_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-service-server",
+                "cpp",
+                "native_service_server_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A1 (services, C++) — the AddTwoInts service CLIENT single-node entry (cached).
+pub fn build_native_workspace_cpp_service_client_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-service-client",
+                "cpp",
                 "native_service_client_entry",
             )
         })

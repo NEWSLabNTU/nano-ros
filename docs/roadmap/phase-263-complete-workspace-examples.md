@@ -110,7 +110,18 @@ default. Sequence so each wave is shippable on its own.
   .xml`) for the 2-process topology (0096), fixtures `workspace-c-native-service-{server,client}`,
   catalog entries in `system.toml`. The test asserts the CLIENT's stdout shows the
   server-computed sums `1,2,3` (a=0,1,2 + b=1) — the reply crossing from the separate server
-  process IS the round-trip proof (no 3rd subscriber needed). **Remaining:** project to C++ / mixed.
+  process IS the round-trip proof (no 3rd subscriber needed).
+  **C++ DONE (2026-06-28)** — `tests/cpp_service_roundtrip_xprocess_e2e.rs` GREEN. New
+  `cpp_add_server_pkg` (`AddServer` — the TYPED `::nros::bind_service<Svc, C, &method>`, 0089
+  gap 4: the trampoline ffi_deserializes the request + ffi_serializes the `Svc::Response`, no
+  hand-rolled CDR) + `cpp_add_client_pkg` (`AddClient` — poll-model via `create_service_client_raw`
+  + the raw send/try-recv FFI). **C-API gap found:** the cpp client is print-only (does NOT
+  republish `/sum` like the C client), because one C++ node linking TWO generated typed-interface
+  archives (std_msgs + example_interfaces) double-defines the shared `builtin_interfaces` FFI glue
+  at link — a codegen-dedup gap (the C path hand-rolls raw CDR so it dodges it). Print-only keeps
+  the demo to one interface pkg; the round-trip is still proven by the printed server-computed
+  sums. Two single-node entries + `service_{server,client}.launch.xml`, fixtures
+  `workspace-cpp-native-service-{server,client}`. **Remaining:** project to mixed.
   Port from `examples/native/{rust,c,cpp}/service-*`.
 - **A2 — parameters. RUST DONE (2026-06-20/24, via phase-264 W4).** Was BLOCKED (no
   runtime parameter-VALUE read on `CallbackCtx`); phase-264 W4 added

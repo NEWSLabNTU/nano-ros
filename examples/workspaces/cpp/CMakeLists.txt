@@ -37,9 +37,15 @@ set(_ws_subdirs
 
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _ws_subdirs
+        # phase-263 A1 (services, C++) — AddTwoInts server/client pkgs + their two single-node
+        # entries (cross-process, issue 0096). Node pkgs before entries. Native-only.
+        src/cpp_add_server_pkg
+        src/cpp_add_client_pkg
         src/native_entry
         src/native_entry_robot1
-        src/native_entry_robot2)
+        src/native_entry_robot2
+        src/native_service_server_entry
+        src/native_service_client_entry)
 elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
