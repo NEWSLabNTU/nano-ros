@@ -189,12 +189,12 @@ default. Sequence so each wave is shippable on its own.
   param set` reconfig round-trip). Verified: the params entry builds clean (declare +
   live-read node compiles + links); `param_live_read_e2e` compiles + is fixture-wired
   (runtime green is CI-side, via the prebuilt+stamped workspace fixture).
-  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0112.** The C/C++ component shape has no
+  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0116.** The C/C++ component shape has no
   launch-parameter readback: the component-install seam (`configure(node, executor, self)`) carries
   no param context, `emit_c.rs`/`emit_cpp.rs` don't bake `<param>` or wire `[param_services]`, and
   there's no `ctx.parameter`-equivalent accessor on the C/C++ component. Faithful projection needs
   core API work (extend the seam + entry codegen + a component param accessor), not a projection —
-  so A2-C/C++/mixed is parked behind 0112. Projection continues with A4 actions.
+  so A2-C/C++/mixed is parked behind 0116. Projection continues with A4 actions.
 - **A3 — lifecycle. RUST DONE (2026-06-20, via phase-264 W2).** Was gated (the macro
   didn't wire `[lifecycle]`); phase-264 W2 fixed that, so the new
   `examples/workspaces/ws-lifecycle-rust` (a managed system: `[lifecycle] autostart =
@@ -209,15 +209,15 @@ default. Sequence so each wave is shippable on its own.
   transition** (the workspace's distinguishing behaviour vs the standalone
   `ros2_lifecycle_interop` test). **Verified locally** (the `build/rmw_zenoh_ws` overlay
   is present); skips (per the ROS 2 contract) where `rmw_zenoh_cpp` is absent.
-  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0113.** The C/C++ lifecycle FFI primitives exist
+  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0117.** The C/C++ lifecycle FFI primitives exist
   (`nros_executor_register_lifecycle_services` / `_change_state`, gated on `lifecycle-services`),
   but NOTHING threads `[lifecycle]` autostart into a C/C++ entry: the entry `Plan`
   (`codegen/entry/mod.rs`) has no `lifecycle` field (so the planner's `plan.lifecycle` is dropped),
   `emit_c.rs`/`emit_cpp.rs` emit no lifecycle wiring, and `nros_board_native_run_components_named`
   has no autostart drive — that lives only in the Rust `nros::main!` → `RuntimeCtx::apply_lifecycle`
-  path. Same class as A2/0112. Faithful projection needs core codegen+runtime work (thread
+  path. Same class as A2/0116. Faithful projection needs core codegen+runtime work (thread
   `plan.lifecycle` → emit `register_lifecycle_services` + autostart Configure→Activate + the
-  `lifecycle-services` link feature), not a projection — so A3-C/C++/mixed is parked behind 0113.
+  `lifecycle-services` link feature), not a projection — so A3-C/C++/mixed is parked behind 0117.
   Projection continues with Track B advanced workspaces.
 - **A4 — actions. RUST DONE (2026-06-24).** Added `action_server_pkg` (declarative
   `FibonacciServer`: `create_action_server_for_name_with_callbacks::<Fibonacci>`, goal/cancel
@@ -314,14 +314,14 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   on `/safe_ok`; fixtures `workspace-rust-native-safety-{talker,listener}` +
   `tests/safety_workspace_e2e.rs` assert a `/safe_ok` subscriber sees the count climb —
   proving the E2E CRC attach→validate→`integrity().is_valid()`→republish path (PASS).
-  **C / C++ BLOCKED (2026-06-29) — issue 0114.** Publisher CRC-attach is feasible (automatic via
+  **C / C++ BLOCKED (2026-06-29) — issue 0118.** Publisher CRC-attach is feasible (automatic via
   the backend `safety-e2e` feature; the `[system].features=["safety"]` → `NANO_ROS_SAFETY_E2E` knob
   reaches a workspace), but the VALIDATE side can't be a workspace component: the C/C++ integrity
   readback exists ONLY on the imperative poll path (`nros_subscription_try_recv_validated` /
   `nros_cpp_subscription_try_recv_validated`, a standalone `nros_app_main` binary), while the
   executor-component callback is fixed at `(data,len,ctx)` — no integrity arg, no `_validated`
-  variant. Same class as 0112/0113: a Rust executor-component surface (`CallbackCtx::integrity()`)
-  with no C/C++ component projection. Parked behind 0114.
+  variant. Same class as 0116/0117: a Rust executor-component surface (`CallbackCtx::integrity()`)
+  with no C/C++ component projection. Parked behind 0118.
   Note: a bake build derives the `safety-e2e` features from `system.toml` automatically
   (phase-261 W3); the hand-cargo entries set them explicitly.
 - **B2 — `ws-realtime-<lang>`. RUST DONE (2026-06-20).** New `examples/workspaces/
@@ -341,13 +341,13 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   tier (telem≥5), assert the high tier published ≥3× the low tier — proving `run_tiers`
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
   is advisory on native; the rate assertion proves both tiers run.)
-  **C / C++ BLOCKED (2026-06-29) — issue 0115.** Tier resolution + the `run_tiers` emission live
+  **C / C++ BLOCKED (2026-06-29) — issue 0119.** Tier resolution + the `run_tiers` emission live
   ENTIRELY in the Rust `nros::main!` proc-macro (`main_macro.rs` `read_system_tier_config` /
   `resolve_tiers` / emit `<Board>::run_tiers`); the shared entry IR (`Plan`/`PlanNode`,
   `codegen/entry/mod.rs`) has no tiers field, `emit_c.rs`/`emit_cpp.rs` emit no tier wiring (only
   single-tier `run_components`), and `nano_ros_node_register` has no callback-group/tier surface.
-  Same class as 0112/0113/0114 — a Rust macro/runtime surface with no C/C++ projection. Parked
-  behind 0115. (Separately: project to an RTOS deploy where priorities are real tasks.)
+  Same class as 0116/0117/0118 — a Rust macro/runtime surface with no C/C++ projection. Parked
+  behind 0119. (Separately: project to an RTOS deploy where priorities are real tasks.)
 - **B3 — `ws-bridge-rust`. DONE (2026-06-28) via
   [phase-267](phase-267-declarative-bridge-bake-flow.md).** A cross-RMW gateway
   **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml — **forwards

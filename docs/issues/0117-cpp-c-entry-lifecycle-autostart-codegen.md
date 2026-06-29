@@ -1,10 +1,10 @@
 ---
-id: 113
+id: 117
 title: "C / C++ entries don't wire `[lifecycle]` autostart — the entry codegen + native board never register the lifecycle services or drive Configure→Activate, blocking A3 lifecycle for C/C++/mixed"
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-264, 112]
+related: [phase-263, phase-264, 116]
 ---
 
 ## Summary
@@ -44,7 +44,7 @@ entry.
 
 A3 lifecycle cannot be faithfully projected to C / C++ / mixed without faking it (hand-writing
 lifecycle calls into a non-generated entry — the phase-263 guardrail forbids that). Sibling of
-issue 0112 (A2 params, same class: a Rust macro/runtime surface the C/C++ entry path lacks).
+issue 0116 (A2 params, same class: a Rust macro/runtime surface the C/C++ entry path lacks).
 
 ## Proposed direction
 

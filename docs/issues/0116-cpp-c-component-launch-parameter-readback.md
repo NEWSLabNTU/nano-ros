@@ -1,5 +1,5 @@
 ---
-id: 112
+id: 116
 title: "C / C++ components have no launch-parameter readback — the component-install seam carries no param context, blocking A2 params for C/C++/mixed"
 status: open
 type: enhancement

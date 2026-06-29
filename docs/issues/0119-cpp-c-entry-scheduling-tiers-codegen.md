@@ -1,10 +1,10 @@
 ---
-id: 115
+id: 119
 title: "C / C++ entries don't wire `[tiers]` scheduling — tier resolution + `run_tiers` are Rust `nros::main!`-only, blocking Track-B ws-realtime for C/C++"
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-264, 112, 113, 114]
+related: [phase-263, phase-264, 116, 117, 118]
 ---
 
 ## Summary
@@ -34,8 +34,8 @@ C/C++ emitters have no tier surface.
 
 ## Impact
 
-A faithful C/C++ `run_tiers` workspace is impossible without core work. Same class as 0112 (params),
-0113 (lifecycle), 0114 (subscription integrity): a Rust executor/macro surface with no C/C++
+A faithful C/C++ `run_tiers` workspace is impossible without core work. Same class as 0116 (params),
+0117 (lifecycle), 0118 (subscription integrity): a Rust executor/macro surface with no C/C++
 entry/component projection.
 
 ## Proposed direction

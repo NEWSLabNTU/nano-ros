@@ -1,10 +1,10 @@
 ---
-id: 114
+id: 118
 title: "C / C++ executor-component subscriptions have no E2E-integrity readback — only the imperative `try_recv_validated` poll path does, blocking Track-B ws-safety for C/C++"
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-252, 73, 112, 113]
+related: [phase-263, phase-252, 73, 116, 117]
 ---
 
 ## Summary
@@ -46,7 +46,7 @@ workspace requires.
 ## Impact
 
 `ws-safety-c` and `ws-safety-cpp` are blocked on the SAME missing surface (one fix unblocks both).
-Same class as 0112 (params) + 0113 (lifecycle): a Rust executor/component surface with no C/C++
+Same class as 0116 (params) + 0117 (lifecycle): a Rust executor/component surface with no C/C++
 component projection.
 
 ## Proposed direction
