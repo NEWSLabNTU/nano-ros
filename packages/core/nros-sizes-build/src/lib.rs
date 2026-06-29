@@ -308,6 +308,58 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         cmd.arg("--release");
     }
 
+    // NuttX build-std targets (`*-nuttx-*`) have NO precompiled `std`/`core`
+    // shipped with the toolchain, so — unlike host or the tier-2 embedded
+    // triples (zephyr `thumbv*`, riscv32, esp32, baremetal, threadx, all of
+    // which ship a precompiled `core`/`std`) — the nested probe must compile
+    // the standard library from source, exactly as the board FFI crate's
+    // outer build does. Without this the nested cargo fails
+    // `error[E0463]: can't find crate for core`, the probe falls back to the
+    // filesystem watch (which loses a timing race against the slow
+    // std-from-source compile), and the consumer drops to the committed
+    // `NUTTX_FALLBACK_SIZES` — which silently rots below the real
+    // `size_of::<Executor>()` and trips the `EXECUTOR_OPAQUE_U64S too small`
+    // const assertion.
+    //
+    // Mirror the board FFI's `.cargo/config.toml`
+    // (`packages/boards/nros-board-nuttx-*/nros-nuttx-ffi/.cargo/config.toml`):
+    //   * `[unstable] build-std = ["std", "panic_abort"]`
+    //   * `build-std-features = ["compiler-builtins-mem"]`
+    //   * `[patch.crates-io] libc = { path = "third-party/nuttx/libc" }`
+    // The libc patch is mandatory: std's NuttX port references symbols the
+    // crates.io libc lacks (e.g. `_SC_HOST_NAME_MAX`), so without it
+    // std-from-source fails with `error[E0425]: cannot find value
+    // _SC_HOST_NAME_MAX in crate libc`. The patched libc lives at a stable
+    // repo-relative path shared by every NuttX board, so it's discoverable by
+    // walking up from `CARGO_MANIFEST_DIR`; inject it via `--config`.
+    //
+    // The nightly toolchain is inherited from the outer NuttX build (its
+    // `rust-toolchain.toml` pins the nightly that `-Z build-std` requires);
+    // `ffi-size-markers` (which emits the probed `__NROS_SIZE_*` symbols) is
+    // supplied by workspace feature unification, same as on the host probe.
+    // STRICTLY gated on a NuttX triple: host + every precompiled-std target is
+    // untouched, and on a non-nightly toolchain the `-Z` flags just fail the
+    // nested build → the existing filesystem fallback runs (no worse than
+    // before).
+    if target.contains("nuttx") {
+        cmd.arg("-Z").arg("build-std=std,panic_abort");
+        cmd.arg("-Z")
+            .arg("build-std-features=compiler-builtins-mem");
+        if let Some(libc_dir) = find_nuttx_patched_libc() {
+            cmd.arg("--config").arg(format!(
+                "patch.crates-io.libc.path=\"{}\"",
+                libc_dir.display()
+            ));
+        } else {
+            println!(
+                "cargo:warning=nros-sizes-build: NuttX target {target} but the patched \
+                 libc (third-party/nuttx/libc) was not found relative to \
+                 CARGO_MANIFEST_DIR; std-from-source will likely fail and the probe \
+                 will fall back to the committed NuttX fallback sizes"
+            );
+        }
+    }
+
     // Phase 118.E.2 (corrosion compat): scrub env vars that the outer
     // cross-build (typically corrosion-driven CMake) injects globally
     // and which break the nested cargo's host-side proc-macro compiles.
@@ -442,6 +494,27 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
         crate_name: crate_name.to_string(),
         searched: vec![probe_target_dir],
     })
+}
+
+/// Locate the NuttX-patched `libc` (`third-party/nuttx/libc`) by walking up
+/// from `CARGO_MANIFEST_DIR`. Used to inject the board FFI crate's
+/// `[patch.crates-io] libc` into the nested build-std probe for NuttX targets
+/// (the consumer crates `nros-c` / `nros-cpp` live at
+/// `packages/core/<crate>`, so the repo root — and thus `third-party/nuttx/libc`
+/// — is a few levels up). Returns `None` when no such directory exists on the
+/// ancestry (e.g. the patched-libc submodule isn't checked out).
+fn find_nuttx_patched_libc() -> Option<PathBuf> {
+    let start = env::var("CARGO_MANIFEST_DIR").ok()?;
+    let mut dir = PathBuf::from(start);
+    loop {
+        let candidate = dir.join("third-party/nuttx/libc");
+        if candidate.join("Cargo.toml").is_file() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }
 
 /// Phase 118.E.2: intersect consumer's active features with the probed
