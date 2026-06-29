@@ -314,7 +314,14 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   on `/safe_ok`; fixtures `workspace-rust-native-safety-{talker,listener}` +
   `tests/safety_workspace_e2e.rs` assert a `/safe_ok` subscriber sees the count climb —
   proving the E2E CRC attach→validate→`integrity().is_valid()`→republish path (PASS).
-  Remaining: project to C/C++ (the `NANO_ROS_SAFETY_E2E` knob is wired by phase-261 W5).
+  **C / C++ BLOCKED (2026-06-29) — issue 0114.** Publisher CRC-attach is feasible (automatic via
+  the backend `safety-e2e` feature; the `[system].features=["safety"]` → `NANO_ROS_SAFETY_E2E` knob
+  reaches a workspace), but the VALIDATE side can't be a workspace component: the C/C++ integrity
+  readback exists ONLY on the imperative poll path (`nros_subscription_try_recv_validated` /
+  `nros_cpp_subscription_try_recv_validated`, a standalone `nros_app_main` binary), while the
+  executor-component callback is fixed at `(data,len,ctx)` — no integrity arg, no `_validated`
+  variant. Same class as 0112/0113: a Rust executor-component surface (`CallbackCtx::integrity()`)
+  with no C/C++ component projection. Parked behind 0114.
   Note: a bake build derives the `safety-e2e` features from `system.toml` automatically
   (phase-261 W3); the hand-cargo entries set them explicitly.
 - **B2 — `ws-realtime-<lang>`. RUST DONE (2026-06-20).** New `examples/workspaces/
