@@ -248,7 +248,16 @@ default. Sequence so each wave is shippable on its own.
   earlier sibling already generated got an empty auto-link property (`example_interfaces.h: No such
   file`); the fib pkgs (example_interfaces-only) were the first to hit it (A1's client masked it by
   also generating std_msgs). Fixed: append the existing interface target on the early-return.
-  Remaining: project to C++ + mixed.
+  **C++ DONE (2026-06-29)** — `tests/cpp_action_roundtrip_xprocess_e2e.rs` GREEN (order=10 →
+  `last=55`). `cpp_fib_server_pkg` (`FibServer` — the typed component seam
+  `::nros::bind_action_server_raw<C, &on_goal, &on_cancel>`; goal accepted in callback, sequence
+  computed + `nros_cpp_action_server_complete_goal` from a 500 ms timer) + `cpp_fib_client_pkg`
+  (`FibClient` — poll-model `create_action_client_raw` + the raw send-goal/get-result FFI;
+  print-only). **The pure-cpp `example_interfaces::action::Fibonacci` types generated cleanly out
+  of the box — NO `action_msgs` codegen gap on the pure-cpp path** (the gap is specific to the
+  cross-language mixed cpp-client variant; the fib client links only example_interfaces). No core
+  changes needed (the C++ class wraps the same FFI seams; the component.h storage-size fix is
+  C-only). Remaining: project to mixed.
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs

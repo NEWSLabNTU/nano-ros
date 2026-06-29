@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="cpp_fib_server_pkg" exec="fib_server" name="fib_server"/>
+</launch>

@@ -538,6 +538,31 @@ entry = "native_service_client_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 A4 (actions, C++) — the Fibonacci action cross-process round-trip (issue 0096): server
+# + client as two entries. Consumed by tests/cpp_action_roundtrip_xprocess_e2e.rs (the client
+# prints the server-computed result sequence's last element it receives).
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-server"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_action_server_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-client"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_action_client_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 Track C — per-host C++ entries for the multihost demo (HOST partition of
 # multihost.launch.xml). Consumed by tests/cpp_multihost_e2e.rs.
 [[workspace_fixture]]

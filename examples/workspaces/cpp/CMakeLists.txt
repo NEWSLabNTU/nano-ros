@@ -41,11 +41,17 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
         # entries (cross-process, issue 0096). Node pkgs before entries. Native-only.
         src/cpp_add_server_pkg
         src/cpp_add_client_pkg
+        # phase-263 A4 (actions, C++) — the Fibonacci server/client Node pkgs + their two
+        # single-node entries (cross-process, issue 0096). Node pkgs before entries.
+        src/cpp_fib_server_pkg
+        src/cpp_fib_client_pkg
         src/native_entry
         src/native_entry_robot1
         src/native_entry_robot2
         src/native_service_server_entry
-        src/native_service_client_entry)
+        src/native_service_client_entry
+        src/native_action_server_entry
+        src/native_action_client_entry)
 elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
