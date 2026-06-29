@@ -340,8 +340,14 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   `tests/realtime_tiers_e2e.rs`: two `/ctrl`+`/telem` subscribers, anchor on the slow
   tier (telem≥5), assert the high tier published ≥3× the low tier — proving `run_tiers`
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
-  is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
-  an RTOS deploy (freertos/threadx) where priorities are real tasks.
+  is advisory on native; the rate assertion proves both tiers run.)
+  **C / C++ BLOCKED (2026-06-29) — issue 0115.** Tier resolution + the `run_tiers` emission live
+  ENTIRELY in the Rust `nros::main!` proc-macro (`main_macro.rs` `read_system_tier_config` /
+  `resolve_tiers` / emit `<Board>::run_tiers`); the shared entry IR (`Plan`/`PlanNode`,
+  `codegen/entry/mod.rs`) has no tiers field, `emit_c.rs`/`emit_cpp.rs` emit no tier wiring (only
+  single-tier `run_components`), and `nano_ros_node_register` has no callback-group/tier surface.
+  Same class as 0112/0113/0114 — a Rust macro/runtime surface with no C/C++ projection. Parked
+  behind 0115. (Separately: project to an RTOS deploy where priorities are real tasks.)
 - **B3 — `ws-bridge-rust`. DONE (2026-06-28) via
   [phase-267](phase-267-declarative-bridge-bake-flow.md).** A cross-RMW gateway
   **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml — **forwards
