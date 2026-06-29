@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qos_talker_pkg</name>
+  <version>0.1.0</version>
+  <description>C Node pkg — publishes std_msgs/Int32 on /chatter with a non-default QoS profile (reliable + transient-local + keep-last-10).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

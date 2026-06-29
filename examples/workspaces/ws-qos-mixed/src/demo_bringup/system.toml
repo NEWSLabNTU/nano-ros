@@ -1,0 +1,28 @@
+[system]
+name = "qos_mixed_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+# phase-263 B4 (C) — per-entity QoS-override showcase. The talker publishes
+# `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
+# transient-local + keep-last-10), and the listener subscribes with the SAME
+# profile + prints `Received: N`. QoS is a per-entity contract set IN CODE here
+# (no launch `qos_overrides` section); both endpoints must declare the matching
+# profile to connect. They run as TWO processes (issue 0096 — cross-process
+# delivery): the default `system.launch.xml` lists both for the catalog, but
+# `native_talker_entry` and `native_listener_entry` each boot a one-node launch
+# (talker/listener.launch.xml).
+[[component]]
+pkg = "qos_talker_pkg"
+class = "qos_talker_pkg::QosTalker"
+name = "qos_talker"
+
+[[component]]
+pkg = "qos_listener_pkg"
+class = "qos_listener_pkg::QosListener"
+name = "qos_listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

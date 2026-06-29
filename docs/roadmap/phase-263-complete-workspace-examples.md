@@ -423,8 +423,11 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   `emit_c.rs` hard-codes an empty table — but the demo doesn't use it). The test asserts
   QoS-matched reliable cross-process delivery with the non-default profile (a QoS mismatch → zero
   receives); it does NOT assert transient_local late-join history replay (zenoh-pico/zenohd don't
-  provide durable replay out of the box — not faked). Fixtures + resolvers + the test. Remaining:
-  project to C++/mixed (same layout-identical QoS struct, via the `nros::QoS` builder). Status
+  provide durable replay out of the box — not faked). Fixtures + resolvers + the test.
+  **C++ + mixed DONE (2026-06-29)** — `ws-qos-cpp` (`tests/cpp_qos_workspace_e2e.rs`) uses the
+  `nros::QoS` builder (`QoS::default_profile().reliable().transient_local().keep_last(10)`) on the
+  typed `Publisher<Int32>` / raw subscription; `ws-qos-mixed` (`tests/mixed_qos_workspace_e2e.rs`)
+  reuses the C qos pkgs + a C++ TYPED entry. Both GREEN. **B4 qos: C / C++ / mixed DONE.** Status
   events (deadline-missed / liveliness) remain off the declarative `CallbackCtx`.
 - **B5 — `ws-launch-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
   ws-launch-rust`: the topology lives in launch XML. `system.launch.xml`
@@ -462,8 +465,12 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   component model uses the raw-CDR + type-name-string idiom (like `c_talker_pkg` for std_msgs/Int32),
   so the demo hand-encodes the `Reading` CDR — faithful (real workspace-local schema + real
   cross-process delivery), pure codegen path, NO component-model gap. Fixtures
-  `workspace-c-native-custom-msg-{talker,listener}` + resolvers + the test. Remaining: project to
-  C++/mixed (same raw-CDR idiom).
+  `workspace-c-native-custom-msg-{talker,listener}` + resolvers + the test.
+  **C++ + mixed DONE (2026-06-29)** — `ws-custom-msg-cpp` (`tests/cpp_custom_msg_workspace_e2e.rs`)
+  uses a C++ component + raw-CDR `Reading` (a minimal type tag + `publish_raw` / raw subscription on
+  the type-name string — no `nros_find_interfaces`, dodging the cpp builtin_interfaces double-glue
+  edge); `ws-custom-msg-mixed` (`tests/mixed_custom_msg_workspace_e2e.rs`) reuses the C custom_msgs
+  + reading pkgs + a C++ TYPED entry. Both GREEN. **B6 custom-msg: C / C++ / mixed DONE.**
 
 ### Track C — Platform parity (C / C++ / mixed)
 Give the starter C/C++/mixed workspaces the embedded entries Rust already has

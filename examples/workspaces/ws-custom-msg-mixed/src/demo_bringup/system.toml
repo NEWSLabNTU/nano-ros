@@ -1,0 +1,25 @@
+[system]
+name = "custom_msg_mixed_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+# phase-263 B6 (C) — in-workspace custom-message showcase. The talker publishes
+# `custom_msgs/Reading` (declared in src/custom_msgs/msg/Reading.msg) on /reading;
+# the listener subscribes + prints the decoded `sequence` + `temperature` fields.
+# They run as TWO processes (issue 0096 — cross-process delivery): the default
+# `system.launch.xml` lists both for the catalog, but `native_talker_entry` and
+# `native_listener_entry` each boot a one-node launch (talker/listener.launch.xml).
+[[component]]
+pkg = "reading_talker_pkg"
+class = "reading_talker_pkg::ReadingTalker"
+name = "reading_talker"
+
+[[component]]
+pkg = "reading_listener_pkg"
+class = "reading_listener_pkg::ReadingListener"
+name = "reading_listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

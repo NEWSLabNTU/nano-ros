@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.22)
+
+project(ws_custom_msg_mixed LANGUAGES C CXX)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+
+# phase-263 B6 (custom-msg, MIXED) — workspace-local custom-message demo, mixed-
+# flavored variant. The node pkgs are the C `reading_talker_pkg` /
+# `reading_listener_pkg` reused verbatim from ws-custom-msg-c (they hand-encode the
+# in-workspace `custom_msgs/Reading` as raw CDR); the entries are C++ TYPED
+# carriers that drive the C components via run_components. Native (posix) only; two
+# single-node entries (cross-process, issue 0096). The node pkgs are listed BEFORE
+# the entries so the entry codegen sees their `nano_ros_node_register` metadata.
+#
+# `custom_msgs` (src/custom_msgs) is the in-workspace interface package declaring
+# the schema; it is NOT a CMake subdir here. (There is no Rust node, so no
+# `nros_ws_runtime` umbrella is needed — it builds like the C++ workspace.)
+if(NOT NANO_ROS_PLATFORM)
+    set(NANO_ROS_PLATFORM posix)
+endif()
+
+set(_ws_subdirs
+    src/reading_talker_pkg
+    src/reading_listener_pkg
+    src/native_talker_entry
+    src/native_listener_entry)
+
+nano_ros_workspace(
+    BACKEND  zenoh
+    PLATFORM "${NANO_ROS_PLATFORM}"
+    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+    SYSTEM   demo_bringup
+    SUBDIRS  ${_ws_subdirs})

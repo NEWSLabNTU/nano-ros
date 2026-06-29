@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="qos_talker_pkg" exec="qos_talker" name="qos_talker"/>
+</launch>

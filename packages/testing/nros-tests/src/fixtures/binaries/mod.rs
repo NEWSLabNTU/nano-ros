@@ -241,6 +241,16 @@ static NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = 
 /// phase-263 B4 — cached paths to the C QoS-override cross-process entries.
 static NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
+/// QoS-override and custom-message cross-process workspace entries.
+static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_CUSTOM_MSG_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1009,6 +1019,123 @@ pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry(
                 "workspace-c-native-qos-listener",
                 "ws-qos-c",
+                "native_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, C++) — the per-entity QoS-override TALKER single-node entry (cached).
+/// A C++ talker publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
+/// transient-local + keep-last-10) built via the `nros::QoS` builder. Cross-process (issue 0096);
+/// consumed by tests/cpp_qos_workspace_e2e.rs.
+pub fn build_native_workspace_cpp_qos_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-qos-talker",
+                "ws-qos-cpp",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, C++) — the per-entity QoS-override LISTENER single-node entry (cached).
+/// Subscribes /chatter with the SAME non-default QoS profile as the talker + prints `Received: N`.
+pub fn build_native_workspace_cpp_qos_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_QOS_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-qos-listener",
+                "ws-qos-cpp",
+                "native_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, MIXED) — the QoS-override TALKER single-node entry (cached). The C
+/// `qos_talker_pkg` (non-default QoS in code) reused verbatim, driven by a C++ TYPED entry carrier.
+/// Cross-process (issue 0096); consumed by tests/mixed_qos_workspace_e2e.rs.
+pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_QOS_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-qos-talker",
+                "ws-qos-mixed",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, MIXED) — the QoS-override LISTENER single-node entry (cached). The C
+/// `qos_listener_pkg` reused verbatim, driven by a C++ TYPED entry carrier + prints `Received: N`.
+pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_QOS_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-qos-listener",
+                "ws-qos-mixed",
+                "native_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, C++) — the workspace-local `custom_msgs/Reading` TALKER single-node
+/// entry (cached). A C++ talker hand-encodes the Reading CDR (raw-CDR idiom, no generated link).
+/// Cross-process (issue 0096); consumed by tests/cpp_custom_msg_workspace_e2e.rs.
+pub fn build_native_workspace_cpp_custom_msg_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_CUSTOM_MSG_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-custom-msg-talker",
+                "ws-custom-msg-cpp",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, C++) — the workspace-local `custom_msgs/Reading` LISTENER single-node
+/// entry (cached). Subscribes + prints the decoded `sequence`/`temperature` fields it receives.
+pub fn build_native_workspace_cpp_custom_msg_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_CUSTOM_MSG_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-custom-msg-listener",
+                "ws-custom-msg-cpp",
+                "native_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, MIXED) — the workspace-local `custom_msgs/Reading` TALKER single-node
+/// entry (cached). The C `reading_talker_pkg` reused verbatim, driven by a C++ TYPED entry carrier.
+/// Cross-process (issue 0096); consumed by tests/mixed_custom_msg_workspace_e2e.rs.
+pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-custom-msg-talker",
+                "ws-custom-msg-mixed",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, MIXED) — the workspace-local `custom_msgs/Reading` LISTENER single-node
+/// entry (cached). The C `reading_listener_pkg` reused verbatim, driven by a C++ TYPED entry carrier.
+pub fn build_native_workspace_mixed_custom_msg_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-custom-msg-listener",
+                "ws-custom-msg-mixed",
                 "native_listener_entry",
             )
         })

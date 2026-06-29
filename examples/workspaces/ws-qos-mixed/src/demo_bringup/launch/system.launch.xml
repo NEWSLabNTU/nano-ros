@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="qos_talker_pkg" exec="qos_talker" name="qos_talker"/>
+  <node pkg="qos_listener_pkg" exec="qos_listener" name="qos_listener"/>
+</launch>

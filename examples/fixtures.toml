@@ -502,6 +502,109 @@ entry = "native_listener_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 Track-B language matrix — the C++ + MIXED projections of the C qos/custom-msg demos.
+# Same per-entity QoS-override + workspace-local custom-message shape; the cpp rows use C++
+# components (the `nros::QoS` builder / raw-CDR), the mixed rows reuse the C node pkgs verbatim
+# with a C++ TYPED entry carrier. Two single-node entries each (cross-process, issue 0096).
+
+# phase-263 B4 (QoS, C++) — C++ talker publishes std_msgs/Int32 on /chatter with a NON-DEFAULT
+# QoS profile (reliable + transient-local + keep-last-10) via the nros::QoS builder; a C++ listener
+# subscribes with the SAME profile + prints `Received: N`. Consumed by tests/cpp_qos_workspace_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-qos-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-cpp"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-qos-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-cpp"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# phase-263 B4 (QoS, MIXED) — the C qos node pkgs (reused verbatim from ws-qos-c, non-default QoS
+# in code) driven by a C++ TYPED entry carrier. Consumed by tests/mixed_qos_workspace_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-native-qos-talker"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-mixed"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-mixed-native-qos-listener"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-mixed"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# phase-263 B6 (custom-msg, C++) — C++ talker/listener for the in-workspace custom_msgs/Reading
+# via the raw-CDR idiom (no generated interface link). Consumed by
+# tests/cpp_custom_msg_workspace_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-custom-msg-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-cpp"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-custom-msg-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-cpp"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# phase-263 B6 (custom-msg, MIXED) — the C reading node pkgs (reused verbatim from ws-custom-msg-c)
+# driven by a C++ TYPED entry carrier. Consumed by tests/mixed_custom_msg_workspace_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-native-custom-msg-talker"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-mixed"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-mixed-native-custom-msg-listener"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-mixed"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2a (issue 0097) — the FIRST C/C++ workspace EMBEDDED entry:
 # `nano_ros_entry(BOARD threadx-linux LAUNCH …)` on the ThreadX-on-Linux host sim
 # (builds AND runs natively, no QEMU). Distinct `build_subdir` because a CMake
