@@ -499,13 +499,13 @@ path), is now codified:
   fixture entry → nano cyclone C listener; gated/skips without zenohd/cyclone
   fixtures. Mirrors the imperative `bridge_zenoh_to_cyclonedds.rs` Path A.
 
-**Known caveat / follow-up:** the entry BAKES its locator + cyclone domain
-(`run_from_config` has no env override), so the test pins zenohd to the baked
-port and the listener to the baked domain (5) instead of `unique_ros_domain_id()`
-— a small concurrency caveat (documented in the test). Proper fix: **env-overridable
-bridge endpoints** (so a deployed/tested bridge can point at a different router /
-domain without a rebuild). The `ws-bridge-rust` README + phase-263 B3 are DONE;
-issue #99 resolved upstream. (Original plan below.)
+**Endpoint overrides (issue #113, DONE).** The entry bakes its locator + cyclone
+domain, but `run_from_config` now applies `NROS_BRIDGE_<NODE>_{LOCATOR,DOMAIN}`
+over the baked config (`apply_node_env_overrides`), so a deployed/tested bridge
+re-points at a different router / domain without a rebuild. The test uses an
+ephemeral router + `unique_ros_domain_id()` via those overrides (no fixed-port /
+fixed-domain caveat). The `ws-bridge-rust` README + phase-263 B3 are DONE; issue
+#99 resolved upstream. (Original plan below.)
 
 **Work:** boot zenohd + the baked `ws-bridge-rust` entry (talker + bridge) + a
 stock `rmw_cyclonedds_cpp` subscriber; assert `ros2 topic echo /chatter` receives

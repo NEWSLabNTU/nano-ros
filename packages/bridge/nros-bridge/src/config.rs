@@ -252,7 +252,9 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
 /// file path to get wrong) and hands the contents here. Identical wiring to
 /// [`run_from_config`]; only the source differs.
 pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
-    let cfg: ConfigFile = toml::from_str(raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
+    let mut cfg: ConfigFile =
+        toml::from_str(raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
+    apply_node_env_overrides(&mut cfg.node);
 
     // Build one SessionSpec per [[node]]. The first node's session is
     // the primary; the rest open as extras.
@@ -358,6 +360,44 @@ fn node_rmw<'a>(nodes: &'a [NodeCfg], name: &str) -> Result<&'a str, ConfigError
         .ok_or_else(|| ConfigError::UnknownNode(name.into()))
 }
 
+/// phase-267 #113 — apply per-node env overrides over the baked config.
+///
+/// For each `[[node]]` named `<N>`, `NROS_BRIDGE_<N>_LOCATOR` overrides its
+/// `locator` and `NROS_BRIDGE_<N>_DOMAIN` its `domain_id` (`<N>` upper-cased,
+/// non-alphanumerics → `_`). Empty / unparseable values are ignored (the baked
+/// value stands). Lets a deployed bridge be re-pointed at a different router /
+/// DDS domain — and a test point it at an ephemeral router + unique domain —
+/// without a rebuild. `run_from_config` bakes the config via `include_str!`, so
+/// without this the endpoints are compile-time fixed.
+fn apply_node_env_overrides(nodes: &mut [NodeCfg]) {
+    for n in nodes.iter_mut() {
+        let key = env_key(&n.name);
+        if let Ok(loc) = std::env::var(format!("NROS_BRIDGE_{key}_LOCATOR")) {
+            if !loc.is_empty() {
+                n.locator = loc;
+            }
+        }
+        if let Ok(dom) = std::env::var(format!("NROS_BRIDGE_{key}_DOMAIN")) {
+            if let Ok(d) = dom.trim().parse::<u32>() {
+                n.domain_id = d;
+            }
+        }
+    }
+}
+
+/// Env-var-safe form of a node name: upper-case, non-alphanumerics → `_`.
+fn env_key(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Configured domain id of a `[[node]]`. An extra RMW session's participant
 /// domain follows the node builder's `domain_id`, not the `SessionSpec`'s, so
 /// the bridge must thread it explicitly (phase-267 issue 0109).
@@ -410,6 +450,35 @@ mod tests {
     fn field_type_from_str_rejects_unknown() {
         assert!(field_type_from_str("int32").is_ok());
         assert!(field_type_from_str("not_a_type").is_err());
+    }
+
+    #[test]
+    fn env_key_uppercases_and_sanitizes() {
+        assert_eq!(env_key("s0"), "S0");
+        assert_eq!(env_key("field-control.1"), "FIELD_CONTROL_1");
+    }
+
+    #[test]
+    fn apply_node_env_overrides_replaces_locator_and_domain() {
+        // Unique var names so the test is parallel-safe (env is process-global).
+        unsafe {
+            std::env::set_var("NROS_BRIDGE_ENVT_LOCATOR", "tcp/10.0.0.9:7448");
+            std::env::set_var("NROS_BRIDGE_ENVT_DOMAIN", "42");
+        }
+        let mut nodes = vec![NodeCfg {
+            name: "envt".into(),
+            rmw: "zenoh".into(),
+            locator: "tcp/127.0.0.1:7447".into(),
+            domain_id: 0,
+            namespace: String::new(),
+        }];
+        apply_node_env_overrides(&mut nodes);
+        assert_eq!(nodes[0].locator, "tcp/10.0.0.9:7448");
+        assert_eq!(nodes[0].domain_id, 42);
+        unsafe {
+            std::env::remove_var("NROS_BRIDGE_ENVT_LOCATOR");
+            std::env::remove_var("NROS_BRIDGE_ENVT_DOMAIN");
+        }
     }
 
     #[test]

@@ -15,24 +15,17 @@
 //!   native_rs_talker ── zenoh ──► zenohd ──► native_entry (declarative bridge)
 //!   (rmw-zenoh fixture)           (router)        │  run_from_config pump
 //!                                                 ▼
-//!                                      nano cyclonedds C listener (domain 5)
+//!                                      nano cyclonedds C listener
 //! ```
 //!
-//! ## Baked endpoints (and the concurrency caveat)
+//! ## Endpoints (runtime-overridable, #113)
 //!
-//! Unlike the imperative bin (which takes `ZENOH_LOCATOR` / `ROS_DOMAIN_ID` from
-//! the env), the declarative entry BAKES its endpoints from
-//! `demo_bringup/system.toml` — `run_from_config` has no env override. So this
-//! test pins zenohd to the baked locator and the listener to the baked cyclone
-//! domain; both MUST mirror `system.toml`.
-//!
-//! Consequence: it cannot use `unique_ros_domain_id()` like the other cyclone
-//! host tests, so there is a small residual risk that a CONCURRENT cyclone test
-//! happens to draw the same baked domain (`5`) and cross-talks. The zenoh port is
-//! safe — `ZenohRouter::start` frees the fixed port first, and no other test uses
-//! it. The proper fix is env-overridable bridge endpoints (a follow-up); until
-//! then this is accepted (gated test, low probability). Do NOT change the baked
-//! domain without changing `system.toml`.
+//! The declarative entry BAKES its endpoints from `demo_bringup/system.toml`, but
+//! phase-267 #113 lets `run_from_config` override each `[[node]]`'s locator/domain
+//! at runtime via `NROS_BRIDGE_<NODE>_{LOCATOR,DOMAIN}`. So this test — like the
+//! imperative one — uses an EPHEMERAL zenohd + a `unique_ros_domain_id()` cyclone
+//! domain (overriding the baked `s0` locator + `s1` domain), with no fixed-port /
+//! fixed-domain collision risk.
 //!
 //! Skips cleanly when `zenohd`, the bridge entry fixture (gated on the cyclonedds
 //! submodule), or the nano cyclone listener fixture is not built.
@@ -52,11 +45,11 @@ use nros_tests::{
 };
 use rstest::rstest;
 
-/// Baked in `examples/workspaces/ws-bridge-rust/src/demo_bringup/system.toml`:
-/// the zenoh session `locator` and the cyclonedds `[[domain]] dds` id. Keep in
-/// sync with that file — the entry compiles them in.
-const BAKED_ZENOH_PORT: u16 = 7447;
-const BAKED_CYCLONE_DOMAIN: u8 = 5;
+/// The generated `nros-bridge.toml` interns sessions to `s0` (zenoh ingress) and
+/// `s1` (cyclonedds egress). phase-267 #113 — override the baked endpoints at
+/// runtime via `NROS_BRIDGE_<NODE>_{LOCATOR,DOMAIN}` (node name upper-cased).
+const ZENOH_NODE: &str = "S0";
+const CYCLONE_NODE: &str = "S1";
 
 /// Resolve (building if needed) the native Cyclone C listener, or skip when the
 /// fixtures aren't set up. Mirrors `bridge_zenoh_to_cyclonedds::nano_cyclone_listener`.
@@ -107,21 +100,29 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     };
     let listener_bin = nano_cyclone_listener();
 
-    // The entry bakes `tcp/127.0.0.1:7447`; pin zenohd to that port (the entry
-    // connects to it as a client).
-    let zenohd = ZenohRouter::start(BAKED_ZENOH_PORT).expect("start zenohd on the baked port");
+    // Ephemeral router + unique cyclone domain (overriding the baked endpoints
+    // below) so this test never collides with a concurrent one.
+    let zenohd = ZenohRouter::start_unique().expect("start ephemeral zenohd");
     let zenoh_locator = zenohd.locator();
+    let domain = nros_tests::unique_ros_domain_id();
 
     // Listener first — its subscription must be discoverable before the bridge's
     // cyclone egress publisher matches over SPDP.
-    let mut listener = spawn_cyclone_listener(&listener_bin, BAKED_CYCLONE_DOMAIN);
+    let mut listener = spawn_cyclone_listener(&listener_bin, domain);
     std::thread::sleep(Duration::from_secs(3));
 
-    // The declarative entry takes NO env (locator + domain are baked); it
-    // connects to zenohd, opens the cyclone egress on domain 5, stages the
-    // descriptor, and pumps. It has no startup banner, so give it a moment.
+    // phase-267 #113 — override the baked endpoints: point the zenoh ingress (`s0`)
+    // at the ephemeral router and the cyclone egress (`s1`) at the unique domain.
+    // The entry connects to zenohd, opens the cyclone egress, stages the descriptor,
+    // and pumps. It has no startup banner, so give it a moment.
     let mut bridge_cmd = Command::new(&bridge_bin);
-    bridge_cmd.env("RUST_LOG", "info");
+    bridge_cmd
+        .env("RUST_LOG", "info")
+        .env(format!("NROS_BRIDGE_{ZENOH_NODE}_LOCATOR"), &zenoh_locator)
+        .env(
+            format!("NROS_BRIDGE_{CYCLONE_NODE}_DOMAIN"),
+            domain.to_string(),
+        );
     let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "ws-bridge-rust-native_entry")
         .expect("spawn declarative bridge entry");
     std::thread::sleep(Duration::from_secs(2));

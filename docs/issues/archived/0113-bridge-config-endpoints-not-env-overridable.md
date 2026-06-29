@@ -1,11 +1,28 @@
 ---
 id: 113
 title: "Config-driven bridge endpoints (`run_from_config` locator + domain) are baked, not env-overridable"
-status: open
+status: resolved
 type: enhancement
 area: rmw
 related: [phase-267, rfc-0009, 0109]
+resolved_in: phase-267
 ---
+
+## Resolution (phase-267)
+
+`run_from_config` now applies per-node env overrides over the baked config
+(`config.rs::apply_node_env_overrides`, run right after parse): for a `[[node]]`
+named `<N>`, `NROS_BRIDGE_<N>_LOCATOR` overrides its `locator` and
+`NROS_BRIDGE_<N>_DOMAIN` its `domain_id` (`<N>` upper-cased, non-alphanumerics →
+`_`; empty/unparseable values keep the baked value). A deployed bridge can now be
+re-pointed at a different router / DDS domain without a rebuild.
+
+The gated `declarative_bridge_zenoh_to_cyclonedds` test was updated to use an
+ephemeral zenohd + `unique_ros_domain_id()` (overriding the baked `s0` locator +
+`s1` domain), removing the fixed-port / fixed-domain collision caveat. Verified
+end-to-end: forwarding on NON-baked endpoints (router :7600, cyclone domain 9) —
+a stock `rmw_cyclonedds_cpp` subscriber on domain 9 received 7/7 `std_msgs/Int32`.
+Unit tests: `env_key` + `apply_node_env_overrides`.
 
 ## Summary
 

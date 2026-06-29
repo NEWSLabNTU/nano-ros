@@ -44,13 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#113** — [config-driven bridge endpoints are baked, not
-  env-overridable](0113-bridge-config-endpoints-not-env-overridable.md): `run_from_config` reads
-  each `[[node]]`'s `locator` + `domain_id` verbatim from the macro-baked `nros-bridge.toml`, with
-  no runtime override (the imperative bins take `ZENOH_LOCATOR` / `ROS_DOMAIN_ID` from env). So a
-  declarative bridge entry can't be re-pointed at another router/domain without a rebuild, and the
-  gated bridge test must pin a fixed domain (`5`) instead of `unique_ros_domain_id()`. Fix: env
-  expansion (`${VAR:-default}`) or well-known per-session env vars. Found in the phase-267 W-B test wave.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -80,7 +73,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#114** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#113** —
+[config-driven bridge endpoints not
+env-overridable](archived/0113-bridge-config-endpoints-not-env-overridable.md):
+`run_from_config` baked each `[[node]]`'s locator + domain with no runtime override.
+Fixed (phase-267): `apply_node_env_overrides` applies `NROS_BRIDGE_<NODE>_LOCATOR` /
+`NROS_BRIDGE_<NODE>_DOMAIN` over the baked config, so a deployed bridge re-points
+without a rebuild and the gated test uses an ephemeral router + `unique_ros_domain_id()`.
+Verified forwarding on non-baked endpoints (:7600 / domain 9). Also: **#114** —
 [native C/C++ cmake fixtures race the per-build config-header
 mirror](archived/0114-cpp-cyclone-fixture-build-sizes-undefined.md): the
 native/posix C/C++ fixtures compiled before Corrosion's `nros_{c,cpp}_config_header`
