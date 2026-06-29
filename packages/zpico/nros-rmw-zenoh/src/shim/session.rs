@@ -77,8 +77,10 @@ fn append_tls_env_to_locator(
 // ============================================================================
 
 /// Maximum number of distinct per-node NN liveliness tokens the session will
-/// hold.  Sized to match the executor's per-process node cap.
-const MAX_PER_NODE_LIVELINESS: usize = 16;
+/// hold.  Derived from `NROS_EXECUTOR_MAX_NODES` (build.rs) so it tracks the
+/// executor's per-process node cap — one session hosts at most that many graph
+/// nodes, so a token is never silently dropped on overflow at the default cap.
+use crate::config::MAX_PER_NODE_LIVELINESS;
 
 /// Zenoh session wrapping nros-rmw-zenoh Context
 ///

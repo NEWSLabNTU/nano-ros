@@ -7,6 +7,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_LARGE_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_SIZE_THRESHOLD");
     println!("cargo:rerun-if-env-changed=ZPICO_MAX_LARGE_SUBSCRIBERS");
+    println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -39,6 +40,12 @@ fn main() {
     let large_size: usize = env_usize("ZPICO_SUBSCRIBER_LARGE_SIZE", 16384);
     let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
     let max_large: usize = env_usize("ZPICO_MAX_LARGE_SUBSCRIBERS", 2).max(1);
+    // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
+    // session hosts at most the executor's node cap of graph nodes, so this
+    // tracks `nros-node`'s `NROS_EXECUTOR_MAX_NODES` (default 4); keep them in
+    // sync — set the same env var for both. `.max(1)` so a session always has
+    // room for its own primary node.
+    let max_nodes: usize = env_usize("NROS_EXECUTOR_MAX_NODES", 4).max(1);
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join("buffer_config.rs");
@@ -68,7 +75,11 @@ fn main() {
              pub const SUBSCRIBER_SIZE_THRESHOLD: usize = {size_threshold};\n\
              /// Phase 231 — max concurrent `large`-class subscribers\n\
              /// (set via ZPICO_MAX_LARGE_SUBSCRIBERS, default 2).\n\
-             pub const MAX_LARGE_SUBSCRIBERS: usize = {max_large};\n",
+             pub const MAX_LARGE_SUBSCRIBERS: usize = {max_large};\n\
+             /// Phase 268 — per-session per-node NN liveliness token cap, tracking\n\
+             /// `nros-node`'s NROS_EXECUTOR_MAX_NODES (default 4): one session hosts\n\
+             /// at most that many graph nodes.\n\
+             pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n",
             keyexpr_buf_size = keyexpr_string_size + 1,
         ),
     )
