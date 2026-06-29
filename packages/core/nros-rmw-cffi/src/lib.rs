@@ -1532,6 +1532,47 @@ impl CffiSession {
         }
     }
 
+    /// Phase 268 — build a per-call session view whose `node_name` / `namespace_`
+    /// carry the ENTITY's owning-node identity (when the entity declares one),
+    /// not the session's open-time default.
+    ///
+    /// A backend reads `session->node_name` to tag the entity it is creating for
+    /// ROS 2 graph discovery (`ros2 node list`). One session can host N graph
+    /// nodes (e.g. a multi-node launch entry), so the session's single open-time
+    /// name is wrong for any entity owned by a different node. #104 threaded the
+    /// node name only into the session, so multi-node entries collapsed every
+    /// entity onto the one session name (`/node`). Overriding per entity here is
+    /// the fix — no vtable ABI / signature change, every backend benefits (it
+    /// already reads `session->node_name`).
+    ///
+    /// Falls back to the session buffers when the entity carries no node identity
+    /// (direct-API / single-node path) — backward-compatible. The staging buffers
+    /// must outlive the synchronous trampoline call; callers keep them on the
+    /// stack across the `(vtable.create_*)` call.
+    fn entity_view(
+        &self,
+        node_name: Option<&str>,
+        namespace: &str,
+        nn_buf: &mut [u8; NAME_BUF_LEN],
+        ns_buf: &mut [u8; NAME_BUF_LEN],
+    ) -> NrosRmwSession {
+        let node_name_ptr = match node_name {
+            Some(n) if !n.is_empty() => to_c_str(n, nn_buf),
+            _ => self.node_name_buf.as_ptr(),
+        };
+        let namespace_ptr = if namespace.is_empty() {
+            self.namespace_buf.as_ptr()
+        } else {
+            to_c_str(namespace, ns_buf)
+        };
+        NrosRmwSession {
+            node_name: node_name_ptr,
+            namespace_: namespace_ptr,
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        }
+    }
+
     /// Node name passed at session-open time.
     pub fn node_name(&self) -> &str {
         cstr_buf_to_str(&self.node_name_buf)
@@ -1672,7 +1713,11 @@ impl Session for CffiSession {
             _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
-        let mut session_view = self.make_view();
+        // Phase 268 — tag the entity with its owning node, not the session default.
+        let mut nn_buf = [0u8; NAME_BUF_LEN];
+        let mut ns_buf = [0u8; NAME_BUF_LEN];
+        let mut session_view =
+            self.entity_view(topic.node_name, topic.namespace, &mut nn_buf, &mut ns_buf);
         let ret = unsafe {
             (self.vtable.create_publisher)(
                 &mut session_view,
@@ -1727,7 +1772,11 @@ impl Session for CffiSession {
             _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
-        let mut session_view = self.make_view();
+        // Phase 268 — tag the entity with its owning node, not the session default.
+        let mut nn_buf = [0u8; NAME_BUF_LEN];
+        let mut ns_buf = [0u8; NAME_BUF_LEN];
+        let mut session_view =
+            self.entity_view(topic.node_name, topic.namespace, &mut nn_buf, &mut ns_buf);
         let ret = unsafe {
             (self.vtable.create_subscriber)(
                 &mut session_view,
@@ -1782,7 +1831,11 @@ impl Session for CffiSession {
             _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
-        let mut session_view = self.make_view();
+        // Phase 268 — tag the entity with its owning node, not the session default.
+        let mut nn_buf = [0u8; NAME_BUF_LEN];
+        let mut ns_buf = [0u8; NAME_BUF_LEN];
+        let mut session_view =
+            self.entity_view(service.node_name, service.namespace, &mut nn_buf, &mut ns_buf);
         let ret = unsafe {
             (self.vtable.create_service_server)(
                 &mut session_view,
@@ -1829,7 +1882,11 @@ impl Session for CffiSession {
             _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
-        let mut session_view = self.make_view();
+        // Phase 268 — tag the entity with its owning node, not the session default.
+        let mut nn_buf = [0u8; NAME_BUF_LEN];
+        let mut ns_buf = [0u8; NAME_BUF_LEN];
+        let mut session_view =
+            self.entity_view(service.node_name, service.namespace, &mut nn_buf, &mut ns_buf);
         let ret = unsafe {
             (self.vtable.create_service_client)(
                 &mut session_view,
