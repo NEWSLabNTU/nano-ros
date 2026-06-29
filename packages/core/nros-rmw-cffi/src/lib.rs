@@ -1834,8 +1834,12 @@ impl Session for CffiSession {
         // Phase 268 — tag the entity with its owning node, not the session default.
         let mut nn_buf = [0u8; NAME_BUF_LEN];
         let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view =
-            self.entity_view(service.node_name, service.namespace, &mut nn_buf, &mut ns_buf);
+        let mut session_view = self.entity_view(
+            service.node_name,
+            service.namespace,
+            &mut nn_buf,
+            &mut ns_buf,
+        );
         let ret = unsafe {
             (self.vtable.create_service_server)(
                 &mut session_view,
@@ -1885,8 +1889,12 @@ impl Session for CffiSession {
         // Phase 268 — tag the entity with its owning node, not the session default.
         let mut nn_buf = [0u8; NAME_BUF_LEN];
         let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view =
-            self.entity_view(service.node_name, service.namespace, &mut nn_buf, &mut ns_buf);
+        let mut session_view = self.entity_view(
+            service.node_name,
+            service.namespace,
+            &mut nn_buf,
+            &mut ns_buf,
+        );
         let ret = unsafe {
             (self.vtable.create_service_client)(
                 &mut session_view,

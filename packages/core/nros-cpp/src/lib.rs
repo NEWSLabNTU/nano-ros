@@ -941,7 +941,12 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // node identity is now correct per component, matching the Rust + `_ex`
     // paths.
     let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
-    let node_id = match ctx.executor.node_builder(name_str).namespace(ns_str).build() {
+    let node_id = match ctx
+        .executor
+        .node_builder(name_str)
+        .namespace(ns_str)
+        .build()
+    {
         Ok(id) => id,
         Err(_) => return NROS_CPP_RET_ERROR,
     };
