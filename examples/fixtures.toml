@@ -474,6 +474,34 @@ entry = "native_listener_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 B4 (QoS, C) — the per-entity QoS-override cross-process demo (C projection of
+# ws-qos-rust). A C talker publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile
+# (reliable + transient-local + keep-last-10, set in code — not via launch `qos_overrides`); a C
+# listener subscribes with the SAME profile + prints `Received: N`. QoS is a per-entity contract
+# both endpoints must match to connect. They run as TWO entries (issue 0096). Consumed by
+# tests/c_qos_workspace_e2e.rs (the listener receives the QoS-matched stream cross-process).
+[[workspace_fixture]]
+id = "workspace-c-native-qos-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-c"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-c-native-qos-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-c"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2a (issue 0097) — the FIRST C/C++ workspace EMBEDDED entry:
 # `nano_ros_entry(BOARD threadx-linux LAUNCH …)` on the ThreadX-on-Linux host sim
 # (builds AND runs natively, no QEMU). Distinct `build_subdir` because a CMake

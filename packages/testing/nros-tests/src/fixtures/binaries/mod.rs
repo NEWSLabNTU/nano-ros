@@ -238,6 +238,9 @@ static NATIVE_WORKSPACE_C_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCe
 /// phase-263 B6 — cached paths to the C custom-msg cross-process entries.
 static NATIVE_WORKSPACE_C_CUSTOM_MSG_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-263 B4 — cached paths to the C QoS-override cross-process entries.
+static NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -976,6 +979,36 @@ pub fn build_native_workspace_c_custom_msg_listener_entry() -> TestResult<&'stat
             build_workspace_cmake_entry(
                 "workspace-c-native-custom-msg-listener",
                 "ws-custom-msg-c",
+                "native_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, C) — the per-entity QoS-override TALKER single-node entry (cached).
+/// Publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
+/// transient-local + keep-last-10) set in code. Cross-process (issue 0096); consumed by
+/// tests/c_qos_workspace_e2e.rs.
+pub fn build_native_workspace_c_qos_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-qos-talker",
+                "ws-qos-c",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B4 (QoS, C) — the per-entity QoS-override LISTENER single-node entry (cached).
+/// Subscribes /chatter with the SAME non-default QoS profile as the talker + prints `Received: N`.
+pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-qos-listener",
+                "ws-qos-c",
                 "native_listener_entry",
             )
         })

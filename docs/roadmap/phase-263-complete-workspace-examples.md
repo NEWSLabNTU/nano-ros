@@ -414,8 +414,18 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   `*_with_qos` API — no system.toml QoS section (the planner's baked
   `qos_overrides` `apply_overrides` table is a separate, more advanced path).
   `cargo build -p native_entry` links both pkgs clean; both clippy-clean.
-  Remaining: status events (deadline-missed / liveliness) are not yet on the
-  declarative `CallbackCtx`; runtime e2e (Track D); project to C/C++/mixed.
+  **C DONE (2026-06-29)** — new `examples/workspaces/ws-qos-c` +
+  `tests/c_qos_workspace_e2e.rs` GREEN: a C talker + C listener that both build a non-default
+  `nros_cpp_qos_t` `{reliability=RELIABLE, durability=TRANSIENT_LOCAL, history=KEEP_LAST, depth=10}`
+  (matching the Rust `reliable().transient_local().depth(10)` profile) and pass it by value to
+  `nros_cpp_publisher_create` / `nros_cpp_subscription_register`. **Tractable — QoS is a per-entity
+  contract set in code, NOT a launch override** (the `qos_overrides` launch path is C++-only,
+  `emit_c.rs` hard-codes an empty table — but the demo doesn't use it). The test asserts
+  QoS-matched reliable cross-process delivery with the non-default profile (a QoS mismatch → zero
+  receives); it does NOT assert transient_local late-join history replay (zenoh-pico/zenohd don't
+  provide durable replay out of the box — not faked). Fixtures + resolvers + the test. Remaining:
+  project to C++/mixed (same layout-identical QoS struct, via the `nros::QoS` builder). Status
+  events (deadline-missed / liveliness) remain off the declarative `CallbackCtx`.
 - **B5 — `ws-launch-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
   ws-launch-rust`: the topology lives in launch XML. `system.launch.xml`
   exercises the launch v1 surface — `<arg>` defaults, `$(var …)` substitution,

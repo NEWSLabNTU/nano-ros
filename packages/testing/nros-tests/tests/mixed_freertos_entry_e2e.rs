@@ -1,7 +1,7 @@
 //! phase-263 C2c — runtime E2E for the MIXED (C + C++ + no_std Rust) embedded workspace
 //! entry on FreeRTOS QEMU MPS2-AN385. The embedded sibling of the threadx-linux mixed entry,
 //! but on a GENUINELY-no_std cross target (thumbv7m-none-eabi) — proving the no_std Rust node
-//! + the cross-compiled `nros_ws_runtime` umbrella bundle into the bootable FreeRTOS image
+//! and the cross-compiled `nros_ws_runtime` umbrella bundle into the bootable FreeRTOS image
 //! beside the C talker and C++ listener.
 //!
 //! The `rust_heartbeat_pkg` node is `#![no_std]` (nros alloc-only) and `rlib`-only; the
