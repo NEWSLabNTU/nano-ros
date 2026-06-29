@@ -1545,24 +1545,36 @@ check-workspace-features:
     cargo test --no-run --workspace --exclude nros-c --no-default-features --quiet
     @echo "All feature checks passed!"
 
-# Provision the pinned clang-format (SSoT: `.clang-format-version`) into
-# `build/clang-format` via a Python venv + the PyPI `clang-format` wheel — an
-# exact-version, cross-platform binary (no system package manager, no SDK-release
-# hosting). clang-format output drifts across major versions, so pinning is the
-# only way `just format` / `check-*-fmt` stay consistent between machines + CI.
-# Idempotent. Run once as part of dev setup.
+# Provision the pinned clang-format (SSoT: `.clang-format-version`) as a
+# PROJECT-LOCAL binary at `build/clang-format/bin/clang-format` — exactly like
+# `build/zenohd/zenohd` / `build/qemu/bin/`. clang-format output drifts across major
+# versions, so pinning is the only way `just format` / `check-*-fmt` stay consistent
+# between machines + CI. We fetch the exact-version, cross-platform PyPI `clang-format`
+# WHEEL (a zip carrying a standalone `clang_format/data/bin/clang-format` binary) and
+# extract just that binary — NO venv, NO `pip install`, NOTHING user-wide (pip is used
+# only to *download* the right wheel for this host, with no cache footprint). Idempotent.
 setup-clang-format:
     #!/usr/bin/env bash
     set -e
     want="$(cat .clang-format-version)"
-    bin="build/clang-format/bin/clang-format"
+    dest="build/clang-format"
+    bin="$dest/bin/clang-format"
     if [ -x "$bin" ] && "$bin" --version 2>/dev/null | grep -q "$want"; then
         echo "clang-format $want already provisioned: $bin"; exit 0
     fi
-    echo "Provisioning clang-format $want into build/clang-format ..."
-    python3 -m venv build/clang-format
-    build/clang-format/bin/pip install -q --upgrade pip >/dev/null 2>&1 || true
-    build/clang-format/bin/pip install -q "clang-format==$want"
+    echo "Provisioning clang-format $want into $dest (project-local binary; no install) ..."
+    mkdir -p "$dest/bin"
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    # Download (NOT install) the platform wheel for THIS host — pip resolves the right
+    # manylinux/macos tag. --no-cache-dir → no ~/.cache/pip footprint.
+    python3 -m pip download --no-cache-dir --no-deps --only-binary=:all: \
+        -d "$tmp" "clang-format==$want" >/dev/null
+    whl="$(ls "$tmp"/clang_format-*.whl 2>/dev/null | head -1)"
+    [ -n "$whl" ] || { echo "ERROR: clang-format==$want wheel not found for this host" >&2; exit 1; }
+    # The wheel is a zip; the real standalone binary is clang_format/data/bin/clang-format.
+    python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$whl" "$tmp/x"
+    cp "$tmp/x/clang_format/data/bin/clang-format" "$bin"
+    chmod +x "$bin"
     "$bin" --version
 
 # Format C code (nros-c headers, zpico C, C examples) with the pinned clang-format
