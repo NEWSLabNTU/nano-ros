@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="reading_talker_pkg" exec="reading_talker" name="reading_talker"/>
+</launch>

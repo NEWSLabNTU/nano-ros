@@ -436,8 +436,18 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   `RosMessage`, so it flows through the ordinary typed path — only the schema is
   yours. `cargo build -p native_entry` links both pkgs + the generated crate
   clean; both clippy-clean. Mirrors `examples/templates/local-msg-package`'s
-  in-workspace interface shape. Remaining: runtime e2e (Track D); project to
-  C/C++/mixed (the `.msg` is already colcon-buildable).
+  in-workspace interface shape.
+  **C DONE (2026-06-29)** — new `examples/workspaces/ws-custom-msg-c` +
+  `tests/c_custom_msg_workspace_e2e.rs` GREEN: a workspace-local `custom_msgs/Reading`
+  (`float64 temperature` / `float64 humidity` / `int32 sequence`, matching the Rust ref) published
+  by a C talker component + received by a C listener component cross-process (issue 0096), the
+  listener decoding both `sequence` + `temperature` (seq=1..6, temp=20.5..). **Scope finding:**
+  `nros ws sync` codegens a workspace-LOCAL custom interface pkg fine in a C workspace; the C
+  component model uses the raw-CDR + type-name-string idiom (like `c_talker_pkg` for std_msgs/Int32),
+  so the demo hand-encodes the `Reading` CDR — faithful (real workspace-local schema + real
+  cross-process delivery), pure codegen path, NO component-model gap. Fixtures
+  `workspace-c-native-custom-msg-{talker,listener}` + resolvers + the test. Remaining: project to
+  C++/mixed (same raw-CDR idiom).
 
 ### Track C — Platform parity (C / C++ / mixed)
 Give the starter C/C++/mixed workspaces the embedded entries Rust already has

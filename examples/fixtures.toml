@@ -447,6 +447,33 @@ entry = "native_entry_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 B6 (custom-msg, C) — the workspace-local custom-message cross-process demo
+# (C projection of ws-custom-msg-rust). A C talker publishes `custom_msgs/Reading` (declared
+# in the in-workspace `custom_msgs` interface pkg) on /reading; a C listener subscribes + prints
+# the decoded `sequence`/`temperature` fields. They run as TWO entries (issue 0096). Consumed by
+# tests/c_custom_msg_workspace_e2e.rs (the listener prints the custom-msg field it receives).
+[[workspace_fixture]]
+id = "workspace-c-native-custom-msg-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-c"
+bringup = "src/demo_bringup"
+entry = "native_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-c-native-custom-msg-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-custom-msg-c"
+bringup = "src/demo_bringup"
+entry = "native_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2a (issue 0097) — the FIRST C/C++ workspace EMBEDDED entry:
 # `nano_ros_entry(BOARD threadx-linux LAUNCH …)` on the ThreadX-on-Linux host sim
 # (builds AND runs natively, no QEMU). Distinct `build_subdir` because a CMake

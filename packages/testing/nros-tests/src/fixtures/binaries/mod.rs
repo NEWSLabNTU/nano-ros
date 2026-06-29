@@ -235,6 +235,9 @@ static NATIVE_WORKSPACE_C_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceC
 static NATIVE_WORKSPACE_C_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-263 B6 — cached paths to the C custom-msg cross-process entries.
+static NATIVE_WORKSPACE_C_CUSTOM_MSG_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -946,6 +949,34 @@ pub fn build_native_workspace_c_action_client_entry() -> TestResult<&'static Pat
                 "workspace-c-native-action-client",
                 "c",
                 "native_action_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, C) — the workspace-local `custom_msgs/Reading` TALKER single-node
+/// entry (cached). Cross-process (issue 0096); consumed by tests/c_custom_msg_workspace_e2e.rs.
+pub fn build_native_workspace_c_custom_msg_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_CUSTOM_MSG_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-custom-msg-talker",
+                "ws-custom-msg-c",
+                "native_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B6 (custom-msg, C) — the workspace-local `custom_msgs/Reading` LISTENER single-node
+/// entry (cached). Subscribes + prints the decoded `sequence`/`temperature` fields it receives.
+pub fn build_native_workspace_c_custom_msg_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-custom-msg-listener",
+                "ws-custom-msg-c",
+                "native_listener_entry",
             )
         })
         .map(|p| p.as_path())

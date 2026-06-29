@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="reading_talker_pkg" exec="reading_talker" name="reading_talker"/>
+  <node pkg="reading_listener_pkg" exec="reading_listener" name="reading_listener"/>
+</launch>
