@@ -55,9 +55,9 @@
  * sizes when the header is reachable; the mirrored real header wins over the
  * in-tree `#error` stub because the build lists the mirror dir first. */
 #if defined(__has_include)
-#  if __has_include(<nros/nros_cpp_config_generated.h>)
-#    include <nros/nros_cpp_config_generated.h>
-#  endif
+#if __has_include(<nros/nros_cpp_config_generated.h>)
+#include <nros/nros_cpp_config_generated.h>
+#endif
 #endif
 
 #ifdef __cplusplus
@@ -163,11 +163,11 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
  *  The build may `-D` override; a C component declares an 8-aligned buffer of
  *  the right size for the transport it binds. */
 #ifndef NROS_C_ACTION_SERVER_STORAGE_SIZE
-#  ifdef NROS_CPP_ACTION_SERVER_STORAGE_SIZE
-#    define NROS_C_ACTION_SERVER_STORAGE_SIZE NROS_CPP_ACTION_SERVER_STORAGE_SIZE
-#  else
-#    define NROS_C_ACTION_SERVER_STORAGE_SIZE 128
-#  endif
+#ifdef NROS_CPP_ACTION_SERVER_STORAGE_SIZE
+#define NROS_C_ACTION_SERVER_STORAGE_SIZE NROS_CPP_ACTION_SERVER_STORAGE_SIZE
+#else
+#define NROS_C_ACTION_SERVER_STORAGE_SIZE 128
+#endif
 #endif
 #ifndef NROS_C_SERVICE_CLIENT_STORAGE_SIZE
 #define NROS_C_SERVICE_CLIENT_STORAGE_SIZE 4632
@@ -226,11 +226,11 @@ int32_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data
 /* --- Action client (poll model) ----------------------------------------- */
 
 #ifndef NROS_C_ACTION_CLIENT_STORAGE_SIZE
-#  ifdef NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
-#    define NROS_C_ACTION_CLIENT_STORAGE_SIZE NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
-#  else
-#    define NROS_C_ACTION_CLIENT_STORAGE_SIZE 64
-#  endif
+#ifdef NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
+#define NROS_C_ACTION_CLIENT_STORAGE_SIZE NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
+#else
+#define NROS_C_ACTION_CLIENT_STORAGE_SIZE 64
+#endif
 #endif
 
 int32_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
