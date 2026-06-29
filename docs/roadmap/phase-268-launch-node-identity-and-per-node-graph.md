@@ -105,6 +105,37 @@ C/C++ already feed `node_builder` their launch name, so W2's tokens cover them i
   graph name (the `NodeOptions` literal is a fallback default).
 - #105 resolved; RFC-0046 realized.
 
+## Outcome (2026-06-29) — DONE
+
+All acceptance met: a multi-node launch entry (C++ **and** Rust) shows one graph node per launch
+component in `ros2 node list`, named from the launch, with the #104 primary `/node` gated off;
+single-node unchanged; C++ pubsub e2e shows no routing regression.
+
+The implementation needed **two fixes beyond W1/W2** that the original plan did not anticipate,
+because W2's contained-shim approach was structurally insufficient for the hosted/CFFI path:
+
+- **W2b (`4bf7c1820`) — the load-bearing fix.** Root cause of the multi-node collapse: the RMW CFFI
+  `create_publisher/subscriber/service_*` trampolines read each entity's `node_name` from the
+  **per-call `NrosRmwSession` view**, but `CffiSession` built that view with the **session's**
+  open-time name (`make_view()`). One session hosts N graph nodes, so every entity collapsed onto the
+  single session name (`/node`). #104 never exposed it (single-node: session name == node name). Fix:
+  `CffiSession::entity_view()` threads each entity's `TopicInfo`/`ServiceInfo` `node_name`+`namespace`
+  into the per-call view (fallback to session buffers when absent). **No vtable ABI/signature change,
+  no `abi_version` bump, no backend edits** — every backend already reads `session->node_name`
+  (Cyclone is GUID-based and ignores it). This is why no RFC-0035 amendment was needed (the
+  "extend the vtable ABI" option was investigated and ruled out).
+- **W2c (`42398b61e`) — C++ listener.** `nros_cpp_node_create` (the simple FFI the typed C++ entry's
+  `nros::create_node` uses) left `node_id = 0` (unregistered), so the C++ raw-arena-subscription path
+  (`add_arena_subscription_c_callback`, keyed off `node_id`) fell back to the session name — the
+  listener collapsed while the talker (typed publisher reading `node_ref.name`) showed. Fix: register
+  via `Executor::node_builder().build()` + store the `NodeId`, exactly like `_ex` and Rust (RFC-0046:
+  every node funnels through `node_builder`). Routing is unchanged (`node_session_mut` → primary slot
+  0 for no-rmw override); only the per-component identity is now correct.
+
+Net data path (hosted/CFFI): launch name → `node_builder` (NodeRecord.name) → entity creation tags
+`TopicInfo.node_name` → **W2b** carries it across the CFFI view → **W2** shim declares the per-node NN
+token. On the direct/embedded path (no CFFI) W2 alone suffices (TopicInfo.node_name is intact).
+
 ## Risks / decisions
 - **Token lifetime:** a dropped `LivelinessToken` undeclares — each per-node token MUST be held by
   its `NodeRecord` for the node's life (mirror the #104 session-held token).

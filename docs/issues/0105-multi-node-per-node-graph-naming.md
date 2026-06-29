@@ -1,11 +1,24 @@
 ---
 id: 105
 title: "Multi-node entry collapses to one graph node — per-node naming needs per-node sessions"
-status: open
+status: resolved
+resolved_in: phase-268
 type: enhancement
 area: core
 related: [phase-266, rfc-0045, rfc-0046, rfc-0004]
 ---
+
+> **Resolved (2026-06-29, phase-268 / RFC-0046).** A multi-node entry (C++ + Rust) now shows one
+> graph node per launch component in `ros2 node list`, named from the launch; #104 primary `/node`
+> gated off; single-node unchanged. Solved with **per-node NN tokens on the shared session** (no
+> session-per-node), as the original design predicted — but the load-bearing fix was not in the
+> shim. Root cause of the collapse: the **RMW CFFI per-call session view carried the session's
+> open-time name, not the entity's** (`CffiSession::make_view`), so every entity inherited one name.
+> Fixes: W1 (launch name → `node_builder`), W2 (shim lazy per-node token + gate), **W2b** (thread
+> per-entity `node_name`/`namespace` into the CFFI view — `entity_view`; no vtable ABI change),
+> **W2c** (register C++ nodes via `node_builder` so the raw-arena-subscription `node_id` path resolves
+> the right node). The "extend the vtable ABI" option was investigated and ruled out — see phase-268
+> Outcome. Title's "per-node sessions" framing was wrong; per-node tokens on one session suffice.
 
 > **Design (2026-06-28).** Studied: one zenoh session CAN host N graph nodes — the NN liveliness
 > keyexpr (`@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>`, `mod.rs:410`) identifies a node by its

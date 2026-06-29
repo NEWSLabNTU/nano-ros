@@ -4,12 +4,20 @@ title: "Launch-authoritative node identity (name + namespace), unified across la
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-268]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0046 — Launch-authoritative node identity, unified across languages
+
+> **Implemented by phase-268 (2026-06-29).** Realized for Rust + C/C++; #105 resolved. One nuance the
+> design under-weighted: the single resolution site is `Executor::node_builder` (correct), but on the
+> hosted/CFFI path the per-entity node name must also cross the RMW vtable — it was being overwritten
+> by the session's open-time name in `CffiSession::make_view`. Fixed at the caller (`entity_view`
+> threads per-entity `node_name`/`namespace` into the per-call session view) with **no vtable ABI
+> change**. See phase-268 Outcome for the full data path. Flip to Stable with the ARCHITECTURE.md
+> update when convenient.
 
 ## Summary
 
