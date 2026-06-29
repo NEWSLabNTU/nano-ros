@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#112** — [`nros-cpp` `component_node.hpp` includes `<string>` unconditionally — fails on
-  Zephyr minimal C++ lib](0112-zephyr-cpp-component-node-requires-string-minimal-libcpp.md):
-  Zephyr C++ entries compile against the minimal libcpp (`-nostdinc++`, no `<string>`), but the
-  phase-242.7 `std::string`-keyed parameter overloads pulled `<string>` into a header every C++
-  entry includes → all 12 zephyr C++ fixtures fail. Rust/C unaffected. Fix: gate the include +
-  overloads behind a `full-libcpp` capability. Surfaced after #111 unblocked the zephyr leg.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -79,7 +73,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#111** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#112** —
+[`nros-cpp` `component_node.hpp` included `<string>` unconditionally → broke Zephyr minimal
+libcpp](archived/0112-zephyr-cpp-component-node-requires-string-minimal-libcpp.md): `<string>`
+was gated on `__STDC_HOSTED__` (true for host `g++` even under `-nostdinc++` minimal libcpp),
+but its only consumer — the `std::string`-keyed parameter overloads — is gated on `NROS_CPP_STD`.
+Moved the include onto its actual consumer's gate; `<cstdio>` stays hosted. Verified: all six
+Zephyr C++ XRCE entries now build to `zephyr.exe`. Surfaced after #111 unblocked the zephyr leg.
+Also: **#111** —
 [`nros-sizes-build` filesystem fallback searched the wrong profile
 dir](archived/0111-sizes-probe-filesystem-fallback-custom-profile-path.md): the fallback built
 rlib search paths from `PROFILE` (only ever `debug`/`release`), so for the custom

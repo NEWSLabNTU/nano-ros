@@ -95,6 +95,13 @@
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fprintf — boot-failure diagnostic (hosted only)
+#endif
+// Issue 0112 — `<string>` is needed ONLY by the `NROS_CPP_STD` `std::string`-keyed
+// parameter overloads below. A hosted *compiler* (`__STDC_HOSTED__ == 1`) can still
+// be invoked with `-nostdinc++` against a minimal C++ library that lacks `<string>`
+// (Zephyr's minimal libcpp), so gate the include on its actual consumer, not on
+// compiler hostedness — else every Zephyr C++ entry fails with "string: No such file".
+#ifdef NROS_CPP_STD
 #include <string> // std::string-keyed parameter overloads (242.7 — rclcpp keys on std::string)
 #endif
 

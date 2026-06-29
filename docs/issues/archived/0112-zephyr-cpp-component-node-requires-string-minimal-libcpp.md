@@ -1,11 +1,33 @@
 ---
 id: 112
 title: "`nros-cpp` `component_node.hpp` includes `<string>` unconditionally — fails on Zephyr minimal C++ lib (`<string>` absent)"
-status: open
+status: resolved
 type: bug
 area: core
 related: [phase-242]
 ---
+
+## Resolution
+
+`<string>` was included under `#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)` —
+but `__STDC_HOSTED__` reports compiler *hostedness*, which is true even for a host
+`g++` invoked with `-nostdinc++` against Zephyr's minimal libcpp (no `<string>`). Yet
+`<string>` is consumed *only* by the `std::string`-keyed parameter overloads, which are
+already gated on `#ifdef NROS_CPP_STD` — so the include was on a strictly broader gate
+than its sole consumer.
+
+Fix (`component_node.hpp`): moved the `<string>` include into its own `#ifdef
+NROS_CPP_STD` block, so it follows its actual consumer. `<cstdio>` (the hosted `fprintf`
+boot diagnostic, which Zephyr minimal libcpp *does* provide) stays on the hosted gate.
+Logically airtight — when `NROS_CPP_STD` is undefined the `std::string` overloads don't
+exist, so nothing needs `<string>`.
+
+**Verified end-to-end on the affected dev box:** `build-test-fixtures` now builds all six
+Zephyr C++ XRCE entries (talker, listener, service-server, service-client, action-server,
+action-client) to `zephyr.exe` + `zephyr.elf`; `zephyr_entry_main.cpp.obj` (which includes
+`component_node.hpp`) compiles cleanly against the minimal libcpp — the
+`string: No such file or directory` failure is gone. Zephyr Rust + C fixtures unaffected
+(they were already green after #111).
 
 ## Summary
 
