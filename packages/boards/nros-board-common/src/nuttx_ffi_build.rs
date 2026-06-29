@@ -259,10 +259,11 @@ pub fn run_nuttx() {
     let mut src_pkg: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Ok(map) = env::var("APP_EXTRA_SOURCE_PKGS") {
         for pair in map.split(';') {
-            if let Some((s, p)) = pair.split_once('=') {
-                if !s.is_empty() && !p.is_empty() {
-                    src_pkg.insert(s.to_string(), p.to_string());
-                }
+            if let Some((s, p)) = pair.split_once('=')
+                && !s.is_empty()
+                && !p.is_empty()
+            {
+                src_pkg.insert(s.to_string(), p.to_string());
             }
         }
     }
