@@ -387,6 +387,42 @@ function(nano_ros_entry)
         endif()
     endif()
 
+    # Issue 0114 — the header-mirror race (issues 0088/0090) ALSO hits the NATIVE
+    # (posix) C/C++ cmake fixtures, which the embedded-only block above skips. An
+    # example like cpp `safety-listener` compiles `main.cpp` (→ <nros/nros.hpp> →
+    # <nros/nros_generated.h> → the `*_OPAQUE_U64S` sizes) BEFORE Corrosion's
+    # `nros_{c,cpp}_config_header` mirror custom command runs. The mirror dir is on
+    # the include path AHEAD of the in-tree stub, but the mirrored file does not
+    # exist yet, so the compile falls through to the stub (`#error` /
+    # `*_OPAQUE_U64S undeclared` → cascade `Subscription has no member storage_`).
+    # `add_dependencies` alone orders the TARGET but not each TU (issues 0088/0090),
+    # and the embedded block only guards the generated TU — so here set a HARD
+    # file-level `OBJECT_DEPENDS` on EVERY source of the entry (incl. the user
+    # `main.cpp`) pointing at the mirrored header(s).
+    if(TARGET ${_NRA_NAME} AND NANO_ROS_PLATFORM STREQUAL "posix")
+        get_property(_nra_c_hdr   GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
+        get_property(_nra_cpp_hdr GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE)
+        set(_nra_cfg_hdrs "")
+        if(_nra_c_hdr)
+            list(APPEND _nra_cfg_hdrs "${_nra_c_hdr}")
+        endif()
+        if(_nra_cpp_hdr)
+            list(APPEND _nra_cfg_hdrs "${_nra_cpp_hdr}")
+        endif()
+        if(_nra_cfg_hdrs)
+            foreach(_dep nros_c_config_header nros_cpp_config_header)
+                if(TARGET ${_dep})
+                    add_dependencies(${_NRA_NAME} ${_dep})
+                endif()
+            endforeach()
+            get_target_property(_nra_srcs ${_NRA_NAME} SOURCES)
+            if(_nra_srcs)
+                set_source_files_properties(${_nra_srcs} PROPERTIES
+                    OBJECT_DEPENDS "${_nra_cfg_hdrs}")
+            endif()
+        endif()
+    endif()
+
     # Phase 212.N.6 — stash the BOARD selection on the target so the
     # later N.4 / N.5 codegen planner can read it. Empty when caller
     # didn't pass BOARD.

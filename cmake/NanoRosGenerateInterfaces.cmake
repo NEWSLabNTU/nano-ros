@@ -537,6 +537,24 @@ function(nros_generate_interfaces target)
           $<BUILD_INTERFACE:${_umbrella_dir}>
           $<INSTALL_INTERFACE:include/${target}>
       )
+      # Issue 0114 — the generated message `.c` TUs include <nros/nros_generated.h>
+      # (→ the `*_OPAQUE_U64S` sizes), so on a parallel/fresh NATIVE build they can
+      # compile BEFORE Corrosion's `nros_c_config_header` mirror custom command runs
+      # and read the in-tree `#error` stub (`*_OPAQUE_U64S undeclared`). The mirror
+      # dir is on the include path ahead of the stub, but the file is not there yet.
+      # `add_dependencies` orders the target but not each TU (issues 0088/0090), so
+      # also set a HARD file-level `OBJECT_DEPENDS` on the generated sources. (Posix
+      # only — embedded generates the header via a different path.)
+      if(NANO_ROS_PLATFORM STREQUAL "posix")
+        get_property(_nrgi_c_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
+        if(_nrgi_c_hdr)
+          if(TARGET nros_c_config_header)
+            add_dependencies(${_lib_target} nros_c_config_header)
+          endif()
+          set_source_files_properties(${_generated_sources} PROPERTIES
+            OBJECT_DEPENDS "${_nrgi_c_hdr}")
+        endif()
+      endif()
     else()
       add_library(${_lib_target} INTERFACE)
       target_include_directories(${_lib_target}
