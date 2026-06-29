@@ -395,6 +395,31 @@ entry = "native_service_client_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 A4 (actions, C) — the Fibonacci action cross-process round-trip (issue 0096): the
+# server + client run as TWO entries. Consumed by tests/c_action_roundtrip_xprocess_e2e.rs
+# (the client prints the server-computed result sequence's last element it receives).
+[[workspace_fixture]]
+id = "workspace-c-native-action-server"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_action_server_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-c-native-action-client"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_action_client_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 Track C — per-host C entries for the multihost demo. `native_entry_robot1`
 # bakes the talker, `native_entry_robot2` the listener, via the `nano_ros_entry(HOST
 # <id> …)` codegen partition of `multihost.launch.xml` (C parity with the Rust

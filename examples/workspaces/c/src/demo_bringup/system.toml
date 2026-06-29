@@ -29,6 +29,22 @@ pkg = "c_add_client_pkg"
 class = "c_add_client_pkg::AddClient"
 name = "add_client"
 
+# phase-263 A4 (actions, C) — Fibonacci action round-trip components. Listed in the catalog;
+# the default system.launch.xml stays talker+listener. They run as TWO processes (issue 0096):
+# native_action_{server,client}_entry each boot a one-node launch
+# (action_{server,client}.launch.xml). fib_client sends a goal (order=10) on /fibonacci;
+# fib_server accepts, computes 0,1,1,2,3,5,8,13,21,34,55, and completes the goal; the client
+# prints the result's last element (55).
+[[component]]
+pkg = "c_fib_server_pkg"
+class = "c_fib_server_pkg::FibServer"
+name = "fib_server"
+
+[[component]]
+pkg = "c_fib_client_pkg"
+class = "c_fib_client_pkg::FibClient"
+name = "fib_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

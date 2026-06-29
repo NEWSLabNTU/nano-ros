@@ -233,6 +233,8 @@ static NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new
 static NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_C_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_C_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_MIXED_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -912,6 +914,34 @@ pub fn build_native_workspace_c_service_client_entry() -> TestResult<&'static Pa
                 "workspace-c-native-service-client",
                 "c",
                 "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (actions, C) — the Fibonacci action SERVER single-node entry (cached).
+/// Cross-process round-trip (issue 0096); consumed by tests/c_action_roundtrip_xprocess_e2e.rs.
+pub fn build_native_workspace_c_action_server_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_ACTION_SERVER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-action-server",
+                "c",
+                "native_action_server_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (actions, C) — the Fibonacci action CLIENT single-node entry (cached). Sends a
+/// goal each tick + prints the server-computed result sequence's last element it receives.
+pub fn build_native_workspace_c_action_client_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_ACTION_CLIENT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-action-client",
+                "c",
+                "native_action_client_entry",
             )
         })
         .map(|p| p.as_path())

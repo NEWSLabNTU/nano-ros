@@ -44,6 +44,22 @@
 
 #include "nros/types.h" /* nros_ret_t */
 
+/* phase-263 A4 — the C component storage buffers below MUST be at least as large
+ * as the REAL per-build runtime structs. Those exact sizes live in the generated
+ * `nros_cpp_config_generated.h` the build mirrors onto the include path (a hard
+ * dep of every typed C component, which links nros-cpp). The static fallbacks
+ * below are nuttx-era and have already drifted (native's action-server struct is
+ * 120 bytes, not 80) — an under-sized buffer lets `nros_cpp_action_server_register`
+ * overrun it and clobber the adjacent struct field (e.g. a stashed executor
+ * handle → NULL → `complete_goal` returns INVALID_ARGUMENT). Pull the generated
+ * sizes when the header is reachable; the mirrored real header wins over the
+ * in-tree `#error` stub because the build lists the mirror dir first. */
+#if defined(__has_include)
+#  if __has_include(<nros/nros_cpp_config_generated.h>)
+#    include <nros/nros_cpp_config_generated.h>
+#  endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -147,7 +163,11 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
  *  The build may `-D` override; a C component declares an 8-aligned buffer of
  *  the right size for the transport it binds. */
 #ifndef NROS_C_ACTION_SERVER_STORAGE_SIZE
-#define NROS_C_ACTION_SERVER_STORAGE_SIZE 80
+#  ifdef NROS_CPP_ACTION_SERVER_STORAGE_SIZE
+#    define NROS_C_ACTION_SERVER_STORAGE_SIZE NROS_CPP_ACTION_SERVER_STORAGE_SIZE
+#  else
+#    define NROS_C_ACTION_SERVER_STORAGE_SIZE 128
+#  endif
 #endif
 #ifndef NROS_C_SERVICE_CLIENT_STORAGE_SIZE
 #define NROS_C_SERVICE_CLIENT_STORAGE_SIZE 4632
@@ -206,7 +226,11 @@ int32_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data
 /* --- Action client (poll model) ----------------------------------------- */
 
 #ifndef NROS_C_ACTION_CLIENT_STORAGE_SIZE
-#define NROS_C_ACTION_CLIENT_STORAGE_SIZE 48
+#  ifdef NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
+#    define NROS_C_ACTION_CLIENT_STORAGE_SIZE NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
+#  else
+#    define NROS_C_ACTION_CLIENT_STORAGE_SIZE 64
+#  endif
 #endif
 
 int32_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,

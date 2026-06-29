@@ -230,7 +230,25 @@ default. Sequence so each wave is shippable on its own.
   `native_action_client_entry` (one-node `action_server.launch.xml` /
   `action_client.launch.xml`), fixtures `workspace-rust-native-action-{server,client}`, and
   `tests/action_roundtrip_xprocess_e2e.rs` asserts a `/fib_result` subscriber sees the
-  result's last element `55` (PASS). Remaining: project to C/C++ + embedded entries (Track C).
+  result's last element `55` (PASS).
+  **C DONE (2026-06-29)** — `tests/c_action_roundtrip_xprocess_e2e.rs` GREEN (cross-process
+  Fibonacci, order=10 → `last=55`). New `c_fib_server_pkg` (`FibServer` — the component action
+  seams `nros_cpp_action_server_create/register/set_callbacks`; the goal callback parses
+  `{int32 order}`, accepts + stashes goal_id/order, a 500 ms timer computes the sequence + calls
+  `nros_cpp_action_server_complete_goal`) + `c_fib_client_pkg` (`FibClient` — POLL-model:
+  `send_goal_async` → poll goal-response → `get_result_async` → poll result, prints the sequence;
+  a state machine idle→sent→await→done with resend guards). Two single-node entries
+  (`native_action_{server,client}_entry` + `action_{server,client}.launch.xml`), catalog entries,
+  fixtures `workspace-c-native-action-{server,client}`. **Two latent infra bugs fixed en route:**
+  (1) `component.h` `NROS_C_ACTION_{SERVER,CLIENT}_STORAGE_SIZE` were stale nuttx-era (80/48) — the
+  real native action-server struct is 120 → `nros_cpp_action_server_register` overran the buffer +
+  clobbered the stashed executor → `complete_goal` returned INVALID_ARGUMENT. Now derived from the
+  generated `NROS_CPP_*_STORAGE_SIZE` (mirrored header) with bumped 128/64 fallbacks. (2)
+  `NanoRosGenerateInterfaces.cmake` idempotency gap — a pkg depending ONLY on an interface an
+  earlier sibling already generated got an empty auto-link property (`example_interfaces.h: No such
+  file`); the fib pkgs (example_interfaces-only) were the first to hit it (A1's client masked it by
+  also generating std_msgs). Fixed: append the existing interface target on the early-return.
+  Remaining: project to C++ + mixed.
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs
