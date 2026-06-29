@@ -26,6 +26,18 @@ pkg = "c_add_client_pkg"
 class = "c_add_client_pkg::AddClient"
 name = "add_client"
 
+# phase-263 A4 (actions, MIXED) — Fibonacci action: a C server + a C client (catalog only; run
+# as the two native_action_{server,client}_entry processes — issue 0096).
+[[component]]
+pkg = "c_fib_server_pkg"
+class = "c_fib_server_pkg::FibServer"
+name = "fib_server"
+
+[[component]]
+pkg = "c_fib_client_pkg"
+class = "c_fib_client_pkg::FibClient"
+name = "fib_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

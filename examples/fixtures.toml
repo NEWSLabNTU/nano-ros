@@ -649,6 +649,30 @@ entry = "native_service_client_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 A4 (actions, MIXED) — Fibonacci action round-trip: a C server + a C client, as two
+# entries (issue 0096). Consumed by tests/mixed_action_roundtrip_xprocess_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-native-action-server"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "native_action_server_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-mixed-native-action-client"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "native_action_client_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 Track C — per-host mixed entries for the multihost demo. robot1 bakes the C
 # talker + Rust heartbeat, robot2 the C++ listener (HOST partition of
 # multihost.launch.xml). Consumed by tests/mixed_multihost_e2e.rs.

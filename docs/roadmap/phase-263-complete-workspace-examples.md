@@ -257,7 +257,13 @@ default. Sequence so each wave is shippable on its own.
   of the box — NO `action_msgs` codegen gap on the pure-cpp path** (the gap is specific to the
   cross-language mixed cpp-client variant; the fib client links only example_interfaces). No core
   changes needed (the C++ class wraps the same FFI seams; the component.h storage-size fix is
-  C-only). Remaining: project to mixed.
+  C-only).
+  **MIXED DONE (2026-06-29)** — `tests/mixed_action_roundtrip_xprocess_e2e.rs` GREEN (order=10 →
+  `last=55`). C server + C client (`c_fib_server_pkg` / `c_fib_client_pkg` reused verbatim from the
+  C workspace), dodging the cross-language cpp `action_msgs` codegen gap; cross-language stays at
+  the workspace level. Entries + launch + catalog + fixtures
+  `workspace-mixed-native-action-{server,client}` mirror the A1 mixed set; built first-pass on the
+  umbrella (the header-mirror fix held). **A4 actions: C / C++ / mixed all DONE.**
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs

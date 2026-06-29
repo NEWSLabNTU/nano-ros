@@ -241,6 +241,8 @@ static NATIVE_WORKSPACE_CPP_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = Once
 static NATIVE_WORKSPACE_CPP_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_MIXED_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_MIXED_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
 /// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
@@ -1026,6 +1028,34 @@ pub fn build_native_workspace_mixed_service_client_entry() -> TestResult<&'stati
                 "workspace-mixed-native-service-client",
                 "mixed",
                 "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (actions, MIXED) — the Fibonacci action SERVER single-node entry (cached).
+/// The mixed workspace runs a C server + a C client (the cross-language cpp variant is blocked
+/// on the action_msgs cpp-codegen gap — see the phase doc).
+pub fn build_native_workspace_mixed_action_server_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_ACTION_SERVER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-action-server",
+                "mixed",
+                "native_action_server_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (actions, MIXED) — the Fibonacci action CLIENT single-node entry (cached).
+pub fn build_native_workspace_mixed_action_client_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_ACTION_CLIENT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-action-client",
+                "mixed",
+                "native_action_client_entry",
             )
         })
         .map(|p| p.as_path())
