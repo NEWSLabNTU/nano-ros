@@ -44,6 +44,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#113** — [config-driven bridge endpoints are baked, not
+  env-overridable](0113-bridge-config-endpoints-not-env-overridable.md): `run_from_config` reads
+  each `[[node]]`'s `locator` + `domain_id` verbatim from the macro-baked `nros-bridge.toml`, with
+  no runtime override (the imperative bins take `ZENOH_LOCATOR` / `ROS_DOMAIN_ID` from env). So a
+  declarative bridge entry can't be re-pointed at another router/domain without a rebuild, and the
+  gated bridge test must pin a fixed domain (`5`) instead of `unique_ros_domain_id()`. Fix: env
+  expansion (`${VAR:-default}`) or well-known per-session env vars. Found in the phase-267 W-B test wave.
+- **#114** — [`build-fixture-extras` (standalone) fails compiling native C++ Cyclone fixtures —
+  generated sizes undefined](0114-cpp-cyclone-fixture-build-sizes-undefined.md): the native
+  cyclonedds-cmake C++ cells fail with `*_OPAQUE_U64S` / `NROS_SUBSCRIBER_SIZE` undefined (cascading
+  to a spurious `Subscription has no member storage_`), even though both copies of the generated
+  config header were present. Root cause UNCONFIRMED — likely the cyclone-cpp cmake include path not
+  resolving the generated config, or a skipped predecessor when run standalone vs the full
+  `build-test-fixtures` chain. Did not block phase-267 (the bridge test gates + skips cleanly).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
