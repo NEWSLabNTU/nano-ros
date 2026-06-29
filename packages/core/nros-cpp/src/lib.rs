@@ -929,6 +929,23 @@ pub unsafe extern "C" fn nros_cpp_node_create(
         }
     };
 
+    // Phase 268 (RFC-0046) — register the node through `Executor::node_builder`
+    // (the one shared site both languages funnel through) so it gets a distinct
+    // NodeId + NodeRecord carrying this name. Previously this left `node_id = 0`
+    // (unregistered), so node-id-keyed entity paths — notably the raw arena
+    // subscription register — fell back to the session's name. A multi-node
+    // entry therefore collapsed every such entity onto the single session name
+    // (`/node`) instead of its component (`/talker`, `/listener`). With a real
+    // NodeId, `node_session_mut(node_id)` still resolves the shared primary
+    // session (no rmw override → slot 0), so routing is unchanged — only the
+    // node identity is now correct per component, matching the Rust + `_ex`
+    // paths.
+    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let node_id = match ctx.executor.node_builder(name_str).namespace(ns_str).build() {
+        Ok(id) => id,
+        Err(_) => return NROS_CPP_RET_ERROR,
+    };
+
     let out = unsafe { &mut *out_node };
     out.executor = executor_handle;
     out.name = [0u8; NROS_CPP_NAME_LEN];
@@ -937,7 +954,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     if !ns_str.is_empty() {
         out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
     }
-    out.node_id = 0;
+    out.node_id = node_id.raw();
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     NROS_CPP_RET_OK
