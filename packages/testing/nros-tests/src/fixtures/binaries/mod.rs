@@ -201,6 +201,7 @@ static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 A1 (Track D) — cached paths to the cross-process service entries.
 static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -705,6 +706,23 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-params",
                 "ws-params-rust",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-267 W-B — the declarative cross-RMW bridge Entry (`ws-bridge-rust`,
+/// cached). Config-driven pure-cargo `nros::main!` + `run_from_config_str`; the
+/// entry links zenoh ingress + cyclonedds egress. Gated on the cyclonedds
+/// submodule (the build compiles vendored C++ Cyclone), so the fixture is absent
+/// when Cyclone isn't provisioned — callers skip cleanly.
+pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-bridge",
+                "ws-bridge-rust",
                 "native_entry",
             )
         })

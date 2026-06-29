@@ -488,14 +488,24 @@ egress publisher without error.
 
 ## W5 — Runtime e2e (gated) + `ws-bridge-rust` completion
 
-**PARTIAL — forwarding PROVEN, automated test DEFERRED (2026-06-28).** The runtime
-forward is verified MANUALLY: zenoh talker → zenohd → `native_entry` → stock
-`rmw_cyclonedds_cpp` subscriber on the cyclone domain receives `std_msgs/Int32`
-(7/7 samples, honoring #53 egress-domain + #67 raw path). The `ws-bridge-rust`
-README + phase-263 B3 are flipped to DONE; issue #99 resolved upstream. **Remaining:
-codify the manual e2e as a gated fixture test** (a `[[workspace_fixture]]` build
-lane + a runtime test mirroring `bridge_zenoh_to_cyclonedds.rs`, gated on a live
-DDS peer / cyclonedds submodule) — own follow-up wave. (Original plan below.)
+**DONE (2026-06-29) — gated fixture test landed.** The runtime forward, first
+verified manually (7/7 `std_msgs/Int32`, honoring #53 egress-domain + #67 raw
+path), is now codified:
+- `[[workspace_fixture]]` `workspace-rust-native-bridge` in `examples/fixtures.toml`
+  (config-driven, cyclonedds-gated) + `build_native_workspace_rust_bridge_entry()`
+  resolver. Verified: the fixture-built `native_entry` forwards 7/7 to a stock
+  `rmw_cyclonedds_cpp` subscriber.
+- `tests/declarative_bridge_zenoh_to_cyclonedds.rs` — zenoh talker → the declarative
+  fixture entry → nano cyclone C listener; gated/skips without zenohd/cyclone
+  fixtures. Mirrors the imperative `bridge_zenoh_to_cyclonedds.rs` Path A.
+
+**Known caveat / follow-up:** the entry BAKES its locator + cyclone domain
+(`run_from_config` has no env override), so the test pins zenohd to the baked
+port and the listener to the baked domain (5) instead of `unique_ros_domain_id()`
+— a small concurrency caveat (documented in the test). Proper fix: **env-overridable
+bridge endpoints** (so a deployed/tested bridge can point at a different router /
+domain without a rebuild). The `ws-bridge-rust` README + phase-263 B3 are DONE;
+issue #99 resolved upstream. (Original plan below.)
 
 **Work:** boot zenohd + the baked `ws-bridge-rust` entry (talker + bridge) + a
 stock `rmw_cyclonedds_cpp` subscriber; assert `ros2 topic echo /chatter` receives

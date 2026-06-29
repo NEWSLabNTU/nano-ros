@@ -1,14 +1,16 @@
-# phase-263 B3 — cross-RMW bridge (RFC-0009) showcase workspace.
+# phase-263 B3 / phase-267 — cross-RMW bridge (RFC-0009) showcase workspace.
 #
 # A declarative `[[bridge]]` in `src/demo_bringup/system.toml` forwards /chatter
-# from the zenoh session to a cyclonedds session, in ONE process. Unlike the
-# macro-shaped Track-B siblings, the bridge entry is BAKED: `nros codegen system`
-# reads the `[[bridge]]`/`[[domain]]` blocks, the planner (issue #99) emits the
-# build.transports + plan.bridges, and the orchestration generator emits the
-# `register_bridges` relay + multi-session `Executor::open_multi`.
+# from the zenoh session to a cyclonedds session, in ONE process. The entry is a
+# PLAIN `nros::main!` (config-driven, phase-267 W1c — NOT a baked relay): because
+# system.toml declares a `[[bridge]]`, `nros sync` resolves it into
+# `nros-bridge.toml` (sessions + topics + the forwarded type's field schema), the
+# macro `include_str!`s it and emits `run_from_config_str` + the backend
+# `register()` calls, and the runtime opens `Executor::open_multi`, stages the
+# Cyclone descriptor from the field schema, and pumps a `PubSubBridge`.
 #
-# `talker_pkg` is the only hand-written component (the bridge's source); the
-# bridge entry is generated, not a workspace member.
+# `talker_pkg` is the only hand-written component (the bridge's source);
+# `native_entry` is the bridge entry (a workspace member, plain `nros::main!`).
 
 [workspace]
 resolver = "2"

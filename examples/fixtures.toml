@@ -85,6 +85,23 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
+# phase-267 W-B (test wave) — the declarative cross-RMW bridge entry. Config-driven
+# (no codegen_out → pure-cargo `nros::main!` + `run_from_config_str`); `nros ws sync`
+# generates `nros-bridge.toml` with the forwarded type's field schema, and the entry
+# links BOTH backends (zenoh ingress + cyclonedds egress, vendored C++ Cyclone — so
+# this row is gated on the cyclonedds submodule, like the imperative bridge bin).
+# Consumed by tests/declarative_bridge_zenoh_to_cyclonedds.rs: zenoh talker → this
+# entry → a nano cyclone listener receives the forwarded `std_msgs/Int32`.
+[[workspace_fixture]]
+id = "workspace-rust-native-bridge"
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/ws-bridge-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # phase-263 A1 (Track D) — the cross-process AddTwoInts service round-trip. In-process
 # (same-executor) service server+client do not talk (issue 0096), so the service demo is
 # split into two pure-cargo `nros::main!` entries booting one-node launches each:
