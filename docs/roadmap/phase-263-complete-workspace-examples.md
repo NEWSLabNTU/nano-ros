@@ -209,7 +209,16 @@ default. Sequence so each wave is shippable on its own.
   transition** (the workspace's distinguishing behaviour vs the standalone
   `ros2_lifecycle_interop` test). **Verified locally** (the `build/rmw_zenoh_ws` overlay
   is present); skips (per the ROS 2 contract) where `rmw_zenoh_cpp` is absent.
-  Remaining: project to C / C++ / mixed.
+  **C / C++ / mixed BLOCKED (2026-06-29) — issue 0113.** The C/C++ lifecycle FFI primitives exist
+  (`nros_executor_register_lifecycle_services` / `_change_state`, gated on `lifecycle-services`),
+  but NOTHING threads `[lifecycle]` autostart into a C/C++ entry: the entry `Plan`
+  (`codegen/entry/mod.rs`) has no `lifecycle` field (so the planner's `plan.lifecycle` is dropped),
+  `emit_c.rs`/`emit_cpp.rs` emit no lifecycle wiring, and `nros_board_native_run_components_named`
+  has no autostart drive — that lives only in the Rust `nros::main!` → `RuntimeCtx::apply_lifecycle`
+  path. Same class as A2/0112. Faithful projection needs core codegen+runtime work (thread
+  `plan.lifecycle` → emit `register_lifecycle_services` + autostart Configure→Activate + the
+  `lifecycle-services` link feature), not a projection — so A3-C/C++/mixed is parked behind 0113.
+  Projection continues with Track B advanced workspaces.
 - **A4 — actions. RUST DONE (2026-06-24).** Added `action_server_pkg` (declarative
   `FibonacciServer`: `create_action_server_for_name_with_callbacks::<Fibonacci>`, goal/cancel
   decisions in `on_callback`, feedback + `complete_goal` driven from `tick` via
