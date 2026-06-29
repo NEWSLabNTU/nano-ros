@@ -18,6 +18,23 @@
 
 use nros_tests::fixtures::zenohd_unique;
 
+// Shared poll helper (mirrors rmw_interop.rs usage).
+fn poll_until_contains<F>(timeout: std::time::Duration, marker: &str, mut poll: F) -> String
+where
+    F: FnMut() -> String,
+{
+    let deadline = std::time::Instant::now() + timeout;
+    let mut output = String::new();
+    while std::time::Instant::now() < deadline {
+        output = poll();
+        if output.contains(marker) {
+            return output;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    output
+}
+
 #[test]
 fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
@@ -175,6 +192,81 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
     assert!(
         received > 0,
         "typed multi-node entry pubsub E2E — 0 messages received"
+    );
+    Ok(())
+}
+
+/// phase-268 W3 — e2e proof that the C++ multi-node entry shows one graph node
+/// per launch component in `ros2 node list`, named from the launch, with the
+/// #104 primary `/node` gated off.
+///
+/// Spawns ONE `cpp_robot_entry` process (talker + listener sharing a single
+/// Executor and zenoh session), polls `ros2 node list` until `listener` appears,
+/// then asserts:
+///  1. `/talker` present — W1 launch name baked by `nros codegen entry --typed`.
+///  2. `/listener` present — W1 launch name for the second component.
+///  3. No bare `/node` line — W2 gate (`ensure_node_liveliness` in session.rs)
+///     dropped the #104 primary token when per-node tokens with different names
+///     appeared.
+///
+/// Single-node coverage: `test_discovery_node_visible` in `rmw_interop.rs`
+/// already asserts a single-node talker entry shows `/talker` (gate keep-primary
+/// branch); no new test needed here.
+#[rstest::rstest]
+fn multi_node_workspace_cpp_per_node_graph_nodes(
+    zenohd_unique: nros_tests::fixtures::ZenohRouter,
+) -> nros_tests::TestResult<()> {
+    use nros_tests::fixtures::{
+        DEFAULT_ROS_DISTRO, ManagedProcess, is_rmw_zenoh_available, is_ros2_available,
+        require_zenohd, ros2_node_list,
+    };
+    use std::{process::Command, time::Duration};
+
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    if !is_ros2_available() {
+        nros_tests::skip!("ROS 2 not found");
+    }
+    if !is_rmw_zenoh_available() {
+        nros_tests::skip!("rmw_zenoh_cpp not found");
+    }
+
+    let exe = nros_tests::fixtures::require_cmake_fixture(
+        "cpp_robot_entry",
+        "src/robot_entry/robot_entry",
+    )?;
+
+    let locator = zenohd_unique.locator();
+
+    let mut cmd = Command::new(&exe);
+    cmd.env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client")
+        .env("NROS_ENTRY_SPIN_MS", "20000");
+    let mut entry =
+        ManagedProcess::spawn_command(cmd, "cpp-robot-entry").expect("failed to start robot_entry");
+
+    let node_list = poll_until_contains(Duration::from_secs(15), "listener", || {
+        ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default()
+    });
+    entry.kill();
+
+    eprintln!("Node list:\n{node_list}");
+    // W1: both launch-named graph nodes must appear.
+    assert!(
+        node_list.contains("talker"),
+        "Expected '/talker' in ros2 node list (W1 launch name), got:\n{node_list}"
+    );
+    assert!(
+        node_list.contains("listener"),
+        "Expected '/listener' in ros2 node list (W1 launch name), got:\n{node_list}"
+    );
+    // W2 gate: the #104 primary /node token must be absent when per-node tokens
+    // with different names are active. Match the whole trimmed line so a prefix
+    // like /node_factory or /node0 does not trigger a false failure.
+    assert!(
+        !node_list.lines().any(|l| l.trim() == "/node"),
+        "W2 gate broken: bare '/node' line in ros2 node list (issue #104):\n{node_list}"
     );
     Ok(())
 }
