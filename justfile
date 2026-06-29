@@ -1545,23 +1545,49 @@ check-workspace-features:
     cargo test --no-run --workspace --exclude nros-c --no-default-features --quiet
     @echo "All feature checks passed!"
 
-# Format C code (nros-c headers, zpico C, C examples) with clang-format
+# Provision the pinned clang-format (SSoT: `.clang-format-version`) into
+# `build/clang-format` via a Python venv + the PyPI `clang-format` wheel — an
+# exact-version, cross-platform binary (no system package manager, no SDK-release
+# hosting). clang-format output drifts across major versions, so pinning is the
+# only way `just format` / `check-*-fmt` stay consistent between machines + CI.
+# Idempotent. Run once as part of dev setup.
+setup-clang-format:
+    #!/usr/bin/env bash
+    set -e
+    want="$(cat .clang-format-version)"
+    bin="build/clang-format/bin/clang-format"
+    if [ -x "$bin" ] && "$bin" --version 2>/dev/null | grep -q "$want"; then
+        echo "clang-format $want already provisioned: $bin"; exit 0
+    fi
+    echo "Provisioning clang-format $want into build/clang-format ..."
+    python3 -m venv build/clang-format
+    build/clang-format/bin/pip install -q --upgrade pip >/dev/null 2>&1 || true
+    build/clang-format/bin/pip install -q "clang-format==$want"
+    "$bin" --version
+
+# Format C code (nros-c headers, zpico C, C examples) with the pinned clang-format
 [private]
 format-c:
     #!/usr/bin/env bash
     set -e
-    echo "Formatting C code..."
-    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format -i
-    clang-format -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
-    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 clang-format -i
+    source scripts/dev/clang-format.sh
+    CF="$(nros_clang_format)"
+    echo "Formatting C code... ($CF)"
+    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
+    "$CF" -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
+    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 "$CF" -i
     echo "C code formatted."
 
-# Format C++ headers (nros-cpp) with clang-format
+# Format C++ headers (nros-cpp) with the pinned clang-format
 [private]
 format-cpp:
-    @echo "Formatting C++ headers..."
-    clang-format -i packages/core/nros-cpp/include/nros/*.hpp
-    @echo "C++ headers formatted."
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/clang-format.sh
+    CF="$(nros_clang_format)"
+    echo "Formatting C++ headers... ($CF)"
+    "$CF" -i packages/core/nros-cpp/include/nros/*.hpp
+    echo "C++ headers formatted."
 
 # Format Python code with ruff. Phase 195.D — the colcon extension moved to the
 # nros-cli repo with the retired packages/codegen submodule; no in-tree Python
@@ -1575,13 +1601,15 @@ format-python:
 check-c-fmt:
     #!/usr/bin/env bash
     set -e
-    echo "Checking C formatting..."
+    source scripts/dev/clang-format.sh
+    CF="$(nros_clang_format)"
+    echo "Checking C formatting... ($CF)"
     echo "  - clang-format (nros-c headers)"
-    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format --dry-run --Werror
+    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" --dry-run --Werror
     echo "  - clang-format (zpico C)"
-    clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
+    "$CF" --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
-    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 clang-format --dry-run --Werror
+    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 "$CF" --dry-run --Werror
     echo "C formatting OK."
 
 # Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
@@ -1614,9 +1642,11 @@ check-c: check-c-fmt
 check-cpp-fmt:
     #!/usr/bin/env bash
     set -e
-    echo "Checking C++ formatting..."
+    source scripts/dev/clang-format.sh
+    CF="$(nros_clang_format)"
+    echo "Checking C++ formatting... ($CF)"
     echo "  - clang-format"
-    clang-format --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
+    "$CF" --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
     echo "C++ formatting OK."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
@@ -2160,6 +2190,10 @@ setup target="" tier="":
     # provisioning step. Downstream module recipes shell `nros setup
     # --source …`; that command requires the binary to exist.
     just setup-cli
+    # phase-263 — pin clang-format (every tier): `just format` / `just ci`'s
+    # check-{c,cpp}-fmt drift across clang-format major versions, so a consistent
+    # pinned binary (`.clang-format-version`) is part of base dev setup. Idempotent.
+    just setup-clang-format || echo "  (clang-format provisioning skipped — python3 venv unavailable)"
     just _orchestrate setup "$chosen_tier"
     echo ""
     echo "✅ nano-ros setup complete."
@@ -2196,6 +2230,21 @@ doctor tier="":
         echo "  [OK] nros CLI: ${cli_ver:-unknown} ($cli_bin)"
     else
         echo "  [MISSING] nros CLI — run: just setup-cli"
+    fi
+    # clang-format pin (consistent C/C++ formatting across machines + CI).
+    want_cf="$(cat "{{justfile_directory()}}/.clang-format-version" 2>/dev/null || echo 17.0.6)"
+    pinned_cf="{{justfile_directory()}}/build/clang-format/bin/clang-format"
+    if [ -x "$pinned_cf" ] && "$pinned_cf" --version 2>/dev/null | grep -q "$want_cf"; then
+        echo "  [OK] clang-format: $want_cf (pinned, build/clang-format)"
+    elif command -v clang-format >/dev/null 2>&1; then
+        have_cf="$(clang-format --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+        if [ "$have_cf" = "$want_cf" ]; then
+            echo "  [OK] clang-format: $have_cf (PATH, matches pin)"
+        else
+            echo "  [WARN] clang-format $have_cf on PATH != pinned $want_cf — run: just setup-clang-format"
+        fi
+    else
+        echo "  [MISSING] clang-format — run: just setup-clang-format"
     fi
     # Compiler cache. `RUSTC_WRAPPER` above auto-uses sccache when it's on PATH,
     # which roughly halves clean/CI rebuilds (measured ~46%, see
