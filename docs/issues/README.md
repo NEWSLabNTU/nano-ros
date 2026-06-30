@@ -68,13 +68,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
-- **#105** — [multi-node entry collapses to one graph
-  node](0105-multi-node-per-node-graph-naming.md): N components on one `Executor` share the primary
-  session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
-  one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
-  needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#115** (wontfix) —
-[rustc / ld crashes under heavy fixture load are caused by unstable host
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#105** —
+[multi-node entry collapses to one graph
+node](archived/0105-multi-node-per-node-graph-naming.md): resolved by phase-268 / RFC-0046 — per-node
+NN liveliness tokens on the shared session (no session-per-node); root-cause fix threaded per-entity
+node identity through the CFFI session view (`entity_view`, no vtable ABI change). Also: **#115**
+(wontfix) — [rustc / ld crashes under heavy fixture load are caused by unstable host
 RAM](archived/0115-rustc-nondeterministic-ice-sigsegv-under-fixture-load.md): looked like a
 non-deterministic rustc bug, but the host kernel log shows SIGSEGV / GPF / `invalid opcode`
 across many unrelated binaries (`libLLVM`, `librustc_driver`, `ld.bfd`, `python3`,
