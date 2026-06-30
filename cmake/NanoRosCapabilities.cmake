@@ -67,10 +67,14 @@ function(nros_lower_system_features features)
         elseif(_feat STREQUAL "param_services")
             # Known axis, no CMake knob (entry-umbrella-only; the `#define`
             # NROS_SYSTEM_PARAM_SERVICES in system_config.h is its only C/C++ lowering).
+        elseif(_feat STREQUAL "lifecycle")
+            # Phase 269 W2 — Known axis, no CMake knob. lifecycle-services is always
+            # compiled into nros-cpp/nros-c (CMakeLists.txt always-on features); the only
+            # C/C++ lowering is the `#define NROS_SYSTEM_LIFECYCLE` in system_config.h.
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "
-                "NANO_ROS_FEATURES (known axes: safety, param_services)")
+                "NANO_ROS_FEATURES (known axes: safety, param_services, lifecycle)")
         endif()
     endforeach()
 endfunction()

@@ -568,6 +568,9 @@ impl SystemToml {
         match declared {
             "safety" => self.safety.as_ref().is_some_and(|s| s.enabled),
             "param_services" => self.param_services.as_ref().is_some_and(|p| p.enabled),
+            // Phase 269 W2 — `[lifecycle]` present and autostart != "none" (or omit check:
+            // the section being present is sufficient — even "none" registers the services).
+            "lifecycle" => self.lifecycle.is_some(),
             _ => false,
         }
     }

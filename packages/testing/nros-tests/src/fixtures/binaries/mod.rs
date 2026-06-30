@@ -246,6 +246,9 @@ static NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCel
 /// Phase 269 W1 — cached paths to the parameterised C/C++ workspace entries.
 static NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 269 W2 — cached paths to the managed-node (lifecycle) C/C++ workspace entries.
+static NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
 /// QoS-override and custom-message cross-process workspace entries.
 static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -934,6 +937,21 @@ pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Phase 269 W2 — the managed-node (lifecycle) C workspace Entry pkg fixture (`ws-lifecycle-c`).
+/// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
+/// tests/cpp_c_lifecycle_autostart_e2e.rs.
+pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-lifecycle",
+                "ws-lifecycle-c",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-263 Track C — the robot1 (talker) per-host C multihost entry (cached).
 pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY
@@ -1424,6 +1442,21 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry(
                 "workspace-cpp-native-params",
                 "ws-params-cpp",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`ws-lifecycle-cpp`).
+/// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
+/// tests/cpp_c_lifecycle_autostart_e2e.rs.
+pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-lifecycle",
+                "ws-lifecycle-cpp",
                 "native_entry",
             )
         })

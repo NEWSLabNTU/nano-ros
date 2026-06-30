@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Phase 269 W2 — managed (lifecycle) C++ entry. The generated entry calls
+     nros_cpp_lifecycle_autostart(__exec, 2u) in __nros_entry_setup so the
+     node boots directly to `active` (Configure→Activate) with no manual transition. -->
+<launch>
+  <node pkg="cpp_lifecycle_talker_pkg" exec="talker" name="talker"/>
+</launch>

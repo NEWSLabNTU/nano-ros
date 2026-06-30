@@ -83,6 +83,19 @@ pub const CAPABILITIES: &[Capability] = &[
         c_define: Some("NROS_SYSTEM_PARAM_SERVICES"),
         cmake_token: None,
     },
+    // Phase 269 W2 — REP-2002 lifecycle services (register + autostart). Entry-umbrella-only —
+    // the runtime registers the five services and drives the boot autostart policy; there is no
+    // backend wire feature (lifecycle state lives in the executor, not the transport).
+    // `lifecycle-services` is always compiled into nros-cpp/nros-c (CMakeLists.txt),
+    // so cmake_token is None (no separate cmake knob needed).
+    Capability {
+        declared: "lifecycle",
+        nros_feature: "lifecycle-services",
+        backend_feature: None,
+        backends_supporting: &[],
+        c_define: Some("NROS_SYSTEM_LIFECYCLE"),
+        cmake_token: None,
+    },
 ];
 
 /// Look up a declared capability axis. `None` for an unknown axis.
@@ -116,6 +129,17 @@ mod tests {
         assert!(!c.backend_supports("zenoh"));
         // Phase 261 W1 — informational `#define`, no CMake knob.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_SERVICES"));
+        assert_eq!(c.cmake_token, None);
+    }
+
+    #[test]
+    fn lifecycle_is_entry_umbrella_only() {
+        let c = capability("lifecycle").expect("lifecycle axis");
+        assert_eq!(c.nros_feature, "lifecycle-services");
+        assert_eq!(c.backend_feature, None);
+        assert!(!c.backend_supports("zenoh"));
+        // Phase 269 W2 — informational `#define`, no CMake knob (always compiled in).
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_LIFECYCLE"));
         assert_eq!(c.cmake_token, None);
     }
 

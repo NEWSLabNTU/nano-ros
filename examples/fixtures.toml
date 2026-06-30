@@ -789,6 +789,36 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 269 W2 — managed-node (lifecycle) C workspace. [lifecycle] autostart = "active" bakes
+# nros_cpp_lifecycle_autostart(executor, 2u) into the generated entry (emit_c.rs W2); the five
+# REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
+# tests/cpp_c_lifecycle_autostart_e2e.rs: `ros2 lifecycle get /talker` → active.
+[[workspace_fixture]]
+id = "workspace-c-native-lifecycle"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-lifecycle-c"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# Phase 269 W2 — managed-node (lifecycle) C++ workspace. [lifecycle] autostart = "active" bakes
+# nros_cpp_lifecycle_autostart(__exec, 2u) into the generated entry (emit_cpp.rs W2); the five
+# REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
+# tests/cpp_c_lifecycle_autostart_e2e.rs: `ros2 lifecycle get /talker` → active.
+[[workspace_fixture]]
+id = "workspace-cpp-native-lifecycle"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-lifecycle-cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

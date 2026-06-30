@@ -143,6 +143,25 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         }
         out.push_str("    }\n");
     }
+    if let Some(autostart) = &plan.lifecycle {
+        // Phase 269 (W2) — lifecycle-services: register the five REP-2002 services and
+        // drive the boot autostart policy. autostart_code: 0=none (register only),
+        // 1=configure, 2=active (configure + activate). Runs AFTER param-services so the
+        // executor is fully seeded before any transition callbacks fire.
+        let autostart_code: u8 = match autostart.as_str() {
+            "none" => 0,
+            "configure" => 1,
+            _ => 2, // "active" or any future level → fully activate
+        };
+        out.push_str("    /* Phase 269 (W2) — lifecycle-services: register + autostart. */\n");
+        out.push_str("    {\n");
+        let _ = writeln!(
+            out,
+            "        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_autostart(executor, {autostart_code}u);"
+        );
+        out.push_str("        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;\n");
+        out.push_str("    }\n");
+    }
     out.push_str("    return 0;\n");
     out.push_str("}\n\n");
 
@@ -279,9 +298,7 @@ mod tests {
         plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
         let src = emit_typed(&plan).expect("typed C emit ok");
         assert!(src.contains("nros_cpp_register_parameter_services(executor)"));
-        assert!(
-            src.contains("nros_cpp_declare_param(executor, \"publish_period_ms\", \"250\")")
-        );
+        assert!(src.contains("nros_cpp_declare_param(executor, \"publish_period_ms\", \"250\")"));
         // must appear after the configure loop, before return 0
         let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
         let ret_at = src.rfind("return 0;").unwrap();
@@ -295,5 +312,90 @@ mod tests {
         let src = emit_typed(&plan).expect("typed C emit ok");
         assert!(!src.contains("nros_cpp_register_parameter_services"));
         assert!(!src.contains("nros_cpp_declare_param"));
+    }
+
+    #[test]
+    fn typed_emit_lifecycle_active_emits_autostart_block() {
+        // Phase 269 W2 — lifecycle = Some("active") → nros_cpp_lifecycle_autostart(executor, 2u)
+        // in the post-configure block, AFTER any param block, BEFORE return 0.
+        let mut plan = fixture_plan(&[("lifecycle_talker_pkg", "lifecycle_talker")]);
+        plan.lifecycle = Some("active".into());
+        let src = emit_typed(&plan).expect("typed C lifecycle emit ok");
+        // autostart call with code 2 (active = configure + activate)
+        assert!(
+            src.contains("nros_cpp_lifecycle_autostart(executor, 2u)"),
+            "expected nros_cpp_lifecycle_autostart(executor, 2u) in:\n{src}"
+        );
+        // error-propagation guard
+        assert!(src.contains("if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret"));
+        // AFTER configure loop (all node configure calls), BEFORE return 0
+        let autostart_at = src.find("nros_cpp_lifecycle_autostart").unwrap();
+        let ret_at = src.rfind("return 0;").unwrap();
+        assert!(
+            autostart_at < ret_at,
+            "lifecycle block must precede return 0"
+        );
+        // configure loop precedes the lifecycle block
+        let cfg_at = src
+            .find("__nros_c_component_lifecycle_talker_pkg_configure")
+            .unwrap();
+        assert!(
+            cfg_at < autostart_at,
+            "lifecycle block must follow configure loop"
+        );
+    }
+
+    #[test]
+    fn typed_emit_lifecycle_configure_emits_code_1() {
+        let mut plan = fixture_plan(&[("lc_pkg", "lc")]);
+        plan.lifecycle = Some("configure".into());
+        let src = emit_typed(&plan).expect("typed C lifecycle configure emit ok");
+        assert!(
+            src.contains("nros_cpp_lifecycle_autostart(executor, 1u)"),
+            "expected autostart_code 1 for 'configure'; src:\n{src}"
+        );
+    }
+
+    #[test]
+    fn typed_emit_lifecycle_none_emits_code_0() {
+        let mut plan = fixture_plan(&[("lc_pkg", "lc")]);
+        plan.lifecycle = Some("none".into());
+        let src = emit_typed(&plan).expect("typed C lifecycle none emit ok");
+        assert!(
+            src.contains("nros_cpp_lifecycle_autostart(executor, 0u)"),
+            "expected autostart_code 0 for 'none'; src:\n{src}"
+        );
+    }
+
+    #[test]
+    fn typed_emit_lifecycle_absent_when_disabled() {
+        // Guard: lifecycle = None → byte-identical output (no lifecycle block).
+        let plan = fixture_plan(&[("talker_pkg", "talker")]);
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(
+            !src.contains("nros_cpp_lifecycle_autostart"),
+            "lifecycle block must be absent when lifecycle = None"
+        );
+        assert!(
+            !src.contains("nros_cpp_register_lifecycle_services"),
+            "lifecycle block must be absent when lifecycle = None"
+        );
+    }
+
+    #[test]
+    fn typed_emit_lifecycle_after_param_block() {
+        // Phase 269 W2 — when both param_services and lifecycle are set, the lifecycle
+        // block must appear AFTER the param block (same order as the Rust macro: params → lifecycle).
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.param_services = true;
+        plan.nodes[0].params = vec![("foo".into(), "bar".into())];
+        plan.lifecycle = Some("active".into());
+        let src = emit_typed(&plan).expect("typed C combined emit ok");
+        let param_at = src.find("nros_cpp_register_parameter_services").unwrap();
+        let lc_at = src.find("nros_cpp_lifecycle_autostart").unwrap();
+        assert!(
+            param_at < lc_at,
+            "lifecycle block must follow param-services block"
+        );
     }
 }

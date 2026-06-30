@@ -1,0 +1,24 @@
+# Phase 269 W2 — managed-node (lifecycle) C workspace.
+#
+# `[lifecycle]` makes this a MANAGED system: the generated entry (emit_c.rs W2)
+# emits `nros_cpp_lifecycle_autostart(executor, 2u)` in `__nros_entry_setup`,
+# registering the 5 REP-2002 lifecycle services and driving Configure→Activate
+# at boot. nros-cpp always compiles lifecycle-services, so no extra cmake knob.
+
+[system]
+name = "c_lifecycle_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[lifecycle]
+autostart = "active"
+
+[[component]]
+pkg = "c_lifecycle_talker_pkg"
+class = "c_lifecycle_talker_pkg::Talker"
+name = "talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
