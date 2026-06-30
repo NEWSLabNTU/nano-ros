@@ -39,8 +39,10 @@ use std::{
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, Rmw, ZenohRouter, build_native_c_example_rmw,
-        build_native_workspace_rust_bridge_entry, require_zenohd, talker_binary,
+        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter,
+        build_native_c_example_rmw, build_native_talker_header,
+        build_native_workspace_rust_bridge_entry, require_ros2_cyclonedds, require_zenohd,
+        talker_binary,
     },
 };
 use rstest::rstest;
@@ -146,5 +148,83 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
         "expected ≥ 2 bridged samples to reach the nano cyclone listener \
          (zenoh → declarative ws-bridge-rust entry → cyclonedds), got {received}.\n\
          Full listener output:\n{listener_output}"
+    );
+}
+
+/// phase-267 (non-flat types) — NESTED forwarding: the talker (`--features
+/// header`) publishes `std_msgs/Header` (= `builtin_interfaces/Time` stamp +
+/// string) on /header, which the bridge stages via a typed `register::<Header>()`
+/// and forwards; a stock `rmw_cyclonedds_cpp` `ros2 topic echo` receives it with
+/// the nested `stamp` intact. Env-gated on a ROS 2 + cyclonedds install (the nano
+/// cyclone listener is Int32-only, so the receiver is ros2). Skips otherwise.
+#[rstest]
+fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    if !require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+    let bridge_bin = match build_native_workspace_rust_bridge_entry() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("ws-bridge-rust native_entry fixture not prebuilt ({e})"),
+    };
+    let talker_bin = match build_native_talker_header() {
+        Ok(p) => p.to_path_buf(),
+        Err(e) => nros_tests::skip!("talker `header` fixture not prebuilt ({e})"),
+    };
+
+    let zenohd = ZenohRouter::start_unique().expect("start ephemeral zenohd");
+    let zenoh_locator = zenohd.locator();
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let mut ros2_sub = Ros2DdsProcess::topic_echo_cyclonedds_with_domain(
+        "/header",
+        "std_msgs/msg/Header",
+        DEFAULT_ROS_DISTRO,
+        domain,
+    )
+    .expect("start ros2 cyclone echo /header");
+    std::thread::sleep(Duration::from_secs(2));
+
+    // #113 overrides: zenoh ingress → ephemeral router, cyclone egress → unique domain.
+    let mut bridge_cmd = Command::new(&bridge_bin);
+    bridge_cmd
+        .env("RUST_LOG", "info")
+        .env(format!("NROS_BRIDGE_{ZENOH_NODE}_LOCATOR"), &zenoh_locator)
+        .env(
+            format!("NROS_BRIDGE_{CYCLONE_NODE}_DOMAIN"),
+            domain.to_string(),
+        );
+    let mut bridge =
+        ManagedProcess::spawn_command(bridge_cmd, "ws-bridge-rust-native_entry-nested")
+            .expect("spawn declarative bridge entry");
+    std::thread::sleep(Duration::from_secs(2));
+
+    let mut talker_cmd = Command::new(&talker_bin);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &zenoh_locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-header-bridge")
+        .expect("spawn header talker");
+    talker
+        .wait_for_output_pattern("Published Header", Duration::from_secs(8))
+        .expect("talker did not publish a Header");
+
+    let ros2_output = ros2_sub
+        .wait_for_output(Duration::from_secs(12))
+        .unwrap_or_default();
+
+    talker.kill();
+    bridge.kill();
+
+    eprintln!("ros2 cyclone /header echo:\n{ros2_output}");
+    // A received Header renders the nested `stamp` (`sec:`) — proof the nested
+    // descriptor round-tripped, not just that bytes arrived.
+    let got = count_pattern(&ros2_output, "sec:");
+    assert!(
+        got > 0,
+        "stock ros2 cyclone subscriber received no bridged Header on /header \
+         (zenoh → declarative bridge → rmw_cyclonedds_cpp), got:\n{ros2_output}"
     );
 }

@@ -66,6 +66,7 @@ static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-talker binary with safety-e2e
 static NATIVE_TALKER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-listener binary with safety-e2e
 static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2352,6 +2353,22 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-safety");
+            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
+            require_prebuilt_binary(&binary_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-267 — native-rs-talker built with the `header` feature (cached): it also
+/// publishes a NESTED `std_msgs/Header` on /header, for the declarative bridge's
+/// non-flat forwarding e2e. Separate `target-header` dir so it never overwrites
+/// the standard talker binary other tests use.
+pub fn build_native_talker_header() -> TestResult<&'static Path> {
+    NATIVE_TALKER_HEADER_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/talker");
+            let target_dir = example_dir.join("target-header");
             let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })

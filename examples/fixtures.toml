@@ -1079,6 +1079,16 @@ dir = "examples/native/rust/talker"
 features = ["safety-e2e"]
 target_dir = "target-safety"
 
+# phase-267 — `header` variant: also publishes a NESTED std_msgs/Header on /header,
+# for the declarative bridge's non-flat forwarding e2e
+# (tests/declarative_bridge_zenoh_to_cyclonedds.rs). Isolated target dir.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/talker"
+features = ["header"]
+target_dir = "target-header"
+
 [[fixture]]
 platform = "native"
 lang = "rust"
