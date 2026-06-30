@@ -74,9 +74,11 @@ absent](archived/0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-a
 `workspace-rust-native-bridge` leaf built anyway and died with a cryptic `E0433` instead of
 honoring its cyclonedds-submodule gate. Fixed with an explicit dependency gate in
 `workspace-fixtures-build.sh` (native cyclonedds rows fail LOUD + actionable when
-`third-party/cyclonedds` is absent — the bridge vendors C++ CycloneDDS by design). The
-`threadx-linux` E0463 leg did not reproduce on current main (clean rebuild + full recipe green) —
-a broken-local-`nros sync` artifact, not a code defect. Also: **#96** —
+`third-party/dds/cyclonedds` is absent — the bridge vendors C++ CycloneDDS by design; the gate
+checked the wrong stale path `third-party/cyclonedds` until phase-263 follow-up). The
+`threadx-linux` E0463 leg DOES still reproduce deterministically on a cyclonedds-provisioned clean
+build (feature unification forces `nros-platform[platform-threadx]` onto the x86_64-host `nros`
+build → `nros_platform` rlib not produced) — tracked separately. Also: **#96** —
 [in-process (same-executor) node-to-node delivery did not
 happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
 same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded

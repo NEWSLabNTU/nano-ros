@@ -66,7 +66,7 @@ build_workspace() {
     }
 
     # Dependency gate (issue 0120): a cyclonedds workspace fixture vendors C++
-    # CycloneDDS from `third-party/cyclonedds`. When that submodule is absent the
+    # CycloneDDS from `third-party/dds/cyclonedds`. When that submodule is absent the
     # build otherwise fails DEEP and cryptically — e.g. the bridge's
     # `nros::main!(launch=...)` finds no `nros sync`-generated `nros-bridge.toml`,
     # falls back to a normal-launch entry, and errors `E0433: cannot find
@@ -76,12 +76,13 @@ build_workspace() {
     case "$defs" in
         *NROS_RMW=cyclonedds*)
             if [ "$platform" = "native" ] && \
-               [ ! -e "$repo_root/third-party/cyclonedds/CMakeLists.txt" ]; then
+               [ ! -e "$repo_root/third-party/dds/cyclonedds/CMakeLists.txt" ]; then
                 echo "ERROR: workspace fixture '$id' requires the cyclonedds submodule," >&2
-                echo "       which is not checked out (third-party/cyclonedds is empty)." >&2
+                echo "       which is not checked out (third-party/dds/cyclonedds is empty)." >&2
                 echo "       This fixture vendors C++ CycloneDDS by design and cannot build" >&2
                 echo "       without it. Run:" >&2
-                echo "         git submodule update --init --recursive third-party/cyclonedds" >&2
+                echo "         nros setup --source cyclonedds-src" >&2
+                echo "       (or: git submodule update --init --recursive third-party/dds/cyclonedds)" >&2
                 return 2
             fi
             ;;
