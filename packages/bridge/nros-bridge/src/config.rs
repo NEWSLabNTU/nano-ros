@@ -384,15 +384,15 @@ fn node_rmw<'a>(nodes: &'a [NodeCfg], name: &str) -> Result<&'a str, ConfigError
 fn apply_node_env_overrides(nodes: &mut [NodeCfg]) {
     for n in nodes.iter_mut() {
         let key = env_key(&n.name);
-        if let Ok(loc) = std::env::var(format!("NROS_BRIDGE_{key}_LOCATOR")) {
-            if !loc.is_empty() {
-                n.locator = loc;
-            }
+        if let Ok(loc) = std::env::var(format!("NROS_BRIDGE_{key}_LOCATOR"))
+            && !loc.is_empty()
+        {
+            n.locator = loc;
         }
-        if let Ok(dom) = std::env::var(format!("NROS_BRIDGE_{key}_DOMAIN")) {
-            if let Ok(d) = dom.trim().parse::<u32>() {
-                n.domain_id = d;
-            }
+        if let Ok(dom) = std::env::var(format!("NROS_BRIDGE_{key}_DOMAIN"))
+            && let Ok(d) = dom.trim().parse::<u32>()
+        {
+            n.domain_id = d;
         }
     }
 }
