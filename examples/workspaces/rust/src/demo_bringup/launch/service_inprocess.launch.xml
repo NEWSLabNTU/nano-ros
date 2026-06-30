@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- issue 0096 (regression guard) — the IN-PROCESS service round-trip. Boots BOTH
+     `add_server` and `add_client` on ONE executor / one zenoh session, so the
+     client's `call_for_name` to the server exercises same-session (loopback)
+     query→queryable delivery. `add_client` republishes the server-computed sum on
+     `/sum`, which `service_roundtrip_inprocess_e2e` observes. Boot with the
+     `native_service_inprocess_entry` pkg. The combined `showcase.launch.xml` also
+     wires these two but adds talker/listener + action nodes; this minimal 2-node
+     launch keeps the regression test focused (and dodges unrelated action-node
+     registration weight). -->
+<launch>
+  <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
+  <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+</launch>

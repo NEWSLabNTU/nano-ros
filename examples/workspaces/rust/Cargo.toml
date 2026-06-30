@@ -22,6 +22,7 @@ members = [
     "src/native_showcase_entry",
     "src/native_service_server_entry",
     "src/native_service_client_entry",
+    "src/native_service_inprocess_entry",
     "src/native_action_server_entry",
     "src/native_action_client_entry",
     "src/native_entry_robot1",

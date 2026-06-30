@@ -1,0 +1,27 @@
+[package]
+name = "native_service_inprocess_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "issue 0096 — in-process (same-session) AddTwoInts service round-trip demo."
+
+[[bin]]
+name = "native_service_inprocess_entry"
+path = "src/main.rs"
+
+# issue 0096 (regression guard) — boots `add_server` AND `add_client` in ONE
+# process via `nros::main!(launch = "demo_bringup:service_inprocess.launch.xml")`,
+# so the client→server call exercises same-session loopback delivery. Pairs the
+# two pkgs the cross-process `native_service_{server,client}_entry` split apart.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+service_server_pkg = { path = "../service_server_pkg", default-features = false }
+service_client_pkg = { path = "../service_client_pkg", default-features = false }

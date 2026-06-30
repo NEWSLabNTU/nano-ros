@@ -219,8 +219,28 @@ pub fn config_header(
     )
     .unwrap();
     writeln!(header, "#define Z_FEATURE_TCP_NODELAY 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_LOCAL_SUBSCRIBER 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_LOCAL_QUERYABLE 0").unwrap();
+    // Same-session loopback (issue 0096): a single `nros::main!` entry registers every
+    // node of a launch on ONE zenoh-pico session, so in-process node-to-node delivery —
+    // pub→sub AND client query→queryable — depends on these flags. With them 0 the
+    // loopback path (src/session/loopback.c) is compiled out and same-session callbacks
+    // never fire. Enable on the HOST/native build (multi-process is optional there, so
+    // single-process multi-node demos are common); keep OFF on embedded, where RAM is
+    // tight and the loopback + write-filter code is unbudgeted (revisit per-target with a
+    // size probe). The flags are purely additive: a local match sets the write filter to
+    // OFF (filtering.c), so the network publication to external subscribers is preserved.
+    let local_loopback = if is_embedded_target(target) { 0 } else { 1 };
+    writeln!(
+        header,
+        "#define Z_FEATURE_LOCAL_SUBSCRIBER {}",
+        local_loopback
+    )
+    .unwrap();
+    writeln!(
+        header,
+        "#define Z_FEATURE_LOCAL_QUERYABLE {}",
+        local_loopback
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_SESSION_CHECK 1").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCHING 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_TX_MUTEX 0").unwrap();
@@ -707,6 +727,35 @@ int32_t zpico_init(void);\n";
         assert!(header.contains("#define Z_FEATURE_UNSTABLE_API"));
         assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 0"));
         assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 0"));
+        // issue 0096 — same-session loopback stays OFF on embedded (RAM-budgeted).
+        assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 0"));
+        assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 0"));
+    }
+
+    #[test]
+    fn host_build_enables_same_session_loopback() {
+        // issue 0096 — the HOST/native build compiles in zenoh-pico's same-session
+        // loopback so two nodes of one `nros::main!` entry can talk in-process.
+        let link = LinkFeatures {
+            tcp: true,
+            udp_unicast: false,
+            udp_multicast: false,
+            serial: false,
+            raweth: false,
+            tls: false,
+            ivc: false,
+            custom: false,
+        };
+        let buf = ZenohBufferConfig {
+            frag_max_size: 4096,
+            batch_unicast_size: 2048,
+            batch_multicast_size: 1024,
+        };
+
+        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false);
+
+        assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
+        assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));
     }
 
     #[test]

@@ -147,6 +147,28 @@ bringup = "src/demo_bringup"
 entry = "native_service_client_entry"
 target_dir = "target-fixtures"
 
+# issue 0096 (regression guard) — the IN-PROCESS (same-executor, same zenoh session)
+# variant of the A1 service round-trip. `native_service_inprocess_entry` boots BOTH
+# `add_server` and `add_client` in ONE process from `service_inprocess.launch.xml`.
+# `add_client` calls `add_server` on the SAME session each tick and republishes the
+# server-computed sum on `/sum`; an external `/sum` subscriber observes 1,2,3,… ONLY if
+# same-session query→queryable delivery works (i.e. zenoh-pico's
+# `Z_FEATURE_LOCAL_QUERYABLE`/`Z_FEATURE_LOCAL_SUBSCRIBER` loopback is compiled in for the
+# host build — see nros-zpico-build). Two nodes ≈ server(1 service) + client(1 timer)
+# callbacks, under the default `MAX_CBS = 4` (issue 0095), so no env bump and it shares
+# `target-fixtures`. Consumed by tests/service_roundtrip_inprocess_e2e.rs. (The combined
+# `native_showcase_entry` also wires these two but adds action nodes that fail to register
+# in one process — unrelated to 0096 — so this minimal entry is the regression vehicle.)
+[[workspace_fixture]]
+id = "workspace-rust-native-service-inprocess"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_service_inprocess_entry"
+target_dir = "target-fixtures"
+
 # phase-263 A4 (Track D) — the cross-process Fibonacci action round-trip. The combined
 # showcase wires fibonacci_server + fibonacci_client into one entry, but in-process
 # node-to-node delivery does not happen (issue 0096), so the runtime round-trip runs the

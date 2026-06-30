@@ -56,12 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `[env]` is the only lever to raise it, so raising it for a fat native entry also bloats lean
   RAM-bound embedded entries in the same workspace. Wants a topology-derived const-generic
   `Executor` or a per-entry build knob. Split from #95 (diagnostic half resolved).
-- **#96** — [In-process (same-executor) node-to-node delivery does not happen — pub/sub
-  AND service](0096-in-process-same-executor-service-roundtrip-broken.md): two nodes on
-  one `Executor`/session do not talk — a same-process subscriber/queryable never receives
-  the same-process publisher/client (zenoh does not loop a session's own publications back
-  to itself). External processes receive normally. The phase-263 A1 service and B1 safety
-  demos are therefore cross-process (separate entries).
 - **#102** — [~60 examples ship untested; advanced capabilities
   native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
   single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native
@@ -74,7 +68,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#105** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#96** —
+[in-process (same-executor) node-to-node delivery did not
+happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
+same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded
+0 for every target, so two nodes of one `nros::main!` entry never talked. Fixed by enabling the
+flags for host/native in `nros-zpico-build` (kept off on embedded — RAM); additive, so external
+delivery is preserved. Guarded by `tests/service_roundtrip_inprocess_e2e.rs`. Also: **#105** —
 [multi-node entry collapses to one graph
 node](archived/0105-multi-node-per-node-graph-naming.md): resolved by phase-268 / RFC-0046 — per-node
 NN liveliness tokens on the shared session (no session-per-node); root-cause fix threaded per-entity

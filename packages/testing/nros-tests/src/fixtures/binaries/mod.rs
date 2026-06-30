@@ -209,6 +209,9 @@ static NATIVE_WORKSPACE_RUST_BRIDGE_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceC
 static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// issue 0096 (regression guard) — cached path to the in-process service entry.
+static NATIVE_WORKSPACE_RUST_SERVICE_INPROCESS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-263 A4 (Track D) — cached paths to the cross-process Fibonacci action entries.
 static NATIVE_WORKSPACE_RUST_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -807,6 +810,23 @@ pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static
                 "workspace-rust-native-service-client",
                 "rust",
                 "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// issue 0096 (regression guard) — the in-process service entry (cached). Boots
+/// `add_server` AND `add_client` in ONE process/session; `add_client` calls `add_server`
+/// on the SAME executor and republishes the sum on `/sum`. Two nodes stay under the
+/// default `MAX_CBS = 4`, so it shares `target-fixtures` via the standard builder.
+/// `service_roundtrip_inprocess_e2e` asserts the same-session round-trip reaches `/sum`.
+pub fn build_native_workspace_rust_service_inprocess_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SERVICE_INPROCESS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-service-inprocess",
+                "rust",
+                "native_service_inprocess_entry",
             )
         })
         .map(|p| p.as_path())
