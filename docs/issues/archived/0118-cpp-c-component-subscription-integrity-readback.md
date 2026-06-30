@@ -1,11 +1,20 @@
 ---
 id: 118
 title: "C / C++ executor-component subscriptions have no E2E-integrity readback — only the imperative `try_recv_validated` poll path does, blocking Track-B ws-safety for C/C++"
-status: open
+status: resolved
+resolved_in: phase-269
 type: enhancement
 area: core
 related: [phase-263, phase-252, phase-269, 73, 116, 117]
 ---
+
+> **Resolved (2026-07-01, phase-269 W3).** The C/C++ executor-component subscription now has an
+> integrity-carrying callback — the projection of Rust's `create_subscription_…_with_safety` /
+> `CallbackCtx::integrity()`. Added `Executor::add_arena_subscription_c_validated_callback` (routes
+> the validated/CRC receive path to a C callback carrying integrity), `nros_cpp_subscription_register_validated`
+> + a C analog + `node.create_subscription_with_safety`. CRC-attach on the publisher is automatic via
+> the `safety-e2e` feature (`features=["safety"]`). One surface unblocked both langs. Proven by
+> `cpp_c_safety_integrity_e2e` (C + C++): the validated listener delivers the crc-valid count.
 
 ## Summary
 

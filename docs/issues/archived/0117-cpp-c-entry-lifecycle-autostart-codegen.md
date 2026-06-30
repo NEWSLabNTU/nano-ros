@@ -1,11 +1,20 @@
 ---
 id: 117
 title: "C / C++ entries don't wire `[lifecycle]` autostart — the entry codegen + native board never register the lifecycle services or drive Configure→Activate, blocking A3 lifecycle for C/C++/mixed"
-status: open
+status: resolved
+resolved_in: phase-269
 type: enhancement
 area: core
 related: [phase-263, phase-264, phase-269, 116]
 ---
+
+> **Resolved (2026-07-01, phase-269 W2).** The C/C++ entry now registers the REP-2002 lifecycle
+> services + drives autostart Configure→Activate at boot. W0 added `Plan.lifecycle` + the nros-cpp
+> lifecycle shim (`register_lifecycle_services`/`lifecycle_autostart` over the shared Executor);
+> W2 emits them in the entry's post-configure block (guarded), registered `lifecycle` in the
+> capability registry + cmake lowering so the entry link gets the `lifecycle-services` feature.
+> Proven by `cpp_c_lifecycle_autostart_e2e` (C + C++): boot → `ros2 lifecycle get` → `active`.
+> No native-board change (emitted in `__nros_entry_setup`).
 
 ## Summary
 

@@ -1,11 +1,19 @@
 ---
 id: 116
 title: "C / C++ components have no launch-parameter readback — the component-install seam carries no param context, blocking A2 params for C/C++/mixed"
-status: open
+status: resolved
+resolved_in: phase-269
 type: enhancement
 area: core
 related: [phase-263, phase-264, phase-269]
 ---
+
+> **Resolved (2026-07-01, phase-269 W1).** C/C++ components now read launch `<param>` initials AND
+> the live value via the executor handle: W0 added `Plan.param_services` + `PlanNode.params` + the
+> nros-cpp param shim (`register_parameter_services`/`declare_param`); W1 added the live-read FFI
+> (`nros_cpp_get_param_{integer,double,string}` — the `ctx.parameter` analog) + emits the
+> register+seed in the entry's post-configure block (guarded). Proven by `cpp_c_param_live_read_e2e`
+> (C + C++): `ros2 param set` → the published value follows. No configure-seam ABI change.
 
 ## Summary
 

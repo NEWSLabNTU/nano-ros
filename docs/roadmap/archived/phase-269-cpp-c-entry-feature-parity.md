@@ -144,6 +144,31 @@ extraction + sched binding) — last. Each wave is independently shippable (its 
 - One shared foundation (Plan IR + `system.toml` read + executor-shim bridge); no
   `CppContext*`→`nros_executor_t*` type-punning; no configure-seam ABI break.
 
+## Outcome (2026-07-01) — DONE
+
+All 5 waves landed on `main` and the cross-language e2e was run **locally** (real, 0 skipped):
+
+| Wave | Commit | e2e (C + C++) |
+| --- | --- | --- |
+| W0 foundation | `d61eae413` | (plumbing — unit tests) |
+| W1 params (#116) | `d341de96d` | `cpp_c_param_live_read_e2e` — `ros2 param set` → published value follows |
+| W2 lifecycle (#117) | `027989090` | `cpp_c_lifecycle_autostart_e2e` — boot → `ros2 lifecycle get` → `active` |
+| W3 safety (#118) | `6d63c8e0b` | `cpp_c_safety_integrity_e2e` — validated listener delivers crc-valid count |
+| W4 tiers (#119) | `c7fabe2c4` | `realtime_tiers_{c,cpp}_e2e` — schedule high + low tier |
+
+Two waves cost less than planned: the tier resolver was **already shared** in `nros-orchestration-ir`
+(no extraction/duplication), and the sched-context shim **already existed** — so W4 was mostly
+metadata + emit. The shared foundation (W0) held: every wave emitted into the one post-configure
+block + reused the executor-shim bridge, no `CppContext*`→`nros_executor_t*` type-punning, no
+configure-seam ABI change.
+
+**Known limitations (carried, not blockers):** W4 rclcpp-shape C++ nodes aren't sched-bound
+(`NodeHandle` has no `sc_id`; C + configure-shape C++ covered). Pre-existing (unrelated): the old
+standalone `safety_e2e.rs` tests report FAIL rather than `skip!` when their standalone-bin fixtures
+are absent — a test-hygiene item separate from W3's workspace fixtures.
+
+#116–#119 resolved.
+
 ## Risks / decisions
 
 - **Shared tier-resolver extraction (W4):** `resolve_tiers` lives in the proc-macro crate; the

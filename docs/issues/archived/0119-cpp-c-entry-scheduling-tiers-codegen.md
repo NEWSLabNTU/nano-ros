@@ -1,11 +1,21 @@
 ---
 id: 119
 title: "C / C++ entries don't wire `[tiers]` scheduling — tier resolution + `run_tiers` are Rust `nros::main!`-only, blocking Track-B ws-realtime for C/C++"
-status: open
+status: resolved
+resolved_in: phase-269
 type: enhancement
 area: core
 related: [phase-263, phase-264, phase-269, 116, 117, 118]
 ---
+
+> **Resolved (2026-07-01, phase-269 W4).** C/C++ entries now wire `[tiers]` scheduling. Added
+> `CALLBACK_GROUPS` to `nano_ros_node_register` (→ metadata → `PlanNode.callback_groups`); the tier
+> resolver was already shared in `nros-orchestration-ir` (the macro + the C/C++ emitters consume the
+> same one — no drift); `resolve_plan_sched` assigns each `PlanNode.sched_context`; `emit_c`/`emit_cpp`
+> emit `nros_cpp_create_sched_context` + per-node sched-binding (the existing shim), guarded so
+> single-tier is byte-identical. Proven by `realtime_tiers_{c,cpp}_e2e`: components schedule on
+> distinct high/low tiers. **Known limitation:** rclcpp-shape C++ nodes aren't sched-bound
+> (`NodeHandle` has no `sc_id`); C + configure-shape C++ are covered.
 
 ## Summary
 

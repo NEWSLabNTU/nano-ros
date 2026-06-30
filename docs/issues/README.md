@@ -62,7 +62,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#120** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#116–#119** (phase-269) —
+C/C++ entry feature parity: [params](archived/0116-cpp-c-component-launch-parameter-readback.md),
+[lifecycle autostart](archived/0117-cpp-c-entry-lifecycle-autostart-codegen.md),
+[subscription integrity](archived/0118-cpp-c-component-subscription-integrity-readback.md),
+[scheduling tiers](archived/0119-cpp-c-entry-scheduling-tiers-codegen.md) now project from the Rust
+`nros::main!` surface onto the C/C++ entry codegen (one shared foundation + a wave each), verified by
+the `cpp_c_*`/`realtime_tiers_*` e2e across C + C++. **#120** —
 [bridge-workspace fixtures fail when the cyclonedds submodule is
 absent](archived/0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-absent.md): the
 `workspace-rust-native-bridge` leaf built anyway and died with a cryptic `E0433` instead of
