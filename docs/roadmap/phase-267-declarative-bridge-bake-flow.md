@@ -475,11 +475,15 @@ the generated `FIELDS`):
   per-session node instead of pushing one per endpoint).
 
 Demo: `ws-bridge-rust` forwards `/chatter` (flat `std_msgs/Int32`) + `/header`
-(non-flat `std_msgs/Header` = `builtin_interfaces/Time` + string). Verified the
-entry builds + boots, staging BOTH egress descriptors (no `PublisherCreationFailed`).
-Residual: a full nested-FORWARDING e2e needs a `Header` publisher fixture (the demo
-proves build + staging; forwarding mechanics are the Int32 raw path). (Original
-idlc-relay plan below, kept for context.)
+(non-flat `std_msgs/Header` = `builtin_interfaces/Time` + string). **Nested
+forwarding VERIFIED end-to-end:** the talker (`native-rs-talker --features header`)
+publishes `Header` over zenoh → the declarative bridge → a stock `rmw_cyclonedds_cpp`
+subscriber on the cyclone domain receives it with the NESTED `stamp.{sec,nanosec}`
+intact (the `register::<Header>`-staged descriptor's `Nested` op round-trips through
+`dds_stream_read_sample`). The gated Int32 test also exercises `/header`'s
+staging+boot. Residual: codify the nested-forwarding as a ros2-gated test (the
+manual proof script is `scratchpad/e2e_header.sh`-shaped — talker(header) → bridge
+→ `ros2 topic echo /header`). (Original idlc-relay plan below, kept for context.)
 
 **Gap:** cyclone egress rejects a raw publisher whose type descriptor is not
 registered. The generated `register_bridges` creates raw pubs by `(name, hash)`

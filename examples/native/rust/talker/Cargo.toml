@@ -41,6 +41,10 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 safety-e2e     = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 param-services = ["nros/param-services"]
 link-tls       = ["nros-rmw-zenoh?/link-tls"]
+# phase-267 (non-flat bridge e2e) — also publish a NESTED message
+# (std_msgs/Header = builtin_interfaces/Time stamp + string) on /header, so the
+# declarative bridge's non-flat forwarding path can be exercised end-to-end.
+header         = ["dep:builtin_interfaces"]
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
@@ -57,6 +61,8 @@ nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-f
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 std_msgs = { version = "*", default-features = false }
+# phase-267 — only for the `header` feature (the nested Header's `stamp` field).
+builtin_interfaces = { version = "*", default-features = false, optional = true }
 log = "0.4"
 env_logger = "0.11"
 

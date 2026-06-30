@@ -84,6 +84,18 @@ fn main() {
         pub_
     };
 
+    // phase-267 (non-flat bridge e2e) — a NESTED publisher on /header so the
+    // declarative bridge's typed-`register::<Header>` egress can be exercised with
+    // live data. Own node (the executor dedups sessions; 2 nodes < MAX_NODES).
+    #[cfg(feature = "header")]
+    let header_pub = {
+        let mut node = executor
+            .create_node("talker_header")
+            .expect("Failed to create header node");
+        node.create_publisher::<std_msgs::msg::Header>("/header")
+            .expect("Failed to create /header publisher")
+    };
+
     #[cfg(feature = "param-services")]
     let counter_start = {
         let v = executor.get_parameter_integer("start_value").unwrap_or(0) as i32;
@@ -100,6 +112,20 @@ fn main() {
             match publisher.publish(&msg) {
                 Ok(()) => info!("Published: {}", count),
                 Err(e) => error!("Publish error: {:?}", e),
+            }
+            #[cfg(feature = "header")]
+            {
+                let hdr = std_msgs::msg::Header {
+                    stamp: builtin_interfaces::msg::Time {
+                        sec: count,
+                        nanosec: 0,
+                    },
+                    frame_id: Default::default(),
+                };
+                match header_pub.publish(&hdr) {
+                    Ok(()) => info!("Published Header: {}", count),
+                    Err(e) => error!("Header publish error: {:?}", e),
+                }
             }
             count = count.wrapping_add(1);
         })
