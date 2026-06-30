@@ -502,11 +502,19 @@ mod tests {
                     shape: None,
                     host: None,
                     qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: Vec::new(),
+                    sched_context: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
             bringup: "demo_bringup".into(),
             launch_file: PathBuf::from("/tmp/system.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
         }
     }
 
@@ -529,11 +537,19 @@ mod tests {
                     shape: Some("configure".into()),
                     host: None,
                     qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: Vec::new(),
+                    sched_context: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
             bringup: "demo_bringup".into(),
             launch_file: PathBuf::from("/tmp/system.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
         }
     }
 

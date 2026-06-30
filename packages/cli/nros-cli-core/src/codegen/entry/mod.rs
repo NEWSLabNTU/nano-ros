@@ -34,6 +34,7 @@ use eyre::{Context, Result, bail};
 
 use crate::{
     launch_parser::{LaunchDescription, NodeSpec, parse_launch_file},
+    orchestration::cargo_metadata_schema::{NodeOverride, SystemToml, TierDef},
     pkg_index::build_pkg_index,
 };
 
@@ -102,6 +103,18 @@ pub struct Plan {
     /// Resolved launch-file path; surfaces in the generated header
     /// banner.
     pub launch_file: PathBuf,
+    /// Boot lifecycle autostart from `system.toml [lifecycle].autostart`
+    /// (`"none"` | `"configure"` | `"active"`). `None` ⇒ no `[lifecycle]` block. (#117)
+    pub lifecycle: Option<String>,
+    /// `[param_services]` (or `features=["param_services"]`) enabled — register the
+    /// ROS 2 parameter services. (#116)
+    pub param_services: bool,
+    /// `[safety]` (or `features=["safety"]`) enabled. (#118)
+    pub safety: Option<bool>,
+    /// Raw `[tiers.*]` for the W4 tier resolver. Empty ⇒ single-tier. (#119)
+    pub tiers: std::collections::BTreeMap<String, TierDef>,
+    /// Raw `[[node_overrides]]` for the W4 tier resolver. (#119)
+    pub node_overrides: Vec<NodeOverride>,
 }
 
 impl Plan {
@@ -131,6 +144,11 @@ impl Plan {
             depfile_paths: self.depfile_paths.clone(),
             bringup: self.bringup.clone(),
             launch_file: self.launch_file.clone(),
+            lifecycle: self.lifecycle.clone(),
+            param_services: self.param_services,
+            safety: self.safety,
+            tiers: self.tiers.clone(),
+            node_overrides: self.node_overrides.clone(),
         }
     }
 
@@ -196,6 +214,17 @@ fn qos_overrides_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<
     out
 }
 
+/// Collect the non-QoS launch params: everything NOT starting with
+/// `qos_overrides.`, in launch-file order. These become `PlanNode.params`.
+fn non_qos_params_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<(String, String)> {
+    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+    params
+        .iter()
+        .filter(|p| !p.name.starts_with(QOS_OVERRIDE_PREFIX))
+        .map(|p| (p.name.clone(), p.value.clone()))
+        .collect()
+}
+
 /// One Node-pkg invocation in launch order.
 ///
 /// `pkg` is the cargo-style pkg name (sanitised via [`sanitize_pkg`]
@@ -241,6 +270,14 @@ pub struct PlanNode {
     /// none. The typed C++ entry emitter bakes them into a
     /// `node.set_qos_overrides(...)` call before `configure(node)`.
     pub qos_overrides: Vec<QosOverrideSpec>,
+    /// Launch `<param name= value=>` initials (NON-qos params; qos ones go to
+    /// `qos_overrides`). Preserved in launch-file order. (#116)
+    pub params: Vec<(String, String)>,
+    /// Per-component callback-group names (from cmake metadata). Empty until the
+    /// W4 cmake surface lands. (#119)
+    pub callback_groups: Vec<String>,
+    /// Resolved sched-context/tier index. `None` until W4 resolves tiers. (#119)
+    pub sched_context: Option<u8>,
 }
 
 impl PlanNode {
@@ -362,22 +399,32 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
         depfile_paths.push(pkg_dir.join("package.xml"));
     }
 
+    // Parse bringup's system.toml when present — provides [lifecycle],
+    // [param_services], [safety], [tiers.*], [[node_overrides]], and
+    // [system].default_launch. Absent → all Plan feature fields stay at defaults.
+    let system_toml_path = bringup_dir.join("system.toml");
+    let parsed_system: Option<SystemToml> = if system_toml_path.exists() {
+        depfile_paths.push(system_toml_path.clone());
+        let raw = std::fs::read_to_string(&system_toml_path)
+            .with_context(|| format!("read `{}`", system_toml_path.display()))?;
+        Some(
+            toml::from_str::<SystemToml>(&raw)
+                .with_context(|| format!("parse `{}`", system_toml_path.display()))?,
+        )
+    } else {
+        None
+    };
+
     // Resolve the launch filename. With no `:file` override, consult
     // bringup's `system.toml [system] default_launch`; fall back to
     // `system.launch.xml` (matches the Rust proc-macro shape).
     let launch_filename = match file_override {
         Some(s) => s,
-        None => {
-            let system_toml = bringup_dir.join("system.toml");
-            if system_toml.exists() {
-                depfile_paths.push(system_toml.clone());
-                read_default_launch(&system_toml)
-                    .with_context(|| format!("parse `{}`", system_toml.display()))?
-                    .unwrap_or_else(|| "system.launch.xml".to_string())
-            } else {
-                "system.launch.xml".to_string()
-            }
-        }
+        None => parsed_system
+            .as_ref()
+            .and_then(|s| s.system.default_launch.as_deref())
+            .map(str::to_string)
+            .unwrap_or_else(|| "system.launch.xml".to_string()),
     };
     let launch_path = bringup_dir.join("launch").join(&launch_filename);
     if !launch_path.exists() {
@@ -407,6 +454,9 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             shape: None,
             host: n.machine.clone(),
             qos_overrides: qos_overrides_from_params(&n.params),
+            params: non_qos_params_from_params(&n.params),
+            callback_groups: Vec::new(),
+            sched_context: None,
         });
     };
     for n in &desc.nodes {
@@ -432,25 +482,38 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
 
     let board = input.board.unwrap_or_else(|| "native".to_string());
 
+    let lifecycle = parsed_system
+        .as_ref()
+        .and_then(|s| s.lifecycle.as_ref())
+        .map(|l| l.autostart.clone());
+    let param_services = parsed_system
+        .as_ref()
+        .is_some_and(|s| s.capability_enabled("param_services"));
+    let safety = parsed_system.as_ref().and_then(|s| {
+        s.capability_enabled("safety")
+            .then(|| s.safety.as_ref().map(|sf| sf.crc).unwrap_or(true))
+    });
+    let tiers = parsed_system
+        .as_ref()
+        .map(|s| s.tiers.clone())
+        .unwrap_or_default();
+    let node_overrides = parsed_system
+        .as_ref()
+        .map(|s| s.node_overrides.clone())
+        .unwrap_or_default();
+
     Ok(Plan {
         board,
         nodes,
         depfile_paths,
         bringup: bringup_name,
         launch_file: launch_path,
+        lifecycle,
+        param_services,
+        safety,
+        tiers,
+        node_overrides,
     })
-}
-
-/// `[system] default_launch = "<file>"` reader, mirrors the proc-macro
-/// helper in `packages/core/nros-macros/src/main_macro.rs`.
-fn read_default_launch(system_toml: &Path) -> Result<Option<String>> {
-    let raw = std::fs::read_to_string(system_toml)
-        .with_context(|| format!("read `{}`", system_toml.display()))?;
-    let v: toml::Value = toml::from_str(&raw).context("parse toml")?;
-    Ok(v.get("system")
-        .and_then(|s| s.get("default_launch"))
-        .and_then(|d| d.as_str())
-        .map(str::to_string))
 }
 
 /// Write the depfile in GNU-make `target: dep1 dep2 …` form so cmake's
@@ -514,6 +577,9 @@ mod tests {
             shape: None,
             host: None,
             qos_overrides: Vec::new(),
+            params: Vec::new(),
+            callback_groups: Vec::new(),
+            sched_context: None,
         };
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
     }
@@ -533,6 +599,9 @@ mod tests {
             shape: None,
             host: host.map(str::to_string),
             qos_overrides: Vec::new(),
+            params: Vec::new(),
+            callback_groups: Vec::new(),
+            sched_context: None,
         };
         let plan = Plan {
             board: "native".into(),
@@ -544,6 +613,11 @@ mod tests {
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
         };
 
         assert_eq!(
@@ -636,10 +710,18 @@ mod tests {
                 shape: None,
                 host: None,
                 qos_overrides: Vec::new(),
+                params: Vec::new(),
+                callback_groups: Vec::new(),
+                sched_context: None,
             }],
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
         }
     }
 
@@ -682,6 +764,144 @@ mod tests {
         assert!(
             err.contains("63 bytes"),
             "error should mention the 63-byte limit; got: {err}"
+        );
+    }
+
+    /// Phase 269 (W0) — non-QoS params are baked into PlanNode.params; qos_overrides.* params
+    /// go to qos_overrides, not to params.
+    #[test]
+    fn non_qos_params_split_from_qos_params() {
+        use crate::launch_parser::ParamSpec;
+        let params = vec![
+            ParamSpec {
+                name: "p".into(),
+                value: "v".into(),
+            },
+            ParamSpec {
+                name: "qos_overrides./chatter.publisher.reliability".into(),
+                value: "best_effort".into(),
+            },
+            ParamSpec {
+                name: "count".into(),
+                value: "42".into(),
+            },
+        ];
+        let non_qos = non_qos_params_from_params(&params);
+        assert_eq!(non_qos.len(), 2);
+        assert_eq!(non_qos[0], ("p".into(), "v".into()));
+        assert_eq!(non_qos[1], ("count".into(), "42".into()));
+    }
+
+    /// Phase 269 (W0) — a system.toml with [lifecycle], [safety], [param_services],
+    /// and [tiers.*] yields a Plan with the matching feature fields.
+    #[test]
+    fn plan_from_launch_reads_system_toml_feature_fields() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+
+        // Build a minimal workspace: src/<pkg>/package.xml trees.
+        let bringup_dir = tmp.path().join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
+        std::fs::write(
+            bringup_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bringup_dir.join("launch").join("system.launch.xml"),
+            r#"<launch><node pkg="talker_pkg" exec="talker"/></launch>"#,
+        )
+        .unwrap();
+        let talker_dir = tmp.path().join("src").join("talker_pkg");
+        std::fs::create_dir_all(&talker_dir).unwrap();
+        std::fs::write(
+            talker_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
+        )
+        .unwrap();
+
+        // Write system.toml with all feature fields.
+        std::fs::write(
+            bringup_dir.join("system.toml"),
+            r#"[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[lifecycle]
+autostart = "active"
+
+[safety]
+
+[param_services]
+
+[tiers.rt]
+"#,
+        )
+        .unwrap();
+
+        let plan = plan_from_launch(PlanInput {
+            workspace: tmp.path(),
+            launch_spec: "demo_bringup",
+            board: None,
+            arg_overrides: vec![],
+        })
+        .expect("plan_from_launch should succeed");
+
+        assert_eq!(plan.lifecycle.as_deref(), Some("active"));
+        assert!(plan.param_services, "param_services should be enabled");
+        assert_eq!(
+            plan.safety,
+            Some(true),
+            "safety should be Some(true) (crc=true default)"
+        );
+        assert!(plan.tiers.contains_key("rt"), "tiers should contain 'rt'");
+    }
+
+    /// Phase 269 (W0) — a launch without system.toml leaves all feature fields at defaults,
+    /// keeping the Plan byte-identical for pre-W0 callers.
+    #[test]
+    fn plan_from_launch_no_system_toml_yields_defaults() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+
+        let bringup_dir = tmp.path().join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
+        std::fs::write(
+            bringup_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bringup_dir.join("launch").join("system.launch.xml"),
+            r#"<launch><node pkg="talker_pkg" exec="talker"><param name="p" value="v"/></node></launch>"#,
+        )
+        .unwrap();
+        let talker_dir = tmp.path().join("src").join("talker_pkg");
+        std::fs::create_dir_all(&talker_dir).unwrap();
+        std::fs::write(
+            talker_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
+        )
+        .unwrap();
+
+        let plan = plan_from_launch(PlanInput {
+            workspace: tmp.path(),
+            launch_spec: "demo_bringup",
+            board: None,
+            arg_overrides: vec![],
+        })
+        .expect("plan_from_launch should succeed without system.toml");
+
+        assert!(plan.lifecycle.is_none());
+        assert!(!plan.param_services);
+        assert!(plan.safety.is_none());
+        assert!(plan.tiers.is_empty());
+        assert!(plan.node_overrides.is_empty());
+        // Non-QoS params baked into PlanNode.params.
+        assert_eq!(
+            plan.nodes[0].params,
+            vec![("p".to_string(), "v".to_string())]
         );
     }
 }

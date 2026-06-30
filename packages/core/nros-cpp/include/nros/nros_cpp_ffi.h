@@ -1897,6 +1897,62 @@ nros_cpp_ret_t nros_cpp_clear_custom_transport(void);
 nros_cpp_ret_t nros_cpp_has_custom_transport(void);
 
 /**
+ * Register the five REP-2002 lifecycle services on the C++ executor's node.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`.
+ */
+nros_cpp_ret_t nros_cpp_register_lifecycle_services(void *executor);
+
+/**
+ * Trigger a lifecycle transition on the C++ executor's state machine.
+ *
+ * `transition_id` follows the REP-2002 numbering: Configure=1, Activate=2,
+ * Deactivate=3, Cleanup=4, Shutdown=5, ErrorProcessed=6.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. Any registered transition
+ * callbacks are invoked through raw function pointers; the caller must ensure
+ * they and their captured context remain live.
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_change_state(void *executor, uint8_t transition_id);
+
+/**
+ * Register lifecycle services and optionally drive the node to a higher
+ * autostart state.
+ *
+ * `autostart_code`: 0 = services only (none), 1 = configure, 2 = active.
+ *
+ * # Safety
+ * Same as [`nros_cpp_register_lifecycle_services`] and
+ * [`nros_cpp_lifecycle_change_state`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_autostart(void *executor, uint8_t autostart_code);
+
+/**
+ * Register the ROS 2 parameter services on the C++ executor's node.
+ *
+ * After this call, `ros2 param list|get|set` can inspect and modify parameters.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`.
+ */
+nros_cpp_ret_t nros_cpp_register_parameter_services(void *executor);
+
+/**
+ * Declare a parameter with a string initial value on the C++ executor's node.
+ *
+ * Infers the `ParameterValue` type from the string content: booleans, integers,
+ * floats, and plain strings are all handled (in that priority order). Mirrors the
+ * Rust `nros::main!` W4b inference path.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `name` and `value` must be
+ * valid null-terminated UTF-8 strings.
+ */
+nros_cpp_ret_t nros_cpp_declare_param(void *executor, const char *name, const char *value);
+
+/**
  * Issue a service-client raw-CDR request from a tick body and block on
  * the reply (Phase 212.M-F.4.c).
  *

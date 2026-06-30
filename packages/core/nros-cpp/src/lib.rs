@@ -163,6 +163,10 @@ mod action;
 // rmw-* gate) because the registration is platform-side, not RMW-side.
 mod transport;
 
+// Phase 269 (W0) — executor-shim: lifecycle + parameter FFI over the CppContext handle.
+mod lifecycle_shim;
+mod params_shim;
+
 // ── Tick-time client dispatch (Phase 212.M-F.4.c) ──
 //
 // Mirror of the Rust substrate's `TickCtx::call_raw` /
