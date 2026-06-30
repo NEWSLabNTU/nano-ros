@@ -71,8 +71,9 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   allow-rule exists — never a blanket `git push:*`.
 - **Codegen + orchestration CLI lives in-tree at `packages/cli/`** (a sub-workspace, own
   `Cargo.toml`/`Cargo.lock`). Edits to codegen / `colcon_nano_ros` / orchestration land there; build
-  via `just setup-cli`. The `packages/codegen` submodule is retired; a stray untracked top-level
-  `packages/codegen/` is leftover — do not commit it.
+  via `just setup-cli`. The retired `packages/codegen` submodule is fully gone (no stray leftover).
+  `packages/cli/` itself nests three submodules under `third-party/` + `testing_workspaces/`
+  (`play_launch_parser`, `ros-launch-manifest`, `ros2_rust_examples`).
 - **Don’t modify vendored/generated:** `third-party/`, `packages/interfaces/*/generated/`, build
   output — unless the task explicitly requires regeneration. Preserve worktree changes.
 - **Examples are standalone copy-out projects** (`examples/<plat>/<lang>/<example>/`); no workspace
