@@ -202,6 +202,7 @@ static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_BRIDGE_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 A1 (Track D) — cached paths to the cross-process service entries.
 static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -745,6 +746,22 @@ pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-bridge",
                 "ws-bridge-rust",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-267 (xrce variant) — the declarative `zenoh↔xrce` bridge Entry
+/// (`ws-bridge-xrce-rust`, cached). Config-driven pure-cargo `nros::main!`; links
+/// zenoh + xrce backends (no cyclonedds submodule gate). The runtime e2e needs a
+/// Micro-XRCE-DDS Agent (`XrceAgent`).
+pub fn build_native_workspace_rust_bridge_xrce_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_BRIDGE_XRCE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-bridge-xrce",
+                "ws-bridge-xrce-rust",
                 "native_entry",
             )
         })

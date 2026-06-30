@@ -102,6 +102,21 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
+# phase-267 (xrce variant) — the declarative bridge's XRCE sibling. Same flow, but
+# the egress dials a Micro-XRCE-DDS Agent (locator from `[[domain]].locator`) and
+# uses LAZY type registration (no descriptor staging / msg-crate dep). Links zenoh
+# + xrce backends (no cyclonedds submodule gate). Consumed by
+# tests/declarative_bridge_zenoh_to_xrce.rs: talker → entry → agent → ros2 sub.
+[[workspace_fixture]]
+id = "workspace-rust-native-bridge-xrce"
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/ws-bridge-xrce-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # phase-263 A1 (Track D) — the cross-process AddTwoInts service round-trip. In-process
 # (same-executor) service server+client do not talk (issue 0096), so the service demo is
 # split into two pure-cargo `nros::main!` entries booting one-node launches each:
