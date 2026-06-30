@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#120** — [phase-267 bridge-workspace fixtures fail `build-test-fixtures` when the cyclonedds
+  submodule is absent — the gate leaks](0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-absent.md):
+  `workspace-rust-native-bridge` (E0433 — `nros sync` never generated `nros-bridge.toml`) and
+  `workspace-rust-threadx-linux` (E0463 — `nros-platform[platform-threadx]` poisons the x86_64-host
+  `nros` build) build instead of skipping when cyclonedds is unchecked-out. Rest of matrix green
+  (nuttx/freertos/zephyr/qemu). Not a build-infra regression (issues 0090/0110 are green).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
