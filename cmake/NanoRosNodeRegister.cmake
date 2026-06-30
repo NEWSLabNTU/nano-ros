@@ -667,6 +667,31 @@ function(nano_ros_node_register)
         # that include <nros/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
         _nros_node_register_config_header_deps(${PROJECT_NAME})
+        # Issue 0090 — `add_dependencies` (above) orders the TARGET but does not stop
+        # a TU compiling before the per-build header is mirrored on the freertos link
+        # path, so it reads the in-tree stub (`*_OPAQUE_U64S undeclared`) — exactly the
+        # 0088/0090 race the zephyr + threadx carriers already guard. Add a HARD
+        # file-level OBJECT_DEPENDS on the Corrosion mirror header(s) so each TU waits
+        # for the generated header to exist. Apply to the WHOLE carrier source set: the
+        # generated C++ entry (`${_entry_src}`) drives the full nros-cpp surface and the
+        # C node source(s) (`${_NRC_SOURCES}`) include <nros/nros_config_generated.h>.
+        # The source-file property is directory-scoped, so listing `${_NRC_SOURCES}`
+        # ALSO covers the SEPARATE build-coverage component lib (`${_lib}`) that
+        # compiles the same file. C carrier reads the C header; C++ reads both — list
+        # whichever the build provides (harmless extra edge).
+        get_property(_nros_c_cfg_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
+        get_property(_nros_cpp_cfg_hdr GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE)
+        set(_nros_cfg_hdrs "")
+        if(_nros_c_cfg_hdr)
+            list(APPEND _nros_cfg_hdrs "${_nros_c_cfg_hdr}")
+        endif()
+        if(_nros_cpp_cfg_hdr)
+            list(APPEND _nros_cfg_hdrs "${_nros_cpp_cfg_hdr}")
+        endif()
+        if(_nros_cfg_hdrs)
+            set_source_files_properties("${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES}
+                PROPERTIES OBJECT_DEPENDS "${_nros_cfg_hdrs}")
+        endif()
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
