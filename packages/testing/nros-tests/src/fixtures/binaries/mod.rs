@@ -243,6 +243,9 @@ static NATIVE_WORKSPACE_C_CUSTOM_MSG_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = 
 /// phase-263 B4 — cached paths to the C QoS-override cross-process entries.
 static NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 269 W1 — cached paths to the parameterised C/C++ workspace entries.
+static NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
 /// QoS-override and custom-message cross-process workspace entries.
 static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -920,6 +923,17 @@ pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Phase 269 W1 — the parameterised C workspace Entry pkg fixture (`ws-params-c`).
+/// Reads live `publish_period_ms` via `nros_cpp_get_param_integer`; consumed by
+/// tests/cpp_c_param_live_read_e2e.rs.
+pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-c-native-params", "ws-params-c", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-263 Track C — the robot1 (talker) per-host C multihost entry (cached).
 pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY
@@ -1396,6 +1410,22 @@ pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry("workspace-cpp-native", "cpp", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 269 W1 — the parameterised C++ workspace Entry pkg fixture (`ws-params-cpp`).
+/// Reads live `publish_period_ms` via `nros_cpp_get_param_integer` (executor handle
+/// saved from `node.executor_handle()` at configure time); consumed by
+/// tests/cpp_c_param_live_read_e2e.rs.
+pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-params",
+                "ws-params-cpp",
+                "native_entry",
+            )
         })
         .map(|p| p.as_path())
 }

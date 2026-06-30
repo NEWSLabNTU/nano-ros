@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Phase 269 W1 — parameterised C entry. The `<param>` initial is baked into the
+     generated entry by emit_c.rs when plan.param_services is true; the C component
+     reads the live value via nros_cpp_get_param_integer(executor, name, &out). -->
+<launch>
+  <node pkg="c_param_talker_pkg" exec="param_talker" name="param_talker">
+    <param name="publish_period_ms" value="250"/>
+  </node>
+</launch>

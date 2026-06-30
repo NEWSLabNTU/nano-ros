@@ -12,8 +12,8 @@ use nros_node::ParameterValue;
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
-    nros_cpp_ret_t,
+    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
+    NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_OK, cstr_to_str, nros_cpp_ret_t,
 };
 
 /// Register the ROS 2 parameter services on the C++ executor's node.
@@ -70,6 +70,122 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
         NROS_CPP_RET_OK
     } else {
         NROS_CPP_RET_ERROR
+    }
+}
+
+/// Get an integer parameter by name from the C++ executor's parameter store.
+///
+/// Writes to `*out_value` on success. Returns `NROS_CPP_RET_OK` if found,
+/// `NROS_CPP_RET_NOT_FOUND` if absent or wrong type, `NROS_CPP_RET_INVALID_ARGUMENT`
+/// for null pointers.
+///
+/// # Safety
+/// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+/// UTF-8. `out_value` must be valid and writable.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_get_param_integer(
+    executor: *mut c_void,
+    name: *const c_char,
+    out_value: *mut i64,
+) -> nros_cpp_ret_t {
+    if executor.is_null() || out_value.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    match ctx
+        .executor
+        .get_parameter(name_str)
+        .and_then(|v| v.as_integer())
+    {
+        Some(v) => {
+            unsafe { *out_value = v }
+            NROS_CPP_RET_OK
+        }
+        None => NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
+/// Get a double parameter by name from the C++ executor's parameter store.
+///
+/// # Safety
+/// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+/// UTF-8. `out_value` must be valid and writable.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_get_param_double(
+    executor: *mut c_void,
+    name: *const c_char,
+    out_value: *mut f64,
+) -> nros_cpp_ret_t {
+    if executor.is_null() || out_value.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    match ctx
+        .executor
+        .get_parameter(name_str)
+        .and_then(|v| v.as_double())
+    {
+        Some(v) => {
+            unsafe { *out_value = v }
+            NROS_CPP_RET_OK
+        }
+        None => NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
+/// Get a string parameter by name from the C++ executor's parameter store.
+///
+/// Copies the value into `out_buf` (null-terminated). Returns `NROS_CPP_RET_FULL`
+/// if the buffer is too small (string is truncated + null-terminated), or
+/// `NROS_CPP_RET_NOT_FOUND` if the param is absent or wrong type.
+///
+/// # Safety
+/// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+/// UTF-8. `out_buf` must be valid for `buf_len` bytes.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_get_param_string(
+    executor: *mut c_void,
+    name: *const c_char,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> nros_cpp_ret_t {
+    if executor.is_null() || out_buf.is_null() || buf_len == 0 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let val = match ctx
+        .executor
+        .get_parameter(name_str)
+        .and_then(|v| v.as_string())
+    {
+        Some(s) => s,
+        None => return NROS_CPP_RET_NOT_FOUND,
+    };
+    let bytes = val.as_bytes();
+    let copy_len = bytes.len().min(buf_len - 1);
+    unsafe {
+        core::ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, out_buf, copy_len);
+        *out_buf.add(copy_len) = 0;
+    }
+    if bytes.len() >= buf_len {
+        NROS_CPP_RET_FULL
+    } else {
+        NROS_CPP_RET_OK
     }
 }
 

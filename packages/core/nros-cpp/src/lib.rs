@@ -199,6 +199,8 @@ pub const NROS_CPP_RET_FULL: nros_cpp_ret_t = -5;
 pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -6;
 /// Reentrant call detected — executor is already spinning.
 pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -7;
+/// Parameter not found in the executor's store.
+pub const NROS_CPP_RET_NOT_FOUND: nros_cpp_ret_t = -8;
 /// Transport / connection error.
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 

@@ -412,6 +412,28 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         }
         out.push_str("    }\n");
     }
+    if plan.param_services {
+        out.push_str(
+            "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+        );
+        out.push_str("    {\n");
+        out.push_str("        void* __exec = ::nros::global_handle();\n");
+        out.push_str(
+            "        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
+        );
+        out.push_str("        nros_cpp_register_parameter_services(__exec);\n");
+        for n in &plan.nodes {
+            for (k, v) in &n.params {
+                let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
+                let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
+                let _ = writeln!(
+                    out,
+                    "        nros_cpp_declare_param(__exec, \"{k_esc}\", \"{v_esc}\");"
+                );
+            }
+        }
+        out.push_str("    }\n");
+    }
     out.push_str("    return 0;\n}\n\n");
 
     // Phase 266 (W6) — bake the boot config blob so the session name is both
@@ -875,5 +897,46 @@ mod tests {
         let err = emit_typed(&plan).unwrap_err();
         assert!(err.contains("missing class_name"), "{err}");
         assert!(err.contains("talker_pkg"), "{err}");
+    }
+
+    #[test]
+    fn typed_emit_param_services_block_present_when_enabled() {
+        // Phase 269 W1 — when param_services is true, the post-configure block emits
+        // nros_cpp_register_parameter_services + nros_cpp_declare_param per node param.
+        let mut plan = fixture_plan_typed(&[(
+            "param_talker_pkg",
+            "param_talker",
+            "param_talker",
+            "param_talker_pkg::ParamTalker",
+            "param_talker_pkg/ParamTalker.hpp",
+        )]);
+        plan.param_services = true;
+        plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
+        let src = emit_typed(&plan).expect("typed cpp emit ok");
+        assert!(src.contains("nros_cpp_register_parameter_services(__exec)"));
+        assert!(
+            src.contains("nros_cpp_declare_param(__exec, \"publish_period_ms\", \"250\")")
+        );
+        // must appear after configure, before return 0
+        let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
+        let ret_at = src.rfind("return 0;").unwrap();
+        assert!(reg_at < ret_at, "param block must precede return 0");
+        // confirms executor handle fetched from global
+        assert!(src.contains("::nros::global_handle()"));
+    }
+
+    #[test]
+    fn typed_emit_param_services_absent_when_disabled() {
+        // Guard: non-param plans produce byte-identical output (no param block).
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let src = emit_typed(&plan).expect("typed cpp emit ok");
+        assert!(!src.contains("nros_cpp_register_parameter_services"));
+        assert!(!src.contains("nros_cpp_declare_param"));
     }
 }

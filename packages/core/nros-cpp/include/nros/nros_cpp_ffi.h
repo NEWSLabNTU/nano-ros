@@ -464,6 +464,11 @@ typedef struct nros_cpp_transport_ops_t {
 #define NROS_CPP_RET_REENTRANT -7
 
 /**
+ * Parameter not found in the executor's store.
+ */
+#define NROS_CPP_RET_NOT_FOUND -8
+
+/**
  * Transport / connection error.
  */
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
@@ -1951,6 +1956,44 @@ nros_cpp_ret_t nros_cpp_register_parameter_services(void *executor);
  * valid null-terminated UTF-8 strings.
  */
 nros_cpp_ret_t nros_cpp_declare_param(void *executor, const char *name, const char *value);
+
+/**
+ * Get an integer parameter by name from the C++ executor's parameter store.
+ *
+ * Writes to `*out_value` on success. Returns `NROS_CPP_RET_OK` if found,
+ * `NROS_CPP_RET_NOT_FOUND` if absent or wrong type, `NROS_CPP_RET_INVALID_ARGUMENT`
+ * for null pointers.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+ * UTF-8. `out_value` must be valid and writable.
+ */
+nros_cpp_ret_t nros_cpp_get_param_integer(void *executor, const char *name, int64_t *out_value);
+
+/**
+ * Get a double parameter by name from the C++ executor's parameter store.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+ * UTF-8. `out_value` must be valid and writable.
+ */
+nros_cpp_ret_t nros_cpp_get_param_double(void *executor, const char *name, double *out_value);
+
+/**
+ * Get a string parameter by name from the C++ executor's parameter store.
+ *
+ * Copies the value into `out_buf` (null-terminated). Returns `NROS_CPP_RET_FULL`
+ * if the buffer is too small (string is truncated + null-terminated), or
+ * `NROS_CPP_RET_NOT_FOUND` if the param is absent or wrong type.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+ * UTF-8. `out_buf` must be valid for `buf_len` bytes.
+ */
+nros_cpp_ret_t nros_cpp_get_param_string(void *executor,
+                                         const char *name,
+                                         char *out_buf,
+                                         size_t buf_len);
 
 /**
  * Issue a service-client raw-CDR request from a tick body and block on

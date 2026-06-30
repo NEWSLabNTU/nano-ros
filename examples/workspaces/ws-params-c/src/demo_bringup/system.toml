@@ -1,0 +1,20 @@
+# Phase 269 W1 — parameterised C workspace: component reads publish_period_ms from a
+# launch <param> initial AND live (via nros_cpp_get_param_integer on the executor handle).
+# [param_services] seeds the volatile store so `ros2 param get/set` works.
+
+[system]
+name = "c_param_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[param_services]
+
+[[component]]
+pkg = "c_param_talker_pkg"
+class = "c_param_talker_pkg::Talker"
+name = "param_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
