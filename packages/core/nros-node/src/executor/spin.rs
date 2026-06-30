@@ -1943,14 +1943,24 @@ impl Executor {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
-        // Register the Node (opens an extra session under `rmw` if
-        // none exists yet for that backend).
-        let mut builder = self.node_builder(name).rmw(rmw);
-        if let Some(d) = domain_id {
-            builder = builder.domain_id(d);
-        }
-        let id = builder.build()?;
-        let session_idx = self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx;
+        // Reuse an existing Node of this name rather than growing the node table
+        // (phase-267 non-flat): a config-driven bridge calls this once per bridge
+        // ENDPOINT, and the same session node (`s0`/`s1`) recurs across every
+        // `[[bridge]]`. Without dedup, N bridges push 2N records and overflow
+        // `MAX_NODES`. Names are unique per session in a generated bridge config,
+        // so matching by name is unambiguous.
+        let session_idx = if let Some(rec) = self.nodes.iter().find(|n| n.name.as_str() == name) {
+            rec.session_idx
+        } else {
+            // Register the Node (opens an extra session under `rmw` if
+            // none exists yet for that backend).
+            let mut builder = self.node_builder(name).rmw(rmw);
+            if let Some(d) = domain_id {
+                builder = builder.domain_id(d);
+            }
+            let id = builder.build()?;
+            self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx
+        };
 
         let mut node_name = heapless::String::<64>::new();
         node_name

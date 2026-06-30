@@ -19,6 +19,14 @@ default_namespace = "/"
 topic = "/chatter"
 type = "std_msgs/msg/Int32"
 
+# phase-267 (non-flat types) — a NESTED message (std_msgs/Header =
+# builtin_interfaces/Time stamp + string frame_id). Its schema can't ride the flat
+# `fields` list, so `nros sync` emits a `[[register_type]]` and the bridge entry
+# stages the Cyclone descriptor via a typed `register::<std_msgs::msg::Header>()`.
+[[package.metadata.nros.node.publishes]]
+topic = "/header"
+type = "std_msgs/msg/Header"
+
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",

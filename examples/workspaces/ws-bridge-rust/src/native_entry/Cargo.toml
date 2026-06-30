@@ -28,3 +28,9 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # per backend via `Executor::open_multi`.
 nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
+# phase-267 (non-flat types) — the typed Cyclone descriptor staging
+# (`register::<M>()`) the macro emits for a non-flat forwarded type, + the msg
+# crate that provides the `M: Message` (std_msgs/Header). `nros sync` resolves
+# `std_msgs` through the generated-crate `[patch.crates-io]`.
+nros-rmw-cyclonedds = { path = "../../../../../packages/dds/nros-rmw-cyclonedds", features = ["std"] }
+std_msgs = { version = "*", default-features = false }

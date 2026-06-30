@@ -2469,12 +2469,19 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) 
     };
 
     let mut bridges_toml = String::new();
+    // phase-267 (non-flat types) — types whose schema can't ride the flat
+    // `fields` list (nested / array / sequence) are staged at the EGRESS by a
+    // macro-emitted typed `register::<M>()`. Collect `(rust_path, egress_rmw)`,
+    // deduped, and emit `[[register_type]]` for the macro to consume.
+    let mut register_types: Vec<(String, String)> = Vec::new();
     for b in &plan.bridges {
         if b.connect.len() < 2 {
             continue;
         }
         let fi = intern(&mut sessions, &b.connect[0]);
         let ti = intern(&mut sessions, &b.connect[1]);
+        let from_rmw = sessions[fi].0.clone();
+        let to_rmw = sessions[ti].0.clone();
         for topic in &b.topics {
             let Some(iface) = resolve_topic_interface(plan, topic) else {
                 continue;
@@ -2484,11 +2491,22 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) 
             // needs. The ROS form (`std_msgs/msg/Int32`) does NOT match the wire,
             // so the raw sub/pub would never connect / Cyclone rejects the topic.
             let type_name = interface_type_name(iface);
-            // phase-267 W-B2 — carry the ROS type + flat field schema so the
-            // runtime can stage a Cyclone descriptor (issue 0107). Empty for a
-            // non-flat message → bridge stages nothing (honest fail on Cyclone).
-            let (ros_type, fields) = read_bridge_field_schema(ws_root, iface);
-            let schema = render_bridge_schema_lines(&ros_type, &fields);
+            // phase-267 — flat types carry a `fields` schema (runtime stages the
+            // Cyclone descriptor, issue 0107); non-flat types instead register a
+            // typed `[[register_type]]` (egress `register::<M>()`).
+            let schema = match classify_bridge_type(ws_root, iface) {
+                BridgeTypeSchema::Flat { ros_type, fields } if !fields.is_empty() => {
+                    render_bridge_schema_lines(&ros_type, &fields)
+                }
+                BridgeTypeSchema::NonFlat { rust_path } => {
+                    push_register_type(&mut register_types, &rust_path, &to_rmw);
+                    if b.bidirectional {
+                        push_register_type(&mut register_types, &rust_path, &from_rmw);
+                    }
+                    String::new()
+                }
+                _ => String::new(),
+            };
             let _ = write!(
                 bridges_toml,
                 "\n[[bridge]]\ntype = {type_name:?}\nfrom = {{ node = \"s{fi}\", topic = {topic:?} }}\nto = {{ node = \"s{ti}\", topic = {topic:?} }}\n{schema}"
@@ -2513,7 +2531,90 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) 
         let _ = write!(out, "domain_id = {domain}\n");
     }
     out.push_str(&bridges_toml);
+    for (rust_path, rmw) in &register_types {
+        let _ = write!(
+            out,
+            "\n[[register_type]]\nrust_path = {rust_path:?}\nrmw = {rmw:?}\n"
+        );
+    }
     Some(out)
+}
+
+/// Dedup-append a `(rust_path, egress_rmw)` typed-registration entry.
+fn push_register_type(acc: &mut Vec<(String, String)>, rust_path: &str, rmw: &str) {
+    if !acc.iter().any(|(p, r)| p == rust_path && r == rmw) {
+        acc.push((rust_path.to_string(), rmw.to_string()));
+    }
+}
+
+/// Classification of a forwarded type's schema: a FLAT message (all
+/// primitive/string fields → runtime descriptor staging via the `fields` list) vs
+/// a NON-FLAT one (nested / array / sequence → macro-emitted typed
+/// `register::<M>()`). `Unknown` ⇒ the generated crate is missing. phase-267.
+enum BridgeTypeSchema {
+    Flat {
+        ros_type: String,
+        fields: Vec<(String, String)>,
+    },
+    NonFlat {
+        rust_path: String,
+    },
+    Unknown,
+}
+
+fn classify_bridge_type(
+    ws_root: &std::path::Path,
+    interface: &super::schema::InterfaceRef,
+) -> BridgeTypeSchema {
+    let (namespace, name) = split_interface_name(&interface.name);
+    // Full ROS form `pkg/msg/Name` (the C descriptor builder mangles this to
+    // `pkg::msg::dds_::Name_`); robust whether `interface.name` carries the `msg/`
+    // namespace or not.
+    let ros_type = format!("{}/{}/{}", interface.package, namespace, name);
+    let snake = rosidl_codegen::utils::to_snake_case(name);
+    let src = ws_root
+        .join("generated")
+        .join(&interface.package)
+        .join("src")
+        .join(namespace)
+        .join(format!("{snake}.rs"));
+    let Ok(text) = std::fs::read_to_string(&src) else {
+        return BridgeTypeSchema::Unknown;
+    };
+    if fields_const_is_non_flat(&text) {
+        BridgeTypeSchema::NonFlat {
+            // `geometry_msgs/msg/PoseStamped` → `geometry_msgs::msg::PoseStamped`.
+            rust_path: format!("{}::{}::{}", interface.package, namespace, name),
+        }
+    } else {
+        BridgeTypeSchema::Flat {
+            ros_type,
+            fields: parse_fields_const(&text),
+        }
+    }
+}
+
+/// True iff the generated `FIELDS` block has any non-primitive field (nested /
+/// array / sequence / bounded) — i.e. it can't ride the flat `fields` list. phase-267.
+fn fields_const_is_non_flat(text: &str) -> bool {
+    let Some(start) = text.find("const FIELDS") else {
+        return false;
+    };
+    for line in text[start..].lines() {
+        let t = line.trim();
+        if let Some(idx) = t.find("FieldType::") {
+            let variant: String = t[idx + "FieldType::".len()..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if field_variant_to_primitive(&variant).is_none() {
+                return true;
+            }
+        } else if t == "];" {
+            break;
+        }
+    }
+    false
 }
 
 /// Resolve a forwarded topic's interface (type name + hash) from the plan's
@@ -4274,36 +4375,6 @@ fn render_bridge_schema_lines(ros_type: &str, fields: &[(String, String)]) -> St
     )
 }
 
-/// phase-267 W-B2 — read the flat field schema of a forwarded message from the
-/// generated crate's `Message::FIELDS` const, so `nros sync` can carry it into
-/// `nros-bridge.toml` for runtime Cyclone descriptor staging (issue 0107). The
-/// generated crate is the codegen's canonical schema output and is always
-/// present at sync time at `<ws>/generated/<pkg>/src/<kind>/<snake>.rs`.
-///
-/// Returns `(ros_type, fields)` where `fields` is `[(field_name, msg_primitive)]`.
-/// Returns an empty `fields` vec (still a valid `ros_type`) when the message has
-/// a non-flat field (nested / array / sequence) the flat schema can't carry, or
-/// when the generated source is missing — the bridge then stages nothing and a
-/// Cyclone dest surfaces the honest `PublisherCreationFailed`.
-fn read_bridge_field_schema(
-    ws_root: &std::path::Path,
-    interface: &super::schema::InterfaceRef,
-) -> (String, Vec<(String, String)>) {
-    let (namespace, name) = split_interface_name(&interface.name);
-    let ros_type = format!("{}/{}", interface.package, interface.name);
-    let snake = rosidl_codegen::utils::to_snake_case(name);
-    let src = ws_root
-        .join("generated")
-        .join(&interface.package)
-        .join("src")
-        .join(namespace)
-        .join(format!("{snake}.rs"));
-    let Ok(text) = std::fs::read_to_string(&src) else {
-        return (ros_type, Vec::new());
-    };
-    (ros_type, parse_fields_const(&text))
-}
-
 /// Extract `(name, msg_primitive)` pairs from a generated message module's
 /// `const FIELDS` block. Sequential scan: each `Field` literal writes `name:`
 /// then `ty: …FieldType::Variant`. A non-primitive variant aborts (returns
@@ -5658,6 +5729,16 @@ mod net_fragment_tests {
                 ("a".to_string(), "float64".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn fields_const_is_non_flat_detects_nested() {
+        let flat = "const FIELDS: &[Field] = &[\n    Field { name: \"data\", ty: ::nros_serdes::FieldType::Int32, offset: 0 },\n];";
+        assert!(!fields_const_is_non_flat(flat));
+        let nested = "const FIELDS: &[Field] = &[\n    Field { name: \"pose\", ty: ::nros_serdes::FieldType::Nested(&POSE), offset: 0 },\n];";
+        assert!(fields_const_is_non_flat(nested));
+        let seq = "const FIELDS: &[Field] = &[\n    Field { name: \"pts\", ty: ::nros_serdes::FieldType::Sequence(&F), offset: 0 },\n];";
+        assert!(fields_const_is_non_flat(seq));
     }
 
     #[test]

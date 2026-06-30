@@ -1644,10 +1644,22 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 quote! { let _ = ::#id::register(); }
             })
             .collect();
+        // phase-267 (non-flat types) — stage each cyclonedds-egress non-flat type's
+        // Cyclone descriptor via a typed `register::<M>()` (reuses `M::FIELDS`, so
+        // nested / array / sequence work without a flat schema). The Entry deps the
+        // forwarded msg crate(s) + `nros-rmw-cyclonedds`. `let _ =` mirrors the
+        // backend register: a failure surfaces downstream as the egress pub error.
+        let typed_register_calls: Vec<proc_macro2::TokenStream> = read_register_types(cfg_path)
+            .into_iter()
+            .filter(|(_, rmw)| rmw == "cyclonedds")
+            .filter_map(|(rust_path, _)| syn::parse_str::<SynPath>(&rust_path).ok())
+            .map(|path| quote! { let _ = ::nros_rmw_cyclonedds::register::<#path>(); })
+            .collect();
         let expanded = quote! {
             #( #tracked_consts )*
             fn main() -> ::core::result::Result<(), ::nros_bridge::ConfigError> {
                 #( #register_calls )*
+                #( #typed_register_calls )*
                 ::nros_bridge::run_from_config_str(::core::include_str!(#cfg_lit))
             }
         };
@@ -1973,6 +1985,31 @@ fn read_has_bridge(system_toml: &Path) -> bool {
     v.get("bridge")
         .and_then(|b| b.as_array())
         .is_some_and(|a| !a.is_empty())
+}
+
+/// phase-267 (non-flat types) — read the `[[register_type]]` entries `nros sync`
+/// emits into `nros-bridge.toml` for forwarded messages whose schema can't ride
+/// the flat `fields` list. Each is `(rust_path, egress_rmw)`; the macro emits a
+/// typed `register::<M>()` per cyclonedds egress so the runtime can stage the
+/// Cyclone descriptor from `M::FIELDS` (arbitrary nesting). Best-effort: a parse
+/// error yields an empty list.
+fn read_register_types(bridge_toml: &Path) -> Vec<(String, String)> {
+    let Ok(raw) = std::fs::read_to_string(bridge_toml) else {
+        return Vec::new();
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.get("register_type").and_then(|r| r.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|e| {
+            let path = e.get("rust_path")?.as_str()?.to_string();
+            let rmw = e.get("rmw")?.as_str()?.to_string();
+            Some((path, rmw))
+        })
+        .collect()
 }
 
 // =============================================================================

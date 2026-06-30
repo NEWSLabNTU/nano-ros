@@ -460,15 +460,26 @@ add a `[[workspace_fixture]]` lane (`examples/fixtures.toml`) for
 
 ## W4 — Per-type cyclone descriptor staging in the generated relay
 
-**SUPERSEDED by W-B (fix B), DONE for flat types (2026-06-28).** Staging happens
-in the config-driven runtime, not a generated relay: `nros sync` carries the flat
-field schema in `nros-bridge.toml` and `run_from_config` stages the descriptor via
-`register_type_descriptor` (self-consistent offsets — no idlc, no `M::FIELDS` dep on
-the Entry). **Residual:** non-flat messages (nested / array / sequence) are not yet
-stageable (`parse_fields_const` bails → no schema emitted); a bridge forwarding e.g.
-`geometry_msgs/Pose` stages nothing. Follow-up — extend the schema emit + the
-runtime field builder to nested/sequence (or fall back to the typed
-`register::<M>` path for those). (Original idlc-relay plan below, kept for context.)
+**DONE (flat + non-flat, 2026-06-30).** Staging happens in the config-driven
+runtime, not a generated relay. Two paths by type shape (`nros sync` classifies via
+the generated `FIELDS`):
+- **Flat** (all primitive/string): `nros-bridge.toml` carries the field schema and
+  `run_from_config` stages via `register_type_descriptor` (self-consistent offsets —
+  no idlc, no `M::FIELDS` dep on the Entry).
+- **Non-flat** (nested / array / sequence): sync emits a `[[register_type]]`
+  (rust_path + egress rmw); the `nros::main!` macro emits a typed
+  `nros_rmw_cyclonedds::register::<M>()` before `run_from_config_str`, reusing
+  `M::FIELDS` for arbitrary nesting. The Entry deps the forwarded msg crate(s) +
+  `nros-rmw-cyclonedds` (the chosen fix B over a recursive config schema / codegen
+  sidecar). Also fixed a multi-bridge `NodeTableFull` (config bridge reused the
+  per-session node instead of pushing one per endpoint).
+
+Demo: `ws-bridge-rust` forwards `/chatter` (flat `std_msgs/Int32`) + `/header`
+(non-flat `std_msgs/Header` = `builtin_interfaces/Time` + string). Verified the
+entry builds + boots, staging BOTH egress descriptors (no `PublisherCreationFailed`).
+Residual: a full nested-FORWARDING e2e needs a `Header` publisher fixture (the demo
+proves build + staging; forwarding mechanics are the Int32 raw path). (Original
+idlc-relay plan below, kept for context.)
 
 **Gap:** cyclone egress rejects a raw publisher whose type descriptor is not
 registered. The generated `register_bridges` creates raw pubs by `(name, hash)`
