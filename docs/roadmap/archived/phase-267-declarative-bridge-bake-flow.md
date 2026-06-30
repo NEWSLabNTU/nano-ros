@@ -1,6 +1,16 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
-Status: **FORWARDING GREEN (2026-06-28)** — W0 done; W1 done (investigation — the
+Status: **COMPLETE (2026-07-01).** The declarative cross-RMW bridge ships
+end-to-end for **zenoh↔cyclonedds (flat + nested)** AND **zenoh↔xrce**, all
+gated-test-covered: `tests/declarative_bridge_zenoh_to_cyclonedds.rs` (Int32 via
+nano listener + nested `std_msgs/Header` via ros2) + `..._to_xrce.rs` (via the
+Micro-XRCE-DDS Agent). Issues resolved across the phase: 0099, 0106, 0107, 0109,
+0113, 0114; non-flat types via typed `register::<M>` + the `[[register_type]]`
+emit; endpoints runtime-overridable (`NROS_BRIDGE_<NODE>_{LOCATOR,DOMAIN}`). The
+historical `BLOCKED` notes below (S2, C3 wiring) are superseded waves, kept as the
+design-investigation record. — Original running status follows.
+
+Status (historical): **FORWARDING GREEN (2026-06-28)** — W0 done; W1 done (investigation — the
 live entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
 2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
 + plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
