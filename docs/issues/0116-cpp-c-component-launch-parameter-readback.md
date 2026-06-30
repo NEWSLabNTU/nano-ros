@@ -4,7 +4,7 @@ title: "C / C++ components have no launch-parameter readback — the component-i
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-264]
+related: [phase-263, phase-264, phase-269]
 ---
 
 ## Summary

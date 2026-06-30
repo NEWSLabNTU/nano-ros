@@ -4,7 +4,7 @@ title: "C / C++ entries don't wire `[lifecycle]` autostart — the entry codegen
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-264, 116]
+related: [phase-263, phase-264, phase-269, 116]
 ---
 
 ## Summary

@@ -4,7 +4,7 @@ title: "C / C++ entries don't wire `[tiers]` scheduling — tier resolution + `r
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-264, 116, 117, 118]
+related: [phase-263, phase-264, phase-269, 116, 117, 118]
 ---
 
 ## Summary

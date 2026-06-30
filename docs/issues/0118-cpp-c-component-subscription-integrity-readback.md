@@ -4,7 +4,7 @@ title: "C / C++ executor-component subscriptions have no E2E-integrity readback 
 status: open
 type: enhancement
 area: core
-related: [phase-263, phase-252, 73, 116, 117]
+related: [phase-263, phase-252, phase-269, 73, 116, 117]
 ---
 
 ## Summary
