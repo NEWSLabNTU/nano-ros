@@ -1,7 +1,7 @@
 ---
 id: 115
-title: "Non-deterministic rustc ICE / SIGSEGV under heavy parallel fixture-build load"
-status: resolved
+title: "rustc / ld crashes under heavy fixture-build load are caused by unstable host RAM (not a nano-ros bug)"
+status: wontfix
 type: bug
 area: build
 related: []
@@ -9,76 +9,73 @@ related: []
 
 ## Summary
 
-On at least one dev host, `just build-test-fixtures` (and therefore `just ci`'s
-`test-all` / `cyclonedds-ci`) intermittently fails because **rustc crashes** — either
-a hard `SIGSEGV` or an internal-compiler-error / `the compiler unexpectedly panicked`
-— while compiling some crate. The failing crate is **different on every run** (observed:
-`paste` build script, `toml`, `nros-macros`, `nros`, `nros-cpp`), and re-running the
-build always advances past the crate that crashed last time. Example query stack:
+`just build-test-fixtures` (and therefore `just ci`'s `test-all` / `cyclonedds-ci`)
+intermittently fails on one dev host because **rustc crashes** mid-compile — `SIGSEGV`,
+`general protection fault`, or `the compiler unexpectedly panicked` — on a *different*
+crate each run (paste, toml, nros-macros, nros, nros-cpp). It looked like a non-deterministic
+rustc bug. It is **not**. The root cause is **failing / unstable RAM on the host**, and the
+crashes are the visible tip of silent memory corruption that affects *all* workloads on the box.
+
+## Root-cause evidence (host kernel log, `journalctl -k`)
+
+Over ~2 months (May 06 → Jun 29) the kernel logged faults across **many unrelated binaries**,
+spread across CPU cores 2–7:
 
 ```
-query stack during panic:
-#0 [optimized_mir] optimizing MIR for `...TierRtosSpec::deserialize::__Visitor::visit_seq`
-#1 [items_of_instance] ...visit_seq::<&mut toml::value::SeqDeserializer>
-error: could not compile `nros-macros`
+ 31 × libLLVM.so        (rustc's LLVM codegen)
+ 27 × librustc_driver.so
+  2 × python3.10 / 3.12
+  2 × libtorch_cpu.so   (unrelated PyTorch workload)
+  1 × x86_64-linux-gnu-ld.bfd   (the GNU linker)
+  1 × libgcc_s.so.1
+  1 × libc.so.6
 ```
 
-## Not the obvious causes
+Fault types: `segfault`, `general protection fault`, **`trap invalid opcode`**.
 
-Ruled out by investigation on the affected host:
+Why this is hardware, not a compiler bug:
 
-- **Not OOM** — 94 GiB RAM, ~89 GiB free during the build; no swap needed; no kernel OOM
-  kill. The crash is a SIGSEGV/ICE inside rustc, not an allocation failure.
-- **Not sccache** — sccache is not installed on this host (`RUSTC_WRAPPER` resolves empty
-  there), so it is not a cache-corruption issue.
-- **Not the parallel front-end** — no `-Z threads` / parallel-compiler config anywhere.
-- **Not reproducible in isolation** — 24 concurrent *fresh-target* `nros-macros --release`
-  builds (far more rustc concurrency than the fixture build) produced **zero** crashes.
-  The crash only appears in the fixture build's specific mixed load (cargo + cmake + ninja +
-  nested sizes-probe / corrosion cargos, persistent target dirs, the `nros-fast-release`
-  profile with `incremental = true` + `codegen-units = 16`).
+- A fault **inside `libc.so.6`** — the most-exercised library on the system — means the libc
+  **code page in RAM was corrupted**. libc does not have bugs that segfault.
+- `libLLVM.so` / `ld.bfd` are **read-only shared pages**: one physical copy mapped into every
+  process. A single bit-flip in that page makes every consumer fetch a garbage instruction →
+  `invalid opcode`. Exactly the observed pattern.
+- It hits **unrelated workloads** (Rust builds, PyTorch, python, the GNU linker) — no compiler
+  bug crashes PyTorch.
 
-The evidence points to a **non-deterministic rustc-1.96.0 crash** triggered by the host's
-heavy mixed-build conditions (marginal toolchain/host behaviour under sustained load and/or
-incremental-cache state) — not a defect in nano-ros source. It is environmental and host-
-specific, so it cannot be fixed in rustc from here; the correct response is to make the build
-**resilient** to it.
+Host: **AMD Ryzen Threadripper 2950X** (Zen+), **non-ECC** (no EDAC instances exposed) → bit-flips
+go undetected and silently corrupt whatever is loaded. rustc crashes most because it is the
+heaviest memory user under the all-32-thread fixture build, but the box corrupts everything.
 
-## Resolution
+## Ruled out
 
-Added `scripts/build/rustc-retry.sh`, wired as the `just` `RUSTC_WRAPPER` fallback when
-sccache is absent (`justfile`). cargo invokes it as `rustc-retry.sh <rustc> <args…>`; it:
+- **Not OOM** — 94 GiB RAM, ~89 GiB free during the build; no swap pressure; no kernel OOM kill.
+- **Not sccache** — not installed on this host.
+- **Not rustc's parallel front-end** — not enabled (`-Z threads` absent).
+- **Not nano-ros code / a specific crate** — the crash hops between unrelated crates and even
+  non-Rust binaries; 24 concurrent *fresh-target* `nros-macros` builds produced **zero** crashes
+  (lower sustained memory pressure than the full fixture build).
 
-- buffers each attempt's stdout/stderr and emits only the final attempt's, so a retried
-  crash never double-feeds cargo's stdout artifact-JSON stream;
-- retries **only** on a crash signature — exit `139`/`134`/`135`/`136`/`132` (128 + fatal
-  signal) or exit `101` whose stderr carries `internal compiler error` / `unexpectedly
-  panicked` / `rustc interrupted by SIG…`. A normal compile error (exit 101 without an ICE
-  signature) is forwarded **immediately** and never retried, so real failures still fail fast;
-- bounds retries with `NROS_RUSTC_RETRY` (default 3); `NROS_RUSTC_RETRY=1` disables it.
+## Why a retry wrapper was the wrong fix
 
-Because the crashes are non-deterministic (a re-run always advances), a bounded per-rustc
-retry transparently recovers. Unit-tested: transparent passthrough on success, fail-fast on a
-real `E0001`-style error (no retry), retry-then-succeed with a single clean stdout, and
-cap-out on a persistent SIGSEGV.
+A `RUSTC_WRAPPER` retry shim (`scripts/build/rustc-retry.sh`) was prototyped and then **reverted**.
+On corrupting RAM it is actively harmful: **most bit-flips during a compile do not crash rustc —
+they produce a subtly wrong `.o`/`.rlib` that links and runs, wrong.** The crashes are only the
+visible subset. A retry that lets the build report "success" gives false confidence that artifacts
+built on this box are trustworthy, when they may be silently corrupt. It also left partial/corrupt
+intermediate objects (observed downstream as `rust-lld: relocation R_X86_64_GOTPCREL out of range`
+from a corrupt `.rcgu.o`). No software change can make a host with bad RAM produce correct binaries.
 
-## Scope / residual
+## Resolution (host remediation — outside this repo)
 
-This covers the **rustc** side (cargo's `RUSTC_WRAPPER`) — by far the most frequent failure
-across the observed runs (random rustc ICE/SIGSEGV on paste, toml, nros-macros, nros, nros-cpp).
-The crash mechanism is unit-verified; it acts only on actual crashes.
+`wontfix` in nano-ros: this is a host-hardware fault, not a code defect. To fix the host:
 
-The **same host flakiness also occasionally crashes the C/C++ linker** — observed once as
-`collect2: fatal error: ld terminated with signal 11` at Zephyr's final `zephyr.elf` link. That
-link step runs inside Zephyr's own CMake rules with **no cargo- or launcher-level hook** the way
-rustc has `RUSTC_WRAPPER` (CMake's `*_COMPILER_LAUNCHER` wraps compile, not link), so a
-cargo-level wrapper cannot reach it. It is rarer than the rustc crashes and a re-run advances
-past it. A general fix would need a PATH-level retrying `cc`/`ld` shim, which is invasive and
-out of scope here.
+1. Run **memtest86+** from USB overnight — expected to show errors.
+2. BIOS: **disable XMP/DOCP**, set DRAM to JEDEC (2933 → 2666), loosen timings; on Threadripper
+   optionally bump SoC/DRAM voltage. This alone resolves most TR2950X memory instability.
+3. **Reseat DIMMs; test one stick at a time** to isolate the failing module.
+4. Verify cooling (2950X ≈ 180 W under all-core load).
+5. Until fixed, **do not trust binaries built on this host** — use a known-good machine / CI runner
+   for any release artifact.
 
-**Bottom line:** the root cause is a flaky host that randomly SIGSEGVs build tools under heavy
-mixed load — not a nano-ros defect. The rustc wrapper removes the dominant failure mode; the
-residual C/C++ link crash is documented and host-specific. This is a mitigation, not a toolchain
-fix: if a future toolchain/host stops crashing, the wrapper is a harmless passthrough, and when
-sccache is on PATH it still wins (unchanged behaviour). Host-specific build notes live in agent
-memory `box-fixture-sizes-probe-sigsegv`.
+Host-specific build notes also live in agent memory `box-fixture-sizes-probe-sigsegv`.

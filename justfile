@@ -4,14 +4,13 @@ set dotenv-load
 # `[workspace.lints]` (and per-crate `[lints] workspace = true`). The
 # old `CLIPPY_LINTS` string passed through `--` is no longer needed.
 
-# rustc wrapper. When `sccache` is on `PATH`, every `cargo` invocation under any
-# `just` recipe shares its compilation cache — big win across per-example builds
-# that recompile the same `nros-core` / `heapless` / etc. crates over and over.
-# When sccache is absent, fall back to `scripts/build/rustc-retry.sh`, which
-# transparently retries non-deterministic rustc crashes / ICEs (issue 0115) under
-# the heavy parallel fixture-build load. Real compile errors are NOT retried —
-# only crashes. Set `NROS_RUSTC_RETRY=1` to disable the retry (single attempt).
-export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || realpath scripts/build/rustc-retry.sh`
+# Opt-in rustc wrapper. When `sccache` is on `PATH`, every `cargo`
+# invocation under any `just` recipe shares its compilation cache —
+# big win across per-example builds that recompile the same
+# `nros-core` / `heapless` / etc. crates over and over. When sccache
+# is absent the variable is empty, which cargo treats as unset
+# (verified on cargo 1.95).
+export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || true`
 
 # Phase 165.perf — size the sccache disk cache for a full `build-all`
 # sweep. The default 10 GiB evicts mid-sweep once the ~150 standalone

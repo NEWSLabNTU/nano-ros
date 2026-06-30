@@ -73,17 +73,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   session, so `create_node` calls reuse NodeId 0 (`node_record.rs:228`) and `ros2 node list` shows
   one node, not one per component (same for Rust + C/C++). The deferred multi-node half of #98/#101;
   needs a per-node session or per-node liveliness token (decide with per-node param scoping).
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#115** —
-[non-deterministic rustc ICE / SIGSEGV under heavy fixture-build
-load](archived/0115-rustc-nondeterministic-ice-sigsegv-under-fixture-load.md): rustc crashed
-intermittently mid-`build-test-fixtures` (a different crate each run — `paste`, `toml`,
-`nros-macros`, …); ruled out OOM (94 GiB free), sccache (absent), and the parallel front-end;
-not reproducible in isolation (24 concurrent fresh builds → 0 crashes), so it's an
-environmental rustc-1.96.0 crash under the host's mixed load. Fixed with a `RUSTC_WRAPPER`
-retry shim (`scripts/build/rustc-retry.sh`) that re-runs only on crash signatures (never on
-real compile errors) — re-runs always advance, so a bounded retry recovers. The same host
-flakiness can also crash the C/C++ linker (`ld`) at Zephyr's final link, which has no
-cargo-level hook — documented residual. Also: **#113** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#115** (wontfix) —
+[rustc / ld crashes under heavy fixture load are caused by unstable host
+RAM](archived/0115-rustc-nondeterministic-ice-sigsegv-under-fixture-load.md): looked like a
+non-deterministic rustc bug, but the host kernel log shows SIGSEGV / GPF / `invalid opcode`
+across many unrelated binaries (`libLLVM`, `librustc_driver`, `ld.bfd`, `python3`,
+`libtorch_cpu`, even `libc.so.6`) over ~2 months — a fault *inside libc* and in read-only shared
+pages means **physical RAM corruption** on the (non-ECC, Threadripper 2950X) host, not a code
+defect. `wontfix` in-repo; remediation is hardware (memtest86+, disable XMP/DOCP, reseat/test
+DIMMs). A retry-wrapper attempt was reverted — on corrupting RAM it masks silent miscompiles.
+Also: **#113** —
 [config-driven bridge endpoints not
 env-overridable](archived/0113-bridge-config-endpoints-not-env-overridable.md):
 `run_from_config` baked each `[[node]]`'s locator + domain with no runtime override.
