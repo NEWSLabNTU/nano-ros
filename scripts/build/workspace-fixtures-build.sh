@@ -64,6 +64,29 @@ build_workspace() {
         echo "workspace fixture '$id' dir does not exist: $dir" >&2
         return 2
     }
+
+    # Dependency gate (issue 0120): a cyclonedds workspace fixture vendors C++
+    # CycloneDDS from `third-party/cyclonedds`. When that submodule is absent the
+    # build otherwise fails DEEP and cryptically — e.g. the bridge's
+    # `nros::main!(launch=...)` finds no `nros sync`-generated `nros-bridge.toml`,
+    # falls back to a normal-launch entry, and errors `E0433: cannot find
+    # nros_board_native`. Fail LOUD + actionable here instead. Scoped to native:
+    # the embedded cyclonedds lanes (freertos/threadx/zephyr) have their own
+    # graceful idlc/submodule skips and must not be turned into hard failures.
+    case "$defs" in
+        *NROS_RMW=cyclonedds*)
+            if [ "$platform" = "native" ] && \
+               [ ! -e "$repo_root/third-party/cyclonedds/CMakeLists.txt" ]; then
+                echo "ERROR: workspace fixture '$id' requires the cyclonedds submodule," >&2
+                echo "       which is not checked out (third-party/cyclonedds is empty)." >&2
+                echo "       This fixture vendors C++ CycloneDDS by design and cannot build" >&2
+                echo "       without it. Run:" >&2
+                echo "         git submodule update --init --recursive third-party/cyclonedds" >&2
+                return 2
+            fi
+            ;;
+    esac
+
     # `codegen_out` is required for the BAKE path (`nros codegen-system`). A
     # pure-cargo `nros::main!` entry bakes the system at proc-macro expansion
     # time, so it has no codegen_out — skip the codegen-system step for those.

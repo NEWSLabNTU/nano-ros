@@ -7,6 +7,25 @@ area: testing
 related: [phase-267, 0096, 0106, 0107, 0109, 0113]
 ---
 
+## Update (2026-07-01) — cyclonedds gate implemented; threadx-linux leg still open
+
+**Part 1 (cyclonedds bridge — DONE.)** `scripts/build/workspace-fixtures-build.sh` now runs an
+explicit dependency gate in `build_workspace`: for a `platform = native` row whose
+`-DNROS_RMW=cyclonedds` is set, it checks `third-party/cyclonedds/CMakeLists.txt` and, if the
+submodule is absent, **fails LOUD before any build step** with an actionable message
+(`requires the cyclonedds submodule … run: git submodule update --init --recursive
+third-party/cyclonedds`) instead of letting the build fall through to the cryptic `E0433: cannot
+find nros_board_native`. By design the bridge vendors C++ CycloneDDS, so this is a hard failure,
+not a skip. Scoped to `native` so the embedded cyclonedds lanes (freertos/threadx/zephyr) keep
+their own graceful idlc/submodule skips. Verified: with cyclonedds absent the native rust lane
+now stops at the bridge with the explicit message and **zero** E0433 output.
+
+**Part 2 (threadx-linux — still open.)** `workspace-rust-threadx-linux` (`platform =
+threadx-linux`, not native) fails `E0463: can't find crate for nros_platform` when
+`threadx_linux_entry` is built for `x86_64-unknown-linux-gnu` — a feature/target-unification
+problem (`nros-platform[platform-threadx]` poisons the host `nros` build), unrelated to
+cyclonedds. Not addressed here.
+
 ## Summary
 
 `just build-test-fixtures` fails two **phase-267** workspace-fixture leaves —
