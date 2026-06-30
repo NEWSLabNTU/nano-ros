@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#120** — [phase-267 bridge-workspace fixtures fail `build-test-fixtures` when the cyclonedds
-  submodule is absent — the gate leaks](0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-absent.md):
-  `workspace-rust-native-bridge` (E0433 — `nros sync` never generated `nros-bridge.toml`) and
-  `workspace-rust-threadx-linux` (E0463 — `nros-platform[platform-threadx]` poisons the x86_64-host
-  `nros` build) build instead of skipping when cyclonedds is unchecked-out. Rest of matrix green
-  (nuttx/freertos/zephyr/qemu). Not a build-infra regression (issues 0090/0110 are green).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -68,7 +62,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
   affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
   enhancement; sequence after #98/#101/#102.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#96** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#120** —
+[bridge-workspace fixtures fail when the cyclonedds submodule is
+absent](archived/0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-absent.md): the
+`workspace-rust-native-bridge` leaf built anyway and died with a cryptic `E0433` instead of
+honoring its cyclonedds-submodule gate. Fixed with an explicit dependency gate in
+`workspace-fixtures-build.sh` (native cyclonedds rows fail LOUD + actionable when
+`third-party/cyclonedds` is absent — the bridge vendors C++ CycloneDDS by design). The
+`threadx-linux` E0463 leg did not reproduce on current main (clean rebuild + full recipe green) —
+a broken-local-`nros sync` artifact, not a code defect. Also: **#96** —
 [in-process (same-executor) node-to-node delivery did not
 happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
 same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded

@@ -1,10 +1,11 @@
 ---
 id: 120
 title: "phase-267 bridge-workspace fixtures (`workspace-rust-native-bridge`, `workspace-rust-threadx-linux`) fail the `build-test-fixtures` matrix when the cyclonedds submodule is absent — the gate leaks"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [phase-267, 0096, 0106, 0107, 0109, 0113]
+resolved_in: "fix(0120) — explicit cyclonedds-submodule gate; threadx-linux leg cannot-reproduce"
 ---
 
 ## Update (2026-07-01) — cyclonedds gate implemented; threadx-linux leg still open
@@ -20,11 +21,31 @@ not a skip. Scoped to `native` so the embedded cyclonedds lanes (freertos/thread
 their own graceful idlc/submodule skips. Verified: with cyclonedds absent the native rust lane
 now stops at the bridge with the explicit message and **zero** E0433 output.
 
-**Part 2 (threadx-linux — still open.)** `workspace-rust-threadx-linux` (`platform =
-threadx-linux`, not native) fails `E0463: can't find crate for nros_platform` when
-`threadx_linux_entry` is built for `x86_64-unknown-linux-gnu` — a feature/target-unification
-problem (`nros-platform[platform-threadx]` poisons the host `nros` build), unrelated to
-cyclonedds. Not addressed here.
+**Part 2 (threadx-linux — NOT REPRODUCIBLE on current main; likely a broken-local-`nros`
+artifact.)** Re-investigated 2026-07-01 on `9870968c8`. `workspace-rust-threadx-linux`
+(`threadx_linux_entry`, a `nros::main!(launch=…)` bake macro) **builds green** for
+`x86_64-unknown-linux-gnu` via three independent paths, **0 × E0463**:
+
+1. `cargo build -p threadx_linux_entry --target x86_64-unknown-linux-gnu` (isolated).
+2. The same after `rm -rf target-fixtures/threadx-linux` (cache-cleared clean rebuild — the
+   exact condition the original report used).
+3. The real recipe `scripts/build/workspace-fixtures-build.sh threadx-linux rust` (full
+   `nros sync` + `codegen-system` + cargo, the row's `--target x86_64-unknown-linux-gnu`).
+
+`nros-platform` is `#![no_std]` and exports `BoardConfig` / `BoardTransportConfig`
+**unconditionally** (`src/lib.rs` `pub use board::{…}`), so a no_std rlib is produced for the
+host target regardless of `platform-threadx`; `nros`'s `pub use nros_platform::{…}` resolves.
+
+The original report flagged **uncommitted `nros-cli-core` working-tree churn** in that checkout.
+Since `threadx_linux_entry` depends on a correct `nros sync` (run by the recipe) and the bridge
+half (part 1) also had a broken-`nros sync` contributor, the most consistent explanation is that
+the reporter's **locally-rebuilt `nros` CLI mangled `nros sync`** (e.g. dropped the
+`nros-platform` dep / patch), yielding `E0463` — not a code defect. With a clean, committed
+`nros` the leg is green. Recent `nros-platform` refactors (266-W4a moving `BakedBootConfig` to
+`nros-platform-api`, 268-W1) may also have shifted resolution since the report.
+
+Action: no code change for part 2 — left as cannot-reproduce. Reopen with a reproducer (and the
+exact `nros` build used) if it resurfaces.
 
 ## Summary
 
