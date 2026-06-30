@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>cpp_safety_talker_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 269 W3 — C++ talker: publishes counter on /chatter (CRC auto-attached with NANO_ROS_SAFETY_E2E).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

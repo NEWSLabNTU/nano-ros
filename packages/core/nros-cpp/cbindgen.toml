@@ -56,6 +56,11 @@ exclude = [
     # `RawSubscriptionInfoCallback` (external nros-node alias). Declared locally
     # in subscription.hpp with a matching 5-arg plain fn-ptr typedef.
     "nros_cpp_subscription_register_with_info",
+    # Phase 269 W3 — callback-style subscription with E2E integrity; takes
+    # `RawSubscriptionSafetyCallback` (external nros-node alias, safety-e2e
+    # gated). Declared locally in subscription.hpp with a matching 6-arg
+    # plain fn-ptr typedef and in nros_cpp_ffi.h manually.
+    "nros_cpp_subscription_register_validated",
 ]
 
 [fn]

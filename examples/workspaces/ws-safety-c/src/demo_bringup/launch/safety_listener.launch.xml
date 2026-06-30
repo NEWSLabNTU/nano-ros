@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Phase 269 W3 — listener half of the cross-process C E2E-safety demo.
+     Boots the C validated listener: validates the CRC on each /chatter message via
+     `nros_cpp_subscription_register_validated` and republishes the running CRC-valid
+     count on /safe_ok. Run in a separate process from `safety_talker.launch.xml`.
+     Boot with `native_safety_listener_entry`. -->
+<launch>
+  <node pkg="c_safety_listener_pkg" exec="safe_listener" name="safe_listener"/>
+</launch>

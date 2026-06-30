@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>c_safety_talker_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 269 W3 — C component: counter publisher on /chatter (CRC auto-attached when NANO_ROS_SAFETY_E2E=ON).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

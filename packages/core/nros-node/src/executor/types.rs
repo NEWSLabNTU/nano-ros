@@ -791,6 +791,32 @@ pub type RawSubscriptionInfoCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 );
 
+/// Phase 269 W3 — raw subscription callback that ALSO surfaces the sample's E2E
+/// integrity status (CRC + sequence gap/dup) — the C/C++ component-callback
+/// projection of Rust's `FnMut(&[u8], &IntegrityStatus)` (used by
+/// `register_subscription_buffered_raw_safety_on`).
+///
+/// The executor unpacks `nros_rmw::IntegrityStatus` into three plain scalars to
+/// keep this callback type free of any external-crate struct dependency:
+///   * `gap`       — sequence-number gap since the last in-order sample (0 = none)
+///   * `duplicate` — `true` if the sequence number was already seen
+///   * `crc_valid` — `1` = CRC ok, `0` = CRC mismatch, `-1` = no CRC on the wire
+///
+/// Requires the `safety-e2e` feature; the C/C++ registration FFI
+/// (`nros_cpp_subscription_register_validated`) is gated on the same feature.
+///
+/// # Safety
+/// `data` is valid for `len` bytes during the call only.
+#[cfg(feature = "safety-e2e")]
+pub type RawSubscriptionSafetyCallback = unsafe extern "C" fn(
+    data: *const u8,
+    len: usize,
+    gap: i64,
+    duplicate: bool,
+    crc_valid: i8,
+    context: *mut core::ffi::c_void,
+);
+
 /// Raw service callback that receives and produces CDR bytes.
 ///
 /// # Safety

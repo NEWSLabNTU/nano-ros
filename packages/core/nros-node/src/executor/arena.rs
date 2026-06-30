@@ -777,6 +777,67 @@ pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F, const RX_BUF: usize>(
     entry.handle.has_data()
 }
 
+/// Phase 269 W3 — the C analog of [`SubBufferedRawSafetyEntry`]: same flat inline
+/// payload buffer + `try_recv_validated` dispatch, but the callback is a plain
+/// C function pointer (`RawSubscriptionSafetyCallback`) that receives the integrity
+/// scalars alongside the CDR bytes. No generic type parameter — monomorphism over
+/// the `RX_BUF` const only.
+#[cfg(feature = "safety-e2e")]
+#[repr(C)]
+pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) callback: super::types::RawSubscriptionSafetyCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Dispatch for the C-style raw validated subscription: validate-receive into the
+/// buffer, then pass the raw slice + unpacked integrity scalars to the callback.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyCEntry<RX_BUF>`.
+#[cfg(feature = "safety-e2e")]
+pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry<RX_BUF>) };
+    match entry.handle.try_recv_validated(&mut entry.buffer) {
+        Ok(Some((len, status))) => {
+            let crc_valid: i8 = match status.crc_valid {
+                Some(true) => 1,
+                Some(false) => 0,
+                None => -1,
+            };
+            unsafe {
+                (entry.callback)(
+                    entry.buffer.as_ptr(),
+                    len,
+                    status.gap,
+                    status.duplicate,
+                    crc_valid,
+                    entry.context,
+                )
+            };
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Readiness check for the C-style raw validated subscription.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawSafetyCEntry<RX_BUF>`.
+#[cfg(feature = "safety-e2e")]
+pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data<const RX_BUF: usize>(
+    ptr: *const u8,
+) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyCEntry<RX_BUF>) };
+    entry.handle.has_data()
+}
+
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of

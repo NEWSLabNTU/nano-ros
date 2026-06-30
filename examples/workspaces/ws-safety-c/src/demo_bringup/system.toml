@@ -1,0 +1,34 @@
+# Phase 269 W3 — E2E-safety C workspace.
+#
+# `[system].features = ["safety"]` is the declarative axis (NanoRosCapabilities.cmake:64):
+# it lowers to `NANO_ROS_SAFETY_E2E=ON` in the CMake build.
+# - The C talker component attaches a CRC on every /chatter publish (automatic when
+#   compiled with `safety-e2e`).
+# - The C listener component registers a validated subscription via
+#   `nros_cpp_subscription_register_validated` and republishes the running count of
+#   CRC-valid samples on `/safe_ok`.
+#
+# In-process delivery does not happen (same zenoh session; issue 0096), so the demo
+# is split into two entries: `native_safety_talker_entry` + `native_safety_listener_entry`.
+# Cross-process e2e: tests/cpp_c_safety_integrity_e2e.rs.
+
+[system]
+name = "c_safety_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "safety_talker.launch.xml"
+features = ["safety"]
+
+[[component]]
+pkg = "c_safety_talker_pkg"
+class = "c_safety_talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "c_safety_listener_pkg"
+class = "c_safety_listener_pkg::Listener"
+name = "safe_listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

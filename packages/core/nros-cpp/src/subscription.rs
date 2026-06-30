@@ -305,6 +305,112 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     }
 }
 
+/// Phase 269 W3 — register a **callback-style** subscription that surfaces the
+/// sample's E2E integrity status (CRC + sequence gap/dup) alongside the CDR bytes
+/// — the C/C++ component-callback analog of Rust's
+/// `register_subscription_buffered_raw_safety_on` / `CallbackCtx::integrity()`.
+///
+/// The executor validates each sample via `try_recv_validated` and unpacks the
+/// [`nros_rmw::IntegrityStatus`] into three plain scalars (gap, duplicate,
+/// crc_valid) before invoking the callback:
+/// ```c
+/// void callback(data, len, gap, duplicate, crc_valid, ctx)
+/// ```
+/// Arena-registered like `nros_cpp_subscription_register`; `sched_context != 0`
+/// binds the handle to the requested scheduling tier. The C++ `subscription.hpp`
+/// declares a matching `nros_cpp_subscription_validated_callback_t` typedef and a
+/// `message_safety_trampoline` that packs the scalars back into
+/// `nros_cpp_integrity_status_t` for the typed user handler.
+///
+/// Requires `safety-e2e` on both the Rust runtime AND the CMake build
+/// (`NANO_ROS_SAFETY_E2E=ON`, lowered from `[system].features = ["safety"]` via
+/// `NanoRosCapabilities.cmake:64`).
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
+/// `context` outlives the executor (no move after register).
+#[cfg(feature = "safety-e2e")]
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::executor::RawSubscriptionSafetyCallback,
+    context: *mut c_void,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || topic.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let topic_str = match unsafe { cstr_to_str(topic) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let node_id = if node_ref.node_id != 0 {
+        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+    } else {
+        None
+    };
+    let result = ctx
+        .executor
+        .add_arena_subscription_c_validated_callback::<BUF>(
+            node_id,
+            topic_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            callback,
+            context,
+        );
+
+    match result {
+        Ok(handle_id) => {
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
 /// Try to receive raw CDR data from a subscription (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer

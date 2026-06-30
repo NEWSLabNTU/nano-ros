@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>c_safety_listener_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 269 W3 — C validated-subscription listener: checks the CRC on /chatter, republishes count on /safe_ok.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

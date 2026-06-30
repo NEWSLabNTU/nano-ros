@@ -3375,6 +3375,88 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
+    /// Phase 269 W3 — register a raw C-fn-ptr subscription whose callback
+    /// ALSO surfaces the sample's E2E integrity status (CRC + sequence gap/dup)
+    /// alongside the CDR bytes — the C/C++ component-callback analog of Rust's
+    /// `register_subscription_buffered_raw_safety_on` (`FnMut(&[u8], &IntegrityStatus)`).
+    ///
+    /// The executor validates the sample via `try_recv_validated` and unpacks the
+    /// [`nros_rmw::IntegrityStatus`] into three plain scalars (gap, duplicate,
+    /// crc_valid) before calling `callback`. This avoids introducing a
+    /// cbindgen-visible struct at the executor layer; the C/C++ headers pack them
+    /// back into their local integrity-status typedef.
+    ///
+    /// Requires the `safety-e2e` feature. Backed by [`SubBufferedRawSafetyCEntry`].
+    #[cfg(feature = "safety-e2e")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_arena_subscription_c_validated_callback<const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: super::types::RawSubscriptionSafetyCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError> {
+        use super::arena::{
+            SubBufferedRawSafetyCEntry, sub_buffered_raw_safety_c_has_data,
+            sub_buffered_raw_safety_c_try_process,
+        };
+        type Entry<const N: usize> = SubBufferedRawSafetyCEntry<N>;
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+
+        let offset = self.arena_alloc::<Entry<RX_BUF>>()?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_raw_safety_c_try_process::<RX_BUF>,
+            has_data: sub_buffered_raw_safety_c_has_data::<RX_BUF>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<RX_BUF>>,
+        });
+        self.apply_node_default_sched(slot, node_id);
+        Ok(HandleId(slot))
+    }
+
     /// Register a raw (untyped) service callback.
     ///
     /// Register a raw (untyped) service callback with the default buffer size.

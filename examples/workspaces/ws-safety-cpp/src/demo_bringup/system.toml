@@ -1,0 +1,31 @@
+# Phase 269 W3 — E2E-safety C++ workspace.
+#
+# `[system].features = ["safety"]` lowers to `NANO_ROS_SAFETY_E2E=ON` in the CMake build.
+# - The C++ talker attaches a CRC on every /chatter publish (automatic with safety-e2e).
+# - The C++ listener uses `node.create_subscription_with_safety()` to receive the
+#   typed message WITH integrity status, republishing the CRC-valid count on /safe_ok.
+#
+# In-process delivery does not happen (same zenoh session; issue 0096), so the demo
+# is split into two entries: `native_safety_talker_entry` + `native_safety_listener_entry`.
+# Cross-process e2e: tests/cpp_c_safety_integrity_e2e.rs.
+
+[system]
+name = "cpp_safety_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "safety_talker.launch.xml"
+features = ["safety"]
+
+[[component]]
+pkg = "cpp_safety_talker_pkg"
+class = "cpp_safety_talker_pkg::SafetyTalker"
+name = "talker"
+
+[[component]]
+pkg = "cpp_safety_listener_pkg"
+class = "cpp_safety_listener_pkg::SafetyListener"
+name = "safe_listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

@@ -46,6 +46,24 @@ nros_cpp_ret_t nros_cpp_subscription_register_with_info(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_message_info_callback_t callback, void* context,
     uint8_t sched_context, size_t* out_handle_id);
+// Phase 269 W3 — callback-style subscription that delivers the sample's E2E
+// integrity status alongside the CDR bytes. Same cbindgen-exclusion reason as
+// above (takes `RawSubscriptionSafetyCallback`, an external nros-node alias
+// gated on the `safety-e2e` feature). The 6-arg trampoline unpacks the three
+// integrity scalars; `subscription.hpp` repacks them into
+// `nros_cpp_integrity_status_t` for the typed user handler. Gated on the
+// `NANO_ROS_SAFETY_E2E` build feature (lowered from `[system].features =
+// ["safety"]` via `NanoRosCapabilities.cmake`).
+#if defined(NANO_ROS_SAFETY_E2E)
+typedef void (*nros_cpp_subscription_validated_callback_t)(const uint8_t* data, size_t len,
+                                                           int64_t gap, bool duplicate,
+                                                           int8_t crc_valid, void* ctx);
+
+nros_cpp_ret_t nros_cpp_subscription_register_validated(
+    const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
+    nros_cpp_qos_t qos, nros_cpp_subscription_validated_callback_t callback, void* context,
+    uint8_t sched_context, size_t* out_handle_id);
+#endif // NANO_ROS_SAFETY_E2E
 } // extern "C"
 
 namespace nros {
@@ -83,6 +101,13 @@ template <typename M> class Subscription {
     // Phase 189.M3.4 — callback-with-attachment handler (`bridge_origin` etc.).
     using TypedSubscriptionInfoFn = void (*)(const M& msg, const uint8_t* attachment,
                                              size_t attachment_len);
+    // Phase 269 W3 — callback-with-integrity handler: receives the deserialized
+    // message plus the sample's E2E CRC/sequence status. Requires
+    // `NANO_ROS_SAFETY_E2E` (lowered from `[system].features = ["safety"]`).
+#if defined(NANO_ROS_SAFETY_E2E)
+    using TypedSubscriptionSafetyFn = void (*)(const M& msg,
+                                               const nros_cpp_integrity_status_t& integrity);
+#endif // NANO_ROS_SAFETY_E2E
 
     /// Try to receive a typed message (non-blocking).
     ///
@@ -431,6 +456,28 @@ template <typename M> class Subscription {
         }
     }
 
+#if defined(NANO_ROS_SAFETY_E2E)
+    /// Phase 269 W3 — trampoline matching `RawSubscriptionSafetyCallback`
+    /// (`void(data, len, gap, duplicate, crc_valid, ctx)`). Deserializes the CDR
+    /// sample into `M`, packs the three integrity scalars into an
+    /// `nros_cpp_integrity_status_t`, and runs the user's
+    /// `(const M&, const nros_cpp_integrity_status_t&)` handler.
+    static void message_safety_trampoline(const uint8_t* data, size_t len, int64_t gap,
+                                          bool duplicate, int8_t crc_valid, void* ctx) {
+        auto* self = static_cast<Subscription*>(ctx);
+        if (self == nullptr) return;
+        M msg;
+        if (M::ffi_deserialize(data, len, &msg) != 0) return;
+        if (self->user_fn_safety_ != nullptr) {
+            nros_cpp_integrity_status_t status;
+            status.gap = gap;
+            status.duplicate = duplicate;
+            status.crc_valid = crc_valid;
+            self->user_fn_safety_(msg, status);
+        }
+    }
+#endif // NANO_ROS_SAFETY_E2E
+
     alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
     char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
@@ -447,6 +494,11 @@ template <typename M> class Subscription {
     TypedSubscriptionInfoFn user_fn_info_ = nullptr;
     void* user_ctx_ = nullptr;
     bool callback_mode_ = false;
+#if defined(NANO_ROS_SAFETY_E2E)
+    // Phase 269 W3 — handler for the integrity-carrying callback path; nullptr
+    // when not using `create_subscription_with_safety`.
+    TypedSubscriptionSafetyFn user_fn_safety_ = nullptr;
+#endif // NANO_ROS_SAFETY_E2E
 };
 
 } // namespace nros
@@ -609,6 +661,48 @@ inline Expected<Subscription<M>> make_subscription(Node& node, const char* topic
     if (!r.ok()) return Expected<Subscription<M>>::error(r);
     return Expected<Subscription<M>>::ok(std::move(s));
 }
+
+#if defined(NANO_ROS_SAFETY_E2E)
+// Phase 269 W3 — out-of-line definition of Node::create_subscription_with_safety.
+// Mirrors `create_subscription_with_info` one overload over, but routes through
+// `nros_cpp_subscription_register_validated` so the arena dispatches the
+// `message_safety_trampoline` on each new sample.
+template <typename M, typename F, typename>
+Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
+                                             const QoS& qos, const SubscriptionOptions& options) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
+    ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+
+    out.user_fn_safety_ = typename Subscription<M>::TypedSubscriptionSafetyFn(callback);
+    out.user_fn_ = nullptr;
+    out.user_fn_ctx_ = nullptr;
+    out.user_fn_info_ = nullptr;
+    out.user_ctx_ = nullptr;
+
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret = nros_cpp_subscription_register_validated(
+        &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
+        &Subscription<M>::message_safety_trampoline, &out, sched, &handle);
+    if (ret == 0) {
+        out.sched_handle_id_ = handle;
+        out.callback_mode_ = true;
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+#endif // NANO_ROS_SAFETY_E2E
 
 } // namespace nros
 

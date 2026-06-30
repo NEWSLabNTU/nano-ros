@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_safety_listener_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 269 W3 — native C++ entry for the listener half of the E2E-safety demo.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>demo_bringup</exec_depend>
+  <exec_depend>cpp_safety_listener_pkg</exec_depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

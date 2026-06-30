@@ -337,6 +337,29 @@ class Node {
                                          const QoS& qos = QoS::default_profile(),
                                          const SubscriptionOptions& options = {});
 
+#if defined(NANO_ROS_SAFETY_E2E)
+    /// Phase 269 W3 — Create a **callback-style** subscription that surfaces the
+    /// sample's E2E integrity status (CRC + sequence gap/dup) alongside the typed
+    /// message — the C++ component-callback analog of Rust's
+    /// `create_subscription_…_with_safety` / `CallbackCtx::integrity()`.
+    ///
+    /// Arena-registered like the `create_subscription_with_info` overload above
+    /// (so `options.sched_context` is functional). The handler is invoked as
+    /// `callback(const M&, const nros_cpp_integrity_status_t&)` on each new sample.
+    ///
+    /// Requires `NANO_ROS_SAFETY_E2E=ON` (lowered from
+    /// `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`).
+    ///
+    /// CONSTRAINT: do not move `out` after this returns — the executor arena
+    /// holds `&out` as the trampoline context.
+    template <typename M, typename F,
+              typename = typename std::enable_if<std::is_convertible<
+                  F, void (*)(const M&, const nros_cpp_integrity_status_t&)>::value>::type>
+    Result create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
+                                           const QoS& qos = QoS::default_profile(),
+                                           const SubscriptionOptions& options = {});
+#endif // NANO_ROS_SAFETY_E2E
+
     /// Create a service server.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).

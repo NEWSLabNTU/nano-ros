@@ -819,6 +819,63 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 269 W3 — E2E-safety C workspace (talker half). `[system].features = ["safety"]`
+# lowers to NANO_ROS_SAFETY_E2E=ON; the C talker publishes CRC-annotated /chatter frames.
+# Cross-process split (issue #0096); paired with workspace-c-native-safety-listener.
+# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-c-native-safety-talker"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-c"
+bringup = "src/demo_bringup"
+entry = "native_safety_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-safety-talker"
+
+# Phase 269 W3 — E2E-safety C workspace (listener half). C listener registers
+# `nros_cpp_subscription_register_validated`; validates CRC and counts good frames.
+# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-c-native-safety-listener"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-c"
+bringup = "src/demo_bringup"
+entry = "native_safety_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-safety-listener"
+
+# Phase 269 W3 — E2E-safety C++ workspace (talker half). C++ talker publishes
+# CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
+# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-safety-talker"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-cpp"
+bringup = "src/demo_bringup"
+entry = "native_safety_talker_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-safety-talker"
+
+# Phase 269 W3 — E2E-safety C++ workspace (listener half). C++ listener uses
+# `node.create_subscription_with_safety<M>()` to receive typed msgs + IntegrityStatus.
+# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-safety-listener"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-cpp"
+bringup = "src/demo_bringup"
+entry = "native_safety_listener_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures-safety-listener"
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board
