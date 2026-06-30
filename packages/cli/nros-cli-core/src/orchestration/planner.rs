@@ -938,16 +938,15 @@ fn resolve_bridge_endpoint(
             (rmw, endpoint.to_string())
         }
     };
-    let domain_id = sys
-        .domains
-        .iter()
-        .find(|d| d.name == domain_name)
-        .map(|d| d.id)
-        .unwrap_or(sys.system.domain_id);
+    let domain = sys.domains.iter().find(|d| d.name == domain_name);
+    let domain_id = domain.map(|d| d.id).unwrap_or(sys.system.domain_id);
+    // The endpoint on the system's own rmw uses `[system].locator`; any other
+    // side uses its `[[domain]].locator` when set (xrce agent addr — phase-267),
+    // else `None` (a DDS/multicast peer discovered by domain id).
     let locator = if rmw == sys.system.rmw {
         sys.system.locator.clone()
     } else {
-        None
+        domain.and_then(|d| d.locator.clone())
     };
     (rmw, domain_id, locator)
 }

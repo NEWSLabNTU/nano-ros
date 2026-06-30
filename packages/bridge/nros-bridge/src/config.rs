@@ -285,7 +285,12 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
     // constructed via `create_node_on` calls below.
     for n in &cfg.node {
         let _ = exec
-            .create_node_on_with_domain(n.name.as_str(), n.rmw.as_str(), Some(n.domain_id))
+            .create_node_on_with_domain(
+                n.name.as_str(),
+                n.rmw.as_str(),
+                Some(n.domain_id),
+                loc_opt(&n.locator),
+            )
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", n.name)))?;
     }
 
@@ -299,9 +304,16 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
         let dst_rmw = node_rmw(&cfg.node, &b.to.node)?;
         let src_domain = node_domain(&cfg.node, &b.from.node)?;
         let dst_domain = node_domain(&cfg.node, &b.to.node)?;
+        let src_locator = node_locator(&cfg.node, &b.from.node);
+        let dst_locator = node_locator(&cfg.node, &b.to.node);
 
         let mut src_node = exec
-            .create_node_on_with_domain(b.from.node.as_str(), src_rmw, Some(src_domain))
+            .create_node_on_with_domain(
+                b.from.node.as_str(),
+                src_rmw,
+                Some(src_domain),
+                src_locator,
+            )
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", b.from.node)))?;
         let sub = src_node
             .create_subscription_raw(
@@ -318,7 +330,7 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
         stage_descriptor(b)?;
 
         let mut dst_node = exec
-            .create_node_on_with_domain(b.to.node.as_str(), dst_rmw, Some(dst_domain))
+            .create_node_on_with_domain(b.to.node.as_str(), dst_rmw, Some(dst_domain), dst_locator)
             .map_err(|e| ConfigError::BuildNode(format!("{}: {e:?}", b.to.node)))?;
         let pubr = dst_node
             .create_publisher_raw(
@@ -401,6 +413,20 @@ fn env_key(name: &str) -> String {
 /// Configured domain id of a `[[node]]`. An extra RMW session's participant
 /// domain follows the node builder's `domain_id`, not the `SessionSpec`'s, so
 /// the bridge must thread it explicitly (phase-267 issue 0109).
+/// `Some(locator)` when non-empty, else `None` (rmw-default). An agent-based
+/// backend (xrce) MUST carry a locator; DDS/multicast (cyclonedds) carries none.
+fn loc_opt(locator: &str) -> Option<&str> {
+    (!locator.is_empty()).then_some(locator)
+}
+
+/// Configured locator of a `[[node]]` (the xrce agent addr; empty → `None`).
+fn node_locator<'a>(nodes: &'a [NodeCfg], name: &str) -> Option<&'a str> {
+    nodes
+        .iter()
+        .find(|n| n.name == name)
+        .and_then(|n| loc_opt(&n.locator))
+}
+
 fn node_domain(nodes: &[NodeCfg], name: &str) -> Result<u32, ConfigError> {
     nodes
         .iter()

@@ -1,0 +1,36 @@
+[system]
+name = "bridge_xrce_demo"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7447"
+default_launch = "system.launch.xml"
+
+# phase-267 (xrce variant) — cross-RMW bridge zenoh → XRCE. The talker publishes
+# /chatter on the primary (zenoh) session; the [[bridge]] forwards it to a
+# Micro-XRCE-DDS Agent, which republishes onto DDS (a stock ros2/DDS peer then
+# receives it). xrce uses LAZY type registration, so — unlike the cyclonedds
+# sibling — no descriptor staging / field schema is needed; the egress only needs
+# the agent locator.
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[domain]]
+name = "zen"
+rmw = "zenoh"
+id = 0
+
+# The xrce egress is agent-based: it dials the Micro-XRCE-DDS Agent at `locator`
+# (not a DDS multicast domain). Override at runtime with `NROS_BRIDGE_S1_LOCATOR`
+# (phase-267 #113) to point at a different agent.
+[[domain]]
+name = "agent"
+rmw = "xrce"
+id = 0
+locator = "udp/127.0.0.1:8888"
+
+[[bridge]]
+name = "gw"
+from = "zenoh:zen"
+to = "xrce:agent"

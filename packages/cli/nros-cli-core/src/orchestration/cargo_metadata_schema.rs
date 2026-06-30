@@ -820,7 +820,14 @@ pub struct DeployTarget {
 pub struct SystemDomainEntry {
     pub name: String,
     pub rmw: String,
+    #[serde(default)]
     pub id: u32,
+    /// phase-267 (xrce variant) — explicit locator for this domain's session.
+    /// Required for agent-based backends (xrce: the Micro-XRCE-DDS Agent address,
+    /// e.g. `udp/127.0.0.1:8888`) which can't be discovered by DDS domain id. For
+    /// DDS/multicast backends (cyclonedds) it stays `None` (domain-discovered).
+    #[serde(default)]
+    pub locator: Option<String>,
 }
 
 /// `[[bridge]]` row.

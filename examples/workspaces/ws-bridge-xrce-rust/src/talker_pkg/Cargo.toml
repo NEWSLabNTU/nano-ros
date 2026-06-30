@@ -1,0 +1,28 @@
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/Int32 on /chatter (the bridge's source)."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
+default_namespace = "/"
+
+# phase-267 W1c — declare the published topic+type so the planner resolves the
+# `[[bridge]]`'s topic NAME to its ROS type pre-build (no sidecar, no build).
+[[package.metadata.nros.node.publishes]]
+topic = "/chatter"
+type = "std_msgs/msg/Int32"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }

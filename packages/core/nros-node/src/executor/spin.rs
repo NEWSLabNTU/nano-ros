@@ -1924,7 +1924,7 @@ impl Executor {
     /// backend is registered.
     #[cfg(feature = "rmw-cffi")]
     pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<NodeHandle<'_>, NodeError> {
-        self.create_node_on_with_domain(name, rmw, None)
+        self.create_node_on_with_domain(name, rmw, None, None)
     }
 
     /// Like [`create_node_on`](Self::create_node_on) but pins the extra
@@ -1933,12 +1933,16 @@ impl Executor {
     /// `domain_id` (`resolve_session_slot` → `domain_id.unwrap_or(0)`), NOT the
     /// `SessionSpec`'s — so without this an egress on a non-zero domain silently
     /// opens on domain 0 and never matches its receiver (phase-267 issue 0109).
-    /// `None` preserves the legacy domain-0 default.
+    /// `None` domain preserves the legacy domain-0 default. `locator` pins the
+    /// extra session's address — REQUIRED for an agent-based backend (xrce: the
+    /// Micro-XRCE-DDS Agent addr) whose session can't be opened locator-less;
+    /// `None` keeps the rmw-default (cyclonedds is domain-discovered, no locator).
     pub fn create_node_on_with_domain(
         &mut self,
         name: &str,
         rmw: &str,
         domain_id: Option<u32>,
+        locator: Option<&str>,
     ) -> Result<NodeHandle<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
@@ -1957,6 +1961,9 @@ impl Executor {
             let mut builder = self.node_builder(name).rmw(rmw);
             if let Some(d) = domain_id {
                 builder = builder.domain_id(d);
+            }
+            if let Some(loc) = locator {
+                builder = builder.locator(loc);
             }
             let id = builder.build()?;
             self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx

@@ -548,5 +548,11 @@ became W-B. Only the gated automated test (W5 residual) remains.
   `std_msgs/Int32`); a *gated automated* test is the one remaining follow-up.
 - [x] Issue #99 resolved (upstream); phase-263 B3 + `ws-bridge-rust` README flipped
   to DONE.
-- [ ] Non-flat forwarded types (W4 residual) + the xrce variant (`zenoh↔xrce`) —
-  additive follow-ups; xrce skips W-B (lazy type registration).
+- [x] Non-flat forwarded types — DONE (typed `register::<M>`; W4 update), verified
+  end-to-end (nested `std_msgs/Header` crosses with `stamp` intact).
+- [x] xrce variant (`zenoh↔xrce`, `ws-bridge-xrce-rust`) — DONE. Added a domain
+  `locator` (the agent addr) to the planner + threaded the locator through
+  `create_node_on_with_domain` (agent-based sessions can't open locator-less).
+  xrce skips W-B (lazy type registration). Verified end-to-end: zenoh talker →
+  bridge → Micro-XRCE-DDS Agent → DDS → stock ros2 subscriber (8/8 Int32). A
+  residual: codify the cyclone/nested/xrce e2es as gated tests.

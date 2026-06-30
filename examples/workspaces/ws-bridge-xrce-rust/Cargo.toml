@@ -1,0 +1,25 @@
+# phase-267 — cross-RMW bridge (RFC-0009) showcase workspace, XRCE variant.
+#
+# A declarative `[[bridge]]` in `src/demo_bringup/system.toml` forwards /chatter
+# from the zenoh session to an XRCE session (a Micro-XRCE-DDS Agent), in ONE
+# process. The entry is a PLAIN `nros::main!` (config-driven, phase-267 W1c — NOT
+# a baked relay): `nros sync` resolves the `[[bridge]]` into `nros-bridge.toml`
+# (sessions + topics; the xrce egress node carries the agent `locator`), the macro
+# emits `run_from_config_str` + the backend `register()` calls, and the runtime
+# opens `Executor::open_multi` + pumps a `PubSubBridge`. Unlike the cyclonedds
+# sibling (`ws-bridge-rust`), xrce is lazy-registration — NO descriptor staging /
+# field schema / typed `register::<M>()`.
+#
+# `talker_pkg` is the only hand-written component (the bridge's source);
+# `native_entry` is the bridge entry (a workspace member, plain `nros::main!`).
+
+[workspace]
+resolver = "2"
+members = [
+    "src/talker_pkg",
+    "src/native_entry",
+]
+# `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

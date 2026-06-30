@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-263 B3 — cross-RMW bridge launch. The talker runs on the primary
+     (zenoh) session; the `[[bridge]]` in system.toml forwards /chatter to the
+     cyclonedds session. The node `name` matches the system.toml component. -->
+<launch>
+    <node pkg="talker_pkg" exec="talker" name="talker"/>
+</launch>
