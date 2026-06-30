@@ -35,6 +35,10 @@ struct ComponentMeta {
     /// ⇒ `"configure"` (back-compat: pre-242 metadata carries no shape).
     #[serde(default)]
     shape: Option<String>,
+    /// Phase 269 (W4) — callback group IDs from `nano_ros_node_register(CALLBACK_GROUPS …)`.
+    /// Empty for nodes that don't declare groups (single-tier; no sched binding).
+    #[serde(default)]
+    callback_groups: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +55,8 @@ struct ComponentFacts {
     class_header: Option<String>,
     lang: Option<String>,
     shape: Option<String>,
+    /// Phase 269 (W4) — callback group IDs from cmake metadata.
+    callback_groups: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +93,7 @@ impl ComponentIndex {
                     class_header: c.class_header.clone(),
                     lang: c.lang.clone(),
                     shape: c.shape.clone(),
+                    callback_groups: c.callback_groups.clone(),
                 },
             );
         }
@@ -126,6 +133,8 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
                 .clone()
                 .unwrap_or_else(|| "configure".to_string()),
         );
+        // Phase 269 (W4) — callback group IDs from cmake metadata.
+        n.callback_groups = facts.callback_groups.clone();
         // A C component is constructed via its C-ABI factory + configure seam
         // (mangled on pkg) — the entry never `#include`s a class header for it.
         // A C++ component needs its header to construct the class.
@@ -195,6 +204,7 @@ mod tests {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
+            resolved_tiers: None,
         }
     }
 

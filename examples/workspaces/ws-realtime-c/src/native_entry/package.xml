@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 269 W4 — native C entry for the 2-tier realtime workspace (ws-realtime-c).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

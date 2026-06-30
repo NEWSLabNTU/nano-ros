@@ -1,0 +1,42 @@
+[system]
+name = "realtime_cpp_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 269 W4 (RFC-0015 §4.2) — C++ two-tier realtime demo.
+# The ctrl node publishes /ctrl every 10 ms (high tier);
+# the telem node publishes /telem every 100 ms (low tier).
+# CALLBACK_GROUPS in cmake declares the group IDs; [[node_overrides]] here
+# assigns them to the named tiers. nros codegen emits NodeBuilder::sched()
+# calls so each node binds to its posix-priority sched context.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+
+[[node_overrides]]
+name = "ctrl_node"
+callback_groups = [{ id = "ctrl", tier = "high" }]
+
+[[node_overrides]]
+name = "telem_node"
+callback_groups = [{ id = "telem", tier = "low" }]
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

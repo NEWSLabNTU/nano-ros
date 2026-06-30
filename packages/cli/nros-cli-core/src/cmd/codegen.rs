@@ -254,6 +254,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         };
         let index = entry_codegen::metadata::ComponentIndex::load(meta_path)?;
         entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
+        // Phase 269 (W4) — resolve tiers + stamp PlanNode.sched_context after
+        // enrich_plan has populated PlanNode.callback_groups from cmake metadata.
+        let target_rtos = entry_codegen::board_to_rtos(&plan.board).to_string();
+        entry_codegen::resolve_plan_sched(&mut plan, &target_rtos)?;
         match lang {
             // phase-263 C2 (issue 0097) — the C emitter is native-only (it emits a
             // pure-`.c` TU calling the C `nros_board_native_run_components`). The

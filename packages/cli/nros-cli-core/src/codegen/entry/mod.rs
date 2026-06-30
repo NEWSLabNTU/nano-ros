@@ -28,9 +28,15 @@
 //! Errors carry enough context that the CLI verb's `eyre::Result`
 //! wrapper passes them through verbatim.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    path::{Path, PathBuf},
+};
 
 use eyre::{Context, Result, bail};
+use nros_orchestration_ir::{
+    CallbackGroupDecl, DEFAULT_TIER, ResolvedTierTable, TierResolveError, resolve_tiers,
+};
 
 use crate::{
     launch_parser::{LaunchDescription, NodeSpec, parse_launch_file},
@@ -112,9 +118,13 @@ pub struct Plan {
     /// `[safety]` (or `features=["safety"]`) enabled. (#118)
     pub safety: Option<bool>,
     /// Raw `[tiers.*]` for the W4 tier resolver. Empty ⇒ single-tier. (#119)
-    pub tiers: std::collections::BTreeMap<String, TierDef>,
+    pub tiers: BTreeMap<String, TierDef>,
     /// Raw `[[node_overrides]]` for the W4 tier resolver. (#119)
     pub node_overrides: Vec<NodeOverride>,
+    /// Phase 269 (W4) — resolved tier table (populated by [`resolve_plan_sched`]).
+    /// `None` until the caller invokes the resolver. Emitters check this to gate
+    /// sched-context wiring: `None` or `is_single_tier()` → byte-identical output.
+    pub resolved_tiers: Option<ResolvedTierTable>,
 }
 
 impl Plan {
@@ -149,6 +159,7 @@ impl Plan {
             safety: self.safety,
             tiers: self.tiers.clone(),
             node_overrides: self.node_overrides.clone(),
+            resolved_tiers: self.resolved_tiers.clone(),
         }
     }
 
@@ -513,7 +524,95 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
         safety,
         tiers,
         node_overrides,
+        resolved_tiers: None,
     })
+}
+
+/// Phase 269 (W4) — derive the RTOS key recognised by [`resolve_tiers`] from a
+/// board deploy key. The mapping mirrors the `rtos_spec` function in
+/// `nros-orchestration-ir` (`"posix" | "native"`, `"freertos"`, …).
+pub fn board_to_rtos(board: &str) -> &str {
+    match board {
+        "native" | "posix" => "posix",
+        b if b.starts_with("freertos") || b.contains("freertos") => "freertos",
+        b if b.starts_with("zephyr") || b.contains("zephyr") => "zephyr",
+        b if b.starts_with("nuttx") || b.contains("nuttx") => "nuttx",
+        b if b.starts_with("threadx") || b.contains("threadx") => "threadx",
+        _ => "posix",
+    }
+}
+
+/// Phase 269 (W4) — resolve `[tiers.*]` + `[[node_overrides]]` + per-node
+/// `callback_groups` (from cmake metadata) into a [`ResolvedTierTable`] and
+/// stamp each [`PlanNode::sched_context`] with its 0-based tier index
+/// (highest-priority-first order from the resolver).
+///
+/// Must be called AFTER [`metadata::enrich_plan`] so that
+/// [`PlanNode::callback_groups`] is populated. The caller supplies the RTOS
+/// key (use [`board_to_rtos`] to derive it from `plan.board`).
+///
+/// No-op (returns `Ok(())`) when both `plan.tiers` and `plan.node_overrides`
+/// are empty and no node declares callback groups — the guard keeps
+/// single-tier entries byte-identical.
+pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
+    let has_groups = plan.nodes.iter().any(|n| !n.callback_groups.is_empty());
+    if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
+        return Ok(());
+    }
+
+    // Component instance names from the launch (match [[node_overrides]].name).
+    let component_names: BTreeSet<&str> = plan
+        .nodes
+        .iter()
+        .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
+        .collect();
+
+    // Per-node callback group declarations: group ID defaults to tier "default";
+    // [[node_overrides]] in system.toml reassigns them at deploy time.
+    let mut callback_groups_map: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+    for n in &plan.nodes {
+        if n.callback_groups.is_empty() {
+            continue;
+        }
+        let node_name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
+        let groups: Vec<CallbackGroupDecl> = n
+            .callback_groups
+            .iter()
+            .map(|g| CallbackGroupDecl {
+                id: g.clone(),
+                r#type: "MutuallyExclusive".to_string(),
+                tier: DEFAULT_TIER.to_string(),
+            })
+            .collect();
+        callback_groups_map.insert(node_name, groups);
+    }
+
+    let table = resolve_tiers(
+        &plan.tiers,
+        &plan.node_overrides,
+        &component_names,
+        &callback_groups_map,
+        target_rtos,
+    )
+    .map_err(|e: TierResolveError| eyre::eyre!("tier resolution failed: {e}"))?;
+
+    // Stamp PlanNode.sched_context with the 0-based index into the ordered tier list
+    // (highest-priority-first). Nodes not assigned to any tier keep `sched_context = None`.
+    let mut tier_map: HashMap<String, u8> = HashMap::new();
+    for (i, tier) in table.tiers.iter().enumerate() {
+        for (node_name, _group) in &tier.members {
+            tier_map.insert(node_name.clone(), i as u8);
+        }
+    }
+    for n in &mut plan.nodes {
+        let node_name = n.name.as_deref().unwrap_or(n.exec.as_str());
+        if let Some(&idx) = tier_map.get(node_name) {
+            n.sched_context = Some(idx);
+        }
+    }
+
+    plan.resolved_tiers = Some(table);
+    Ok(())
 }
 
 /// Write the depfile in GNU-make `target: dep1 dep2 …` form so cmake's
@@ -618,6 +717,7 @@ mod tests {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
+            resolved_tiers: None,
         };
 
         assert_eq!(
@@ -722,6 +822,7 @@ mod tests {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
+            resolved_tiers: None,
         }
     }
 
@@ -902,6 +1003,170 @@ autostart = "active"
         assert_eq!(
             plan.nodes[0].params,
             vec![("p".to_string(), "v".to_string())]
+        );
+    }
+
+    /// Phase 269 (W4) — resolve_plan_sched assigns PlanNode.sched_context from tiers +
+    /// node_overrides + callback_groups. A 2-tier plan with node overrides yields
+    /// correct sched_context indices (highest-priority-first: high=0, low=1).
+    #[test]
+    fn resolve_plan_sched_stamps_sched_context_indices() {
+        use crate::orchestration::cargo_metadata_schema::{
+            CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+        };
+        use std::path::PathBuf;
+
+        let high_tier = TierDef {
+            spin_period_us: Some(10_000),
+            posix: Some(TierRtosSpec {
+                priority: 80,
+                stack_bytes: None,
+                preempt_threshold: None,
+                sched_class: None,
+            }),
+            ..Default::default()
+        };
+        let low_tier = TierDef {
+            spin_period_us: Some(100_000),
+            posix: Some(TierRtosSpec {
+                priority: 10,
+                stack_bytes: None,
+                preempt_threshold: None,
+                sched_class: None,
+            }),
+            ..Default::default()
+        };
+        let mut tiers = std::collections::BTreeMap::new();
+        tiers.insert("high".to_string(), high_tier);
+        tiers.insert("low".to_string(), low_tier);
+
+        let node_overrides = vec![
+            NodeOverride {
+                name: "ctrl".to_string(),
+                callback_groups: vec![CallbackGroupOverride {
+                    id: "ctrl_grp".to_string(),
+                    tier: "high".to_string(),
+                }],
+            },
+            NodeOverride {
+                name: "telem".to_string(),
+                callback_groups: vec![CallbackGroupOverride {
+                    id: "telem_grp".to_string(),
+                    tier: "low".to_string(),
+                }],
+            },
+        ];
+
+        let mut plan = Plan {
+            board: "native".into(),
+            nodes: vec![
+                PlanNode {
+                    pkg: "ctrl_pkg".into(),
+                    exec: "ctrl".into(),
+                    name: Some("ctrl".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["ctrl_grp".into()],
+                    sched_context: None,
+                },
+                PlanNode {
+                    pkg: "telem_pkg".into(),
+                    exec: "telem".into(),
+                    name: Some("telem".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["telem_grp".into()],
+                    sched_context: None,
+                },
+            ],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers,
+            node_overrides,
+            resolved_tiers: None,
+        };
+
+        resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
+
+        // resolved_tiers populated.
+        assert!(plan.resolved_tiers.is_some(), "resolved_tiers must be set");
+        let table = plan.resolved_tiers.as_ref().unwrap();
+        assert!(
+            !table.is_single_tier(),
+            "two-tier plan must not be single-tier"
+        );
+        // highest-priority-first: high (80) = idx 0, low (10) = idx 1.
+        assert_eq!(table.tiers[0].name, "high");
+        assert_eq!(table.tiers[1].name, "low");
+        // PlanNode.sched_context stamped correctly.
+        assert_eq!(
+            plan.nodes[0].sched_context,
+            Some(0),
+            "ctrl (high tier) must get sched_context=0"
+        );
+        assert_eq!(
+            plan.nodes[1].sched_context,
+            Some(1),
+            "telem (low tier) must get sched_context=1"
+        );
+    }
+
+    /// Phase 269 (W4) — resolve_plan_sched on a plan with no tiers, no overrides,
+    /// and no callback groups is a no-op (resolved_tiers stays None).
+    #[test]
+    fn resolve_plan_sched_no_tiers_is_noop() {
+        use std::path::PathBuf;
+        let mut plan = Plan {
+            board: "native".into(),
+            nodes: vec![PlanNode {
+                pkg: "talker_pkg".into(),
+                exec: "talker".into(),
+                name: None,
+                namespace: None,
+                class_name: None,
+                class_header: None,
+                lang: Some("c".into()),
+                shape: None,
+                host: None,
+                qos_overrides: Vec::new(),
+                params: Vec::new(),
+                callback_groups: Vec::new(),
+                sched_context: None,
+            }],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
+            resolved_tiers: None,
+        };
+        resolve_plan_sched(&mut plan, "posix").expect("no-op should succeed");
+        assert!(
+            plan.resolved_tiers.is_none(),
+            "no-tier plan must leave resolved_tiers as None"
+        );
+        assert!(
+            plan.nodes[0].sched_context.is_none(),
+            "no-tier plan must leave sched_context as None"
         );
     }
 }

@@ -876,6 +876,36 @@ entry = "native_safety_listener_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures-safety-listener"
 
+# Phase 269 W4 — 2-tier sched-context C workspace. [tiers.high]/[tiers.low] + [[node_overrides]]
+# bake nros_cpp_create_sched_context + nros_cpp_node_create_ex into the generated entry;
+# ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
+# sched context (100 ms). Consumed by tests/realtime_tiers_c_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-c-native-realtime"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-c"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# Phase 269 W4 — 2-tier sched-context C++ workspace. [tiers.high]/[tiers.low] + [[node_overrides]]
+# bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
+# ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
+# sched context (100 ms). Consumed by tests/realtime_tiers_cpp_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-realtime"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

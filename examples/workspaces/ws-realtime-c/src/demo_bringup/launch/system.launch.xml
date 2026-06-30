@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Phase 269 W4 (ws-realtime-c) — 2-node, 2-tier C entry. The node `name`s
+     must match system.toml [[component]].name (RFC-0032 §7 instance identity)
+     AND the [[node_overrides]].name used by the tier resolver. -->
+<launch>
+    <node pkg="ctrl_pkg" exec="ctrl" name="ctrl_node"/>
+    <node pkg="telem_pkg" exec="telem" name="telem_node"/>
+</launch>

@@ -101,15 +101,66 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("    if (executor == NULL) {\n");
     out.push_str("        return (int32_t)NROS_CPP_RET_NOT_INIT;\n");
     out.push_str("    }\n");
+
+    // Phase 269 (W4) — sched-context wiring: emit one create call per resolved tier
+    // (ordered highest-priority-first). Guard on non-empty multi-tier resolved table;
+    // single-tier or absent → byte-identical output.
+    let use_tiers = plan
+        .resolved_tiers
+        .as_ref()
+        .is_some_and(|t| !t.is_single_tier());
+    if use_tiers {
+        let tiers = plan.resolved_tiers.as_ref().unwrap();
+        let n_tiers = tiers.tiers.len();
+        out.push_str("    /* Phase 269 (W4) — sched-context wiring (multi-tier scheduling). */\n");
+        let _ = writeln!(out, "    uint8_t __nros_sc_ids[{n_tiers}] = {{0}};");
+        for (ti, tier) in tiers.tiers.iter().enumerate() {
+            let period_us = tier.spin_period_us.unwrap_or(0) as u32;
+            let os_pri = (tier.priority.clamp(0, 255)) as u8;
+            let _ = writeln!(out, "    {{");
+            out.push_str("        nros_cpp_sched_context_t __sc = {0};\n");
+            out.push_str("        __sc.class_ = 0;  /* Fifo */\n");
+            out.push_str("        __sc.priority = 1;  /* Normal */\n");
+            out.push_str("        __sc.deadline_policy = 0;  /* Released */\n");
+            let _ = writeln!(out, "        __sc.period_us = {period_us}u;");
+            let _ = writeln!(out, "        __sc.os_pri = {os_pri}u;");
+            let _ = writeln!(
+                out,
+                "        nros_cpp_ret_t __scr{ti} = nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[{ti}]);"
+            );
+            let _ = writeln!(
+                out,
+                "        if (__scr{ti} != NROS_CPP_RET_OK) return (int32_t)__scr{ti};"
+            );
+            out.push_str("    }\n");
+        }
+    }
+
     for (i, n) in plan.nodes.iter().enumerate() {
         let pkg = sanitize_pkg(&n.pkg);
         let node_name = n.name.as_deref().unwrap_or(&n.exec);
         let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "    {{");
-        let _ = writeln!(
-            out,
-            "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
-        );
+        if use_tiers && n.sched_context.is_some() {
+            let sc_idx = n.sched_context.unwrap();
+            let _ = writeln!(
+                out,
+                "        nros_cpp_node_options_t __nros_opts_{i} = nros_cpp_node_get_default_options();"
+            );
+            let _ = writeln!(
+                out,
+                "        __nros_opts_{i}.sched_context_id = __nros_sc_ids[{sc_idx}];"
+            );
+            let _ = writeln!(
+                out,
+                "        nros_cpp_ret_t nrc = nros_cpp_node_create_ex(executor, \"{name_lit}\", &__nros_opts_{i}, &__nros_node_{i});"
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
+            );
+        }
         out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
         let _ = writeln!(
             out,
@@ -217,6 +268,7 @@ mod tests {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
+            resolved_tiers: None,
         }
     }
 
@@ -396,6 +448,174 @@ mod tests {
         assert!(
             param_at < lc_at,
             "lifecycle block must follow param-services block"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 269 (W4) — sched-context wiring tests
+    // -------------------------------------------------------------------------
+
+    fn fixture_plan_with_tiers() -> Plan {
+        use crate::codegen::entry::PlanNode;
+        use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+        use std::path::PathBuf;
+        // Two-tier plan: high (idx 0) and low (idx 1), each with one C node.
+        let high_tier = ResolvedTier {
+            name: "high".into(),
+            priority: 80,
+            stack_bytes: None,
+            spin_period_us: Some(10_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("ctrl".into(), "ctrl_grp".into())],
+        };
+        let low_tier = ResolvedTier {
+            name: "low".into(),
+            priority: 10,
+            stack_bytes: None,
+            spin_period_us: Some(100_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("telem".into(), "telem_grp".into())],
+        };
+        Plan {
+            board: "native".into(),
+            nodes: vec![
+                PlanNode {
+                    pkg: "ctrl_pkg".into(),
+                    exec: "ctrl".into(),
+                    name: Some("ctrl".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["ctrl_grp".into()],
+                    sched_context: Some(0), // high tier
+                },
+                PlanNode {
+                    pkg: "telem_pkg".into(),
+                    exec: "telem".into(),
+                    name: Some("telem".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["telem_grp".into()],
+                    sched_context: Some(1), // low tier
+                },
+            ],
+            depfile_paths: Vec::new(),
+            bringup: "demo_bringup".into(),
+            launch_file: PathBuf::from("/tmp/system.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers: Default::default(),
+            node_overrides: Vec::new(),
+            resolved_tiers: Some(ResolvedTierTable {
+                tiers: vec![high_tier, low_tier],
+            }),
+        }
+    }
+
+    #[test]
+    fn typed_emit_tiers_emits_sched_context_create_and_node_create_ex() {
+        // Phase 269 (W4) — multi-tier plan emits sched-context create + node_create_ex.
+        let plan = fixture_plan_with_tiers();
+        let src = emit_typed(&plan).expect("typed C tier emit ok");
+        // Sched-context IDs array declared.
+        assert!(
+            src.contains("uint8_t __nros_sc_ids[2] = {0};"),
+            "expected sc_ids array; got:\n{src}"
+        );
+        // High tier: os_pri=80, period_us=10000.
+        assert!(src.contains("__sc.os_pri = 80u;"), "expected os_pri=80");
+        assert!(
+            src.contains("__sc.period_us = 10000u;"),
+            "expected period_us=10000"
+        );
+        assert!(
+            src.contains("nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[0])"),
+            "expected tier 0 sc create"
+        );
+        // Low tier: os_pri=10, period_us=100000.
+        assert!(src.contains("__sc.os_pri = 10u;"), "expected os_pri=10");
+        assert!(
+            src.contains("__sc.period_us = 100000u;"),
+            "expected period_us=100000"
+        );
+        assert!(
+            src.contains("nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[1])"),
+            "expected tier 1 sc create"
+        );
+        // node_create_ex with sc_id from the array.
+        assert!(
+            src.contains(
+                "nros_cpp_node_create_ex(executor, \"ctrl\", &__nros_opts_0, &__nros_node_0)"
+            ),
+            "ctrl node must use nros_cpp_node_create_ex"
+        );
+        assert!(
+            src.contains("__nros_opts_0.sched_context_id = __nros_sc_ids[0]"),
+            "ctrl node must bind to tier 0"
+        );
+        assert!(
+            src.contains(
+                "nros_cpp_node_create_ex(executor, \"telem\", &__nros_opts_1, &__nros_node_1)"
+            ),
+            "telem node must use nros_cpp_node_create_ex"
+        );
+        assert!(
+            src.contains("__nros_opts_1.sched_context_id = __nros_sc_ids[1]"),
+            "telem node must bind to tier 1"
+        );
+        // Sched block must appear BEFORE the per-node creates.
+        let sc_at = src.find("__nros_sc_ids[2]").unwrap();
+        let node_at = src.find("nros_cpp_node_create_ex").unwrap();
+        assert!(sc_at < node_at, "sched block must precede per-node creates");
+    }
+
+    #[test]
+    fn typed_emit_no_tiers_uses_plain_node_create() {
+        // Phase 269 (W4) — empty resolved_tiers keeps byte-identical plain create.
+        let plan = fixture_plan(&[("talker_pkg", "talker")]);
+        let src = emit_typed(&plan).expect("typed C no-tier emit ok");
+        // Must NOT contain sched block artifacts.
+        assert!(
+            !src.contains("__nros_sc_ids"),
+            "no-tier plan must not emit sc_ids array"
+        );
+        assert!(
+            !src.contains("nros_cpp_create_sched_context"),
+            "no-tier plan must not emit sched_context_create"
+        );
+        assert!(
+            !src.contains("nros_cpp_node_create_ex"),
+            "no-tier plan must use plain nros_cpp_node_create"
+        );
+        assert!(
+            src.contains("nros_cpp_node_create(executor, \"talker\", \"/\", &__nros_node_0)"),
+            "no-tier plan must use plain nros_cpp_node_create"
         );
     }
 }

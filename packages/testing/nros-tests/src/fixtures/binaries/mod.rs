@@ -254,6 +254,9 @@ static NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCe
 static NATIVE_WORKSPACE_C_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 269 W4 — cached paths to the 2-tier sched-context C/C++ realtime workspace entries.
+static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
 /// QoS-override and custom-message cross-process workspace entries.
 static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1523,6 +1526,38 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
                 "workspace-cpp-native-safety-listener",
                 "ws-safety-cpp",
                 "native_safety_listener_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 269 W4 — the 2-tier sched-context C realtime workspace entry (cached).
+/// Schedules ctrl_node (10 ms, high-priority sched context) and telem_node
+/// (100 ms, low-priority sched context) via nros_cpp_create_sched_context +
+/// nros_cpp_node_create_ex. Consumed by tests/realtime_tiers_c_e2e.rs.
+pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-c-native-realtime",
+                "ws-realtime-c",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 269 W4 — the 2-tier sched-context C++ realtime workspace entry (cached).
+/// Schedules ctrl_node (10 ms, high-priority sched context) and telem_node
+/// (100 ms, low-priority sched context) via nros_cpp_create_sched_context +
+/// NodeBuilder::sched(). Consumed by tests/realtime_tiers_cpp_e2e.rs.
+pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-realtime",
+                "ws-realtime-cpp",
+                "native_entry",
             )
         })
         .map(|p| p.as_path())

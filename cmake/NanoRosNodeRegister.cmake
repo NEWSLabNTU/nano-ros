@@ -138,7 +138,7 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     # Phase 248 C6b (#60 T5) — DEPLOY is OPTIONAL on a Node pkg. A reusable Node
     # pkg must NOT name a deploy target; the Entry pkg (`nano_ros_entry(... DEPLOY
     # …)`) + the bringup `system.toml` select RMW/platform/deploy. Embedded Node
@@ -818,6 +818,7 @@ function(nano_ros_node_register)
 
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})
     _nros_json_strlist(_deploy_json  ${_NRC_DEPLOY})
+    _nros_json_strlist(_cbgs_json    ${_NRC_CALLBACK_GROUPS})
     get_property(_acc GLOBAL PROPERTY NROS_COMPONENTS_JSON)
     if(_acc)
         set(_sep ",")
@@ -828,7 +829,8 @@ function(nano_ros_node_register)
 "${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"class\": \"${_NRC_CLASS}\", \
 \"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
-\"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\"}")
+\"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\", \
+\"callback_groups\": [${_cbgs_json}]}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
 endfunction()

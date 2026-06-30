@@ -181,6 +181,7 @@ mod tests {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
+            resolved_tiers: None,
         }
     }
 
