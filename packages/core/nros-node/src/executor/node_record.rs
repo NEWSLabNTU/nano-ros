@@ -326,12 +326,25 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
             None => self.resolve_session_slot()?,
         };
 
+        // Phase 272 (RFC-0047) — resolve default_sched with precedence:
+        //   explicit .sched()  >  table lookup  >  SchedContextId(0)
+        //
+        // The lookup borrows `self.executor` immutably and returns a Copy
+        // value, so the borrow ends before the mutable `nodes.push` below.
+        let default_sched = match self.sched {
+            Some(id) => id,
+            None => self
+                .executor
+                .lookup_node_sched(name_buf.as_str(), ns_buf.as_str())
+                .unwrap_or(SchedContextId(0)),
+        };
+
         let record = NodeRecord {
             name: name_buf,
             namespace: ns_buf,
             rmw_name: rmw_buf,
             locator: loc_buf,
-            default_sched: self.sched.unwrap_or(SchedContextId(0)),
+            default_sched,
             session_idx,
         };
 

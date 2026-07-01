@@ -3147,3 +3147,123 @@ fn test_get_result_after_completion_replies_immediately() {
     assert_eq!(sent.len(), 1);
     assert_eq!(&sent[0].1[8..8 + res.len()], &res);
 }
+
+// ============================================================================
+// Phase 272 (RFC-0047) — node_name → sched-context table + node_builder lookup
+// ============================================================================
+
+/// Seeded name resolves to the bound SC, and a callback registered under
+/// that node inherits SC 2 via `apply_node_default_sched`.
+#[test]
+fn test_bind_node_name_sched_seeded_resolves() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    // SC slots 1 and 2 must exist for apply_node_default_sched to wire the
+    // binding. create_sched_context fills slots in order starting at 1.
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Seed the table before building.
+    executor.bind_node_name_sched("talker", "/", SchedContextId(2));
+
+    let nid = executor.node_builder("talker").build().unwrap();
+
+    // 1. The NodeRecord itself carries the seeded SC.
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
+
+    // 2. A callback registered under the node inherits SC 2 via
+    //    apply_node_default_sched (called inside create_subscription).
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/t", |_: &TestMsg| {})
+        .unwrap();
+    assert_eq!(executor.sched_context_bindings[0], SchedContextId(2));
+}
+
+/// An unseeded name always produces SchedContextId(0) (default path unchanged).
+#[test]
+fn test_bind_node_name_sched_unseeded_defaults_to_zero() {
+    use crate::executor::sched_context::SchedContextId;
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    // No bind call — table is empty.
+    let nid = executor.node_builder("listener").build().unwrap();
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(0));
+}
+
+/// An explicit `.sched(id)` on the builder wins over a conflicting table entry.
+#[test]
+fn test_bind_node_name_sched_explicit_beats_table() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+
+    // Table says SC 2, but explicit .sched(1) should win.
+    executor.bind_node_name_sched("talker", "/", SchedContextId(2));
+
+    let nid = executor
+        .node_builder("talker")
+        .sched(SchedContextId(1))
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        executor.nodes[nid.index()].default_sched,
+        SchedContextId(1),
+        "explicit .sched() must override the table entry"
+    );
+}
+
+/// A namespace-qualified key disambiguates nodes with the same name in
+/// different namespaces — seeding "/ns"/"talker" does not affect "/"/"talker".
+#[test]
+fn test_bind_node_name_sched_namespace_disambiguates() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+
+    // Seed for the namespaced node only.
+    executor.bind_node_name_sched("talker", "/ns", SchedContextId(1));
+
+    // Node in "/ns" namespace → gets SC 1.
+    let nid_ns = executor
+        .node_builder("talker")
+        .namespace("/ns")
+        .build()
+        .unwrap();
+    assert_eq!(
+        executor.nodes[nid_ns.index()].default_sched,
+        SchedContextId(1)
+    );
+
+    // Node in root "/" namespace (executor default) → not seeded → SC 0.
+    let nid_root = executor.node_builder("talker").build().unwrap();
+    assert_eq!(
+        executor.nodes[nid_root.index()].default_sched,
+        SchedContextId(0),
+        "root-ns node must not inherit the /ns-keyed table entry"
+    );
+}

@@ -814,6 +814,19 @@ pub struct Executor {
     /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
     /// `namespace` above and is auto-populated on first use.
     pub(crate) nodes: heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
+    /// Phase 272 (RFC-0047) — config-seeded node → sched-context bindings, keyed by the node's
+    /// fully-qualified `(name, namespace)` pair. `NodeBuilder::build` consults this table to set a
+    /// node's `default_sched` when no explicit `.sched()` was given. Empty ⇒ every node stays
+    /// `SchedContextId(0)` (byte-identical to pre-272 behaviour). Sized by `MAX_NODES` (at most
+    /// one tier per node — RFC-0047 OQ1).
+    pub(crate) node_sched_table: heapless::Vec<
+        (
+            heapless::String<64>,
+            heapless::String<64>,
+            super::sched_context::SchedContextId,
+        ),
+        { crate::config::MAX_NODES },
+    >,
     /// Phase 216 follow-up — per-Node dispatch trampoline registry.
     ///
     /// Populated by [`Executor::register_dispatch_slot`]; walked by
@@ -1004,6 +1017,7 @@ impl Executor {
             node_name: heapless::String::new(),
             active_groups: None,
             nodes: heapless::Vec::new(),
+            node_sched_table: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1101,6 +1115,7 @@ impl Executor {
             node_name: heapless::String::new(),
             active_groups: None,
             nodes: heapless::Vec::new(),
+            node_sched_table: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1276,6 +1291,60 @@ impl Executor {
             self.namespace.clear();
             let _ = self.namespace.push_str(namespace);
         }
+    }
+
+    // =========================================================================
+    // Phase 272 (RFC-0047) — node-name → sched-context table
+    // =========================================================================
+
+    /// Seed a config-resolved tier binding by `(name, namespace)` before the
+    /// node is built. `NodeBuilder::build` consults this table when no
+    /// explicit `.sched()` override is given — the table entry then wins over
+    /// the `SchedContextId(0)` default (precedence: explicit > table > 0).
+    ///
+    /// Call BEFORE `node_builder(name).build()`. An existing entry for the
+    /// same `(name, namespace)` key is overwritten (last-write wins). Overflow
+    /// past `MAX_NODES` is silently ignored. An empty `namespace` is normalised
+    /// to `"/"` to match what `NodeBuilder::build` computes for a root-NS node.
+    pub fn bind_node_name_sched(
+        &mut self,
+        name: &str,
+        namespace: &str,
+        sc: super::sched_context::SchedContextId,
+    ) {
+        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        // Overwrite if there is already an entry for this (name, ns) pair.
+        for entry in self.node_sched_table.iter_mut() {
+            if entry.0.as_str() == name && entry.1.as_str() == norm_ns {
+                entry.2 = sc;
+                return;
+            }
+        }
+        // New entry — build the heapless strings and push. Silently ignore
+        // if the name/ns is too long or the table is at capacity.
+        let mut name_s = heapless::String::<64>::new();
+        let mut ns_s = heapless::String::<64>::new();
+        if name_s.push_str(name).is_err() || ns_s.push_str(norm_ns).is_err() {
+            return;
+        }
+        let _ = self.node_sched_table.push((name_s, ns_s, sc));
+    }
+
+    /// Look up the seeded sched-context for `(name, namespace)`. Returns
+    /// `None` when the table has no entry for this pair (unseed → default 0).
+    /// `pub(super)` — visible only within the `executor` module (sibling
+    /// `node_record` calls it from `NodeBuilder::build`).
+    pub(super) fn lookup_node_sched(
+        &self,
+        name: &str,
+        namespace: &str,
+    ) -> Option<super::sched_context::SchedContextId> {
+        for entry in self.node_sched_table.iter() {
+            if entry.0.as_str() == name && entry.1.as_str() == namespace {
+                return Some(entry.2);
+            }
+        }
+        None
     }
 
     // =========================================================================
