@@ -240,6 +240,16 @@ elseif(NANO_ROS_RMW STREQUAL "uorb")
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_UORB=1)
 endif()
 
+# Issue 0073 — when the E2E-safety cargo feature is compiled into nros-cpp (above),
+# also surface the matching preprocessor define to HEADER CONSUMERS. `node.hpp` /
+# `subscription.hpp` gate the validated-subscription API
+# (`create_subscription_with_safety`) behind `#if defined(NANO_ROS_SAFETY_E2E)`, so a
+# component TU that links `NanoRos::NanoRosCpp` needs the define to see it. Without
+# this, the cargo symbol exists but the C++ method is hidden at compile time.
+if(NANO_ROS_SAFETY_E2E AND NANO_ROS_RMW STREQUAL "zenoh")
+    target_compile_definitions(nros-cpp-headers INTERFACE NANO_ROS_SAFETY_E2E)
+endif()
+
 # Require at least C++14
 target_compile_features(nros-cpp-headers INTERFACE cxx_std_14)
 

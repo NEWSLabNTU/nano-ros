@@ -361,9 +361,18 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             let os_pri = (tier.priority.clamp(0, 255)) as u8;
             out.push_str("        {\n");
             out.push_str("            nros_cpp_sched_context_t __sc = {};\n");
-            out.push_str("            __sc.class_ = 0;  /* Fifo */\n");
-            out.push_str("            __sc.priority = 1;  /* Normal */\n");
-            out.push_str("            __sc.deadline_policy = 0;  /* Released */\n");
+            // C++ (unlike C) forbids implicit int→enum, and cbindgen emits these
+            // fields as real enums under a C++ TU — so cast explicitly. The type
+            // names are stable whether cbindgen renders an enum or a uint8_t typedef.
+            out.push_str(
+                "            __sc.class_ = static_cast<nros_cpp_sched_class_t>(0);  /* Fifo */\n",
+            );
+            out.push_str(
+                "            __sc.priority = static_cast<nros_cpp_priority_t>(1);  /* Normal */\n",
+            );
+            out.push_str(
+                "            __sc.deadline_policy = static_cast<nros_cpp_deadline_policy_t>(0);  /* Released */\n",
+            );
             let _ = writeln!(out, "            __sc.period_us = {period_us}u;");
             let _ = writeln!(out, "            __sc.os_pri = {os_pri}u;");
             let _ = writeln!(

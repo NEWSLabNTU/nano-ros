@@ -111,7 +111,11 @@ enum nros_c_qos_liveliness_t {
 };
 
 /** Layout-identical mirror of the C++ `nros_cpp_qos_t` (same field order/types),
- *  so passing it by value to `nros_cpp_subscription_register` is ABI-correct. */
+ *  so passing it by value to `nros_cpp_subscription_register` is ABI-correct.
+ *  Guarded so a translation unit that ALSO includes `nros_cpp_ffi.h` (e.g. a C
+ *  component that reads params) does not double-define the struct — ffi.h's
+ *  definition wins when its header guard `NROS_CPP_FFI_H` is already set. */
+#ifndef NROS_CPP_FFI_H
 typedef struct nros_cpp_qos_t {
     enum nros_c_qos_reliability_t reliability;
     enum nros_c_qos_durability_t durability;
@@ -123,6 +127,7 @@ typedef struct nros_cpp_qos_t {
     uint32_t liveliness_lease_ms;
     uint8_t avoid_ros_namespace_conventions;
 } nros_cpp_qos_t;
+#endif /* NROS_CPP_FFI_H */
 
 /** Default profile: best-effort-free reliable, volatile, keep-last(10) — matches
  *  the C++ `QoS::default_profile()` the C++ components use. */

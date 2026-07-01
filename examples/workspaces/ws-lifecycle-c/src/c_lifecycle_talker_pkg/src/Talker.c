@@ -11,8 +11,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
 #include <nros/nros_cpp_ffi.h>
+#include <nros/component.h>
 
 typedef struct {
     _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];

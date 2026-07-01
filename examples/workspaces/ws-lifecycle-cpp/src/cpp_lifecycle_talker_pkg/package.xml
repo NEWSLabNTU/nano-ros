@@ -5,6 +5,7 @@
   <description>Phase 269 W2 — managed-node C++ component: counter publisher on /chatter.</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
   <export>
     <build_type>cmake</build_type>
   </export>

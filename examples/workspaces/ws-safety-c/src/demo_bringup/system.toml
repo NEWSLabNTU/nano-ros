@@ -16,7 +16,7 @@
 name = "c_safety_demo"
 rmw = "zenoh"
 domain_id = 0
-default_launch = "safety_talker.launch.xml"
+default_launch = "system.launch.xml"
 features = ["safety"]
 
 [[component]]

@@ -5,6 +5,7 @@
   <description>Phase 269 W3 — C++ talker: publishes counter on /chatter (CRC auto-attached with NANO_ROS_SAFETY_E2E).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
   <export>
     <build_type>cmake</build_type>
   </export>

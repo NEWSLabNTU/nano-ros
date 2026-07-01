@@ -850,6 +850,11 @@ id = "workspace-c-native-safety-talker"
 platform = "native"
 lang = "c"
 rmw = "zenoh"
+# `[system].features = ["safety"]` in system.toml declares the safety axis, but the
+# cmake feature-lowering (nros_lower_system_features → NANO_ROS_SAFETY_E2E) is not yet
+# wired into the per-entry `nano_ros_entry` build (issue #118). Pass the knob directly
+# so nros-cpp compiles the CRC attach/validate path (`nros_cpp_subscription_register_validated`).
+cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }
 dir = "examples/workspaces/ws-safety-c"
 bringup = "src/demo_bringup"
 entry = "native_safety_talker_entry"
@@ -864,6 +869,8 @@ id = "workspace-c-native-safety-listener"
 platform = "native"
 lang = "c"
 rmw = "zenoh"
+# See workspace-c-native-safety-talker: enable the CRC validate path in nros-cpp.
+cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }
 dir = "examples/workspaces/ws-safety-c"
 bringup = "src/demo_bringup"
 entry = "native_safety_listener_entry"
@@ -878,6 +885,8 @@ id = "workspace-cpp-native-safety-talker"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
+# See workspace-c-native-safety-talker: enable the CRC attach/validate path in nros-cpp.
+cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }
 dir = "examples/workspaces/ws-safety-cpp"
 bringup = "src/demo_bringup"
 entry = "native_safety_talker_entry"
@@ -892,6 +901,8 @@ id = "workspace-cpp-native-safety-listener"
 platform = "native"
 lang = "cpp"
 rmw = "zenoh"
+# See workspace-c-native-safety-talker: enable the CRC validate path in nros-cpp.
+cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }
 dir = "examples/workspaces/ws-safety-cpp"
 bringup = "src/demo_bringup"
 entry = "native_safety_listener_entry"
