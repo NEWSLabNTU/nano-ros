@@ -1,4 +1,4 @@
-# Phase 274 — Capability coverage on embedded (lifecycle / params / safety / QoS / multihost)
+# Phase 276 — Capability coverage on embedded (lifecycle / params / safety / QoS / multihost)
 
 Status: **Planned (2026-07-01)** · Implements issue #102 (H1) · Informs RFC-0026 (examples),
 RFC-0006 (feature axes).
@@ -11,7 +11,7 @@ RFC-0006 (feature axes).
 
 ## Why (2026-07-01 re-audit of #102)
 
-After Phase 273 closes the mechanical holes, the substantive gap is that **lifecycle, parameters,
+After Phase 275 closes the mechanical holes, the substantive gap is that **lifecycle, parameters,
 safety/CRC, QoS-overrides, and multihost each have exactly one `native` fixture and no embedded
 coverage.** A capability that only runs on the host desktop is not proven for the project's actual
 target (embedded RTOS). Partial progress already exists to build on:
@@ -71,7 +71,7 @@ fixture + test together so the capability is asserted, not merely built.
 
 ## Cross-links
 
-Issue #102 (H1) · Phase 273 (mechanical gap-fill, #102 H2–H6) · Phase 270 (C++ lifecycle wrapper —
+Issue #102 (H1) · Phase 275 (mechanical gap-fill, #102 H2–H6) · Phase 270 (C++ lifecycle wrapper —
 prereq for W3) · Phase 263 (workspace-entry e2e — the boot/transport path these ride on) ·
 Phase 253 (CI lane tiering) · Phase 162 (RT scheduling harness — W2) · Issue #80 (param
 persistence — orthogonal to W1's runtime param API).

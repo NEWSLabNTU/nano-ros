@@ -4,7 +4,7 @@ title: "Example fixture coverage holes — capability-on-embedded, native varian
 status: open
 type: tech-debt
 area: testing
-related: [rfc-0026, phase-263, phase-267, phase-273, phase-274]
+related: [rfc-0026, phase-263, phase-267, phase-275, phase-276]
 ---
 
 ## Status — re-audited 2026-07-01 (P0 largely resolved)
@@ -37,9 +37,9 @@ at the end for history.
 ## Phases
 
 The remaining holes are planned across two roadmap phases:
-- **[Phase 273](../roadmap/phase-273-example-fixture-gap-fill.md)** — mechanical gap-fill: **H2–H6**
+- **[Phase 275](../roadmap/phase-275-example-fixture-gap-fill.md)** — mechanical gap-fill: **H2–H6**
   (`_entry` demos, native variants, zephyr leaves, threadx cyclone, stale cleanup, shape-gating).
-- **[Phase 274](../roadmap/phase-274-capability-coverage-on-embedded.md)** — **H1**: lifecycle /
+- **[Phase 276](../roadmap/phase-276-capability-coverage-on-embedded.md)** — **H1**: lifecycle /
   parameters / safety / QoS / multihost on embedded targets.
 
 ## Remaining holes (2026-07-01, priority order)

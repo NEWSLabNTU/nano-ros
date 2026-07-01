@@ -1,4 +1,4 @@
-# Phase 273 — Example fixture gap-fill (mechanical coverage holes)
+# Phase 275 — Example fixture gap-fill (mechanical coverage holes)
 
 Status: **Planned (2026-07-01)** · Implements issue #102 (H2–H6) · Informs RFC-0026 (examples).
 
@@ -7,7 +7,7 @@ Status: **Planned (2026-07-01)** · Implements issue #102 (H2–H6) · Informs R
 > never built or tested by any fixture mechanism. Each hole is resolved by **either** adding a
 > fixture row (+ a behavior/build assertion) **or** honestly de-scoping the matrix cell — never
 > leaving a matrix-listed example that CI never builds ("no silent caps"). This phase is the
-> small, mostly-mechanical set; the large capability-on-embedded work is **Phase 274**.
+> small, mostly-mechanical set; the large capability-on-embedded work is **Phase 276**.
 
 ## Why (2026-07-01 re-audit of #102)
 
@@ -15,7 +15,7 @@ The original #102 snapshot (2026-06-26) claimed ~60 untested examples. Re-audit 
 current tree found the **P0 gaps already closed** (Zephyr single-node examples are built by
 `scripts/build/zephyr-fixture-leaves.sh`; FreeRTOS/NuttX C/C++ have cmake rows in
 `examples/fixtures.toml`). What remains splits into five holes; H2–H6 are addressed here, H1
-(capability-on-embedded) in Phase 274.
+(capability-on-embedded) in Phase 276.
 
 Fixture mechanisms in play (a fix lands in whichever one fits the platform):
 `examples/fixtures.toml` `[[fixture]]` rows · the Zephyr `zephyr-fixture-leaves.sh` +
@@ -88,5 +88,5 @@ failing RAM (issue #115), so builds there are untrustworthy. Verify all fixture 
 
 ## Cross-links
 
-Issue #102 (H2–H6) · Phase 274 (capability-on-embedded, #102 H1) · RFC-0026 (examples matrix) ·
+Issue #102 (H2–H6) · Phase 276 (capability-on-embedded, #102 H1) · RFC-0026 (examples matrix) ·
 Phase 263 (workspace examples — the workspace axis, distinct from these single-node/entry holes).
