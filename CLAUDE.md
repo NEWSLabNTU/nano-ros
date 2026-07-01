@@ -107,6 +107,9 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim** — wire backend init explicitly
   (`nros_cpp_init` registers the linked CFFI backend; weak `nros_app_register_backends` default).
+- **nros-cpp headers: gate `<string>`/std includes on `NROS_CPP_STD`, not `__STDC_HOSTED__`** — a
+  hosted compiler can still run `-nostdinc++` against Zephyr's minimal libcpp (no `<string>`).
+  → issue 0112 (archived).
 - **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on
   native via `nros_tests::unique_ros_domain_id()`. → platform-implementation-notes.md.
 - **`zpico_spin_once` on multi-threaded platforms uses `z_sleep_ms()`, not `select()`** (else
