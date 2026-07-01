@@ -37,6 +37,33 @@ superseded-by: null
 > phase-228 §228.C. Config authority: RFC-0004; workspace layout: RFC-0024;
 > codegen timing: RFC-0003 §7.
 >
+> **Model 1 is the single execution model for ALL languages (decided 2026-07).**
+> Rust (`nros::main!`) already runs Model 1 via `run_tiers`. C/C++ diverged with a
+> single-`Executor` + per-callback `sched_context` binding (phase-272/273); that is
+> **reconciled onto Model 1** — C/C++ get per-tier executors too. The **user surface
+> is the callback-group model of RFC-0047 / phase-273** (code-declared
+> `create_callback_group("id")` + `create_*_in`, group→tier in `system.toml
+> [[component]].group_tiers`), identical across languages; only the backend
+> converges. **`sched_context` is re-scoped** (2026-07): it is NOT the tiering
+> mechanism under Model 1 (the *tier task* is), but an **optional intra-tier fine-
+> scheduling knob** (sporadic-server / per-callback priority *within* one tier task,
+> RFC-0017) + the single-`Executor`/no-tier fallback — kept, re-homed, not removed.
+> **RTOS integration:** a tier = one RTOS task (native `std::thread`, FreeRTOS
+> `xTaskCreate`, Zephyr `k_thread`, NuttX task, ThreadX `tx_thread`, RTIC task),
+> reusing the RFC-0016 0–31→native priority mappers + the one-shared-session
+> (Borrowed store) model the Rust boards already have; the C/C++ boards gain a
+> `run_tiers` mirror. **Sub-node splitting** (a node with groups on different tiers):
+> the phase-273 **single-`Executor`** path supports it now (the `NodeSpansTiers` v1
+> guard was lifted — each callback binds its own group `sched_context`, proven by
+> `realtime_subnode_cpp_e2e`). Under **Model 1** it needs the node to register on
+> **multiple tier-executors** (each gating its groups) with sound per-executor
+> entity creation — that is **v2**; Model-1 v1 re-applies node-pinned-to-tier via
+> the resolver. So the convergence (phase-274) trades 273's single-executor sub-node
+> for the unified model until Model-1 v2 restores it. Staged: phase-273 (group
+> surface + single-executor sub-node, all langs) →
+> **phase-274** (C/C++ Model 1 native) → **phase-275** (C/C++ Model 1 embedded) →
+> sub-node v2 + `sched_context` intra-tier. Binding-vs-execution split: RFC-0047.
+>
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
 > generate-main" template orchestrator and §11.4 item 2 predate the current
 > entry codegen. The `main()`/boot TU is now emitted by the `nros::main!()`

@@ -121,6 +121,17 @@ node's default sched (phase-272 node-name table / `NodeBuilder::sched`) > `Sched
 Unchanged from phase-272: this RFC governs **binding** (which sched-context a callback uses). The
 **execution** side — `run_tiers`, per-RTOS task priority (RFC-0016) — is orthogonal and stays.
 
+> **Reconciliation with RFC-0015 Model 1 (2026-07).** RFC-0015 decided the single execution model for
+> ALL languages is **Model 1** — one RTOS task per tier, `active_groups` gating (see its banner). Under
+> Model 1 the **tiering is done by gating** (which tier task a callback registers on), NOT by
+> `sched_context`. So this RFC's `group → sched_context` table is **re-scoped**: it is no longer the
+> C/C++ *tiering* mechanism (phase-274 moves C/C++ onto per-tier executors + gating), but remains as
+> (a) the single-`Executor`/no-tier fallback and (b) an optional **intra-tier** fine-scheduling knob
+> (sporadic-server / per-callback priority *within* one tier task, RFC-0017). The **group API + config
+> from this RFC (phase-273) are the durable surface** Model 1's gating consumes — code-declared groups
+> + `system.toml group_tiers`. Net: the *binding* half of tiering is superseded by gating under Model
+> 1; the group *declaration + config* half is the permanent user model.
+
 ## Alternatives considered
 
 - **Per-node table only (phase-272 as the end state).** Rejected as the *final* design — it can't
