@@ -1,11 +1,24 @@
 ---
 id: 103
 title: "C++ lifecycle has no idiomatic wrapper class (drops to extern \"C\") — the last cross-language capability gap"
-status: open
+status: resolved
 type: enhancement
 area: core
 related: [rfc-0019, rfc-0015, phase-269, phase-270]
+resolved_in: "phase-270 — nros::LifecycleNode C++ wrapper"
 ---
+
+## Resolved (2026-07-02, phase-270)
+
+The one surviving hard gap — no idiomatic C++ lifecycle wrapper — is closed by
+**[phase-270](../roadmap/phase-270-cpp-lifecycle-node-wrapper.md)**: `nros::LifecycleNode`
+(`nros-cpp/include/nros/lifecycle.hpp`), an rclcpp-shape base class (inherit + override
+`on_*` returning `CallbackReturn`) over new no_std `nros_cpp_lifecycle_{get_state,register_on_*}`
+FFI shims. A C++ managed node no longer drops to `extern "C"`. Verified green by
+`tests/cpp_lifecycle_node_wrapper_e2e.rs` (`ManagedTalker` reaches Active, overrides fire,
+`get_state()==Active`, publishing gated). The other two original hard gaps were already closed
+before the audit (see the re-audit note below); the minor residuals (component live-read
+bool/array, C++ logging-handle cosmetic) are noted there and out of scope.
 
 ## Re-audit (2026-07-01) — 2 of 3 hard gaps were already CLOSED; only C++ lifecycle remains
 

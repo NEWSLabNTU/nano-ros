@@ -56,20 +56,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++ variants + Rust async untested; lifecycle/params/safety/QoS/tiers/multihost exercised on
   native only. Add fixtures or honestly de-scope the matrix. (C/C++ embedded *workspace-entry*
   e2e is landing under phase-263 C2x — narrows the workspace axis, not the single-node holes.)
-- **#103** — [C++ lifecycle has no idiomatic wrapper
-  class](0103-cross-language-capability-surface-gaps.md): re-audited 2026-07-01 — 2 of the 3
-  original hard gaps were already closed (multi-type params via Phase 91.C/117.9; RT tiers via
-  Phase 110.B — the audit cited the wrong header path), and phase-269 auto-wires the declarative
-  entry paths. The one real remainder: `nros-cpp` has no `nros::LifecycleNode` (deferred to Phase
-  209.H), so a C++ managed node still drops to the `extern "C"` C-ABI state machine. Mechanical
-  wrapper over the complete C side. Parity enhancement.
 - **#121** — [rclcpp-shape C++ components aren't bound to a scheduling
   tier](0121-rclcpp-shape-cpp-nodes-not-sched-bound.md): phase-269 W4 (#119) tier-binds C +
   configure-shape C++ nodes via `NodeBuilder::sched()`, but an rclcpp-shape (RFC-0044, IS-A-node)
   component constructs its node inside its own ctor and `NodeHandle` has no `sc_id` field, so the
   entry can't thread the tier in — those nodes land on the default context. Low urgency (no realtime
   fixture uses rclcpp-shape); fix = add `sc_id` to `NodeHandle` + honor it in the construct-with-handle path.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#116–#119** (phase-269) —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#103** (phase-270) —
+[C++ lifecycle had no idiomatic wrapper
+class](archived/0103-cross-language-capability-surface-gaps.md): added `nros::LifecycleNode`
+(`nros-cpp/include/nros/lifecycle.hpp`), an rclcpp-shape base (inherit + override `on_*`
+returning `CallbackReturn`) over new no_std `nros_cpp_lifecycle_{get_state,register_on_*}` FFI —
+a C++ managed node no longer drops to `extern "C"`. Verified by `cpp_lifecycle_node_wrapper_e2e`.
+(The other two audited gaps — multi-type params, RT tiers — were already closed pre-audit.) Also:
+**#116–#119** (phase-269) —
 C/C++ entry feature parity: [params](archived/0116-cpp-c-component-launch-parameter-readback.md),
 [lifecycle autostart](archived/0117-cpp-c-entry-lifecycle-autostart-codegen.md),
 [subscription integrity](archived/0118-cpp-c-component-subscription-integrity-readback.md),

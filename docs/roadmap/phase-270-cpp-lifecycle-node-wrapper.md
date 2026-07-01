@@ -1,6 +1,6 @@
 # Phase 270 — C++ `nros::LifecycleNode` wrapper (rclcpp-shape managed nodes)
 
-Status: **Planned (2026-07-01)**
+Status: **DONE (2026-07-02)** — see Outcome at the end.
 
 Implements **[#103](../issues/0103-cross-language-capability-surface-gaps.md)** (its one surviving
 hard gap — C++ lifecycle has no idiomatic wrapper class). Realizes the C++ side of **RFC-0019**
@@ -136,3 +136,22 @@ node.register_services();                       // `ros2 lifecycle set … confi
 - C++ `get_logger()` returns an opaque handle vs Rust's `Logger` object (cosmetic).
 - `LifecycleState::label()` string helper + `std::function` `on_*` overloads under `NROS_CPP_STD` —
   deferred (YAGNI); the enum + virtual-override surface is the contract.
+
+## Outcome (2026-07-02) — DONE
+
+All three waves landed + verified.
+- **W1** — `nros_cpp_lifecycle_get_state` + 6 `nros_cpp_lifecycle_register_on_*` in
+  `lifecycle_shim.rs` (no_std), cbindgen-rendered cleanly into `nros_cpp_ffi.h`.
+- **W2** — `nros/lifecycle.hpp`: `LifecycleState` / `CallbackReturn` enums + the
+  `LifecycleNode` base (rclcpp-shape virtuals, trampolines, `bind()` two-phase init).
+  Fixed `LifecycleState` to the REP-2002 numbering (Unconfigured=1…Active=3…).
+- **W3** — `ManagedTalker` (ws-lifecycle-cpp, `native_managed_entry` / `managed_bringup`,
+  no `[lifecycle]` block — self-drives via the wrapper). `cpp_lifecycle_node_wrapper_e2e`
+  is **GREEN**: the node reaches Active, `on_configure`/`on_activate` fire (trampolines
+  dispatch to the overrides), `get_state()==Active`, and publishing is gated on the active
+  state. Fixture build needed the config-header mirror (`nros_{c,cpp}_config_header`) built
+  first — a known 0114-class ordering the workspace recipe handles.
+
+Closes **[#103](../issues/archived/0103-cross-language-capability-surface-gaps.md)**: a C++
+managed node is now authored by inheriting `nros::LifecycleNode` + overriding `on_*`, with no
+`extern "C"` in user code.
