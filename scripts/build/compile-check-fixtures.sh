@@ -208,18 +208,6 @@ build_cmake_fixture() {
     # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
     CMAKE_PREFIX_PATH="$prefix_path" \
         cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
-    # Issue 0123 — for C/C++ mixed workspaces the per-build
-    # `nros_{c,cpp}_config_generated.h` (the `*_OPAQUE_U64S` / `NROS_*_SIZE`
-    # macros) is a byproduct of the staged nros-{c,cpp} cargo build, mirrored
-    # in-tree by the `nros_{c,cpp}_config_header` targets. A node pkg's own
-    # build target (e.g. `c_talker_pkg`'s `Talker.c`) is NOT covered by the
-    # 0088 deferred `add_dependencies` (only `${_lib}` is), so under a full
-    # `build-test-fixtures` its TUs can compile against the in-tree `#error`
-    # stub before the header lands. Build the header-mirror targets FIRST
-    # (best-effort: absent in pure-Rust / header-less fixtures) so every
-    # consumer TU sees the real header — race-free, no core-cmake change.
-    CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" \
-        --target nros_c_config_header nros_cpp_config_header 2>/dev/null || true
     CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" -j
     echo "   built $bld"
 }
