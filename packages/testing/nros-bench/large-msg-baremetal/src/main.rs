@@ -10,6 +10,20 @@ use nros::prelude::*;
 use nros_board_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 
+// phase-271 (issue #110) — this bench is a no-alloc `rmw-cffi` bare-metal target,
+// so it can't use the `alloc`-only `Executor::open` (which leaks a default
+// backing). It registers NO callbacks (manual `spin_once` + `publish_raw`), so it
+// carves a tiny per-entry executor backing from its own `static` — no
+// workspace-global `NROS_EXECUTOR_MAX_CBS`, and a fraction of the default
+// 4-slot / ~74 KB arena.
+const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
+    cbs: 2,
+    sc: 2,
+    arena: nros::arena_size_for(2),
+};
+static mut EXEC_BACKING: [core::mem::MaybeUninit<u64>; EXEC_SIZING.u64_len()] =
+    [const { core::mem::MaybeUninit::uninit() }; EXEC_SIZING.u64_len()];
+
 /// Build a test payload with integrity markers.
 fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
     // CDR header (little-endian)
@@ -62,7 +76,10 @@ fn main() -> ! {
         // backend before `Executor::open`. POSIX hosts auto-register via
         // `.init_array`; this target doesn't walk that section.
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
+        // SAFETY: `EXEC_BACKING` is a program-lifetime static; `run`'s closure
+        // executes once, so this executor is its sole `'static` borrower.
+        let backing = unsafe { &mut *core::ptr::addr_of_mut!(EXEC_BACKING) };
+        let mut executor = unsafe { Executor::open_in(&exec_config, backing, EXEC_SIZING)? };
         let mut node = executor.create_node("large_msg_test")?;
 
         println!("Large message publish test");

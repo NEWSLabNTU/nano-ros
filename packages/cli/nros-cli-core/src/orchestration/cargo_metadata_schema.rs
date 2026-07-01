@@ -233,6 +233,18 @@ impl PackageMetadataNros {
 pub struct EntryMetadata {
     /// Board / deploy-target key (e.g. `"freertos"`, `"zephyr"`).
     pub deploy: String,
+    /// phase-271 (issue #110) — per-entry executor callback-table size. The
+    /// `nros::main!` macro reads this to open the executor sized to the entry's
+    /// OWN declared topology (`Executor::open_sized`) instead of the
+    /// workspace-global `NROS_EXECUTOR_MAX_CBS`. Absent → build default. The CLI
+    /// only needs to ACCEPT the key here (so `deny_unknown_fields` doesn't reject
+    /// the entry); the macro is what consumes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_callbacks: Option<usize>,
+    /// Companion to [`max_callbacks`](Self::max_callbacks) — scheduling-context
+    /// slots. Absent / `0` → build default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_sched_contexts: Option<usize>,
 }
 
 /// `[package.metadata.nros.node]` (single shape, canonical post Phase
