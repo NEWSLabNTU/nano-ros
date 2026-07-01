@@ -1,11 +1,48 @@
 ---
 id: 103
-title: "Cross-language capability surface uneven — multi-type params, C++ lifecycle, RT tiers missing in C/C++"
+title: "C++ lifecycle has no idiomatic wrapper class (drops to extern \"C\") — the last cross-language capability gap"
 status: open
 type: enhancement
 area: core
-related: [rfc-0019, rfc-0015]
+related: [rfc-0019, rfc-0015, phase-269]
 ---
+
+## Re-audit (2026-07-01) — 2 of 3 hard gaps were already CLOSED; only C++ lifecycle remains
+
+The original 2026-06-26 audit below was **stale/inaccurate** for two of its three hard gaps
+(verified against the current tree; also see phase-269 which closed the *entry-codegen*
+projections of these capabilities):
+
+- **Hard gap 1 (multi-type params C/C++) — CLOSED.** C `parameter.h` has full typed
+  declare/get/set for bool/int/double/string **plus arrays**
+  (`nros_param_declare_integer` … `nros_param_get_double_array`, landed Phase 91.C). C++
+  `nros::ParameterServer<Cap>` (`parameter.hpp`) is a typed template with
+  `declare_parameter<T>`/`get_parameter<T>`/`set_parameter<T>` + `nros::Seq<T,N>` arrays (Phase
+  117.9). The "string-only" matrix row was already wrong when the audit was written. *Minor
+  residual:* the phase-269 #116 **component live-read** shim (`ctx.parameter::<T>` analog over
+  the executor handle) covers int/double/string only — no bool/array — but the param-server API
+  itself is complete.
+- **Hard gap 3 (RT tiers C/C++) — CLOSED.** Both C (`nros_generated.h`:
+  `nros_executor_create_sched_context` / `..._bind_handle_to_sched_context` + `enum
+  nros_sched_priority_t`) and C++ (`sched_context.hpp`: `create_sched_context` / `bind_*` +
+  `enum class Priority { Critical, Normal, BestEffort }`) have the full create/manage/bind +
+  priority-bucket surface (Phase 110.B). The audit **cited the wrong path**
+  (`nros-c/include/nano_ros/*.h` — the headers live under `nros-c/include/nros/`), which is why
+  it reported "C has no scheduling API." phase-269 #119 layered entry-level tier codegen on top.
+- **Semantic "declarative vs manual wiring" — mostly resolved.** phase-269 #116/#117 added
+  entry-codegen that auto-wires param-services + lifecycle-services + autostart for C/C++
+  entries, so the manual `nros_executor_register_*` asymmetry is gone on the declarative entry
+  path.
+
+**Still open (the real remaining gap): hard gap 2 — C++ lifecycle has no idiomatic wrapper
+class.** No `nros::LifecycleNode` in `nros-cpp` (`rclcpp_compat.hpp:32` lists it as "Phase
+209.H (deferred)"). phase-269 #117 added only entry-level `[lifecycle]` autostart codegen, not a
+user-facing class; a C++ managed node authoring transition behavior still drops to the
+`extern "C"` `nros_cpp_lifecycle_*` / C-ABI functions (and the C++ shim lacks the
+`register_on_configure/activate/...` callbacks the C side has). Fix direction unchanged: add a
+thin `nros::LifecycleNode` wrapper over the complete C state machine (mechanical). Everything
+below is the original (partly-stale) audit, kept for provenance.
+
 
 ## Summary
 

@@ -56,12 +56,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   C/C++ variants + Rust async untested; lifecycle/params/safety/QoS/tiers/multihost exercised on
   native only. Add fixtures or honestly de-scope the matrix. (C/C++ embedded *workspace-entry*
   e2e is landing under phase-263 C2x — narrows the workspace axis, not the single-node holes.)
-- **#103** — [cross-language capability surface
-  uneven](0103-cross-language-capability-surface-gaps.md): core entity APIs (pub/sub/service/
-  action/QoS/bridge) are present in Rust+C+C++, but multi-type parameters are string-only in
-  C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
-  affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
-  enhancement; sequence after #98/#101/#102.
+- **#103** — [C++ lifecycle has no idiomatic wrapper
+  class](0103-cross-language-capability-surface-gaps.md): re-audited 2026-07-01 — 2 of the 3
+  original hard gaps were already closed (multi-type params via Phase 91.C/117.9; RT tiers via
+  Phase 110.B — the audit cited the wrong header path), and phase-269 auto-wires the declarative
+  entry paths. The one real remainder: `nros-cpp` has no `nros::LifecycleNode` (deferred to Phase
+  209.H), so a C++ managed node still drops to the `extern "C"` C-ABI state machine. Mechanical
+  wrapper over the complete C side. Parity enhancement.
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#116–#119** (phase-269) —
 C/C++ entry feature parity: [params](archived/0116-cpp-c-component-launch-parameter-readback.md),
 [lifecycle autostart](archived/0117-cpp-c-entry-lifecycle-autostart-codegen.md),
