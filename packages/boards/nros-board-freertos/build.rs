@@ -178,17 +178,22 @@ fn main() {
         nros_platform_freertos_dir.display()
     );
 
-    // --- Generic glue (freertos_hooks + network_glue) ---
+    // --- Generic glue (freertos_hooks + network_glue + freertos_run_tiers) ---
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
     // semihosting helpers. `c/network_glue.c` provides the lwIP
     // init + FFI surface Rust calls; both invoke
     // `nros_board_*` weak hooks the overlay implements (152.1.B.2).
+    // `c/freertos_run_tiers.c` (Phase 274.W3) implements
+    // `nros_board_freertos_run_tiers` for embedded C/C++ multi-tier entries
+    // (RFC-0015 Model 1): one FreeRTOS task per tier over one shared session.
+    // nros-cpp C FFI symbols are forward-declared and resolved at link time.
     let mut glue = cc::Build::new();
     configure_cflags(&mut glue);
     add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.file(manifest_dir.join("c/freertos_hooks.c"));
     glue.file(manifest_dir.join("c/network_glue.c"));
+    glue.file(manifest_dir.join("c/freertos_run_tiers.c"));
     glue.compile("freertos_glue");
 
     // --- Link order (link-lib propagates transitively to overlays + final binary) ---
@@ -200,6 +205,7 @@ fn main() {
     // --- Rerun triggers ---
     println!("cargo:rerun-if-changed=c/freertos_hooks.c");
     println!("cargo:rerun-if-changed=c/network_glue.c");
+    println!("cargo:rerun-if-changed=c/freertos_run_tiers.c");
     println!("cargo:rerun-if-changed=build.rs");
     println!(
         "cargo:rerun-if-changed={}",

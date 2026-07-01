@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>freertos_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 274.W3 — FreeRTOS/mps2-an385 embedded C++ multi-tier entry (RFC-0015 Model 1): one RTOS task per tier over one shared session.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>demo_bringup</exec_depend>
+  <exec_depend>ctrl_pkg</exec_depend>
+  <exec_depend>telem_pkg</exec_depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

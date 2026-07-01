@@ -155,6 +155,16 @@ pub(crate) fn board_is_zephyr(board: &str) -> bool {
     board_cpp_path(board) == "::nros::board::ZephyrBoard"
 }
 
+/// Phase 274.W3 — FreeRTOS embedded boards support `run_tiers` (one RTOS task per tier
+/// over one shared session). Unlike the other embedded boards (Zephyr, NuttX, ThreadX)
+/// which keep the single-executor sched-context path (W2), `FreertosBoard` has a C
+/// `nros_board_freertos_run_tiers` implementation (nros-board-freertos) that mirrors
+/// the Rust `run_tiers_entry`. The generated entry emits `nros_app_main` +
+/// `NROS_APP_MAIN_REGISTER_VOID`, calling `FreertosBoard::run_tiers` (RFC-0015 §5).
+pub(crate) fn board_is_freertos_embedded(board: &str) -> bool {
+    board_cpp_path(board) == "::nros::board::FreertosBoard"
+}
+
 /// Phase 240.2 (RFC-0043) — **typed** entry emitter. Routes each launch node to
 /// the REAL executor via its component object, instead of the legacy type-erased
 /// `__nros_component_<pkg>_register` call into the synthesizing
@@ -341,8 +351,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         .as_ref()
         .is_some_and(|t| !t.is_single_tier());
     // Phase 274.W2 — multi-tier native → per-tier threads (run_tiers).
-    // Embedded multi-tier keeps the single-executor sched-context path (W3).
-    let use_run_tiers = use_tiers && !board_is_embedded(&plan.board);
+    // Phase 274.W3 — FreeRTOS embedded also uses run_tiers (per-RTOS tasks).
+    // Other embedded boards (Zephyr, NuttX, ThreadX) keep sched-context path.
+    let use_run_tiers =
+        use_tiers && (!board_is_embedded(&plan.board) || board_is_freertos_embedded(&plan.board));
 
     if use_run_tiers {
         // ----------------------------------------------------------------
@@ -544,14 +556,29 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         emit_boot_config_static(&mut out, plan)?;
         out.push('\n');
 
-        // main — call run_tiers (native only; embedded W3 uses sched-context path).
-        out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
-        let _ = writeln!(
-            out,
-            "    return ::nros::board::NativeBoard::run_tiers(\
+        // Phase 274.W2/W3 — entry point: FreeRTOS embedded → nros_app_main +
+        // NROS_APP_MAIN_REGISTER_VOID (startup.c calls app_main); native → int main.
+        let board = board_cpp_path(&plan.board);
+        if board_is_freertos_embedded(&plan.board) {
+            // Phase 274.W3 — FreeRTOS per-tier embedded entry.
+            out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
+            let _ = writeln!(
+                out,
+                "    return {board}::run_tiers(\
 nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
-        );
-        out.push_str("}\n");
+            );
+            out.push_str("}\n\n");
+            out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
+        } else {
+            // Native (NativeBoard): int main.
+            out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
+            let _ = writeln!(
+                out,
+                "    return {board}::run_tiers(\
+nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
+            );
+            out.push_str("}\n");
+        }
     } else {
         // ----------------------------------------------------------------
         // Single-executor path (single-tier OR embedded multi-tier with
@@ -1581,6 +1608,60 @@ mod tests {
         assert!(
             !src.contains("NativeBoard::run_tiers"),
             "embedded board must not emit run_tiers; src:\n{src}"
+        );
+    }
+
+    #[test]
+    fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
+        // Phase 274.W3 — FreeRTOS embedded board + multi-tier emits per-tier setup
+        // functions + FreertosBoard::run_tiers via nros_app_main +
+        // NROS_APP_MAIN_REGISTER_VOID (NOT the sched-context path, NOT int main).
+        let mut plan = fixture_plan_with_tiers();
+        plan.board = "freertos".into(); // FreertosBoard
+
+        let src = emit_typed(&plan).expect("typed cpp freertos tier emit ok");
+
+        // Per-tier setup functions emitted.
+        assert!(
+            src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+            "expected tier-0 setup fn; got:\n{src}"
+        );
+        assert!(
+            src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+            "expected tier-1 setup fn; got:\n{src}"
+        );
+        // NativeTierSpec array emitted.
+        assert!(
+            src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+            "expected 2-element NativeTierSpec array; src:\n{src}"
+        );
+        // FreertosBoard::run_tiers called (not NativeBoard).
+        assert!(
+            src.contains("::nros::board::FreertosBoard::run_tiers("),
+            "nros_app_main must call FreertosBoard::run_tiers; src:\n{src}"
+        );
+        // FreeRTOS embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID.
+        assert!(
+            src.contains("extern \"C\" int nros_app_main("),
+            "FreeRTOS run_tiers must emit nros_app_main; src:\n{src}"
+        );
+        assert!(
+            src.contains("NROS_APP_MAIN_REGISTER_VOID()"),
+            "FreeRTOS run_tiers must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
+        );
+        // NOT int main (that's native).
+        assert!(
+            !src.contains("int main("),
+            "FreeRTOS run_tiers must NOT emit int main; src:\n{src}"
+        );
+        // Old sched-context wiring must NOT appear.
+        assert!(
+            !src.contains("__nros_sc_ids"),
+            "FreeRTOS run_tiers path must not emit sc_ids; src:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_create_sched_context"),
+            "FreeRTOS run_tiers path must not emit create_sched_context; src:\n{src}"
         );
     }
 

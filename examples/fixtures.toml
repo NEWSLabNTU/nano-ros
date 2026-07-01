@@ -1005,6 +1005,24 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/deploy_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-tier C++ realtime workspace on
+# FreeRTOS/mps2-an385 (QEMU). The codegen gate (board_is_freertos_embedded) emits
+# per-tier setup functions + NativeTierSpec array + nros_app_main calling
+# FreertosBoard::run_tiers, which delegates to nros_board_freertos_run_tiers
+# (nros-board-freertos glue): one RTOS task per tier over one shared session.
+# ctrl (high tier, prio=5, 10 ms) + telem (low tier, prio=2, 100 ms).
+# Consumed by tests/realtime_tiers_cpp_freertos_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-realtime"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp-mps2"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-freertos"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17851" }
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

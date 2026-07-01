@@ -86,6 +86,17 @@ NROS_PUBLIC int32_t nros_board_native_run_tiers(const char* session_name,
                                                 const nros_native_tier_spec_t* tiers,
                                                 size_t n_tiers);
 
+/* Phase 274.W3 (RFC-0015 Model 1) — run a multi-tier embedded C/C++ entry on
+ * FreeRTOS: open ONE RMW session, spawn one FreeRTOS task per non-boot tier
+ * (each with a borrowed executor sharing the session), run the boot tier on the
+ * caller's task (the startup.c app task). `locator` is the connect endpoint;
+ * `domain_id` is the ROS domain id; `session_name` names the primary session.
+ * Defined in nros-board-freertos (compiled by board's build.rs glue). */
+NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
+                                                  const char* session_name,
+                                                  const nros_native_tier_spec_t* tiers,
+                                                  size_t n_tiers);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

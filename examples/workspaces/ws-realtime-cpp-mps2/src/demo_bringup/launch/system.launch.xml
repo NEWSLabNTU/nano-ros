@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Phase 274.W3 (ws-realtime-cpp-mps2) — 2-node, 2-tier C++ entry on FreeRTOS/mps2.
+     Node `name`s must match system.toml [[component]].name (RFC-0032 §7). -->
+<launch>
+    <node pkg="ctrl_pkg" exec="ctrl" name="ctrl_node"/>
+    <node pkg="telem_pkg" exec="telem" name="telem_node"/>
+</launch>

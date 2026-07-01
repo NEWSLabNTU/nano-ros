@@ -494,6 +494,28 @@ class FreertosBoard {
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
+
+    /// Phase 274.W3 (RFC-0015 Model 1) — multi-tier FreeRTOS embedded entry.
+    ///
+    /// Delegates to `nros_board_freertos_run_tiers` (defined in nros-board-freertos)
+    /// which opens ONE RMW session on the caller's task, spawns one FreeRTOS task
+    /// per non-boot tier (each with a **borrowed** executor sharing the session),
+    /// and runs per-tier `setup` + `spin_once` loops at their declared periods.
+    ///
+    /// `session_name` sets the primary session / node name; NULL or empty → `"node"`.
+    /// `tiers` must be a non-null array of `n_tiers` `NativeTierSpec` entries sorted
+    /// highest-priority-first (the codegen emitter produces them in that order).
+    /// `locator` and `domain_id` come from `NROS_ENTRY_LOCATOR` /
+    /// `NROS_ENTRY_DOMAIN_ID` (compile-time baked by cmake). Never returns on
+    /// success (the boot-tier spin loop runs forever on embedded firmware).
+    static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
+                             size_t n_tiers) {
+        // NativeTierSpec and nros_native_tier_spec_t have identical layout by
+        // construction (same field order, same types, same ABI). The cast is safe.
+        return ::nros_board_freertos_run_tiers(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
+    }
 };
 
 } // namespace board

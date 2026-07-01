@@ -59,6 +59,14 @@ set(_NROS_FREERTOS_STARTUP_C
     "${_NROS_BOARD_DIR}/startup.c")
 set(_NROS_FREERTOS_NET_C
     "${_NROS_FREERTOS_PLAT_DIR}/src/net.c")
+# Phase 274.W3 — embedded C/C++ multi-tier entry glue. The CMake board path is a
+# separate board-support impl from the cargo `nros-board-freertos` build.rs glue;
+# `freertos_run_tiers.c` (which defines `nros_board_freertos_run_tiers`, called by
+# FreertosBoard::run_tiers) is only wired into that build.rs, so the CMake C/C++
+# entry link fails with an undefined reference. Compile it into the app target too
+# (unused function is dropped by --gc-sections for single-tier run_components apps).
+set(_NROS_FREERTOS_RUN_TIERS_C
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-freertos/c/freertos_run_tiers.c")
 
 # ---------------------------------------------------------------------------
 # Validate vendored asset presence (mirrors freertos-support.cmake's
@@ -149,6 +157,7 @@ endif()
 set(FREERTOS_STARTUP_SOURCE
     "${_NROS_FREERTOS_STARTUP_C}"
     "${_NROS_FREERTOS_NET_C}"
+    "${_NROS_FREERTOS_RUN_TIERS_C}"
     CACHE INTERNAL "FreeRTOS / mps2-an385 startup + net translation units")
 
 set(FREERTOS_STARTUP_INCLUDES
