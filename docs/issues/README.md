@@ -44,13 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#121** — [`workspace-rust-threadx-linux` fails E0463 (`nros_platform` rlib not produced) on a
-  cyclonedds-provisioned clean build](0121-threadx-linux-entry-nros-platform-host-unification.md):
-  split from #120. `threadx_linux_entry` for `--target x86_64-unknown-linux-gnu` forces
-  `nros-platform[platform-threadx]` onto the host `nros` build via feature unification → no usable
-  `nros_platform` rlib for `nros`'s unconditional `pub use`. Only reproduces in the full
-  cyclonedds-provisioned matrix (an isolated `-p` build is a false green). Needs a captured
-  clean-build log + a fix (gate the re-export / per-target dep / host-rlib for `platform-threadx`).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -83,10 +76,14 @@ absent](archived/0120-bridge-workspace-fixtures-fail-when-cyclonedds-submodule-a
 honoring its cyclonedds-submodule gate. Fixed with an explicit dependency gate in
 `workspace-fixtures-build.sh` (native cyclonedds rows fail LOUD + actionable when
 `third-party/dds/cyclonedds` is absent — the bridge vendors C++ CycloneDDS by design; the gate
-checked the wrong stale path `third-party/cyclonedds` until phase-263 follow-up). The
-`threadx-linux` E0463 leg DOES still reproduce deterministically on a cyclonedds-provisioned clean
-build (feature unification forces `nros-platform[platform-threadx]` onto the x86_64-host `nros`
-build → `nros_platform` rlib not produced) — tracked separately as **#121**. Also: **#96** —
+checked the wrong stale path `third-party/cyclonedds` until phase-263 follow-up). Also: **#121**
+(resolved — not a bug) — [`workspace-rust-threadx-linux` E0463 was target-dir pollution, not feature
+unification](archived/0121-threadx-linux-entry-nros-platform-host-unification.md): a pristine
+cyclonedds-provisioned `build-test-fixtures` builds the leaf green (`== threadx_linux == OK`), and
+`nros-platform[platform-threadx]` does produce a usable host rlib. The E0463 only appeared with
+mixed-`--target` artifacts left in the shared `target-fixtures/threadx-linux` by ad-hoc builds; no
+CI pollution vector exists (threadx-linux isn't in `NROS_FIXTURE_SHARED_PLATFORMS`). Fix is `rm -rf`
+the target-dir, not a code change. Also: **#96** —
 [in-process (same-executor) node-to-node delivery did not
 happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
 same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded
