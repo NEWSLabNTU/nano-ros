@@ -1550,23 +1550,42 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     // on a still-live primary executor.
     let handle = unsafe { nros_node::SessionHandle::from_raw(session_handle) };
 
-    // Open a new executor that Borrows the session — does NOT open a new RMW
-    // session and does NOT close it on drop. Same as the Rust tier-task pattern.
-    // SAFETY: the handle's session is alive (caller's contract); access only
-    // through executor spin calls (RMW backend's internal locks serialize).
-    let mut executor = unsafe { CppExecutor::open_with_session_handle(handle) };
+    // phase-271 × 274.W1 — construct in place, heap-free: carve the borrowed
+    // executor's per-entry backing from the tail of the caller's `CppContext`
+    // buffer (same self-referential-pin model as `nros_cpp_init`'s `open_in`),
+    // then open the borrowed executor over it and write it (offset 0) +
+    // domain_id. The executor Borrows the session — does NOT open a new RMW
+    // session and does NOT close it on drop (the Rust tier-task pattern).
+    let ctx_ptr = out_storage as *mut CppContext;
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
+        core::slice::from_raw_parts_mut(
+            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
+            CPP_EXECUTOR_BACKING_U64S,
+        )
+    };
+    // SAFETY: the handle's session is alive (caller's contract); `backing` is
+    // sized/aligned per `ExecutorSizing::DEFAULT` and lives for the caller's
+    // buffer lifetime, meeting `open_with_session_handle_in`'s contract.
+    let mut executor = unsafe {
+        CppExecutor::open_with_session_handle_in(
+            handle,
+            backing,
+            nros_node::ExecutorSizing::DEFAULT,
+        )
+    };
 
     // Set node identity for graph naming (liveliness key expressions etc.).
     if let Some(name_str) = unsafe { cstr_to_str(node_name) } {
         executor.set_node_identity(name_str, "/");
     }
 
-    let ctx = CppContext {
-        executor,
-        domain_id,
-    };
-    // Write directly into caller-provided storage — no heap allocation.
-    unsafe { core::ptr::write(out_storage as *mut CppContext, ctx) };
+    // Write directly into caller-provided storage — no heap allocation. The
+    // executor's slices already point into `(*ctx_ptr).backing` (its final,
+    // pinned location), so moving the `Executor` struct itself is sound.
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
+    }
     NROS_CPP_RET_OK
 }
 
