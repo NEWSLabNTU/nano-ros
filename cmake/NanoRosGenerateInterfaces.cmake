@@ -543,17 +543,18 @@ function(nros_generate_interfaces target)
       # and read the in-tree `#error` stub (`*_OPAQUE_U64S undeclared`). The mirror
       # dir is on the include path ahead of the stub, but the file is not there yet.
       # `add_dependencies` orders the target but not each TU (issues 0088/0090), so
-      # also set a HARD file-level `OBJECT_DEPENDS` on the generated sources. (Posix
-      # only — embedded generates the header via a different path.)
-      if(NANO_ROS_PLATFORM STREQUAL "posix")
-        get_property(_nrgi_c_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
-        if(_nrgi_c_hdr)
-          if(TARGET nros_c_config_header)
-            add_dependencies(${_lib_target} nros_c_config_header)
-          endif()
-          set_source_files_properties(${_generated_sources} PROPERTIES
-            OBJECT_DEPENDS "${_nrgi_c_hdr}")
-        endif()
+      # also set a HARD file-level `OBJECT_DEPENDS` on the generated sources. Gate on
+      # the Corrosion mirror actually existing rather than a platform name: posix AND
+      # the threadx/riscv64 cross-Cyclone examples both build the sizes header via the
+      # `nros_c_config_header` mirror target and hit this race (issue 0122). Zephyr and
+      # the freertos carrier generate the header through other paths and define no such
+      # target/property, so the guards below skip them (freertos is handled in
+      # NanoRosNodeRegister.cmake, issue 0090).
+      get_property(_nrgi_c_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
+      if(_nrgi_c_hdr AND TARGET nros_c_config_header)
+        add_dependencies(${_lib_target} nros_c_config_header)
+        set_source_files_properties(${_generated_sources} PROPERTIES
+          OBJECT_DEPENDS "${_nrgi_c_hdr}")
       endif()
     else()
       add_library(${_lib_target} INTERFACE)

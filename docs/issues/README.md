@@ -83,7 +83,13 @@ cyclonedds-provisioned `build-test-fixtures` builds the leaf green (`== threadx_
 `nros-platform[platform-threadx]` does produce a usable host rlib. The E0463 only appeared with
 mixed-`--target` artifacts left in the shared `target-fixtures/threadx-linux` by ad-hoc builds; no
 CI pollution vector exists (threadx-linux isn't in `NROS_FIXTURE_SHARED_PLATFORMS`). Fix is `rm -rf`
-the target-dir, not a code change. Also: **#96** —
+the target-dir, not a code change. Also: **#122** —
+[threadx-rv64 Cyclone message-lib TUs raced the `nros_c_config_header`
+mirror](archived/0122-threadx-rv64-message-lib-sizes-header-race.md): the 0088/0090/0114
+sizes-header race recurred on the threadx-qemu-riscv64 Cyclone fixtures because the 0114
+`OBJECT_DEPENDS` fix was gated `NANO_ROS_PLATFORM==posix`, yet threadx-rv64 uses the same Corrosion
+mirror. Fixed by gating on the mirror target's existence instead of the platform name. (Surfaced once
+the sibling cross-Cyclone self-provision fix let the graph compile to the message libs.) Also: **#96** —
 [in-process (same-executor) node-to-node delivery did not
 happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
 same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded
