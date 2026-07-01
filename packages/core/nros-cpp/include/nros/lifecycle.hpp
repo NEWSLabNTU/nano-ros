@@ -29,12 +29,16 @@
 
 namespace nros {
 
-/// REP-2002 primary states. Mirrors `nros_cpp_lifecycle_get_state()`.
+/// REP-2002 primary states. Values match `nros_cpp_lifecycle_get_state()` /
+/// `nros_core::lifecycle::LifecycleState` (`Unknown` is the `0` sentinel returned for a
+/// null executor or before services are registered).
 enum class LifecycleState : uint8_t {
-    Unconfigured = 0,
-    Inactive = 1,
-    Active = 2,
-    Finalized = 3,
+    Unknown = 0,
+    Unconfigured = 1,
+    Inactive = 2,
+    Active = 3,
+    Finalized = 4,
+    ErrorProcessing = 5,
 };
 
 /// Transition-callback outcome (rclcpp `CallbackReturn` shape). `Failure` rolls

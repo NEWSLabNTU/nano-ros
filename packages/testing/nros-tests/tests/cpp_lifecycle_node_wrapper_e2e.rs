@@ -10,7 +10,7 @@
 //! The overrides print markers and publishing is gated on the Active state, so this
 //! test asserts the observable proof that the wrapper works end to end:
 //!   - `LC:on_configure` + `LC:on_activate` — the overrides ran (trampolines dispatch).
-//!   - `LC:state=2` — `get_state()` reads Active through the C++ handle.
+//!   - `LC:state=3` — `get_state()` reads Active (REP-2002 numbering) through the handle.
 //!   - `Published:` — the timer publishes only after `on_activate` set the gate.
 //!
 //! Run with:
@@ -59,7 +59,7 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
 
     node.kill();
 
-    for marker in ["LC:on_configure", "LC:on_activate", "LC:state=2"] {
+    for marker in ["LC:on_configure", "LC:on_activate", "LC:state=3"] {
         assert!(
             out.contains(marker),
             "expected wrapper marker {marker:?} in the managed node's output, got:\n{out}"
