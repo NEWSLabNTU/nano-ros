@@ -75,6 +75,22 @@ Each wave green + landable; Rust unaffected throughout (it already runs Model 1)
 - Native + embedded C/C++ multi-tier e2e pass via real per-tier tasks; single-tier byte-identical;
   Rust realtime e2e unchanged.
 
+## Outcome (2026-07-02) — native DONE (proven); embedded code-complete, runtime → #126
+
+| Wave | Commit | Result |
+| --- | --- | --- |
+| W1 primitives | `bab684ae4` | C/C++ `session_handle` + `open_over_session` (borrowed executor, shared session) + `set_active_groups` FFI over the Rust `Executor` methods; MockSession gating tests |
+| W2 native | `4fc3d5a22` | C++/C `NativeBoard::run_tiers` (thread per tier over one session, gated, per-tier priority) + codegen emits `run_tiers`; **`realtime_tiers_{cpp,c}_e2e` PASS via real threads** (ctrl:telem ≈ 5.5×), shared session sound; node-pinned-to-tier re-applied on the run_tiers path |
+| W3 embedded | `3f095def6` | FreeRTOS/mps2 `freertos_run_tiers.c` + `FreertosBoard::run_tiers` + codegen + fixture — **compiles + links** (arm-none-eabi, ELF carries the symbol, entry uses `run_tiers`); alloc via `nros_platform_alloc` (RFC-0034). **Runtime blocked → #126** (tier-task stack overflow + `run_tiers` boot session doesn't connect on FreeRTOS — the zenoh-pico multi-task session issue) |
+
+**The convergence is achieved + proven for native:** C, C++, and Rust now run the *same* execution
+model — RFC-0015 Model 1, per-tier executors over one shared session with `active_groups` gating —
+behind the identical phase-273 group API + `system.toml group_tiers`. `sched_context` is re-homed as
+the single-`Executor`/no-tier fallback + intra-tier knob (RFC-0047). **Embedded** (FreeRTOS) is
+code-complete and builds/links, but the runtime is deferred to **#126** (the hard-tail zenoh-pico
+session-lifecycle-under-multi-task issue) — Zephyr/NuttX/ThreadX embedded `run_tiers` follow the same
+pattern + likely the same #126 fix. Native + Rust realtime e2e unchanged; single-tier byte-identical.
+
 ## Risks / decisions
 - **Shared session across tasks:** the RMW session (zenoh-pico / DDS) accessed from N tier tasks must
   be concurrency-safe — the Rust boards already rely on this (RFC-0015 §2.3); verify the C/C++ FFI
