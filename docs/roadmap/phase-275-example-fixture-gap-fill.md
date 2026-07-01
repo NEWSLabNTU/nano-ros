@@ -1,6 +1,13 @@
 # Phase 275 — Example fixture gap-fill (mechanical coverage holes)
 
-Status: **Planned (2026-07-01)** · Implements issue #102 (H2–H6) · Informs RFC-0026 (examples).
+Status: **In progress (2026-07-02)** · Implements issue #102 (H2–H6) · Informs RFC-0026 (examples).
+
+**Progress (2026-07-02, verified on a known-good machine):** W2 (native all-lang variants) ✓ ·
+W3 (zephyr non-role leaves — no real gap, FVP-covered) ✓ · W4 (threadx-riscv64 cyclone svc/action —
+de-scoped) ✓ · W5 (stm32 listener-embassy) ✓ · W6 (silent-gap gate `examples_fixture_coverage.rs`) ✓.
+W1 partial: freertos entries already run-plan-covered, threadx-linux entries **landed** (fixture rows +
+`threadx_linux_entry_build.rs`); **nuttx entries blocked** on a standalone-`[[bin]]` NuttX-libc link
+gap (issue #125). Working detail → `phase-275-276-branch-notes.md`.
 
 > **Goal.** Close the *mechanical* example-coverage holes from the 2026-07-01 re-audit of
 > issue #102: examples that exist in-tree (and are claimed in the RFC-0026 matrix) but are
