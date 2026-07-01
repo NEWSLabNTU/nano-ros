@@ -33,7 +33,20 @@ macro(nros_provide_cyclonedds)
         set(NROS_CYCLONEDDS_PROVENANCE "target")
         message(STATUS "nano-ros: CycloneDDS::ddsc already defined — reusing it")
     else()
-        find_package(CycloneDDS CONFIG QUIET)
+        # On a cross build (CMAKE_TOOLCHAIN_FILE → CMAKE_CROSSCOMPILING), a
+        # find_package(CycloneDDS) match is the HOST-native Cyclone (e.g. a
+        # `~/.local` or ROS install): CycloneDDSConfig.cmake is arch-agnostic, so
+        # find_package happily returns it, but its posix `ddsrt` headers
+        # (`#include <sys/socket.h>`) do not exist on the freestanding embedded
+        # target → the build dies compiling `iovec.h`. A prebuilt CROSS install
+        # would have to be supplied as an already-defined `CycloneDDS::ddsc`
+        # target (handled above); otherwise a cross build MUST self-provision
+        # from source. So consult find_package only for native builds.
+        if(CMAKE_CROSSCOMPILING)
+            set(CycloneDDS_FOUND FALSE)
+        else()
+            find_package(CycloneDDS CONFIG QUIET)
+        endif()
         if(CycloneDDS_FOUND)
             set(NROS_CYCLONEDDS_PROVENANCE "find_package")
             message(STATUS "nano-ros: CycloneDDS via find_package (${CycloneDDS_DIR})")
