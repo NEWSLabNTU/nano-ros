@@ -1,11 +1,21 @@
 # Phase 275/276 — branch implementation notes (2026-07-01)
 
 > Working notes for branch `phase-275-276-example-fixture-coverage`. The dev host has failing RAM
-> (issue #115) so **nothing here is build/run-verified** — this branch is a staging area to be
-> built, verified, and completed on a known-good machine. Below: what was done, what each remaining
-> item actually requires (study revealed most are NOT mechanical row-adds), and the risks found.
+> (issue #115) so the original staging pass was **unverified**. Below: what was done, what each
+> remaining item actually requires (study revealed most are NOT mechanical row-adds), and the risks.
 
-## Done on this branch (needs verification)
+## Verified on a known-good machine (2026-07-02)
+
+- **W2 (native, all langs)** — `just native build-fixture-rust` + `build-fixture-extras` build
+  green; all 3 rust + 4 c + 4 cpp new rows produce artifacts (`build-zenoh/<exe>` confirmed).
+- **W5 (stm32 listener-embassy)** — `cargo check --target thumbv7em-none-eabihf` clean.
+- **W4 (threadx-riscv64 cyclone svc/action)** — DONE by de-scope: documented in
+  `examples/README.md` "Intentionally empty cells" (runtime blocked on Phase 177.22; two-QEMU e2e
+  is pub/sub only). No unverified rows added.
+- **W6 (silent-gap gate)** — DONE: `examples_fixture_coverage.rs` green in ~6s; clippy clean. The
+  17 remaining `*_entry` demos (W1) + zephyr rust cyclone leaf (W3) are its tracked exceptions.
+
+## Done on this branch (verified above)
 
 - **275 W2 (native, all langs) — build-assert rows.** Added `examples/fixtures.toml` rows for every
   native variant example that shipped with zero fixtures:
