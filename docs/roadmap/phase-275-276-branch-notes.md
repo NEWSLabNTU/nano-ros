@@ -12,8 +12,11 @@
 - **W4 (threadx-riscv64 cyclone svc/action)** — DONE by de-scope: documented in
   `examples/README.md` "Intentionally empty cells" (runtime blocked on Phase 177.22; two-QEMU e2e
   is pub/sub only). No unverified rows added.
-- **W6 (silent-gap gate)** — DONE: `examples_fixture_coverage.rs` green in ~6s; clippy clean. The
-  17 remaining `*_entry` demos (W1) + zephyr rust cyclone leaf (W3) are its tracked exceptions.
+- **W3 (zephyr non-role leaves)** — DONE by re-audit: no real gap. The aemv8r cyclone leaves are
+  built by the FVP recipes (missed by the 2026-07-01 audit); service-client-async is already
+  de-scoped; `zephyr/cpp/talker-typed` is a package.xml-less orphan (W5 cleanup). See W3 below.
+- **W6 (silent-gap gate)** — DONE: `examples_fixture_coverage.rs` green (~6s cold, 0.01s warm);
+  clippy clean. The 17 remaining `*_entry` demos (W1) are its only tracked exceptions.
 
 ## Done on this branch (verified above)
 
@@ -50,14 +53,18 @@ Uncovered: native/c `{custom-msg, custom-platform, custom-transport-loopback, lo
 row schema** (`cmake_defs`, `codegen_out`, `build_subdir`, `rmw`, per-RMW `build-<rmw>/`), not the
 3-line rust row. Mirror an existing native C/C++ row block. Higher risk blind — do on good hardware.
 
-### 275 W3 — zephyr non-role leaves (partly already de-scoped)
-`nros_fixture_roles()` in `scripts/build/fixture-matrix.sh` lists exactly the 6 roles; these leaves
-sit outside it. **Finding:** `zephyr/rust/service-client-async` is **already dropped/de-scoped** in
-`examples/README.md` (row 81, "Dropped 2026-06-02 per Phase 212.M-F.5") → leave it (W5/H6 territory,
-not a fixture to add). For `zephyr/{cpp,rust}/cyclonedds` and `zephyr/cpp/talker-typed`: decide
-whether to add a small non-role enumeration to the zephyr driver **or** de-scope in the README —
-needs driver understanding + a `native_sim` build to confirm each actually compiles (cyclone on
-zephyr especially). Not a mechanical add; do on good hardware.
+### 275 W3 — zephyr non-role leaves — DONE (2026-07-02): no real coverage gap
+Re-checked each; the 2026-07-01 audit had missed the **FVP driver** (same class of miss as the
+original #102 undercounting the zephyr role driver):
+- `zephyr/rust/cyclonedds/talker-aemv8r` — **covered**: built by `just zephyr
+  build-fvp-aemv8r-cyclonedds-rust` and run by `fvp_runtime_rust.rs`. Added to the W6 gate's
+  `TEST_DRIVEN_BUILDERS` (was mistakenly allowlisted).
+- `zephyr/cpp/cyclonedds/talker-aemv8r` — **covered** by `just zephyr build-fvp-aemv8r-cyclonedds`;
+  has no `package.xml`, so it is not a gated leaf (built, not silent).
+- `zephyr/rust/service-client-async` — already de-scoped in `examples/README.md` (Phase 212.M-F.5).
+- `zephyr/cpp/talker-typed` — no `package.xml` + no build recipe: an orphan dir, not a matrix cell.
+  Fix-or-delete belongs to W5 stale-cleanup, not a fixture to add.
+No new fixtures needed; no README de-scope needed beyond what already exists.
 
 ### 275 W4 — threadx-riscv64 cyclone svc/action (RISK: may be unsupported)
 `examples/fixtures.toml` comments this cell **"experimental Cyclone C/C++ (gated; talker/listener

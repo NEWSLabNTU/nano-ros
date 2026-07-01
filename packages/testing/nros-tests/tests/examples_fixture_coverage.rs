@@ -63,6 +63,11 @@ const ZEPHYR_ROLES: &[&str] = &[
 const TEST_DRIVEN_BUILDERS: &[&str] = &[
     // freertos `talker_entry` run-plan e2e — `freertos_run_plan_runtime.rs`.
     "qemu-arm-freertos/rust/talker_entry",
+    // Cyclone-on-Zephyr aemv8r reference — built by the FVP recipe
+    // `just zephyr build-fvp-aemv8r-cyclonedds-rust` and run by
+    // `fvp_runtime_rust.rs` (the cpp sibling has no package.xml, so it is
+    // not a leaf here; it is built by `build-fvp-aemv8r-cyclonedds`).
+    "zephyr/rust/cyclonedds/talker-aemv8r",
 ];
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must
@@ -139,14 +144,6 @@ const ALLOWLIST: &[(&str, &str)] = &[
     (
         "threadx-linux/rust/action-client_entry",
         "275 W1: entry-pkg fixture pending",
-    ),
-    // ---- 275 W3: zephyr non-role leaf — Cyclone-on-Zephyr reference node.
-    // The cpp sibling (`zephyr/cpp/cyclonedds/talker-aemv8r`) is the
-    // canonical-shape carve-out; the rust one needs a native_sim build to
-    // confirm Cyclone-on-Zephyr links before adding a driver enumeration.
-    (
-        "zephyr/rust/cyclonedds/talker-aemv8r",
-        "275 W3: needs native_sim cyclone build to confirm",
     ),
 ];
 
