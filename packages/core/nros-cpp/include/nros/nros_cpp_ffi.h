@@ -799,6 +799,65 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
                                          uint8_t sc_id);
 
 /**
+ * Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
+ *
+ * Returns an opaque pointer to the underlying RMW session. Pass this to
+ * [`nros_cpp_executor_open_over_session`] to open additional executors that
+ * share the same session (the per-tier borrowed-executor model).
+ *
+ * The returned pointer is valid as long as the primary executor's storage
+ * (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input.
+ *
+ * # Safety
+ * `executor` must be a valid pointer to a `CppContext` written by `nros_cpp_init()`.
+ */
+void *nros_cpp_executor_session_handle(void *executor);
+
+/**
+ * Phase 274.W1 (RFC-0015 Model 1) — open a new `Borrowed` executor over a shared session.
+ *
+ * Opens an executor that **does not own or close** the session on drop (the
+ * `Borrowed` session store). This is the per-tier task primitive: the primary
+ * executor opened the session once via `nros_cpp_init`; each tier task calls this
+ * with the primary's session handle to get its own executor over the same session.
+ *
+ * `node_name` sets the borrowed executor's node identity for graph naming; NULL
+ * leaves it unnamed. `domain_id` is stored in the new context (it is consumed
+ * during session open for the primary — the borrowed executor inherits the same
+ * transport config from the shared session).
+ *
+ * # Safety
+ * - `session_handle` must be a valid non-null pointer from
+ *   [`nros_cpp_executor_session_handle`] on a live primary executor.
+ * - `out_storage` must be valid caller-provided storage of at least
+ *   `CPP_EXECUTOR_OPAQUE_U64S * 8` bytes, 8-byte aligned, uninitialised.
+ * - The primary executor's storage MUST outlive every borrowed executor built from it.
+ */
+nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
+                                                   const char *node_name,
+                                                   uint32_t domain_id,
+                                                   void *out_storage);
+
+/**
+ * Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.
+ *
+ * After this call, only callbacks whose `.callback_group()` is in `groups` will
+ * register on this executor. Pass `n == 0` or `groups == NULL` to clear the
+ * filter (wildcard — accept all groups, which is the default).
+ *
+ * In the per-tier model: call this on a borrowed executor BEFORE registering
+ * callbacks so only the tier's groups land here. Mirrors
+ * `Executor::set_active_groups`.
+ *
+ * # Safety
+ * - `executor` must be a valid pointer to a `CppContext`.
+ * - `groups` must be NULL or point to `n` valid null-terminated UTF-8 C strings.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_active_groups(void *executor,
+                                                   const char *const *groups,
+                                                   size_t n);
+
+/**
  * Get current monotonic time in nanoseconds.
  *
  * Used by `nros::Future::wait()` (header-side) to budget its spin loop by

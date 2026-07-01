@@ -370,6 +370,27 @@ pub struct SessionHandle(*mut session::ConcreteSession);
 #[cfg(any(has_rmw, test))]
 unsafe impl Send for SessionHandle {}
 
+#[cfg(any(has_rmw, test))]
+impl SessionHandle {
+    /// Phase 274.W1 — convert to an opaque `*mut c_void` for C/C++ FFI.
+    ///
+    /// The returned pointer encodes the session address and is valid as long as
+    /// the owning executor lives. Reconstruct via [`Self::from_raw`].
+    pub fn into_raw(self) -> *mut core::ffi::c_void {
+        self.0 as *mut core::ffi::c_void
+    }
+
+    /// Phase 274.W1 — reconstruct a `SessionHandle` from an opaque pointer
+    /// returned by [`Self::into_raw`].
+    ///
+    /// # Safety
+    /// `ptr` must be a pointer obtained from `into_raw()` on a `SessionHandle`
+    /// whose underlying session is still live and owned by its original executor.
+    pub unsafe fn from_raw(ptr: *mut core::ffi::c_void) -> Self {
+        Self(ptr as *mut session::ConcreteSession)
+    }
+}
+
 /// Phase 228.C — pure callback-group filter decision. `None` = wildcard (accept
 /// every group); `Some` = accept only listed groups. Backs
 /// [`Executor::group_active`]; split out so the logic is unit-testable without a
@@ -6038,6 +6059,133 @@ mod dispatch_registry_tests {
             overflow.is_err(),
             "over-capacity push must return Err(()) — raise \
              NROS_EXECUTOR_MAX_NODES at build time to grow the registry"
+        );
+    }
+}
+
+/// Phase 274.W1 — borrowed-executor session sharing + active-groups gating.
+///
+/// Validates three primitives introduced for RFC-0015 Model 1:
+/// - `session_handle` / `open_with_session_handle` (Borrowed session store —
+///   the borrowed executor does not own or close the session on drop).
+/// - `set_active_groups` + `group_active` (callback-group filter gating).
+///
+/// Uses `MockSession` (same pattern as `dispatch_registry_tests`); gated
+/// `not(feature = "rmw-cffi")` for the same reason.
+#[cfg(all(test, not(feature = "rmw-cffi")))]
+mod p274_w1_tier_executor_tests {
+    use super::Executor;
+    use crate::mock::MockSession;
+
+    #[test]
+    fn session_handle_borrowed_executor_shares_session_ptr() {
+        // Open the primary executor (session owner).
+        let session = MockSession::new();
+        let mut primary = Executor::from_session(session);
+
+        // Record the primary's session pointer for later comparison.
+        let primary_session_ptr = primary.session_ptr();
+
+        // Get the opaque session handle (into_raw for C FFI; here we keep it raw).
+        let handle = primary.session_handle();
+
+        // Open a second executor over the SAME session (Borrowed — does not own it).
+        // SAFETY: `primary` (the session owner) outlives `borrowed` in this scope.
+        let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
+
+        // Both executors must expose the same session pointer.
+        assert_eq!(
+            primary.session_ptr(),
+            borrowed.session_ptr(),
+            "borrowed executor must share the primary's session pointer"
+        );
+        assert_eq!(
+            borrowed.session_ptr(),
+            primary_session_ptr,
+            "session pointer must be stable across session_handle / open_with_session_handle"
+        );
+
+        // Drop the borrowed executor — the primary's session must remain valid.
+        drop(borrowed);
+
+        // Primary still exposes the same session pointer (session was NOT closed by drop).
+        assert_eq!(
+            primary.session_ptr(),
+            primary_session_ptr,
+            "primary session pointer must be unchanged after dropping the borrowed executor"
+        );
+    }
+
+    #[test]
+    fn set_active_groups_gates_group_active() {
+        let session = MockSession::new();
+        let mut primary = Executor::from_session(session);
+        let handle = primary.session_handle();
+
+        // SAFETY: primary outlives borrowed.
+        let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
+
+        // Before gating: wildcard — every group is accepted.
+        assert!(
+            borrowed.group_active("ctrl"),
+            "default (wildcard) must accept every group"
+        );
+        assert!(
+            borrowed.group_active("telem"),
+            "default (wildcard) must accept every group"
+        );
+
+        // Gate borrowed to only the "ctrl" group (one-tier filter).
+        borrowed.set_active_groups(&["ctrl"]);
+
+        assert!(
+            borrowed.group_active("ctrl"),
+            "\"ctrl\" must be active after set_active_groups([\"ctrl\"])"
+        );
+        assert!(
+            !borrowed.group_active("telem"),
+            "\"telem\" must NOT be active when only \"ctrl\" is gated"
+        );
+        assert!(
+            !borrowed.group_active("planning"),
+            "\"planning\" must NOT be active when only \"ctrl\" is gated"
+        );
+
+        // Primary is unaffected (it still uses the wildcard).
+        assert!(
+            primary.group_active("telem"),
+            "primary executor must remain unaffected (still wildcard)"
+        );
+
+        // Clear the filter on borrowed — back to wildcard.
+        borrowed.set_active_groups(&[]);
+        assert!(
+            borrowed.group_active("telem"),
+            "after clearing, borrowed must accept all groups again"
+        );
+    }
+
+    #[test]
+    fn session_handle_into_raw_from_raw_round_trip() {
+        let session = MockSession::new();
+        let mut primary = Executor::from_session(session);
+        let session_ptr = primary.session_ptr();
+
+        let handle = primary.session_handle();
+        let raw = handle.into_raw();
+
+        // into_raw must return a non-null pointer matching the session address.
+        assert!(!raw.is_null());
+        assert_eq!(raw as *mut _, session_ptr);
+
+        // from_raw must reconstruct a handle that opens the same borrowed executor.
+        // SAFETY: primary still owns the session, raw is its address.
+        let handle2 = unsafe { crate::executor::SessionHandle::from_raw(raw) };
+        let mut borrowed = unsafe { Executor::open_with_session_handle(handle2) };
+        assert_eq!(
+            borrowed.session_ptr(),
+            session_ptr,
+            "from_raw reconstructed handle must open executor on the same session"
         );
     }
 }

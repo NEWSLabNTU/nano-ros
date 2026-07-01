@@ -1457,6 +1457,138 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
     NROS_CPP_RET_OK
 }
 
+// ============================================================================
+// Phase 274.W1 — RFC-0015 Model 1 primitives (session ⊥ executor + gating FFI)
+// ============================================================================
+
+/// Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
+///
+/// Returns an opaque pointer to the underlying RMW session. Pass this to
+/// [`nros_cpp_executor_open_over_session`] to open additional executors that
+/// share the same session (the per-tier borrowed-executor model).
+///
+/// The returned pointer is valid as long as the primary executor's storage
+/// (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input.
+///
+/// # Safety
+/// `executor` must be a valid pointer to a `CppContext` written by `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void) -> *mut c_void {
+    if executor.is_null() {
+        return core::ptr::null_mut();
+    }
+    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+    ctx.executor.session_handle().into_raw()
+}
+
+/// Phase 274.W1 (RFC-0015 Model 1) — open a new `Borrowed` executor over a shared session.
+///
+/// Opens an executor that **does not own or close** the session on drop (the
+/// `Borrowed` session store). This is the per-tier task primitive: the primary
+/// executor opened the session once via `nros_cpp_init`; each tier task calls this
+/// with the primary's session handle to get its own executor over the same session.
+///
+/// `node_name` sets the borrowed executor's node identity for graph naming; NULL
+/// leaves it unnamed. `domain_id` is stored in the new context (it is consumed
+/// during session open for the primary — the borrowed executor inherits the same
+/// transport config from the shared session).
+///
+/// # Safety
+/// - `session_handle` must be a valid non-null pointer from
+///   [`nros_cpp_executor_session_handle`] on a live primary executor.
+/// - `out_storage` must be valid caller-provided storage of at least
+///   `CPP_EXECUTOR_OPAQUE_U64S * 8` bytes, 8-byte aligned, uninitialised.
+/// - The primary executor's storage MUST outlive every borrowed executor built from it.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
+    session_handle: *mut c_void,
+    node_name: *const c_char,
+    domain_id: u32,
+    out_storage: *mut c_void,
+) -> nros_cpp_ret_t {
+    if session_handle.is_null() || out_storage.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    // Reconstruct the SessionHandle from the opaque pointer.
+    // SAFETY: caller guarantees this came from nros_cpp_executor_session_handle
+    // on a still-live primary executor.
+    let handle = unsafe { nros_node::SessionHandle::from_raw(session_handle) };
+
+    // Open a new executor that Borrows the session — does NOT open a new RMW
+    // session and does NOT close it on drop. Same as the Rust tier-task pattern.
+    // SAFETY: the handle's session is alive (caller's contract); access only
+    // through executor spin calls (RMW backend's internal locks serialize).
+    let mut executor = unsafe { CppExecutor::open_with_session_handle(handle) };
+
+    // Set node identity for graph naming (liveliness key expressions etc.).
+    if let Some(name_str) = unsafe { cstr_to_str(node_name) } {
+        executor.set_node_identity(name_str, "/");
+    }
+
+    let ctx = CppContext {
+        executor,
+        domain_id,
+    };
+    // Write directly into caller-provided storage — no heap allocation.
+    unsafe { core::ptr::write(out_storage as *mut CppContext, ctx) };
+    NROS_CPP_RET_OK
+}
+
+/// Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.
+///
+/// After this call, only callbacks whose `.callback_group()` is in `groups` will
+/// register on this executor. Pass `n == 0` or `groups == NULL` to clear the
+/// filter (wildcard — accept all groups, which is the default).
+///
+/// In the per-tier model: call this on a borrowed executor BEFORE registering
+/// callbacks so only the tier's groups land here. Mirrors
+/// `Executor::set_active_groups`.
+///
+/// # Safety
+/// - `executor` must be a valid pointer to a `CppContext`.
+/// - `groups` must be NULL or point to `n` valid null-terminated UTF-8 C strings.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
+    executor: *mut c_void,
+    groups: *const *const c_char,
+    n: usize,
+) -> nros_cpp_ret_t {
+    if executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let ctx = unsafe { &mut *(executor as *mut CppContext) };
+
+    if n == 0 || groups.is_null() {
+        // Empty / NULL ⇒ wildcard (clear filter, accept all groups).
+        ctx.executor.set_active_groups(&[]);
+        return NROS_CPP_RET_OK;
+    }
+
+    // Collect group names from the C string pointer array onto the stack.
+    // Bounded at 16 entries (generous for tier gating; silently truncates extras).
+    const MAX_GROUPS_FFI: usize = 16;
+    let mut group_strs = [""; MAX_GROUPS_FFI];
+    let mut count = 0usize;
+
+    let ptr_slice = unsafe { core::slice::from_raw_parts(groups, n.min(MAX_GROUPS_FFI)) };
+    for &raw_ptr in ptr_slice {
+        if let Some(s) = unsafe { cstr_to_str(raw_ptr) }
+            && !s.is_empty()
+        {
+            group_strs[count] = s;
+            count += 1;
+        }
+    }
+
+    ctx.executor.set_active_groups(&group_strs[..count]);
+    NROS_CPP_RET_OK
+}
+
 /// Get current monotonic time in nanoseconds.
 ///
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by
