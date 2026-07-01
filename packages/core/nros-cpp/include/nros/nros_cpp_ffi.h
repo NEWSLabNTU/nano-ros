@@ -424,6 +424,16 @@ typedef struct nros_cpp_transport_ops_t {
 } nros_cpp_transport_ops_t;
 
 /**
+ * C callback type for a lifecycle transition: `uint8_t callback(void* context)`.
+ *
+ * The return value is a REP-2002 `TransitionResult` (`Success = 0`, `Failure = 1`,
+ * `Error = 2`). Registered per transition via `nros_cpp_lifecycle_register_on_*`;
+ * all six callbacks on one node share the single `ctx` set by the last register call
+ * (the C++ `LifecycleNode` wrapper always passes `this`).
+ */
+typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
+
+/**
  * Success.
  */
 #define NROS_CPP_RET_OK 0
@@ -1921,6 +1931,78 @@ nros_cpp_ret_t nros_cpp_register_lifecycle_services(void *executor);
  * they and their captured context remain live.
  */
 nros_cpp_ret_t nros_cpp_lifecycle_change_state(void *executor, uint8_t transition_id);
+
+/**
+ * Get the current REP-2002 lifecycle state of the C++ executor's state machine.
+ *
+ * Returns `0` (`Unconfigured`) if the executor is null or lifecycle services are
+ * not registered yet. State numbering: `Unconfigured = 0`, `Inactive = 1`,
+ * `Active = 2`, `Finalized = 3`.
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`.
+ */
+uint8_t nros_cpp_lifecycle_get_state(void *executor);
+
+/**
+ * Register the `on_configure` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_configure(void *executor,
+                                                        nros_cpp_lifecycle_callback_t cb,
+                                                        void *ctx);
+
+/**
+ * Register the `on_activate` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_activate(void *executor,
+                                                       nros_cpp_lifecycle_callback_t cb,
+                                                       void *ctx);
+
+/**
+ * Register the `on_deactivate` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_deactivate(void *executor,
+                                                         nros_cpp_lifecycle_callback_t cb,
+                                                         void *ctx);
+
+/**
+ * Register the `on_cleanup` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_cleanup(void *executor,
+                                                      nros_cpp_lifecycle_callback_t cb,
+                                                      void *ctx);
+
+/**
+ * Register the `on_shutdown` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_shutdown(void *executor,
+                                                       nros_cpp_lifecycle_callback_t cb,
+                                                       void *ctx);
+
+/**
+ * Register the `on_error` transition callback on the C++ executor's state machine.
+ *
+ * # Safety
+ * See [`register_cpp`].
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_register_on_error(void *executor,
+                                                    nros_cpp_lifecycle_callback_t cb,
+                                                    void *ctx);
 
 /**
  * Register lifecycle services and optionally drive the node to a higher
