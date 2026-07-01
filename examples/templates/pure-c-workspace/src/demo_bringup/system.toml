@@ -1,3 +1,5 @@
 [system]
 name = "pure_c_demo"
+rmw = "zenoh"
+domain_id = 0
 default_launch = "system.launch.xml"
