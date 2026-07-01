@@ -4,7 +4,7 @@ title: "Example fixture coverage holes — capability-on-embedded, native varian
 status: open
 type: tech-debt
 area: testing
-related: [rfc-0026, phase-263, phase-267]
+related: [rfc-0026, phase-263, phase-267, phase-273, phase-274]
 ---
 
 ## Status — re-audited 2026-07-01 (P0 largely resolved)
@@ -33,6 +33,14 @@ at the end for history.
   examples, 0 fixtures".) Only 4 non-role leaves remain — see below.
 - **FreeRTOS C/C++ (12)** — all present, `examples/fixtures.toml` ~2163–2233.
 - **NuttX C/C++ (12)** — all present, `examples/fixtures.toml` ~2240–2310.
+
+## Phases
+
+The remaining holes are planned across two roadmap phases:
+- **[Phase 273](../roadmap/phase-273-example-fixture-gap-fill.md)** — mechanical gap-fill: **H2–H6**
+  (`_entry` demos, native variants, zephyr leaves, threadx cyclone, stale cleanup, shape-gating).
+- **[Phase 274](../roadmap/phase-274-capability-coverage-on-embedded.md)** — **H1**: lifecycle /
+  parameters / safety / QoS / multihost on embedded targets.
 
 ## Remaining holes (2026-07-01, priority order)
 
