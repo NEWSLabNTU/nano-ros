@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#121** — [`workspace-rust-threadx-linux` fails E0463 (`nros_platform` rlib not produced) on a
+  cyclonedds-provisioned clean build](0121-threadx-linux-entry-nros-platform-host-unification.md):
+  split from #120. `threadx_linux_entry` for `--target x86_64-unknown-linux-gnu` forces
+  `nros-platform[platform-threadx]` onto the host `nros` build via feature unification → no usable
+  `nros_platform` rlib for `nros`'s unconditional `pub use`. Only reproduces in the full
+  cyclonedds-provisioned matrix (an isolated `-p` build is a false green). Needs a captured
+  clean-build log + a fix (gate the re-export / per-target dep / host-rlib for `platform-threadx`).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -79,7 +86,7 @@ honoring its cyclonedds-submodule gate. Fixed with an explicit dependency gate i
 checked the wrong stale path `third-party/cyclonedds` until phase-263 follow-up). The
 `threadx-linux` E0463 leg DOES still reproduce deterministically on a cyclonedds-provisioned clean
 build (feature unification forces `nros-platform[platform-threadx]` onto the x86_64-host `nros`
-build → `nros_platform` rlib not produced) — tracked separately. Also: **#96** —
+build → `nros_platform` rlib not produced) — tracked separately as **#121**. Also: **#96** —
 [in-process (same-executor) node-to-node delivery did not
 happen](archived/0096-in-process-same-executor-service-roundtrip-broken.md): zenoh-pico's
 same-session loopback (`Z_FEATURE_LOCAL_SUBSCRIBER`/`Z_FEATURE_LOCAL_QUERYABLE`) was hardcoded

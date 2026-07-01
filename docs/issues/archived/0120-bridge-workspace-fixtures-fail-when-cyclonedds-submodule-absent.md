@@ -5,47 +5,35 @@ status: resolved
 type: bug
 area: testing
 related: [phase-267, 0096, 0106, 0107, 0109, 0113]
-resolved_in: "fix(0120) — explicit cyclonedds-submodule gate; threadx-linux leg cannot-reproduce"
+resolved_in: "fix(0120) 9870968c8 + 8e35ce8a7 — cyclonedds bridge gate (path corrected); threadx-linux leg split out"
 ---
 
-## Update (2026-07-01) — cyclonedds gate implemented; threadx-linux leg still open
+## Update (2026-07-01, corrected) — bridge gate landed (+ path fix); threadx-linux is a real open bug
 
-**Part 1 (cyclonedds bridge — DONE.)** `scripts/build/workspace-fixtures-build.sh` now runs an
-explicit dependency gate in `build_workspace`: for a `platform = native` row whose
-`-DNROS_RMW=cyclonedds` is set, it checks `third-party/cyclonedds/CMakeLists.txt` and, if the
-submodule is absent, **fails LOUD before any build step** with an actionable message
-(`requires the cyclonedds submodule … run: git submodule update --init --recursive
-third-party/cyclonedds`) instead of letting the build fall through to the cryptic `E0433: cannot
-find nros_board_native`. By design the bridge vendors C++ CycloneDDS, so this is a hard failure,
-not a skip. Scoped to `native` so the embedded cyclonedds lanes (freertos/threadx/zephyr) keep
-their own graceful idlc/submodule skips. Verified: with cyclonedds absent the native rust lane
-now stops at the bridge with the explicit message and **zero** E0433 output.
+**Part 1 (cyclonedds bridge gate — DONE, with a path-fix follow-up).**
+`scripts/build/workspace-fixtures-build.sh::build_workspace` now hard-fails a `platform = native`
+`-DNROS_RMW=cyclonedds` row before any build step when the cyclonedds submodule is absent, with
+an actionable message, instead of the cryptic `E0433: cannot find nros_board_native`. The first
+cut (9870968c8) checked the **wrong path** `third-party/cyclonedds` — the submodule actually
+lives at **`third-party/dds/cyclonedds`** (`.gitmodules`), so the gate would have false-fired even
+when cyclonedds *is* provisioned. Corrected in **8e35ce8a7** (`fix(0120): cyclonedds
+workspace-fixture gate checked the wrong stale path`) to test
+`third-party/dds/cyclonedds/CMakeLists.txt` and point at `nros setup --source cyclonedds-src`.
+**Correction to the earlier note in this doc:** cyclonedds was *not* absent on the investigating
+box — it is checked out at `third-party/dds/cyclonedds`; the earlier "cyclonedds absent" reading
+was an artifact of probing the non-existent `third-party/cyclonedds`.
 
-**Part 2 (threadx-linux — NOT REPRODUCIBLE on current main; likely a broken-local-`nros`
-artifact.)** Re-investigated 2026-07-01 on `9870968c8`. `workspace-rust-threadx-linux`
-(`threadx_linux_entry`, a `nros::main!(launch=…)` bake macro) **builds green** for
-`x86_64-unknown-linux-gnu` via three independent paths, **0 × E0463**:
-
-1. `cargo build -p threadx_linux_entry --target x86_64-unknown-linux-gnu` (isolated).
-2. The same after `rm -rf target-fixtures/threadx-linux` (cache-cleared clean rebuild — the
-   exact condition the original report used).
-3. The real recipe `scripts/build/workspace-fixtures-build.sh threadx-linux rust` (full
-   `nros sync` + `codegen-system` + cargo, the row's `--target x86_64-unknown-linux-gnu`).
-
-`nros-platform` is `#![no_std]` and exports `BoardConfig` / `BoardTransportConfig`
-**unconditionally** (`src/lib.rs` `pub use board::{…}`), so a no_std rlib is produced for the
-host target regardless of `platform-threadx`; `nros`'s `pub use nros_platform::{…}` resolves.
-
-The original report flagged **uncommitted `nros-cli-core` working-tree churn** in that checkout.
-Since `threadx_linux_entry` depends on a correct `nros sync` (run by the recipe) and the bridge
-half (part 1) also had a broken-`nros sync` contributor, the most consistent explanation is that
-the reporter's **locally-rebuilt `nros` CLI mangled `nros sync`** (e.g. dropped the
-`nros-platform` dep / patch), yielding `E0463` — not a code defect. With a clean, committed
-`nros` the leg is green. Recent `nros-platform` refactors (266-W4a moving `BakedBootConfig` to
-`nros-platform-api`, 268-W1) may also have shifted resolution since the report.
-
-Action: no code change for part 2 — left as cannot-reproduce. Reopen with a reproducer (and the
-exact `nros` build used) if it resurfaces.
+**Part 2 (threadx-linux `E0463` — REAL, still open; earlier "cannot-reproduce" was WRONG).**
+The earlier attempt built `threadx_linux_entry` in ISOLATION (`cargo build -p threadx_linux_entry
+--target x86_64-unknown-linux-gnu`), which pulls only that entry's zenoh subgraph — **cyclonedds
+is not in the crate graph**, so the feature-unification conflict never triggers and the build
+looks green. That was a flawed reproduction. On a **cyclonedds-provisioned clean full build** the
+`E0463: can't find crate for nros_platform` **does reproduce deterministically**: workspace
+feature unification forces `nros-platform[platform-threadx]` onto the `x86_64`-host `nros` build,
+and no usable `nros_platform` rlib is produced for `nros`'s `pub use`. This is a genuine
+feature/target-unification defect, unrelated to the cyclonedds gate. It is **tracked separately as
+[#121](../0121-threadx-linux-entry-nros-platform-host-unification.md)** — not resolved by this
+issue.
 
 ## Summary
 
