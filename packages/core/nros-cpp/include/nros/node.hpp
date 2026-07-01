@@ -635,6 +635,8 @@ class Node {
     friend Result shutdown();
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
+    friend Result create_node_on(Node& out, void* executor_handle, const char* name,
+                                 const char* ns);
     friend Result spin_once(int32_t timeout_ms);
     friend Result spin();
     friend Result spin(uint32_t duration_ms, int32_t poll_ms);
@@ -832,6 +834,26 @@ inline Result create_node(Node& out, const char* name, const char* ns = nullptr)
         return Result(ErrorCode::NotInitialized);
     }
     out.executor_handle_ = Node::global_storage();
+    return Node::create(out, name, ns);
+}
+
+/// Phase 274.W2 — create a node on an explicit executor handle.
+///
+/// Used by per-tier setup functions (emitted by `nros codegen entry --lang
+/// cpp` for multi-tier workspaces) where each tier's setup runs on the
+/// tier's borrowed executor, not the global one. The executor handle is the
+/// `void*` passed to the tier's `setup(void* executor)` callback.
+///
+/// @param out              Receives the initialized node.
+/// @param executor_handle  Explicit executor handle (from a tier setup param).
+/// @param name             Node name.
+/// @param ns               Node namespace, or nullptr for "/".
+inline Result create_node_on(Node& out, void* executor_handle, const char* name,
+                             const char* ns = nullptr) {
+    if (executor_handle == nullptr) {
+        return Result(ErrorCode::NotInitialized);
+    }
+    out.executor_handle_ = executor_handle;
     return Node::create(out, name, ns);
 }
 

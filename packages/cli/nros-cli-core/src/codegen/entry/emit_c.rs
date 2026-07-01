@@ -94,184 +94,267 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     }
     out.push('\n');
 
-    // setup (post-init): create each node + wire its component's real callbacks.
-    out.push_str("/* setup (post-init): the executor handle is passed in; create each node +\n");
-    out.push_str(" * configure its component on the real executor. */\n");
-    out.push_str("static int32_t __nros_entry_setup(void* executor) {\n");
-    out.push_str("    if (executor == NULL) {\n");
-    out.push_str("        return (int32_t)NROS_CPP_RET_NOT_INIT;\n");
-    out.push_str("    }\n");
-
-    // Phase 269 (W4) / 272 (W2) — sched-context wiring: emit one create call per
-    // resolved tier (ordered highest-priority-first), then seed the node-name →
-    // sched-context table BEFORE any node is constructed. Guard on non-empty multi-tier
-    // resolved table; single-tier or absent → byte-identical output.
+    // Phase 269 (W4) — multi-tier guard.
     let use_tiers = plan
         .resolved_tiers
         .as_ref()
         .is_some_and(|t| !t.is_single_tier());
-    if use_tiers {
+    // Phase 274.W2 — native multi-tier → per-tier threads (run_tiers).
+    // C entries are always native (the C emitter is native-only per its header).
+    let use_run_tiers = use_tiers;
+
+    if use_run_tiers {
+        // ----------------------------------------------------------------
+        // Phase 274.W2 — per-tier setup functions + run_tiers entry point.
+        // ----------------------------------------------------------------
         let tiers = plan.resolved_tiers.as_ref().unwrap();
-        let n_tiers = tiers.tiers.len();
-        out.push_str("    /* Phase 269 (W4) — sched-context wiring (multi-tier scheduling). */\n");
-        let _ = writeln!(out, "    uint8_t __nros_sc_ids[{n_tiers}] = {{0}};");
-        for (ti, tier) in tiers.tiers.iter().enumerate() {
-            let period_us = tier.spin_period_us.unwrap_or(0) as u32;
-            let os_pri = (tier.priority.clamp(0, 255)) as u8;
-            let _ = writeln!(out, "    {{");
-            out.push_str("        nros_cpp_sched_context_t __sc = {0};\n");
-            out.push_str("        __sc.class_ = 0;  /* Fifo */\n");
-            out.push_str("        __sc.priority = 1;  /* Normal */\n");
-            out.push_str("        __sc.deadline_policy = 0;  /* Released */\n");
-            let _ = writeln!(out, "        __sc.period_us = {period_us}u;");
-            let _ = writeln!(out, "        __sc.os_pri = {os_pri}u;");
-            let _ = writeln!(
-                out,
-                "        nros_cpp_ret_t __scr{ti} = nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[{ti}]);"
-            );
-            let _ = writeln!(
-                out,
-                "        if (__scr{ti} != NROS_CPP_RET_OK) return (int32_t)__scr{ti};"
-            );
-            out.push_str("    }\n");
-        }
-        // Phase 272 (W2) — seed the node-name → sched-context table BEFORE any node is
-        // built (RFC-0047: seed before the first node_builder(name).build()).
-        out.push_str(
-            "    /* Phase 272 (W2) — seed node-name → sched-context table (RFC-0047). */\n",
-        );
-        for n in &plan.nodes {
-            if let Some(sc_idx) = n.sched_context {
-                let node_name = n.name.as_deref().unwrap_or(&n.exec);
-                let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
-                let ns_lit = n
-                    .namespace
-                    .as_deref()
-                    .unwrap_or("/")
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"");
-                let _ = writeln!(
-                    out,
-                    "    nros_cpp_bind_node_name_sched(executor, \"{name_lit}\", \"{ns_lit}\", __nros_sc_ids[{sc_idx}]);"
-                );
-            }
-        }
-        // Phase 273 (W2) — seed the group → sched-context table BEFORE any node is
-        // built (RFC-0047 Precedence: group table > node-name table > default).
-        // One call per resolved (component, group) member across all tiers.
-        out.push_str("    /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */\n");
-        // Build node-name → ns map for lookup.
-        let node_ns: Vec<(String, String)> = plan
-            .nodes
+
+        // node_name → tier_index for per-tier filtering.
+        let node_to_tier: std::collections::HashMap<String, usize> = tiers
+            .tiers
             .iter()
-            .map(|n| {
-                let name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
-                let ns = n
-                    .namespace
-                    .as_deref()
-                    .unwrap_or("/")
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"");
-                (name, ns)
+            .enumerate()
+            .flat_map(|(ti, tier)| {
+                tier.members
+                    .iter()
+                    .map(move |(node_name, _group)| (node_name.clone(), ti))
             })
             .collect();
-        for (ti, tier) in tiers.tiers.iter().enumerate() {
-            for (node_name, group) in &tier.members {
+
+        out.push_str("/* Phase 274.W2 — per-tier setup functions (one per tier). */\n");
+        for (ti, _tier) in tiers.tiers.iter().enumerate() {
+            let _ = writeln!(
+                out,
+                "static int32_t __nros_entry_setup_tier_{ti}(void* executor) {{"
+            );
+            out.push_str("    if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;\n");
+
+            for (i, n) in plan.nodes.iter().enumerate() {
+                let pkg = sanitize_pkg(&n.pkg);
+                let node_name = n.name.as_deref().unwrap_or(&n.exec);
+                if node_to_tier.get(node_name).copied() != Some(ti) {
+                    continue;
+                }
                 let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
-                let group_lit = group.replace('\\', "\\\\").replace('"', "\\\"");
-                let ns_lit = node_ns
+                let _ = writeln!(out, "    {{");
+                let _ = writeln!(
+                    out,
+                    "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
+                );
+                out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
+                let _ = writeln!(
+                    out,
+                    "        void* self = __nros_c_component_{pkg}_create();"
+                );
+                let _ = writeln!(
+                    out,
+                    "        int32_t crc = __nros_c_component_{pkg}_configure(&__nros_node_{i}, executor, self);"
+                );
+                out.push_str("        if (crc != 0) return crc;\n");
+                let _ = writeln!(out, "    }}");
+            }
+
+            // Params + lifecycle in tier[0] only.
+            if ti == 0 {
+                if plan.param_services {
+                    out.push_str(
+                        "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+                    );
+                    out.push_str("    {\n");
+                    out.push_str(
+                        "        nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);\n",
+                    );
+                    out.push_str(
+                        "        if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;\n",
+                    );
+                    for n in &plan.nodes {
+                        for (k, v) in &n.params {
+                            let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
+                            let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
+                            let _ = writeln!(
+                                out,
+                                "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
+                            );
+                        }
+                    }
+                    out.push_str("    }\n");
+                }
+                if let Some(autostart) = &plan.lifecycle {
+                    let autostart_code: u8 = match autostart.as_str() {
+                        "none" => 0,
+                        "configure" => 1,
+                        _ => 2,
+                    };
+                    out.push_str(
+                        "    /* Phase 269 (W2) — lifecycle-services: register + autostart. */\n",
+                    );
+                    out.push_str("    {\n");
+                    let _ = writeln!(
+                        out,
+                        "        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_autostart(executor, {autostart_code}u);"
+                    );
+                    out.push_str(
+                        "        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;\n",
+                    );
+                    out.push_str("    }\n");
+                }
+            }
+
+            out.push_str("    return 0;\n}\n\n");
+        }
+
+        // Per-tier groups arrays + tier spec table.
+        // Groups are derived from tier.members (unique callback-group IDs, stable order).
+        out.push_str("/* Phase 274.W2 — per-tier groups arrays + tier spec table. */\n");
+        let tier_groups_vecs: Vec<Vec<String>> = tiers
+            .tiers
+            .iter()
+            .map(|tier| {
+                let mut seen = std::collections::BTreeSet::new();
+                tier.members
                     .iter()
-                    .find(|(n, _)| n == node_name)
-                    .map(|(_, ns)| ns.as_str())
-                    .unwrap_or("/");
-                let _ = writeln!(
-                    out,
-                    "    nros_cpp_bind_group_sched(executor, \"{name_lit}\", \"{ns_lit}\", \"{group_lit}\", __nros_sc_ids[{ti}]);"
-                );
+                    .filter_map(|(_, g)| {
+                        if seen.insert(g.clone()) {
+                            Some(g.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        for (ti, groups) in tier_groups_vecs.iter().enumerate() {
+            if !groups.is_empty() {
+                let _ = write!(out, "static const char* __nros_tier_{ti}_groups[] = {{");
+                for g in groups {
+                    let g_lit = g.replace('\\', "\\\\").replace('"', "\\\"");
+                    let _ = write!(out, "\"{g_lit}\", ");
+                }
+                out.push_str("};\n");
             }
         }
-    }
-
-    for (i, n) in plan.nodes.iter().enumerate() {
-        let pkg = sanitize_pkg(&n.pkg);
-        let node_name = n.name.as_deref().unwrap_or(&n.exec);
-        let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
-        let _ = writeln!(out, "    {{");
-        // Phase 272 (W2): always use plain nros_cpp_node_create. Tier binding is
-        // resolved via the seeded name table in node_builder (Phase 272 W2); the
-        // per-node sched_context_id / node_create_ex path is removed.
+        let n_tiers = tiers.tiers.len();
         let _ = writeln!(
             out,
-            "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
+            "static const nros_native_tier_spec_t __nros_tiers[{n_tiers}] = {{"
         );
-        out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
-        let _ = writeln!(
-            out,
-            "        void* self = __nros_c_component_{pkg}_create();"
-        );
-        let _ = writeln!(
-            out,
-            "        int32_t crc = __nros_c_component_{pkg}_configure(&__nros_node_{i}, executor, self);"
-        );
-        out.push_str("        if (crc != 0) return crc;\n");
-        let _ = writeln!(out, "    }}");
-    }
-    if plan.param_services {
-        out.push_str(
-            "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
-        );
-        out.push_str("    {\n");
-        out.push_str(
-            "        nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);\n",
-        );
-        out.push_str("        if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;\n");
-        for n in &plan.nodes {
-            for (k, v) in &n.params {
-                let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
-                let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
-                let _ = writeln!(
-                    out,
-                    "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
-                );
-            }
+        for (ti, tier) in tiers.tiers.iter().enumerate() {
+            let name_lit = tier.name.replace('\\', "\\\\").replace('"', "\\\"");
+            let priority = tier.priority;
+            let spin_period_us = tier.spin_period_us.unwrap_or(0);
+            let groups = &tier_groups_vecs[ti];
+            let (groups_expr, n_groups_val) = if groups.is_empty() {
+                ("NULL".to_string(), 0usize)
+            } else {
+                (format!("__nros_tier_{ti}_groups"), groups.len())
+            };
+            let _ = writeln!(
+                out,
+                "    {{ \"{name_lit}\", {groups_expr}, {n_groups_val}u, \
+                 {priority}LL, 0u, {spin_period_us}ull, &__nros_entry_setup_tier_{ti} }},"
+            );
         }
-        out.push_str("    }\n");
-    }
-    if let Some(autostart) = &plan.lifecycle {
-        // Phase 269 (W2) — lifecycle-services: register the five REP-2002 services and
-        // drive the boot autostart policy. autostart_code: 0=none (register only),
-        // 1=configure, 2=active (configure + activate). Runs AFTER param-services so the
-        // executor is fully seeded before any transition callbacks fire.
-        let autostart_code: u8 = match autostart.as_str() {
-            "none" => 0,
-            "configure" => 1,
-            _ => 2, // "active" or any future level → fully activate
-        };
-        out.push_str("    /* Phase 269 (W2) — lifecycle-services: register + autostart. */\n");
-        out.push_str("    {\n");
+        out.push_str("};\n\n");
+
+        // Phase 266 — bake boot config.
+        emit_boot_config_static(&mut out, plan)?;
+        out.push('\n');
+
+        out.push_str("int main(int argc, char** argv) {\n");
+        out.push_str("    (void)argc;\n");
+        out.push_str("    (void)argv;\n");
         let _ = writeln!(
             out,
-            "        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_autostart(executor, {autostart_code}u);"
+            "    return nros_board_native_run_tiers(\
+nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
         );
-        out.push_str("        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;\n");
+        out.push_str("}\n");
+    } else {
+        // ----------------------------------------------------------------
+        // Single-executor path (single-tier). Byte-identical output.
+        // ----------------------------------------------------------------
+        out.push_str(
+            "/* setup (post-init): the executor handle is passed in; create each node +\n",
+        );
+        out.push_str(" * configure its component on the real executor. */\n");
+        out.push_str("static int32_t __nros_entry_setup(void* executor) {\n");
+        out.push_str("    if (executor == NULL) {\n");
+        out.push_str("        return (int32_t)NROS_CPP_RET_NOT_INIT;\n");
         out.push_str("    }\n");
-    }
-    out.push_str("    return 0;\n");
-    out.push_str("}\n\n");
 
-    // Phase 266 (W5b) — bake the boot config blob so the session name is both
-    // readable by a post-link tool and passed to the runner at startup.
-    emit_boot_config_static(&mut out, plan)?;
-    out.push('\n');
+        for (i, n) in plan.nodes.iter().enumerate() {
+            let pkg = sanitize_pkg(&n.pkg);
+            let node_name = n.name.as_deref().unwrap_or(&n.exec);
+            let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = writeln!(out, "    {{");
+            let _ = writeln!(
+                out,
+                "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
+            );
+            out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
+            let _ = writeln!(
+                out,
+                "        void* self = __nros_c_component_{pkg}_create();"
+            );
+            let _ = writeln!(
+                out,
+                "        int32_t crc = __nros_c_component_{pkg}_configure(&__nros_node_{i}, executor, self);"
+            );
+            out.push_str("        if (crc != 0) return crc;\n");
+            let _ = writeln!(out, "    }}");
+        }
+        if plan.param_services {
+            out.push_str(
+                "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+            );
+            out.push_str("    {\n");
+            out.push_str(
+                "        nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);\n",
+            );
+            out.push_str("        if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;\n");
+            for n in &plan.nodes {
+                for (k, v) in &n.params {
+                    let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
+                    let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
+                    let _ = writeln!(
+                        out,
+                        "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
+                    );
+                }
+            }
+            out.push_str("    }\n");
+        }
+        if let Some(autostart) = &plan.lifecycle {
+            let autostart_code: u8 = match autostart.as_str() {
+                "none" => 0,
+                "configure" => 1,
+                _ => 2,
+            };
+            out.push_str("    /* Phase 269 (W2) — lifecycle-services: register + autostart. */\n");
+            out.push_str("    {\n");
+            let _ = writeln!(
+                out,
+                "        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_autostart(executor, {autostart_code}u);"
+            );
+            out.push_str("        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;\n");
+            out.push_str("    }\n");
+        }
+        out.push_str("    return 0;\n");
+        out.push_str("}\n\n");
 
-    out.push_str("int main(int argc, char** argv) {\n");
-    out.push_str("    (void)argc;\n");
-    out.push_str("    (void)argv;\n");
-    out.push_str(
-        "    return nros_board_native_run_components_named(\
+        // Phase 266 (W5b) — bake the boot config blob.
+        emit_boot_config_static(&mut out, plan)?;
+        out.push('\n');
+
+        out.push_str("int main(int argc, char** argv) {\n");
+        out.push_str("    (void)argc;\n");
+        out.push_str("    (void)argv;\n");
+        out.push_str(
+            "    return nros_board_native_run_components_named(\
 nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);\n",
-    );
-    out.push_str("}\n");
+        );
+        out.push_str("}\n");
+    }
 
     Ok(out)
 }
@@ -585,96 +668,71 @@ mod tests {
     }
 
     #[test]
-    fn typed_emit_tiers_emits_sched_context_create_and_name_seed() {
-        // Phase 272 (W2) — multi-tier plan emits sched-context create + name-seed calls
-        // BEFORE node construction; node_create_ex is removed (binding is via the table).
+    fn typed_emit_tiers_uses_run_tiers_path() {
+        // Phase 274.W2 — multi-tier C plan emits per-tier setup functions + run_tiers
+        // call instead of the old sched-context wiring.
         let plan = fixture_plan_with_tiers();
         let src = emit_typed(&plan).expect("typed C tier emit ok");
-        // Sched-context IDs array declared.
+
+        // Per-tier setup functions present.
         assert!(
-            src.contains("uint8_t __nros_sc_ids[2] = {0};"),
-            "expected sc_ids array; got:\n{src}"
-        );
-        // High tier: os_pri=80, period_us=10000.
-        assert!(src.contains("__sc.os_pri = 80u;"), "expected os_pri=80");
-        assert!(
-            src.contains("__sc.period_us = 10000u;"),
-            "expected period_us=10000"
+            src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+            "expected tier 0 setup fn; got:\n{src}"
         );
         assert!(
-            src.contains("nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[0])"),
-            "expected tier 0 sc create"
+            src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+            "expected tier 1 setup fn; got:\n{src}"
         );
-        // Low tier: os_pri=10, period_us=100000.
-        assert!(src.contains("__sc.os_pri = 10u;"), "expected os_pri=10");
-        assert!(
-            src.contains("__sc.period_us = 100000u;"),
-            "expected period_us=100000"
-        );
-        assert!(
-            src.contains("nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[1])"),
-            "expected tier 1 sc create"
-        );
-        // Phase 272 (W2): bind_node_name_sched seeds for each tiered node.
-        assert!(
-            src.contains(
-                "nros_cpp_bind_node_name_sched(executor, \"ctrl\", \"/\", __nros_sc_ids[0])"
-            ),
-            "ctrl node must be seeded via bind_node_name_sched; src:\n{src}"
-        );
-        assert!(
-            src.contains(
-                "nros_cpp_bind_node_name_sched(executor, \"telem\", \"/\", __nros_sc_ids[1])"
-            ),
-            "telem node must be seeded via bind_node_name_sched; src:\n{src}"
-        );
-        // node_create_ex must NOT appear (per-shape sched binding removed).
-        assert!(
-            !src.contains("nros_cpp_node_create_ex"),
-            "node_create_ex must not appear; tier binding is via the table; src:\n{src}"
-        );
-        // opts.sched_context_id must NOT appear.
-        assert!(
-            !src.contains("sched_context_id"),
-            "sched_context_id assign must not appear; src:\n{src}"
-        );
-        // Plain node_create used for all nodes.
+        // Each setup fn creates only its tier's nodes (ctrl in tier 0, telem in tier 1).
         assert!(
             src.contains("nros_cpp_node_create(executor, \"ctrl\", \"/\", &__nros_node_0)"),
-            "ctrl node must use plain nros_cpp_node_create; src:\n{src}"
+            "ctrl node in tier-0 setup; src:\n{src}"
         );
         assert!(
             src.contains("nros_cpp_node_create(executor, \"telem\", \"/\", &__nros_node_1)"),
-            "telem node must use plain nros_cpp_node_create; src:\n{src}"
+            "telem node in tier-1 setup; src:\n{src}"
         );
-        // Phase 273 (W2): bind_group_sched seeds for each (node, group) tier member.
+        // Tier spec table emitted.
         assert!(
-            src.contains(
-                "nros_cpp_bind_group_sched(executor, \"ctrl\", \"/\", \"ctrl_grp\", __nros_sc_ids[0])"
-            ),
-            "ctrl/ctrl_grp must be seeded via bind_group_sched; src:\n{src}"
+            src.contains("static const nros_native_tier_spec_t __nros_tiers[2]"),
+            "expected 2-element tier spec table; src:\n{src}"
         );
         assert!(
-            src.contains(
-                "nros_cpp_bind_group_sched(executor, \"telem\", \"/\", \"telem_grp\", __nros_sc_ids[1])"
-            ),
-            "telem/telem_grp must be seeded via bind_group_sched; src:\n{src}"
-        );
-        // Seed calls must appear BEFORE the per-node creates (RFC-0047: seed before build).
-        let seed_at = src
-            .find("nros_cpp_bind_node_name_sched(executor, \"ctrl\"")
-            .unwrap();
-        let group_seed_at = src
-            .find("nros_cpp_bind_group_sched(executor, \"ctrl\"")
-            .unwrap();
-        let node_at = src.find("nros_cpp_node_create(executor, \"ctrl\"").unwrap();
-        assert!(
-            seed_at < node_at,
-            "node-name seed block must precede per-node creates"
+            src.contains("\"high\""),
+            "high tier name in spec table; src:\n{src}"
         );
         assert!(
-            group_seed_at < node_at,
-            "group seed block must precede per-node creates"
+            src.contains("\"low\""),
+            "low tier name in spec table; src:\n{src}"
+        );
+        // Priority baked in as LL literals.
+        assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
+        assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
+        // main calls run_tiers, not run_components.
+        assert!(
+            src.contains("nros_board_native_run_tiers("),
+            "main must call nros_board_native_run_tiers; src:\n{src}"
+        );
+        assert!(
+            !src.contains("return nros_board_native_run_components"),
+            "must NOT call run_components in multi-tier; src:\n{src}"
+        );
+        // Old sched-context wiring must NOT appear.
+        assert!(
+            !src.contains("__nros_sc_ids"),
+            "no-sched-ctx: sc_ids array must not appear; src:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_create_sched_context"),
+            "no-sched-ctx: create_sched_context must not appear; src:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_bind_node_name_sched"),
+            "no-sched-ctx: bind_node_name_sched must not appear; src:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_bind_group_sched"),
+            "no-sched-ctx: bind_group_sched must not appear; src:\n{src}"
         );
     }
 

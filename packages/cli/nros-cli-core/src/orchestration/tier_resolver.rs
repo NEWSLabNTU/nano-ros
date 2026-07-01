@@ -232,18 +232,20 @@ priority = 10
         let system: SystemToml = toml::from_str(system_toml_str).expect("parse system.toml");
         let cfg = NrosConfig::default();
         let callback_groups = collect_callback_groups(&cfg, &system.components);
-        let table =
-            resolve_system_tiers(&system, &callback_groups, "posix").expect("sub-node must resolve");
+        let table = resolve_system_tiers(&system, &callback_groups, "posix")
+            .expect("sub-node must resolve");
         assert!(!table.is_single_tier(), "must be multi-tier");
         let high = table.tiers.iter().find(|t| t.name == "high").unwrap();
-        let low  = table.tiers.iter().find(|t| t.name == "low").unwrap();
+        let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
         // Same node, both groups resolved to different tiers (the RFC-0047 sub-node proof).
         assert!(
-            high.members.contains(&("sub_node".to_string(), "ctrl".to_string())),
+            high.members
+                .contains(&("sub_node".to_string(), "ctrl".to_string())),
             "sub_node/ctrl must be in high tier"
         );
         assert!(
-            low.members.contains(&("sub_node".to_string(), "telem".to_string())),
+            low.members
+                .contains(&("sub_node".to_string(), "telem".to_string())),
             "sub_node/telem must be in low tier"
         );
     }

@@ -38,6 +38,9 @@
 #define NROS_CPP_MAIN_HPP
 
 #include "nros/nros.hpp"
+/* Phase 274.W2 — nros_native_tier_spec_t + nros_board_native_run_tiers
+ * (C ABI board runner for multi-tier native entries). */
+#include "nros/main.h"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines
@@ -139,18 +142,30 @@ void nros_board_network_wait(void);
 #endif
 }
 
-/// Phase 219.B / 235.A — Native (POSIX) board adapter for Entry-pkg
-/// generated TUs.
+/// Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
+/// `NativeBoard::run_tiers`. Layout mirrors `nros_native_tier_spec_t` in
+/// `<nros/nros_cpp_ffi.h>` (included transitively via `<nros/nros.hpp>`);
+/// the `run_tiers` static method casts between the two.
 ///
-/// Owns the init/spin/shutdown ritual; the generated TU supplies the
-/// per-Node register sequence as a `NodeRegisterFn`-shaped lambda.
-///
-/// Phase 235.A replaced the recording no-op NodeContext with the real
-/// `detail::EntryNodeRuntime` — `run()` now constructs live
-/// publishers/subscriptions and drives them in a poll loop, so a
-/// generated C++ `main()` boots a working pub/sub topology on native.
-/// Phase 235.B factored the ops + arena into `detail::` so the embedded
-/// `ZephyrBoard` shares them verbatim (only the lifecycle differs).
+/// `name`           — tier name (null-terminated), informational.
+/// `groups`         — array of `n_groups` null-terminated callback-group
+///                    names; NULL / 0 means wildcard (accept all groups).
+/// `n_groups`       — number of entries in `groups`.
+/// `priority`       — raw POSIX nice level adjustment (advisory on Linux).
+/// `stack_bytes`    — informational on native (`std::thread` manages the stack).
+/// `spin_period_us` — sleep between `spin_once` calls; 0 → 1 ms floor.
+/// `setup`          — called once on the tier thread (after `set_active_groups`)
+///                    with the tier executor handle; returns 0 on success.
+struct NativeTierSpec {
+    const char* name;
+    const char** groups;
+    size_t n_groups;
+    int64_t priority;
+    size_t stack_bytes;
+    uint64_t spin_period_us;
+    int32_t (*setup)(void* executor);
+};
+
 class NativeBoard {
   public:
     /// Phase 266 (W6) — named variant: `session_name` sets the primary session /
@@ -183,6 +198,27 @@ class NativeBoard {
     /// Phase 266: delegates to the named overload with "node" (the unified default).
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components("node", static_cast<Setup&&>(setup));
+    }
+
+    /// Phase 274.W2 (RFC-0015 Model 1) — multi-tier native entry.
+    ///
+    /// Delegates to the C-ABI seam `nros_board_native_run_tiers` which opens
+    /// ONE RMW session on the boot thread, spawns one `std::thread` per
+    /// non-boot tier (each with a **borrowed** executor sharing the one session),
+    /// and runs per-tier `setup` + `spin_once` loops at their declared periods.
+    ///
+    /// `session_name` sets the primary session / node name; NULL or empty →
+    /// `"node"` (the unified default). `tiers` must be a non-null array of
+    /// `n_tiers` `NativeTierSpec` entries sorted highest-priority-first (the
+    /// codegen emitter produces them in that order). Returns 0 on clean exit
+    /// (NROS_ENTRY_SPIN_MS elapsed) or the first non-zero setup / spin code.
+    static int32_t run_tiers(const char* session_name, const NativeTierSpec* tiers,
+                             size_t n_tiers) {
+        // NativeTierSpec and nros_native_tier_spec_t have identical layout by
+        // construction (same field order, same types, same ABI). The cast is
+        // safe; both structs are plain C-compatible aggregates.
+        return ::nros_board_native_run_tiers(
+            session_name, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers);
     }
 };
 

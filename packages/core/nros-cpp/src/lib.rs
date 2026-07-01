@@ -1589,6 +1589,257 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
     NROS_CPP_RET_OK
 }
 
+// ============================================================================
+// Phase 274.W2 — RFC-0015 Model 1: native multi-tier entry (C-ABI seam)
+// ============================================================================
+
+/// Per-tier specification for [`nros_board_native_run_tiers`].
+///
+/// Mirrors `nros_platform::TierSpec` in C-ABI form. `groups` must point to
+/// an array of `n_groups` null-terminated UTF-8 strings; NULL / 0 means
+/// "accept all groups" (wildcard — degenerate single-tier).
+///
+/// `setup` is called once on the tier's thread, with the tier's borrowed
+/// executor handle, AFTER `set_active_groups` — so only the tier's groups'
+/// callbacks register. The boot tier (index 0) uses the owning executor.
+///
+/// `priority` is a raw POSIX nice-level adjustment (advisory on Linux
+/// without elevated privileges). `stack_bytes` is informational on native
+/// (`std::thread` manages the stack). `spin_period_us` is the sleep between
+/// `spin_once` calls; 0 uses a 1 ms floor.
+///
+/// # Safety
+///
+/// `name` must be NULL or a valid null-terminated string.
+/// `groups` must be NULL or point to `n_groups` valid null-terminated strings.
+/// `setup` must be a valid function pointer or NULL (NULL skips setup — only
+/// useful for tiers that register no nodes of their own).
+#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+#[repr(C)]
+pub struct NativeTierSpecC {
+    pub name: *const c_char,
+    pub groups: *const *const c_char,
+    pub n_groups: usize,
+    pub priority: i64,
+    pub stack_bytes: usize,
+    pub spin_period_us: u64,
+    pub setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+}
+
+/// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one
+/// shared RMW session.
+///
+/// Opens ONE session on the calling (boot) thread; spawns `n_tiers - 1`
+/// threads each opening a **borrowed** executor (no second RMW session, no
+/// double-close). Each thread:
+///   1. `nros_cpp_executor_open_over_session` — open borrowed executor.
+///   2. `nros_cpp_executor_set_active_groups` — gate to the tier's groups.
+///   3. `setup(executor)` — create + configure nodes (only the tier's
+///      groups' callbacks register).
+///   4. `spin_once` loop at `spin_period_us` until shutdown flag.
+///
+/// The boot thread runs the first (highest-priority) tier on the owning
+/// executor; it respects the `$NROS_ENTRY_SPIN_MS` bound for test/CI use.
+/// When the boot thread exits its spin loop it signals the other tiers (via
+/// `Arc<AtomicBool>`) and joins them before closing the session.
+///
+/// # Safety
+/// `tiers` must be a valid pointer to `n_tiers` [`NativeTierSpecC`] entries,
+/// valid for the duration of the call. `session_name` is NULL or a valid
+/// null-terminated string.
+#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_tiers(
+    session_name: *const c_char,
+    tiers: *const NativeTierSpecC,
+    n_tiers: usize,
+) -> i32 {
+    use std::{
+        string::String,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        vec::Vec,
+    };
+
+    if tiers.is_null() || n_tiers == 0 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let tier_slice = unsafe { core::slice::from_raw_parts(tiers, n_tiers) };
+
+    // Resolve session name: null / empty → "node".
+    let name_resolved: &core::ffi::CStr = if session_name.is_null() {
+        c"node"
+    } else {
+        let s = unsafe { core::ffi::CStr::from_ptr(session_name) };
+        if s.is_empty() { c"node" } else { s }
+    };
+
+    // Env overlays.
+    let locator = std::env::var("NROS_LOCATOR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| std::ffi::CString::new(s).ok());
+    let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&d| d <= 232)
+        .unwrap_or(0) as u8;
+
+    // Open primary (session-owning) executor on the boot thread.
+    let mut boot_storage = core::mem::MaybeUninit::<CppContext>::uninit();
+    let sptr = boot_storage.as_mut_ptr() as *mut c_void;
+    let locator_ptr = locator.as_ref().map_or(core::ptr::null(), |c| c.as_ptr());
+    let rc = unsafe {
+        nros_cpp_init(
+            locator_ptr,
+            domain_id,
+            name_resolved.as_ptr(),
+            core::ptr::null(),
+            sptr,
+        )
+    };
+    if rc != NROS_CPP_RET_OK {
+        return rc as i32;
+    }
+
+    // Get the shared session handle for borrowed-executor tier threads.
+    let session_handle: usize = unsafe { nros_cpp_executor_session_handle(sptr) } as usize;
+
+    // Boot tier — apply active_groups + run setup on the owning executor.
+    let boot_tier = &tier_slice[0];
+    if !boot_tier.groups.is_null() && boot_tier.n_groups > 0 {
+        unsafe {
+            nros_cpp_executor_set_active_groups(sptr, boot_tier.groups, boot_tier.n_groups);
+        }
+    }
+    if let Some(setup_fn) = boot_tier.setup {
+        let setup_rc = unsafe { setup_fn(sptr) };
+        if setup_rc != 0 {
+            unsafe { nros_cpp_fini(sptr) };
+            return setup_rc;
+        }
+    }
+
+    std::eprintln!(
+        "nros: multi-tier run — {} tier(s) over one session",
+        n_tiers
+    );
+
+    // Shared shutdown flag — boot thread sets it; tier threads poll it.
+    let shutdown = Arc::new(AtomicBool::new(false));
+
+    // Wrapper to make *const/*mut Send across thread spawn.
+    struct SendUsize(usize);
+    unsafe impl Send for SendUsize {}
+
+    // Spawn one std::thread per non-boot tier.
+    let mut thread_handles: Vec<std::thread::JoinHandle<()>> = Vec::with_capacity(n_tiers - 1);
+    for tier in &tier_slice[1..] {
+        let shutdown_clone = Arc::clone(&shutdown);
+        let period_us = tier.spin_period_us;
+        let n_groups = tier.n_groups;
+        let groups_usize = SendUsize(tier.groups as usize);
+        let session_usize = SendUsize(session_handle);
+        let setup_fn = tier.setup;
+        let domain_id_copy: u32 = domain_id as u32;
+        let tier_name = if tier.name.is_null() {
+            String::new()
+        } else {
+            unsafe { core::ffi::CStr::from_ptr(tier.name) }
+                .to_string_lossy()
+                .into_owned()
+        };
+
+        let handle = std::thread::Builder::new()
+            .name(std::format!("nros-tier-{tier_name}"))
+            .spawn(move || {
+                // Open borrowed executor (shares the session — does NOT open
+                // a new RMW session and does NOT close it on drop).
+                let sh = session_usize.0 as *mut c_void;
+                let groups_ptr = groups_usize.0 as *const *const c_char;
+
+                let mut tier_storage = core::mem::MaybeUninit::<CppContext>::uninit();
+                let tptr = tier_storage.as_mut_ptr() as *mut c_void;
+                let rc = unsafe {
+                    nros_cpp_executor_open_over_session(sh, core::ptr::null(), domain_id_copy, tptr)
+                };
+                if rc != NROS_CPP_RET_OK {
+                    return;
+                }
+
+                // Gate to this tier's callback groups.
+                if !groups_ptr.is_null() && n_groups > 0 {
+                    unsafe { nros_cpp_executor_set_active_groups(tptr, groups_ptr, n_groups) };
+                }
+
+                // Run setup (creates + configures nodes for this tier).
+                if let Some(setup) = setup_fn {
+                    let setup_rc = unsafe { setup(tptr) };
+                    if setup_rc != 0 {
+                        // Drop borrowed executor (no session close).
+                        unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
+                        return;
+                    }
+                }
+
+                // Spin at the tier's period until the shutdown flag is set.
+                let period = core::time::Duration::from_micros(period_us.max(1_000));
+                while !shutdown_clone.load(Ordering::Relaxed) {
+                    let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
+                    if rc != NROS_CPP_RET_OK {
+                        break;
+                    }
+                    std::thread::sleep(period);
+                }
+
+                // Drop borrowed executor in place (does NOT close the shared session).
+                unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
+            })
+            .unwrap_or_else(|e| {
+                std::eprintln!("nros: failed to spawn tier '{tier_name}': {e}");
+                // Return a dummy thread that immediately exits.
+                std::thread::spawn(|| {})
+            });
+        thread_handles.push(handle);
+    }
+
+    // Boot thread spin loop (tier[0] on the owning executor).
+    let bound_ms: u64 = std::env::var("NROS_ENTRY_SPIN_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let start_ns = nros_cpp_time_ns();
+    let boot_period = core::time::Duration::from_micros(boot_tier.spin_period_us.max(1_000));
+    let mut ret = 0i32;
+    loop {
+        let last = unsafe { nros_cpp_spin_once(sptr, 10) };
+        if last != NROS_CPP_RET_OK {
+            ret = last as i32;
+            break;
+        }
+        if bound_ms != 0 {
+            let elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1_000_000;
+            if elapsed_ms >= bound_ms {
+                break;
+            }
+        }
+        std::thread::sleep(boot_period);
+    }
+
+    // Signal all tier threads to exit and wait for them.
+    shutdown.store(true, Ordering::Relaxed);
+    for h in thread_handles {
+        let _ = h.join();
+    }
+
+    // Close the primary (session-owning) executor.
+    unsafe { nros_cpp_fini(sptr) };
+    ret
+}
+
 /// Get current monotonic time in nanoseconds.
 ///
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by

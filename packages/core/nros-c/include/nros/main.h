@@ -51,6 +51,41 @@ NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup
 NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_name,
                                                            nros_c_entry_setup_fn setup);
 
+/* Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
+ * `nros_board_native_run_tiers`.
+ *
+ * `name`           — tier name (null-terminated), informational.
+ * `groups`         — array of `n_groups` null-terminated callback-group names;
+ *                    NULL / 0 means wildcard (accept all groups).
+ * `n_groups`       — number of entries in `groups`.
+ * `priority`       — raw POSIX nice level (advisory).
+ * `stack_bytes`    — informational on native (std::thread manages the stack).
+ * `spin_period_us` — sleep between spin_once calls; 0 uses a 1 ms floor.
+ * `setup`          — called once on the tier thread (after set_active_groups)
+ *                    with the tier executor handle; returns 0 on success or
+ *                    NULL to skip setup (tier receives no nodes of its own). */
+typedef struct {
+    const char* name;
+    const char* const* groups;
+    size_t n_groups;
+    int64_t priority;
+    size_t stack_bytes;
+    uint64_t spin_period_us;
+    nros_c_entry_setup_fn setup;
+} nros_native_tier_spec_t;
+
+/* Phase 274.W2 (RFC-0015 Model 1) — run a multi-tier native entry over one
+ * shared RMW session. Opens ONE session on the boot thread; spawns one
+ * std::thread per non-boot tier, each with a borrowed executor (no second
+ * RMW session, no double-close). Each tier: open borrowed executor →
+ * set_active_groups → setup(executor) → spin at spin_period_us. Boot thread
+ * runs tier[0] on the owning executor and respects $NROS_ENTRY_SPIN_MS.
+ * Returns after boot spin exits (NROS_ENTRY_SPIN_MS or spin error) after
+ * joining all tier threads and closing the session. Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_tiers(const char* session_name,
+                                                const nros_native_tier_spec_t* tiers,
+                                                size_t n_tiers);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

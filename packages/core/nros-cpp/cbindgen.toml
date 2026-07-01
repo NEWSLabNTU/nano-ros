@@ -61,6 +61,13 @@ exclude = [
     # gated). Declared locally in subscription.hpp with a matching 6-arg
     # plain fn-ptr typedef and in nros_cpp_ffi.h manually.
     "nros_cpp_subscription_register_validated",
+    # Phase 274.W2 — `NativeTierSpecC` has a fn-ptr field typed
+    # `Option<unsafe extern "C" fn(*mut c_void) -> i32>` which cbindgen
+    # renders as an opaque wrapper struct. Both the struct and the
+    # `nros_board_native_run_tiers` function are declared manually in
+    # nros_cpp_ffi.h as `nros_native_tier_spec_t` + the function.
+    "NativeTierSpecC",
+    "nros_board_native_run_tiers",
 ]
 
 [fn]
