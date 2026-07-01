@@ -1857,6 +1857,50 @@ no_default_features = true
 features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
+# Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Unlike the role
+# examples above (which select the RMW via cargo features), each Entry pkg
+# bakes board+rmw through `nros::main!` + the `nros-board-threadx-linux`
+# shim (package.xml `rmw="zenoh"`), so these are bare default-feature rows.
+# `fixtures-build.sh` runs `nros sync` (materialises generated/ + the
+# [patch.crates-io] block) before cargo, same as any package.xml dir. Build
+# lands the host binary at target/x86_64-unknown-linux-gnu/<profile>/<bin>;
+# asserted by tests/threadx_linux_entry_build.rs.
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/talker_entry"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/listener_entry"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/service-server_entry"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/service-client_entry"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/action-server_entry"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/action-client_entry"
+
 [[fixture]]
 id = "threadx-linux-logging-smoke"
 platform = "threadx-linux"

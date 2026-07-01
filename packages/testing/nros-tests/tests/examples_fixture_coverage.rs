@@ -82,11 +82,12 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must
 /// NOT also be covered by a source above (that would be a stale exception).
 const ALLOWLIST: &[(&str, &str)] = &[
-    // ---- 275 W1: `*_entry` demos still uncovered (12) — the nuttx (arm) and
-    // threadx-linux (host) triples. The 6 freertos siblings are already built
-    // by the run-plan harness (see TEST_DRIVEN_BUILDERS). These await a
-    // build-assert fixture (nuttx needs the `armv7a-nuttx-eabihf` SDK target;
-    // threadx-linux builds on the host).
+    // ---- 275 W1: `*_entry` demos still uncovered (6) — the nuttx (arm) triple.
+    // freertos: covered by the run-plan harness (TEST_DRIVEN_BUILDERS).
+    // threadx-linux: covered by the `[[fixture]]` rows added in W1
+    // (fixtures.toml) + tests/threadx_linux_entry_build.rs.
+    // nuttx: awaits a build-assert fixture — needs the `armv7a-nuttx-eabihf`
+    // SDK target + NuttX build context, heavier than the host threadx build.
     (
         "qemu-arm-nuttx/rust/talker_entry",
         "275 W1: entry-pkg fixture pending",
@@ -109,30 +110,6 @@ const ALLOWLIST: &[(&str, &str)] = &[
     ),
     (
         "qemu-arm-nuttx/rust/action-client_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/talker_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/listener_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/service-server_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/service-client_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/action-server_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "threadx-linux/rust/action-client_entry",
         "275 W1: entry-pkg fixture pending",
     ),
 ];

@@ -101,6 +101,34 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 }
 
 // =============================================================================
+// Phase 275 W1 (#102 H2) — per-role Entry-pkg demos (build-assert).
+// =============================================================================
+
+/// Resolve a prebuilt ThreadX-Linux `<role>_entry` host binary.
+///
+/// Prebuilt by the `[[fixture]]` rows in `examples/fixtures.toml` (built via
+/// `fixtures-build.sh threadx-linux rust`, which runs `nros sync` + cargo).
+/// Unlike the role examples above — flat `target-zenoh/<profile>/` — each
+/// Entry pkg pins the host triple via `.cargo/config` `[build] target`, so the
+/// artifact lands under `target/x86_64-unknown-linux-gnu/<profile>/`. The
+/// fixture profile is `nros-fast-release`. `role` is hyphenated
+/// (`"service-server"`); `bin` is the `[[bin]]` name
+/// (`"threadx_linux_rs_service_server_entry"`).
+pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
+    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}_entry"));
+    if !dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ThreadX Linux entry example not found: {}",
+            dir.display()
+        )));
+    }
+    let bin_path = dir.join(format!(
+        "target/x86_64-unknown-linux-gnu/nros-fast-release/{bin}"
+    ));
+    super::require_prebuilt_binary(&bin_path)
+}
+
+// =============================================================================
 // Phase 169.4b — ThreadX-Linux Rust DDS fixture builders deleted
 // alongside the Rust DDS retirement (Phase 169.2 deleted the example
 // crates).
