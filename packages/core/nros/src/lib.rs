@@ -552,10 +552,18 @@ pub use nros_node::{
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
-    RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec, Subscription,
+    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream,
+    GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
+    RawActionServerSpec, RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec,
+    Subscription,
 };
+
+// phase-271 (issue #110) — per-entry executor sizing helper: the orchestration
+// codegen's `build_executor` sizes its backing to the system's callback count
+// via `nros::arena_size_for(CALLBACK_COUNT)` + `ExecutorSizing`, replacing the
+// workspace-global `NROS_EXECUTOR_MAX_CBS`.
+#[cfg(feature = "rmw-cffi")]
+pub use nros_node::config::arena_size_for;
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /
 // domain) + `BoardTransportConfig` (the generator writes nros.toml

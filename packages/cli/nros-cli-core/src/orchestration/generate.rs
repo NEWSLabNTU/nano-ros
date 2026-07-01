@@ -2346,11 +2346,29 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
 ///   executor: sched contexts → instantiate components → bind callbacks →
 ///   lifecycle → parameter persistence.
 fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[usize]) {
+    // phase-271 (issue #110) — size the executor's storage backing to THIS
+    // system's own topology (its callback count + sched contexts), so a fat
+    // native entry and a lean embedded entry in one shared-target workspace each
+    // get the right size WITHOUT a workspace-global `NROS_EXECUTOR_MAX_CBS`. The
+    // backing is a program-lifetime `static`; the executor borrows it for
+    // `'static`. `build_executor{,_bridge}` are mutually exclusive at runtime, so
+    // they share one backing.
+    out.push_str(
+        "\nconst EXECUTOR_SIZING: nros::ExecutorSizing = nros::ExecutorSizing { cbs: CALLBACK_COUNT, sc: SCHED_CONTEXT_COUNT + 1, arena: nros::arena_size_for(CALLBACK_COUNT) };\n",
+    );
+    out.push_str(
+        "static mut EXECUTOR_BACKING: [::core::mem::MaybeUninit<u64>; EXECUTOR_SIZING.u64_len()] = [const { ::core::mem::MaybeUninit::uninit() }; EXECUTOR_SIZING.u64_len()];\n",
+    );
     out.push_str(
         "\npub fn build_executor(config: &nros::ExecutorConfig<'_>) -> Result<nros::Executor<'static>, nros::NodeError> {\n",
     );
     out.push_str("    register_backends();\n");
-    out.push_str("    nros::Executor::open(config)\n");
+    // SAFETY: `EXECUTOR_BACKING` is a program-lifetime static; `build_executor`
+    // is called once, so the returned executor is its sole `'static` borrower.
+    out.push_str(
+        "    let backing = unsafe { &mut *::core::ptr::addr_of_mut!(EXECUTOR_BACKING) };\n",
+    );
+    out.push_str("    unsafe { nros::Executor::open_in(config, backing, EXECUTOR_SIZING) }\n");
     out.push_str("}\n");
     // Emitted for any multi-session build — a bridge (≥2 transports) or
     // multi-domain (≥2 distinct node domains, Phase 172.K.5).
@@ -2359,7 +2377,12 @@ fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[u
             "\npub fn build_executor_bridge() -> Result<nros::Executor<'static>, nros::NodeError> {\n",
         );
         out.push_str("    register_backends();\n");
-        out.push_str("    nros::Executor::open_multi(&SESSION_SPECS)\n");
+        out.push_str(
+            "    let backing = unsafe { &mut *::core::ptr::addr_of_mut!(EXECUTOR_BACKING) };\n",
+        );
+        out.push_str(
+            "    unsafe { nros::Executor::open_multi_in(&SESSION_SPECS, backing, EXECUTOR_SIZING) }\n",
+        );
         out.push_str("}\n");
     }
     render_register_all_fn(out, plan);
