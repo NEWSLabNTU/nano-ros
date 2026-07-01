@@ -166,7 +166,19 @@ impl Executor<'static> {
     /// let mut executor = Executor::open(&config)?;
     /// ```
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        Self::open_sized(config, super::storage::ExecutorSizing::DEFAULT)
+    }
+
+    /// phase-271 — like [`open`](Self::open) but sized to a caller-supplied
+    /// `sizing` (its own declared topology) instead of the build-time default.
+    /// The `alloc` entry point the `nros::main!` macro's native board path uses
+    /// to size a fat entry (>default `MAX_CBS` callbacks) without a
+    /// workspace-global `NROS_EXECUTOR_MAX_CBS`. Leaks a `sizing`-sized backing
+    /// (executor-lifetime); no-alloc entries use `open_in` with their own static.
+    pub fn open_sized(
+        config: &ExecutorConfig<'_>,
+        sizing: super::storage::ExecutorSizing,
+    ) -> Result<Self, NodeError> {
         // SAFETY: leaked backing is exactly `sizing.u64_len()` words, `'static`,
         // uniquely owned by the returned executor.
         unsafe { Self::open_in(config, leak_default_backing(sizing), sizing) }

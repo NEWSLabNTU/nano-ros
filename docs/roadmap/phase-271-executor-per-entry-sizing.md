@@ -120,9 +120,30 @@ both need the two-handle C API below.
   init with `carve(backing)` + populate SC slot 0. Public entry point becomes
   `unsafe fn open_in(cfg, backing: &'s mut [MaybeUninit<u8>])`; a safe convenience
   wraps a default-sized backing for existing callers (a `static`/stack region).
-- **W3 — macro.** `nros::main!` computes the entry's entity count → emits an aligned
-  `static mut BACKING: …[executor_storage_layout(N,SC,A).size()]` and calls
-  `open_in`. No generic crosses the API.
+- **W3 — per-entry sizing at the entry.** Two entry paths:
+  - **Declarative codegen (`nros generate`) — DONE.** `build_executor` /
+    `build_executor_bridge` emit a topology-sized `static mut EXECUTOR_BACKING`
+    (`ExecutorSizing { cbs: CALLBACK_COUNT, sc: SCHED_CONTEXT_COUNT + 1,
+    arena: nros::arena_size_for(CALLBACK_COUNT) }`) and open via `open_in` /
+    `open_multi_in`. Added `nros::arena_size_for` + `nros::ExecutorSizing` exports.
+  - **`nros::main!` macro (board path) — REMAINING (needs a new sizing input).**
+    Landed the building block: `Executor::open_sized(config, sizing)` (the sized
+    sibling of `open`). But two structural gaps make the macro path a *distinct*
+    sub-effort, not a mechanical continuation:
+    1. **The macro has no callback count.** At expansion it knows the launch's
+       *node* count (`num_register_calls`), not the callback count — each node
+       registers its subscriptions/timers/services at **runtime** inside its own
+       `register(runtime)`, invisible to the macro. So it can't derive
+       `ExecutorSizing.cbs`. Per issue #0110's own "fix ideas" the macro path
+       wants a **per-entry `Cargo.toml` `[package.metadata]` `max_cbs` knob** the
+       macro reads → `open_sized`; that's a new user-facing input to design.
+    2. **Layer/dep direction.** The executor is opened inside the board
+       (`BoardEntry::run` → `Executor::open`), and `nros-platform` does **not**
+       depend on `nros`, so `ExecutorSizing` can't sit in the `BoardEntry`
+       signature without new plumbing. Threading it also touches the cross-target
+       (thumbv7em/armv7a) board crates, unverifiable in a host-only environment.
+    The declarative codegen path (above) already delivers the #0110 mechanism for
+    entries whose topology IS known at generate time.
 - **W4 — FFI + examples.** *(Revised — inline carve, no new C handle.)* The C/C++
   executor buffer is **pinned** (caller-allocated, init'd in place, only reached
   through a stable `nros_executor_t*` / `*mut CppContext`, never moved), so instead
@@ -136,8 +157,13 @@ both need the two-handle C API below.
   `_opaque` sizing glue is unchanged. The self-borrow is sound *because* the buffer
   is pinned (the plan's two-handle scheme avoided the self-ref for the general case;
   here the FFI's own pin invariant makes the inline form sound + simpler).
-- **W5 — drop the workaround.** `workspace-rust-native-showcase` drops
-  `NROS_EXECUTOR_MAX_CBS = "8"` and still boots its 4-node / 5-callback launch.
+- **W5 — drop the workaround (REMAINING, gated on W3-macro).** The showcase's
+  `NROS_EXECUTOR_MAX_CBS = "8"` lives on the `workspace-rust-native-showcase`
+  **fixture row in `examples/fixtures.toml`** (the build env), and the showcase is
+  a `nros::main!` (macro→posix-board) entry — so dropping the env requires the
+  macro-path sizing (W3-macro) to land first, then the fixture row drops the env
+  (and its separate `target-fixtures-showcase` dir) and still boots its
+  4-node / 5-callback launch.
 
 ## Self-reference hazard (why two C handles)
 
