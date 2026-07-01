@@ -135,6 +135,19 @@ crate-type = [\"staticlib\"]
 nros-cpp = { path = \"${NANO_ROS_ROOT}/packages/core/nros-cpp\", default-features = false, features = [${_feat_toml}] }
 ${_dep_lines}
 [workspace]
+
+# Mirror the repo-root `[profile.nros-fast-release]` (Cargo.toml). This umbrella is its
+# own workspace root, so the fixture build's `--profile nros-fast-release` (justfile
+# default NROS_CARGO_PROFILE) resolves here — without it cargo errors
+# `profile \`nros-fast-release\` is not defined`. Keep in sync with root + cpp_ffi crates.
+[profile.nros-fast-release]
+inherits = \"release\"
+opt-level = 2
+codegen-units = 16
+incremental = true
+debug = 1
+lto = \"off\"
+panic = \"abort\"
 ")
 
     # phase-263 C2c — on an embedded cross target the umbrella crate itself must be no_std

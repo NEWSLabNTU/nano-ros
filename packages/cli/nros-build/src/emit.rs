@@ -93,7 +93,7 @@ pub fn emit_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
 /// (RTIC + Embassy, Phase 216) sibling of [`emit_run_plan`].
 ///
 /// Each Node pkg's `nros::node!()` macro emits a
-/// `pub fn register_dispatch(executor: &mut ::nros::Executor) -> Result<(), ()>`
+/// `pub fn register_dispatch(executor: &mut ::nros::Executor<'static>) -> Result<(), ()>`
 /// that populates `Executor.dispatch_slots`. Framework Entry pkgs
 /// driven by a launch.xml-derived plan can call this fn from `#[init]`
 /// instead of having to declare each Node in the proc-macro's
@@ -117,7 +117,7 @@ pub fn emit_run_plan_register_dispatch(plan: &NrosPlan) -> String {
     out.push('\n');
 
     out.push_str(
-        "pub fn run_plan_register_dispatch(\n    executor: &mut ::nros::Executor,\n) -> ::core::result::Result<(), ()> {\n    let _ = executor; // silence unused-warn on empty plans\n",
+        "pub fn run_plan_register_dispatch(\n    executor: &mut ::nros::Executor<'static>,\n) -> ::core::result::Result<(), ()> {\n    let _ = executor; // silence unused-warn on empty plans\n",
     );
 
     for inst in &plan.instances {
@@ -399,9 +399,9 @@ mod tests {
         let out = emit_run_plan_register_dispatch(&plan);
         assert!(
             out.contains(
-                "pub fn run_plan_register_dispatch(\n    executor: &mut ::nros::Executor,\n) -> ::core::result::Result<(), ()> {",
+                "pub fn run_plan_register_dispatch(\n    executor: &mut ::nros::Executor<'static>,\n) -> ::core::result::Result<(), ()> {",
             ),
-            "expected `pub fn run_plan_register_dispatch(executor: &mut ::nros::Executor) -> Result<(), ()>` signature; got:\n{out}"
+            "expected `pub fn run_plan_register_dispatch(executor: &mut ::nros::Executor<'static>) -> Result<(), ()>` signature; got:\n{out}"
         );
         assert!(
             out.contains("::talker_pkg::register_dispatch(executor)?;"),
