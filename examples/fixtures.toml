@@ -1174,6 +1174,25 @@ platform = "native"
 lang = "rust"
 dir = "examples/native/rust/action-client"
 
+# Phase 275 W2 (#102 H3) — native/rust variant examples that shipped with zero
+# fixtures. Bare rows (default = ["rmw-zenoh"], same shape as the base examples
+# above) build-assert them. Runtime behavior assertions (async client actually
+# receives; logging sink emits) are a follow-up test under nros-tests/tests/.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-client-async"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/action-client-async"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/logging"
+
 [[fixture]]
 platform = "native"
 lang = "rust"
