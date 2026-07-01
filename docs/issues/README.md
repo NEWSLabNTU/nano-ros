@@ -50,12 +50,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `[env]` is the only lever to raise it, so raising it for a fat native entry also bloats lean
   RAM-bound embedded entries in the same workspace. Wants a topology-derived const-generic
   `Executor` or a per-entry build knob. Split from #95 (diagnostic half resolved).
-- **#102** — [~60 examples ship untested; advanced capabilities
-  native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
-  single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native
-  C/C++ variants + Rust async untested; lifecycle/params/safety/QoS/tiers/multihost exercised on
-  native only. Add fixtures or honestly de-scope the matrix. (C/C++ embedded *workspace-entry*
-  e2e is landing under phase-263 C2x — narrows the workspace axis, not the single-node holes.)
+- **#102** — [example fixture coverage holes — capability-on-embedded, native variants, `_entry`
+  demos](0102-example-fixture-coverage-holes.md): re-audited 2026-07-01 — the original "~60 untested
+  / zephyr 22 / C/C++ 24" P0 is **now resolved** (Zephyr built by the `zephyr-fixture-leaves` driver;
+  FreeRTOS/NuttX C/C++ have cmake rows). Remaining: lifecycle/params/safety/QoS/multihost still
+  native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
+  transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
+  stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
 - **#103** — [C++ lifecycle has no idiomatic wrapper
   class](0103-cross-language-capability-surface-gaps.md): re-audited 2026-07-01 — 2 of the 3
   original hard gaps were already closed (multi-type params via Phase 91.C/117.9; RT tiers via

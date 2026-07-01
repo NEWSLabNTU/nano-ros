@@ -1,71 +1,93 @@
 ---
 id: 102
-title: "~60 examples ship but are never built/tested as fixtures; advanced capabilities are native-only"
+title: "Example fixture coverage holes — capability-on-embedded, native variants, and per-example `_entry` demos still untested"
 status: open
 type: tech-debt
 area: testing
-related: [rfc-0026, phase-263]
+related: [rfc-0026, phase-263, phase-267]
 ---
 
-## Summary
+## Status — re-audited 2026-07-01 (P0 largely resolved)
 
-A 2026-06-26 audit cross-checking `examples/README.md` (the RFC-0026 coverage matrix) against
-the real tree + `examples/fixtures.toml` + `packages/testing/nros-tests/tests/` found ~60
-example projects that exist (and are claimed in the matrix) but are **never built+tested as
-fixtures** — they are documentation-only and unverified. Separately, every advanced runtime
-capability is exercised on `native` only.
+The original 2026-06-26 snapshot ("~60 examples untested; Zephyr 22 / FreeRTOS 12 / NuttX 12 with
+zero single-node fixtures") is now **substantially stale**. A full re-audit against the current
+tree — cross-checking `examples/fixtures.toml`, the Zephyr fixture driver, per-platform drivers,
+`compile-check-fixtures.sh`, and `packages/testing/nros-tests/tests/` — found the big P0 gaps
+**closed**. What remains is a smaller, sharper set of holes (below). The original snapshot is kept
+at the end for history.
 
-## Holes (priority order)
+**Key correction:** single-node fixtures come from *several* mechanisms, not just
+`examples/fixtures.toml`:
+- `examples/fixtures.toml` `[[fixture]]` rows — native/baremetal/esp32/stm32/**freertos & nuttx
+  C/C++**/threadx single-node cells.
+- **Zephyr driver** `scripts/build/zephyr-fixture-leaves.sh` + `scripts/build/fixture-matrix.sh` —
+  builds `examples/zephyr/{c,cpp,rust}/{talker,listener,service-{server,client},action-{server,client}}`
+  × {zenoh,xrce,+cyclonedds}, consumed by `zephyr.rs` / `phase_118_collapse.rs`. (This is why the
+  "Zephyr 0 fixtures" claim was wrong — the coverage just isn't in `fixtures.toml`.)
+- `scripts/build/compile-check-fixtures.sh` — `orch_tiers_freertos`, `stm32f4/rust/talker-embassy`.
+- Test-driven builders — `freertos_run_plan_runtime.rs` (freertos `talker_entry`),
+  `phase_118_collapse.rs`, the phase-263 `*_entry_e2e.rs` / workspace `*_e2e.rs`.
 
-**P0 — claimed in matrix, zero single-node fixtures:**
-- **Zephyr: 22 examples, 0 single-node fixtures** (`examples/zephyr/{c,cpp,rust}/` — talker,
-  listener, service-{server,client}, action-{server,client}, +typed/async/cyclonedds). Only
-  one workspace fixture (`workspace-rust-zephyr`, `skip_probe=true`). `phase_118_collapse.rs`
-  builds some dynamically, outside the fixture manifest.
-- **FreeRTOS C/C++: 12 examples, 0 single-node fixtures** (`examples/qemu-arm-freertos/{c,cpp}/`).
-  Rust has 7 fixtures. (NB: workspace-entry e2e for C/C++ FreeRTOS is landing under phase-263
-  C2x — `c_freertos_entry_e2e.rs`, `cpp_freertos_entry_e2e.rs` — but the single-node examples
-  remain untested.)
-- **NuttX C/C++: 12 examples, 0 single-node fixtures** (`examples/qemu-arm-nuttx/{c,cpp}/`).
+### P0 — DONE
+- **Zephyr** c/cpp/rust × 6 roles × zenoh/xrce(/cyclone) built by the leaves driver. (Was "22
+  examples, 0 fixtures".) Only 4 non-role leaves remain — see below.
+- **FreeRTOS C/C++ (12)** — all present, `examples/fixtures.toml` ~2163–2233.
+- **NuttX C/C++ (12)** — all present, `examples/fixtures.toml` ~2240–2310.
 
-**P1 — partial:**
-- threadx-riscv64 cyclonedds C/C++: only talker+listener fixtures; service/action examples
-  exist but have no fixtures.
-- native C/C++ variant examples (custom-msg, custom-transport-loopback, logging,
-  component-poc, transform-poc): exist, 0 fixtures.
-- native Rust async (`action-client-async`, `service-client-async`): exist, 0 fixtures.
+## Remaining holes (2026-07-01, priority order)
 
-**P2 — capabilities native-only** (no embedded fixture exercises them): lifecycle, parameters,
-safety/CRC, QoS-overrides, RT-tiers, multihost. Each has exactly one native fixture and no
-cross-platform coverage.
+**H1 — capabilities exercised on `native` only** (the truest remaining core). No embedded fixture
+exercises **lifecycle, parameters, safety/CRC, QoS-overrides, or multihost**. Each has exactly one
+native fixture. *Progress:* RT-tiers now reaches FreeRTOS (`orch_tiers_freertos` +
+`orchestration_tiers_freertos.rs`); basic pub/sub **workspace-entry** e2e reaches zephyr/freertos/
+nuttx/threadx (phase-263 C2x). But the five capabilities above remain native-only.
 
-**P2 — stale examples to delete (exist but dropped/broken):**
-- `examples/zephyr/rust/service-client-async` — dropped from the matrix (README line ~81) but
-  the dir was never removed.
-- `examples/stm32f4/rust/talker-embassy` — `skip_build=true` (missing platform glue), tracked
-  in known-issues; fix-or-remove.
-- `examples/px4/rust/uorb` — README-only placeholder (Rust crate deleted Phase 115.K.4; C++ is
-  canonical).
+**H2 — per-example `*_entry` demos unexercised (new; not in the original snapshot).** 18 dirs —
+`examples/{qemu-arm-freertos,qemu-arm-nuttx,threadx-linux}/rust/{talker,listener,service-server,
+service-client,action-server,action-client}_entry` — exist but only freertos `talker_entry` is
+built/run (by `freertos_run_plan_runtime.rs`). The other 17 have no dedicated fixture or test.
 
-## RMW reach
+**H3 — native variant examples, 0 fixtures:**
+- native/c: `custom-msg`, `custom-platform`, `custom-transport-loopback`, `logging`
+- native/cpp: `component-poc`, `component-node-poc`, `transform-poc`, `logging`
+- native/rust: `action-client-async`, `service-client-async`, `logging`
 
-zenoh: broad. cyclonedds: native + threadx only (zephyr examples exist but untested). xrce:
-native + one baremetal. uORB: px4 C++ stub only.
+**H4 — Zephyr non-role leaves, 0 fixtures:** `zephyr/cpp/{cyclonedds,talker-typed}`,
+`zephyr/rust/{cyclonedds,service-client-async}`.
 
-## Fix direction
+**H5 — threadx-riscv64 cyclonedds is talker+listener only** (svc/action now built under **zenoh**,
+`fixtures.toml` ~2408–2478; the cyclone RMW variant, ~2560–2593, still lacks svc/action). RMW-scoped,
+not example-scoped.
 
-Per hole: either (a) add the fixture rows to `examples/fixtures.toml` + a behavior test under
-`nros-tests/tests/`, or (b) honestly de-scope the cell from the RFC-0026 matrix so the matrix
-stops over-claiming. Do NOT leave examples in-tree that the matrix lists but CI never builds —
-that reads as "covered" when it isn't (the project's "no silent caps" principle). The
-`example_shape.rs` / `examples_canonical_shape.rs` tests already assert structure; extend the
-gating so a matrix cell without a fixture is a tracked exception, not a silent gap.
+**H6 — stale examples to fix-or-delete:**
+- `examples/zephyr/rust/service-client-async` — dropped from the matrix but dir never removed;
+  shape-tested only.
+- `examples/px4/rust/uorb` — README placeholder (Rust crate deleted Phase 115.K.4; C++ canonical).
+- `examples/stm32f4/rust/{talker,listener}-embassy` — `talker-embassy` now compile-checked
+  (`embassy_main_macro` + `stm32f4_embassy_main_macro.rs`), but `skip_build=true` in `fixtures.toml`
+  and `listener-embassy` is fully uncovered.
 
-Sequence: P0 zephyr single-node fixtures (biggest claim/reality gap) → P1 freertos/nuttx
-single-node C/C++ + threadx cyclone svc/action → P2 capability-on-embedded + stale cleanup.
+## Fix direction (unchanged principle)
 
-## Evidence
+Per hole: either (a) add a fixture row (`examples/fixtures.toml` or the relevant driver matrix) +
+a behavior test under `nros-tests/tests/`, or (b) honestly de-scope the cell from the RFC-0026
+matrix. Do NOT leave a matrix-listed example that CI never builds — that reads as "covered" when it
+isn't ("no silent caps"). Extend `examples_canonical_shape.rs` gating so a matrix cell without a
+fixture is a *tracked exception*, not a silent gap.
 
-2026-06-26 coverage audit; full platform×lang×capability grid + the ~60-example untested list
-in that audit. Snapshot caveat: phase-263 C2x is actively landing C/C++ embedded **workspace-
-entry** e2e tests, which narrows the workspace axis but not the single-node-example holes.
+Sequence: **H2** (mechanical — the `_entry` demos already exist, just need fixture rows) → **H6**
+(stale cleanup, cheap) → **H3** (native variants) → **H5** (threadx cyclone RMW) → **H4** (zephyr
+leaves) → **H1** (capability-on-embedded — the largest, needs new per-capability embedded fixtures).
+
+> **Note:** adding fixtures requires build-verification on a **known-good machine**. The current dev
+> host has failing RAM (see issue #115) — builds there are untrustworthy, so fixture work must be
+> validated elsewhere. This re-audit is read-only and unaffected.
+
+## Original snapshot (2026-06-26, superseded — kept for history)
+
+A 2026-06-26 audit cross-checking `examples/README.md` against the tree + `examples/fixtures.toml`
++ `nros-tests/tests/` reported ~60 example projects claimed in the RFC-0026 matrix but never
+built+tested: Zephyr 22 / FreeRTOS C/C++ 12 / NuttX C/C++ 12 single-node examples with zero
+fixtures, plus native variants, native Rust async, and capabilities exercised on native only. The
+Zephyr/FreeRTOS/NuttX single-node claims are now resolved (see above); the audit undercounted by
+missing the Zephyr driver and the `*_entry` surface.
