@@ -48,6 +48,8 @@ mod spin;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spsc_ring;
 #[cfg(any(has_rmw, test))]
+mod storage;
+#[cfg(any(has_rmw, test))]
 pub(crate) mod triple_buffer;
 mod types;
 #[cfg(any(has_rmw, test))]
@@ -85,4 +87,6 @@ pub use spin::Executor;
 pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
+#[cfg(any(has_rmw, test))]
+pub use storage::{executor_storage_layout, executor_storage_u64_len};
 pub use types::*;
