@@ -1,12 +1,22 @@
 ---
 id: 110
 title: "No per-entry way to size the executor callback table (`NROS_EXECUTOR_MAX_CBS`) to a declared topology"
-status: open
+status: resolved
 type: enhancement
 area: core
-related: [phase-263, phase-264]
+related: [phase-263, phase-264, phase-271]
 split-from: 95
 ---
+
+> **Resolved by phase-271** (2026-07-01). The executor's sized tables are
+> externalised into caller-owned storage (`Executor<'s>` borrowing carved
+> slices), so per-entry sizing no longer needs the workspace-global build const.
+> Both fix ideas below shipped: the **declarative codegen** derives the size from
+> the plan's `CALLBACK_COUNT` automatically (`build_executor` → `open_in`), and
+> the **`nros::main!` macro** path reads a per-entry
+> `[package.metadata.nros.entry] max_callbacks` knob → `open_sized`. The C/C++ FFI
+> stays a concrete wrapper (heap-free inline carve, ABI unchanged). See
+> [phase-271](../../roadmap/phase-271-executor-per-entry-sizing.md).
 
 ## Summary
 

@@ -117,6 +117,34 @@ pub trait BoardEntry: super::Board {
         Self::run(setup)
     }
 
+    /// phase-271 (issue #110) — boot like [`run_with_deploy`](Self::run_with_deploy)
+    /// but size the executor's callback table + arena to the entry's OWN declared
+    /// topology (`max_cbs` / `max_sched_contexts`, from the entry's
+    /// `[package.metadata.nros.entry]`), instead of the workspace-global
+    /// `NROS_EXECUTOR_MAX_CBS` build const.
+    ///
+    /// Sizes are plain `usize`s (not `nros::ExecutorSizing`) because
+    /// `nros-platform` sits below `nros`; the hosted board converts them. A
+    /// `max_sched_contexts` of `0` means "use the build default". The **default
+    /// body IGNORES the sizing** and forwards to
+    /// [`run_with_deploy`](Self::run_with_deploy), so every board except the
+    /// hosted (posix) one — which opens via `Executor::open` and could grow its
+    /// arena — is byte-identical; the posix board overrides this to
+    /// `Executor::open_sized`. `nros::main!()` emits this (instead of
+    /// `run_with_deploy`) only when the entry declares `max_callbacks`.
+    fn run_with_deploy_sized<F, E>(
+        deploy: &DeployOverlay,
+        _max_cbs: usize,
+        _max_sched_contexts: usize,
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        Self::run_with_deploy(deploy, setup)
+    }
+
     /// **Custom-transport install seam.** Install a board-specific transport
     /// selected by `deploy.transport`, BEFORE the linked RMW registers
     /// (phase-244.D1).

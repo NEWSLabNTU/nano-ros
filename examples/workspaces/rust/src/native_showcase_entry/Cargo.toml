@@ -16,6 +16,14 @@ path = "src/main.rs"
 # quickstart; this one is the full feature tour.
 [package.metadata.nros.entry]
 deploy = "native"
+# phase-271 (issue #110) — this entry wires 6 nodes (talker + listener +
+# add_server + add_client + fibonacci action server + client), whose callbacks
+# exceed the default `MAX_CBS = 4`. Declare the per-entry callback-table size
+# here (not a workspace-global `[env] NROS_EXECUTOR_MAX_CBS`, which would bloat
+# every lean embedded entry in this workspace): the `nros::main!` macro threads
+# it into the native board's `Executor::open_sized`, so the action nodes register
+# instead of failing `ExecutorFull`. Lean embedded entries omit this and keep 4.
+max_callbacks = 12
 
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [

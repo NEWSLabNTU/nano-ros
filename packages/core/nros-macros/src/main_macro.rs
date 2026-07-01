@@ -884,6 +884,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         };
 
+    // phase-271 (issue #110) — per-entry executor sizing from the entry's own
+    // `[package.metadata.nros.entry] max_callbacks`. `None` → default sizing
+    // (byte-identical to pre-271); `Some` → emit the `_sized` board entry so the
+    // hosted board opens via `Executor::open_sized`.
+    let exec_sizing = read_entry_executor_sizing(&manifest_dir.join("Cargo.toml"));
+
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
@@ -913,15 +919,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 )
             }
         }
-        None => quote! {
-            // Issue #48 cause 1 — `run_with_deploy` applies the deploy-metadata
-            // overlay (locator / ip / gateway / domain) to the board's boot
-            // config. The default trait body ignores the overlay and forwards
-            // to `run`, so hosted / framework boards are byte-identical; the
-            // FreeRTOS / bare-metal boards override it to stop the
-            // `[deploy.<board>]` block being inert.
-            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
-                &#deploy_overlay_ts,
+        None => {
+            // The register/spin closure — identical for the sized + unsized
+            // board calls below.
+            let setup_closure = quote! {
                 |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                     -> ::core::result::Result<
                         (),
@@ -936,9 +937,33 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #[cfg(not(target_os = "none"))]
                     __nros_hosted_spin_if_requested(runtime)?;
                     ::core::result::Result::Ok(())
+                }
+            };
+            // Issue #48 cause 1 — `run_with_deploy{,_sized}` applies the
+            // deploy-metadata overlay (locator / ip / gateway / domain) to the
+            // board's boot config. The default trait bodies ignore the overlay +
+            // sizing and forward to `run`, so hosted / framework boards are
+            // byte-identical; the FreeRTOS / bare-metal boards override
+            // `run_with_deploy`, and the posix board overrides
+            // `run_with_deploy_sized` (phase-271, issue #110) to open at the
+            // entry's declared `max_callbacks`.
+            match exec_sizing {
+                ::core::option::Option::Some((max_cbs, max_sc)) => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy_sized(
+                        &#deploy_overlay_ts,
+                        #max_cbs,
+                        #max_sc,
+                        #setup_closure,
+                    )
                 },
-            )
-        },
+                ::core::option::Option::None => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
+                        &#deploy_overlay_ts,
+                        #setup_closure,
+                    )
+                },
+            }
+        }
     };
 
     // Phase 216 final wave — Node-pkg registration for framework
@@ -1799,6 +1824,36 @@ fn read_entry_deploy(cargo_toml: &Path) -> Result<String, String> {
     Ok(deploy.to_string())
 }
 
+/// phase-271 (issue #110) — read the per-entry executor sizing from
+/// `[package.metadata.nros.entry] max_callbacks = N` (+ optional
+/// `max_sched_contexts = M`). Returns `Some((max_callbacks, max_sched_contexts))`
+/// (`max_sched_contexts` defaulting to `0` = "board uses the build default") or
+/// `None` when `max_callbacks` is absent (the executor opens at the build-time
+/// default `MAX_CBS`/`ARENA_SIZE`). This is the per-entry, NOT workspace-global,
+/// knob (issue #0110 fix-idea 2): a fat native entry declares its own callback
+/// table size without a `[env] NROS_EXECUTOR_MAX_CBS` that bloats every lean
+/// embedded entry in the same workspace. The hosted (posix) board applies it via
+/// [`BoardEntry::run_with_deploy_sized`] → `Executor::open_sized`.
+fn read_entry_executor_sizing(cargo_toml: &Path) -> Option<(usize, usize)> {
+    let raw = std::fs::read_to_string(cargo_toml).ok()?;
+    let v: toml::Value = toml::from_str(&raw).ok()?;
+    let entry = v
+        .get("package")?
+        .get("metadata")?
+        .get("nros")?
+        .get("entry")?;
+    let max_cbs = entry.get("max_callbacks")?.as_integer()?;
+    if max_cbs <= 0 {
+        return None;
+    }
+    let max_sc = entry
+        .get("max_sched_contexts")
+        .and_then(|x| x.as_integer())
+        .filter(|n| *n > 0)
+        .unwrap_or(0);
+    Some((max_cbs as usize, max_sc as usize))
+}
+
 /// Issue #48 cause 1 — the deploy-overlay values read from the Entry pkg's
 /// `[package.metadata.nros.deploy.<board>]` block. Every field is `Option`
 /// (absent key → `None`), baked into a `DeployOverlay` const by
@@ -2439,5 +2494,59 @@ to = "a"
     fn parse_bridge_rmws_no_bridge_is_empty() {
         assert!(parse_bridge_rmws("[system]\nname = \"x\"\n").is_empty());
         assert!(parse_bridge_rmws("not valid toml {{{").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod entry_sizing_tests {
+    //! phase-271 (issue #110) — `[package.metadata.nros.entry] max_callbacks`
+    //! parsing that drives the macro's `run_with_deploy_sized` emit.
+    use super::read_entry_executor_sizing;
+    use std::io::Write;
+
+    fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("nros_macros_entry_sizing_{name}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("Cargo.toml");
+        std::fs::File::create(&p)
+            .unwrap()
+            .write_all(body.as_bytes())
+            .unwrap();
+        p
+    }
+
+    #[test]
+    fn absent_max_callbacks_is_none() {
+        // No knob → macro emits the default `run_with_deploy` (byte-identical).
+        let p = write_tmp(
+            "absent",
+            "[package.metadata.nros.entry]\ndeploy = \"native\"\n",
+        );
+        assert_eq!(read_entry_executor_sizing(&p), None);
+    }
+
+    #[test]
+    fn max_callbacks_only_defaults_sc_to_zero() {
+        // `0` sched-contexts means "board uses the build default".
+        let p = write_tmp(
+            "cbs_only",
+            "[package.metadata.nros.entry]\nmax_callbacks = 12\n",
+        );
+        assert_eq!(read_entry_executor_sizing(&p), Some((12, 0)));
+    }
+
+    #[test]
+    fn max_callbacks_and_sched_contexts() {
+        let p = write_tmp(
+            "both",
+            "[package.metadata.nros.entry]\nmax_callbacks = 8\nmax_sched_contexts = 5\n",
+        );
+        assert_eq!(read_entry_executor_sizing(&p), Some((8, 5)));
+    }
+
+    #[test]
+    fn nonpositive_max_callbacks_is_none() {
+        let p = write_tmp("zero", "[package.metadata.nros.entry]\nmax_callbacks = 0\n");
+        assert_eq!(read_entry_executor_sizing(&p), None);
     }
 }

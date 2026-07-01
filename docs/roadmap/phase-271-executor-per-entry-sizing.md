@@ -1,8 +1,9 @@
 # Phase 271 — Per-entry executor sizing (externalised storage)
 
-Status: **In progress (2026-07-01).** W1–W2 (core `Executor<'s>` + slices) + W4
-(FFI inline carve) landed; W3 (macro/codegen per-entry sizing) + W5 (drop showcase
-env) remain. Resolves [issue 0110](../issues/0110-executor-max-cbs-per-entry-sizing-knob.md).
+Status: **Complete (2026-07-01).** All waves landed — W1/W2 (core `Executor<'s>`
++ slices), W4 (FFI inline carve), W3 (declarative-codegen sizing + `nros::main!`
+per-entry `Cargo.toml` knob), W5 (showcase). Resolves
+[issue 0110](../issues/0110-executor-max-cbs-per-entry-sizing-knob.md).
 
 ## Problem
 
@@ -126,24 +127,22 @@ both need the two-handle C API below.
     (`ExecutorSizing { cbs: CALLBACK_COUNT, sc: SCHED_CONTEXT_COUNT + 1,
     arena: nros::arena_size_for(CALLBACK_COUNT) }`) and open via `open_in` /
     `open_multi_in`. Added `nros::arena_size_for` + `nros::ExecutorSizing` exports.
-  - **`nros::main!` macro (board path) — REMAINING (needs a new sizing input).**
-    Landed the building block: `Executor::open_sized(config, sizing)` (the sized
-    sibling of `open`). But two structural gaps make the macro path a *distinct*
-    sub-effort, not a mechanical continuation:
-    1. **The macro has no callback count.** At expansion it knows the launch's
-       *node* count (`num_register_calls`), not the callback count — each node
-       registers its subscriptions/timers/services at **runtime** inside its own
-       `register(runtime)`, invisible to the macro. So it can't derive
-       `ExecutorSizing.cbs`. Per issue #0110's own "fix ideas" the macro path
-       wants a **per-entry `Cargo.toml` `[package.metadata]` `max_cbs` knob** the
-       macro reads → `open_sized`; that's a new user-facing input to design.
-    2. **Layer/dep direction.** The executor is opened inside the board
-       (`BoardEntry::run` → `Executor::open`), and `nros-platform` does **not**
-       depend on `nros`, so `ExecutorSizing` can't sit in the `BoardEntry`
-       signature without new plumbing. Threading it also touches the cross-target
-       (thumbv7em/armv7a) board crates, unverifiable in a host-only environment.
-    The declarative codegen path (above) already delivers the #0110 mechanism for
-    entries whose topology IS known at generate time.
+  - **`nros::main!` macro (board path) — DONE (per-entry `Cargo.toml` knob).**
+    The macro has no callback count at expansion (it knows only the launch's
+    *node* count; nodes register callbacks at runtime inside `register()`), so
+    per issue #0110 fix-idea 2 the entry declares its own size:
+    `[package.metadata.nros.entry] max_callbacks = N` (+ optional
+    `max_sched_contexts`) — **per-entry, not the workspace-global `[env]`**.
+    - `read_entry_executor_sizing` parses it; the single-tier emit chooses
+      `BoardEntry::run_with_deploy_sized(&deploy, N, SC, closure)` when present,
+      else the byte-identical `run_with_deploy`.
+    - New `BoardEntry::run_with_deploy_sized` (plain `usize`s — `nros-platform`
+      sits below `nros`) has a **default body that ignores the sizing and
+      forwards to `run_with_deploy`**, so every cross-target board is untouched;
+      only the posix board (+ `NativeBoard` delegate) overrides it to
+      `Executor::open_sized(cfg, ExecutorSizing { cbs, sc, arena:
+      arena_size_for(cbs) })`. Entirely host-verifiable (no cross-target board
+      edits). Unit tests cover the parse; the showcase entry rebuilds clean.
 - **W4 — FFI + examples.** *(Revised — inline carve, no new C handle.)* The C/C++
   executor buffer is **pinned** (caller-allocated, init'd in place, only reached
   through a stable `nros_executor_t*` / `*mut CppContext`, never moved), so instead
@@ -157,13 +156,21 @@ both need the two-handle C API below.
   `_opaque` sizing glue is unchanged. The self-borrow is sound *because* the buffer
   is pinned (the plan's two-handle scheme avoided the self-ref for the general case;
   here the FFI's own pin invariant makes the inline form sound + simpler).
-- **W5 — drop the workaround (REMAINING, gated on W3-macro).** The showcase's
-  `NROS_EXECUTOR_MAX_CBS = "8"` lives on the `workspace-rust-native-showcase`
-  **fixture row in `examples/fixtures.toml`** (the build env), and the showcase is
-  a `nros::main!` (macro→posix-board) entry — so dropping the env requires the
-  macro-path sizing (W3-macro) to land first, then the fixture row drops the env
-  (and its separate `target-fixtures-showcase` dir) and still boots its
-  4-node / 5-callback launch.
+- **W5 — showcase sized via the knob — DONE.** `native_showcase_entry`
+  (`nros::main!` macro → `NativeBoard`) wires 6 nodes whose callbacks exceed the
+  default `MAX_CBS = 4` (its action nodes previously failed to register). It now
+  declares `[package.metadata.nros.entry] max_callbacks = 12` — a per-entry knob,
+  NOT a workspace-global `NROS_EXECUTOR_MAX_CBS` (which is no longer set anywhere;
+  the issue-doc "workaround" was already stale). The entry rebuilds clean; lean
+  embedded entries in the same workspace omit the knob and keep the default 4.
+
+## Status — all waves landed
+
+W1 (storage/carve) · W2 (`Executor<'s>` + slices, all consumers) · W4 (FFI inline
+carve) · W3 (declarative codegen sizing + macro/board per-entry knob) · W5
+(showcase). Host-verified: nros-node 182 lib tests, 238 cli codegen tests, 19
+nros-macros tests (4 new for the knob parse); all touched crates + the showcase
+entry build clean.
 
 ## Self-reference hazard (why two C handles)
 

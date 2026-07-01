@@ -142,6 +142,32 @@ impl BoardEntry for NativeBoard {
         register_backend();
         <PosixBoard as BoardEntry>::run_with_deploy::<F, E>(deploy, setup)
     }
+
+    /// phase-271 (issue #110) — forward to [`PosixBoard::run_with_deploy_sized`]
+    /// so a showcase-scale native entry that declares
+    /// `[package.metadata.nros.entry] max_callbacks` opens its executor sized to
+    /// that topology instead of the default `MAX_CBS = 4`. Without this forward
+    /// the default trait body drops the sizing and falls back to
+    /// `run_with_deploy` (default size).
+    #[inline]
+    fn run_with_deploy_sized<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        max_cbs: usize,
+        max_sched_contexts: usize,
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        register_backend();
+        <PosixBoard as BoardEntry>::run_with_deploy_sized::<F, E>(
+            deploy,
+            max_cbs,
+            max_sched_contexts,
+            setup,
+        )
+    }
 }
 
 impl NativeBoard {

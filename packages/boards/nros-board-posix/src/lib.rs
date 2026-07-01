@@ -170,6 +170,44 @@ impl BoardEntry for PosixBoard {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        // Default sizing (the build-time `MAX_CBS`/`ARENA_SIZE`).
+        Self::boot_hosted(deploy, None, setup)
+    }
+
+    /// phase-271 (issue #110) — hosted boot sized to the entry's own declared
+    /// topology (`[package.metadata.nros.entry] max_callbacks` /
+    /// `max_sched_contexts`), so a fat native entry (>default `MAX_CBS`
+    /// callbacks) fits WITHOUT a workspace-global `NROS_EXECUTOR_MAX_CBS`.
+    fn run_with_deploy_sized<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        max_cbs: usize,
+        max_sched_contexts: usize,
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        Self::boot_hosted(deploy, Some((max_cbs, max_sched_contexts)), setup)
+    }
+}
+
+impl PosixBoard {
+    /// phase-271 (issue #98 + #110) — the single hosted boot body shared by
+    /// [`BoardEntry::run_with_deploy`] (default sizing, `sizing = None`) and
+    /// [`BoardEntry::run_with_deploy_sized`] (`sizing = Some((max_cbs,
+    /// max_sched_contexts))` — a `0` sched-context count means "use the build
+    /// default"). The ONLY difference between the two paths is whether the
+    /// executor opens via `Executor::open` or `Executor::open_sized`.
+    fn boot_hosted<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        sizing: Option<(usize, usize)>,
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
         <Self as BoardInit>::init_hardware();
         // Phase 264 W3 — wire the default log sink (host → stdout/stderr) so a Node
         // pkg's `nros_info!` produces output without per-app `nros_log::init`.
@@ -177,28 +215,20 @@ impl BoardEntry for PosixBoard {
         ::nros_log::init(::nros_log::sinks::default());
 
         // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-        // `ExecutorNodeRuntime` so the codegen-emitted
-        // `run_plan(runtime)` body can register components against a
-        // live RMW session. Env-derived config picks up
-        // `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` at
-        // runtime — the host-side carve-out from the embedded
-        // compile-time domain-id contract documented in CLAUDE.md.
+        // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)` body
+        // can register components against a live RMW session. Env-derived config
+        // picks up `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` at
+        // runtime — the host-side carve-out from the embedded compile-time
+        // domain-id contract documented in CLAUDE.md.
         //
-        // If executor open fails (no RMW backend linked, or the
-        // configured router/peer is unreachable), we fall back to
-        // [`nros_platform::NullNodeRuntime`] so the setup closure
-        // still runs. The fall-back errors loud on any
-        // `register_dispatch_slot_dyn` call — meaning a launch.xml
-        // with zero `<node>` entries (e.g. the Phase 212.N.7 step-1
-        // entry-poc) still reaches `exit_success()`, while a real
-        // workload that tries to register components fails fast with
-        // `RuntimeError::ComponentRegister` (no silent no-op).
+        // If executor open fails (no RMW backend linked, or the configured
+        // router/peer is unreachable), we fall back to
+        // [`nros_platform::NullNodeRuntime`] so the setup closure still runs. The
+        // fall-back errors loud on any `register_dispatch_slot_dyn` call.
         // Issue #98 — route the single-node launch overlay through the W1
         // resolver (RFC-0045 precedence model A): env > baked > compiled default.
         // Only `node_name` is mapped from the overlay; locator/domain/namespace
         // stay `None` so env keeps authority over them (issue #48 preserved).
-        // With `hosted_env=true` + `BootConfig::default()`, `resolve` is
-        // provably equivalent to `from_env()` (W1 regression guard T1).
         let exec_cfg = ::nros::ExecutorConfig::resolve(
             ::nros::BootConfig {
                 node_name: deploy.node_name,
@@ -206,17 +236,35 @@ impl BoardEntry for PosixBoard {
             },
             /* hosted_env = */ true,
         );
-        let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> =
-            match ::nros::Executor::open(&exec_cfg) {
-                Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
-                Err(err) => {
-                    <Self as BoardPrint>::println(format_args!(
-                        "nros: Executor::open failed ({err:?}); proceeding with NullNodeRuntime — \
+        // phase-271 — open at the entry's declared sizing when supplied.
+        let opened = match sizing {
+            None => ::nros::Executor::open(&exec_cfg),
+            Some((cbs, sc)) => {
+                let sc = if sc == 0 {
+                    ::nros::ExecutorSizing::DEFAULT.sc
+                } else {
+                    sc
+                };
+                ::nros::Executor::open_sized(
+                    &exec_cfg,
+                    ::nros::ExecutorSizing {
+                        cbs,
+                        sc,
+                        arena: ::nros::arena_size_for(cbs),
+                    },
+                )
+            }
+        };
+        let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> = match opened {
+            Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
+            Err(err) => {
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: Executor::open failed ({err:?}); proceeding with NullNodeRuntime — \
                      `run_plan` register calls will fail loud."
-                    ));
-                    None
-                }
-            };
+                ));
+                None
+            }
+        };
         let mut crt_null = ::nros_platform::NullNodeRuntime;
         let result = match crt_real.as_mut() {
             Some(crt) => {
@@ -239,9 +287,7 @@ impl BoardEntry for PosixBoard {
             }
         }
     }
-}
 
-impl PosixBoard {
     /// Phase 228.E — per-tier multi-task entry. Opens the one RMW
     /// session, then runs one `Executor` per [`TierSpec`] over that
     /// shared session: the highest-priority tier (`tiers[0]`, the
