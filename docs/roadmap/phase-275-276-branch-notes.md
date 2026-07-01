@@ -37,15 +37,20 @@
 
 ## Remaining — findings, exact steps, risks
 
-### 275 W1 — `*_entry` demos (NOT mechanical)
-17 of 18 `*_entry` dirs are unexercised (only freertos `talker_entry`). **Risk/finding:** the one
-that IS exercised is built by a **compile-in-test antipattern** — `freertos_run_plan_runtime.rs`
-(`build_or_locate_entry_binary`) runs `cargo build` at test time, which CLAUDE.md explicitly
-forbids ("No compilation inside tests"). Correct fix is NOT to copy that: convert entry-pkg builds
-to **prebuilt fixtures** (a fixtures.toml `entry=`/`bringup=` row per `_entry`, or a driver), then a
-test consumes the artifact. Needs the entry-pkg fixture-build schema (see the `native_*_entry`
-rows using `entry=`/`bringup=` in `fixtures.toml` ~lines 60–160) mapped onto the embedded triples
-(thumbv7m freertos, arm nuttx, host threadx-linux). Design + build loop required.
+### 275 W1 — `*_entry` demos — PARTIALLY DONE (2026-07-02)
+Re-scoped after investigation. The 18 `*_entry` dirs split three ways:
+- **freertos (6) — already covered.** `freertos_run_plan_runtime.rs` boots ALL six roles
+  (`boot_and_connect` per role), not just `talker`. NB it still `cargo build`s at test time
+  (the compile-in-test antipattern) — a separate cleanup, but the dirs are exercised.
+- **threadx-linux (6) — DONE.** Landed as 6 bare `[[fixture]]` rows (each Entry pkg bakes
+  board+zenoh via `nros::main!` + the board shim) + `tests/threadx_linux_entry_build.rs`
+  (prebuilt-only build-assert, no compile-in-test). Host x86_64 build; all 6 ELFs verified.
+- **nuttx (6) — BLOCKED, issue #125.** Adding rows surfaced two bugs: (1) `nros sync` +
+  `nuttx-libc-patch.sh` emit a duplicate `[patch.crates-io]` header → invalid TOML (a localized
+  awk-insert fix works but is unexercised without (2)); (2) the standalone Entry-pkg `[[bin]]`
+  fails to link against NuttX libc (`undefined reference to write/clock_gettime/__errno/exit`) —
+  a per-platform link-wiring design gap. Reverted the rows + the libc-patch change; documented in
+  #125. Still tracked as W6-gate exceptions (not silent).
 
 ### 275 W2 — native C/C++ variants (remaining)
 Uncovered: native/c `{custom-msg, custom-platform, custom-transport-loopback, logging}`, native/cpp

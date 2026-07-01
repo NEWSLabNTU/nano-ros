@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#125** — [NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone
+  `[[bin]]` link fails on unresolved libc/syscall symbols](0125-nuttx-rust-entry-demos-cannot-link-standalone.md):
+  Phase 275 W1 landed the freertos + threadx-linux entry-demo coverage; the nuttx slice is blocked —
+  the standalone Entry-pkg `[[bin]]` won't link against NuttX libc (`undefined reference to
+  write/clock_gettime/__errno/exit`), plus a duplicate `[patch.crates-io]` TOML bug in the
+  sync + libc-patch path. Tracked as W6-gate exceptions so it is not a silent gap.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
