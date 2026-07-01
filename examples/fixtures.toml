@@ -973,6 +973,38 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 273 W4 (RFC-0047) — sub-node 2-group realtime workspace. ONE component
+# (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high tier) and
+# "telem" (100 ms, low tier). system.toml group_tiers seeds bind_group_sched for
+# BOTH groups of the SAME node before construction — the per-group binding capability
+# the per-node-name table cannot express. Consumed by tests/realtime_subnode_cpp_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-realtime-subnode"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp-subnode"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# Phase 273 W4 (RFC-0047) — portability fixture. Same subnode_pkg::SubNode but
+# deployed with "fast"/"bulk" tier names instead of "high"/"low". No change to the
+# component package — tier binding is entirely in deploy_bringup/system.toml.
+# Proves the RFC-0047 coupling is removed (package portability).
+# Consumed by tests/realtime_subnode_cpp_portable_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-realtime-subnode-portable"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp-subnode-portable"
+bringup = "src/deploy_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/deploy_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

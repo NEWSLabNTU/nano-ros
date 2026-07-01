@@ -1,0 +1,37 @@
+[system]
+name = "realtime_cpp_subnode_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 273 W4 (RFC-0047) — sub-node 2-group realtime demo.
+# ONE component (subnode_pkg::SubNode) declares TWO callback groups in code:
+#   - "ctrl"  → [tiers.high] : 10 ms spin period, posix priority 80
+#   - "telem" → [tiers.low]  : 100 ms spin period, posix priority 10
+#
+# This is the RFC-0047 core capability: a single node splitting its callbacks
+# across two scheduling tiers via per-group binding. The codegen emits:
+#   nros_cpp_bind_group_sched(exec, "sub_node", "/", "ctrl",  SC_HIGH)
+#   nros_cpp_bind_group_sched(exec, "sub_node", "/", "telem", SC_LOW)
+# before the constructor runs, wiring each timer to its sched context.
+#
+# The package manifest (subnode_pkg CMakeLists.txt) carries NO tier names —
+# tier assignment is entirely in this system.toml (RFC-0047 portability proof).
+[[component]]
+pkg = "subnode_pkg"
+class = "subnode_pkg::SubNode"
+name = "sub_node"
+group_tiers = { ctrl = "high", telem = "low" }
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

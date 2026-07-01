@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>subnode_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 273 W4 — sub-node C++ component: ONE node with TWO callback groups (ctrl 10 ms, telem 100 ms). Tier-agnostic — tier names are in system.toml (RFC-0047 portability).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

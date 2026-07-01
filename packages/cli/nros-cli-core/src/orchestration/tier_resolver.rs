@@ -203,6 +203,50 @@ priority = 10
             "telem_node/telem must be in low tier"
         );
     }
+    /// Phase 273 W4 (RFC-0047) — sub-node: ONE component with TWO groups on TWO
+    /// tiers must resolve without error (NodeSpansTiers v1 constraint lifted).
+    #[test]
+    fn resolve_system_tiers_sub_node_two_groups_two_tiers() {
+        let system_toml_str = r#"
+[system]
+name = "test_subnode"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "subnode_pkg"
+class = "subnode_pkg::SubNode"
+name = "sub_node"
+group_tiers = { ctrl = "high", telem = "low" }
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+"#;
+        let system: SystemToml = toml::from_str(system_toml_str).expect("parse system.toml");
+        let cfg = NrosConfig::default();
+        let callback_groups = collect_callback_groups(&cfg, &system.components);
+        let table =
+            resolve_system_tiers(&system, &callback_groups, "posix").expect("sub-node must resolve");
+        assert!(!table.is_single_tier(), "must be multi-tier");
+        let high = table.tiers.iter().find(|t| t.name == "high").unwrap();
+        let low  = table.tiers.iter().find(|t| t.name == "low").unwrap();
+        // Same node, both groups resolved to different tiers (the RFC-0047 sub-node proof).
+        assert!(
+            high.members.contains(&("sub_node".to_string(), "ctrl".to_string())),
+            "sub_node/ctrl must be in high tier"
+        );
+        assert!(
+            low.members.contains(&("sub_node".to_string(), "telem".to_string())),
+            "sub_node/telem must be in low tier"
+        );
+    }
 }
 
 /// Best-effort RTOS name for tier resolution from the selected deploy target.

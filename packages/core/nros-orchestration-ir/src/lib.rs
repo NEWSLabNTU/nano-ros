@@ -255,15 +255,6 @@ pub enum TierResolveError {
     MissingRtosSpec { tier: String, rtos: String },
     #[error("`[[node_overrides]]` targets node `{node}` which is not a component in the system")]
     UnknownOverrideNode { node: String },
-    #[error(
-        "node `{node}` has callback groups in different tiers (`{tier_a}` and `{tier_b}`); v1 \
-         pins a whole node to one tier — put its groups in the same tier"
-    )]
-    NodeSpansTiers {
-        node: String,
-        tier_a: String,
-        tier_b: String,
-    },
 }
 
 /// Pick a tier's per-RTOS spec by target name.
@@ -325,23 +316,11 @@ pub fn resolve_tiers(
         }
     }
 
-    // v1 node-pinned-to-tier rule (RFC-0015): every callback group of a node
-    // must resolve to the SAME tier, so one node = one task = one (unlocked)
-    // State. (v2 with the multi-task state-sync machinery relaxes this.)
-    let mut node_tier: BTreeMap<&str, &str> = BTreeMap::new();
-    for (tier, members) in &members_by_tier {
-        for (node, _group) in members {
-            if let Some(prev) = node_tier.insert(node.as_str(), tier.as_str())
-                && prev != tier.as_str()
-            {
-                return Err(TierResolveError::NodeSpansTiers {
-                    node: node.clone(),
-                    tier_a: prev.to_string(),
-                    tier_b: tier.clone(),
-                });
-            }
-        }
-    }
+    // Phase 273 W4 (RFC-0047): the v1 node-pinned-to-tier rule is lifted.
+    // A single node may now have callback groups in different tiers (sub-node
+    // tiering). Each group is individually bound to its sched context via
+    // bind_group_sched; the caller is responsible for thread-safety when groups
+    // in different tiers run concurrently (RFC-0047 §3).
 
     // Degenerate: nothing declared → a single synthesized default tier.
     if members_by_tier.is_empty() {
@@ -536,19 +515,33 @@ mod tests {
         assert_eq!(table.tiers[1].name, "low");
     }
 
+    /// Phase 273 W4 (RFC-0047): a single node is now ALLOWED to have callback
+    /// groups in different tiers (sub-node tiering). The old v1 NodeSpansTiers
+    /// error is lifted. Both groups must appear in the resolved tier table.
     #[test]
-    fn node_spanning_tiers_errors() {
+    fn node_spanning_tiers_is_allowed() {
         let mut tiers = BTreeMap::new();
         tiers.insert("high".to_string(), posix_tier(80, None, None));
         tiers.insert("low".to_string(), posix_tier(10, None, None));
         let mut cbgs = BTreeMap::new();
         cbgs.insert(
-            "control_node".to_string(),
+            "sub_node".to_string(),
             vec![cbg("ctrl", "high"), cbg("telem", "low")],
         );
-        let err =
-            resolve_tiers(&tiers, &[], &names(&["control_node"]), &cbgs, "posix").unwrap_err();
-        assert!(matches!(err, TierResolveError::NodeSpansTiers { .. }));
+        let table = resolve_tiers(&tiers, &[], &names(&["sub_node"]), &cbgs, "posix").unwrap();
+        // Both groups resolved: high tier contains (sub_node, ctrl), low tier contains (sub_node, telem).
+        let high = table.tiers.iter().find(|t| t.name == "high").unwrap();
+        let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
+        assert!(
+            high.members
+                .contains(&("sub_node".to_string(), "ctrl".to_string())),
+            "ctrl group must be in high tier"
+        );
+        assert!(
+            low.members
+                .contains(&("sub_node".to_string(), "telem".to_string())),
+            "telem group must be in low tier"
+        );
     }
 
     #[test]

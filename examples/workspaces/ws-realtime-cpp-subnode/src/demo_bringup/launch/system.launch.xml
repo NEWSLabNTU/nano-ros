@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Phase 273 W4 (ws-realtime-cpp-subnode) — ONE node, TWO callback groups.
+     The single `sub_node` instance has two groups (ctrl + telem) assigned to
+     two tiers in system.toml group_tiers. The entry seeds bind_group_sched for
+     both before construction (RFC-0047 per-group binding proof). -->
+<launch>
+    <node pkg="subnode_pkg" exec="subnode" name="sub_node"/>
+</launch>

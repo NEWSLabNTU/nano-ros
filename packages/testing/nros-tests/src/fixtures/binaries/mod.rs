@@ -264,6 +264,10 @@ static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::n
 static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 272 W3 — cached path to the rclcpp-shape 2-tier realtime workspace entry.
 static NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 273 W4 — cached path to the sub-node 2-group realtime workspace entry (RFC-0047 proof).
+static NATIVE_WORKSPACE_CPP_SUBNODE_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 273 W4 — cached path to the sub-node portability workspace entry (RFC-0047 portability).
+static NATIVE_WORKSPACE_CPP_SUBNODE_PORTABLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
 /// QoS-override and custom-message cross-process workspace entries.
 static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1615,6 +1619,42 @@ pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-rclcpp",
                 "ws-realtime-cpp-rclcpp",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 273 W4 (RFC-0047) — the sub-node 2-group realtime workspace entry (cached).
+/// ONE `subnode_pkg::SubNode` (IS-A ComponentNode) declares two callback groups
+/// in code ("ctrl" 10 ms, "telem" 100 ms); `system.toml group_tiers` maps them to
+/// the "high" and "low" tiers. The entry emits `bind_group_sched` for BOTH groups of
+/// the SAME node before construction — proving per-group binding (the capability the
+/// per-node-name table cannot express). Consumed by tests/realtime_subnode_cpp_e2e.rs.
+pub fn build_native_workspace_cpp_subnode_realtime_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_SUBNODE_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-realtime-subnode",
+                "ws-realtime-cpp-subnode",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 273 W4 (RFC-0047) — the sub-node portability workspace entry (cached).
+/// The `subnode_pkg::SubNode` component is IDENTICAL to the sub-node fixture
+/// but this workspace uses "fast"/"bulk" tier names instead of "high"/"low" — no
+/// package change. Proves RFC-0047 portability: a group-using package can be
+/// redeployed with different tier names by changing only `system.toml`.
+/// Consumed by tests/realtime_subnode_cpp_portable_e2e.rs.
+pub fn build_native_workspace_cpp_subnode_portable_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_SUBNODE_PORTABLE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-realtime-subnode-portable",
+                "ws-realtime-cpp-subnode-portable",
                 "native_entry",
             )
         })

@@ -63,18 +63,33 @@ the entry `Plan` IR + emit (`codegen/entry/`), `nros-orchestration-ir`.
 
 ### W4 — wire end-to-end + migrate Rust + sub-node e2e (the proof)
 **Files:** the Rust `nros::main!`/codegen path; a sub-node realtime fixture + e2e.
-- **Rust migration:** route the Rust binding through the group table (seed `bind_group_sched` from
-  config; entities created in named groups carry them; drop the bespoke per-callback
-  `bind_handle_to_sched_context` loop). Keep `run_tiers` for the spin structure.
-- **Sub-node fixture + e2e:** a workspace where ONE node has TWO groups on TWO tiers (e.g. a node with
-  a 10 ms `ctrl` timer on high + a 100 ms `telem` timer on low), across Rust + C++; assert the two
-  callbacks schedule at their distinct cadences (the capability the per-node table couldn't express).
-- **Portability check:** copy a group-using node package into a second workspace whose `system.toml`
-  names tiers differently and binds the group there → it schedules correctly with **no package
-  change** (the RFC-0047 coupling removed). Assert via the fixture build + e2e.
-- **Acceptance:** the sub-node e2e passes (built + run) across Rust + C++; the portability fixture
+
+**Landed:**
+- **NodeSpansTiers constraint lifted** (`nros-orchestration-ir`): removed the v1 rule that pinned a
+  whole node to one tier; the resolver now allows `group_tiers` entries for one node across multiple
+  tiers. Unit test updated (`node_spanning_tiers_is_allowed`). Issue #124 dissolved.
+- **C++ sub-node fixture + e2e** (`ws-realtime-cpp-subnode`): ONE `subnode_pkg::SubNode`
+  (`nros::ComponentNode` subclass) declares two callback groups in its constructor (`ctrl` at 10 ms,
+  `telem` at 100 ms). `system.toml group_tiers = { ctrl = "high", telem = "low" }` maps them to the
+  two tiers. Generated entry seeds `bind_group_sched` for both groups before construction.
+  E2E result: ctrl=49 telem=5 ratio=9.8× (≥3× required). Test: `realtime_subnode_cpp_two_groups_on_two_tiers`.
+- **Portability fixture + e2e** (`ws-realtime-cpp-subnode-portable`): identical `subnode_pkg`
+  source, second workspace uses tier names `fast`/`bulk`. No package change. Test:
+  `realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers`.
+- **Existing regression tests** (`realtime_tiers_{c,cpp,cpp_rclcpp}_e2e`) rebuilt + passing.
+- **Resolver test** (`resolve_system_tiers_sub_node_two_groups_two_tiers` in `nros-cli-core`).
+
+**Deferred to issue #125:**
+- **Rust entry group-seed:** the `nros::main!` multi-tier path does not emit `bind_group_sched`
+  for Rust nodes. The Rust `run_tiers` mechanism already handles multi-tier dispatch via
+  `active_groups` filtering (each tier's executor admits only its groups). The `bind_group_sched`
+  would add finer-grained per-group SchedContext assignment within a single-executor path —
+  entangled because SchedContextId values are runtime-assigned by the board, not available at
+  macro-expansion time. Design direction and workaround recorded in issue #125.
+
+- **Acceptance:** the sub-node e2e passes (built + run) for C++; the portability fixture
   builds + binds; existing `realtime_tiers_{c,cpp,cpp_rclcpp}_e2e` still pass (node-level case
-  unchanged). `just check` green.
+  unchanged). Rust group-seed cleanly deferred to issue #125. `just check` green.
 
 ## Sequencing
 W1 (executor table + bind-by-group) → W2 (config schema + resolver + seed) → W3 (first-class group

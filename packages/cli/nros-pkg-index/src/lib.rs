@@ -305,7 +305,7 @@ pub fn detect_workspace_root(start: &Path) -> Result<PathBuf> {
         return Ok(root);
     }
     // Pass 2: `Cargo.toml` with `[workspace]`.
-    if let Some(root) = walk_ancestors(&start, |dir| is_cargo_workspace_root(dir)) {
+    if let Some(root) = walk_ancestors(&start, is_cargo_workspace_root) {
         return Ok(root);
     }
     // Pass 3: `.git/` directory.

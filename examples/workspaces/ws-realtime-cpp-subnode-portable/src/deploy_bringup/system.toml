@@ -1,0 +1,30 @@
+[system]
+name = "realtime_cpp_subnode_portable_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 273 W4 (RFC-0047) — portability proof.
+# The subnode_pkg::SubNode component is IDENTICAL to ws-realtime-cpp-subnode,
+# but this workspace uses DIFFERENT tier names: "fast" and "bulk" instead of
+# "high" and "low". The package (subnode_pkg) carries NO tier reference — only
+# the group IDs "ctrl" and "telem". The binding is entirely here in system.toml.
+# This proves a group-using package is portable across workspaces (RFC-0047 §3).
+[[component]]
+pkg = "subnode_pkg"
+class = "subnode_pkg::SubNode"
+name = "sub_node"
+group_tiers = { ctrl = "fast", telem = "bulk" }
+
+[tiers.fast]
+spin_period_us = 10000
+[tiers.fast.posix]
+priority = 80
+
+[tiers.bulk]
+spin_period_us = 100000
+[tiers.bulk.posix]
+priority = 10
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

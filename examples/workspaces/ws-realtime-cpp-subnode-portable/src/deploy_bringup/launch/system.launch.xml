@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Phase 273 W4 (ws-realtime-cpp-subnode-portable) — portability proof.
+     Same subnode_pkg::SubNode as ws-realtime-cpp-subnode, but tier names
+     are "fast"/"bulk" instead of "high"/"low". No package change. -->
+<launch>
+    <node pkg="subnode_pkg" exec="subnode" name="sub_node"/>
+</launch>
