@@ -7,12 +7,20 @@
 
 ## Done on this branch (needs verification)
 
-- **275 W2 (native/rust subset).** Added `examples/fixtures.toml` build-assert rows for the three
-  native/rust variant examples that shipped with zero fixtures: `service-client-async`,
-  `action-client-async`, `logging`. Safe because each has `default = ["rmw-zenoh"]` and the same
-  crate shape (`Cargo.toml` + `src/main.rs`) as the covered base examples, so a bare row mirrors the
-  working `native/rust/listener` pattern. **Verify:** `just build-test-fixtures` builds them; then
-  add runtime assertions (async client receives; logging sink emits) under `nros-tests/tests/`.
+- **275 W2 (native, all langs) — build-assert rows.** Added `examples/fixtures.toml` rows for every
+  native variant example that shipped with zero fixtures:
+  - native/rust: `service-client-async`, `action-client-async`, `logging` — bare rows
+    (`default = ["rmw-zenoh"]`, same shape as covered `listener`).
+  - native/c: `custom-msg`, `custom-platform`, `custom-transport-loopback`, `logging` — `rmw="zenoh"`
+    rows (all use the standard `-DNROS_RMW` cmake path).
+  - native/cpp: `component-poc`, `component-node-poc`, `transform-poc`, `logging` — `rmw="zenoh"` +
+    `target=<cmake project NAME>` (mirrors the `cpp/parameters` row; NAMEs verified from CMakeLists).
+  **Verify:** `just build-test-fixtures` builds them; then add runtime assertions (async client
+  receives; custom-transport-loopback round-trips; logging sink emits) under `nros-tests/tests/`.
+- **275 W5 (stm32 listener-embassy).** Added `listener-embassy` to `compile-check-fixtures.sh`
+  `CARGO_CHECK_EXAMPLES` (id `embassy_main_macro_listener`, cargo-check-only like `talker-embassy`,
+  which lacks the board memory layout to link) + a stamp-asserting test fn in
+  `stm32f4_embassy_main_macro.rs`. **Verify:** the cross target installs + the check stamps.
 
 ## Remaining — findings, exact steps, risks
 
@@ -32,11 +40,14 @@ Uncovered: native/c `{custom-msg, custom-platform, custom-transport-loopback, lo
 row schema** (`cmake_defs`, `codegen_out`, `build_subdir`, `rmw`, per-RMW `build-<rmw>/`), not the
 3-line rust row. Mirror an existing native C/C++ row block. Higher risk blind — do on good hardware.
 
-### 275 W3 — zephyr non-role leaves
-`zephyr/cpp/{cyclonedds,talker-typed}`, `zephyr/rust/{cyclonedds,service-client-async}` sit outside
-the 6-role driver matrix. Extend `scripts/build/fixture-matrix.sh` (role/variant enumeration read by
-`zephyr-fixture-leaves.sh`) to add them, **or** de-scope in `examples/README.md`. Needs driver
-understanding + a zephyr build to confirm the variant actually compiles on `native_sim`.
+### 275 W3 — zephyr non-role leaves (partly already de-scoped)
+`nros_fixture_roles()` in `scripts/build/fixture-matrix.sh` lists exactly the 6 roles; these leaves
+sit outside it. **Finding:** `zephyr/rust/service-client-async` is **already dropped/de-scoped** in
+`examples/README.md` (row 81, "Dropped 2026-06-02 per Phase 212.M-F.5") → leave it (W5/H6 territory,
+not a fixture to add). For `zephyr/{cpp,rust}/cyclonedds` and `zephyr/cpp/talker-typed`: decide
+whether to add a small non-role enumeration to the zephyr driver **or** de-scope in the README —
+needs driver understanding + a `native_sim` build to confirm each actually compiles (cyclone on
+zephyr especially). Not a mechanical add; do on good hardware.
 
 ### 275 W4 — threadx-riscv64 cyclone svc/action (RISK: may be unsupported)
 `examples/fixtures.toml` comments this cell **"experimental Cyclone C/C++ (gated; talker/listener
