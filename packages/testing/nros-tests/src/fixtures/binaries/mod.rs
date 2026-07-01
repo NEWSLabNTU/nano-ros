@@ -262,6 +262,8 @@ static NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = On
 /// Phase 269 W4 — cached paths to the 2-tier sched-context C/C++ realtime workspace entries.
 static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 272 W3 — cached path to the rclcpp-shape 2-tier realtime workspace entry.
+static NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-263 Track-B language matrix — cached paths to the C++ + MIXED projections of the
 /// QoS-override and custom-message cross-process workspace entries.
 static NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1595,6 +1597,24 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime",
                 "ws-realtime-cpp",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 272 W3 (RFC-0047, issue #124) — the rclcpp-shape 2-tier realtime workspace
+/// entry (cached). Same tier config as ws-realtime-cpp (ctrl_node 10 ms high,
+/// telem_node 100 ms low) but components are IS-A-node `nros::ComponentNode`
+/// subclasses (SHAPE rclcpp). Tier binding via the W2-seeded `node_name →
+/// sched_context` table — the runtime proof that #124 is dissolved.
+/// Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
+pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-realtime-rclcpp",
+                "ws-realtime-cpp-rclcpp",
                 "native_entry",
             )
         })

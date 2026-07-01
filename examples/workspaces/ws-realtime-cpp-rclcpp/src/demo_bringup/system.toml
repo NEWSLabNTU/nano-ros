@@ -1,0 +1,42 @@
+[system]
+name = "realtime_cpp_rclcpp_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape 2-tier realtime demo.
+# Identical tier config to ws-realtime-cpp: ctrl_node on high (10 ms),
+# telem_node on low (100 ms). The only difference: components are IS-A-node
+# (ComponentNode subclasses, SHAPE rclcpp), not configure-shape.
+# The W2 codegen seeds bind_node_name_sched for both nodes before construction;
+# the ComponentNode ctor calls node_builder("ctrl_node") which hits the table.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+
+[[node_overrides]]
+name = "ctrl_node"
+callback_groups = [{ id = "ctrl", tier = "high" }]
+
+[[node_overrides]]
+name = "telem_node"
+callback_groups = [{ id = "telem", tier = "low" }]
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

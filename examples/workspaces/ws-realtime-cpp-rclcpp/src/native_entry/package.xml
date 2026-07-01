@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 272 W3 — native C++ entry for the rclcpp-shape 2-tier realtime workspace (ws-realtime-cpp-rclcpp).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

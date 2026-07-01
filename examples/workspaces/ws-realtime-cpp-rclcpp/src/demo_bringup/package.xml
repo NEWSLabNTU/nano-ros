@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>demo_bringup</name>
+  <version>0.1.0</version>
+  <description>Phase 272 W3 — bringup for the rclcpp-shape 2-tier realtime demo (ws-realtime-cpp-rclcpp).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

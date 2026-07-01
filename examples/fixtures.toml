@@ -957,6 +957,22 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of ws-realtime-cpp.
+# Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
+# components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched
+# table (W1+W2) covers the rclcpp ctor path without NodeHandle change.
+# Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-realtime-rclcpp"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp-rclcpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

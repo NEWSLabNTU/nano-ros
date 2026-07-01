@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>telem_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 272 W3 — rclcpp-shape low-tier C++ telemetry node; publishes std_msgs/Int32 on /telem every 100 ms via nros::ComponentNode.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

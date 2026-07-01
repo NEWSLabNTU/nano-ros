@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Phase 272 W3 (ws-realtime-cpp-rclcpp) — 2-node, 2-tier rclcpp-shape C++ entry.
+     Node `name`s match system.toml [[component]].name AND [[node_overrides]].name
+     (RFC-0032 §7 instance identity). The bind_node_name_sched seed uses these names. -->
+<launch>
+    <node pkg="ctrl_pkg" exec="ctrl" name="ctrl_node"/>
+    <node pkg="telem_pkg" exec="telem" name="telem_node"/>
+</launch>
