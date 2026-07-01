@@ -526,6 +526,7 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
                 pkg: c.cfg.package.clone(),
                 class,
                 name: c.cfg.component.clone(),
+                group_tiers: std::collections::BTreeMap::new(),
             });
         }
     }

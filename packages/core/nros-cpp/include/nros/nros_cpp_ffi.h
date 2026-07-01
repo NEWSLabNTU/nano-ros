@@ -779,6 +779,26 @@ nros_cpp_ret_t nros_cpp_bind_node_name_sched(void *handle,
                                              uint8_t sc_id);
 
 /**
+ * Phase 273 (W2) — seed the group → sched-context table for a specific
+ * callback group of a named node. Call BEFORE the node is constructed (before
+ * `nros_cpp_node_create`) so that the group's entities pick up the binding at
+ * register time. Layering: group table > node-name table > default (RFC-0047
+ * Precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
+ *
+ * # Safety
+ * `handle` must be a context returned by `nros_cpp_init`.
+ * `name` must be a valid null-terminated UTF-8 string.
+ * `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+ * null-terminated UTF-8 string.
+ * `group` must be a valid null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
+                                         const char *name,
+                                         const char *namespace_,
+                                         const char *group,
+                                         uint8_t sc_id);
+
+/**
  * Get current monotonic time in nanoseconds.
  *
  * Used by `nros::Future::wait()` (header-side) to budget its spin loop by

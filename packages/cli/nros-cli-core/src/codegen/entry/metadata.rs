@@ -194,6 +194,7 @@ mod tests {
                     params: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
+                    group_tiers: std::collections::BTreeMap::new(),
                 })
                 .collect(),
             depfile_paths: Vec::new(),

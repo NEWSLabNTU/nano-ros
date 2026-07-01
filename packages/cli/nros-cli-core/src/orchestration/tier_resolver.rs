@@ -22,16 +22,39 @@ use super::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Phase 228 / 256 W4.2 — collect each system component's declared
-/// `callback_groups` from the component-package metadata in `cfg`, keyed by the
-/// system `[[component]].name` (the instance name `ResolvedTier.members` use).
+/// Phase 228 / 256 W4.2 / 273 W2 — collect each system component's declared
+/// callback-group → tier bindings, keyed by the system `[[component]].name`
+/// (the instance name `ResolvedTier.members` use).
 /// Shared by the C bake (`codegen_system`) and the Rust codegen (`generate`).
+///
+/// Phase 273 (RFC-0047 W2): `[[component]].group_tiers` is the new source of
+/// truth for the group → tier binding. When present it takes priority over the
+/// package manifest's `callback_groups` tier field. When absent the manifest is
+/// honoured for one release (deprecated path — emit a warning so workspaces can
+/// migrate to `system.toml group_tiers`).
 pub fn collect_callback_groups(
     cfg: &NrosConfig,
     components: &[SystemComponentEntry],
 ) -> BTreeMap<String, Vec<CallbackGroupDecl>> {
     let mut map = BTreeMap::new();
     for c in components {
+        // Phase 273 (W2): prefer system.toml [[component]].group_tiers (RFC-0047).
+        if !c.group_tiers.is_empty() {
+            let groups: Vec<CallbackGroupDecl> = c
+                .group_tiers
+                .iter()
+                .map(|(id, tier)| CallbackGroupDecl {
+                    id: id.clone(),
+                    r#type: "MutuallyExclusive".to_string(),
+                    tier: tier.clone(),
+                })
+                .collect();
+            map.insert(c.name.clone(), groups);
+            continue;
+        }
+
+        // Fallback: package-manifest `callback_groups` tier (deprecated — move to
+        // [[component]].group_tiers in system.toml).
         let Some(pkg) = cfg.component_packages.get(&c.pkg) else {
             continue;
         };
@@ -52,6 +75,15 @@ pub fn collect_callback_groups(
                     .map(|m| m.callback_groups.clone())
             })
             .unwrap_or_default();
+        let has_pkg_tiers = groups.iter().any(|g| g.tier != DEFAULT_TIER);
+        if has_pkg_tiers {
+            eprintln!(
+                "[WARN] nros: package `{}` (component `{}`) has `callback_groups` with a tier \
+                 assignment in Cargo.toml. Move it to `system.toml [[component]].group_tiers` \
+                 (Phase 273 / RFC-0047). Package-level tier binding is deprecated.",
+                c.pkg, c.name
+            );
+        }
         if !groups.is_empty() {
             map.insert(c.name.clone(), groups);
         }
@@ -75,6 +107,102 @@ pub fn resolve_system_tiers(
         callback_groups,
         target_rtos,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orchestration::{
+        cargo_metadata_schema::{SystemComponentEntry, SystemToml, TierDef, TierRtosSpec},
+        nros_config::NrosConfig,
+    };
+
+    /// Phase 273 (W2) — `collect_callback_groups` prefers `[[component]].group_tiers`
+    /// over the package-manifest `callback_groups` tier. An empty `NrosConfig`
+    /// (no component packages) is sufficient because the `group_tiers` path never
+    /// touches `cfg.component_packages`.
+    #[test]
+    fn collect_prefers_group_tiers_over_pkg_manifest() {
+        let cfg = NrosConfig::default();
+        let mut gt = BTreeMap::new();
+        gt.insert("ctrl".to_string(), "high".to_string());
+        gt.insert("telem".to_string(), "low".to_string());
+        let components = vec![SystemComponentEntry {
+            pkg: "ctrl_pkg".to_string(),
+            class: "ctrl_pkg::Ctrl".to_string(),
+            name: "ctrl_node".to_string(),
+            group_tiers: gt,
+        }];
+        let map = collect_callback_groups(&cfg, &components);
+        let decls = map.get("ctrl_node").expect("ctrl_node must be in map");
+        assert_eq!(decls.len(), 2);
+        // Both groups resolved from group_tiers.
+        let by_id: BTreeMap<&str, &str> = decls
+            .iter()
+            .map(|d| (d.id.as_str(), d.tier.as_str()))
+            .collect();
+        assert_eq!(by_id["ctrl"], "high");
+        assert_eq!(by_id["telem"], "low");
+    }
+
+    /// Phase 273 (W2) — `resolve_system_tiers` with `group_tiers` produces the
+    /// expected `(component, group) → sched_context` mapping without needing
+    /// `[[node_overrides]]`.
+    #[test]
+    fn resolve_system_tiers_from_group_tiers() {
+        let system_toml_str = r#"
+[system]
+name = "test"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+group_tiers = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tiers = { telem = "low" }
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+"#;
+        let system: SystemToml = toml::from_str(system_toml_str).expect("parse system.toml");
+        let cfg = NrosConfig::default();
+        let callback_groups = collect_callback_groups(&cfg, &system.components);
+        let table =
+            resolve_system_tiers(&system, &callback_groups, "posix").expect("resolve_system_tiers");
+        assert!(
+            !table.is_single_tier(),
+            "two-tier plan must not be single-tier"
+        );
+        // highest-priority-first: high (80) = idx 0, low (10) = idx 1.
+        assert_eq!(table.tiers[0].name, "high");
+        assert_eq!(table.tiers[1].name, "low");
+        assert!(
+            table.tiers[0]
+                .members
+                .contains(&("ctrl_node".to_string(), "ctrl".to_string())),
+            "ctrl_node/ctrl must be in high tier"
+        );
+        assert!(
+            table.tiers[1]
+                .members
+                .contains(&("telem_node".to_string(), "telem".to_string())),
+            "telem_node/telem must be in low tier"
+        );
+    }
 }
 
 /// Best-effort RTOS name for tier resolution from the selected deploy target.

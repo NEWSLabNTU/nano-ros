@@ -156,6 +156,40 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 );
             }
         }
+        // Phase 273 (W2) — seed the group → sched-context table BEFORE any node is
+        // built (RFC-0047 Precedence: group table > node-name table > default).
+        // One call per resolved (component, group) member across all tiers.
+        out.push_str("    /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */\n");
+        // Build node-name → ns map for lookup.
+        let node_ns: Vec<(String, String)> = plan
+            .nodes
+            .iter()
+            .map(|n| {
+                let name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
+                let ns = n
+                    .namespace
+                    .as_deref()
+                    .unwrap_or("/")
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"");
+                (name, ns)
+            })
+            .collect();
+        for (ti, tier) in tiers.tiers.iter().enumerate() {
+            for (node_name, group) in &tier.members {
+                let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
+                let group_lit = group.replace('\\', "\\\\").replace('"', "\\\"");
+                let ns_lit = node_ns
+                    .iter()
+                    .find(|(n, _)| n == node_name)
+                    .map(|(_, ns)| ns.as_str())
+                    .unwrap_or("/");
+                let _ = writeln!(
+                    out,
+                    "    nros_cpp_bind_group_sched(executor, \"{name_lit}\", \"{ns_lit}\", \"{group_lit}\", __nros_sc_ids[{ti}]);"
+                );
+            }
+        }
     }
 
     for (i, n) in plan.nodes.iter().enumerate() {
@@ -267,6 +301,7 @@ mod tests {
                     params: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
+                    group_tiers: std::collections::BTreeMap::new(),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -516,6 +551,7 @@ mod tests {
                     params: Vec::new(),
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: Some(0), // high tier
+                    group_tiers: std::collections::BTreeMap::new(),
                 },
                 PlanNode {
                     pkg: "telem_pkg".into(),
@@ -531,6 +567,7 @@ mod tests {
                     params: Vec::new(),
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: Some(1), // low tier
+                    group_tiers: std::collections::BTreeMap::new(),
                 },
             ],
             depfile_paths: Vec::new(),
@@ -610,12 +647,35 @@ mod tests {
             src.contains("nros_cpp_node_create(executor, \"telem\", \"/\", &__nros_node_1)"),
             "telem node must use plain nros_cpp_node_create; src:\n{src}"
         );
+        // Phase 273 (W2): bind_group_sched seeds for each (node, group) tier member.
+        assert!(
+            src.contains(
+                "nros_cpp_bind_group_sched(executor, \"ctrl\", \"/\", \"ctrl_grp\", __nros_sc_ids[0])"
+            ),
+            "ctrl/ctrl_grp must be seeded via bind_group_sched; src:\n{src}"
+        );
+        assert!(
+            src.contains(
+                "nros_cpp_bind_group_sched(executor, \"telem\", \"/\", \"telem_grp\", __nros_sc_ids[1])"
+            ),
+            "telem/telem_grp must be seeded via bind_group_sched; src:\n{src}"
+        );
         // Seed calls must appear BEFORE the per-node creates (RFC-0047: seed before build).
         let seed_at = src
             .find("nros_cpp_bind_node_name_sched(executor, \"ctrl\"")
             .unwrap();
+        let group_seed_at = src
+            .find("nros_cpp_bind_group_sched(executor, \"ctrl\"")
+            .unwrap();
         let node_at = src.find("nros_cpp_node_create(executor, \"ctrl\"").unwrap();
-        assert!(seed_at < node_at, "seed block must precede per-node creates");
+        assert!(
+            seed_at < node_at,
+            "node-name seed block must precede per-node creates"
+        );
+        assert!(
+            group_seed_at < node_at,
+            "group seed block must precede per-node creates"
+        );
     }
 
     #[test]
@@ -635,6 +695,10 @@ mod tests {
         assert!(
             !src.contains("nros_cpp_bind_node_name_sched"),
             "no-tier plan must not emit bind_node_name_sched"
+        );
+        assert!(
+            !src.contains("nros_cpp_bind_group_sched"),
+            "no-tier plan must not emit bind_group_sched"
         );
         assert!(
             !src.contains("nros_cpp_node_create_ex"),

@@ -325,6 +325,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             // Default the node name to the package name; the user typically
             // edits it to drop the `_pkg` suffix.
             name: pkg.clone(),
+            group_tiers: std::collections::BTreeMap::new(),
         })
         .collect();
 

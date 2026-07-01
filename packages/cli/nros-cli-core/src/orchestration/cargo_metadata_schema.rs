@@ -744,6 +744,13 @@ pub struct SystemComponentEntry {
     pub pkg: String,
     pub class: String,
     pub name: String,
+    /// Phase 273 (RFC-0047 W2) — callback-group → tier assignment for this component,
+    /// keyed by the code-declared group name. Deployment policy (workspace-owned),
+    /// replacing the package manifest's `callback_groups` tier binding. A group with
+    /// no entry runs on the default tier. Empty ⇒ fall back to the package manifest
+    /// `callback_groups` tier (deprecated path — move to `group_tiers`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub group_tiers: BTreeMap<String, String>,
 }
 
 /// `[deploy.<target>]` block.

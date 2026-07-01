@@ -289,6 +289,12 @@ pub struct PlanNode {
     pub callback_groups: Vec<String>,
     /// Resolved sched-context/tier index. `None` until W4 resolves tiers. (#119)
     pub sched_context: Option<u8>,
+    /// Phase 273 (RFC-0047 W2) — group → tier bindings from `system.toml
+    /// [[component]].group_tiers`. Populated by `plan_from_launch` when the
+    /// matching `[[component]]` carries `group_tiers`. Used by `resolve_plan_sched`
+    /// to assign each callback group's tier directly, without needing
+    /// `[[node_overrides]]`.
+    pub group_tiers: BTreeMap<String, String>,
 }
 
 impl PlanNode {
@@ -468,6 +474,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             params: non_qos_params_from_params(&n.params),
             callback_groups: Vec::new(),
             sched_context: None,
+            group_tiers: BTreeMap::new(),
         });
     };
     for n in &desc.nodes {
@@ -484,6 +491,26 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             "launch file `{}` has no `<node>` entries — nothing to register",
             launch_path.display()
         );
+    }
+
+    // Phase 273 (W2) — populate each PlanNode.group_tiers from the matching
+    // [[component]] entry in system.toml (RFC-0047: group→tier is deployment config).
+    // Matching: PlanNode name (or exec) vs SystemComponentEntry.name.
+    if let Some(ref sys) = parsed_system {
+        let gt_by_name: BTreeMap<&str, &BTreeMap<String, String>> = sys
+            .components
+            .iter()
+            .filter(|c| !c.group_tiers.is_empty())
+            .map(|c| (c.name.as_str(), &c.group_tiers))
+            .collect();
+        if !gt_by_name.is_empty() {
+            for n in &mut nodes {
+                let node_name = n.name.as_deref().unwrap_or(n.exec.as_str());
+                if let Some(gt) = gt_by_name.get(node_name) {
+                    n.group_tiers = (*gt).clone();
+                }
+            }
+        }
     }
 
     // Sort + dedup the depfile entries — pkg-index revisits + sibling
@@ -555,7 +582,10 @@ pub fn board_to_rtos(board: &str) -> &str {
 /// are empty and no node declares callback groups — the guard keeps
 /// single-tier entries byte-identical.
 pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
-    let has_groups = plan.nodes.iter().any(|n| !n.callback_groups.is_empty());
+    let has_groups = plan
+        .nodes
+        .iter()
+        .any(|n| !n.callback_groups.is_empty() || !n.group_tiers.is_empty());
     if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
         return Ok(());
     }
@@ -567,24 +597,47 @@ pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
         .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
         .collect();
 
-    // Per-node callback group declarations: group ID defaults to tier "default";
-    // [[node_overrides]] in system.toml reassigns them at deploy time.
+    // Per-node callback group declarations. Phase 273 (W2): when the node carries
+    // `group_tiers` from system.toml [[component]], use those tiers directly instead
+    // of defaulting to "default" (which required [[node_overrides]] to reassign).
+    // Fallback: group ID with DEFAULT_TIER (old path, [[node_overrides]] still work).
+    // If callback_groups is empty but group_tiers is set, synthesize from group_tiers.
     let mut callback_groups_map: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     for n in &plan.nodes {
-        if n.callback_groups.is_empty() {
-            continue;
-        }
         let node_name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
-        let groups: Vec<CallbackGroupDecl> = n
-            .callback_groups
-            .iter()
-            .map(|g| CallbackGroupDecl {
-                id: g.clone(),
-                r#type: "MutuallyExclusive".to_string(),
-                tier: DEFAULT_TIER.to_string(),
-            })
-            .collect();
-        callback_groups_map.insert(node_name, groups);
+        let decls: Vec<CallbackGroupDecl> = if !n.callback_groups.is_empty() {
+            // cmake-declared groups (via enrich_plan): look up tier from group_tiers.
+            n.callback_groups
+                .iter()
+                .map(|g| {
+                    let tier = n
+                        .group_tiers
+                        .get(g)
+                        .map(|t| t.as_str())
+                        .unwrap_or(DEFAULT_TIER);
+                    CallbackGroupDecl {
+                        id: g.clone(),
+                        r#type: "MutuallyExclusive".to_string(),
+                        tier: tier.to_string(),
+                    }
+                })
+                .collect()
+        } else if !n.group_tiers.is_empty() {
+            // No cmake callback_groups yet; synthesize from system.toml group_tiers.
+            n.group_tiers
+                .iter()
+                .map(|(id, tier)| CallbackGroupDecl {
+                    id: id.clone(),
+                    r#type: "MutuallyExclusive".to_string(),
+                    tier: tier.clone(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if !decls.is_empty() {
+            callback_groups_map.insert(node_name, decls);
+        }
     }
 
     let table = resolve_tiers(
@@ -679,6 +732,7 @@ mod tests {
             params: Vec::new(),
             callback_groups: Vec::new(),
             sched_context: None,
+            group_tiers: BTreeMap::new(),
         };
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
     }
@@ -701,6 +755,7 @@ mod tests {
             params: Vec::new(),
             callback_groups: Vec::new(),
             sched_context: None,
+            group_tiers: BTreeMap::new(),
         };
         let plan = Plan {
             board: "native".into(),
@@ -813,6 +868,7 @@ mod tests {
                 params: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
+                group_tiers: BTreeMap::new(),
             }],
             depfile_paths: vec![],
             bringup: "demo".into(),
@@ -1074,6 +1130,7 @@ autostart = "active"
                     params: Vec::new(),
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: None,
+                    group_tiers: BTreeMap::new(),
                 },
                 PlanNode {
                     pkg: "telem_pkg".into(),
@@ -1089,6 +1146,7 @@ autostart = "active"
                     params: Vec::new(),
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: None,
+                    group_tiers: BTreeMap::new(),
                 },
             ],
             depfile_paths: vec![],
@@ -1127,6 +1185,130 @@ autostart = "active"
         );
     }
 
+    /// Phase 273 (W2) — resolve_plan_sched uses PlanNode.group_tiers to assign
+    /// callback-group tiers directly from system.toml, without needing
+    /// [[node_overrides]]. A 2-tier plan with group_tiers set on each node
+    /// yields the same sched_context stamping as the node_overrides path.
+    #[test]
+    fn resolve_plan_sched_uses_group_tiers_directly() {
+        use crate::orchestration::cargo_metadata_schema::{TierDef, TierRtosSpec};
+        use std::path::PathBuf;
+
+        let mut tiers = BTreeMap::new();
+        tiers.insert(
+            "high".to_string(),
+            TierDef {
+                spin_period_us: Some(10_000),
+                posix: Some(TierRtosSpec {
+                    priority: 80,
+                    stack_bytes: None,
+                    preempt_threshold: None,
+                    sched_class: None,
+                }),
+                ..Default::default()
+            },
+        );
+        tiers.insert(
+            "low".to_string(),
+            TierDef {
+                spin_period_us: Some(100_000),
+                posix: Some(TierRtosSpec {
+                    priority: 10,
+                    stack_bytes: None,
+                    preempt_threshold: None,
+                    sched_class: None,
+                }),
+                ..Default::default()
+            },
+        );
+
+        let mut ctrl_gt = BTreeMap::new();
+        ctrl_gt.insert("ctrl_grp".to_string(), "high".to_string());
+        let mut telem_gt = BTreeMap::new();
+        telem_gt.insert("telem_grp".to_string(), "low".to_string());
+
+        let mut plan = Plan {
+            board: "native".into(),
+            nodes: vec![
+                PlanNode {
+                    pkg: "ctrl_pkg".into(),
+                    exec: "ctrl".into(),
+                    name: Some("ctrl".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["ctrl_grp".into()],
+                    sched_context: None,
+                    group_tiers: ctrl_gt,
+                },
+                PlanNode {
+                    pkg: "telem_pkg".into(),
+                    exec: "telem".into(),
+                    name: Some("telem".into()),
+                    namespace: None,
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    host: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    callback_groups: vec!["telem_grp".into()],
+                    sched_context: None,
+                    group_tiers: telem_gt,
+                },
+            ],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers,
+            node_overrides: Vec::new(), // no [[node_overrides]] needed
+            resolved_tiers: None,
+        };
+
+        resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
+
+        let table = plan
+            .resolved_tiers
+            .as_ref()
+            .expect("resolved_tiers must be set");
+        assert!(!table.is_single_tier());
+        assert_eq!(table.tiers[0].name, "high");
+        assert_eq!(table.tiers[1].name, "low");
+        // group_tiers drives the tier assignment directly.
+        assert_eq!(
+            plan.nodes[0].sched_context,
+            Some(0),
+            "ctrl (high) must get sched_context=0"
+        );
+        assert_eq!(
+            plan.nodes[1].sched_context,
+            Some(1),
+            "telem (low) must get sched_context=1"
+        );
+        // Group members must appear in the tier table.
+        assert!(
+            table.tiers[0]
+                .members
+                .contains(&("ctrl".to_string(), "ctrl_grp".to_string())),
+            "ctrl/ctrl_grp must be a high-tier member"
+        );
+        assert!(
+            table.tiers[1]
+                .members
+                .contains(&("telem".to_string(), "telem_grp".to_string())),
+            "telem/telem_grp must be a low-tier member"
+        );
+    }
+
     /// Phase 269 (W4) — resolve_plan_sched on a plan with no tiers, no overrides,
     /// and no callback groups is a no-op (resolved_tiers stays None).
     #[test]
@@ -1148,6 +1330,7 @@ autostart = "active"
                 params: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
+                group_tiers: BTreeMap::new(),
             }],
             depfile_paths: vec![],
             bringup: "demo".into(),

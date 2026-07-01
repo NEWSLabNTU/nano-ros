@@ -7,17 +7,22 @@ domain_id = 0
 # Identical tier config to ws-realtime-cpp: ctrl_node on high (10 ms),
 # telem_node on low (100 ms). The only difference: components are IS-A-node
 # (ComponentNode subclasses, SHAPE rclcpp), not configure-shape.
-# The W2 codegen seeds bind_node_name_sched for both nodes before construction;
-# the ComponentNode ctor calls node_builder("ctrl_node") which hits the table.
+# Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
+# [[component]].group_tiers (deployment config, not package manifest).
+# The W2 codegen seeds bind_node_name_sched + bind_group_sched for both nodes
+# before construction; the ComponentNode ctor calls node_builder("ctrl_node")
+# which hits the table.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
 name = "ctrl_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 [tiers.high]
 spin_period_us = 10000
@@ -28,14 +33,6 @@ priority = 80
 spin_period_us = 100000
 [tiers.low.posix]
 priority = 10
-
-[[node_overrides]]
-name = "ctrl_node"
-callback_groups = [{ id = "ctrl", tier = "high" }]
-
-[[node_overrides]]
-name = "telem_node"
-callback_groups = [{ id = "telem", tier = "low" }]
 
 [deploy.native]
 kind = "self"

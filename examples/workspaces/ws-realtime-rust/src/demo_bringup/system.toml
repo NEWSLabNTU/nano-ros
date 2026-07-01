@@ -3,15 +3,23 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
+# Phase 273 W2 (RFC-0047): group→tier binding added to [[component]].group_tiers.
+# This is the new SSoT for deployment config; the package-manifest
+# `callback_groups` tier binding in Cargo.toml is deprecated and will be removed
+# in W4 (the nros::main!() proc-macro migration). For now, both sources exist:
+# the CLI resolver (collect_callback_groups) uses group_tiers; the proc-macro
+# still reads Cargo.toml (W4 scope).
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).

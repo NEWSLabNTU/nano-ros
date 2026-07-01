@@ -1407,6 +1407,56 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
     NROS_CPP_RET_OK
 }
 
+/// Phase 273 (W2) — seed the group → sched-context table for a specific
+/// callback group of a named node. Call BEFORE the node is constructed (before
+/// `nros_cpp_node_create`) so that the group's entities pick up the binding at
+/// register time. Layering: group table > node-name table > default (RFC-0047
+/// Precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`.
+/// `name` must be a valid null-terminated UTF-8 string.
+/// `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+/// null-terminated UTF-8 string.
+/// `group` must be a valid null-terminated UTF-8 string.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_bind_group_sched(
+    handle: *mut c_void,
+    name: *const c_char,
+    namespace_: *const c_char,
+    group: *const c_char,
+    sc_id: u8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || name.is_null() || group.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let ns_str = if namespace_.is_null() {
+        "/"
+    } else {
+        match unsafe { cstr_to_str(namespace_) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    let group_str = match unsafe { cstr_to_str(group) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    ctx.executor.bind_group_sched(
+        name_str,
+        ns_str,
+        group_str,
+        nros_node::executor::sched_context::SchedContextId(sc_id),
+    );
+    NROS_CPP_RET_OK
+}
+
 /// Get current monotonic time in nanoseconds.
 ///
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by

@@ -572,6 +572,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
             pkg: comp.name.clone(),
             class,
             name: inst_name,
+            group_tiers: std::collections::BTreeMap::new(),
         });
     } else {
         // Phase 212.N.12 in-flight — read the multi-shape via the
@@ -588,6 +589,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 pkg: comp.name.clone(),
                 class,
                 name: inst_name,
+                group_tiers: std::collections::BTreeMap::new(),
             });
         }
     }
