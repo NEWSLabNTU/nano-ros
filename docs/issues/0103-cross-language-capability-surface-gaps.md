@@ -4,7 +4,7 @@ title: "C++ lifecycle has no idiomatic wrapper class (drops to extern \"C\") —
 status: open
 type: enhancement
 area: core
-related: [rfc-0019, rfc-0015, phase-269]
+related: [rfc-0019, rfc-0015, phase-269, phase-270]
 ---
 
 ## Re-audit (2026-07-01) — 2 of 3 hard gaps were already CLOSED; only C++ lifecycle remains
@@ -40,8 +40,13 @@ class.** No `nros::LifecycleNode` in `nros-cpp` (`rclcpp_compat.hpp:32` lists it
 user-facing class; a C++ managed node authoring transition behavior still drops to the
 `extern "C"` `nros_cpp_lifecycle_*` / C-ABI functions (and the C++ shim lacks the
 `register_on_configure/activate/...` callbacks the C side has). Fix direction unchanged: add a
-thin `nros::LifecycleNode` wrapper over the complete C state machine (mechanical). Everything
-below is the original (partly-stale) audit, kept for provenance.
+thin `nros::LifecycleNode` wrapper over the complete C state machine (mechanical).
+
+**Planned as [phase-270](../roadmap/phase-270-cpp-lifecycle-node-wrapper.md)** — an rclcpp-shape
+`nros::LifecycleNode` base class (inherit + override `on_*` returning `CallbackReturn`) over new
+no_std `nros_cpp_lifecycle_{get_state,register_on_*}` FFI shims; freestanding-safe (non-pure
+virtuals, no RTTI/exceptions). Resolves this issue when its W3 e2e is green. Everything below is the
+original (partly-stale) audit, kept for provenance.
 
 
 ## Summary
