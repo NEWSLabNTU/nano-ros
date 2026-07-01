@@ -245,13 +245,13 @@ impl PublisherResolver for CellResolver<'_> {
 ///    executor; between iterations every registered component's
 ///    [`ExecutableNode::tick`] runs.
 pub struct ExecutorNodeRuntime {
-    executor: Executor,
+    executor: Executor<'static>,
     components: Vec<Arc<ComponentCell>>,
 }
 
 impl ExecutorNodeRuntime {
     /// Wrap an already-built [`Executor`].
-    pub fn from_executor(executor: Executor) -> Self {
+    pub fn from_executor(executor: Executor<'static>) -> Self {
         Self {
             executor,
             components: Vec::new(),
@@ -259,7 +259,7 @@ impl ExecutorNodeRuntime {
     }
 
     /// Borrow the underlying executor.
-    pub fn executor(&self) -> &Executor {
+    pub fn executor(&self) -> &Executor<'static> {
         &self.executor
     }
 
@@ -267,7 +267,7 @@ impl ExecutorNodeRuntime {
     /// (parameter services, custom guard conditions). Don't use during
     /// [`spin`](Self::spin) from another thread; the runtime is
     /// single-threaded.
-    pub fn executor_mut(&mut self) -> &mut Executor {
+    pub fn executor_mut(&mut self) -> &mut Executor<'static> {
         &mut self.executor
     }
 
@@ -417,7 +417,7 @@ impl ExecutorNodeRuntime {
         // call_raw poll, action-server complete/feedback) through a raw
         // pointer so `&self.components` and `&mut self.executor` (disjoint
         // fields) can be live at once.
-        let exec_ptr: *mut Executor = &mut self.executor;
+        let exec_ptr: *mut Executor<'static> = &mut self.executor;
         for cell in &self.components {
             tick_one_cell(cell.as_ref(), exec_ptr);
         }
@@ -429,11 +429,11 @@ impl ExecutorNodeRuntime {
 /// shared by [`ExecutorNodeRuntime::run_ticks`] (the owned-runtime path) and
 /// the executor-enrolled [`component_tick_trampoline`] (the `install` path).
 ///
-/// `exec_ptr` is reached through a raw `*mut Executor` so the caller can hold
+/// `exec_ptr` is reached through a raw `*mut Executor<'static>` so the caller can hold
 /// the component (`&ComponentCell`) and the executor live at once — they are
 /// disjoint, and `RuntimeActions` / `RuntimeClientDispatch` reborrow `&mut`
 /// per call (see their docs).
-fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor) {
+fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor<'static>) {
     let resolver = CellResolver { cell };
     let service_clients = cell.service_clients.borrow();
     let action_clients = cell.action_clients.borrow();
@@ -450,7 +450,7 @@ fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor) {
     let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
     // W4c — `tick` reads `ctx.parameter::<T>(name)` from the store via the cell pointer
     // (the store is a separate `Box<ParamState>` allocation, so this does NOT alias the
-    // `&mut Executor` the action/client tick calls reborrow through `exec_ptr`).
+    // `&mut Executor<'static>` the action/client tick calls reborrow through `exec_ptr`).
     #[cfg(feature = "param-services")]
     ctx.set_param_server(cell.param_server());
     if let Ok(mut slot) = cell.slot.try_borrow_mut() {
@@ -467,7 +467,7 @@ fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor) {
 /// # Safety
 /// `state` must be the leaked `Arc<ComponentCell>` enrolled via
 /// [`Executor::enroll_component`] from [`register_node_borrowed`] (borrowed
-/// here, **not** consumed); `exec_ctx` must be the live `*mut Executor` the
+/// here, **not** consumed); `exec_ctx` must be the live `*mut Executor<'static>` the
 /// executor passes itself.
 unsafe extern "C" fn component_tick_trampoline(
     state: *mut core::ffi::c_void,
@@ -476,7 +476,7 @@ unsafe extern "C" fn component_tick_trampoline(
     // SAFETY: `state` is a live, leaked `Arc<ComponentCell>` ptr (kept alive
     // until `component_drop_trampoline`); borrow it without taking ownership.
     let cell = unsafe { &*(state as *const ComponentCell) };
-    tick_one_cell(cell, exec_ctx as *mut Executor);
+    tick_one_cell(cell, exec_ctx as *mut Executor<'static>);
 }
 
 /// Phase 258 (Track 2, 2a) — executor `ComponentSlot.drop` trampoline.
@@ -514,7 +514,7 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         // C/C++ typed entries). The pointer is valid for the runtime's life
         // (the executor is an inline field); the install call uses it only
         // during registration, before any concurrent spin.
-        &mut self.executor as *mut Executor as *mut core::ffi::c_void
+        &mut self.executor as *mut Executor<'static> as *mut core::ffi::c_void
     }
 
     // Phase 264 W2 — register the REP-2002 lifecycle services + drive boot
@@ -587,7 +587,7 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
 // =============================================================================
 
 struct ExecutorSink<'a> {
-    executor: &'a mut Executor,
+    executor: &'a mut Executor<'static>,
     cell: Arc<ComponentCell>,
     /// Per-registration node mapping: stable id → executor `NodeId`.
     nodes: Vec<(String, nros_node::executor::NodeId)>,
@@ -1148,12 +1148,12 @@ unsafe extern "C" fn action_accepted_trampoline(
 
 /// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
 /// of the orchestration `GenClientDispatch`. Resolves the per-component client
-/// handle arrays + a `*mut Executor` (the tick borrows `&components` while
+/// handle arrays + a `*mut Executor<'static>` (the tick borrows `&components` while
 /// needing `&mut executor`, so the executor is reached through a raw pointer,
 /// reborrowed `&mut` per call; no aliasing — `executor` and `components` are
 /// disjoint fields).
 struct RuntimeClientDispatch<'a> {
-    executor: *mut Executor,
+    executor: *mut Executor<'static>,
     services: &'a [(String, crate::HandleId)],
     actions: &'a [(String, usize)],
 }
@@ -1229,7 +1229,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
 /// component complete goals / publish feedback / enumerate active goals from
 /// its `tick` via `TickCtx`.
 struct RuntimeActions<'a> {
-    executor: *mut Executor,
+    executor: *mut Executor<'static>,
     handles: &'a [(String, crate::ActionServerRawHandle)],
 }
 
@@ -1312,7 +1312,7 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
 }
 
 fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
-    executor: &mut Executor,
+    executor: &mut Executor<'static>,
     params: &'p [(&'p str, &'p str)],
     node_identity: Option<(&'static str, &'static str)>,
 ) -> NodeResult<Arc<ComponentCell>>
@@ -1336,7 +1336,7 @@ where
     });
     let mut sink = ExecutorSink {
         // Reborrow so `executor` stays usable for `enroll_component` after the
-        // sink (which holds `&mut Executor`) is dropped below.
+        // sink (which holds `&mut Executor<'static>`) is dropped below.
         executor: &mut *executor,
         cell: cell.clone(),
         nodes: Vec::new(),
@@ -1384,7 +1384,7 @@ where
 
 /// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
 /// from the foreign typed entry's handle (`global_handle()` / `Node::executor_handle()`
-/// = the `_opaque` `*mut Executor`; cf. nros-c `get_executor_from_ptr`) and registers
+/// = the `_opaque` `*mut Executor<'static>`; cf. nros-c `get_executor_from_ptr`) and registers
 /// `C` on it via [`register_node_borrowed`]. The component's `ComponentCell` is kept
 /// alive by the executor's own callback `Arc` clones (phase-257 D1), so this drops the
 /// returned cell. Returns `0` on success, `-1` on a null handle or a registration error.
@@ -1393,7 +1393,7 @@ where
 /// `nros::node!()` emits — the uniform cross-language install seam (phase-257 D6).
 ///
 /// # Safety
-/// `executor` must be the live `*mut Executor` handle a typed entry passes (its
+/// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes (its
 /// `nros::global_handle()` / a node's `executor_handle()`), valid for the call.
 pub unsafe fn install_node_typed<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
@@ -1410,7 +1410,7 @@ where
 /// observes the compile-time launch value (RFC-0004 §10). `params` must outlive the call.
 ///
 /// # Safety
-/// `executor` must be the live `*mut Executor` handle a typed entry passes, valid for the call.
+/// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
 pub unsafe fn install_node_typed_with_params<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
     params: &[(&str, &str)],
@@ -1430,7 +1430,7 @@ where
 /// `node_identity` strings must outlive the call (both are `'static` in the macro emit).
 ///
 /// # Safety
-/// `executor` must be the live `*mut Executor` handle a typed entry passes, valid for the call.
+/// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
 pub unsafe fn install_node_typed_with_node_identity<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
     params: &[(&str, &str)],
@@ -1442,8 +1442,8 @@ where
     if executor.is_null() {
         return -1;
     }
-    // SAFETY: per the fn contract, `executor` is the live `*mut Executor` handle.
-    let exec: &mut Executor = unsafe { &mut *(executor as *mut Executor) };
+    // SAFETY: per the fn contract, `executor` is the live `*mut Executor<'static>` handle.
+    let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
     match register_node_borrowed::<C>(exec, params, node_identity) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro

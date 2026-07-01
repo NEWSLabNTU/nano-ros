@@ -343,7 +343,7 @@ impl PosixBoard {
 
 /// Register + spin one tier on a freshly-opened borrowed-session
 /// executor (spawned-tier path).
-fn run_one_tier<B, F, E>(exec: ::nros::Executor, tier: &TierSpec<'_>, setup: &F)
+fn run_one_tier<B, F, E>(exec: ::nros::Executor<'static>, tier: &TierSpec<'_>, setup: &F)
 where
     B: BoardPrint,
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,

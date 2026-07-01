@@ -384,21 +384,39 @@ const _: () = {
 // ============================================================================
 
 /// The concrete nros-node executor type used by the C++ FFI.
+///
+/// phase-271 — the executor now borrows its per-entry storage
+/// (`Executor<'static>`); the C++ API keeps it heap-free by carving that backing
+/// from the [`backing`](CppContext::backing) tail of the SAME pinned `CppContext`
+/// buffer (see there).
 #[cfg(feature = "rmw-cffi")]
-pub(crate) type CppExecutor = nros_node::Executor;
+pub(crate) type CppExecutor = nros_node::Executor<'static>;
+
+/// `u64` words of per-entry backing the inline executor carves from its
+/// `CppContext` buffer (default sizing).
+#[cfg(feature = "rmw-cffi")]
+pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::DEFAULT.u64_len();
 
 /// Context wrapping the executor and the domain ID.
 ///
 /// The executor doesn't store domain_id itself — it's consumed during
 /// session open. We keep it here so publisher/subscription creation
 /// can pass the correct value to `TopicInfo::with_domain()`.
+///
+/// phase-271 — `backing` is the executor's per-entry storage, carved in place by
+/// `nros_cpp_init`. `executor` borrows it (a self-borrow within this struct);
+/// sound because the buffer is pinned (caller-owned, initialised in place, only
+/// reached through a stable `*mut CppContext`, never moved). Keep `backing` last
+/// so `executor` stays at offset 0 for the `*mut c_void as *mut CppContext` casts.
 #[cfg(feature = "rmw-cffi")]
 pub(crate) struct CppContext {
     pub(crate) executor: CppExecutor,
     pub(crate) domain_id: u32,
+    pub(crate) backing: [core::mem::MaybeUninit<u64>; CPP_EXECUTOR_BACKING_U64S],
 }
 
-// Compile-time assertion: inline storage must fit CppContext.
+// Compile-time assertion: inline storage must fit CppContext (executor + domain
+// + carved backing).
 #[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
     core::mem::size_of::<CppContext>() <= CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
@@ -483,14 +501,29 @@ pub unsafe extern "C" fn nros_cpp_init(
         .node_name(node_name_str)
         .namespace(ns_str);
 
-    match CppExecutor::open(&config) {
+    // phase-271 — construct in place: carve the executor's per-entry backing from
+    // the tail of the caller's `CppContext` buffer, then open the executor over
+    // it and write it (offset 0) + domain_id. Heap-free; the executor's slices
+    // point into the final (pinned) buffer location, so nothing is moved after.
+    let ctx_ptr = storage as *mut CppContext;
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
+        core::slice::from_raw_parts_mut(
+            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
+            CPP_EXECUTOR_BACKING_U64S,
+        )
+    };
+    // SAFETY: `backing` is sized/aligned per `ExecutorSizing::DEFAULT` and lives
+    // for the program (caller owns the buffer); `open_in`'s contract is met.
+    match unsafe { CppExecutor::open_in(&config, backing, nros_node::ExecutorSizing::DEFAULT) } {
         Ok(executor) => {
-            let ctx = CppContext {
-                executor,
-                domain_id: domain_id as u32,
-            };
             // Write directly into caller-provided storage — no heap allocation.
-            unsafe { core::ptr::write(storage as *mut CppContext, ctx) };
+            unsafe {
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
+                core::ptr::write(
+                    core::ptr::addr_of_mut!((*ctx_ptr).domain_id),
+                    domain_id as u32,
+                );
+            }
             NROS_CPP_RET_OK
         }
         // Phase 155.C — surface the inner `NodeError` variant as a

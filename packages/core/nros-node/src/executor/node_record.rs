@@ -108,8 +108,8 @@ impl NodeRecord {
 /// Where rclcpp uses a single `NodeOptions` struct, we expose the
 /// individual setters directly on the builder — fewer cycles when
 /// the user only needs one option.
-pub struct NodeBuilder<'a, 'cfg> {
-    pub(crate) executor: &'a mut super::spin::Executor,
+pub struct NodeBuilder<'a, 'cfg, 's> {
+    pub(crate) executor: &'a mut super::spin::Executor<'s>,
     pub(crate) name: &'cfg str,
     pub(crate) namespace: Option<&'cfg str>,
     pub(crate) rmw_name: Option<&'cfg str>,
@@ -126,7 +126,7 @@ pub struct NodeBuilder<'a, 'cfg> {
     pub(crate) session_idx: Option<u8>,
 }
 
-impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
+impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
     /// Select an RMW backend by name. `name` must match a backend
     /// registered via `nros_rmw_cffi_register_named` (Phase 104.B.2).
     ///

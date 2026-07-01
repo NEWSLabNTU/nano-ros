@@ -58,7 +58,7 @@
 //!   storage where the macro-emitted `__nros_spin` /
 //!   `__nros_dispatch` software tasks own them.
 //! - [`RticBoardEntry::Executor`] is the concrete
-//!   [`::nros::Executor`] — the assoc-type opacity at the
+//!   [`::nros::Executor<'static>`] — the assoc-type opacity at the
 //!   trait surface (`nros-platform` sits below `nros`) is
 //!   resolved at this board layer.
 //!
@@ -98,7 +98,7 @@
 //! is OK (only the platform / cffi crates have to stay below
 //! `nros` in the graph). The pre-followup `Self::Executor = ()`
 //! placeholder was a stand-in until the bringup body was ready;
-//! the follow-up flips to `Self::Executor = ::nros::Executor`.
+//! the follow-up flips to `Self::Executor = ::nros::Executor<'static>`.
 
 #![no_std]
 
@@ -355,7 +355,7 @@ fn rtic_stm32f4_init(
     device: stm32f4xx_hal::pac::Peripherals,
     core: cortex_m::Peripherals,
     node_name: &'static str,
-) -> (::nros::Executor, RticRuntime) {
+) -> (::nros::Executor<'static>, RticRuntime) {
     // Step 1–2: hardware bringup via the direct-exec sibling.
     //
     // Transport config (locator / domain_id) comes from build-time env
@@ -458,7 +458,7 @@ impl RticBoardEntry for RticStm32F4 {
     /// here at the board layer. Sibling `EmbassyBoardEntry`
     /// (Phase 216.C.2) still has `type Executor = ()` until its
     /// parallel `init_hardware` body lands.
-    type Executor = ::nros::Executor;
+    type Executor = ::nros::Executor<'static>;
 
     /// Phase 216.B.2 follow-up — wired `NodeDispatchRuntime` impl
     /// that owns the SPSC producer half of [`CALLBACK_QUEUE`] and

@@ -88,5 +88,7 @@ pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
 #[cfg(any(has_rmw, test))]
-pub use storage::{executor_storage_layout, executor_storage_u64_len};
+pub use storage::{
+    ExecutorInlineStorage, ExecutorSizing, executor_storage_layout, executor_storage_u64_len,
+};
 pub use types::*;

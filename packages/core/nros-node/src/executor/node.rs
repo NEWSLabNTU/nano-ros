@@ -1270,14 +1270,14 @@ impl CallbackGroup {
 /// create entities, then drop it before acquiring the next node handle; entity
 /// handles (`HandleId`, publishers) are owned and outlive it (no `Arc` — see
 /// `docs/design/0022-entity-api-tiers.md` §Borrow model).
-pub struct NodeCtx<'e> {
-    executor: &'e mut super::spin::Executor,
+pub struct NodeCtx<'e, 's> {
+    executor: &'e mut super::spin::Executor<'s>,
     node_id: super::node_record::NodeId,
 }
 
-impl<'e> NodeCtx<'e> {
+impl<'e, 's> NodeCtx<'e, 's> {
     pub(crate) fn new(
-        executor: &'e mut super::spin::Executor,
+        executor: &'e mut super::spin::Executor<'s>,
         node_id: super::node_record::NodeId,
     ) -> Self {
         Self { executor, node_id }
@@ -1285,7 +1285,7 @@ impl<'e> NodeCtx<'e> {
 
     /// Subscription builder (the `clone` tier). Pick a mode with `.typed::<M>()`
     /// or `.generic(type, hash)`, set knobs (`.qos`), then `.build(callback)`.
-    pub fn subscription<'t>(&mut self, topic: &'t str) -> SubscriptionBuilder<'_, 'e, 't> {
+    pub fn subscription<'t>(&mut self, topic: &'t str) -> SubscriptionBuilder<'_, 'e, 't, 's> {
         SubscriptionBuilder {
             ctx: self,
             topic,
@@ -1299,7 +1299,7 @@ impl<'e> NodeCtx<'e> {
     /// publisher handle is owned and outlives this `NodeCtx` — the bridge
     /// builds the dest publisher on one ctx, drops it, then registers the
     /// source subscription on another (see `0022-entity-api-tiers.md`).
-    pub fn publisher<'t>(&mut self, topic: &'t str) -> CtxPublisherBuilder<'_, 'e, 't> {
+    pub fn publisher<'t>(&mut self, topic: &'t str) -> CtxPublisherBuilder<'_, 'e, 't, 's> {
         CtxPublisherBuilder {
             ctx: self,
             topic,
@@ -1662,7 +1662,7 @@ impl<'e> NodeCtx<'e> {
     /// Service-server builder (the `clone` tier) — `node.service(name)`.
     /// Set `.qos()` (defaults to the services profile = RELIABLE+VOLATILE+
     /// KEEP_LAST(10)), then `.build::<Svc, _>(callback)` (Phase 193.2).
-    pub fn service<'t>(&mut self, name: &'t str) -> CtxServiceBuilder<'_, 'e, 't> {
+    pub fn service<'t>(&mut self, name: &'t str) -> CtxServiceBuilder<'_, 'e, 't, 's> {
         CtxServiceBuilder {
             ctx: self,
             name,
@@ -1693,13 +1693,13 @@ impl<'e> NodeCtx<'e> {
 }
 
 /// Service-server builder on a [`NodeCtx`] — `node.service(name)`.
-pub struct CtxServiceBuilder<'c, 'e, 't> {
-    ctx: &'c mut NodeCtx<'e>,
+pub struct CtxServiceBuilder<'c, 'e, 't, 's> {
+    ctx: &'c mut NodeCtx<'e, 's>,
     name: &'t str,
     qos: QosSettings,
 }
 
-impl<'c, 'e, 't> CtxServiceBuilder<'c, 'e, 't> {
+impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
     /// Service QoS (applies to both the request + reply endpoints). Defaults to
     /// `QosSettings::services_default()`.
     pub fn qos(mut self, qos: QosSettings) -> Self {
@@ -1724,20 +1724,20 @@ impl<'c, 'e, 't> CtxServiceBuilder<'c, 'e, 't> {
 }
 
 /// Publisher builder on a [`NodeCtx`] — `node.publisher(topic)`.
-pub struct CtxPublisherBuilder<'c, 'e, 't> {
-    ctx: &'c mut NodeCtx<'e>,
+pub struct CtxPublisherBuilder<'c, 'e, 't, 's> {
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
 }
 
-impl<'c, 'e, 't> CtxPublisherBuilder<'c, 'e, 't> {
+impl<'c, 'e, 't, 's> CtxPublisherBuilder<'c, 'e, 't, 's> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
     }
 
     /// Typed publisher for a ROS message `M`.
-    pub fn typed<M: MessageForRmw>(self) -> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+    pub fn typed<M: MessageForRmw>(self) -> CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
         CtxTypedPublisherBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1751,7 +1751,7 @@ impl<'c, 'e, 't> CtxPublisherBuilder<'c, 'e, 't> {
         self,
         type_name: &'t str,
         type_hash: &'t str,
-    ) -> CtxGenericPublisherBuilder<'c, 'e, 't> {
+    ) -> CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
         CtxGenericPublisherBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1763,14 +1763,14 @@ impl<'c, 'e, 't> CtxPublisherBuilder<'c, 'e, 't> {
 }
 
 /// Typed publisher builder on a `NodeCtx` (`.typed::<M>()`).
-pub struct CtxTypedPublisherBuilder<'c, 'e, 't, M> {
-    ctx: &'c mut NodeCtx<'e>,
+pub struct CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+impl<'c, 'e, 't, 's, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -1784,15 +1784,15 @@ impl<'c, 'e, 't, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
 }
 
 /// Generic publisher builder on a `NodeCtx` (`.generic(type, hash)`).
-pub struct CtxGenericPublisherBuilder<'c, 'e, 't> {
-    ctx: &'c mut NodeCtx<'e>,
+pub struct CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
     qos: QosSettings,
 }
 
-impl<'c, 'e, 't> CtxGenericPublisherBuilder<'c, 'e, 't> {
+impl<'c, 'e, 't, 's> CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -1810,20 +1810,20 @@ impl<'c, 'e, 't> CtxGenericPublisherBuilder<'c, 'e, 't> {
 }
 
 /// Subscription builder — `node.subscription(topic)`.
-pub struct SubscriptionBuilder<'c, 'e, 't> {
-    ctx: &'c mut NodeCtx<'e>,
+pub struct SubscriptionBuilder<'c, 'e, 't, 's> {
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
 }
 
-impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
+impl<'c, 'e, 't, 's> SubscriptionBuilder<'c, 'e, 't, 's> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
     }
 
     /// Typed subscription for a ROS message `M`.
-    pub fn typed<M: MessageForRmw + 'static>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M> {
+    pub fn typed<M: MessageForRmw + 'static>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, 's, M> {
         TypedSubscriptionBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1838,7 +1838,7 @@ impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
         self,
         type_name: &'t str,
         type_hash: &'t str,
-    ) -> GenericSubscriptionBuilder<'c, 'e, 't> {
+    ) -> GenericSubscriptionBuilder<'c, 'e, 't, 's> {
         GenericSubscriptionBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1856,18 +1856,19 @@ pub struct TypedSubscriptionBuilder<
     'c,
     'e,
     't,
+    's,
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e>,
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
     sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
-    TypedSubscriptionBuilder<'c, 'e, 't, M, RX>
+impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
+    TypedSubscriptionBuilder<'c, 'e, 't, 's, M, RX>
 {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
@@ -1881,7 +1882,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
     }
 
     /// Set the staging-buffer size (const-generic).
-    pub fn rx_buffer<const N: usize>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M, N> {
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, 's, M, N> {
         TypedSubscriptionBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1895,7 +1896,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
     /// publisher GID, timestamps) to the callback — `FnMut(&M, Option<&MessageInfo>)`,
     /// the rclrs shape. Distinct from the generic builder's `.message_info()`
     /// (which yields a `RawMessageInfo` with the wire attachment).
-    pub fn message_info(self) -> TypedSubInfoBuilder<'c, 'e, 't, M, RX> {
+    pub fn message_info(self) -> TypedSubInfoBuilder<'c, 'e, 't, 's, M, RX> {
         TypedSubInfoBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1908,7 +1909,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
     /// Surface E2E-safety validation (CRC + sequence gap/duplicate) to the
     /// callback — `FnMut(&M, &IntegrityStatus)`.
     #[cfg(feature = "safety-e2e")]
-    pub fn safety(self) -> TypedSubSafetyBuilder<'c, 'e, 't, M, RX> {
+    pub fn safety(self) -> TypedSubSafetyBuilder<'c, 'e, 't, 's, M, RX> {
         TypedSubSafetyBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1945,18 +1946,19 @@ pub struct TypedSubInfoBuilder<
     'c,
     'e,
     't,
+    's,
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e>,
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
     sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
-    TypedSubInfoBuilder<'c, 'e, 't, M, RX>
+impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
+    TypedSubInfoBuilder<'c, 'e, 't, 's, M, RX>
 {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
@@ -1968,7 +1970,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
         self
     }
 
-    pub fn rx_buffer<const N: usize>(self) -> TypedSubInfoBuilder<'c, 'e, 't, M, N> {
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubInfoBuilder<'c, 'e, 't, 's, M, N> {
         TypedSubInfoBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -2005,10 +2007,11 @@ pub struct TypedSubSafetyBuilder<
     'c,
     'e,
     't,
+    's,
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e>,
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     qos: QosSettings,
     sched: Option<super::sched_context::SchedContextId>,
@@ -2016,8 +2019,8 @@ pub struct TypedSubSafetyBuilder<
 }
 
 #[cfg(feature = "safety-e2e")]
-impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
-    TypedSubSafetyBuilder<'c, 'e, 't, M, RX>
+impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
+    TypedSubSafetyBuilder<'c, 'e, 't, 's, M, RX>
 {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
@@ -2029,7 +2032,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
         self
     }
 
-    pub fn rx_buffer<const N: usize>(self) -> TypedSubSafetyBuilder<'c, 'e, 't, M, N> {
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubSafetyBuilder<'c, 'e, 't, 's, M, N> {
         TypedSubSafetyBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -2064,9 +2067,10 @@ pub struct GenericSubscriptionBuilder<
     'c,
     'e,
     't,
+    's,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e>,
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -2074,7 +2078,7 @@ pub struct GenericSubscriptionBuilder<
     sched: Option<super::sched_context::SchedContextId>,
 }
 
-impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
+impl<'c, 'e, 't, 's, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, 's, RX> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -2085,7 +2089,7 @@ impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
         self
     }
 
-    pub fn rx_buffer<const N: usize>(self) -> GenericSubscriptionBuilder<'c, 'e, 't, N> {
+    pub fn rx_buffer<const N: usize>(self) -> GenericSubscriptionBuilder<'c, 'e, 't, 's, N> {
         GenericSubscriptionBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -2099,7 +2103,7 @@ impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
     /// Surface the sample's wire attachment + metadata to the callback
     /// (`FnMut(&[u8], &RawMessageInfo)`). The cross-RMW bridge reads the
     /// `bridge_origin` tag from `info.attachment()` for echo suppression.
-    pub fn message_info(self) -> GenericSubInfoBuilder<'c, 'e, 't, RX> {
+    pub fn message_info(self) -> GenericSubInfoBuilder<'c, 'e, 't, 's, RX> {
         GenericSubInfoBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -2138,9 +2142,10 @@ pub struct GenericSubInfoBuilder<
     'c,
     'e,
     't,
+    's,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e>,
+    ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -2148,7 +2153,7 @@ pub struct GenericSubInfoBuilder<
     sched: Option<super::sched_context::SchedContextId>,
 }
 
-impl<'c, 'e, 't, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, RX> {
+impl<'c, 'e, 't, 's, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, 's, RX> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -2159,7 +2164,7 @@ impl<'c, 'e, 't, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, RX> {
         self
     }
 
-    pub fn rx_buffer<const N: usize>(self) -> GenericSubInfoBuilder<'c, 'e, 't, N> {
+    pub fn rx_buffer<const N: usize>(self) -> GenericSubInfoBuilder<'c, 'e, 't, 's, N> {
         GenericSubInfoBuilder {
             ctx: self.ctx,
             topic: self.topic,

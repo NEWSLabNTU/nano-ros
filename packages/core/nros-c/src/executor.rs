@@ -38,14 +38,26 @@ use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 ///
 /// Sizes are configured via `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`
 /// environment variables at build time (matching nros-node's build.rs).
-pub(crate) type CExecutor = nros_node::Executor;
+// phase-271 — the executor borrows its per-entry storage (`Executor<'static>`);
+// the C API keeps it heap-free by carving that backing from the SAME pinned
+// `_opaque` buffer, laid out as [`nros_node::ExecutorInlineStorage`] (executor
+// header at offset 0, backing tail). The executor still lives at offset 0, so
+// [`get_executor`] / drop are unchanged.
+pub(crate) type CExecutor = nros_node::Executor<'static>;
 
-// Compile-time assertion: inline opaque storage must fit the concrete Executor.
+/// `u64` words of per-entry backing the inline executor carves from the tail of
+/// its `_opaque` buffer (default sizing — same as the Rust `alloc` convenience).
+#[cfg(feature = "rmw-cffi")]
+pub(crate) const EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::DEFAULT.u64_len();
+
+// Compile-time assertion: inline opaque storage must fit the executor header
+// PLUS its carved backing (the `ExecutorInlineStorage` layout).
 #[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
-    core::mem::size_of::<CExecutor>() <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "EXECUTOR_OPAQUE_U64S too small for Executor — increase NROS_EXECUTOR_ARENA_SIZE \
-     or NROS_EXECUTOR_MAX_CBS, or adjust the overhead in build.rs"
+    core::mem::size_of::<nros_node::ExecutorInlineStorage>()
+        <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "EXECUTOR_OPAQUE_U64S too small for Executor + backing — increase \
+     NROS_EXECUTOR_ARENA_SIZE or NROS_EXECUTOR_MAX_CBS, or adjust the overhead in build.rs"
 );
 
 /// Get a mutable reference to the internal executor from opaque storage.
@@ -275,8 +287,18 @@ pub unsafe extern "C" fn nros_executor_init(
     // on `no_std` (FreeRTOS / NuttX / ThreadX) the mutation
     // path compiles out and `-D unused-mut` would otherwise
     // hard-fail every cmake build of the C examples.
+    // phase-271 — carve the per-entry backing from the tail of this same
+    // (pinned, caller-owned, never-moved) `_opaque` buffer, then write the
+    // executor header at offset 0. No heap. SAFETY: `_opaque` is sized for
+    // `ExecutorInlineStorage` (asserted above); the buffer outlives the executor
+    // (C owns it for the program) so treating the backing as `&'static mut` is
+    // sound, and the header/backing sub-regions are disjoint.
+    let inline = executor._opaque.as_mut_ptr() as *mut nros_node::ExecutorInlineStorage;
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        core::slice::from_raw_parts_mut((*inline).backing.as_mut_ptr(), EXECUTOR_BACKING_U64S);
     #[allow(unused_mut)]
-    let mut rust_exec = CExecutor::from_session_ptr(session_ptr);
+    let mut rust_exec =
+        CExecutor::from_session_ptr_in(session_ptr, backing, nros_node::ExecutorSizing::DEFAULT);
     // Phase 156 — populate executor's primary identity fields
     // so `NodeBuilder::resolve_session_slot` can return slot 0
     // when a C-side `nros_executor_node_init(rmw_name, ...)`

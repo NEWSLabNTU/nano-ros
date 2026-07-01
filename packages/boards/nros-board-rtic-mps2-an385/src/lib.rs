@@ -217,7 +217,7 @@ fn qemu_config_with_overlay(
 fn init_with_config(
     config: nros_board_mps2_an385::Config,
     deploy: Option<&nros_platform::DeployOverlay>,
-) -> (::nros::Executor, RticRuntime) {
+) -> (::nros::Executor<'static>, RticRuntime) {
     nros_board_mps2_an385::init_hardware(&config);
 
     // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
@@ -266,7 +266,7 @@ fn init_with_config(
 impl RticBoardEntry for RticMps2An385 {
     type Pac = mps2_an385_pac::Peripherals;
     type Core = cortex_m::Peripherals;
-    type Executor = ::nros::Executor;
+    type Executor = ::nros::Executor<'static>;
     type Runtime = RticRuntime;
 
     const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];

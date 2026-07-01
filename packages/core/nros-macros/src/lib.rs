@@ -447,7 +447,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// so a too-many-Nodes misconfig fails loud at boot rather
         /// than dropping dispatch silently.
         ///
-        /// References `::nros::Executor` which is gated on `rmw-cffi`
+        /// References `::nros::Executor<'static>` which is gated on `rmw-cffi`
         /// inside the `nros` crate. The Node pkg must depend on `nros`
         /// with the `rmw-cffi` feature enabled (every shipped 216
         /// example pkg does). A consumer w/o `rmw-cffi` enabled gets a
@@ -455,7 +455,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// surfaces the misconfig loud rather than silently producing
         /// a Node pkg that can't be deployed to a framework target.
         pub fn register_dispatch(
-            executor: &mut ::nros::Executor,
+            executor: &mut ::nros::Executor<'static>,
         ) -> ::core::result::Result<(), ()> {
             let state: <#node_ty as ::nros::ExecutableNode>::State =
                 <#node_ty as ::nros::ExecutableNode>::init();
@@ -477,7 +477,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// enrolls in the executor's tick registry, so service-client /
         /// action poll nodes tick (phase-257 D2 closed for owned-spin too).
         ///
-        /// References `::nros::install_node_typed` → `::nros::Executor`,
+        /// References `::nros::install_node_typed` → `::nros::Executor<'static>`,
         /// gated on `rmw-cffi` inside `nros`; the Node pkg must depend on
         /// `nros` with `rmw-cffi` (every owned-spin example pkg does). A
         /// null handle (a sink with no live executor) maps to

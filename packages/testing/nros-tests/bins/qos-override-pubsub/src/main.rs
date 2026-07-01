@@ -115,7 +115,7 @@ fn log_effective(role: QosOverrideRole, overrides: &[QosOverride]) {
     );
 }
 
-fn run_talker(exec: &mut Executor, overrides: &'static [QosOverride]) {
+fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
     log_effective(QosOverrideRole::Publisher, overrides);
 
     let publisher = {
@@ -157,7 +157,7 @@ fn run_talker(exec: &mut Executor, overrides: &'static [QosOverride]) {
     }
 }
 
-fn run_listener(exec: &mut Executor, overrides: &'static [QosOverride]) {
+fn run_listener(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
     log_effective(QosOverrideRole::Subscription, overrides);
 
     let mut sub = {

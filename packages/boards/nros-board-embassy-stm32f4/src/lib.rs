@@ -40,7 +40,7 @@
 //!   but unused today (no framework-task spawn yet); the
 //!   proc-macro emit owns the spin + dispatch sidekicks.
 //! - [`EmbassyBoardEntry::Executor`] flips from `()` to
-//!   [`::nros::Executor`] — the assoc-type opacity at the trait
+//!   [`::nros::Executor<'static>`] — the assoc-type opacity at the trait
 //!   surface (`nros-platform` sits below `nros`) is resolved at
 //!   this board layer, same as the RTIC sibling.
 //!
@@ -73,7 +73,7 @@
 //! is OK (only the platform / cffi crates have to stay below `nros`
 //! in the graph). The pre-followup `Self::Executor = ()`
 //! placeholder was a stand-in until the bringup body was ready;
-//! the follow-up flips to `Self::Executor = ::nros::Executor`,
+//! the follow-up flips to `Self::Executor = ::nros::Executor<'static>`,
 //! mirroring the RTIC sibling.
 
 #![no_std]
@@ -412,7 +412,7 @@ impl NodeDispatchRuntime for EmbassyRuntime {
 ///   next 216.C wave.
 /// - `embassy_stm32::Config::default()` picks HSI; a follow-up bumps
 ///   to HSE → PLL 180 MHz to match the sibling RTIC board (168 MHz).
-fn embassy_stm32f4_init(node_name: &'static str) -> (::nros::Executor, EmbassyRuntime) {
+fn embassy_stm32f4_init(node_name: &'static str) -> (::nros::Executor<'static>, EmbassyRuntime) {
     // Step 1: Embassy HAL bringup. Defaults pick HSI / no PLL; the
     // chip-init returns a `Peripherals` handle the future transport
     // wave needs. Today the handle is dropped — no GPIO / Ethernet
@@ -492,7 +492,7 @@ impl EmbassyBoardEntry for EmbassyStm32F4 {
     /// sits below `nros` in the dep graph); the concrete pick lives
     /// here at the board layer, mirroring the RTIC sibling
     /// `nros-board-rtic-stm32f4` (216.B.2 follow-up).
-    type Executor = ::nros::Executor;
+    type Executor = ::nros::Executor<'static>;
 
     type Runtime = EmbassyRuntime;
 

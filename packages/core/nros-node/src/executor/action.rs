@@ -83,7 +83,7 @@ pub struct RawActionClientSpec<'a> {
 // Action server registration
 // ============================================================================
 
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register an action server with goal/cancel callbacks.
     ///
     /// The executor automatically dispatches:
@@ -494,7 +494,7 @@ impl<A: RosAction> ActionServerHandle<A> {
 // Raw (untyped) action server registration
 // ============================================================================
 
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register a raw action server with raw-bytes callbacks.
     ///
     /// Unlike [`register_action_server()`](Executor::register_action_server), this does
@@ -954,7 +954,7 @@ impl ActionServerRawHandle {
 // Action client registration
 // ============================================================================
 
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register a raw action client with the executor.
     ///
     /// Creates service clients for send_goal, cancel_goal, get_result, and a
@@ -1289,7 +1289,7 @@ impl Executor {
     }
 }
 
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register an existing `ActionClientCore` with the executor for async polling.
     ///
     /// Unlike `register_action_client_raw` (which creates new transport handles),

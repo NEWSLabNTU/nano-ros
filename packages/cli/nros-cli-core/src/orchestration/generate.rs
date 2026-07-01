@@ -553,7 +553,7 @@ fn render_entry_lib_rs(plan: &NrosPlan) -> String {
          /// (precedence param > env > baked); NULL ⇒ env/baked. Heap-owned — free\n\
          /// with `nros_{sys}_destroy`; returns NULL on error.\n\
          #[unsafe(no_mangle)]\n\
-         pub extern \"C\" fn nros_{sys}_build_executor(cfg: *const NrosConfig) -> *mut nros::Executor {{\n\
+         pub extern \"C\" fn nros_{sys}_build_executor(cfg: *const NrosConfig) -> *mut nros::Executor<'static> {{\n\
          \x20   let mut config: nros::ExecutorConfig<'_> =\n\
          \x20       nros::ExecutorConfig::from_env().node_name(nros_generated::SYSTEM.default_node_name());\n\
          \x20   // Apply the param override (highest precedence). The locator borrow\n\
@@ -575,7 +575,7 @@ fn render_entry_lib_rs(plan: &NrosPlan) -> String {
     out.push_str(&format!(
         "/// Register sched contexts + every node + lifecycle + param persistence.\n\
          #[unsafe(no_mangle)]\n\
-         pub extern \"C\" fn nros_{sys}_register_all(executor: *mut nros::Executor) -> i32 {{\n\
+         pub extern \"C\" fn nros_{sys}_register_all(executor: *mut nros::Executor<'static>) -> i32 {{\n\
          \x20   match unsafe {{ executor.as_mut() }} {{\n\
          \x20       Some(executor) => match nros_generated::register_all(executor) {{ Ok(()) => 0, Err(_) => -1 }},\n\
          \x20       None => -1,\n\
@@ -594,7 +594,7 @@ fn render_entry_lib_rs(plan: &NrosPlan) -> String {
     out.push_str(&format!(
         "/// Spin the executor (blocking) until shutdown.\n\
          #[unsafe(no_mangle)]\n\
-         pub extern \"C\" fn nros_{sys}_spin(executor: *mut nros::Executor) -> i32 {{\n\
+         pub extern \"C\" fn nros_{sys}_spin(executor: *mut nros::Executor<'static>) -> i32 {{\n\
          \x20   match unsafe {{ executor.as_mut() }} {{\n\
          \x20       Some(executor) => {spin_body},\n\
          \x20       None => -1,\n\
@@ -604,7 +604,7 @@ fn render_entry_lib_rs(plan: &NrosPlan) -> String {
     out.push_str(&format!(
         "/// Free an executor returned by `nros_{sys}_build_executor`.\n\
          #[unsafe(no_mangle)]\n\
-         pub extern \"C\" fn nros_{sys}_destroy(executor: *mut nros::Executor) {{\n\
+         pub extern \"C\" fn nros_{sys}_destroy(executor: *mut nros::Executor<'static>) {{\n\
          \x20   if !executor.is_null() {{\n\
          \x20       drop(unsafe {{ alloc::boxed::Box::from_raw(executor) }});\n\
          \x20   }}\n\
@@ -2125,12 +2125,12 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
         plan_id = stable_plan_id(plan),
     ));
     out.push_str("struct GeneratedNodeRuntime<'a> {\n");
-    out.push_str("    executor: &'a mut nros::Executor,\n");
+    out.push_str("    executor: &'a mut nros::Executor<'static>,\n");
     out.push_str("    instance: &'static InstanceSpec,\n");
     out.push_str("}\n\n");
     out.push_str("impl nros::ComponentNodeRuntime for GeneratedNodeRuntime<'_> {\n");
     out.push_str(
-        "    type NodeHandle = <nros::Executor as nros::ComponentNodeRuntime>::NodeHandle;\n\n",
+        "    type NodeHandle = <nros::Executor<'static> as nros::ComponentNodeRuntime>::NodeHandle;\n\n",
     );
     out.push_str("    fn build_component_node(&mut self, id: nros::NodeId<'_>, options: nros::NodeOptions<'_>) -> nros::ComponentResult<Self::NodeHandle> {\n");
     out.push_str("        let planned = NODES.iter().find(|node| node.instance_id == self.instance.id && node.source_node == id.as_str());\n");
@@ -2169,7 +2169,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
     if has_shared_instance(plan) {
         out.push_str(
             "thread_local! {\n    \
-             static TICK_ENTRIES: ::core::cell::RefCell<::std::vec::Vec<::std::boxed::Box<dyn FnMut(&mut nros::Executor)>>> = ::core::cell::RefCell::new(::std::vec::Vec::new());\n\
+             static TICK_ENTRIES: ::core::cell::RefCell<::std::vec::Vec<::std::boxed::Box<dyn FnMut(&mut nros::Executor<'static>)>>> = ::core::cell::RefCell::new(::std::vec::Vec::new());\n\
              }\n\n",
         );
     }
@@ -2185,7 +2185,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
         // pointer never outlives the executor borrow.
         out.push_str(
             "struct GenActionExec<'e> {\n    \
-             executor: *mut nros::Executor,\n    \
+             executor: *mut nros::Executor<'static>,\n    \
              handles: &'e [(&'static str, nros::ActionServerRawHandle)],\n\
              }\n",
         );
@@ -2236,7 +2236,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
     if has_shared_instance(plan) {
         out.push_str(
             "struct GenClientDispatch<'e> {\n    \
-             executor: *mut nros::Executor,\n    \
+             executor: *mut nros::Executor<'static>,\n    \
              services: &'e [(&'static str, nros::HandleId)],\n    \
              actions: &'e [(&'static str, usize)],\n\
              }\n",
@@ -2290,7 +2290,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
              }\n}\n\n",
         );
     }
-    out.push_str("pub fn instantiate_components(executor: &mut nros::Executor, handles: &mut CallbackHandleTable<CALLBACK_COUNT>) -> Result<(), nros::NodeError> {\n");
+    out.push_str("pub fn instantiate_components(executor: &mut nros::Executor<'static>, handles: &mut CallbackHandleTable<CALLBACK_COUNT>) -> Result<(), nros::NodeError> {\n");
     out.push_str("    for instance in INSTANCES.iter() {\n");
     out.push_str("        let mut node_runtime = GeneratedNodeRuntime { executor, instance };\n");
     out.push_str("        let mut runtime = nros::ComponentRuntimeAdapter::<_, MAX_NODES, MAX_ENTITIES, CALLBACK_COUNT>::new(&mut node_runtime);\n");
@@ -2324,7 +2324,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
     for item in &regs.module_items {
         out.push_str(item);
     }
-    out.push_str("\nfn instantiate_callback_handles(executor: &mut nros::Executor, handles: &mut CallbackHandleTable<CALLBACK_COUNT>) -> Result<(), nros::NodeError> {\n");
+    out.push_str("\nfn instantiate_callback_handles(executor: &mut nros::Executor<'static>, handles: &mut CallbackHandleTable<CALLBACK_COUNT>) -> Result<(), nros::NodeError> {\n");
     for line in &regs.inline {
         out.push_str(line);
     }
@@ -2347,7 +2347,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
 ///   lifecycle → parameter persistence.
 fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[usize]) {
     out.push_str(
-        "\npub fn build_executor(config: &nros::ExecutorConfig<'_>) -> Result<nros::Executor, nros::NodeError> {\n",
+        "\npub fn build_executor(config: &nros::ExecutorConfig<'_>) -> Result<nros::Executor<'static>, nros::NodeError> {\n",
     );
     out.push_str("    register_backends();\n");
     out.push_str("    nros::Executor::open(config)\n");
@@ -2356,7 +2356,7 @@ fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[u
     // multi-domain (≥2 distinct node domains, Phase 172.K.5).
     if is_multi_session(plan) {
         out.push_str(
-            "\npub fn build_executor_bridge() -> Result<nros::Executor, nros::NodeError> {\n",
+            "\npub fn build_executor_bridge() -> Result<nros::Executor<'static>, nros::NodeError> {\n",
         );
         out.push_str("    register_backends();\n");
         out.push_str("    nros::Executor::open_multi(&SESSION_SPECS)\n");
@@ -2371,7 +2371,7 @@ fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[u
     // (`register_all` populates `TICK_ENTRIES`).
     if has_shared_instance(plan) {
         out.push_str(
-            "\npub fn run_tick_loop(executor: &mut nros::Executor) -> Result<(), nros::NodeError> {\n",
+            "\npub fn run_tick_loop(executor: &mut nros::Executor<'static>) -> Result<(), nros::NodeError> {\n",
         );
         out.push_str("    loop {\n");
         out.push_str("        if executor.is_halted() {\n            break;\n        }\n");
@@ -2391,7 +2391,9 @@ fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[u
     // never-returns shape); each `tick_{idx}` reads its module-level `static mut`
     // ctx + handle and drives feedback/result via `GenActionExec`.
     if !no_std_tick_idxs.is_empty() {
-        out.push_str("\npub fn run_tick_loop_nostd(executor: &mut nros::Executor) -> ! {\n");
+        out.push_str(
+            "\npub fn run_tick_loop_nostd(executor: &mut nros::Executor<'static>) -> ! {\n",
+        );
         out.push_str("    loop {\n");
         out.push_str("        executor.spin_once(::core::time::Duration::from_millis(50));\n");
         for idx in no_std_tick_idxs {
@@ -2405,7 +2407,7 @@ fn render_entry_lib_fns(out: &mut String, plan: &NrosPlan, no_std_tick_idxs: &[u
 /// Emit `register_all` (see [`render_entry_lib_fns`]).
 fn render_register_all_fn(out: &mut String, plan: &NrosPlan) {
     out.push_str(
-        "\npub fn register_all(executor: &mut nros::Executor) -> Result<(), nros::NodeError> {\n",
+        "\npub fn register_all(executor: &mut nros::Executor<'static>) -> Result<(), nros::NodeError> {\n",
     );
     out.push_str("    let mut callback_handles = CallbackHandleTable::<CALLBACK_COUNT>::new();\n");
     out.push_str(
@@ -2715,7 +2717,7 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
         return;
     }
     out.push_str(
-        "\npub fn register_bridges(executor: &mut nros::Executor) -> Result<(), nros::NodeError> {\n",
+        "\npub fn register_bridges(executor: &mut nros::Executor<'static>) -> Result<(), nros::NodeError> {\n",
     );
     for (bi, bridge) in plan.bridges.iter().enumerate() {
         out.push_str(&format!("    // bridge {:?}\n", bridge.name));
@@ -2818,7 +2820,9 @@ pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
 
     render_backend_register_fn(&mut out, plan);
 
-    out.push_str("\npub fn build_executor_bridge() -> Result<nros::Executor, nros::NodeError> {\n");
+    out.push_str(
+        "\npub fn build_executor_bridge() -> Result<nros::Executor<'static>, nros::NodeError> {\n",
+    );
     out.push_str("    register_backends();\n");
     out.push_str("    nros::Executor::open_multi(&SESSION_SPECS)\n");
     out.push_str("}\n");
@@ -2911,7 +2915,7 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
 /// drives the node to its boot `autostart` state.
 fn render_lifecycle_fn(out: &mut String, plan: &NrosPlan) {
     out.push_str(
-        "pub fn apply_lifecycle(executor: &mut nros::Executor) -> Result<(), nros::NodeError> {\n",
+        "pub fn apply_lifecycle(executor: &mut nros::Executor<'static>) -> Result<(), nros::NodeError> {\n",
     );
     match &plan.lifecycle {
         None => {
@@ -2952,7 +2956,7 @@ fn render_lifecycle_fn(out: &mut String, plan: &NrosPlan) {
 /// flushes runtime `set_parameters` changes from the spin loop).
 fn render_param_persistence_fn(out: &mut String, plan: &NrosPlan) {
     out.push_str(
-        "pub fn apply_param_persistence(executor: &mut nros::Executor) -> Result<(), nros::NodeError> {\n",
+        "pub fn apply_param_persistence(executor: &mut nros::Executor<'static>) -> Result<(), nros::NodeError> {\n",
     );
     match &plan.param_persistence {
         None => {
@@ -3531,11 +3535,11 @@ fn emit_tick_entry(
         "        let __rv_i{inst} = ::std::rc::Rc::clone(&resolver_i{inst});\n"
     ));
     out.push(
-        "        TICK_ENTRIES.with(|__t| __t.borrow_mut().push(::std::boxed::Box::new(move |__executor: &mut nros::Executor| {\n"
+        "        TICK_ENTRIES.with(|__t| __t.borrow_mut().push(::std::boxed::Box::new(move |__executor: &mut nros::Executor<'static>| {\n"
             .to_string(),
     );
     out.push(
-        "            let __exec_ptr: *mut nros::Executor = __executor as *mut nros::Executor;\n"
+        "            let __exec_ptr: *mut nros::Executor<'static> = __executor as *mut nros::Executor<'static>;\n"
             .to_string(),
     );
     out.push(format!(
@@ -4202,7 +4206,7 @@ fn emit_static_action(
     // that errors so the substrate's 3-arg `TickCtx::new` is satisfied. A no_std
     // codegen-side client backend is a follow-up.
     module.push(format!(
-        "fn tick_{idx}(executor: &mut nros::Executor) {{\n    \
+        "fn tick_{idx}(executor: &mut nros::Executor<'static>) {{\n    \
          struct __NoStdClients;\n    \
          impl nros::component::ClientDispatch for __NoStdClients {{\n        \
          fn call_raw(&mut self, _: &str, _: &[u8], _: &mut [u8]) -> nros::ComponentResult<usize> {{ Err(nros::ComponentError::Runtime) }}\n        \
@@ -4211,7 +4215,7 @@ fn emit_static_action(
          let actx = match unsafe {{ (*core::ptr::addr_of_mut!(ACT_CTX_{idx})).as_mut() }} {{ Some(s) => s, None => return }};\n    \
          let handle = match unsafe {{ *core::ptr::addr_of!(ACT_HANDLE_{idx}) }} {{ Some(h) => h, None => return }};\n    \
          let __handles: [(&'static str, nros::ActionServerRawHandle); 1] = [({source_entity:?}, handle)];\n    \
-         let __exec_ptr: *mut nros::Executor = executor as *mut nros::Executor;\n    \
+         let __exec_ptr: *mut nros::Executor<'static> = executor as *mut nros::Executor<'static>;\n    \
          let mut __ae = GenActionExec {{ executor: __exec_ptr, handles: &__handles }};\n    \
          let mut __cd = __NoStdClients;\n    \
          let mut __tc = nros::TickCtx::new(&actx.resolver, &mut __ae, &mut __cd);\n    \

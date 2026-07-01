@@ -23,8 +23,6 @@ use super::{
     sched_context::{SchedContext, SchedContextId, SporadicState},
 };
 
-// Consumed by W2 (`Executor<'s>::open_in`); allow until then.
-#[allow(dead_code)]
 #[cfg(feature = "alloc")]
 type SporadicAtomic = (
     portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
@@ -48,8 +46,6 @@ pub(crate) struct ExecutorStorage<const CBS: usize, const SC: usize, const ARENA
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
 /// from a carved backing. Element memory is initialised by [`carve`].
-// Consumed by W2 (`Executor<'s>` fields); allow until then.
-#[allow(dead_code)]
 pub(crate) struct ExecutorSlices<'s> {
     pub(crate) arena: &'s mut [MaybeUninit<u8>],
     pub(crate) entries: &'s mut [Option<CallbackMeta>],
@@ -138,6 +134,60 @@ pub const fn executor_storage_u64_len(cbs: usize, sc: usize, arena: usize) -> us
     executor_storage_layout(cbs, sc, arena).size().div_ceil(8)
 }
 
+/// Per-entry executor sizing — the entity counts an [`Executor`](super::spin::Executor)
+/// is built to hold. **Public + non-generic** (the "C/C++ is a thin wrapper"
+/// principle): the entry / macro / FFI supplies these as plain `usize`s rather
+/// than as type/const generics C can't name. Used to size + carve the backing.
+///
+/// `cbs` is capped at 64 by the executor's `u64` ready-set bitmask (asserted in
+/// [`carve`]-time / `open_in`).
+#[derive(Clone, Copy)]
+pub struct ExecutorSizing {
+    /// Callback-table slots (`entries` + per-entry SC bindings). ≤ 64.
+    pub cbs: usize,
+    /// Scheduling-context slots (`sched_contexts` + sporadic state tables).
+    pub sc: usize,
+    /// Bump-allocator arena size in bytes.
+    pub arena: usize,
+}
+
+impl ExecutorSizing {
+    /// The build-time default (`MAX_CBS`/`MAX_SC`/`ARENA_SIZE` consts) — the
+    /// backward-compatible size the `alloc` convenience constructors leak.
+    pub const DEFAULT: Self = Self {
+        cbs: crate::config::MAX_CBS,
+        sc: crate::config::MAX_SC,
+        arena: crate::config::ARENA_SIZE,
+    };
+
+    /// `u64` words a backing must hold for this sizing (see
+    /// [`executor_storage_u64_len`]).
+    pub const fn u64_len(&self) -> usize {
+        executor_storage_u64_len(self.cbs, self.sc, self.arena)
+    }
+}
+
+/// The exact `#[repr(C)]` byte layout the C/C++ FFI's inline executor buffer must
+/// hold: an [`Executor`](super::spin::Executor)`<'static>` header immediately
+/// followed by a default-sized ([`ExecutorSizing::DEFAULT`]) storage backing.
+///
+/// The FFI keeps the executor inline (heap-free — matching the Rust no-alloc
+/// requirement) and carves its per-entry tables from the SAME buffer's
+/// [`backing`](Self::backing) tail. Because that buffer is **pinned** — the C
+/// caller allocates it, it is initialised in place, and it is only ever reached
+/// through a stable `nros_executor_t*` (never moved after init) — the resulting
+/// self-borrow (the header's slices pointing into the same struct's tail) is
+/// sound. The FFI probes `size_of` of THIS type (not bare `Executor`) to size
+/// its `_opaque` array, and reinterprets `_opaque` as `*mut ExecutorInlineStorage`
+/// (the executor stays at offset 0, so existing offset-0 accessors are unchanged).
+#[repr(C)]
+pub struct ExecutorInlineStorage {
+    /// The executor, written in place (offset 0) by `from_session_ptr_in`.
+    pub exec: MaybeUninit<super::spin::Executor<'static>>,
+    /// The carved backing the executor's slices borrow (the buffer's tail).
+    pub backing: [MaybeUninit<u64>; ExecutorSizing::DEFAULT.u64_len()],
+}
+
 /// Carve an 8-aligned `u64` backing into the typed, initialised executor slices.
 ///
 /// # Safety
@@ -147,8 +197,6 @@ pub const fn executor_storage_u64_len(cbs: usize, sc: usize, arena: usize) -> us
 ///
 /// Element memory is initialised here (`entries`/SC tables → `None`, bindings →
 /// `SchedContextId(0)`), so the returned `&mut [T]` reference validly-init memory.
-// Consumed by W2 (`Executor<'s>::open_in`); allow until then.
-#[allow(dead_code)]
 pub(crate) unsafe fn carve<'s>(
     backing: &'s mut [MaybeUninit<u64>],
     cbs: usize,

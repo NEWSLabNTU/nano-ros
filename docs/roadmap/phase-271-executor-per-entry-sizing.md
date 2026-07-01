@@ -1,6 +1,8 @@
 # Phase 271 — Per-entry executor sizing (externalised storage)
 
-Status: **In progress (2026-07-01).** Resolves [issue 0110](../issues/0110-executor-max-cbs-per-entry-sizing-knob.md).
+Status: **In progress (2026-07-01).** W1–W2 (core `Executor<'s>` + slices) + W4
+(FFI inline carve) landed; W3 (macro/codegen per-entry sizing) + W5 (drop showcase
+env) remain. Resolves [issue 0110](../issues/0110-executor-max-cbs-per-entry-sizing-knob.md).
 
 ## Problem
 
@@ -121,10 +123,19 @@ both need the two-handle C API below.
 - **W3 — macro.** `nros::main!` computes the entry's entity count → emits an aligned
   `static mut BACKING: …[executor_storage_layout(N,SC,A).size()]` and calls
   `open_in`. No generic crosses the API.
-- **W4 — FFI + examples.** C API: a second opaque `nros_executor_storage_t`
-  (`= layout(MAX_CBS,MAX_SC,ARENA_SIZE)`, probe-measured) the caller allocates + passes
-  to `nros_executor_init(&exec, &storage, cfg)` — two handles, **no self-reference**
-  (see below). `nros-cpp` mirrors. Fix the handful of direct-`open` callers/tests.
+- **W4 — FFI + examples.** *(Revised — inline carve, no new C handle.)* The C/C++
+  executor buffer is **pinned** (caller-allocated, init'd in place, only reached
+  through a stable `nros_executor_t*` / `*mut CppContext`, never moved), so instead
+  of a second handle the executor carves its backing from the **tail of the SAME
+  buffer**: `#[repr(C)] ExecutorInlineStorage { exec: MaybeUninit<Executor<'static>>,
+  backing: [MaybeUninit<u64>; DEFAULT.u64_len()] }`. `nros_executor_init` /
+  `nros_cpp_init` build the executor in place (`from_session_ptr_in` /`open_in`
+  over the tail) — heap-free, C ABI **unchanged** (no new param/handle), executor
+  still at offset 0 (accessors/drop untouched). The FFI probes
+  `size_of::<ExecutorInlineStorage>()` (via `nros::sizes::EXECUTOR_SIZE`), so the
+  `_opaque` sizing glue is unchanged. The self-borrow is sound *because* the buffer
+  is pinned (the plan's two-handle scheme avoided the self-ref for the general case;
+  here the FFI's own pin invariant makes the inline form sound + simpler).
 - **W5 — drop the workaround.** `workspace-rust-native-showcase` drops
   `NROS_EXECUTOR_MAX_CBS = "8"` and still boots its 4-node / 5-callback launch.
 

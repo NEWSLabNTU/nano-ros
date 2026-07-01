@@ -37,7 +37,7 @@ pub struct NrosSessionSpec {
 /// wraps the executor + any bridges built against it; the binary
 /// hands the raw pointer back to [`nros_fini_multi`] for cleanup.
 struct ExecutorBox {
-    executor: Executor,
+    executor: Executor<'static>,
     /// Persistent storage for the C-string copies the executor still
     /// references (`SessionSpec` holds `&'cfg str` borrows). Kept
     /// alive for the executor's lifetime; freed by `nros_fini_multi`.

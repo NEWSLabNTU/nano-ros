@@ -180,6 +180,8 @@ pub use executor::{
     RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
     RecvView, SessionHandle, Subscription, executor_storage_layout, executor_storage_u64_len,
 };
+#[cfg(any(has_rmw, test))]
+pub use executor::{ExecutorInlineStorage, ExecutorSizing};
 
 // Phase 173.5 — bridge multi-session spec (consumed by the generated
 // orchestration package's `Executor::open_multi`). Gated to match

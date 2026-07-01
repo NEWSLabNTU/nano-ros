@@ -47,9 +47,23 @@ use super::{
 // Executor::open() factory method
 // ============================================================================
 
+/// phase-271 — leak a default-sized (`ExecutorSizing::DEFAULT`) `u64` backing,
+/// yielding the `'static` storage the `alloc` convenience constructors borrow.
+/// One-time, executor-lifetime allocation (the executor lives for the program);
+/// intentionally not freed. `alloc`-only — no_std-no-alloc entries supply their
+/// own `static`/stack backing via `from_session_in` / the `nros::main!` macro.
+#[cfg(feature = "alloc")]
+fn leak_default_backing(sizing: super::storage::ExecutorSizing) -> &'static mut [MaybeUninit<u64>] {
+    alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()))
+}
+
 #[cfg(feature = "rmw-cffi")]
-impl Executor {
-    /// Open a new executor session using the active RMW backend.
+impl<'s> Executor<'s> {
+    /// phase-271 — open a new executor session over caller-supplied `backing`,
+    /// sized by `sizing` (per-entry sizing). The core, non-generic sized entry
+    /// point: the `alloc` [`open`](Self::open) convenience leaks a default
+    /// backing and delegates here, and the `nros::main!` macro emits a backing
+    /// sized to the entry's own entity count.
     ///
     /// Phase 115.M.4 — auto-registers the cffi vtable for whichever
     /// backend the build was configured for, mirroring the C++ side's
@@ -61,13 +75,15 @@ impl Executor {
     ///
     /// Connects to the middleware at the locator specified in `config`.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let config = ExecutorConfig::from_env().node_name("my_node");
-    /// let mut executor = Executor::open(&config)?;
-    /// ```
-    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+    /// # Safety
+    /// `backing` must be ≥ `sizing.u64_len()` words, live for `'s`, and be
+    /// otherwise untouched while the executor lives (see
+    /// [`from_session_in`](Self::from_session_in)).
+    pub unsafe fn open_in(
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
         // Phase 128.A.3 / 249 P4b.1 — manifest-driven backend selection.
@@ -118,7 +134,9 @@ impl Executor {
             nros_rmw_cffi::CffiRmw.open(&rmw_config)
         }
         .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        let mut executor = Self::from_session(session);
+        // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
+        // + alive for `'s`.
+        let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
         #[cfg(not(feature = "std"))]
         {
             executor.clock_us_fn = config.clock_us;
@@ -130,6 +148,28 @@ impl Executor {
         #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary_alloc();
         Ok(executor)
+    }
+}
+
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+impl Executor<'static> {
+    /// Open a new executor session using the active RMW backend, at the
+    /// build-time default sizing. Convenience over
+    /// [`open_in`](Self::open_in): leaks a default-sized backing (executor-
+    /// lifetime) so existing callers keep the zero-storage-arg signature.
+    /// Per-entry sizing goes through `open_in` / the `nros::main!` macro.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let config = ExecutorConfig::from_env().node_name("my_node");
+    /// let mut executor = Executor::open(&config)?;
+    /// ```
+    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        // SAFETY: leaked backing is exactly `sizing.u64_len()` words, `'static`,
+        // uniquely owned by the returned executor.
+        unsafe { Self::open_in(config, leak_default_backing(sizing), sizing) }
     }
 
     /// Phase 128.F.1 — explicit per-backend session declaration for
@@ -145,8 +185,56 @@ impl Executor {
     /// backend is linked.
     ///
     /// `$NROS_RMW` env is ignored: bridge mode wants explicit names.
+    ///
+    /// Default-sized `alloc` convenience over
+    /// [`open_multi_in`](Self::open_multi_in) (leaks a default backing).
     #[cfg(feature = "rmw-cffi")]
     pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
+        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        // SAFETY: leaked backing is exactly `sizing.u64_len()` words, `'static`.
+        unsafe { Self::open_multi_in(specs, leak_default_backing(sizing), sizing) }
+    }
+
+    /// Phase 104.C.1 — open the Executor against a specific RMW
+    /// backend by name. Selects from the named registry (Phase
+    /// 104.B.2). `rmw_name` must match one of the names a backend
+    /// registered under (`"zenoh"`, `"cyclonedds"`, `"xrce"`, …).
+    ///
+    /// Equivalent to [`Executor::open`] when the registry has exactly
+    /// one backend (the default-backend fast path). Use this entry
+    /// point in multi-backend builds where `Executor::open` would
+    /// pick the first-registered slot.
+    ///
+    /// Single-Executor multi-Node multi-RMW (the long-term Design X
+    /// from `docs/roadmap/phase-104-multi-backend-bridges.md`) is
+    /// follow-up work — Phase 104.C.2 + C.3.
+    ///
+    /// Default-sized `alloc` convenience over
+    /// [`open_with_rmw_in`](Self::open_with_rmw_in) (leaks a default backing).
+    #[cfg(feature = "rmw-cffi")]
+    pub fn open_with_rmw(rmw_name: &str, config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        // SAFETY: leaked backing is exactly `sizing.u64_len()` words, `'static`.
+        unsafe { Self::open_with_rmw_in(rmw_name, config, leak_default_backing(sizing), sizing) }
+    }
+}
+
+// phase-271 — no-alloc sized cores for the bridge/named open paths. In
+// `impl<'s>` (not the `'static` alloc block) so they stay available in
+// `rmw-cffi`-without-`alloc` builds (e.g. the `nros-bridge` no_std default),
+// which is where `open_multi`/`open_with_rmw` lived before.
+#[cfg(feature = "rmw-cffi")]
+impl<'s> Executor<'s> {
+    /// Per-entry-sized [`open_multi`](Self::open_multi): carves `backing` for
+    /// the executor's tables instead of leaking a default one.
+    ///
+    /// # Safety
+    /// `backing`/`sizing` as in [`from_session_in`](Self::from_session_in).
+    pub unsafe fn open_multi_in(
+        specs: &[SessionSpec<'_>],
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Result<Self, NodeError> {
         // Phase 249 P4b.1 — backends self-registered via their
         // `.init_array` ctor before `main`; no runtime section walk.
         let primary = specs
@@ -155,7 +243,8 @@ impl Executor {
         let primary_session =
             nros_rmw_cffi::CffiRmw::open_with_rmw(primary.rmw, &primary.to_rmw_config())
                 .map_err(NodeError::Transport)?;
-        let mut executor = Self::from_session(primary_session);
+        // SAFETY: forwarded from this fn's contract.
+        let mut executor = unsafe { Self::from_session_in(primary_session, backing, sizing) };
         executor.set_node_identity("", "/");
         // Phase 156 — see `Executor::open` for primary-identity
         // recording rationale.
@@ -188,21 +277,17 @@ impl Executor {
         Ok(executor)
     }
 
-    /// Phase 104.C.1 — open the Executor against a specific RMW
-    /// backend by name. Selects from the named registry (Phase
-    /// 104.B.2). `rmw_name` must match one of the names a backend
-    /// registered under (`"zenoh"`, `"cyclonedds"`, `"xrce"`, …).
+    /// Per-entry-sized [`open_with_rmw`](Self::open_with_rmw): carves `backing`
+    /// for the executor's tables instead of leaking a default one.
     ///
-    /// Equivalent to [`Executor::open`] when the registry has exactly
-    /// one backend (the default-backend fast path). Use this entry
-    /// point in multi-backend builds where `Executor::open` would
-    /// pick the first-registered slot.
-    ///
-    /// Single-Executor multi-Node multi-RMW (the long-term Design X
-    /// from `docs/roadmap/phase-104-multi-backend-bridges.md`) is
-    /// follow-up work — Phase 104.C.2 + C.3.
-    #[cfg(feature = "rmw-cffi")]
-    pub fn open_with_rmw(rmw_name: &str, config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+    /// # Safety
+    /// `backing`/`sizing` as in [`from_session_in`](Self::from_session_in).
+    pub unsafe fn open_with_rmw_in(
+        rmw_name: &str,
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Result<Self, NodeError> {
         if !nros_rmw_cffi::backend_registered() {
             return Err(NodeError::Transport(TransportError::ConnectionFailed));
         }
@@ -217,7 +302,8 @@ impl Executor {
         };
         let session = nros_rmw_cffi::CffiRmw::open_with_rmw(rmw_name, &rmw_config)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        let mut executor = Self::from_session(session);
+        // SAFETY: forwarded from this fn's contract.
+        let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
         #[cfg(not(feature = "std"))]
         {
             executor.clock_us_fn = config.clock_us;
@@ -768,34 +854,47 @@ pub struct ComponentSlot {
 unsafe impl Send for ComponentSlot {}
 unsafe impl Sync for ComponentSlot {}
 
-pub struct Executor {
+/// phase-271 — fixed capacity of the per-spin ready-sets (FIFO bitmap + EDF
+/// heap) and the dispatch loop's upper bound. The executor's callback index is
+/// carried in a `u64` active-mask (`1u64 << i`), so a callback table can hold at
+/// most 64 entries regardless of per-entry sizing; the ready-sets are sized to
+/// this ceiling (stack-transient) so any entry slice up to 64 dispatches
+/// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
+pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
+
+pub struct Executor<'s> {
     pub(crate) session: SessionStore,
-    pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],
+    /// phase-271 (issue 0110) — the six sized tables are no longer inline
+    /// arrays baked to `nros-node`'s build-time consts; they borrow
+    /// caller-owned, per-entry-sized storage (`&'s mut` slices carved from a
+    /// raw `[MaybeUninit<u64>]` backing by [`super::storage::carve`]). Lets a
+    /// fat native entry and a lean embedded entry in one shared-target
+    /// workspace each size to its own topology. `Executor` stays non-generic
+    /// (lifetime only) so the C/C++ FFI keeps wrapping one concrete type.
+    pub(crate) arena: &'s mut [MaybeUninit<u8>],
     pub(crate) arena_used: usize,
-    pub(crate) entries: [Option<CallbackMeta>; crate::config::MAX_CBS],
+    pub(crate) entries: &'s mut [Option<CallbackMeta>],
     /// Phase 110.B — registered scheduling contexts. Slot 0 is
     /// auto-populated with a `Fifo` SC at construction; every entry
     /// without an explicit binding maps to it via
     /// `sched_context_bindings`.
-    pub(crate) sched_contexts: [Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
+    pub(crate) sched_contexts: &'s mut [Option<super::sched_context::SchedContext>],
     /// Per-entry SC binding parallel to `entries`. Defaults to
     /// `SchedContextId(0)` (the auto-created Fifo SC).
-    pub(crate) sched_context_bindings:
-        [super::sched_context::SchedContextId; crate::config::MAX_CBS],
+    pub(crate) sched_context_bindings: &'s mut [super::sched_context::SchedContextId],
     /// Phase 110.E — user-space sporadic-server budget state per
     /// Sporadic-class SC. Slot indices match `sched_contexts`; non-
     /// Sporadic slots stay `None`.
-    pub(crate) sporadic_states:
-        [Option<super::sched_context::SporadicState>; crate::config::MAX_SC],
+    pub(crate) sporadic_states: &'s mut [Option<super::sched_context::SporadicState>],
     /// Phase 110.E.b — atomic sporadic state + opaque platform-timer
     /// handle for ISR-driven refill. Populated by
     /// `register_sporadic_timer`; dropped on Executor `Drop` via the
     /// stored `destroy_fn`.
     #[cfg(feature = "alloc")]
-    pub(crate) sporadic_atomic_states: [Option<(
+    pub(crate) sporadic_atomic_states: &'s mut [Option<(
         portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
         OpaqueTimerHandle,
-    )>; crate::config::MAX_SC],
+    )>],
     /// Phase 110.G — major-frame length for time-triggered dispatch.
     /// `0` (default) disables the TT gate entirely; non-zero enables
     /// gating per
@@ -1015,33 +1114,36 @@ pub struct Executor {
     pub(crate) clock_us_fn: Option<fn() -> u64>,
 }
 
-impl Executor {
-    /// Create an executor from an already-opened session.
-    // The `arena` field intentionally lives inline so embedded callers can
-    // place an `Executor` in `static` storage without an allocator. The
-    // construction expression is large but is RVO'd into its destination
-    // by the optimiser; the clippy lint flags it because it can't prove
-    // the move-elision.
-    #[allow(clippy::large_stack_arrays)]
-    pub fn from_session(session: session::ConcreteSession) -> Self {
-        // SAFETY: MaybeUninit::uninit() is always safe; these bytes are only
-        // accessed through properly-typed ptr::write / ptr::read via the
-        // dispatch function pointers stored in `entries`.
-        Self {
-            session: SessionStore::Owned(session),
-            arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
-            arena_used: 0,
-            entries: [None; crate::config::MAX_CBS],
-            sched_contexts: {
-                let mut s = [None; crate::config::MAX_SC];
-                s[0] = Some(super::sched_context::SchedContext::default());
-                s
-            },
-            sched_context_bindings: [super::sched_context::SchedContextId(0);
-                crate::config::MAX_CBS],
-            sporadic_states: [None; crate::config::MAX_SC],
+impl<'s> Executor<'s> {
+    /// phase-271 — assemble an executor over already-carved, caller-owned
+    /// storage (`slices`, from [`super::storage::carve`]). Fills every
+    /// non-storage field and reserves SC slot 0 for the default Fifo SC (carve
+    /// left it `None`). The single builder shared by every constructor path.
+    fn assemble(session: SessionStore, slices: super::storage::ExecutorSlices<'s>) -> Self {
+        let super::storage::ExecutorSlices {
+            arena,
+            entries,
+            sched_contexts,
+            sched_context_bindings,
+            sporadic_states,
             #[cfg(feature = "alloc")]
-            sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
+            sporadic_atomic_states,
+        } = slices;
+        // Slot 0 = the auto-created default Fifo SC (see field doc). carve
+        // initialised the whole table to `None`; populate the reserved slot.
+        if let Some(slot0) = sched_contexts.first_mut() {
+            *slot0 = Some(super::sched_context::SchedContext::default());
+        }
+        Self {
+            session,
+            arena,
+            arena_used: 0,
+            entries,
+            sched_contexts,
+            sched_context_bindings,
+            sporadic_states,
+            #[cfg(feature = "alloc")]
+            sporadic_atomic_states,
             major_frame_us: 0,
             #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
             os_priority_workers: std::collections::HashMap::new(),
@@ -1117,105 +1219,76 @@ impl Executor {
         }
     }
 
-    /// Create an executor from a borrowed session pointer.
+    /// Create an owning executor over caller-supplied `backing`, sized by
+    /// `sizing`. The core, non-generic, per-entry entry point (the `alloc`
+    /// [`from_session`](Self::from_session) convenience leaks a default backing
+    /// and calls this; the macro / C FFI pass an entry-sized backing).
+    ///
+    /// # Safety
+    /// `backing` must be ≥ `sizing.u64_len()` words, stay alive for `'s`, and
+    /// not be otherwise accessed while the executor lives (it aliases it).
+    /// `sizing.cbs` must be ≤ 64 (the `u64` ready-set bitmask ceiling).
+    pub unsafe fn from_session_in(
+        session: session::ConcreteSession,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Self {
+        let slices = unsafe { super::storage::carve(backing, sizing.cbs, sizing.sc, sizing.arena) };
+        Self::assemble(SessionStore::Owned(session), slices)
+    }
+
+    /// Create a borrowing executor over caller-supplied `backing`, sized by
+    /// `sizing`. Counterpart to [`from_session_in`](Self::from_session_in) for
+    /// the per-tier / C model (the session is borrowed, not owned).
+    ///
+    /// # Safety
+    /// - `session_ptr` must point to a valid session that outlives the executor
+    ///   and is not moved/dropped while it exists.
+    /// - `backing` obligations as in [`from_session_in`](Self::from_session_in).
+    pub unsafe fn from_session_ptr_in(
+        session_ptr: *mut session::ConcreteSession,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Self {
+        let slices = unsafe { super::storage::carve(backing, sizing.cbs, sizing.sc, sizing.arena) };
+        Self::assemble(SessionStore::Borrowed(session_ptr), slices)
+    }
+}
+
+impl Executor<'static> {
+    /// Create an executor from an already-opened session, using the build-time
+    /// default sizing (`MAX_CBS`/`MAX_SC`/`ARENA_SIZE`). Convenience for
+    /// std/alloc callers that don't size per-entry: it leaks a default-sized
+    /// backing (executor-lifetime, one-time) and calls
+    /// [`from_session_in`](Self::from_session_in). Per-entry sizing goes through
+    /// the macro / `open_in` instead.
+    #[cfg(feature = "alloc")]
+    pub fn from_session(session: session::ConcreteSession) -> Self {
+        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        // SAFETY: the leaked backing is exactly `sizing.u64_len()` words,
+        // `'static`, and uniquely owned by this executor.
+        unsafe { Self::from_session_in(session, leak_default_backing(sizing), sizing) }
+    }
+
+    /// Create an executor from a borrowed session pointer, default-sized. The
+    /// `alloc` convenience wrapper over
+    /// [`from_session_ptr_in`](Self::from_session_ptr_in) — leaks a default
+    /// backing so existing callers keep the zero-storage-arg signature.
     ///
     /// # Safety
     /// - `session_ptr` must point to a valid, initialized session that lives at
     ///   least as long as this executor.
     /// - The caller must not move or drop the session while the executor exists.
-    // See `from_session` for the lint rationale.
-    #[allow(clippy::large_stack_arrays)]
+    #[cfg(feature = "alloc")]
     pub unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
-        Self {
-            session: SessionStore::Borrowed(session_ptr),
-            arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
-            arena_used: 0,
-            entries: [None; crate::config::MAX_CBS],
-            sched_contexts: {
-                let mut s = [None; crate::config::MAX_SC];
-                s[0] = Some(super::sched_context::SchedContext::default());
-                s
-            },
-            sched_context_bindings: [super::sched_context::SchedContextId(0);
-                crate::config::MAX_CBS],
-            sporadic_states: [None; crate::config::MAX_SC],
-            #[cfg(feature = "alloc")]
-            sporadic_atomic_states: [const { None }; crate::config::MAX_SC],
-            major_frame_us: 0,
-            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
-            os_priority_workers: std::collections::HashMap::new(),
-            #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
-            os_priority_apply_policy: None,
-            trigger: Trigger::Any,
-            semantics: ExecutorSemantics::RclcppExecutor,
-            node_name: heapless::String::new(),
-            active_groups: None,
-            nodes: heapless::Vec::new(),
-            node_sched_table: heapless::Vec::new(),
-            group_sched_table: heapless::Vec::new(),
-            dispatch_slots: heapless::Vec::new(),
-            component_slots: heapless::Vec::new(),
-            extra_sessions: heapless::Vec::new(),
-            primary_rmw_name: heapless::String::new(),
-            primary_locator: heapless::String::new(),
-            namespace: {
-                let mut ns = heapless::String::new();
-                let _ = ns.push_str("/");
-                ns
-            },
-            #[cfg(feature = "std")]
-            halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            #[cfg(feature = "std")]
-            wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            #[cfg(feature = "std")]
-            wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
-            #[cfg(feature = "std")]
-            wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
-            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-            node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
-            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-            wake_ctx: None,
-            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-            has_async_wake: false,
-            // Phase 141.A.3 — alloc-mode wake state init. Constructed
-            // eagerly (NodeWake allocation) so the runtime cb can be
-            // installed lazily on first session without a fallible
-            // alloc inside spin_once. `None` when the platform
-            // provider reports the primitive unavailable (matches
-            // the std-RTOS path's `node_wake: Option<...>`).
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
-                false,
-            )),
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            node_wake_alloc: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            wake_ctx_alloc: None,
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            has_async_wake_alloc: false,
-            #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
-            signal_fd: None,
-            #[cfg(feature = "param-services")]
-            params: None,
-            #[cfg(feature = "lifecycle-services")]
-            lifecycle: None,
-            #[cfg(feature = "std")]
-            spin_residual_us: 0,
-            #[cfg(not(feature = "std"))]
-            spin_residual_us: 0,
-            // Initialise the spin endpoint to construction time so the
-            // very first `spin_once` credits time the caller spent
-            // *before* it (e.g. setup, an explicit pre-spin sleep) just
-            // like time spent between later calls.
-            #[cfg(feature = "std")]
-            last_spin_end: Some(std::time::Instant::now()),
-            #[cfg(not(feature = "std"))]
-            last_spin_end_us: None,
-            #[cfg(not(feature = "std"))]
-            clock_us_fn: None,
-        }
+        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        // SAFETY: leaked backing as in `from_session`; session_ptr contract
+        // forwarded to `from_session_ptr_in`.
+        unsafe { Self::from_session_ptr_in(session_ptr, leak_default_backing(sizing), sizing) }
     }
+}
 
+impl<'s> Executor<'s> {
     /// Phase 228.B (RFC-0015) — construct a tier task's executor that **shares**
     /// a session opened once by the orchestration `main()`.
     ///
@@ -1229,8 +1302,25 @@ impl Executor {
     /// `session` must outlive every executor/task built from it (the
     /// orchestration `main()` holds it and never returns / WFIs), and must not
     /// be mutated except through these executors' spin calls.
-    pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Self {
-        unsafe { Self::from_session_ptr(session) }
+    #[cfg(feature = "alloc")]
+    pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Executor<'static> {
+        unsafe { Executor::<'static>::from_session_ptr(session) }
+    }
+
+    /// phase-271 — per-tier borrowed-session constructor over caller-supplied,
+    /// per-tier-sized `backing`. The sized counterpart to
+    /// [`open_with_session`](Self::open_with_session): each RTOS tier task owns
+    /// its own backing so tiers size independently.
+    ///
+    /// # Safety
+    /// `session` obligations as in [`open_with_session`](Self::open_with_session);
+    /// `backing`/`sizing` as in [`from_session_ptr_in`](Self::from_session_ptr_in).
+    pub unsafe fn open_with_session_in(
+        session: *mut session::ConcreteSession,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Self {
+        unsafe { Self::from_session_ptr_in(session, backing, sizing) }
     }
 
     /// Raw pointer to this executor's RMW session, for the per-tier model:
@@ -1268,8 +1358,24 @@ impl Executor {
     /// # Safety
     /// The handle's session must still be alive (its owning executor not moved
     /// or dropped); access only through executor spin calls.
-    pub unsafe fn open_with_session_handle(handle: SessionHandle) -> Self {
-        unsafe { Self::open_with_session(handle.0) }
+    #[cfg(feature = "alloc")]
+    pub unsafe fn open_with_session_handle(handle: SessionHandle) -> Executor<'static> {
+        unsafe { Executor::<'static>::open_with_session(handle.0) }
+    }
+
+    /// phase-271 — sized counterpart to
+    /// [`open_with_session_handle`](Self::open_with_session_handle) (per-tier
+    /// backing).
+    ///
+    /// # Safety
+    /// As [`open_with_session_handle`](Self::open_with_session_handle) +
+    /// [`from_session_ptr_in`](Self::from_session_ptr_in).
+    pub unsafe fn open_with_session_handle_in(
+        handle: SessionHandle,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+    ) -> Self {
+        unsafe { Self::open_with_session_in(handle.0, backing, sizing) }
     }
 
     /// Phase 228.C — set this tier executor's active callback-group filter. The
@@ -1493,14 +1599,14 @@ impl Executor {
         sc_id: super::sched_context::SchedContextId,
     ) -> Result<(), NodeError> {
         let i = handle.0;
-        if i >= crate::config::MAX_CBS {
+        if i >= self.entries.len() {
             return Err(NodeError::InvalidSchedContextBinding);
         }
         if self.entries[i].is_none() {
             return Err(NodeError::InvalidSchedContextBinding);
         }
         let sc_idx = sc_id.0 as usize;
-        if sc_idx >= crate::config::MAX_SC || self.sched_contexts[sc_idx].is_none() {
+        if sc_idx >= self.sched_contexts.len() || self.sched_contexts[sc_idx].is_none() {
             return Err(NodeError::InvalidSchedContextBinding);
         }
         self.sched_context_bindings[i] = sc_id;
@@ -1617,7 +1723,7 @@ impl Executor {
     ) -> Result<portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>, NodeError>
     {
         let i = sc_id.0 as usize;
-        if i >= crate::config::MAX_SC {
+        if i >= self.sched_contexts.len() {
             return Err(NodeError::InvalidSchedContextBinding);
         }
         let sc = self.sched_contexts[i]
@@ -1662,7 +1768,7 @@ impl Executor {
     pub fn node_builder<'a, 'cfg>(
         &'a mut self,
         name: &'cfg str,
-    ) -> super::node_record::NodeBuilder<'a, 'cfg> {
+    ) -> super::node_record::NodeBuilder<'a, 'cfg, 's> {
         super::node_record::NodeBuilder {
             executor: self,
             name,
@@ -1690,7 +1796,7 @@ impl Executor {
     /// (`exec.node_mut(id).subscription(t)...` / `.create_subscription(...)`).
     /// A short-lived `&mut Executor` borrow — use one at a time; entity handles
     /// are owned and outlive it (see `NodeCtx`).
-    pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::NodeCtx<'_> {
+    pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::NodeCtx<'_, 's> {
         super::node::NodeCtx::new(self, id)
     }
 
@@ -1990,11 +2096,11 @@ impl Executor {
         if sc.0 == 0 {
             return;
         }
-        if slot >= crate::config::MAX_CBS {
+        if slot >= self.entries.len() {
             return;
         }
         let sc_idx = sc.0 as usize;
-        if sc_idx >= crate::config::MAX_SC || self.sched_contexts[sc_idx].is_none() {
+        if sc_idx >= self.sched_contexts.len() || self.sched_contexts[sc_idx].is_none() {
             return;
         }
         self.sched_context_bindings[slot] = sc;
@@ -2452,7 +2558,7 @@ impl Executor {
         let size = core::mem::size_of::<T>();
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
         let new_used = aligned_offset + size;
-        if new_used > crate::config::ARENA_SIZE {
+        if new_used > self.arena.len() {
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;
@@ -2474,7 +2580,7 @@ impl Executor {
         let trailing_offset =
             (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
         let new_used = trailing_offset + trailing_bytes;
-        if new_used > crate::config::ARENA_SIZE {
+        if new_used > self.arena.len() {
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;
@@ -4552,9 +4658,9 @@ impl Executor {
         // dispatch order is bit-identical to 110.B.b for those.
         const NB: usize = super::sched_context::Priority::COUNT;
         let mut result = SpinOnceResult::new();
-        let mut fifo: super::ready_set::BucketedFifoSet<NB, { crate::config::MAX_CBS }> =
+        let mut fifo: super::ready_set::BucketedFifoSet<NB, { MAX_CALLBACK_SLOTS }> =
             super::ready_set::BucketedFifoSet::new();
-        let mut edf: super::ready_set::BucketedEdfSet<NB, { crate::config::MAX_CBS }> =
+        let mut edf: super::ready_set::BucketedEdfSet<NB, { MAX_CALLBACK_SLOTS }> =
             super::ready_set::BucketedEdfSet::new();
         let active_mask = bits | always_mask;
 
@@ -4580,7 +4686,7 @@ impl Executor {
             }
         }
 
-        for i in 0..crate::config::MAX_CBS {
+        for i in 0..self.entries.len() {
             if active_mask & (1u64 << i) == 0 {
                 continue;
             }
@@ -4792,15 +4898,12 @@ impl Executor {
         let consume_dispatch_runtime_us =
             |desc_idx: usize,
              elapsed_us: u32,
-             sched_context_bindings: &[super::sched_context::SchedContextId;
-                  crate::config::MAX_CBS],
-             sched_contexts: &[Option<super::sched_context::SchedContext>;
-                  crate::config::MAX_SC],
+             sched_context_bindings: &[super::sched_context::SchedContextId],
+             sched_contexts: &[Option<super::sched_context::SchedContext>],
              #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
                 portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
                 OpaqueTimerHandle,
-            )>;
-                  crate::config::MAX_SC]| {
+            )>]| {
                 let sc_idx = sched_context_bindings[desc_idx].0 as usize;
                 let sc_class = sched_contexts
                     .get(sc_idx)
@@ -4853,10 +4956,10 @@ impl Executor {
                         consume_dispatch_runtime_us(
                             i,
                             elapsed_us,
-                            &self.sched_context_bindings,
-                            &self.sched_contexts,
+                            &self.sched_context_bindings[..],
+                            &self.sched_contexts[..],
                             #[cfg(feature = "alloc")]
-                            &self.sporadic_atomic_states,
+                            &self.sporadic_atomic_states[..],
                         );
                     }
                 }
@@ -4873,10 +4976,10 @@ impl Executor {
                         consume_dispatch_runtime_us(
                             i,
                             elapsed_us,
-                            &self.sched_context_bindings,
-                            &self.sched_contexts,
+                            &self.sched_context_bindings[..],
+                            &self.sched_contexts[..],
                             #[cfg(feature = "alloc")]
-                            &self.sporadic_atomic_states,
+                            &self.sporadic_atomic_states[..],
                         );
                     }
                 }
@@ -5035,7 +5138,7 @@ impl Executor {
 // ============================================================================
 
 #[cfg(feature = "param-services")]
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register the 6 ROS 2 parameter services for this node.
     ///
     /// Creates service servers for `get_parameters`, `set_parameters`,
@@ -5247,7 +5350,7 @@ impl Executor {
 // ============================================================================
 
 #[cfg(feature = "lifecycle-services")]
-impl Executor {
+impl<'s> Executor<'s> {
     /// Register the five REP-2002 lifecycle services on this executor.
     ///
     /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
@@ -5403,7 +5506,7 @@ impl Executor {
 // ============================================================================
 
 #[cfg(feature = "param-services")]
-impl Executor {
+impl<'s> Executor<'s> {
     /// Declare a parameter with a value. Returns `true` if successful.
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         if let Some(params) = &mut self.params {
@@ -5488,7 +5591,7 @@ impl Executor {
 // ============================================================================
 
 #[cfg(feature = "std")]
-impl Executor {
+impl<'s> Executor<'s> {
     /// Blocking spin loop with configurable exit conditions.
     ///
     /// Runs until one of:
@@ -5661,7 +5764,13 @@ impl Executor {
             nros_platform_api::SchedPolicy,
         ) -> Result<(), nros_platform_api::SchedError>,
         spin_period: core::time::Duration,
-    ) -> ThreadHandle {
+    ) -> ThreadHandle
+    where
+        // phase-271 — the spawned thread owns `self` for an unbounded lifetime,
+        // so its borrowed storage must be `'static` (a leaked/`static` backing —
+        // the `alloc` convenience constructors or a program-lifetime region).
+        's: 'static,
+    {
         let halt = std::sync::Arc::clone(&self.halt_flag);
         // SAFETY: Send is asserted via `unsafe impl Send for Executor`
         // below; the caller's safety contract on `from_session_ptr`
@@ -5826,7 +5935,7 @@ impl Drop for ThreadHandle {
 // contract for Borrowed sessions; for Owned sessions the Send claim
 // is unconditional.
 #[cfg(feature = "std")]
-unsafe impl Send for Executor {}
+unsafe impl<'s> Send for Executor<'s> {}
 
 // =============================================================================
 // Phase 110.F — `OsPriorityWorker` + `WorkItem`
@@ -5923,7 +6032,7 @@ impl Drop for OsPriorityWorker {
     }
 }
 
-impl Drop for Executor {
+impl<'s> Drop for Executor<'s> {
     fn drop(&mut self) {
         // Phase 258 (Track 2, 2a) — release executor-owned component cells
         // first (before the arena entries), so a component's `drop`

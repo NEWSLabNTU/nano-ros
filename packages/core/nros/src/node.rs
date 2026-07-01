@@ -476,7 +476,7 @@ impl<
 }
 
 #[cfg(feature = "rmw-cffi")]
-impl DeclaredNodeRuntime for crate::Executor {
+impl DeclaredNodeRuntime for crate::Executor<'static> {
     type NodeHandle = nros_node::executor::NodeId;
 
     fn build_component_node(
@@ -499,7 +499,7 @@ pub type NodeExecutorRuntime<
     const MAX_NODES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_NODES },
     const MAX_ENTITIES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_ENTITIES },
     const MAX_CALLBACKS: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
-> = NodeRuntimeAdapter<'a, crate::Executor, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
+> = NodeRuntimeAdapter<'a, crate::Executor<'static>, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
 
 /// Node declaration context. Does not own middleware transport.
 pub struct NodeContext<'a, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'a> {
