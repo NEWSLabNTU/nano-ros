@@ -1360,6 +1360,53 @@ pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     }
 }
 
+/// Phase 272 (W2) — seed the `node_name → sched_context` table before the node
+/// is built. Mirrors the W1 `Executor::bind_node_name_sched` via the C++ executor
+/// handle; called by the emitted entry setup AFTER creating sched-context slots
+/// and BEFORE constructing/configuring components (RFC-0047: seed before build).
+///
+/// Covers every component shape (configure-shape C/C++ and rclcpp IS-A-node) since
+/// every node funnels through `Executor::node_builder(name).build()` (RFC-0046) and
+/// the builder looks up the table there. This dissolves issue #124 at the emit level:
+/// rclcpp-shape nodes are seeded here and pick up their tier in the builder.
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`.
+/// `name` must be a valid null-terminated UTF-8 string.
+/// `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+/// null-terminated UTF-8 string.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
+    handle: *mut c_void,
+    name: *const c_char,
+    namespace_: *const c_char,
+    sc_id: u8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || name.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let ns_str = if namespace_.is_null() {
+        "/"
+    } else {
+        match unsafe { cstr_to_str(namespace_) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    ctx.executor.bind_node_name_sched(
+        name_str,
+        ns_str,
+        nros_node::executor::sched_context::SchedContextId(sc_id),
+    );
+    NROS_CPP_RET_OK
+}
+
 /// Get current monotonic time in nanoseconds.
 ///
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by

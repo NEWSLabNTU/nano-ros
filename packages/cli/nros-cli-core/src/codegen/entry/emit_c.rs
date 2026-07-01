@@ -102,9 +102,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("        return (int32_t)NROS_CPP_RET_NOT_INIT;\n");
     out.push_str("    }\n");
 
-    // Phase 269 (W4) — sched-context wiring: emit one create call per resolved tier
-    // (ordered highest-priority-first). Guard on non-empty multi-tier resolved table;
-    // single-tier or absent → byte-identical output.
+    // Phase 269 (W4) / 272 (W2) — sched-context wiring: emit one create call per
+    // resolved tier (ordered highest-priority-first), then seed the node-name →
+    // sched-context table BEFORE any node is constructed. Guard on non-empty multi-tier
+    // resolved table; single-tier or absent → byte-identical output.
     let use_tiers = plan
         .resolved_tiers
         .as_ref()
@@ -134,6 +135,27 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             );
             out.push_str("    }\n");
         }
+        // Phase 272 (W2) — seed the node-name → sched-context table BEFORE any node is
+        // built (RFC-0047: seed before the first node_builder(name).build()).
+        out.push_str(
+            "    /* Phase 272 (W2) — seed node-name → sched-context table (RFC-0047). */\n",
+        );
+        for n in &plan.nodes {
+            if let Some(sc_idx) = n.sched_context {
+                let node_name = n.name.as_deref().unwrap_or(&n.exec);
+                let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
+                let ns_lit = n
+                    .namespace
+                    .as_deref()
+                    .unwrap_or("/")
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"");
+                let _ = writeln!(
+                    out,
+                    "    nros_cpp_bind_node_name_sched(executor, \"{name_lit}\", \"{ns_lit}\", __nros_sc_ids[{sc_idx}]);"
+                );
+            }
+        }
     }
 
     for (i, n) in plan.nodes.iter().enumerate() {
@@ -141,26 +163,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         let node_name = n.name.as_deref().unwrap_or(&n.exec);
         let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "    {{");
-        if use_tiers && n.sched_context.is_some() {
-            let sc_idx = n.sched_context.unwrap();
-            let _ = writeln!(
-                out,
-                "        nros_cpp_node_options_t __nros_opts_{i} = nros_cpp_node_get_default_options();"
-            );
-            let _ = writeln!(
-                out,
-                "        __nros_opts_{i}.sched_context_id = __nros_sc_ids[{sc_idx}];"
-            );
-            let _ = writeln!(
-                out,
-                "        nros_cpp_ret_t nrc = nros_cpp_node_create_ex(executor, \"{name_lit}\", &__nros_opts_{i}, &__nros_node_{i});"
-            );
-        } else {
-            let _ = writeln!(
-                out,
-                "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
-            );
-        }
+        // Phase 272 (W2): always use plain nros_cpp_node_create. Tier binding is
+        // resolved via the seeded name table in node_builder (Phase 272 W2); the
+        // per-node sched_context_id / node_create_ex path is removed.
+        let _ = writeln!(
+            out,
+            "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
+        );
         out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
         let _ = writeln!(
             out,
@@ -539,8 +548,9 @@ mod tests {
     }
 
     #[test]
-    fn typed_emit_tiers_emits_sched_context_create_and_node_create_ex() {
-        // Phase 269 (W4) — multi-tier plan emits sched-context create + node_create_ex.
+    fn typed_emit_tiers_emits_sched_context_create_and_name_seed() {
+        // Phase 272 (W2) — multi-tier plan emits sched-context create + name-seed calls
+        // BEFORE node construction; node_create_ex is removed (binding is via the table).
         let plan = fixture_plan_with_tiers();
         let src = emit_typed(&plan).expect("typed C tier emit ok");
         // Sched-context IDs array declared.
@@ -568,36 +578,49 @@ mod tests {
             src.contains("nros_cpp_create_sched_context(executor, &__sc, &__nros_sc_ids[1])"),
             "expected tier 1 sc create"
         );
-        // node_create_ex with sc_id from the array.
+        // Phase 272 (W2): bind_node_name_sched seeds for each tiered node.
         assert!(
             src.contains(
-                "nros_cpp_node_create_ex(executor, \"ctrl\", &__nros_opts_0, &__nros_node_0)"
+                "nros_cpp_bind_node_name_sched(executor, \"ctrl\", \"/\", __nros_sc_ids[0])"
             ),
-            "ctrl node must use nros_cpp_node_create_ex"
-        );
-        assert!(
-            src.contains("__nros_opts_0.sched_context_id = __nros_sc_ids[0]"),
-            "ctrl node must bind to tier 0"
+            "ctrl node must be seeded via bind_node_name_sched; src:\n{src}"
         );
         assert!(
             src.contains(
-                "nros_cpp_node_create_ex(executor, \"telem\", &__nros_opts_1, &__nros_node_1)"
+                "nros_cpp_bind_node_name_sched(executor, \"telem\", \"/\", __nros_sc_ids[1])"
             ),
-            "telem node must use nros_cpp_node_create_ex"
+            "telem node must be seeded via bind_node_name_sched; src:\n{src}"
+        );
+        // node_create_ex must NOT appear (per-shape sched binding removed).
+        assert!(
+            !src.contains("nros_cpp_node_create_ex"),
+            "node_create_ex must not appear; tier binding is via the table; src:\n{src}"
+        );
+        // opts.sched_context_id must NOT appear.
+        assert!(
+            !src.contains("sched_context_id"),
+            "sched_context_id assign must not appear; src:\n{src}"
+        );
+        // Plain node_create used for all nodes.
+        assert!(
+            src.contains("nros_cpp_node_create(executor, \"ctrl\", \"/\", &__nros_node_0)"),
+            "ctrl node must use plain nros_cpp_node_create; src:\n{src}"
         );
         assert!(
-            src.contains("__nros_opts_1.sched_context_id = __nros_sc_ids[1]"),
-            "telem node must bind to tier 1"
+            src.contains("nros_cpp_node_create(executor, \"telem\", \"/\", &__nros_node_1)"),
+            "telem node must use plain nros_cpp_node_create; src:\n{src}"
         );
-        // Sched block must appear BEFORE the per-node creates.
-        let sc_at = src.find("__nros_sc_ids[2]").unwrap();
-        let node_at = src.find("nros_cpp_node_create_ex").unwrap();
-        assert!(sc_at < node_at, "sched block must precede per-node creates");
+        // Seed calls must appear BEFORE the per-node creates (RFC-0047: seed before build).
+        let seed_at = src
+            .find("nros_cpp_bind_node_name_sched(executor, \"ctrl\"")
+            .unwrap();
+        let node_at = src.find("nros_cpp_node_create(executor, \"ctrl\"").unwrap();
+        assert!(seed_at < node_at, "seed block must precede per-node creates");
     }
 
     #[test]
     fn typed_emit_no_tiers_uses_plain_node_create() {
-        // Phase 269 (W4) — empty resolved_tiers keeps byte-identical plain create.
+        // Guard: empty resolved_tiers keeps byte-identical plain create (no seed, no sched).
         let plan = fixture_plan(&[("talker_pkg", "talker")]);
         let src = emit_typed(&plan).expect("typed C no-tier emit ok");
         // Must NOT contain sched block artifacts.
@@ -608,6 +631,10 @@ mod tests {
         assert!(
             !src.contains("nros_cpp_create_sched_context"),
             "no-tier plan must not emit sched_context_create"
+        );
+        assert!(
+            !src.contains("nros_cpp_bind_node_name_sched"),
+            "no-tier plan must not emit bind_node_name_sched"
         );
         assert!(
             !src.contains("nros_cpp_node_create_ex"),

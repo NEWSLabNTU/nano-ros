@@ -339,8 +339,9 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     // callbacks. Shape-branched (Phase 242.4).
     out.push_str("static int32_t __nros_entry_setup() {\n");
 
-    // Phase 269 (W4) — sched-context wiring: emit one create call per resolved tier
-    // (highest-priority-first). Guard on non-empty multi-tier resolved table;
+    // Phase 269 (W4) / 272 (W2) — sched-context wiring: emit one create call per
+    // resolved tier (highest-priority-first), then seed the node-name → sched-context
+    // table BEFORE any node is constructed. Guard on non-empty multi-tier resolved table;
     // single-tier or absent → byte-identical output.
     let use_tiers = plan
         .resolved_tiers
@@ -386,6 +387,34 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             out.push_str("        }\n");
         }
         out.push_str("    }\n");
+        // Phase 272 (W2) — seed the node-name → sched-context table BEFORE any node is
+        // built. Covers ALL shapes (configure-shape C/C++ and rclcpp IS-A-node) via the
+        // single `node_builder(name)` lookup site (RFC-0046). Dissolves issue #124.
+        out.push_str(
+            "    /* Phase 272 (W2) — seed node-name → sched-context table (RFC-0047). */\n",
+        );
+        out.push_str("    {\n");
+        out.push_str("        void* __exec = ::nros::global_handle();\n");
+        out.push_str(
+            "        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
+        );
+        for n in &plan.nodes {
+            if let Some(sc_idx) = n.sched_context {
+                let node_name = n.name.as_deref().unwrap_or(&n.exec);
+                let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
+                let ns_lit = n
+                    .namespace
+                    .as_deref()
+                    .unwrap_or("/")
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"");
+                let _ = writeln!(
+                    out,
+                    "        nros_cpp_bind_node_name_sched(__exec, \"{name_lit}\", \"{ns_lit}\", __nros_sc_ids[{sc_idx}]);"
+                );
+            }
+        }
+        out.push_str("    }\n");
     }
 
     for (i, n) in plan.nodes.iter().enumerate() {
@@ -411,6 +440,8 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             // rclcpp shape (RFC-0044): placement-new the component with the live
             // executor node handle — the ctor creates the node + entities. The
             // component owns its node, so no separate `create_node`/`configure`.
+            // Phase 272 (W2): tier binding is now via the seeded name table (above);
+            // no per-shape sched wiring needed here.
             let cls = n.class_name.as_deref().unwrap();
             out.push_str("        ::nros::NodeHandle __h(::nros::global_handle());\n");
             out.push_str(
@@ -429,20 +460,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             let _ = writeln!(out, "            return __nros_comp_{i}->error_code();");
             out.push_str("        }\n");
         } else {
-            // Phase 269 (W4) — configure-shape (C++ or C) nodes: use NodeBuilder::sched()
-            // when a sched-context ID is resolved; else fall back to plain create_node.
-            if use_tiers && n.sched_context.is_some() {
-                let sc_idx = n.sched_context.unwrap();
-                let _ = writeln!(
-                    out,
-                    "        ::nros::Result r = ::nros::NodeBuilder(::nros::global_handle(), \"{name_lit}\").sched(__nros_sc_ids[{sc_idx}]).build(__nros_node_{i});"
-                );
-            } else {
-                let _ = writeln!(
-                    out,
-                    "        ::nros::Result r = ::nros::create_node(__nros_node_{i}, \"{name_lit}\");"
-                );
-            }
+            // Configure-shape (C++ or C) nodes: use plain create_node. Tier binding is
+            // resolved via the seeded node-name table in `node_builder` (Phase 272 W2);
+            // the per-shape `NodeBuilder::sched()` emit is removed.
+            let _ = writeln!(
+                out,
+                "        ::nros::Result r = ::nros::create_node(__nros_node_{i}, \"{name_lit}\");"
+            );
             out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
             // Phase 211.H (issue #52) — install the plan's per-topic QoS
             // overrides on the node BEFORE `configure`, so the entities the
@@ -1182,9 +1206,10 @@ mod tests {
     }
 
     #[test]
-    fn typed_emit_tiers_emits_sched_context_create_and_node_builder_sched() {
-        // Phase 269 (W4) — multi-tier plan emits sched-context create blocks +
-        // NodeBuilder::sched() for configure-shape C++ nodes.
+    fn typed_emit_tiers_emits_sched_context_create_and_name_seed() {
+        // Phase 272 (W2) — multi-tier plan emits sched-context create blocks +
+        // nros_cpp_bind_node_name_sched seeds BEFORE node construction; the per-shape
+        // NodeBuilder::sched() binding is removed (tier binding is uniform via the table).
         let plan = fixture_plan_with_tiers();
         let src = emit_typed(&plan).expect("typed cpp tier emit ok");
         // Sched-context IDs array declared.
@@ -1212,24 +1237,98 @@ mod tests {
             src.contains("nros_cpp_create_sched_context(__exec, &__sc, &__nros_sc_ids[1])"),
             "expected tier 1 sc create"
         );
-        // NodeBuilder::sched() used for configure-shape nodes.
+        // Phase 272 (W2): bind_node_name_sched seeds for each tiered configure-shape node.
         assert!(
-            src.contains("::nros::NodeBuilder(::nros::global_handle(), \"ctrl\").sched(__nros_sc_ids[0]).build(__nros_node_0)"),
-            "ctrl node must use NodeBuilder::sched(0)"
+            src.contains(
+                "nros_cpp_bind_node_name_sched(__exec, \"ctrl\", \"/\", __nros_sc_ids[0])"
+            ),
+            "ctrl node must be seeded via bind_node_name_sched(0); src:\n{src}"
         );
         assert!(
-            src.contains("::nros::NodeBuilder(::nros::global_handle(), \"telem\").sched(__nros_sc_ids[1]).build(__nros_node_1)"),
-            "telem node must use NodeBuilder::sched(1)"
+            src.contains(
+                "nros_cpp_bind_node_name_sched(__exec, \"telem\", \"/\", __nros_sc_ids[1])"
+            ),
+            "telem node must be seeded via bind_node_name_sched(1); src:\n{src}"
         );
-        // Sched block precedes per-node creates.
-        let sc_at = src.find("__nros_sc_ids[2]").unwrap();
-        let node_at = src.find("NodeBuilder(").unwrap();
-        assert!(sc_at < node_at, "sched block must precede per-node creates");
+        // NodeBuilder::sched() must NOT appear (per-shape binding removed).
+        assert!(
+            !src.contains("NodeBuilder(") || !src.contains(".sched("),
+            "NodeBuilder::sched() must not be emitted; tier binding is via the table"
+        );
+        // Plain create_node used for configure-shape nodes (tier resolved via table).
+        assert!(
+            src.contains("::nros::create_node(__nros_node_0, \"ctrl\")"),
+            "ctrl node must use plain create_node; src:\n{src}"
+        );
+        assert!(
+            src.contains("::nros::create_node(__nros_node_1, \"telem\")"),
+            "telem node must use plain create_node; src:\n{src}"
+        );
+        // Seed block must precede per-node creates (RFC-0047: seed before build).
+        let seed_at = src
+            .find("nros_cpp_bind_node_name_sched(__exec, \"ctrl\"")
+            .unwrap();
+        let node_at = src.find("::nros::create_node(__nros_node_0").unwrap();
+        assert!(seed_at < node_at, "seed block must precede per-node creates");
+    }
+
+    #[test]
+    fn typed_emit_tiers_rclcpp_node_is_seeded() {
+        // Phase 272 (W2) — rclcpp-shape tiered node IS seeded via bind_node_name_sched.
+        // This is the #124 dissolve at the emit level: previously rclcpp nodes were
+        // skipped by the per-shape binding; now the table covers them uniformly.
+        use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+        let high_tier = ResolvedTier {
+            name: "high".into(),
+            priority: 80,
+            stack_bytes: None,
+            spin_period_us: Some(10_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("ctrl".into(), "ctrl_grp".into())],
+        };
+        let mut plan = fixture_plan_rclcpp(&[(
+            "ctrl_pkg",
+            "ctrl",
+            "ctrl",
+            "ctrl_pkg::Ctrl",
+            "ctrl_pkg/Ctrl.hpp",
+        )]);
+        plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
+        plan.nodes[0].sched_context = Some(0);
+        plan.resolved_tiers = Some(ResolvedTierTable {
+            tiers: vec![high_tier],
+        });
+        let src = emit_typed(&plan).expect("rclcpp tier emit ok");
+        // rclcpp-shape node MUST be seeded (the #124 proof).
+        assert!(
+            src.contains(
+                "nros_cpp_bind_node_name_sched(__exec, \"ctrl\", \"/\", __nros_sc_ids[0])"
+            ),
+            "rclcpp-shape tiered node must be seeded via bind_node_name_sched; src:\n{src}"
+        );
+        // rclcpp construction path unchanged (placement-new with handle).
+        assert!(
+            src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Ctrl(__h);"),
+            "rclcpp node still constructs via placement-new"
+        );
+        // Seed precedes construction.
+        let seed_at = src
+            .find("nros_cpp_bind_node_name_sched(__exec, \"ctrl\"")
+            .unwrap();
+        let ctor_at = src.find("new (__nros_comp_buf_0)").unwrap();
+        assert!(seed_at < ctor_at, "seed must precede rclcpp construction");
     }
 
     #[test]
     fn typed_emit_no_tiers_uses_plain_create_node() {
-        // Phase 269 (W4) — empty resolved_tiers keeps byte-identical plain create.
+        // Guard: empty resolved_tiers keeps byte-identical plain create (no seed, no sched).
         let plan = fixture_plan_typed(&[(
             "talker_pkg",
             "talker",
@@ -1247,12 +1346,16 @@ mod tests {
             "no-tier plan must not emit sched_context_create"
         );
         assert!(
+            !src.contains("nros_cpp_bind_node_name_sched"),
+            "no-tier plan must not emit bind_node_name_sched"
+        );
+        assert!(
             src.contains("::nros::create_node(__nros_node_0, \"talker\")"),
             "no-tier plan must use plain create_node"
         );
         assert!(
-            !src.contains("NodeBuilder"),
-            "no-tier plan must not use NodeBuilder"
+            !src.contains(".sched("),
+            "no-tier plan must not use NodeBuilder sched"
         );
     }
 }

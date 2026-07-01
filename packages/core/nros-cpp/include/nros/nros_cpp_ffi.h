@@ -757,6 +757,28 @@ nros_cpp_ret_t nros_cpp_bind_handle_to_sched_context(void *handle,
                                                      uint8_t sc_id);
 
 /**
+ * Phase 272 (W2) — seed the `node_name → sched_context` table before the node
+ * is built. Mirrors the W1 `Executor::bind_node_name_sched` via the C++ executor
+ * handle; called by the emitted entry setup AFTER creating sched-context slots
+ * and BEFORE constructing/configuring components (RFC-0047: seed before build).
+ *
+ * Covers every component shape (configure-shape C/C++ and rclcpp IS-A-node) since
+ * every node funnels through `Executor::node_builder(name).build()` (RFC-0046) and
+ * the builder looks up the table there. This dissolves issue #124 at the emit level:
+ * rclcpp-shape nodes are seeded here and pick up their tier in the builder.
+ *
+ * # Safety
+ * `handle` must be a context returned by `nros_cpp_init`.
+ * `name` must be a valid null-terminated UTF-8 string.
+ * `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+ * null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_bind_node_name_sched(void *handle,
+                                             const char *name,
+                                             const char *namespace_,
+                                             uint8_t sc_id);
+
+/**
  * Get current monotonic time in nanoseconds.
  *
  * Used by `nros::Future::wait()` (header-side) to budget its spin loop by

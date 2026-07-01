@@ -115,6 +115,14 @@ inline Result bind_handle_to_sched_context(void* executor_handle, size_t callbac
     return Result(nros_cpp_bind_handle_to_sched_context(executor_handle, callback_handle, sc_id));
 }
 
+/// Phase 272 (W2) — seed the node-name → sched-context table before the node is built.
+/// Call AFTER creating sched-context slots and BEFORE any `NodeBuilder(exec, name).build()`.
+/// Covers every component shape (including rclcpp IS-A-node), dissolving issue #124.
+inline Result bind_node_name_sched(void* executor_handle, const char* name,
+                                   const char* namespace_str, SchedContextId sc_id) {
+    return Result(nros_cpp_bind_node_name_sched(executor_handle, name, namespace_str, sc_id));
+}
+
 } // namespace nros
 
 #endif // NROS_CPP_SCHED_CONTEXT_HPP
