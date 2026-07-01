@@ -57,14 +57,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-- **#103** — [C++ lifecycle has no idiomatic wrapper
-  class](0103-cross-language-capability-surface-gaps.md): re-audited 2026-07-01 — 2 of the 3
-  original hard gaps were already closed (multi-type params via Phase 91.C/117.9; RT tiers via
-  Phase 110.B — the audit cited the wrong header path), and phase-269 auto-wires the declarative
-  entry paths. The one real remainder: `nros-cpp` has no `nros::LifecycleNode` (deferred to Phase
-  209.H), so a C++ managed node still drops to the `extern "C"` C-ABI state machine. Mechanical
-  wrapper over the complete C side. Parity enhancement.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#123** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#103** —
+[C++ lifecycle had no idiomatic wrapper
+class](archived/0103-cross-language-capability-surface-gaps.md): the last cross-language capability
+gap. Its other two audited gaps were already closed (multi-type params — Phase 91.C/117.9; RT tiers
+— Phase 110.B; the audit cited the wrong header path), and phase-269 auto-wires the declarative
+param/lifecycle entry paths. The remaining gap — no `nros::LifecycleNode` — was closed by **phase-270**
+(DONE 2026-07-02): a freestanding-safe rclcpp-shape base class (`lifecycle.hpp`, six `on_*` virtuals →
+`CallbackReturn`) over no_std `nros_cpp_lifecycle_*` FFI shims. Verified by
+`cpp_lifecycle_node_wrapper_e2e` (`managed_node_wrapper_reaches_active_and_publishes`, green). **#123** —
 [`workspace-shadowing` template read the sizes-header `#error`
 stub](archived/0123-shadowing-template-smoke-cpp-ffi-sizes-header-race.md): a verbatim rclcpp
 consumer that pulls nros-cpp only transitively never triggered the `nros_{c,cpp}_config_header`
