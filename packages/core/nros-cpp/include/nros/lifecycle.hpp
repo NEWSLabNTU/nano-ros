@@ -58,10 +58,23 @@ class LifecycleNode {
   public:
     /// @param executor_handle Raw executor handle from `Executor::handle()`.
     explicit LifecycleNode(void* executor_handle) : exec_(executor_handle) {}
+
+    /// Two-phase construction for the component model: nano-ros components are
+    /// constructed before the executor handle exists, so a component that inherits
+    /// `LifecycleNode` default-constructs here and calls `bind()` from its install
+    /// hook (`configure(Node&)`, where `node.executor_handle()` is available) before
+    /// `register_services()`. Until bound, `get_state()` reads `Unconfigured` and the
+    /// register/transition calls return `InvalidArgument` rather than trapping.
+    LifecycleNode() : exec_(nullptr) {}
+
     virtual ~LifecycleNode() = default;
 
     LifecycleNode(const LifecycleNode&) = delete;
     LifecycleNode& operator=(const LifecycleNode&) = delete;
+
+    /// Bind the executor handle for a default-constructed node (two-phase init).
+    /// Call once, before `register_services()` / `autostart()`.
+    void bind(void* executor_handle) { exec_ = executor_handle; }
 
     // Transition hooks — override the ones you need. Defaults: Success
     // (on_error: Failure), matching rclcpp.

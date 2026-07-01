@@ -1,0 +1,23 @@
+# Phase 270 (#103) — wrapper-managed C++ lifecycle node.
+#
+# NO `[lifecycle]` block: unlike demo_bringup (which asks the entry codegen to
+# emit `nros_cpp_lifecycle_autostart`), the ManagedTalker node manages its own
+# REP-2002 machine with the `nros::LifecycleNode` wrapper — it calls
+# register_services() + autostart(Active) from its install hook. The entry just
+# boots + spins; there is no entry-side lifecycle wiring to avoid double
+# registration.
+
+[system]
+name = "cpp_managed_lifecycle_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "cpp_lifecycle_talker_pkg"
+class = "cpp_lifecycle_talker_pkg::ManagedTalker"
+name = "managed_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

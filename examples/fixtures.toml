@@ -841,6 +841,24 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# Phase 270 (#103) — the SAME ws-lifecycle-cpp workspace, second entry: a managed node
+# written with the `nros::LifecycleNode` C++ wrapper (ManagedTalker). Its managed_bringup
+# has NO [lifecycle] block — the node self-drives REP-2002 (register_services +
+# autostart(Active)) via the wrapper, printing LC:on_configure / LC:on_activate /
+# LC:state markers + gated `Published:` lines. Consumed by
+# tests/cpp_lifecycle_node_wrapper_e2e.rs. Shares the workspace cmake build dir with the
+# phase-269 native_entry (one configure, distinct targets/codegen).
+[[workspace_fixture]]
+id = "workspace-cpp-native-lifecycle-managed"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-lifecycle-cpp"
+bringup = "src/managed_bringup"
+entry = "native_managed_entry"
+codegen_out = "build-workspace-codegen/managed_bringup"
+build_subdir = "build-workspace-fixtures"
+
 # Phase 269 W3 — E2E-safety C workspace (talker half). `[system].features = ["safety"]`
 # lowers to NANO_ROS_SAFETY_E2E=ON; the C talker publishes CRC-annotated /chatter frames.
 # Cross-process split (issue #0096); paired with workspace-c-native-safety-listener.

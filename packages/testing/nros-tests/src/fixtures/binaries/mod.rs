@@ -252,6 +252,8 @@ static NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::n
 /// Phase 269 W2 — cached paths to the managed-node (lifecycle) C/C++ workspace entries.
 static NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Phase 270 (#103) — cached path to the wrapper-managed C++ lifecycle entry.
+static NATIVE_WORKSPACE_CPP_LIFECYCLE_MANAGED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 269 W3 — cached paths to the E2E-safety C/C++ workspace entries (talker + listener).
 static NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1516,6 +1518,22 @@ pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path>
                 "workspace-cpp-native-lifecycle",
                 "ws-lifecycle-cpp",
                 "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`ws-lifecycle-cpp`,
+/// `native_managed_entry`). Boots `ManagedTalker`, which drives REP-2002 itself via
+/// `nros::LifecycleNode` (register_services + autostart(Active)); consumed by
+/// tests/cpp_lifecycle_node_wrapper_e2e.rs.
+pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LIFECYCLE_MANAGED_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-lifecycle-managed",
+                "ws-lifecycle-cpp",
+                "native_managed_entry",
             )
         })
         .map(|p| p.as_path())

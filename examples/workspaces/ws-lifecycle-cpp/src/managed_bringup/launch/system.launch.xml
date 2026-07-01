@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Phase 270 (#103) — wrapper-managed C++ lifecycle node. The ManagedTalker
+     component self-drives REP-2002 (register_services + autostart(Active)) via the
+     nros::LifecycleNode wrapper in its install hook; the entry has no lifecycle
+     autostart of its own. -->
+<launch>
+  <node pkg="cpp_lifecycle_talker_pkg" exec="managed_talker" name="managed_talker"/>
+</launch>

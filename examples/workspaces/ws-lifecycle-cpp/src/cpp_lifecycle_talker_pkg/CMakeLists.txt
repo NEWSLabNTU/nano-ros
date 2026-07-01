@@ -23,7 +23,16 @@ nano_ros_node_register(
     CLASS   cpp_lifecycle_talker_pkg::LifecycleTalker
     SOURCES src/LifecycleTalker.cpp)
 
+# Phase 270 (#103) — managed node written with the nros::LifecycleNode wrapper
+# (self-drives REP-2002 via the on_* overrides, not the entry autostart codegen).
+nano_ros_node_register(
+    NAME    managed_talker
+    CLASS   cpp_lifecycle_talker_pkg::ManagedTalker
+    SOURCES src/ManagedTalker.cpp)
+
 if(TARGET std_msgs__nano_ros_cpp)
     target_link_libraries(cpp_lifecycle_talker_pkg_talker_component
+        PUBLIC std_msgs__nano_ros_cpp)
+    target_link_libraries(cpp_lifecycle_talker_pkg_managed_talker_component
         PUBLIC std_msgs__nano_ros_cpp)
 endif()
