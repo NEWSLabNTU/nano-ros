@@ -42,14 +42,44 @@ This template builds its `std_msgs` (carrying `Marker.msg`) through `nros_worksp
   rebuild that exposed the sibling pre-existing template drift (pure-c-workspace `launch`→
   `default_launch` + missing `rmw`/`domain_id`, since fixed).
 
+## Root cause — corrected: it is an INCLUDE-PATH ordering bug, NOT a build-order race
+
+Initial triage read this as the 0088/0090/0114/0122 build-order race and four ordering fixes were
+tried — ALL INEFFECTIVE (see below). Direct inspection of a failing
+`build/cmake-fixtures/shadowing` shows why:
+
+- The per-build sizes header **already exists** when `consumer.cpp` compiles
+  (`build/cmake-fixtures/shadowing/cargo/nano-ros_1147c/nros-c-generated/nros/nros_config_generated.h`
+  is present). So there is nothing to wait for — not a timing race.
+- `nros_c-static`'s INTERFACE include dirs (`packages/core/nros-c/CMakeLists.txt:180`) are ordered
+  correctly: the **mirror** dir `${CMAKE_CURRENT_BINARY_DIR}/include` (into which the
+  `nros_c_config_header` custom target copies the real `nros/nros_config_generated.h`) is listed
+  BEFORE the source `include` dir (which holds the `#error` stub).
+- BUT for the workspace-shadowing **consumer** (a verbatim rclcpp exe that pulls nros-cpp only
+  transitively through the `std_msgs__nano_ros_cpp` binding + `NanoRos::NanoRosCpp`), the
+  `nros_c_config_header` / `nros_cpp_config_header` mirror custom targets **had not run** when
+  `consumer.cpp` compiled — the mirror dir was still empty, so `#include
+  "nros/nros_config_generated.h"` fell through to the next `-I` entry, the source `#error` stub →
+  `*_OPAQUE_U64S undeclared` / `Publisher<M> no member storage_`.
+
+So it IS the 0088-family race after all — but the standard remedy
+(`add_dependencies(<consumer> nros_{c,cpp}_config_header)`) never took effect on this consumer.
+
+### Fixes that DO NOT work (confirmed)
+
+`add_dependencies(<consumer> nros_{c,cpp}_config_header / cargo-build_nros_{c,cpp})` via any hook —
+the C++ FFI INTERFACE binding, its `_gen` codegen target, a `_nros_find_ros_msg_package` directory
+DEFER, and `nano_ros_link_rmw(TARGET)` — all leave the error in place, because the problem is header
+RESOLUTION, not build ORDER.
+
 ## Direction
 
-Extend the mirror-dependency wiring (an `add_dependencies` on `nros_{c,cpp}_config_header` + a hard
-file-level `OBJECT_DEPENDS` on the mirrored headers) to the TU(s) produced by the
-`nros_workspace_interfaces()` / `nano-ros-cpp-ffi-<pkg>` shadow path — mirroring the
-`NanoRosGenerateInterfaces.cmake` fix (0122, which gates on the mirror target existing rather than a
-platform name). Verify with `bash scripts/build/compile-check-fixtures.sh` on a box with an AMENT
-`std_msgs` available.
+Make `NanoRos::NanoRosCpp` (and the `<pkg>__nano_ros_cpp` binding) propagate the **per-build
+generated-header include dir BEFORE the in-tree `packages/core/nros-{c,cpp}/include` dir** in their
+`INTERFACE_INCLUDE_DIRECTORIES`, so any consumer — including a plain rclcpp exe — resolves the real
+`nros/nros_config_generated.h` ahead of the `#error` stub. (Equivalently: stop shipping the stub on
+a dir that can precede the real header, or make the mirror overwrite the in-tree copy.) Verify with
+`bash scripts/build/compile-check-fixtures.sh` on a box with an AMENT `std_msgs` available.
 
 ## Context
 
