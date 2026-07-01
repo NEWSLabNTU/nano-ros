@@ -4,8 +4,16 @@ title: "rclcpp-shape C++ components aren't bound to a scheduling tier — the en
 status: open
 type: enhancement
 area: core
-related: [phase-269, 119, rfc-0044, rfc-0015]
+related: [phase-269, 119, rfc-0044, rfc-0015, rfc-0047, phase-272]
 ---
+
+> **Design (2026-07-01).** Rather than a narrow per-shape patch (add `sc_id` to `NodeHandle`), this
+> is folded into the unified, config-driven binding of **[RFC-0047](../design/0047-unified-sched-context-binding.md)**
+> / **phase-272**: a config-seeded `node_name → sched_context` table looked up at the one
+> `Executor::node_builder(name)` site every node funnels through (RFC-0046). rclcpp-shape nodes call
+> `node_builder(name)` in their ctor (via `ComponentNode`→`Node::create`), so they get their tier by
+> name automatically — no `NodeHandle` change. Resolved when phase-272 W3 lands the rclcpp realtime
+> e2e.
 
 ## Summary
 
