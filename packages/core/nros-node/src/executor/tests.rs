@@ -3267,3 +3267,183 @@ fn test_bind_node_name_sched_namespace_disambiguates() {
         "root-ns node must not inherit the /ns-keyed table entry"
     );
 }
+
+// =========================================================================
+// Phase 273 (RFC-0047) — group_sched_table tests
+// =========================================================================
+
+/// Seeding a group binding causes a callback created under that group to
+/// bind to the group's SC, not the node default (SC 0).
+#[test]
+fn test_bind_group_sched_seeded_resolves() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    // Create SC slots: 1 and 2 must exist so the validity checks pass.
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Seed the group table: node "node" / group "ctrl" → SC 2.
+    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
+
+    // Build the node (no default_sched seeded — node stays at SC 0).
+    let nid = executor.node_builder("node").build().unwrap();
+    assert_eq!(
+        executor.nodes[nid.index()].default_sched,
+        SchedContextId(0),
+        "node default must remain 0 — group table is the override"
+    );
+
+    // Manually call apply_node_default_sched with group = Some("ctrl").
+    // slot 0 is unused here; use it directly.
+    executor.apply_node_default_sched(0, Some(nid), Some("ctrl"));
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "group table entry must win over node default (SC 0)"
+    );
+}
+
+/// Two groups on the SAME node each resolve to their own SC (sub-node split).
+#[test]
+fn test_bind_group_sched_sub_node_split() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+    let sc3 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(3)
+    assert_eq!(sc2, SchedContextId(2));
+    assert_eq!(sc3, SchedContextId(3));
+
+    // One node, two groups, two SCs — the capability the node-name table can't express.
+    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
+    executor.bind_group_sched("node", "/", "telem", SchedContextId(3));
+
+    let nid = executor.node_builder("node").build().unwrap();
+
+    // ctrl group callback → SC 2.
+    executor.apply_node_default_sched(0, Some(nid), Some("ctrl"));
+    assert_eq!(executor.sched_context_bindings[0], SchedContextId(2));
+
+    // telem group callback → SC 3.
+    executor.apply_node_default_sched(1, Some(nid), Some("telem"));
+    assert_eq!(executor.sched_context_bindings[1], SchedContextId(3));
+}
+
+/// No group passed (None) → falls through to node default (phase-272 behaviour).
+#[test]
+fn test_bind_group_sched_no_group_uses_node_default() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Seed both the node-name table and the group table.
+    executor.bind_node_name_sched("node", "/", SchedContextId(2));
+    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(1));
+
+    let nid = executor.node_builder("node").build().unwrap();
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
+
+    // group = None → node default (SC 2), not the group entry.
+    executor.apply_node_default_sched(0, Some(nid), None);
+    assert_eq!(executor.sched_context_bindings[0], SchedContextId(2));
+}
+
+/// An unmapped group name falls back to the node default.
+#[test]
+fn test_bind_group_sched_unmapped_group_falls_back_to_node_default() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Node default = SC 2; no group entry for "unknown_group".
+    executor.bind_node_name_sched("node", "/", SchedContextId(2));
+
+    let nid = executor.node_builder("node").build().unwrap();
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
+
+    // Passing an unmapped group → falls back to node default (SC 2).
+    executor.apply_node_default_sched(0, Some(nid), Some("unknown_group"));
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "unmapped group must fall back to node default"
+    );
+}
+
+/// Group table entry wins over node default when both are seeded (precedence).
+#[test]
+fn test_bind_group_sched_group_beats_node_default() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    // SC 1, 2, 5 (skipping 3 and 4 to test non-contiguous ids).
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(1)
+    let _sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(2)
+    let _sc3 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(3)
+    let _sc4 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(4)
+    let sc5 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap(); // SchedContextId(5)
+    let sc2 = SchedContextId(2);
+    assert_eq!(sc5, SchedContextId(5));
+
+    // node default = SC 5; "ctrl" group → SC 2.
+    executor.bind_node_name_sched("node", "/", SchedContextId(5));
+    executor.bind_group_sched("node", "/", "ctrl", sc2);
+
+    let nid = executor.node_builder("node").build().unwrap();
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(5));
+
+    // group "ctrl" → SC 2 (group beats node default).
+    executor.apply_node_default_sched(0, Some(nid), Some("ctrl"));
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "group table entry must beat node default"
+    );
+}

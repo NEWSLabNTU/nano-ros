@@ -827,6 +827,20 @@ pub struct Executor {
         ),
         { crate::config::MAX_NODES },
     >,
+    /// Phase 273 (RFC-0047) — config-seeded per-callback-group sched bindings, keyed by the node's
+    /// fully-qualified `(name, namespace)` pair PLUS the callback-group name. Overrides the node
+    /// default for a callback created in that group. Empty ⇒ no per-group binding (node default
+    /// stands). Sized by `MAX_CBS` — an upper bound on distinct callback-group bindings (you can
+    /// never have more distinct group bindings than max callbacks).
+    pub(crate) group_sched_table: heapless::Vec<
+        (
+            heapless::String<64>,
+            heapless::String<64>,
+            heapless::String<32>,
+            super::sched_context::SchedContextId,
+        ),
+        { crate::config::MAX_CBS },
+    >,
     /// Phase 216 follow-up — per-Node dispatch trampoline registry.
     ///
     /// Populated by [`Executor::register_dispatch_slot`]; walked by
@@ -1018,6 +1032,7 @@ impl Executor {
             active_groups: None,
             nodes: heapless::Vec::new(),
             node_sched_table: heapless::Vec::new(),
+            group_sched_table: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1116,6 +1131,7 @@ impl Executor {
             active_groups: None,
             nodes: heapless::Vec::new(),
             node_sched_table: heapless::Vec::new(),
+            group_sched_table: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1342,6 +1358,67 @@ impl Executor {
         for entry in self.node_sched_table.iter() {
             if entry.0.as_str() == name && entry.1.as_str() == namespace {
                 return Some(entry.2);
+            }
+        }
+        None
+    }
+
+    // =========================================================================
+    // Phase 273 (RFC-0047) — per-callback-group → sched-context table
+    // =========================================================================
+
+    /// Seed a config-resolved tier binding by `(name, namespace, group)` before
+    /// entities are registered. `apply_node_default_sched` consults this table
+    /// first (group table > node default > `SchedContextId(0)`).
+    ///
+    /// Call BEFORE entity creation. An existing entry for the same
+    /// `(name, namespace, group)` key is overwritten (last-write wins). Overflow
+    /// past `MAX_CBS` is silently ignored. An empty `namespace` is normalised to
+    /// `"/"` to match `NodeBuilder::build`. Mirror of `bind_node_name_sched`.
+    pub fn bind_group_sched(
+        &mut self,
+        name: &str,
+        namespace: &str,
+        group: &str,
+        sc: super::sched_context::SchedContextId,
+    ) {
+        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        // Overwrite if there is already an entry for this (name, ns, group).
+        for entry in self.group_sched_table.iter_mut() {
+            if entry.0.as_str() == name && entry.1.as_str() == norm_ns && entry.2.as_str() == group
+            {
+                entry.3 = sc;
+                return;
+            }
+        }
+        // New entry — build the heapless strings and push. Silently ignore
+        // if name/ns/group is too long or the table is at capacity.
+        let mut name_s = heapless::String::<64>::new();
+        let mut ns_s = heapless::String::<64>::new();
+        let mut grp_s = heapless::String::<32>::new();
+        if name_s.push_str(name).is_err()
+            || ns_s.push_str(norm_ns).is_err()
+            || grp_s.push_str(group).is_err()
+        {
+            return;
+        }
+        let _ = self.group_sched_table.push((name_s, ns_s, grp_s, sc));
+    }
+
+    /// Look up the seeded sched-context for `(name, namespace, group)`. Returns
+    /// `None` when the table has no entry for this triple.
+    fn lookup_group_sched(
+        &self,
+        name: &str,
+        namespace: &str,
+        group: &str,
+    ) -> Option<super::sched_context::SchedContextId> {
+        for entry in self.group_sched_table.iter() {
+            if entry.0.as_str() == name
+                && entry.1.as_str() == namespace
+                && entry.2.as_str() == group
+            {
+                return Some(entry.3);
             }
         }
         None
@@ -1857,18 +1934,38 @@ impl Executor {
     /// auto-created Fifo slot (0) which matches the executor's
     /// default binding already.
     ///
+    /// Phase 273 (RFC-0047) — extends with an optional `group` name.
+    /// Precedence: **group table > node default > no binding** (SC 0).
+    /// When `group` is `Some(g)`, consults `group_sched_table` first;
+    /// if no entry exists for `(name, namespace, g)` falls back to the
+    /// node's `default_sched`. When `group` is `None` the group table
+    /// is not consulted (unchanged phase-272 path).
+    ///
     /// Handles can still override per-call via
     /// `bind_handle_to_sched_context(handle, sc_id)` post-register.
     pub(crate) fn apply_node_default_sched(
         &mut self,
         slot: usize,
         node_id: Option<super::node_record::NodeId>,
+        group: Option<&str>,
     ) {
         let Some(id) = node_id else { return };
-        let Some(rec) = self.nodes.get(id.index()) else {
-            return;
+        // Copy name, namespace, and default_sched out so the borrow on
+        // `self.nodes` is released before the immutable `lookup_group_sched`
+        // borrow and the mutable `sched_context_bindings` write below.
+        let (name, namespace, node_sc) = {
+            let Some(rec) = self.nodes.get(id.index()) else {
+                return;
+            };
+            (rec.name.clone(), rec.namespace.clone(), rec.default_sched)
         };
-        let sc = rec.default_sched;
+        // Phase 273: group table > node default.
+        let sc = match group {
+            Some(g) => self
+                .lookup_group_sched(name.as_str(), namespace.as_str(), g)
+                .unwrap_or(node_sc),
+            None => node_sc,
+        };
         if sc.0 == 0 {
             return;
         }
@@ -2450,7 +2547,7 @@ impl Executor {
                     invocation: InvocationMode::OnNewData,
                     drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
                 });
-                self.apply_node_default_sched(slot, Some(node_id));
+                self.apply_node_default_sched(slot, Some(node_id), None);
                 return Ok(HandleId(slot));
             }
         }
@@ -2492,7 +2589,7 @@ impl Executor {
             drop_fn: drop_entry::<Entry<M, F>>,
         });
         // Phase 104.C.4 — apply Node's default SchedContext.
-        self.apply_node_default_sched(slot, Some(node_id));
+        self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
 
@@ -2550,7 +2647,7 @@ impl Executor {
         };
         let handle_id = self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
         // Phase 104.C.4 — apply Node's default SchedContext.
-        self.apply_node_default_sched(handle_id.0, Some(node_id));
+        self.apply_node_default_sched(handle_id.0, Some(node_id), None);
         Ok(handle_id)
     }
 
@@ -2644,7 +2741,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<B, F>>,
         });
-        self.apply_node_default_sched(slot, Some(node_id));
+        self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
 
@@ -2716,7 +2813,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<F, RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, Some(node_id));
+        self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
 
@@ -2791,7 +2888,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<F, RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, Some(node_id));
+        self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
 
@@ -2938,7 +3035,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3014,7 +3111,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3170,7 +3267,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         });
-        self.apply_node_default_sched(slot, Some(node_id));
+        self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
 
@@ -3366,7 +3463,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SubBufferedRawCEntry>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3440,7 +3537,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3522,7 +3619,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<RX_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3667,7 +3764,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3817,7 +3914,7 @@ impl Executor {
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<ServiceClientRawArenaEntry<REPLY_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
 
@@ -3897,7 +3994,7 @@ impl Executor {
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>,
         });
-        self.apply_node_default_sched(slot, node_id);
+        self.apply_node_default_sched(slot, node_id, None);
         Ok((HandleId(slot), hdr_ptr))
     }
 
