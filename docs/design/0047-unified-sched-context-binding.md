@@ -17,7 +17,7 @@ Tier scheduling is written in config (`system.toml [tiers.*]` + per-node `callba
 resolves to a `node → sched_context` assignment in one shared place (`nros-orchestration-ir`). But
 the **binding** of that assignment — attaching a node's callbacks to their scheduling context — is
 today done four different ways across languages and component shapes, and one of them (rclcpp-shape
-C++, issue #121) can't be done at all. This RFC replaces all four with **one** mechanism: the entry
+C++, issue #124) can't be done at all. This RFC replaces all four with **one** mechanism: the entry
 seeds a `node_name → sched_context_id` table on the executor at boot, and the single
 `Executor::node_builder(name).build()` site every node in every language funnels through
 (RFC-0046) looks the node's tier up in that table and sets its `default_sched` automatically. No
@@ -34,7 +34,7 @@ seed-a-table-look-up-by-name pattern already used for launch params (phase-269 W
 | Rust `nros::main!` | `run_tiers` (spin structure) |
 | Rust codegen | post-hoc `bind_handle_to_sched_context(callback, sc)` per callback |
 | C / C++ configure-shape | `NodeBuilder::sched(sc).build()` → the node's `default_sched` |
-| C++ rclcpp-shape (IS-A-node, RFC-0044) | **none** — the node is built inside the component ctor from a `NodeHandle` that carries no sched id (#121) |
+| C++ rclcpp-shape (IS-A-node, RFC-0044) | **none** — the node is built inside the component ctor from a `NodeHandle` that carries no sched id (#124) |
 
 Underneath it is all one thing: a callback inherits its **node's** `default_sched` at registration
 (`Executor::apply_node_default_sched`). So the tier is a node-level default that must be set **before
@@ -82,7 +82,7 @@ launch-injected node identity overrides the `NodeOptions` default (RFC-0046).
 - The per-shape emit branches in `emit_c`/`emit_cpp` that call `NodeBuilder::sched()` /
   `nros_cpp_node_create_ex` purely to bind a tier — replaced by the one table-seed emit + the
   builder lookup.
-- The `NodeHandle` sched-field workaround that #121 would otherwise need — unnecessary, since the
+- The `NodeHandle` sched-field workaround that #124 would otherwise need — unnecessary, since the
   rclcpp node's own `node_builder(name)` call hits the table.
 
 ### Scope boundary — binding vs execution
@@ -94,7 +94,7 @@ platforms/entries that need the multi-tier spin structure, `run_tiers` stays; th
 
 ## Alternatives considered
 
-- **Per-shape fixes (status quo + a narrow #121 patch: add `sc_id` to `NodeHandle`).** Rejected as
+- **Per-shape fixes (status quo + a narrow #124 patch: add `sc_id` to `NodeHandle`).** Rejected as
   the primary design — it keeps four binding paths and the special-casing the config-driven goal
   wants gone; it also spreads the `sc_id` across the `NodeHandle` ABI for one shape. (This RFC makes
   that patch unnecessary.)
@@ -127,7 +127,7 @@ platforms/entries that need the multi-tier spin structure, `run_tiers` stays; th
   relies on; same seed-a-table-by-name shape.
 - RFC-0032 (entry-codegen-pipeline) — the tier resolver + `run_tiers` emission this simplifies.
 - #119 (C/C++ tiers, phase-269 W4) — the per-shape binding this unifies.
-- #121 (rclcpp-shape not sched-bound) — dissolved by this design.
+- #124 (rclcpp-shape not sched-bound) — dissolved by this design.
 
 ## Changelog
 - 2026-07 — created (Draft). Records the unified node-name → sched-context table at `node_builder`,

@@ -1,13 +1,13 @@
 # Phase 272 — Unified config-driven sched-context binding
 
 Implements **[RFC-0047](../design/0047-unified-sched-context-binding.md)**. Resolves
-**[#121](../issues/0121-rclcpp-shape-cpp-nodes-not-sched-bound.md)** and refactors the per-shape
+**[#124](../issues/0124-rclcpp-shape-cpp-nodes-not-sched-bound.md)** and refactors the per-shape
 tier binding landed in phase-269 W4 (#119) into one mechanism.
 
 ## Why
 
 `[tiers]` binding is fragmented across four language/shape paths (Rust `run_tiers`, Rust codegen
-per-callback bind, C/C++ configure `NodeBuilder::sched`, rclcpp-shape = nothing → #121). All four are
+per-callback bind, C/C++ configure `NodeBuilder::sched`, rclcpp-shape = nothing → #124). All four are
 the same underlying act — set a node's `default_sched` before its callbacks register
 (`apply_node_default_sched`). Since tier resolves per-node in config (`nros-orchestration-ir`) and
 **every** node funnels through `Executor::node_builder(name).build()` (RFC-0046 — incl. rclcpp via
@@ -43,11 +43,11 @@ tier-binding branches (the builder now resolves the tier itself). Guard so a sin
   configure and NO LONGER emits `NodeBuilder::sched`/`node_create_ex` for tiering; single-tier plan
   byte-identical. `just check` green.
 
-### W3 — rclcpp-shape realtime fixture + e2e (proves #121 dissolved)
+### W3 — rclcpp-shape realtime fixture + e2e (proves #124 dissolved)
 **Files:** an rclcpp-shape variant in a realtime workspace — extend `ws-realtime-cpp` (or a new
 `ws-realtime-cpp-rclcpp`) with an IS-A-node (`: ComponentNode(h, "ctrl")`) component on a tier + a
 `fixtures.toml` entry + an e2e asserting the rclcpp-shape node schedules on its tier (mirror
-`realtime_tiers_cpp_e2e`). This is the case #121 flagged as broken; it must now pass with NO
+`realtime_tiers_cpp_e2e`). This is the case #124 flagged as broken; it must now pass with NO
 `NodeHandle` change.
 
 - **Acceptance:** the rclcpp-shape realtime e2e schedules the node on its high/low tier (built + run
@@ -68,7 +68,7 @@ last.
 ## Acceptance (phase)
 - One binding mechanism: a config-seeded `node_name → sched_context` table resolved at the single
   `node_builder(name)` site; no per-shape emit; no `NodeHandle` sched field.
-- #121 resolved — rclcpp-shape nodes schedule on their tier, proven by an rclcpp realtime e2e, with
+- #124 resolved — rclcpp-shape nodes schedule on their tier, proven by an rclcpp realtime e2e, with
   no `NodeHandle` ABI change.
 - Existing C/C++/Rust realtime e2e unchanged (observable scheduling identical); single-tier entries
   byte-identical.

@@ -69,6 +69,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   entry paths. The one real remainder: `nros-cpp` has no `nros::LifecycleNode` (deferred to Phase
   209.H), so a C++ managed node still drops to the `extern "C"` C-ABI state machine. Mechanical
   wrapper over the complete C side. Parity enhancement.
+- **#124** — [rclcpp-shape C++ components aren't bound to a scheduling
+  tier](0124-rclcpp-shape-cpp-nodes-not-sched-bound.md): phase-269 W4 (#119) tier-binds C +
+  configure-shape C++ nodes via `NodeBuilder::sched()`, but an rclcpp-shape (RFC-0044, IS-A-node)
+  component builds its node inside its own ctor and `NodeHandle` has no `sc_id` field. Folded into
+  the unified config-driven binding of RFC-0047 / phase-272 (a `node_name → sched_context` table at
+  the one `node_builder(name)` site) — dissolves it with no `NodeHandle` change.
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#116–#119** (phase-269) —
 C/C++ entry feature parity: [params](archived/0116-cpp-c-component-launch-parameter-readback.md),
 [lifecycle autostart](archived/0117-cpp-c-entry-lifecycle-autostart-codegen.md),
