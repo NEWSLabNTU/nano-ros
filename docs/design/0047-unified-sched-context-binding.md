@@ -1,135 +1,170 @@
 ---
 rfc: 0047
-title: "Unified config-driven sched-context binding via a node-name → tier table at the one node_builder site"
+title: "Unified sched-context binding via callback groups — code-declared groups, config-assigned tiers"
 status: Draft
 since: 2026-07
 last-reviewed: 2026-07
-implements-tracked-by: [phase-272]
+implements-tracked-by: [phase-272, phase-273]
 supersedes: []
 superseded-by: null
 ---
 
-# RFC-0047 — Unified config-driven sched-context binding
+# RFC-0047 — Unified sched-context binding via callback groups
 
 ## Summary
 
-Tier scheduling is written in config (`system.toml [tiers.*]` + per-node `callback_groups`) and
-resolves to a `node → sched_context` assignment in one shared place (`nros-orchestration-ir`). But
-the **binding** of that assignment — attaching a node's callbacks to their scheduling context — is
-today done four different ways across languages and component shapes, and one of them (rclcpp-shape
-C++, issue #124) can't be done at all. This RFC replaces all four with **one** mechanism: the entry
-seeds a `node_name → sched_context_id` table on the executor at boot, and the single
-`Executor::node_builder(name).build()` site every node in every language funnels through
-(RFC-0046) looks the node's tier up in that table and sets its `default_sched` automatically. No
-`.sched()` calls, no `NodeHandle` sched field, no per-shape emit branches. It is the same
-seed-a-table-look-up-by-name pattern already used for launch params (phase-269 W1) and node identity
-(RFC-0046).
+Scheduling in nano-ros binds a callback to a **sched-context** (a tier: priority + spin period). This
+RFC makes that binding **one mechanism across Rust, C, and C++**, at the granularity ROS 2 uses — the
+**callback group** — with the group *structure* declared in code and the group→tier *policy* declared
+in the workspace `system.toml`. A callback group is a first-class object created from the node
+(rclcpp/rclrs shape); entities are created *in* a group; the workspace maps each group name to a tier;
+the executor holds a config-seeded `group → sched_context` table and binds each callback to its
+group's context at registration. No group names live in a package manifest — the group name is
+declared in code (like a topic name) and referenced by `system.toml` (like a topic QoS override), so a
+node package stays portable across workspaces.
+
+**Delivery is in two phases.** phase-272 (landed) shipped the degenerate case — a `node_name →
+sched_context` table looked up at the single `Executor::node_builder(name)` site, giving per-**node**
+tier binding for C/C++ + rclcpp-shape (resolved #124). phase-273 generalizes it to per-**callback-
+group** binding with the first-class group API + the `system.toml`-owned group→tier assignment, and
+routes the Rust path through the same table.
 
 ## Motivation / problem
 
-`[tiers]` binding is fragmented (phase-269 W4 / #119 landed the C/C++ side but per-shape):
+Two problems, one mechanism fixes both.
 
-| Path | Binding mechanism |
-| --- | --- |
-| Rust `nros::main!` | `run_tiers` (spin structure) |
-| Rust codegen | post-hoc `bind_handle_to_sched_context(callback, sc)` per callback |
-| C / C++ configure-shape | `NodeBuilder::sched(sc).build()` → the node's `default_sched` |
-| C++ rclcpp-shape (IS-A-node, RFC-0044) | **none** — the node is built inside the component ctor from a `NodeHandle` that carries no sched id (#124) |
+**1. Fragmented + coarse binding (phase-272 recap).** Tier binding was done four different ways
+(Rust `run_tiers`/per-callback `bind_handle_to_sched_context`, C/C++ `NodeBuilder::sched`, rclcpp-shape
+= nothing → #124). phase-272 unified the *node-level* case behind a `node_name → sched_context` table
+resolved at `node_builder(name)` (every node funnels through it, RFC-0046). But that table is
+**per-node** — one tier per node — while the Rust path is **per-callback**: a single node can put a
+fast control loop and slow telemetry on different tiers. The per-node table can't express that. Unify
+*up* to per-callback-group, not down to per-node.
 
-Underneath it is all one thing: a callback inherits its **node's** `default_sched` at registration
-(`Executor::apply_node_default_sched`). So the tier is a node-level default that must be set **before
-the node's callbacks register**. The four paths differ only in *how/when* they set that default, and
-the rclcpp path has no seam to set it (the entry never touches the node — the component builds it in
-its ctor).
+**2. Non-portable coupling.** The group→tier binding lives in the **package manifest**
+(`callback_groups = [{ id = "ctrl", tier = "high" }]`), but tier names (`[tiers.high]`) are defined in
+the **workspace** `system.toml`. A reusable package (RFC-0026: packages are copy-out portable) thus
+hardcodes a name that only exists in one workspace — move it elsewhere and the binding dangles. This
+inverts ROS 2's own split.
 
-Two structural facts make a single mechanism possible:
-- **Config already resolves `node → sched_context`** uniformly (`nros-orchestration-ir`, phase-269 W4).
-- **Every node funnels through `Executor::node_builder(name).build()`** — Rust `create_node`, the C
-  FFI `nros_cpp_node_create`, C++ configure-shape, AND rclcpp-shape (`ComponentNode` ctor →
-  `Node::create` → `nros_cpp_node_create` → `node_builder(name).build()`, since phase-269 W2c made
-  the simple create register through the builder). This is the RFC-0046 single-site invariant.
-
-If the node's tier is keyed by **name** and looked up at that single site, every path is covered by
-construction — including the one that has no other seam.
+**ROS 2 practice** (docs: Using Callback Groups; About Executors): a callback group is created **in
+code** from the node (`create_callback_group(MutuallyExclusive | Reentrant)`); its type is about
+*concurrency*, never priority; entities join a group via options (`options.callback_group = g`);
+**where a group runs — thread/priority — is decided at composition/deployment** (`executor
+.add_callback_group(g, node)` / a per-group executor thread), NOT in the package. Structure is code;
+deployment is composition. nano-ros should match: **groups in code, tiers in `system.toml`.**
 
 ## Design
 
-### The table
-Add a bounded `node_name → sched_context_id` map to the `Executor` (a small fixed array, sized like
-the other name-keyed tables; `no_std`, zero-alloc). Default: empty ⇒ every node keeps
-`SchedContextId(0)` (the single-tier degenerate case — byte-identical to today).
+### The callback group (code, first-class — rclcpp/rclrs shape)
+A group is created from the node and named; entities are created in a group; omitting the group uses
+the node's default group.
 
-### Seed at boot (before any node is built)
-The entry, in its boot setup **before** components are constructed/configured, (1) creates the
-sched-contexts for the resolved tiers (already emitted by phase-269 W4) and (2) seeds the table:
-one entry `(node_name, sched_context_id)` per node with a non-default tier, from the config-resolved
-`PlanNode.sched_context`. A single new executor FFI — `nros_*_bind_node_name_sched(executor, name,
-sc_id)` (C/C++) + the equivalent `Executor` method (Rust) — mirroring how W1 seeds params by name.
-Ordering matters: seed **before** the first `node_builder(name).build()`, so the lookup is populated.
+```rust
+// Rust (rclrs-shaped)
+let ctrl = node.create_callback_group("ctrl");
+node.create_timer_in(&ctrl, period, on_tick);
+node.create_subscription_in(&ctrl, "/cmd", on_cmd);
+```
+```cpp
+// C++ (rclcpp-shaped, ComponentNode)
+auto ctrl = create_callback_group("ctrl");
+create_timer(ctrl, 10ms, &Ctrl::on_tick);
+```
 
-### Look up at `node_builder`
-`Executor::node_builder(name).build()` (and the FFI `create_node` paths that reach it) consult the
-table: if `name` is present, set `NodeRecord.default_sched` to the mapped SC (unless an explicit
-`.sched()` override was given — see precedence). The node's callbacks then inherit it at registration
-exactly as today. No caller passes a sched id; the builder resolves it from the seeded config.
+The group **name** is the join key. It is declared in code — exactly like a topic name — and is the
+only thing `system.toml` references. (The concurrency *type* — MutuallyExclusive/Reentrant — is a
+follow-up; see Open Questions. Groups carry only a name + tier binding for now.)
+
+### Group → tier lives in `system.toml` (deployment, by-name), never in a package manifest
+The package declares **no** group list — the groups come from code, self-registering at runtime like
+publishers/subscribers do. The workspace binds them, by name, the same way a launch QoS override
+references a code-declared topic:
+
+```toml
+[[component]]
+pkg = "ctrl_pkg"
+name = "control_node"
+group_tiers = { ctrl = "high", telem = "low" }   # a group with no entry → the default tier
+
+[tiers.high]  spin_period_us = 1000   [tiers.high.posix]  priority = 80
+[tiers.low]   spin_period_us = 10000  [tiers.low.posix]   priority = 10
+```
+
+A group named in code but absent from `group_tiers` runs on the default tier — harmless, exactly like
+a topic with no QoS override. A typo'd name in `system.toml` simply never matches — same failure mode
+(and same discipline) as topic-name overrides.
+
+### The executor: a `group → sched_context` table, bound at registration
+- The entry (deployment) resolves `system.toml`'s `group_tiers` + `[tiers.*]` to a
+  `group_name → sched_context` mapping and **seeds it on the executor** before entities register —
+  the per-group analog of the phase-272 node-name seed, same seed-by-name pattern as params/identity.
+- Each entity registers **carrying its group name**; the executor sets that callback's
+  `sched_context_binding` from the group table (falling back to the node default, then
+  `SchedContextId(0)`). This extends `apply_node_default_sched` with a per-callback group override.
+- **The node-name table (phase-272) is the degenerate case**: a node with no per-entity group is one
+  implicit group = the node's default, so the phase-272 node-path keeps working unchanged; sub-node
+  splitting is the new capability.
+
+### Uniform across languages
+Rust and C/C++ both: create named groups in code, create entities in a group, and let the executor
+resolve group→sched_context from the config-seeded table. The Rust path drops its bespoke
+per-callback `bind_handle_to_sched_context` loop in favor of the shared table (keeping `run_tiers`
+for the *spin* structure); C/C++ gain the group-scoped create + carry the group across the register
+FFI. One mechanism, ROS-shaped, portable.
 
 ### Precedence
-Explicit `.sched(id)` on a `NodeBuilder` (the current API, still valid for direct/programmatic use)
-wins over the table; the table wins over the default `SchedContextId(0)`. Analogous to how
-launch-injected node identity overrides the `NodeOptions` default (RFC-0046).
-
-### What this deletes
-- The per-shape emit branches in `emit_c`/`emit_cpp` that call `NodeBuilder::sched()` /
-  `nros_cpp_node_create_ex` purely to bind a tier — replaced by the one table-seed emit + the
-  builder lookup.
-- The `NodeHandle` sched-field workaround that #124 would otherwise need — unnecessary, since the
-  rclcpp node's own `node_builder(name)` call hits the table.
+Per callback: explicit group binding (from the seeded group table, via the entity's group) > the
+node's default sched (phase-272 node-name table / `NodeBuilder::sched`) > `SchedContextId(0)`.
 
 ### Scope boundary — binding vs execution
-This RFC unifies **binding** (which sched-context a node's callbacks use). The **execution** side —
-how tiers are actually spun (`run_tiers`, per-RTOS task priorities, RFC-0016) — is orthogonal and
-unchanged: the executor still schedules callbacks by their bound `sched_context` at dispatch. On
-platforms/entries that need the multi-tier spin structure, `run_tiers` stays; the table only changes
-*how the binding is established*, uniformly, ahead of that.
+Unchanged from phase-272: this RFC governs **binding** (which sched-context a callback uses). The
+**execution** side — `run_tiers`, per-RTOS task priority (RFC-0016) — is orthogonal and stays.
 
 ## Alternatives considered
 
-- **Per-shape fixes (status quo + a narrow #124 patch: add `sc_id` to `NodeHandle`).** Rejected as
-  the primary design — it keeps four binding paths and the special-casing the config-driven goal
-  wants gone; it also spreads the `sc_id` across the `NodeHandle` ABI for one shape. (This RFC makes
-  that patch unnecessary.)
-- **Bind by callback_group at dispatch (per-entity group id, ROS-executor style).** The most
-  ROS-faithful (each callback carries its group; executor maps group → SC at dispatch), but the
-  biggest change: entity-creation FFI + every register call grows a group argument, and a
-  group → SC table is consulted per dispatch. Deferred — the node-name table gets the config-driven
-  unification at a fraction of the blast radius, and node-granularity matches how `[tiers]` +
-  `callback_groups` resolve today (a node maps to one tier). Revisit if per-callback-group tiers
-  within a single node become a requirement.
-- **Post-hoc rebind by node id after construction.** Would require the executor to enumerate a
-  node's already-registered callbacks and rewrite their bindings — more moving parts than seeding
-  the default before registration, and it fights the "set the node default before its callbacks
-  register" grain of the executor.
+- **Per-node table only (phase-272 as the end state).** Rejected as the *final* design — it can't
+  express sub-node tiering the Rust path already supports, and it keeps the manifest coupling. Kept as
+  the shipped stepping stone + the degenerate default-group case.
+- **Group→tier in the package manifest (status quo, with a per-node table).** Rejected — non-portable
+  (a package hardcodes workspace tier names) and inverts ROS's structure-vs-deployment split.
+- **Manifest lists group names (ids only) + `system.toml` binds tiers.** Better than the status quo,
+  but still makes the author maintain a group-name list that duplicates what the code already
+  declares — the same reason we don't list pub/sub names in a manifest. Rejected in favor of
+  code-declared / config-referenced by name.
+- **Abstract priority class in the package (`ctrl → realtime`), workspace maps class → tier.** Keeps
+  portable author intent, but adds a second mapping layer. Deferred — revisit if authors want
+  portable intent; by-name binding covers the need now.
 
 ## Open questions
 
-1. Table capacity — reuse the executor node cap (`NROS_EXECUTOR_MAX_NODES`) since there is at most
-   one tier per node. Proposed: yes.
-2. Should the Rust `nros::main!` path also drop its per-callback `bind_handle_to_sched_context` in
-   favor of the table for consistency, or keep it (it already works + carries the `run_tiers` spin)?
-   Proposed: migrate the *binding* to the table for a single mechanism; keep `run_tiers` for the spin
-   structure. Settle in phase-272.
-3. Namespaced nodes — key by fully-qualified name (`namespace + name`) to disambiguate same-named
-   nodes in different namespaces. Proposed: yes, match the liveliness keyexpr's identity.
+1. **Concurrency type (follow-up).** rclcpp groups carry MutuallyExclusive/Reentrant. This RFC ships
+   name + tier binding only; the concurrency type + its executor semantics (serialize-within-group)
+   are a separate follow-up RFC/phase. The group object reserves room for it.
+2. **`group_tiers` key shape.** By `(component, group)` under `[[component]]` (above) vs a flat
+   `[group_tiers]` table keyed by `component.group`. Proposed: under `[[component]]` (co-located with
+   the node's other deployment config); settle in phase-273.
+3. **Default tier.** Unmapped group → the executor default sched-context (SC 0 / the node default).
+   Proposed: yes.
+4. **Namespaced identity.** Group binding keys on `(fully-qualified node name, group name)` to match
+   the node-name table's namespaced key. Proposed: yes.
 
 ## Cross-references
-- RFC-0015 (rtos-orchestration) + RFC-0016 (rtos-scheduling-features) — the tier model this binds.
-- RFC-0046 (launch-authoritative node identity) — the `node_builder(name)` single-site invariant this
-  relies on; same seed-a-table-by-name shape.
-- RFC-0032 (entry-codegen-pipeline) — the tier resolver + `run_tiers` emission this simplifies.
-- #119 (C/C++ tiers, phase-269 W4) — the per-shape binding this unifies.
-- #124 (rclcpp-shape not sched-bound) — dissolved by this design.
+- RFC-0015 (rtos-orchestration) + RFC-0016 (rtos-scheduling-features) — the tier/execution model.
+- RFC-0046 (launch-authoritative node identity) — the single `node_builder(name)` funnel + the
+  code-declares / config-references-by-name pattern.
+- RFC-0026 (example-directory-layout) — packages are copy-out portable; the coupling this removes.
+- RFC-0032 (entry-codegen-pipeline) — the tier resolver + entry seed site.
+- #119 (C/C++ tiers) + #124 (rclcpp not sched-bound) — resolved by phase-272 (per-node); phase-273
+  generalizes to per-group.
+- ROS 2 docs — [Using Callback Groups](https://docs.ros.org/en/jazzy/How-To-Guides/Using-callback-groups.html),
+  [About Executors](https://docs.ros.org/en/foxy/Concepts/About-Executors.html).
 
 ## Changelog
-- 2026-07 — created (Draft). Records the unified node-name → sched-context table at `node_builder`,
-  replacing the four per-shape binding paths; grounded in the phase-269 W4 resolver +
-  `apply_node_default_sched` + the RFC-0046 single-site funnel. Tracked by phase-272.
+- 2026-07 (a) — created (Draft): node-name → sched-context table at `node_builder`, per-node binding.
+  Delivered by phase-272 (#124 resolved).
+- 2026-07 (b) — **revised to per-callback-group binding.** Groups are code-declared, first-class
+  (rclcpp/rclrs shape); group→tier moves out of the package manifest into `system.toml` (by-name,
+  like topic QoS overrides), removing the portability coupling; the executor gains a `group →
+  sched_context` table bound at registration; the phase-272 node-name table becomes the degenerate
+  default-group case. Concurrency type deferred (OQ1). Tracked by phase-273.
