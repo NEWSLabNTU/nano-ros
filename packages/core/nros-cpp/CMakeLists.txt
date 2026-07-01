@@ -161,6 +161,17 @@ if(TARGET cargo-build_nros_cpp)
     # for a FILE-level OBJECT_DEPENDS on the threadx carrier's C++ TUs.
     set_property(GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE
         "${_nros_cpp_gen_c_header};${_nros_cpp_gen_cpp_header}")
+    # Issue 0123 — the mirror dir above is prepended to nros-cpp-headers' INTERFACE, but
+    # the `nros_cpp_config_header` target (which mirrors BOTH the cpp and the c sizes
+    # headers into it) only builds if something depends on it. A plain rclcpp/ament
+    # consumer that pulls nros-cpp only transitively (e.g. workspace-shadowing's
+    # `consumer` via the std_msgs binding) never wires that dep, so the mirror never
+    # runs during `all` → its dir stays empty → the consumer reads the in-tree stub.
+    # Make the real staticlib depend on the mirror so ANY consumer linking nano-ros C++
+    # (directly or transitively) builds the per-build headers before compiling.
+    if(TARGET nros_cpp-static)
+        add_dependencies(nros_cpp-static nros_cpp_config_header)
+    endif()
 endif()
 
 # Phase 241.D3-rev — the C++ umbrella (bundles nros-c + the backend) is the ONLY

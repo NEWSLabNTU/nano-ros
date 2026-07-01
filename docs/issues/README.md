@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#123** — [`workspace-shadowing` template-smoke fails a sizes-header mirror race in its C++ FFI
-  std_msgs shadow path](0123-shadowing-template-smoke-cpp-ffi-sizes-header-race.md): the 0088/0090/
-  0114/0122 stub race recurs on the `nros_workspace_interfaces()` / `nano-ros-cpp-ffi-std_msgs`
-  shadow TU (`Publisher<Marker>` → `PUBLISHER_OPAQUE_U64S` undeclared / `no member storage_`) because
-  the mirror `OBJECT_DEPENDS` wiring doesn't cover that path. Env-conditional (needs an AMENT
-  std_msgs). All eight platform lanes build green; this is the last template-smoke residual.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -69,7 +63,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   entry paths. The one real remainder: `nros-cpp` has no `nros::LifecycleNode` (deferred to Phase
   209.H), so a C++ managed node still drops to the `extern "C"` C-ABI state machine. Mechanical
   wrapper over the complete C side. Parity enhancement.
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#124** (phase-272) —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#123** —
+[`workspace-shadowing` template read the sizes-header `#error`
+stub](archived/0123-shadowing-template-smoke-cpp-ffi-sizes-header-race.md): a verbatim rclcpp
+consumer that pulls nros-cpp only transitively never triggered the `nros_{c,cpp}_config_header`
+mirror target, so under `make all` the mirror dir stayed empty and `#include
+"nros/nros_config_generated.h"` fell through to the stub. Fixed by making `nros_c-static` /
+`nros_cpp-static` depend on their own mirror target, so any consumer linking nano-ros builds the
+per-build headers first (4 consumer-side `add_dependencies` hooks failed before anchoring it on the
+linked static lib). **#124** (phase-272) —
 [rclcpp-shape C++ components weren't bound to a scheduling
 tier](archived/0124-rclcpp-shape-cpp-nodes-not-sched-bound.md): dissolved by RFC-0047's unified
 config-driven binding — a `node_name → sched_context` table seeded from config + looked up at the one

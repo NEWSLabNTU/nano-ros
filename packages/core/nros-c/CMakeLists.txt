@@ -182,6 +182,19 @@ if(TARGET nros_c-static)
         "${_nros_c_intree_include_dir}"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
+    # Issue 0123 — the mirror dir above is on nros_c-static's INTERFACE ahead of the
+    # in-tree `#error` stub, but the `nros_c_config_header` mirror target is only built
+    # if some target depends on it. The message-lib / entry / carrier paths wire that
+    # dep explicitly (issues 0114/0090); a plain rclcpp/ament consumer that pulls
+    # nros-c only transitively (e.g. the workspace-shadowing `consumer` via the
+    # std_msgs binding) never does, so the mirror never runs during `all` → its dir
+    # stays empty → the consumer reads the stub. Make nros_c-static ITSELF depend on
+    # the mirror so ANY consumer that links it (directly or transitively) builds the
+    # per-build header before compiling. (Verified: manually building the mirror then
+    # the shadowing consumer compiles clean.)
+    if(TARGET nros_c_config_header)
+        add_dependencies(nros_c-static nros_c_config_header)
+    endif()
 endif()
 
 # Phase 140 — all install(...) rules deleted. nros-c is consumed
