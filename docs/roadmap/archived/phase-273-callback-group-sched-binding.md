@@ -107,6 +107,21 @@ the regression guard).
 - Sub-node tiering (a node with callbacks on different tiers) works across languages; node-level
   scheduling unchanged (phase-272 e2e green).
 
+## Outcome (2026-07-02) — DONE (single-Executor model; execution converges in phase-274)
+
+| Wave | Commit | Result |
+| --- | --- | --- |
+| W1 core | `5b9b3bcf9` | executor `group_sched_table` + `bind_group_sched` + `apply_node_default_sched(…, group)` (precedence group > node > default); sub-node-split unit tests |
+| W2 config | `9f726c1a2` | `system.toml [[component]].group_tiers` (group→tier off the package manifest); resolver + `bind_group_sched` FFI + C/C++ entry seed; `ws-realtime-*` migrated |
+| W3 API | `90f9be998` | first-class `create_callback_group` + `create_*_in` (Rust/C/C++); group threaded through the register FFI |
+| W4 proof | `155296769` | **sub-node e2e PASS** (`ctrl:telem = 9.8×`, one node → two tiers); **portability PASS** (same package, renamed tiers, no package change); `NodeSpansTiers` v1 guard lifted; Rust seed deferred → #125 |
+
+Callback grouping is now the durable user surface across all languages (code-declared groups +
+`system.toml group_tiers`, portable). Delivered on the **single-`Executor` + `sched_context`** backend;
+the **execution model converges onto RFC-0015 Model 1** (per-tier executors + gating) for C/C++ in
+**phase-274**, at which point `sched_context` is re-scoped to fallback + intra-tier (RFC-0047
+reconciliation) and sub-node becomes Model-1 v2. Open: **#125** (Rust entry group-seed).
+
 ## Risks / decisions
 - **Migration compatibility:** removing the manifest group→tier binding changes the config surface —
   migrate the in-tree `ws-realtime-*` fixtures in W2; document the `system.toml group_tiers` move
