@@ -61,8 +61,17 @@ const ZEPHYR_ROLES: &[&str] = &[
 /// Dirs built directly by a test harness (no `fixtures.toml` row). Keep the
 /// harness path in the comment so the pairing is auditable.
 const TEST_DRIVEN_BUILDERS: &[&str] = &[
-    // freertos `talker_entry` run-plan e2e — `freertos_run_plan_runtime.rs`.
+    // All 6 freertos `*_entry` demos are booted (hence built) by
+    // `freertos_run_plan_runtime.rs` (`boot_and_connect(...)` per role).
+    // NB: that harness still `cargo build`s at test time — a compile-in-test
+    // antipattern Phase 275 W1 will convert to a prebuilt fixture — but the
+    // dirs are exercised, so they are not a silent gap.
     "qemu-arm-freertos/rust/talker_entry",
+    "qemu-arm-freertos/rust/listener_entry",
+    "qemu-arm-freertos/rust/service-server_entry",
+    "qemu-arm-freertos/rust/service-client_entry",
+    "qemu-arm-freertos/rust/action-server_entry",
+    "qemu-arm-freertos/rust/action-client_entry",
     // Cyclone-on-Zephyr aemv8r reference — built by the FVP recipe
     // `just zephyr build-fvp-aemv8r-cyclonedds-rust` and run by
     // `fvp_runtime_rust.rs` (the cpp sibling has no package.xml, so it is
@@ -73,30 +82,11 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must
 /// NOT also be covered by a source above (that would be a stale exception).
 const ALLOWLIST: &[(&str, &str)] = &[
-    // ---- 275 W1: `*_entry` demos (17 of 18) — pending prebuilt-fixture rows.
-    // freertos `talker_entry` is already covered (see TEST_DRIVEN_BUILDERS);
-    // the sibling roles + the nuttx/threadx triples await the entry-pkg
-    // fixture schema mapped onto the embedded triples (phase-275 W1).
-    (
-        "qemu-arm-freertos/rust/listener_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "qemu-arm-freertos/rust/service-server_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "qemu-arm-freertos/rust/service-client_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "qemu-arm-freertos/rust/action-server_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
-    (
-        "qemu-arm-freertos/rust/action-client_entry",
-        "275 W1: entry-pkg fixture pending",
-    ),
+    // ---- 275 W1: `*_entry` demos still uncovered (12) — the nuttx (arm) and
+    // threadx-linux (host) triples. The 6 freertos siblings are already built
+    // by the run-plan harness (see TEST_DRIVEN_BUILDERS). These await a
+    // build-assert fixture (nuttx needs the `armv7a-nuttx-eabihf` SDK target;
+    // threadx-linux builds on the host).
     (
         "qemu-arm-nuttx/rust/talker_entry",
         "275 W1: entry-pkg fixture pending",
