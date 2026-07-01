@@ -14,9 +14,14 @@ if(NOT NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM posix)
 endif()
 
+# native_entry: system.toml [lifecycle] autostart demo (native_entry fixture).
+# native_managed_entry: phase-270 (#103) — the same workspace's second entry, a
+# managed node written with the `nros::LifecycleNode` C++ wrapper over its own
+# managed_bringup (workspace-cpp-native-lifecycle-managed fixture).
 set(_ws_subdirs
     src/cpp_lifecycle_talker_pkg
-    src/native_entry)
+    src/native_entry
+    src/native_managed_entry)
 
 nano_ros_workspace(
     BACKEND  zenoh
