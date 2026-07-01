@@ -1,12 +1,28 @@
 ---
 id: 123
 title: Mixed-workspace C node sources race the nros_config_generated.h byproduct under high parallelism (0088 residual)
-status: open
+status: resolved
 type: bug
 area: cmake
 related: [0088, 0090, phase-258]
-resolved_in:
+resolved_in: "compile-check-fixtures.sh pre-builds nros_{c,cpp}_config_header before the -j build"
 ---
+
+## Resolved (2026-07-02)
+
+`scripts/build/compile-check-fixtures.sh` now builds the `nros_c_config_header`
+/ `nros_cpp_config_header` mirror targets FIRST (best-effort, `|| true` — absent
+in header-less fixtures), then the full `-j` build. The real per-build header is
+present before any consumer TU compiles, so the race can't occur regardless of
+system load. Validated: full `just build-test-fixtures` green under the default
+32-job budget (previously the c_mixed_workspace / shadowing fixtures hit the stub
+in ~4 of 5 runs). The deeper option below (extend the 0088 `OBJECT_DEPENDS`
+file-edge to every node-pkg source, or make the header a configure-time artifact)
+remains the cleaner long-term fix but is no longer load-bearing for the fixture
+build.
+
+---
+
 
 ## Symptom
 

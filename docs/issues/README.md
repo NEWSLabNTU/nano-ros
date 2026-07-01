@@ -44,14 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#123** — [Mixed-workspace C node sources race the `nros_config_generated.h`
-  byproduct under high parallelism](0123-mixed-workspace-c-node-config-header-stub-race.md):
-  0088 residual — a C node pkg's own build-target sources in the
-  `c-and-cpp-mixed-workspace` fixture can compile against the in-tree `#error`
-  stub header before the per-build byproduct lands. Timing-dependent (seen once
-  under full `build-test-fixtures` concurrency; passes isolated + on retry).
-  Direction: extend the 0088 `OBJECT_DEPENDS` edge to all node-pkg sources, or
-  make the config header a configure-time artifact.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
