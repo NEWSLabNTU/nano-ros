@@ -1378,6 +1378,36 @@ nros_cpp_ret_t nros_cpp_timer_create_oneshot(void *executor_handle,
                                              size_t *out_handle_id);
 
 /**
+ * Phase 273 (RFC-0047) — create a repeating timer **in** a named callback group.
+ *
+ * Identical to `nros_cpp_timer_create` but additionally associates the timer
+ * with a callback group. The executor resolves `(node, group_name)` via its
+ * `group_sched_table` and binds the timer's callback to the group's
+ * `SchedContext`. `callback_group` may be NULL or empty — both behave
+ * identically to `nros_cpp_timer_create`.
+ *
+ * # Parameters
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `node` — Node handle (`nros_cpp_node_t*`) this timer belongs to; used to
+ *   resolve the group binding. May be NULL (falls back to executor primary node).
+ * * `period_ms` — Timer period in milliseconds.
+ * * `callback` — Function called when the timer fires.
+ * * `context` — User context passed to the callback.
+ * * `callback_group` — Null-terminated group name, or NULL/empty for default.
+ * * `out_handle_id` — Receives the timer handle ID.
+ *
+ * # Safety
+ * `executor_handle` and `out_handle_id` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_timer_create_in_group(void *executor_handle,
+                                              const struct nros_cpp_node_t *node,
+                                              uint64_t period_ms,
+                                              nros_cpp_timer_callback_t callback,
+                                              void *context,
+                                              const char *callback_group,
+                                              size_t *out_handle_id);
+
+/**
  * Cancel a timer.
  *
  * A cancelled timer stops firing but remains in the executor arena.

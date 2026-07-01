@@ -2057,6 +2057,7 @@ fn test_raw_subscription_callback() {
             QosSettings::default().keep_last(1),
             raw_cb,
             core::ptr::null_mut(),
+            None, // no group
         )
         .unwrap();
 
@@ -2257,6 +2258,7 @@ fn test_let_semantics_raw_subscription() {
             QosSettings::default().keep_last(1),
             raw_let_cb,
             core::ptr::null_mut(),
+            None, // no group
         )
         .unwrap();
 
@@ -3445,5 +3447,125 @@ fn test_bind_group_sched_group_beats_node_default() {
         executor.sched_context_bindings[0],
         SchedContextId(2),
         "group table entry must beat node default"
+    );
+}
+
+// Phase 273 W3 — high-level CallbackGroup API tests
+// =========================================================================
+// These tests exercise the user-facing create_callback_group / create_timer_in /
+// create_subscription_in API end-to-end through the NodeCtx, confirming that
+// the group name is threaded through to apply_node_default_sched and the
+// executor's sched_context_bindings reflect the group's SC (not the node
+// default or SC 0).
+
+/// Timer created **in** a named group binds to the group's SC, not SC 0.
+#[test]
+fn test_callback_group_timer_in_group_binds_to_group_sc() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    // Create SC 1 and SC 2.
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Seed: group "ctrl" on node "node" → SC 2.
+    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
+
+    let nid = executor.node_builder("node").build().unwrap();
+    // Node default is SC 0 (no bind_node_name_sched).
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(0));
+
+    // create_callback_group returns a value type — no borrow conflict.
+    let group = executor.node_mut(nid).create_callback_group("ctrl");
+    // create_timer_in threads the group name through register_timer_on.
+    executor
+        .node_mut(nid)
+        .create_timer_in(&group, TimerDuration::from_millis(100), || {})
+        .expect("create_timer_in");
+
+    // The timer occupies slot 0; its SC binding must be the group's SC 2.
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "timer created in 'ctrl' group must bind to SC 2 (not node default SC 0)"
+    );
+}
+
+/// Subscription created **in** a named group binds to the group's SC.
+#[test]
+fn test_callback_group_subscription_in_group_binds_to_group_sc() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    assert_eq!(sc2, SchedContextId(2));
+
+    // Seed: group "telem" on node "sensor" → SC 2.
+    executor.bind_group_sched("sensor", "/", "telem", SchedContextId(2));
+
+    let nid = executor.node_builder("sensor").build().unwrap();
+
+    let group = executor.node_mut(nid).create_callback_group("telem");
+    executor
+        .node_mut(nid)
+        .create_subscription_in::<TestMsg, _>(&group, "/sensor/data", |_: &TestMsg| {})
+        .expect("create_subscription_in");
+
+    // Subscription occupies slot 0; SC must be the group's SC 2.
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "subscription created in 'telem' group must bind to SC 2"
+    );
+}
+
+/// create_callback_group with no matching group_sched_table entry falls back
+/// to the node default SC (same behavior as passing no group at all).
+#[test]
+fn test_callback_group_unmapped_group_falls_back_to_node_default() {
+    use crate::executor::sched_context::{SchedContext, SchedContextId};
+
+    let session = MockSession::new();
+    let mut executor = Executor::from_session(session);
+
+    let _sc1 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    let sc2 = executor
+        .create_sched_context(SchedContext::default())
+        .unwrap();
+    assert_eq!(sc2, SchedContextId(2));
+
+    // node "ctrl_node" has a default SC of 2; the group "unknown" has no entry.
+    executor.bind_node_name_sched("ctrl_node", "/", SchedContextId(2));
+
+    let nid = executor.node_builder("ctrl_node").build().unwrap();
+    assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
+
+    let group = executor.node_mut(nid).create_callback_group("unknown");
+    executor
+        .node_mut(nid)
+        .create_timer_in(&group, TimerDuration::from_millis(50), || {})
+        .expect("create_timer_in");
+
+    // Falls back to node default (SC 2), not SC 0.
+    assert_eq!(
+        executor.sched_context_bindings[0],
+        SchedContextId(2),
+        "unmapped group must fall back to node default SC 2"
     );
 }

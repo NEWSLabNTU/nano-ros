@@ -44,6 +44,8 @@
 #include "nros/timer.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
+// Phase 273 (RFC-0047) — callback-group token (value type, no heap).
+#include "nros/callback_group.hpp"
 
 #ifdef NROS_RMW_CYCLONEDDS
 extern "C" int32_t nros_rmw_cyclonedds_register(void);
@@ -491,6 +493,82 @@ class Node {
             out.initialized_ = true;
         }
         return Result(ret);
+    }
+
+    // -- Phase 273 (RFC-0047) — Callback-group API -------------------------
+
+    /// Create a named callback-group token.
+    ///
+    /// The returned `CallbackGroup` may be passed to `create_timer_in`,
+    /// `create_subscription_in`, or `create_publisher_in` to associate entities
+    /// with the group's SchedContext (resolved via `group_sched_table`).
+    ///
+    /// @param name  Group name — must be a string literal or static-lifetime
+    ///              string; the pointer is stored directly (no copy).
+    CallbackGroup create_callback_group(const char* name) { return CallbackGroup{name}; }
+
+    /// Create a repeating timer **in** a callback group (RFC-0047).
+    ///
+    /// Like `create_timer` but associates the timer with `group` so the
+    /// executor binds it to the group's SchedContext via `group_sched_table`.
+    /// `group.get_name() == nullptr` or empty falls back to node default.
+    ///
+    /// @param group      Callback group (from `create_callback_group`).
+    /// @param out        Receives the initialized timer.
+    /// @param period_ms  Timer period in milliseconds.
+    /// @param callback   C function pointer invoked on each tick.
+    /// @param context    User context passed to the callback (may be nullptr).
+    Result create_timer_in(const CallbackGroup& group, Timer& out, uint64_t period_ms,
+                           nros_cpp_timer_callback_t callback, void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret = nros_cpp_timer_create_in_group(
+            executor_handle_, &handle_, period_ms, callback, context, group.get_name(), &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a **callback-style** subscription **in** a callback group (RFC-0047).
+    ///
+    /// Like the callback-style `create_subscription` but associates the
+    /// subscription with `group` so the executor binds it to the group's
+    /// SchedContext via `group_sched_table`. Out-of-line definition in
+    /// `subscription.hpp`.
+    ///
+    /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
+    /// @param group      Callback group.
+    /// @param out        Receives the initialized subscription (callback mode).
+    /// @param topic      Topic name (null-terminated).
+    /// @param callback   Handler invoked as `callback(const M&)` per sample.
+    /// @param qos        QoS profile.
+    /// @param options    Named subscription options.
+    template <
+        typename M, typename F,
+        typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
+    Result create_subscription_in(const CallbackGroup& group, Subscription<M>& out,
+                                  const char* topic, F callback,
+                                  const QoS& qos = QoS::default_profile(),
+                                  const SubscriptionOptions& options = {});
+
+    /// Create a publisher **in** a callback group (API symmetry; RFC-0047).
+    ///
+    /// Publishers have no dispatched callback — the group parameter is accepted
+    /// for API symmetry but has no scheduling effect (documented in RFC-0047 §OQ1
+    /// follow-up).
+    ///
+    /// @tparam M  Message type.
+    /// @param group  Callback group (accepted for symmetry; no scheduling effect).
+    /// @param out    Receives the initialized publisher.
+    /// @param topic  Topic name.
+    /// @param qos    QoS profile.
+    template <typename M>
+    Result create_publisher_in(const CallbackGroup& /* group */, Publisher<M>& out,
+                               const char* topic, const QoS& qos = QoS::default_profile()) {
+        return create_publisher<M>(out, topic, qos);
     }
 
     /// Create a guard condition for cross-thread signaling.

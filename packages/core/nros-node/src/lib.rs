@@ -174,11 +174,11 @@ pub use executor::{
 #[cfg(any(has_rmw, test))]
 pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
-    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
-    RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription, RecvView, SessionHandle,
-    Subscription, executor_storage_layout, executor_storage_u64_len,
+    ActionServerRawHandle, ActiveGoal, CallbackGroup, CompletedGoal, EmbeddedPublisher,
+    EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream,
+    GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
+    RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
+    RecvView, SessionHandle, Subscription, executor_storage_layout, executor_storage_u64_len,
 };
 
 // Phase 173.5 — bridge multi-session spec (consumed by the generated

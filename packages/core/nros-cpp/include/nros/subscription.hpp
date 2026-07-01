@@ -29,12 +29,13 @@ extern "C" {
 typedef void (*nros_cpp_subscription_message_callback_t)(const uint8_t* data, size_t len,
                                                          void* ctx);
 
+// Phase 273 (RFC-0047): `callback_group` appended at end (NULL = default group).
 nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                               const char* type_name, const char* type_hash,
                                               nros_cpp_qos_t qos,
                                               nros_cpp_subscription_message_callback_t callback,
                                               void* context, uint8_t sched_context,
-                                              size_t* out_handle_id);
+                                              size_t* out_handle_id, const char* callback_group);
 
 // Phase 189.M3.4 — callback-style register that also delivers the sample's wire
 // attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
@@ -602,7 +603,47 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret =
         nros_cpp_subscription_register(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-                                       &Subscription<M>::message_trampoline, &out, sched, &handle);
+                                       &Subscription<M>::message_trampoline, &out, sched, &handle,
+                                       nullptr); // callback_group: nullptr = default group
+    if (ret == 0) {
+        out.sched_handle_id_ = handle;
+        out.callback_mode_ = true;
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+// Phase 273 (RFC-0047) — callback-style subscription **in** a named callback group.
+// Mirrors create_subscription (callback-style) exactly but passes group.get_name()
+// as `callback_group` so the executor binds the slot via group_sched_table.
+template <typename M, typename F, typename>
+Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>& out,
+                                    const char* topic, F callback, const QoS& qos,
+                                    const SubscriptionOptions& options) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
+    ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+
+    out.user_fn_ = typename Subscription<M>::TypedSubscriptionFn(callback);
+    out.user_fn_ctx_ = nullptr;
+    out.user_ctx_ = nullptr;
+
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret =
+        nros_cpp_subscription_register(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
+                                       &Subscription<M>::message_trampoline, &out, sched, &handle,
+                                       group.get_name()); // Phase 273: pass group name
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;

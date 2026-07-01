@@ -768,6 +768,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
             qos,
             callback,
             context,
+            None, // Phase 273 W3: group threading is via nros_executor_register_subscription_in_group
         );
 
         match result {
@@ -946,6 +947,186 @@ pub unsafe extern "C" fn nros_executor_register_timer(
         match rust_exec.register_timer(period, wrapper) {
             Ok(handle_id) => {
                 // Store handle ID and executor pointer for cancel/reset operations
+                let timer_mut = &mut *timer;
+                timer_mut.set_handle_id(handle_id);
+                timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
+
+                executor.handle_count += 1;
+                executor.timer_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+}
+
+/// Phase 273 (RFC-0047) — register a subscription in a named callback group.
+///
+/// Identical to `nros_executor_register_subscription` but additionally passes
+/// the group name to the executor so the seeded `group_sched_table` can bind
+/// the callback to the group's `SchedContext`. `callback_group` may be NULL or
+/// an empty string — both behave identically to `nros_executor_register_subscription`.
+///
+/// # Safety
+/// All non-NULL pointers must be valid and point to initialized objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_register_subscription_in_group(
+    executor: *mut nros_executor_t,
+    subscription: *mut nros_subscription_t,
+    invocation: nros_executor_invocation_t,
+    callback_group: *const c_char,
+) -> nros_ret_t {
+    validate_not_null!(executor, subscription);
+
+    let executor = &mut *executor;
+    let subscription_ref = &*subscription;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        subscription_ref,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    );
+
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    {
+        let rust_exec = get_executor(&mut executor._opaque);
+
+        let topic_str = core::str::from_utf8_unchecked(
+            &subscription_ref.topic_name[..subscription_ref.topic_name_len],
+        );
+        let type_str = core::str::from_utf8_unchecked(
+            &subscription_ref.type_name[..subscription_ref.type_name_len],
+        );
+        let type_hash_str = core::str::from_utf8_unchecked(
+            &subscription_ref.type_hash[..subscription_ref.type_hash_len],
+        );
+        let qos = subscription_ref.get_qos_settings();
+        let callback = match subscription_ref.get_callback() {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let context = subscription_ref.get_context();
+
+        set_executor_node_identity(rust_exec, subscription_ref.node);
+
+        let node_raw_id = if subscription_ref.node.is_null() {
+            0
+        } else {
+            (*subscription_ref.node).node_id
+        };
+        let node_id =
+            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+
+        // Extract the group name from the C string (NULL or empty ⇒ None).
+        let group_str = if callback_group.is_null() {
+            None
+        } else {
+            let s = core::ffi::CStr::from_ptr(callback_group)
+                .to_str()
+                .unwrap_or("");
+            if s.is_empty() { None } else { Some(s) }
+        };
+
+        let result = rust_exec.add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
+            node_id,
+            topic_str,
+            type_str,
+            type_hash_str,
+            qos,
+            callback,
+            context,
+            group_str,
+        );
+
+        match result {
+            Ok(handle_id) => {
+                let sub_mut = &mut *subscription;
+                sub_mut.set_handle_id(handle_id);
+
+                // Apply invocation override if not the default (on-new-data = 0).
+                if invocation == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS {
+                    rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
+                }
+
+                executor.handle_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+}
+
+/// Phase 273 (RFC-0047) — register a timer in a named callback group.
+///
+/// Identical to `nros_executor_register_timer` but additionally passes the
+/// group name so the seeded `group_sched_table` can bind the callback to the
+/// group's `SchedContext`. `callback_group` may be NULL or empty — both behave
+/// identically to `nros_executor_register_timer`.
+///
+/// # Safety
+/// All non-NULL pointers must be valid and point to initialized objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_register_timer_in_group(
+    executor: *mut nros_executor_t,
+    timer: *mut nros_timer_t,
+    callback_group: *const c_char,
+) -> nros_ret_t {
+    validate_not_null!(executor, timer);
+
+    let executor = &mut *executor;
+    let timer_ref = &*timer;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
+
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    {
+        let rust_exec = get_executor(&mut executor._opaque);
+
+        let c_callback = match timer_ref.get_callback() {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let c_context = timer_ref.get_context();
+        let timer_ptr = timer;
+
+        let wrapper = move || {
+            c_callback(timer_ptr, c_context);
+        };
+
+        let period_ms = timer_ref.period_ns / 1_000_000;
+        if period_ms == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+
+        // Extract the group name (NULL or empty ⇒ None).
+        let group_str = if callback_group.is_null() {
+            None
+        } else {
+            let s = core::ffi::CStr::from_ptr(callback_group)
+                .to_str()
+                .unwrap_or("");
+            if s.is_empty() { None } else { Some(s) }
+        };
+
+        // Node identity: the C timer struct doesn't carry a node_id today.
+        // Group lookup falls back to the executor's primary node when no
+        // node_id is threaded — sufficient for the single-node C use case.
+        let period = nros_node::TimerDuration::from_millis(period_ms);
+        match rust_exec.register_timer_on(None, period, wrapper, group_str) {
+            Ok(handle_id) => {
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
                 timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);

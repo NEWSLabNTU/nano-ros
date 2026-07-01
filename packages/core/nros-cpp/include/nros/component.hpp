@@ -73,7 +73,8 @@ inline Result create_subscription_raw(Node& node, const char* topic, const char*
     nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(h, topic, type_name, "", ffi_qos, callback,
-                                                        ctx, /*sched_context=*/0, &handle);
+                                                        ctx, /*sched_context=*/0, &handle,
+                                                        /*callback_group=*/nullptr);
     return Result(ret);
 }
 

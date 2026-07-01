@@ -293,6 +293,90 @@ class ComponentNode {
         ++timer_count_;
     }
 
+    // -- Phase 273 (RFC-0047) — Callback-group API -------------------------
+
+    /// Create a named callback-group token (RFC-0047).
+    ///
+    /// The returned `CallbackGroup` may be passed to `create_timer_in`,
+    /// `create_subscription_in`, or `create_publisher_in` to associate entities
+    /// with a group's SchedContext (resolved via `group_sched_table`).
+    ///
+    /// @param name  Group name — must be a string literal or static-lifetime string.
+    CallbackGroup create_callback_group(const char* name) {
+        return node_.create_callback_group(name);
+    }
+
+    /// Create a **typed member** repeating timer **in** a callback group (RFC-0047).
+    ///
+    /// Like `create_timer<C, Method>` but associates the timer with `group` so
+    /// the executor binds it to the group's SchedContext.
+    ///
+    /// Call as `create_timer_in<Self, &Self::tick>(group, period_ms)`.
+    template <class C, void (C::*Method)()>
+    void create_timer_in(const CallbackGroup& group, uint64_t period_ms) {
+        if (timer_count_ >= NROS_COMPONENT_MAX_TIMERS) {
+            set_error("create_timer_in (timer pool exhausted)", -1);
+            return;
+        }
+        Timer& slot = timers_[timer_count_];
+        C* self = static_cast<C*>(this);
+        Result r = node_.create_timer_in(
+            group, slot, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
+        if (!r.ok()) {
+            set_error("create_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    /// Create a repeating timer **in** a callback group from a plain C callback
+    /// (escape hatch for non-member tick handlers). Parked in the inline pool.
+    /// Sets `ok()=false` on failure.
+    void create_timer_in(const CallbackGroup& group, uint64_t period_ms,
+                         nros_cpp_timer_callback_t callback, void* context = nullptr) {
+        if (timer_count_ >= NROS_COMPONENT_MAX_TIMERS) {
+            set_error("create_timer_in (timer pool exhausted)", -1);
+            return;
+        }
+        Result r =
+            node_.create_timer_in(group, timers_[timer_count_], period_ms, callback, context);
+        if (!r.ok()) {
+            set_error("create_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    /// Create a **typed member-callback** subscription **in** a callback group
+    /// (RFC-0047). Like `create_subscription<M, C, Method>` but associates the
+    /// subscription with `group` so the executor binds it to the group's
+    /// SchedContext via `group_sched_table`. The executor arena owns the subscriber.
+    ///
+    /// Call as `create_subscription_in<M, Self, &Self::on_msg>(group, topic)`.
+    template <typename M, class C, void (C::*Method)(const M& msg)>
+    void create_subscription_in(const CallbackGroup& group, const char* topic,
+                                const QoS& qos = QoS::default_profile()) {
+        const nros_cpp_node_t* h = node_.ffi_handle();
+        if (h == nullptr) {
+            set_error("create_subscription_in", -3);
+            return;
+        }
+        nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+        C* self = static_cast<C*>(this);
+        size_t handle = static_cast<size_t>(-1);
+        nros_cpp_ret_t ret = nros_cpp_subscription_register(
+            h, topic, M::TYPE_NAME, "", ffi_qos,
+            [](const uint8_t* data, size_t len, void* ctx) {
+                M msg;
+                if (M::ffi_deserialize(data, len, &msg) != 0) return;
+                (static_cast<C*>(ctx)->*Method)(msg);
+            },
+            self, /*sched_context=*/0, &handle, group.get_name());
+        if (ret != 0) {
+            set_error("create_subscription_in", ret);
+        }
+    }
+
     // -- Parameters (RFC-0044 / 242.7 — value-returning rclcpp facade) -----
     //
     // rclcpp shape: `T declare_parameter<T>(name, default)` / `T

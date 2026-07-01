@@ -130,6 +130,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 /// # Safety
 /// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
 /// `context` outlives the executor (no move after register).
+///
+/// Phase 273 (RFC-0047): `callback_group` is an optional null-terminated group
+/// name (NULL or empty string ⇒ default group ⇒ node default SchedContext).
+/// Appended at the end for backward compatibility; existing callers pass NULL.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn nros_cpp_subscription_register(
@@ -142,6 +146,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     context: *mut c_void,
     sched_context: u8,
     out_handle_id: *mut usize,
+    callback_group: *const c_char,
 ) -> nros_cpp_ret_t {
     if node.is_null()
         || topic.is_null()
@@ -170,6 +175,14 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
+    // Phase 273 — extract group name from the optional C string.
+    let group_str = if callback_group.is_null() {
+        None
+    } else {
+        let s = unsafe { cstr_to_str(callback_group) }.unwrap_or("");
+        if s.is_empty() { None } else { Some(s) }
+    };
+
     // The arena registration derives namespace + node name from the node record
     // (`add_arena_subscription_c_callback`), so only the bare topic is passed
     // here — unlike the poll-style create which builds TopicInfo itself.
@@ -189,6 +202,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
         qos.to_qos_settings(),
         callback,
         context,
+        group_str,
     );
 
     match result {

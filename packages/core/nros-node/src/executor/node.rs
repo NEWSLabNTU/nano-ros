@@ -1238,6 +1238,32 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
     }
 }
 
+// ============================================================================
+// Phase 273 (RFC-0047) — CallbackGroup token (rclcpp/rclrs shape)
+// ============================================================================
+
+/// A first-class callback group — a **name-only token** (rclcpp/rclrs shape).
+///
+/// Created via [`NodeCtx::create_callback_group`].  Passed to the `_in`
+/// entity-create variants (`create_timer_in`, `create_subscription_in`,
+/// `create_publisher_in`) to label entities with a group name.
+///
+/// The group is just a name — the actual `SchedContext` binding is seeded at
+/// boot by `Executor::bind_group_sched` (from `system.toml group_tiers`, phase
+/// 273 W2) and resolved at entity-registration time by
+/// `apply_node_default_sched` (phase 273 W1).  No concurrency type (Mutually-
+/// Exclusive vs Reentrant) is stored here — that is RFC-0047 OQ1 follow-up.
+pub struct CallbackGroup {
+    name: heapless::String<32>,
+}
+
+impl CallbackGroup {
+    /// The group name (e.g. `"ctrl"`, `"telem"`).
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 /// An executor-borrowing node handle — `exec.node(id)`. Hosts the
 /// callback-registering entity builders (subscriptions register into the
 /// executor's dispatch arena). It is a **short-lived `&mut Executor` borrow**:
@@ -1323,7 +1349,99 @@ impl<'e> NodeCtx<'e> {
                 topic,
                 QosSettings::default(),
                 callback,
+                None, // no group — node default
             )
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 273 (RFC-0047) — callback-group API (rclcpp/rclrs shape)
+    // -----------------------------------------------------------------------
+
+    /// Create a named callback group — a thin token wrapping the group name.
+    ///
+    /// Pass the returned [`CallbackGroup`] to the `_in` create variants
+    /// (`create_timer_in`, `create_subscription_in`, `create_publisher_in`)
+    /// to label entities with this group. The executor binds the entity's
+    /// callback to the `SchedContext` seeded via `bind_group_sched` for
+    /// `(node_name, namespace, group_name)` (phase 273 W1/W2).
+    ///
+    /// ```ignore
+    /// let ctrl = node.create_callback_group("ctrl");
+    /// node.create_timer_in(&ctrl, TimerDuration::from_millis(10), || { /* … */ })?;
+    /// ```
+    ///
+    /// Names longer than 32 bytes are silently truncated.
+    pub fn create_callback_group(&self, name: &str) -> CallbackGroup {
+        let mut s = heapless::String::<32>::new();
+        // Silently truncate if the name is too long (defensive; caller
+        // should use short ASCII group names like "ctrl"/"telem").
+        for ch in name.chars() {
+            if s.push(ch).is_err() {
+                break;
+            }
+        }
+        CallbackGroup { name: s }
+    }
+
+    /// Create a repeating timer **in** a callback group (phase 273, rclcpp shape).
+    ///
+    /// The timer's callback is bound to the `SchedContext` associated with
+    /// `group` in the executor's `group_sched_table` for this node. If no
+    /// entry was seeded for the group, the node's default `SchedContext` applies
+    /// (same as `register_timer`). `period` fires the callback repeatedly.
+    pub fn create_timer_in<F>(
+        &mut self,
+        group: &CallbackGroup,
+        period: crate::timer::TimerDuration,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor
+            .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
+    }
+
+    /// Create a typed subscription **in** a callback group (phase 273, rclcpp shape).
+    ///
+    /// The subscription's callback is bound to the `SchedContext` associated
+    /// with `group` in the `group_sched_table` for this node. If no entry was
+    /// seeded, the node default applies.
+    pub fn create_subscription_in<M, F>(
+        &mut self,
+        group: &CallbackGroup,
+        topic: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        M: MessageForRmw + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        self.executor
+            .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.node_id,
+                topic,
+                QosSettings::default(),
+                callback,
+                Some(group.name()),
+            )
+    }
+
+    /// Create a typed publisher **in** a callback group (phase 273, rclcpp shape).
+    ///
+    /// Publishers do not have an executor-dispatched callback, so the group
+    /// name has no scheduling effect today (publishers are explicitly driven by
+    /// the user via `publish()`). The API is provided for symmetry and
+    /// forward-compatibility (intra-process / loaned-message knobs may use
+    /// it in the future).
+    pub fn create_publisher_in<M: MessageForRmw>(
+        &mut self,
+        _group: &CallbackGroup,
+        topic: &str,
+    ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        // Publishers carry no executor callback slot; group is forward-compat.
+        self.executor
+            .create_publisher_on::<M>(self.node_id, topic, QosSettings::default())
     }
 
     /// RFC-0041 / Phase 239.1 — callback-based service client (rclcpp
@@ -1812,6 +1930,7 @@ impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
                 self.topic,
                 self.qos,
                 callback,
+                None, // group threaded via create_subscription_in; builder uses sched override
             )?;
         if let Some(sc) = self.sched {
             self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;

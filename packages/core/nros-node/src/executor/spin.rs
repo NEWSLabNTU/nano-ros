@@ -2480,6 +2480,7 @@ impl Executor {
         topic_name: &str,
         qos: QosSettings,
         callback: F,
+        group: Option<&str>,
     ) -> Result<HandleId, NodeError>
     where
         M: crate::cyclonedds_register::MessageForRmw + 'static,
@@ -2547,7 +2548,7 @@ impl Executor {
                     invocation: InvocationMode::OnNewData,
                     drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
                 });
-                self.apply_node_default_sched(slot, Some(node_id), None);
+                self.apply_node_default_sched(slot, Some(node_id), group);
                 return Ok(HandleId(slot));
             }
         }
@@ -2589,7 +2590,7 @@ impl Executor {
             drop_fn: drop_entry::<Entry<M, F>>,
         });
         // Phase 104.C.4 — apply Node's default SchedContext.
-        self.apply_node_default_sched(slot, Some(node_id), None);
+        self.apply_node_default_sched(slot, Some(node_id), group);
         Ok(HandleId(slot))
     }
 
@@ -3382,6 +3383,57 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
+    /// Phase 273 (RFC-0047) — register a repeating timer callback bound to a
+    /// specific node and optional callback group. The group name is threaded to
+    /// `apply_node_default_sched` so the seeded `group_sched_table` assigns
+    /// the timer's callback to the group's `SchedContext`. When `group` is
+    /// `None` the node's `default_sched` applies (phase-272 behavior).
+    ///
+    /// This is the executor-level primitive called by the Rust `_in` API
+    /// (`NodeCtx::create_timer_in`) and the C/C++ group-aware timer FFI.
+    pub fn register_timer_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        period: TimerDuration,
+        callback: F,
+        group: Option<&str>,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_ms: period.as_millis(),
+                    elapsed_ms: 0,
+                    oneshot: false,
+                    fired: false,
+                    cancelled: false,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        });
+        // Phase 273 — apply group sched binding (group > node default > SC 0).
+        self.apply_node_default_sched(slot, node_id, group);
+        Ok(HandleId(slot))
+    }
+
     // ========================================================================
     // Raw callback registration (for C API)
     // ========================================================================
@@ -3402,6 +3454,7 @@ impl Executor {
         qos: QosSettings,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
+        group: Option<&str>,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -3463,7 +3516,7 @@ impl Executor {
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SubBufferedRawCEntry>,
         });
-        self.apply_node_default_sched(slot, node_id, None);
+        self.apply_node_default_sched(slot, node_id, group);
         Ok(HandleId(slot))
     }
 

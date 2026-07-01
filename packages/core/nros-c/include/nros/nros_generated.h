@@ -4011,6 +4011,39 @@ nros_ret_t nros_executor_register_timer(struct nros_executor_t *executor,
                                         struct nros_timer_t *timer);
 
 /**
+ * Phase 273 (RFC-0047) — register a subscription in a named callback group.
+ *
+ * Identical to `nros_executor_register_subscription` but additionally passes
+ * the group name to the executor so the seeded `group_sched_table` can bind
+ * the callback to the group's `SchedContext`. `callback_group` may be NULL or
+ * an empty string — both behave identically to `nros_executor_register_subscription`.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid and point to initialized objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_register_subscription_in_group(struct nros_executor_t *executor,
+                                                        struct nros_subscription_t *subscription,
+                                                        enum nros_executor_invocation_t invocation,
+                                                        const char *callback_group);
+
+/**
+ * Phase 273 (RFC-0047) — register a timer in a named callback group.
+ *
+ * Identical to `nros_executor_register_timer` but additionally passes the
+ * group name so the seeded `group_sched_table` can bind the callback to the
+ * group's `SchedContext`. `callback_group` may be NULL or empty — both behave
+ * identically to `nros_executor_register_timer`.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid and point to initialized objects.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_register_timer_in_group(struct nros_executor_t *executor,
+                                                 struct nros_timer_t *timer,
+                                                 const char *callback_group);
+
+/**
  * Add a service to the executor.
  *
  * Extracts metadata from the service struct and registers a raw-bytes
