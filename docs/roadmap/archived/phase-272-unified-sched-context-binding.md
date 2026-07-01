@@ -73,6 +73,25 @@ last.
 - Existing C/C++/Rust realtime e2e unchanged (observable scheduling identical); single-tier entries
   byte-identical.
 
+## Outcome (2026-07-01) — DONE (W1–W3; W4 deferred)
+
+| Wave | Commit | Result |
+| --- | --- | --- |
+| W1 core | `92d69165a` | `Executor` `node_sched_table` + `bind_node_name_sched` + `NodeBuilder::build()` lookup (precedence explicit `.sched` > table > default); 4 unit tests |
+| W2 emit | `4979da53d` | FFI `nros_cpp_bind_node_name_sched`; entry emits the by-name seed before construction + **deletes** the per-shape `NodeBuilder::sched`/`node_create_ex` tier binding; single-tier byte-identical |
+| W3 proof | `025f8345b` | `ws-realtime-cpp-rclcpp` + `realtime_tiers_cpp_rclcpp_e2e` — **built + run: PASS**; the rclcpp-shape node schedules on its tier (#124 dissolved); the C + configure-shape realtime e2e still pass |
+
+Tier binding is now one mechanism — a config-seeded `node_name → sched_context` table resolved at the
+single `node_builder(name)` site — across C, configure-shape C++, and rclcpp-shape C++. #124 resolved
+with no `NodeHandle` change. (Build note surfaced in W3: cmake configure calls the installed `nros`
+CLI, so the CLI must be rebuilt after an emit change for fixtures to pick it up.)
+
+**W4 deferred.** Migrating the Rust `nros::main!` binding from per-callback
+`bind_handle_to_sched_context` to the table was optional (RFC-0047 OQ2). The Rust path already works
+and carries the `run_tiers` spin integration that RFC-0047 keeps regardless; moving it for marginal
+mechanism-consistency risks a working realtime path for little gain. Deferred — revisit if the Rust
+binding is touched for another reason.
+
 ## Risks / decisions
 - **Seed ordering:** the table MUST be seeded before the first `node_builder(name).build()`. In the
   entry that means seeding right after sched-context creation, before configure/construct — verify

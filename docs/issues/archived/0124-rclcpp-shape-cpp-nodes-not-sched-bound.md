@@ -1,11 +1,22 @@
 ---
 id: 124
 title: "rclcpp-shape C++ components aren't bound to a scheduling tier — the entry can't thread a sched-context into an IS-A-node constructor"
-status: open
+status: resolved
+resolved_in: phase-272
 type: enhancement
 area: core
 related: [phase-269, 119, rfc-0044, rfc-0015, rfc-0047, phase-272]
 ---
+
+> **Resolved (2026-07-01, phase-272 / RFC-0047).** Dissolved by the unified config-driven binding,
+> not a per-shape patch: a config-seeded `node_name → sched_context` table (W1:
+> `Executor::bind_node_name_sched` + `NodeBuilder::build()` lookup, precedence explicit `.sched` >
+> table > default) looked up at the one `node_builder(name)` site every node funnels through. The
+> entry seeds the table by name before construction (W2), so an rclcpp-shape node's own
+> `node_builder(name)` call in its ctor picks up its tier — **no `NodeHandle` change**. Proven by
+> `realtime_tiers_cpp_rclcpp_e2e` (W3, built + run): the rclcpp-shape high-tier node publishes ~10×
+> the low-tier rate; the C + configure-shape realtime e2e still pass (binding moved, scheduling
+> unchanged).
 
 > **Design (2026-07-01).** Rather than a narrow per-shape patch (add `sc_id` to `NodeHandle`), this
 > is folded into the unified, config-driven binding of **[RFC-0047](../design/0047-unified-sched-context-binding.md)**
