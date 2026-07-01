@@ -337,6 +337,9 @@ fi
 # Gated on the rust target being installed; absent → no stamp → test skips.
 CARGO_CHECK_EXAMPLES=(
     "embassy_main_macro:examples/stm32f4/rust/talker-embassy:thumbv7em-none-eabihf"
+    # Phase 275 W5 (#102 H6) — the listener-embassy sibling was fully uncovered.
+    # Same cargo-check-only mechanism (lacks the board memory layout to link).
+    "embassy_main_macro_listener:examples/stm32f4/rust/listener-embassy:thumbv7em-none-eabihf"
 )
 cargo_check_n=0
 for entry in "${CARGO_CHECK_EXAMPLES[@]}"; do

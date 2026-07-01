@@ -2039,6 +2039,36 @@ lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/action-client"
 
+# Phase 275 W2 (#102 H3) — native/c variant examples that shipped with zero
+# fixtures. All use the standard `-DNROS_RMW` cmake path (default zenoh), so a
+# zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-platform +
+# custom-transport-loopback demo bespoke layers over zenoh RMW — confirm they
+# build under the standard harness on good hardware; add a runtime assertion for
+# the transport-loopback path as follow-up.
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/custom-msg"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/custom-platform"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/custom-transport-loopback"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/logging"
+
 [[fixture]]
 platform = "native"
 lang = "cpp"
@@ -2173,6 +2203,39 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/parameters"
 target = "cpp_parameters"
+
+# Phase 275 W2 (#102 H3) — native/cpp variant examples that shipped with zero
+# fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
+# cmake project/exe NAME (differs from the hyphenated dir), matching the
+# cpp/parameters pattern above. UNVERIFIED (host RAM #115) — confirm the POC
+# targets build under the fixture harness; add runtime assertions as follow-up.
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/component-poc"
+target = "component_poc"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/component-node-poc"
+target = "component_node_poc"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/transform-poc"
+target = "transform_poc"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/logging"
+target = "cpp_logging"
 
 # ===========================================================================
 # freertos — C / C++ (cmake). Zenoh only (no DDS C/C++ siblings pre-collapse).

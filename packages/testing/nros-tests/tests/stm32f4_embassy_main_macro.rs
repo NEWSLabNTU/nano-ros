@@ -24,3 +24,16 @@ fn embassy_main_macro_expansion_compiles() -> nros_tests::TestResult<()> {
     );
     Ok(())
 }
+
+// Phase 275 W5 (#102 H6) — the `listener-embassy` sibling was fully uncovered;
+// same cargo-check-only proof (it also lacks the board memory layout to link).
+#[test]
+fn embassy_main_macro_listener_expansion_compiles() -> nros_tests::TestResult<()> {
+    let stamp = nros_tests::fixtures::require_compile_check("embassy_main_macro_listener")?;
+    assert!(
+        stamp.exists(),
+        "compile-check stamp missing: {}",
+        stamp.display()
+    );
+    Ok(())
+}
