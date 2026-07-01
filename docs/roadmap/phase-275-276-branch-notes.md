@@ -106,3 +106,13 @@ embedded fixture + a runtime test asserting the capability on-target. Model exac
 3. `cargo test -p nros-tests` — existing + any new behavior tests green.
 4. Re-run the coverage cross-check (the 2026-07-01 audit method in issue #102) to confirm the
    uncovered set shrank as intended.
+
+## Phase 276 — blocker found (2026-07-02)
+
+Zephyr provisioned + verified building (native_sim `c/talker` links). But the `nros::main!`
+**Zephyr** emit branch wires only register+spin — no param-services / lifecycle / run_tiers (those
+emits are `OwnedSpin`-only). So **276 W1/W2/W3 on Zephyr are macro-blocked (issue #126)**; adding a
+fixture can't express the capability. **W4 (safety/CRC), W5 (QoS), W6 (multihost)** are node-level
+pub/sub and remain achievable on Zephyr (ride the proven `zephyr_entry` register+spin path). Fix
+direction for #126: extend the Zephyr arm to `OwnedSpin` parity (emit `param_services_call` +
+`lifecycle_call`; add a `ZephyrBoard::run_tiers` for tiers).

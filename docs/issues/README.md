@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#126** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
+  lifecycle / run_tiers](0126-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
+  W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only
+  in the `OwnedSpin` arms). W4/W5/W6 (pub/sub) remain achievable on Zephyr. Fix: extend the Zephyr
+  arm to OwnedSpin parity (params/lifecycle small; tiers needs a `ZephyrBoard::run_tiers`).
 - **#125** — [NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone
   `[[bin]]` link fails on unresolved libc/syscall symbols](0125-nuttx-rust-entry-demos-cannot-link-standalone.md):
   Phase 275 W1 landed the freertos + threadx-linux entry-demo coverage; the nuttx slice is blocked —

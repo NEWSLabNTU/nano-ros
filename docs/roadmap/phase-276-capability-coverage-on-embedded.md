@@ -1,7 +1,18 @@
 # Phase 276 — Capability coverage on embedded (lifecycle / params / safety / QoS / multihost)
 
-Status: **Planned (2026-07-01)** · Implements issue #102 (H1) · Informs RFC-0026 (examples),
+Status: **Blocked (partial) — 2026-07-02** · Implements issue #102 (H1) · Informs RFC-0026,
 RFC-0006 (feature axes).
+
+> **Blocker found (issue #126).** The `nros::main!` **Zephyr** emit branch wires only
+> register+spin — it emits none of `param_services_call` / `lifecycle_call` / `run_tiers` (those
+> live only in the `OwnedSpin` arms). So **W1 (params), W2 (tiers), W3 (lifecycle) on Zephyr are
+> blocked at the macro level**, not the fixture level — adding a fixture cannot express the
+> capability. They need the Zephyr arm extended to OwnedSpin parity (params/lifecycle are a small
+> emit change; tiers needs a `ZephyrBoard::run_tiers`). **W4 (safety/CRC), W5 (QoS), W6 (multihost)
+> are node-level pub/sub and remain achievable on Zephyr today.** W1/W2 also land on FreeRTOS
+> (OwnedSpin), though the phase's "Zephyr = richest embedded target" rationale wants Zephyr. See
+> #126 for the exact `main_macro.rs` line evidence + fix direction. Zephyr provisioned + verified
+> building on the dev host (native_sim `c/talker` links).
 
 > **Goal.** Every advanced runtime capability is currently exercised on **`native` only**. This
 > phase adds embedded fixtures + runtime tests so each core capability is proven on at least one
