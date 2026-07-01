@@ -13,6 +13,15 @@ RFC-0006 (feature axes).
 > (OwnedSpin), though the phase's "Zephyr = richest embedded target" rationale wants Zephyr. See
 > #126 for the exact `main_macro.rs` line evidence + fix direction. Zephyr provisioned + verified
 > building on the dev host (native_sim `c/talker` links).
+>
+> **Reconciliation with the execution-model convergence (RFC-0015 Model 1).** W2 (tiers-on-Zephyr)
+> is not a standalone fixture — it IS the embedded execution-model convergence: **phase-274 W3**
+> (embedded C/C++ `run_tiers`, incl Zephyr `k_thread`) plus the Rust-Zephyr `run_tiers` gap (#126).
+> Do it once there, for both language sides; don't duplicate a tiers demo here. Likewise W1/W3
+> (params/lifecycle) on Zephyr wait on the `Framework::Zephyr` arm gaining `param_services_call` /
+> `lifecycle_call` (#126, the cheaper half). **Net:** phase-276's Zephyr scope reduces to the
+> pub/sub capabilities (W4/W5/W6); tiers/params/lifecycle-on-Zephyr fold into the phase-274 W3 /
+> #126 convergence track.
 
 > **Goal.** Every advanced runtime capability is currently exercised on **`native` only**. This
 > phase adds embedded fixtures + runtime tests so each core capability is proven on at least one

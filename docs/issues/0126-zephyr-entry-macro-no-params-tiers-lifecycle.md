@@ -4,8 +4,20 @@ title: "`nros::main!` Zephyr (and Esp32) emit branch wires only register+spin �
 status: open
 type: tech-debt
 area: core
-related: [phase-276, rfc-0015, rfc-0032, phase-270]
+related: [phase-276, phase-274, rfc-0015, rfc-0032, phase-270]
 ---
+
+> **Reconciliation context (RFC-0015 Model 1).** RFC-0015 decided **Model 1** — one
+> RTOS task per tier, `active_groups` gating — as the single execution model for
+> ALL languages. Rust reaches it via `run_tiers` on the **OwnedSpin** boards
+> (native/freertos/threadx/nuttx); **phase-274** brings C/C++ to parity (W1/W2
+> native landed, W3 = embedded C/C++ `run_tiers` across FreeRTOS/**Zephyr
+> `k_thread`**/NuttX/ThreadX — pending). The gap this issue reports is the
+> **Rust-Zephyr** sibling: the `Framework::Zephyr` emit branch never got the
+> Model-1 (run_tiers) OR the params/lifecycle wiring the OwnedSpin arms have, so
+> Zephyr is the one framework off the unified model on the Rust side. Fixing it
+> belongs with the phase-274 W3 embedded convergence (they share the Zephyr
+> `k_thread` per-tier-task machinery); params/lifecycle are the cheaper half.
 
 ## Summary
 

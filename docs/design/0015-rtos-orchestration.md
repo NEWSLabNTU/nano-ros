@@ -61,8 +61,15 @@ superseded-by: null
 > the resolver. So the convergence (phase-274) trades 273's single-executor sub-node
 > for the unified model until Model-1 v2 restores it. Staged: phase-273 (group
 > surface + single-executor sub-node, all langs) →
-> **phase-274** (C/C++ Model 1 native) → **phase-275** (C/C++ Model 1 embedded) →
-> sub-node v2 + `sched_context` intra-tier. Binding-vs-execution split: RFC-0047.
+> **phase-274 W1–W2** (C/C++ Model 1 native) → **phase-274 W3** (C/C++ Model 1
+> embedded — FreeRTOS/Zephyr/NuttX/ThreadX per-RTOS tasks) → sub-node v2 +
+> `sched_context` intra-tier. Binding-vs-execution split: RFC-0047. (An earlier
+> draft called the embedded wave "phase-275"; that number was reassigned to the
+> #102 example-fixture work by the 2026-07 renumber (`93946185e`) — embedded
+> C/C++ convergence is phase-274 W3. **Rust caveat:** the Rust `nros::main!`
+> **Zephyr** emit branch is the one framework arm NOT on Model 1 — it wires only
+> register+spin (no `run_tiers` / param-services / lifecycle); that gap is the
+> Rust-Zephyr sibling of phase-274 W3, tracked by **issue #126**.)
 >
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
 > generate-main" template orchestrator and §11.4 item 2 predate the current
