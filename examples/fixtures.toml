@@ -373,11 +373,12 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # (`scripts/build/workspace-fixtures-build.sh nuttx rust`): nightly +
 # `-Z build-std=std,panic_abort` via the per-row `env` (NuttX is a
 # std-capable POSIX target; std maps onto NuttX libc). The Cortex-A7
-# link flags come from the workspace `.cargo/config.toml`
-# `[target.armv7a-nuttx-eabihf]` block; the prebuilt NuttX kernel libs
-# (`$NUTTX_DIR/staging/lib*.a`), linker script, head object, and the
-# `nsh_main`-before-`-lapps` link order are wired by
-# `src/qemu_nuttx_entry/build.rs`. `NUTTX_DIR` is exported by the
+# link flags (cpu + the #127 static image-link args) come from the
+# workspace `.cargo/config.toml` `[target.armv7a-nuttx-eabihf]` block;
+# the dynamic pieces (processed linker script, vectortab+builtins-stub
+# boot archive, `-L $NUTTX_DIR/staging` etc.) propagate from the board
+# dep's build.rs (`nros_board_common::nuttx_image_link`) — ZERO entry
+# build.rs. `NUTTX_DIR` is exported by the
 # `just nuttx build-examples` recipe. Standalone bootable image — the
 # cargo binary IS the NuttX flat-build kernel image. `skip_probe` —
 # the stale probe runs the default stable toolchain and cannot replicate
@@ -1800,6 +1801,72 @@ platform = "nuttx"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm"
 env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
+
+# #127 (Phase 275 W1 tail) — the per-role Entry-pkg demos. Each Entry pkg
+# bakes board + zenoh RMW through `nros::main!` + the
+# `nros-board-nuttx-qemu-arm` shim; the bootable-image link is
+# board-centric (RFC-0032 "third leg"): the dynamic pieces (processed
+# dramboot.ld, vectortab+builtins-stub boot archive, -L search dirs)
+# propagate from the board dep's build.rs
+# (`nros_board_common::nuttx_image_link`, gated on `NUTTX_DIR` — exported
+# by the `just nuttx` recipes), the static args live in each entry's
+# `.cargo/config.toml`. ZERO entry build.rs. `fixtures-build.sh` runs
+# `nros sync` (materialises generated/ + the managed [patch.crates-io]
+# rows) before cargo. `NROS_LOCATOR`/`NROS_DOMAIN_ID` are baked at BUILD
+# time (`option_env!` in the board's `run_entry`) — without them the image
+# falls back to the loopback default and can never reach the slirp router
+# at 10.0.2.2 (same values as the `workspace-rust-qemu-nuttx` control).
+# skip_probe (issue 0030 shape): the test-all staleness probe runs the
+# default stable toolchain and cannot replicate the pinned nightly +
+# build-std + NUTTX_DIR recipe env. Build-asserted by
+# tests/nuttx_entry_build.rs.
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/talker_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/listener_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/service-server_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/service-client_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/action-server_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/rust/action-client_entry"
+skip_probe = true
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
 
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,

@@ -20,18 +20,57 @@ target = "armv7a-nuttx-eabihf"
 build-std = ["std", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
+# #127 — STATIC image-link args only (board-centric link convention,
+# RFC-0032 "third leg"). The dynamic pieces (processed dramboot.ld in the
+# board OUT_DIR, the vectortab+builtins-stub boot archive, the -L search
+# dirs for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE
+# from this board crate's build.rs (`nros_board_common::nuttx_image_link`).
+# ZERO entry build.rs. The cpu flags make the gcc driver pick the
+# cortex-a7 hard-float multilib, so the trailing `-lgcc` resolves the ARM
+# intrinsics without an absolute `-print-libgcc-file-name` path.
+# `-Tdramboot.ld` is by NAME — GNU ld resolves it through the propagated
+# `-L` search path. The kernel libs are mutually recursive ->
+# `--start-group`; the Rust rlibs precede this group, so libsched's
+# `nsh_main` reference resolves to the board crate's.
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
     "-C", "link-arg=-mcpu=cortex-a7",
     "-C", "link-arg=-mfloat-abi=hard",
     "-C", "link-arg=-mfpu=neon-vfpv4",
+    "-C", "link-arg=-Tdramboot.ld",
+    "-C", "link-arg=--entry=__start",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-nodefaultlibs",
+    "-C", "link-arg=-Wl,--start-group",
+    "-C", "link-arg=-lsched",
+    "-C", "link-arg=-ldrivers",
+    "-C", "link-arg=-lboards",
+    "-C", "link-arg=-lc",
+    "-C", "link-arg=-lmm",
+    "-C", "link-arg=-larch",
+    "-C", "link-arg=-lxx",
+    "-C", "link-arg=-lapps",
+    "-C", "link-arg=-lnet",
+    "-C", "link-arg=-lcrypto",
+    "-C", "link-arg=-lfs",
+    "-C", "link-arg=-lbinfmt",
+    "-C", "link-arg=-lopenamp",
+    "-C", "link-arg=-lboard",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--end-group",
 ]
 
 [env]
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
+# #127 blocker-1: the patched libc for build-std lives UNDER this single
+# [patch.crates-io] table (the pinned nightly's `std` references
+# `libc::_SC_HOST_NAME_MAX`, which crates.io libc does not define for
+# NuttX; the fork at third-party/nuttx/libc adds it). Renderers /
+# fix-up scripts must never append a second `[patch.crates-io]` header —
+# duplicate tables are invalid TOML (see nuttx-libc-patch.sh).
 [patch.crates-io]
 libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''

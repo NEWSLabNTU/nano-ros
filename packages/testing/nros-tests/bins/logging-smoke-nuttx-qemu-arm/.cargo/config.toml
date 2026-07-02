@@ -5,12 +5,39 @@ target = "armv7a-nuttx-eabihf"
 build-std = ["std", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
+# #127 — STATIC image-link args only (board-centric link convention,
+# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu-arm/nros-board.toml
+# `cargo_config`). The dynamic pieces (processed dramboot.ld in the board
+# OUT_DIR, the vectortab+builtins-stub boot archive, the -L search dirs
+# for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE from
+# the `nros-board-nuttx-qemu-arm` dep's build.rs. ZERO build.rs here.
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
     "-C", "link-arg=-mcpu=cortex-a7",
     "-C", "link-arg=-mfloat-abi=hard",
     "-C", "link-arg=-mfpu=neon-vfpv4",
+    "-C", "link-arg=-Tdramboot.ld",
+    "-C", "link-arg=--entry=__start",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-nodefaultlibs",
+    "-C", "link-arg=-Wl,--start-group",
+    "-C", "link-arg=-lsched",
+    "-C", "link-arg=-ldrivers",
+    "-C", "link-arg=-lboards",
+    "-C", "link-arg=-lc",
+    "-C", "link-arg=-lmm",
+    "-C", "link-arg=-larch",
+    "-C", "link-arg=-lxx",
+    "-C", "link-arg=-lapps",
+    "-C", "link-arg=-lnet",
+    "-C", "link-arg=-lcrypto",
+    "-C", "link-arg=-lfs",
+    "-C", "link-arg=-lbinfmt",
+    "-C", "link-arg=-lopenamp",
+    "-C", "link-arg=-lboard",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--end-group",
 ]
 
 [env]

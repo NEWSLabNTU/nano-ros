@@ -41,6 +41,8 @@ pub mod manifest;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_ffi_build;
 #[cfg(feature = "build-helpers")]
+pub mod nuttx_image_link;
+#[cfg(feature = "build-helpers")]
 pub mod nuttx_platform_build;
 #[cfg(feature = "build-helpers")]
 pub mod policy;

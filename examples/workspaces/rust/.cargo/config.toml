@@ -25,21 +25,52 @@ rustflags = [
 ]
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
-# (Cortex-A7) Entry link flags, copied from the single-node nuttx
-# example + `logging-smoke-nuttx-qemu-arm`. Only applies when
+# (Cortex-A7) Entry link flags. Only applies when
 # `--target armv7a-nuttx-eabihf` is selected (the `qemu_nuttx_entry`
 # fixture row), so it is inert for the native / freertos / threadx /
-# esp32 rows. The kernel-lib link group, linker script, and head object
-# are added by `src/qemu_nuttx_entry/build.rs` (it reads `NUTTX_DIR`).
-# `-Z build-std=std,panic_abort` arrives per-row via the
+# esp32 rows. `-Z build-std=std,panic_abort` arrives per-row via the
 # `CARGO_UNSTABLE_BUILD_STD` env in fixtures.toml so the shared workspace
 # config stays buildable on stable for the other members.
+#
+# #127 — STATIC image-link args only (board-centric link convention,
+# RFC-0032 "third leg"; SSoT: nros-board-nuttx-qemu-arm/nros-board.toml
+# `cargo_config`). The dynamic pieces (processed dramboot.ld in the board
+# OUT_DIR, the vectortab+builtins-stub boot archive, the -L search dirs
+# for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE from
+# `nros-board-nuttx-qemu-arm`'s build.rs
+# (`nros_board_common::nuttx_image_link`). ZERO entry build.rs. The cpu
+# flags select the gcc driver's cortex-a7 hard-float multilib so the
+# trailing `-lgcc` resolves the ARM intrinsics; `-Tdramboot.ld` is by
+# NAME, resolved through the propagated `-L`; the mutually recursive
+# kernel libs sit in `--start-group`, and the Rust rlibs precede the
+# group, so libsched's `nsh_main` reference resolves to the Entry's.
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
     "-C", "link-arg=-mcpu=cortex-a7",
     "-C", "link-arg=-mfloat-abi=hard",
     "-C", "link-arg=-mfpu=neon-vfpv4",
+    "-C", "link-arg=-Tdramboot.ld",
+    "-C", "link-arg=--entry=__start",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-nodefaultlibs",
+    "-C", "link-arg=-Wl,--start-group",
+    "-C", "link-arg=-lsched",
+    "-C", "link-arg=-ldrivers",
+    "-C", "link-arg=-lboards",
+    "-C", "link-arg=-lc",
+    "-C", "link-arg=-lmm",
+    "-C", "link-arg=-larch",
+    "-C", "link-arg=-lxx",
+    "-C", "link-arg=-lapps",
+    "-C", "link-arg=-lnet",
+    "-C", "link-arg=-lcrypto",
+    "-C", "link-arg=-lfs",
+    "-C", "link-arg=-lbinfmt",
+    "-C", "link-arg=-lopenamp",
+    "-C", "link-arg=-lboard",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--end-group",
 ]
 
 [env]

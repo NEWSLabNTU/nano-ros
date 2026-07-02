@@ -81,39 +81,13 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must
 /// NOT also be covered by a source above (that would be a stale exception).
-const ALLOWLIST: &[(&str, &str)] = &[
-    // ---- 275 W1: `*_entry` demos still uncovered (6) — the nuttx (arm) triple.
-    // freertos: covered by the run-plan harness (TEST_DRIVEN_BUILDERS).
-    // threadx-linux: covered by the `[[fixture]]` rows added in W1
-    // (fixtures.toml) + tests/threadx_linux_entry_build.rs.
-    // nuttx: BLOCKED (issue #127) — the standalone Entry-pkg `[[bin]]` fails to
-    // link against NuttX's libc (undefined `write`/`clock_gettime`/`__errno`/
-    // `exit`), a per-platform link-wiring design gap, not a mechanical row.
-    (
-        "qemu-arm-nuttx/rust/talker_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-    (
-        "qemu-arm-nuttx/rust/listener_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-    (
-        "qemu-arm-nuttx/rust/service-server_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-    (
-        "qemu-arm-nuttx/rust/service-client_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-    (
-        "qemu-arm-nuttx/rust/action-server_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-    (
-        "qemu-arm-nuttx/rust/action-client_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #127",
-    ),
-];
+///
+/// 275 W1 `*_entry` coverage is complete: freertos via the run-plan harness
+/// (TEST_DRIVEN_BUILDERS), threadx-linux via `[[fixture]]` rows +
+/// tests/threadx_linux_entry_build.rs, and nuttx via `[[fixture]]` rows +
+/// tests/nuttx_entry_build.rs (issue #127 resolved by the board-centric
+/// image link, RFC-0032 "third leg").
+const ALLOWLIST: &[(&str, &str)] = &[];
 
 /// Recursive walk collecting dirs that contain `package.xml`.
 fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {

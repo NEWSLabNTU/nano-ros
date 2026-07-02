@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#130** — [NuttX Entry path never configures eth0 —
+  `nros_platform::BoardInit::init_hardware` no-op](0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
+  every NuttX Rust Entry image boots to `Executor::open` then fails
+  `Transport(ConnectionFailed)` — the parameterless 212.N.3 `init_hardware` skips the legacy
+  `SIOCSIFADDR` eth0 IP push, so the guest can't reach slirp's 10.0.2.2. Blocks networked
+  nuttx-entry e2e; the #127 build-asserts are unaffected. Found by the #127 spike (the control
+  fixture fails identically).
 - **#129** — [Zephyr rust workspace-entry lane broken on current main](0129-zephyr-rust-workspace-entry-lane-broken.md):
   a stale prebuilt `zephyr.exe` masked it since ~phase-248/271. Three layers: (1) executor's
   ~75 KiB heap alloc vs picolibc's 16 KiB malloc arena — mitigated (arena bump); (2) NO RMW
@@ -59,12 +66,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   in the `OwnedSpin` arms). W4/W5/W6 (pub/sub) remain achievable on Zephyr. The Rust-Zephyr sibling
   of the phase-274 W3 embedded convergence. Fix: extend the Zephyr arm to OwnedSpin parity
   (params/lifecycle small; tiers needs a `ZephyrBoard::run_tiers`).
-- **#127** — [NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone
-  `[[bin]]` link fails on unresolved libc/syscall symbols](0127-nuttx-rust-entry-demos-cannot-link-standalone.md):
-  Phase 275 W1 landed the freertos + threadx-linux entry-demo coverage; the nuttx slice is blocked —
-  the standalone Entry-pkg `[[bin]]` won't link against NuttX libc (`undefined reference to
-  write/clock_gettime/__errno/exit`), plus a duplicate `[patch.crates-io]` TOML bug in the
-  sync + libc-patch path. Tracked as W6-gate exceptions so it is not a silent gap.
 - **#125** — [Rust `nros::main!` multi-tier path does not seed `bind_group_sched` from
   `group_tiers`](0125-rust-entry-macro-group-seed-bind-group-sched.md): the Rust seed deferred from
   phase-273 W4 (portability e2e lifted `NodeSpansTiers`).

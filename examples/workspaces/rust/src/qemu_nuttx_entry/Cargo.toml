@@ -14,9 +14,16 @@
 # armv7a-nuttx-eabihf` with nightly + `-Z build-std=std,panic_abort`
 # (supplied per-row by the fixtures.toml `env` + the workspace
 # `.cargo/config.toml` `[target.armv7a-nuttx-eabihf]` block + the
-# patched NuttX `libc`), so it is a normal cargo workspace member. The
-# prebuilt NuttX kernel libs are linked by `build.rs` (the freertos
-# build.rs pattern, consuming `$NUTTX_DIR/staging/lib*.a`).
+# patched NuttX `libc`), so it is a normal cargo workspace member.
+#
+# #127 — ZERO entry build.rs (board-centric link, RFC-0032 "third leg"):
+# the dynamic link pieces (processed `dramboot.ld`, the vectortab +
+# builtins-stub boot archive, the `-L` search dirs for
+# `$NUTTX_DIR/staging` etc.) PROPAGATE from the board dep's build.rs
+# (`nros_board_common::nuttx_image_link`); the static args
+# (`-Tdramboot.ld`, `--entry=__start`, the kernel-lib `--start-group`
+# list, `-lgcc`) live in the workspace `.cargo/config.toml`
+# `[target.armv7a-nuttx-eabihf]` rustflags.
 
 [package]
 name = "qemu_nuttx_entry"
@@ -68,8 +75,3 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # `listener`, so the macro emits both `register` calls; the bin links both.
 talker_pkg = { path = "../talker_pkg", default-features = false }
 listener_pkg = { path = "../listener_pkg", default-features = false }
-
-[build-dependencies]
-# build.rs preprocesses the NuttX linker script + stages the kernel-lib
-# link group (no cc compile — the board crate compiles the platform C).
-cc = "1"

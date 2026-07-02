@@ -61,6 +61,33 @@ nros_nuttx_libc_patch() {
     fi
     rel="$(realpath --relative-to="$dir" "$root/third-party/nuttx/libc")"
 
+    # #127 blocker-1 — a config that already carries a `[patch.crates-io]`
+    # table (e.g. an Entry pkg whose `nros ws sync` rendered the generated
+    # msg-crate patches) must get the libc line INSERTED under that table.
+    # Appending a second `[patch.crates-io]` header is invalid TOML
+    # ("could not parse TOML configuration"), which broke every nuttx
+    # Entry-pkg fixture build. Only when no table exists do we append the
+    # header + line.
+    if grep -qE '^\[patch\.crates-io\]' "$cfg"; then
+        local tmp
+        tmp="$(mktemp "$cfg.XXXXXX")"
+        awk -v rel="$rel" '
+            { print }
+            !done && /^\[patch\.crates-io\]$/ {
+                print "# Phase 214.M / #127 — patched libc for build-std (post-`ws sync`"
+                print "# fix-up from scripts/build/nuttx-libc-patch.sh). The pinned"
+                print "# nightly'\''s `std` references `libc::_SC_HOST_NAME_MAX`, which"
+                print "# crates.io libc does not expose for the NuttX target; the fork at"
+                print "# `third-party/nuttx/libc/` adds it. Inserted under the EXISTING"
+                print "# [patch.crates-io] table — a second header is invalid TOML."
+                print "libc = { path = \"" rel "\" }"
+                done = 1
+            }
+        ' "$cfg" > "$tmp"
+        mv "$tmp" "$cfg"
+        return 0
+    fi
+
     cat >> "$cfg" <<EOF
 
 # Phase 214.M — patched libc for build-std (post-\`ws sync\` fix-up

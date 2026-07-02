@@ -35,7 +35,11 @@ nros = { path = "../../../../packages/core/nros", default-features = false }
 # unconditional, so this Entry pkg `cargo check`s on host without a
 # NuttX SDK and produces the real binary when cross-built for
 # `armv7a-nuttx-eabihf`.
-nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# #127: `rmw-zenoh` bakes the zenoh RMW backend into the image (the board's
+# `run_entry` registers it explicitly — NuttX has no .init_array
+# auto-register); without it `Executor::open` fails instantly with
+# Transport(ConnectionFailed) before touching the network.
+nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm", features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`.
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
 

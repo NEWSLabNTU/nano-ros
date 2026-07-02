@@ -162,6 +162,38 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 }
 
 // =============================================================================
+// #127 — per-role Entry-pkg demos (build-assert).
+// =============================================================================
+
+/// Resolve a prebuilt NuttX `<role>_entry` bootable ELF.
+///
+/// Prebuilt by the `[[fixture]]` rows in `examples/fixtures.toml` (built via
+/// `just nuttx build-examples` → `fixtures-build.sh nuttx rust` at the
+/// `release` profile — the 177.8.c CGU-miscompile dodge — which runs
+/// `nros sync` + cargo; the board-centric image link needs `NUTTX_DIR`).
+/// `role` is hyphenated (`"service-server"`); `bin` is the `[[bin]]` name
+/// (`"nuttx_rs_service_server_entry"`). Mirrors [`build_rust_example`]'s
+/// release-first profile resolution.
+pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
+    let dir = project_root().join(format!("examples/qemu-arm-nuttx/rust/{role}_entry"));
+    if !dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "NuttX entry example not found: {}",
+            dir.display()
+        )));
+    }
+    let release = dir.join(format!("target/armv7a-nuttx-eabihf/release/{bin}"));
+    let bin_path = if release.exists() {
+        release
+    } else {
+        dir.join(format!(
+            "target/armv7a-nuttx-eabihf/nros-fast-release/{bin}"
+        ))
+    };
+    super::require_prebuilt_binary(&bin_path)
+}
+
+// =============================================================================
 // Phase 169.4b — NuttX Rust DDS fixture builders deleted alongside the
 // Rust DDS retirement (Phase 169.2 deleted the example crates).
 // =============================================================================

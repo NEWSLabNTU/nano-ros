@@ -18,9 +18,9 @@
 //!
 //! Two test functions:
 //!   - `c_component_subscription_validated_delivers_crc_valid_count`
-//!       C talker + C listener (`nros_cpp_subscription_register_validated`).
+//!     C talker + C listener (`nros_cpp_subscription_register_validated`).
 //!   - `cpp_component_subscription_with_safety_delivers_crc_valid_count`
-//!       C++ talker + C++ listener (`node.create_subscription_with_safety<M>()`).
+//!     C++ talker + C++ listener (`node.create_subscription_with_safety<M>()`).
 //!
 //! Run with: `cargo nextest run -p nros-tests --test cpp_c_safety_integrity_e2e`
 

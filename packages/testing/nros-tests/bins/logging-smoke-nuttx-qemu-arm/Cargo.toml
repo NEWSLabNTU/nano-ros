@@ -15,11 +15,16 @@ bench = false
 
 [dependencies]
 nros-log = { path = "../../../../core/nros-log" }
-
-[build-dependencies]
-cc = "1"
-# Phase 208.B Track A — repo-relative path resolver.
-nros-build-paths = { path = "../../../../core/nros-build-paths" }
+# #127 — board-centric NuttX image link (RFC-0032 "third leg"): the board
+# dep's build.rs compiles the C platform port (`nros_platform_nuttx`, which
+# provides `nros_platform_log_write`/`_flush` for nros-log's default sink)
+# AND stages the image-link inputs (processed dramboot.ld, vectortab +
+# builtins-stub boot archive, `-L` search dirs) via propagating
+# `cargo:rustc-link-search`/`rustc-link-lib` directives — this bin has ZERO
+# build.rs. The static link args live in `.cargo/config.toml`. The board's
+# `entry.rs` `nsh_main` (nsh_initialize → Rust `main`) is the init
+# entrypoint; `#[used]` + fat LTO (`lto = true` below) keep it in the image.
+nros-board-nuttx-qemu-arm = { path = "../../../../boards/nros-board-nuttx-qemu-arm" }
 
 [profile.release]
 opt-level = "s"
