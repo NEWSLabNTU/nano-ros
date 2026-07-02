@@ -106,3 +106,29 @@ Next: reproduce with the fdtable lock instrumented; suspects are the NSOS/zvfs p
 locking vs zenoh-pico's MT model (`Z_FEATURE_MULTI_THREAD=1`, one socket shared by main +
 read task) — same family as the repo's earlier NSOS patches. The C/C++ Zephyr entries
 (same socket model through the C API) may or may not share this; verify.
+
+## Update (2026-07-03, second pass) — C-lane segfault root-caused + FIXED; layer 3 is all-language
+
+**The C zephyr entry (fresh build) SEGFAULTED — a phase-273 FFI ABI drift, now fixed.**
+Phase 273 appended `callback_group: *const c_char` (11th arg) to the Rust
+`nros_cpp_subscription_register` and updated the C++ header (`subscription.hpp`), but
+**missed the pure-C prototype in `nros-c/include/nros/component.h`**. Every C listener
+(11 call sites across freertos/nuttx/threadx/zephyr/native workspaces + templates)
+compiled the 9/10-arg shape, leaving the 11th slot as stack garbage that the Rust side
+dereferenced — gdb: SIGSEGV in `cstr_to_str` ← `nros_cpp_subscription_register` ←
+`listener_configure` (component.h macro path) on Zephyr native_sim; silent luck on
+platforms where the garbage happened to be NULL. **Fixed:** prototype + doc example +
+all 11 C call sites pass `/*callback_group=*/NULL`. Fresh C entry no longer crashes.
+
+**Layer 3 (the silent hang) affects BOTH languages on the current tree.** With the segv
+fixed, the fresh C entry exhibits the same symptom as the Rust one: boots, then hangs
+before any readiness/publish output (the Rust case gdb'd to the app thread pending
+forever in `k_mutex_lock(<fdtable+288>)` vs the zenoh-pico read task in `k_poll`; the C
+case pends identically in the scheduler swap). The June-13 images run fine TODAY (the
+single-node Rust talker connects + publishes in the same harness), and the zenoh-pico
+submodule + zephyr module are unchanged since — so the regression is in the
+**nros-node/nros-cpp executor stack churn between June 13 and now (phases 269–274,
+prime suspect phase-271's executor externalisation)**, manifesting as an fd-lock
+stall on zephyr native_sim in every entry that links current nros-cpp. Next: bisect
+f418e3d08/77c745c7e (271) with the C entry as the repro, or instrument the
+executor's session/spin fd usage vs the read task.

@@ -23,7 +23,7 @@
  * static nros_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
  *     size_t h;
  *     return nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
- *                                           nros_c_qos_default(), on_raw, self, 0, &h);
+ *                                           nros_c_qos_default(), on_raw, self, 0, &h, NULL);
  * }
  *
  * NROS_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports
@@ -149,11 +149,18 @@ static inline nros_cpp_qos_t nros_c_qos_default(void) {
  * Register a raw (zero-copy) subscription on the executor that owns `node`. The
  * callback borrows the wire bytes; `context` is carried through. C-ABI symbol
  * provided by nros-cpp (declared here for C; same signature as the C++ side).
+ *
+ * `callback_group` (issue #129): the RFC-0047 callback-group name; NULL or ""
+ * = the default group. Phase 273 appended this to the Rust FFI and the C++
+ * header, but THIS C prototype was missed — C callers built against the 9-arg
+ * shape left the 11th slot as stack garbage, which the Rust side dereferenced
+ * (SIGSEGV in `cstr_to_str` on Zephyr native_sim; silent luck elsewhere).
  */
 int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                        const char* type_name, const char* type_hash,
                                        nros_cpp_qos_t qos, nros_c_subscription_callback_t callback,
-                                       void* context, uint8_t sched_context, size_t* out_handle_id);
+                                       void* context, uint8_t sched_context, size_t* out_handle_id,
+                                       const char* callback_group);
 
 /**
  * Phase 269 W3 — Register a validated subscription: same as
