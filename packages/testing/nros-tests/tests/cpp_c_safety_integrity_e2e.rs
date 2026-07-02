@@ -25,9 +25,8 @@
 //! Run with: `cargo nextest run -p nros-tests --test cpp_c_safety_integrity_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener,
-    build_native_workspace_c_safety_listener_entry, build_native_workspace_c_safety_talker_entry,
-    build_native_workspace_cpp_safety_listener_entry,
+    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_c_safety_listener_entry,
+    build_native_workspace_c_safety_talker_entry, build_native_workspace_cpp_safety_listener_entry,
     build_native_workspace_cpp_safety_talker_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -51,7 +50,7 @@ fn spawn_entry(
 
 /// Spawn an nros subscriber on `/safe_ok` (prints `Received: <count>` per message).
 fn spawn_safe_ok_listener(locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -92,7 +91,7 @@ fn c_component_subscription_validated_delivers_crc_valid_count(zenohd_unique: Ze
     // Waiting for 3 confirms the full validated-callback path is functional.
     let out = sub
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(25),
         )
@@ -111,7 +110,7 @@ fn c_component_subscription_validated_delivers_crc_valid_count(zenohd_unique: Ze
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"
@@ -141,7 +140,7 @@ fn cpp_component_subscription_with_safety_delivers_crc_valid_count(zenohd_unique
 
     let out = sub
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(25),
         )
@@ -160,7 +159,7 @@ fn cpp_component_subscription_with_safety_delivers_crc_valid_count(zenohd_unique
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"

@@ -1,8 +1,9 @@
 //! Shared output validation utilities for integration tests.
 //!
-//! All nano-ros examples print messages in a unified format:
-//! - Talker: `"Published: N"`
-//! - Listener: `"Received: N"`
+//! All nano-ros standalone chatter examples match the official ROS 2 demo
+//! wording (phase-277 W4):
+//! - Talker: `"Publishing: 'Hello World: N'"`
+//! - Listener: `"I heard: [Hello World: N]"`
 //! - Service: `"[OK]"` for successful responses
 //! - Action: `"Feedback #N: [...]"`, `"Goal accepted"`, `"Action client finished"`
 //!
@@ -15,55 +16,97 @@
 //! for the standalone talker/listener chatter wording. Every test that
 //! asserts on the plain talker/listener example output (any platform / RMW /
 //! language variant of `examples/*/talker` + `examples/*/listener`) should go
-//! through these instead of hard-coding `"Published:"` / `"Received:"`, so
-//! that a future wording flip (e.g. to ROS-2-parity `Publishing: 'Hello
-//! World: N'` / `I heard: [Hello World: N]`) is a one-file change. This does
-//! NOT apply to nodes with their own wording (workspace feature packages
-//! like the QoS/lifecycle demos, bridge forwarders, or purpose-built test
-//! bins) — see `packages/testing/nros-tests/tests/*.rs` call sites for the
-//! per-test rationale.
+//! through these instead of hard-coding the wording, so a future wording flip
+//! stays a one-file change. This does NOT apply to nodes with their own
+//! wording (workspace feature packages like the QoS/lifecycle demos, bridge
+//! forwarders, or purpose-built test bins) — see
+//! `packages/testing/nros-tests/tests/*.rs` call sites for the per-test
+//! rationale.
 
 /// The talker (publisher) log-line prefix used by the standalone
-/// talker/listener chatter examples (`"Published:"`).
-pub const TALKER_LOG_PREFIX: &str = "Published:";
+/// talker/listener chatter examples (`"Publishing:"`, as in the official
+/// ROS 2 demo `Publishing: 'Hello World: N'`).
+pub const TALKER_LOG_PREFIX: &str = "Publishing:";
 
 /// The listener (subscriber) log-line prefix used by the standalone
-/// talker/listener chatter examples (`"Received:"`).
-pub const LISTENER_LOG_PREFIX: &str = "Received:";
+/// talker/listener chatter examples (`"I heard:"`, as in the official
+/// ROS 2 demo `I heard: [Hello World: N]`).
+pub const LISTENER_LOG_PREFIX: &str = "I heard:";
 
-/// Readiness marker some talker boot banners print before their first
-/// publish (e.g. Zephyr / FreeRTOS talkers). Used by a couple of e2e tests
-/// as an early "the talker is alive" signal, alongside (or instead of) the
-/// first [`TALKER_LOG_PREFIX`] line. W4 may delete/replace this marker
-/// alongside the wording flip, so it lives here rather than as a raw
-/// literal at each call site.
-pub const TALKER_READY_MARKER: &str = "Publishing messages";
+/// Readiness marker: the talker is considered alive once it prints its
+/// first chatter line. phase-277 W4 dropped the separate
+/// `"Publishing messages"` boot banner, so "talker up" == "it printed its
+/// first `Publishing:` line". Kept as a distinct constant so call sites
+/// that only need liveness (not a specific N) stay self-documenting.
+pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 
-/// The exact talker log line for sequence value `n` (`"Published: N"`).
-pub fn talker_line(n: impl std::fmt::Display) -> String {
-    format!("{TALKER_LOG_PREFIX} {n}")
+/// Pre-W4 Int32 chatter wording, retained by nodes OUTSIDE the phase-277 W4
+/// demo-parity flip: the purpose-built fixture bins
+/// (`packages/testing/nros-tests/bins/{param,safety,header}-chatter-*`,
+/// `int32-sink`), the workspace demo packages
+/// (`examples/workspaces/{rust,c,cpp,mixed,ws-*}`), and the nros-bench
+/// stress bins. Tests that assert on THOSE outputs use these constants, so
+/// the standalone-example constants above can evolve independently.
+pub const INT32_TALKER_LOG_PREFIX: &str = "Published:";
+
+/// See [`INT32_TALKER_LOG_PREFIX`] — the listener/sink side (`"Received:"`).
+pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
+
+/// The exact `int32-sink` / workspace-listener log line for value `n`
+/// (`"Received: N"`).
+pub fn int32_listener_line(n: impl std::fmt::Display) -> String {
+    format!("{INT32_LISTENER_LOG_PREFIX} {n}")
 }
 
-/// The exact listener log line for value `n` (`"Received: N"`).
+/// The exact Int32 fixture-talker log line for value `n` (`"Published: N"`).
+pub fn int32_talker_line(n: impl std::fmt::Display) -> String {
+    format!("{INT32_TALKER_LOG_PREFIX} {n}")
+}
+
+/// The exact talker log line for sequence value `n`
+/// (`"Publishing: 'Hello World: N'"`).
+pub fn talker_line(n: impl std::fmt::Display) -> String {
+    format!("{TALKER_LOG_PREFIX} 'Hello World: {n}'")
+}
+
+/// The exact listener log line for value `n`
+/// (`"I heard: [Hello World: N]"`).
 pub fn listener_line(n: impl std::fmt::Display) -> String {
-    format!("{LISTENER_LOG_PREFIX} {n}")
+    format!("{LISTENER_LOG_PREFIX} [Hello World: {n}]")
+}
+
+/// Extract the sequence number from a chatter payload, i.e. the `N` out of
+/// `'Hello World: N'` (talker) or `[Hello World: N]` (listener). Returns
+/// `None` when the payload doesn't have the official demo shape.
+fn parse_hello_world_n(rest: &str) -> Option<i64> {
+    let inner = rest
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
+        .or_else(|| rest.strip_prefix('[').and_then(|s| s.strip_suffix(']')))
+        .unwrap_or(rest);
+    inner
+        .trim()
+        .strip_prefix("Hello World:")?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// Parsed talker (publisher) output.
 #[derive(Debug)]
 pub struct TalkerOutput {
-    /// Number of `"Published:"` lines found.
+    /// Number of [`TALKER_LOG_PREFIX`] lines found.
     pub published_count: usize,
-    /// Integer values extracted from `"Published: N"` lines.
+    /// Sequence numbers extracted from `"Publishing: 'Hello World: N'"` lines.
     pub values: Vec<i64>,
 }
 
 /// Parsed listener (subscriber) output.
 #[derive(Debug)]
 pub struct ListenerOutput {
-    /// Number of `"Received:"` lines found.
+    /// Number of [`LISTENER_LOG_PREFIX`] lines found.
     pub received_count: usize,
-    /// Integer values extracted from `"Received: N"` lines.
+    /// Sequence numbers extracted from `"I heard: [Hello World: N]"` lines.
     pub values: Vec<i64>,
 }
 
@@ -78,14 +121,14 @@ pub struct ActionClientOutput {
     pub completed: bool,
 }
 
-/// Parse talker output, extracting `"Published: N"` lines.
+/// Parse talker output, extracting `"Publishing: 'Hello World: N'"` lines.
 pub fn parse_talker(output: &str) -> TalkerOutput {
     let mut values = Vec::new();
     let mut count = 0;
     for line in output.lines() {
         if let Some(rest) = extract_after(line, TALKER_LOG_PREFIX) {
             count += 1;
-            if let Ok(v) = rest.parse::<i64>() {
+            if let Some(v) = parse_hello_world_n(rest) {
                 values.push(v);
             }
         }
@@ -96,14 +139,14 @@ pub fn parse_talker(output: &str) -> TalkerOutput {
     }
 }
 
-/// Parse listener output, extracting `"Received: N"` lines.
+/// Parse listener output, extracting `"I heard: [Hello World: N]"` lines.
 pub fn parse_listener(output: &str) -> ListenerOutput {
     let mut values = Vec::new();
     let mut count = 0;
     for line in output.lines() {
         if let Some(rest) = extract_after(line, LISTENER_LOG_PREFIX) {
             count += 1;
-            if let Ok(v) = rest.parse::<i64>() {
+            if let Some(v) = parse_hello_world_n(rest) {
                 values.push(v);
             }
         }
@@ -204,8 +247,8 @@ mod tests {
 
     #[test]
     fn test_talker_line_and_listener_line() {
-        assert_eq!(talker_line(4), "Published: 4");
-        assert_eq!(listener_line(250), "Received: 250");
+        assert_eq!(talker_line(4), "Publishing: 'Hello World: 4'");
+        assert_eq!(listener_line(250), "I heard: [Hello World: 250]");
         // The helpers build on the same prefix constants `parse_talker` /
         // `parse_listener` use, so a line built by `talker_line`/`listener_line`
         // round-trips through the parser.
@@ -217,16 +260,18 @@ mod tests {
 
     #[test]
     fn test_parse_talker() {
-        let output =
-            "[INFO talker] Published: 0\n[INFO talker] Published: 1\n[INFO talker] Published: 2\n";
+        let output = "[INFO talker] Publishing: 'Hello World: 1'\n\
+                      [INFO talker] Publishing: 'Hello World: 2'\n\
+                      [INFO talker] Publishing: 'Hello World: 3'\n";
         let result = parse_talker(output);
         assert_eq!(result.published_count, 3);
-        assert_eq!(result.values, vec![0, 1, 2]);
+        assert_eq!(result.values, vec![1, 2, 3]);
     }
 
     #[test]
     fn test_parse_listener() {
-        let output = "[INFO listener] Received: 5\n[INFO listener] Received: 6\n";
+        let output = "[INFO listener] I heard: [Hello World: 5]\n\
+                      [INFO listener] I heard: [Hello World: 6]\n";
         let result = parse_listener(output);
         assert_eq!(result.received_count, 2);
         assert_eq!(result.values, vec![5, 6]);
@@ -234,11 +279,22 @@ mod tests {
 
     #[test]
     fn test_parse_talker_with_noise() {
-        let output = "Starting up...\nPublished: 0\nsome noise\nPublished: abc\nPublished: 1\n";
+        let output = "Starting up...\nPublishing: 'Hello World: 1'\nsome noise\n\
+                      Publishing: 'abc'\nPublishing: 'Hello World: 2'\n";
         let result = parse_talker(output);
-        // "Published: abc" counts as a published line but doesn't parse as i64
+        // "Publishing: 'abc'" counts as a published line but yields no N
         assert_eq!(result.published_count, 3);
-        assert_eq!(result.values, vec![0, 1]);
+        assert_eq!(result.values, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_parse_hello_world_n_shapes() {
+        // Quoted (talker), bracketed (listener), and bare payloads all parse.
+        assert_eq!(parse_hello_world_n("'Hello World: 12'"), Some(12));
+        assert_eq!(parse_hello_world_n("[Hello World: 12]"), Some(12));
+        assert_eq!(parse_hello_world_n("Hello World: 12"), Some(12));
+        assert_eq!(parse_hello_world_n("'Hello World: x'"), None);
+        assert_eq!(parse_hello_world_n("42"), None);
     }
 
     #[test]

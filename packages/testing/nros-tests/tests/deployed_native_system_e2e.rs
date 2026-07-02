@@ -33,7 +33,7 @@ use std::{process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_listener, build_native_workspace_rust_entry,
+        ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_rust_entry,
         require_zenohd, zenohd_unique,
     },
 };
@@ -53,7 +53,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         Ok(p) => p.to_path_buf(),
         Err(e) => nros_tests::skip!("native_entry fixture not built: {e}"),
     };
-    let listener_bin = build_native_listener().expect("build native listener");
+    let listener_bin = build_int32_sink().expect("build native listener");
     let locator = zenohd_unique.locator();
 
     // Cross-process subscriber first, so its subscription is declared before
@@ -85,7 +85,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
 
     let listener_output = listener
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             1,
             Duration::from_secs(15),
         )
@@ -94,7 +94,10 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
     deploy.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     assert!(
         received >= 1,
         "deployed native system must publish to the ROS graph (cross-process Received = {received}):\n{listener_output}"

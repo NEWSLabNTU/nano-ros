@@ -33,9 +33,9 @@ ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
 # packages/testing/nros-tests/src/output.rs (the source of truth). If a
 # future wording flip changes those constants, update this mirror too.
 # =============================================================================
-TALKER_LOG_PREFIX="Published:"
+TALKER_LOG_PREFIX="Publishing:"
 # shellcheck disable=SC2034  # kept for mirror completeness; this script only checks the talker side
-LISTENER_LOG_PREFIX="Received:"
+LISTENER_LOG_PREFIX="I heard:"
 
 # =============================================================================
 # Utilities (shared via tests/lib/common.sh)

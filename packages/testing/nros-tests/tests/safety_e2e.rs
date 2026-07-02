@@ -6,9 +6,9 @@
 //! - Backward compatibility (safety publisher → standard listener)
 
 use nros_tests::fixtures::{
-    ManagedProcess, Rmw, ZenohRouter, build_native_c_example_rmw, build_native_cpp_example_rmw,
-    build_native_declarative_safety_listener, build_native_listener, build_native_listener_safety,
-    build_native_talker_safety, require_zenohd, zenohd_unique,
+    ManagedProcess, Rmw, ZenohRouter, build_int32_sink, build_native_c_example_rmw,
+    build_native_cpp_example_rmw, build_native_declarative_safety_listener,
+    build_native_listener_safety, build_native_talker_safety, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::time::Duration;
@@ -109,7 +109,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     }
 
     let talker_path = build_native_talker_safety().expect("Failed to build safety talker");
-    let listener_path = build_native_listener().expect("Failed to build standard listener");
+    let listener_path = build_int32_sink().expect("Failed to build standard listener");
     let locator = zenohd_unique.locator();
 
     // Start standard listener first
@@ -134,14 +134,14 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
 
     let output = listener
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             2,
             Duration::from_secs(30),
         )
         .expect("standard listener did not receive 2 messages");
 
     let received_count = output
-        .matches(nros_tests::output::LISTENER_LOG_PREFIX)
+        .matches(nros_tests::output::INT32_LISTENER_LOG_PREFIX)
         .count();
 
     eprintln!(

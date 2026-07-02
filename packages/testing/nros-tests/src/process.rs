@@ -123,7 +123,7 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
 ///
 /// ```ignore
 /// let mut proc = ManagedProcess::spawn(&binary_path, &["--tcp", "127.0.0.1:7447"], "talker")?;
-/// let output = proc.wait_for_output_count("Published:", 1, Duration::from_secs(5))?;
+/// let output = proc.wait_for_output_count("Publishing:", 1, Duration::from_secs(5))?;
 /// // Process is automatically killed on drop
 /// ```
 pub struct ManagedProcess {

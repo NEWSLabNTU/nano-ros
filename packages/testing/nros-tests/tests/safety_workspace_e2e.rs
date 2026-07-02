@@ -19,7 +19,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test safety_workspace_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener,
+    ManagedProcess, ZenohRouter, build_int32_sink,
     build_native_workspace_rust_safety_listener_entry,
     build_native_workspace_rust_safety_talker_entry, require_zenohd, zenohd_unique,
 };
@@ -44,7 +44,7 @@ fn spawn_entry(
 
 /// Spawn an nros subscriber on `/safe_ok` (prints `Received: <count>` per message).
 fn spawn_safe_ok_listener(locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -83,7 +83,7 @@ fn safety_workspace_publishes_crc_validated_count(zenohd_unique: ZenohRouter) {
     // republishes the count on /safe_ok. Seeing 3 confirms the validate path holds.
     let out = sub
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(22),
         )
@@ -101,7 +101,7 @@ fn safety_workspace_publishes_crc_validated_count(zenohd_unique: ZenohRouter) {
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"

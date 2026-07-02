@@ -5,7 +5,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test params`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener, build_native_param_talker,
+    ManagedProcess, ZenohRouter, build_int32_sink, build_native_param_talker,
     build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -378,7 +378,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
     // Wait for the first timer publish, not just the startup log.
     let early_output = proc
         .wait_for_output_pattern(
-            nros_tests::output::TALKER_LOG_PREFIX,
+            nros_tests::output::INT32_TALKER_LOG_PREFIX,
             Duration::from_secs(5),
         )
         .unwrap_or_default();
@@ -394,8 +394,8 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     // The counter is used as i32, so it should work with the i64 parameter
     assert!(
-        output.contains(nros_tests::output::talker_line(0).as_str())
-            || output.contains(nros_tests::output::talker_line(1).as_str()),
+        output.contains(nros_tests::output::int32_talker_line(0).as_str())
+            || output.contains(nros_tests::output::int32_talker_line(1).as_str()),
         "Should publish with integer counter. Output:\n{}",
         output
     );
@@ -427,7 +427,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // nros `/chatter` subscriber (prints `Received: <data>`).
-    let listener_bin = build_native_listener()
+    let listener_bin = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut lis_cmd = Command::new(listener_bin);
@@ -457,7 +457,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     // Baked initial (250) must be on the wire first (node up + publishing live reads).
     if listener
         .wait_for_output_count(
-            nros_tests::output::listener_line(250).as_str(),
+            nros_tests::output::int32_listener_line(250).as_str(),
             2,
             Duration::from_secs(15),
         )
@@ -514,7 +514,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     // The node's callback now reads 500 from the store and publishes it.
     let out = listener
         .wait_for_output_count(
-            nros_tests::output::listener_line(500).as_str(),
+            nros_tests::output::int32_listener_line(500).as_str(),
             2,
             Duration::from_secs(15),
         )
@@ -531,7 +531,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     listener.kill();
 
     assert!(
-        nros_tests::count_pattern(&out, nros_tests::output::listener_line(500).as_str()) >= 2,
+        nros_tests::count_pattern(&out, nros_tests::output::int32_listener_line(500).as_str()) >= 2,
         "the live read should follow the reconfigured value"
     );
 }

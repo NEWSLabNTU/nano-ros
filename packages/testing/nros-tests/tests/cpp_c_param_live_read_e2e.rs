@@ -14,7 +14,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test cpp_c_param_live_read_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener, build_native_workspace_c_params_entry,
+    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_c_params_entry,
     build_native_workspace_cpp_params_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -31,7 +31,7 @@ fn spawn_entry(path: PathBuf, label: &str, locator: &str, spin_ms: u32) -> Manag
 }
 
 fn spawn_listener(locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -60,7 +60,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 
     let out = listener
         .wait_for_output_count(
-            nros_tests::output::listener_line(250).as_str(),
+            nros_tests::output::int32_listener_line(250).as_str(),
             3,
             Duration::from_secs(20),
         )
@@ -76,7 +76,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::listener_line(250).as_str());
+    let n = nros_tests::count_pattern(&out, nros_tests::output::int32_listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }
 
@@ -97,7 +97,7 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 
     let out = listener
         .wait_for_output_count(
-            nros_tests::output::listener_line(250).as_str(),
+            nros_tests::output::int32_listener_line(250).as_str(),
             3,
             Duration::from_secs(20),
         )
@@ -113,6 +113,6 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::listener_line(250).as_str());
+    let n = nros_tests::count_pattern(&out, nros_tests::output::int32_listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }

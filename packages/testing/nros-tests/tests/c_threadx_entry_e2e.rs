@@ -90,7 +90,7 @@ fn threadx_linux_entry_delivers_cross_process() {
     // entry's talker reached a separate process through the router.
     let out = obs
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(20),
         )
@@ -106,6 +106,6 @@ fn threadx_linux_entry_delivers_cross_process() {
     tx.kill();
     obs.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(n >= 3, "expected ≥3 cross-process deliveries, got {n}");
 }

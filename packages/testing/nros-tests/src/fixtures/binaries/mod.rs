@@ -1872,6 +1872,28 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve the prebuilt `int32-sink` fixture (cached).
+///
+/// phase-277 W4: was `examples/native/rust/listener` with its `NROS_SUB_TOPIC`
+/// escape hatch; the example flipped to the official `std_msgs/String` chatter
+/// (`I heard: [Hello World: N]`), so the generic Int32 side-topic observer
+/// moved to a dedicated bin (`packages/testing/nros-tests/bins/int32-sink`).
+/// Subscribes to `NROS_SUB_TOPIC` (default `/chatter`) typed `std_msgs/Int32`
+/// and prints `Received: N`
+/// ([`crate::output::INT32_LISTENER_LOG_PREFIX`]) per message.
+pub fn build_int32_sink() -> TestResult<&'static Path> {
+    static INT32_SINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    INT32_SINK_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/int32-sink");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/int32-sink"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve a build-stage "compile-check" fixture's `.compile-ok` stamp (issue
 /// 0034). `scripts/build/compile-check-fixtures.sh` (run by
 /// `build-test-fixtures`) stages the template, rewrites placeholders, runs

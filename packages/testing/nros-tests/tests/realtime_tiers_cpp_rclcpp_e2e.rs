@@ -25,7 +25,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test realtime_tiers_cpp_rclcpp_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener,
+    ManagedProcess, ZenohRouter, build_int32_sink,
     build_native_workspace_cpp_rclcpp_realtime_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -33,7 +33,7 @@ use std::{process::Command, time::Duration};
 
 /// Spawn an nros subscriber on `topic` (prints `Received: <n>` per message).
 fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -83,7 +83,7 @@ fn realtime_tiers_cpp_rclcpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
     // many more — proving both tiers are live and the high tier runs faster.
     let telem_out = telem
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             5,
             Duration::from_secs(20),
         )
@@ -98,7 +98,7 @@ fn realtime_tiers_cpp_rclcpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
         });
     let ctrl_out = ctrl
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             1,
             Duration::from_secs(2),
         )
@@ -116,8 +116,10 @@ fn realtime_tiers_cpp_rclcpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
     ctrl.kill();
     telem.kill();
 
-    let telem_n = nros_tests::count_pattern(&telem_out, nros_tests::output::LISTENER_LOG_PREFIX);
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let telem_n =
+        nros_tests::count_pattern(&telem_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+    let ctrl_n =
+        nros_tests::count_pattern(&ctrl_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
 
     assert!(
         telem_n >= 5,

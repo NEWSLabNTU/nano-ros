@@ -1,0 +1,35 @@
+[workspace]
+
+[package]
+name = "int32-sink"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Generic std_msgs/Int32 observer fixture (extracted from the examples/native/rust/listener `NROS_SUB_TOPIC` escape hatch in phase-277 W4, when the example flipped to the official std_msgs/String chatter). Subscribes to the Int32 topic named by `NROS_SUB_TOPIC` (default `/chatter`) and prints `Received: N` per message. Used by the service/action/param/safety/realtime e2e tests as a cross-process sink for Int32 side topics (/sum, /fib_result, /safe_ok, /ctrl, /telem, ...)."
+
+[[bin]]
+name = "int32-sink"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+std_msgs = { path = "generated/std_msgs" }
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

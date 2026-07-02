@@ -21,8 +21,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test action_roundtrip_xprocess_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener,
-    build_native_workspace_rust_action_client_entry,
+    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_rust_action_client_entry,
     build_native_workspace_rust_action_server_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -46,7 +45,7 @@ fn spawn_entry(
 
 /// Spawn an nros subscriber on `/fib_result` (prints `Received: <n>` per message).
 fn spawn_result_listener(locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -84,7 +83,7 @@ fn action_roundtrip_publishes_result_last_element(zenohd_unique: ZenohRouter) {
 
     // The result's last sequence element is 55 (fib up to 11 elements).
     let out = listener
-        .wait_for_output_pattern(nros_tests::output::listener_line(55).as_str(), Duration::from_secs(25))
+        .wait_for_output_pattern(nros_tests::output::int32_listener_line(55).as_str(), Duration::from_secs(25))
         .unwrap_or_else(|_| {
             cli.kill();
             srv.kill();
@@ -100,7 +99,7 @@ fn action_roundtrip_publishes_result_last_element(zenohd_unique: ZenohRouter) {
     listener.kill();
 
     assert!(
-        out.contains(nros_tests::output::listener_line(55).as_str()),
+        out.contains(nros_tests::output::int32_listener_line(55).as_str()),
         "expected the Fibonacci result last element 55 on /fib_result, got:\n{out}"
     );
 }

@@ -52,7 +52,14 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
 
         proc.kill();
 
-        let _result = nros_tests::output::assert_talker(&output, 2);
+        // The stress bin keeps its own `Published: seq=N size=...` wording
+        // (not the W4 demo-parity chatter), so count its lines directly.
+        let published =
+            nros_tests::count_pattern(&output, nros_tests::output::INT32_TALKER_LOG_PREFIX);
+        assert!(
+            published >= 2,
+            "stress talker: expected at least 2 published messages, got {published}.\nOutput:\n{output}",
+        );
     }
 }
 

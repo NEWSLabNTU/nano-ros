@@ -1346,6 +1346,15 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 
+# Generic Int32 sink (phase-277 W4 — was the example listener's
+# `NROS_SUB_TOPIC` escape hatch; the example flipped to the official
+# std_msgs/String chatter, so the Int32 side-topic observer role moved here).
+# Consumed by the service/action/param/safety/realtime e2e tests.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/int32-sink"
+
 # TLS variant (isolated target dir).
 [[fixture]]
 platform = "native"

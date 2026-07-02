@@ -21,7 +21,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test service_roundtrip_inprocess_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener,
+    ManagedProcess, ZenohRouter, build_int32_sink,
     build_native_workspace_rust_service_inprocess_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -29,7 +29,7 @@ use std::{process::Command, time::Duration};
 
 /// Spawn an nros subscriber on `/sum` (prints `Received: <sum>` per message).
 fn spawn_sum_listener(locator: &str) -> ManagedProcess {
-    let listener = build_native_listener()
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
     let mut cmd = Command::new(listener);
@@ -75,7 +75,7 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
     // seeing the third confirms ≥3 successful same-session round-trips.
     let out = listener
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(25),
         )
@@ -94,7 +94,7 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
 
     // The first three sums must be exactly the server-computed 1, 2, 3 (a=0,1,2 + b=1).
     for n in [1, 2, 3] {
-        let expected = nros_tests::output::listener_line(n);
+        let expected = nros_tests::output::int32_listener_line(n);
         assert!(
             out.contains(expected.as_str()),
             "expected server-computed sum line {expected:?} on /sum, got:\n{out}"
