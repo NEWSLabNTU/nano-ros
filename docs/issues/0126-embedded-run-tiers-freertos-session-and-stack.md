@@ -51,3 +51,40 @@ deferred to a follow-up and will likely hit the same session-lifecycle question 
    item.
 2. **A**: bake/size the tier-task stack (from `TierSpec.stack_bytes`) to fit the executor; tune RAM.
 3. Then the QEMU e2e (`ws-realtime-cpp-mps2`, both tiers scheduling) closes it.
+
+## Update (2026-07-02) — build fixed (stale CLI), defect A FIXED, defect B narrowed
+
+Verified on a known-good machine.
+
+### The "no run_tiers emit / undefined `app_main`" symptom was a STALE CLI, not a code bug
+Building the fixture regenerated the C++ entry as `NativeBoard::run_components` (native single-tier)
+→ link failed `undefined reference to 'app_main'`. Root cause: the `nros` CLI binary
+(`packages/cli/target/release/nros`) predated the 274-W3 `emit_cpp` changes (binary mtime ~7 days
+older than the 274-W3 commit), so the build used **old codegen with no FreeRTOS `run_tiers` gate**.
+**Fix: rebuild the CLI (`just setup-cli`).** After that the fixture regenerates correctly —
+`static const NativeTierSpec __nros_tiers[2] = {...}` + `nros_app_main` calling
+`FreertosBoard::run_tiers(..., __nros_tiers, 2u)` — and **links clean** (ELF produced). (Lesson: the
+workspace-fixtures build does not rebuild the CLI; a stale `nros` silently emits the pre-274-W3
+shape. Worth a staleness guard.)
+
+### Defect A (tier-task stack overflow) — FIXED + verified
+Raised the `freertos_run_tiers.c` spawned-tier default stack from 64 KiB to **256 KiB**. Under QEMU
+mps2-an385 the firmware now runs the full `run_tiers` path with **no HardFault** (diagnostic
+semihosting trace: `nros_cpp_init ok → tiers spawned → entering boot spin`). Caveat: the codegen
+does NOT propagate `[tiers.*.freertos].stack_bytes` into `NativeTierSpec` (the emitted spec has
+`stack_bytes = 0`), so config-driven per-tier sizing needs an `emit_cpp` fix; the 256 KiB C default
+is the working stopgap.
+
+### Defect B (session never connects) — STILL OPEN, but narrowed
+With A fixed, `run_tiers` executes **completely** (init ok, tier spawned, boot spins — no crash),
+and the connect **locator is correctly threaded** (`FreertosBoard::run_tiers` passes the
+compile-time `NROS_ENTRY_LOCATOR = tcp/192.0.3.1:17851`). Yet the zenoh session never reaches the
+host `zenohd` (zero connections seen, no `[ctrl]`/`[telem]` ticks). **Ruled out this pass:** tier
+stack (A), tier-task starvation (a 3 s **uncontended boot-session warm-up before spawning tiers did
+NOT help** — so it is not a scheduling-starvation race), a crash, and a missing/empty locator.
+**Remaining:** `nros_cpp_init` returns OK (session object opened) but the zenoh-pico session never
+completes its TCP/handshake to `zenohd` under the C `run_tiers` path — the single-tier
+`run_components` (`nros::init` + spin) connects in the identical env. Next: diff the zenoh-pico
+session **connect + read/lease task** bring-up between `nros_cpp_init` (C run_tiers) and the
+`run_components` path — whichever drives the connection completion is missing/mis-ordered in the
+former. That is the load-bearing remaining item.

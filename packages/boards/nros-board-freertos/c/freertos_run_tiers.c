@@ -244,10 +244,18 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
         ctx->setup = t->setup;
         ctx->executor_storage = tier_exec;
 
-        /* Stack size: use the tier spec's stack_bytes if set; else 64 KiB (16 K
-         * words) — sufficient for a tier task that only calls spin_once. */
+        /* Stack size: use the tier spec's stack_bytes if set; else 256 KiB
+         * (issue #126 defect A — VERIFIED). A spawned tier task opens a borrowed
+         * executor and runs its spin/dispatch; that overflows 64 KiB (HardFault:
+         * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
+         * 256 KiB the firmware runs the full run_tiers path (boot init → tier
+         * spawn → boot spin) with no fault under QEMU mps2-an385. The boot tier
+         * keeps the 512 KiB app_task stack.
+         * NOTE: `[tiers.*.freertos].stack_bytes` does NOT yet propagate through
+         * emit_cpp into NativeTierSpec (t->stack_bytes is 0 today), so this
+         * default is the live value; the config-driven path needs an emitter fix. */
         uint32_t stack_words =
-            (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (65536u / 4u);
+            (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
 
         /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
          * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
