@@ -58,7 +58,7 @@ exposes both but treats manual-poll as the second-class path.
 
 nano-ros treats them as equals. A subscription created via
 `node.create_subscription(...)` exposes `try_recv()`. A subscription
-registered via `executor.register_subscription::<M, _>("/topic", callback)`
+registered via `executor.node_mut(nid).create_subscription::<M, _>("/topic", callback)`
 runs the callback during `spin_once`. Pick whichever fits the control loop.
 
 **Why.** Embedded apps often want the predictability of an explicit
