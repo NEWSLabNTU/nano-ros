@@ -788,7 +788,10 @@ fn test_ros2_topic_rate_via_echo_interop(zenohd_unique: ZenohRouter, talker_bina
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
 
     let mut echo = match Ros2Process::topic_echo(
@@ -854,7 +857,10 @@ fn test_ros2_topic_hz_interop(zenohd_unique: ZenohRouter, talker_binary: PathBuf
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
 
     let hz_out = ros2_topic_hz("/chatter", 8, &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();

@@ -647,7 +647,7 @@ fn test_rtos_pubsub_e2e(
         _ => Duration::from_secs(30),
     };
     let final_out = listener
-        .wait_for_output_pattern("Received", listener_window)
+        .wait_for_output_pattern(nros_tests::output::LISTENER_LOG_PREFIX, listener_window)
         .unwrap_or_default();
     let full_listener = format!("{}{}", listener_boot, final_out);
 
@@ -657,7 +657,7 @@ fn test_rtos_pubsub_e2e(
     eprintln!("Talker output:\n{}", talker_out);
     eprintln!("Listener output:\n{}", full_listener);
 
-    let received = count_pattern(&full_listener, "Received");
+    let received = count_pattern(&full_listener, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("[{} {}] messages received: {}", platform, lang, received);
     assert!(
         received > 0,

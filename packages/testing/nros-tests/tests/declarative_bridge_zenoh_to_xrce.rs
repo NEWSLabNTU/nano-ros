@@ -111,7 +111,10 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-xrce-bridge")
         .expect("spawn talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
 
     let listener_output = listener

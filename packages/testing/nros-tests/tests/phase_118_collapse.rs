@@ -117,7 +117,10 @@ fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
         .expect("spawn zephyr talker (cyclonedds)");
 
     // SPDP + SEDP + first delivered sample: allow generous margin.
-    let output = listener.wait_for_pattern("Received", Duration::from_secs(20));
+    let output = listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(20),
+    );
 
     listener.kill();
     talker.kill();
@@ -125,7 +128,7 @@ fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
     eprintln!("zephyr cyclonedds e2e listener output:\n{}", output);
 
     assert!(
-        output.contains("Received"),
+        output.contains(nros_tests::output::LISTENER_LOG_PREFIX),
         "cyclonedds listener did not receive any talker sample over SPDP \
          discovery (expected a `Received` line)"
     );
@@ -159,7 +162,10 @@ fn test_zephyr_cpp_cyclonedds_pubsub_e2e() {
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp talker (cyclonedds)");
 
-    let output = listener.wait_for_pattern("Received", Duration::from_secs(20));
+    let output = listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(20),
+    );
 
     listener.kill();
     talker.kill();
@@ -167,7 +173,7 @@ fn test_zephyr_cpp_cyclonedds_pubsub_e2e() {
     eprintln!("zephyr cpp cyclonedds e2e listener output:\n{}", output);
 
     assert!(
-        output.contains("Received"),
+        output.contains(nros_tests::output::LISTENER_LOG_PREFIX),
         "cyclonedds cpp listener did not receive any talker sample over \
          SPDP discovery (expected a `Received` line)"
     );
@@ -202,7 +208,10 @@ fn test_zephyr_c_cyclonedds_pubsub_e2e() {
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c talker (cyclonedds)");
 
-    let output = listener.wait_for_pattern("Received", Duration::from_secs(20));
+    let output = listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(20),
+    );
 
     listener.kill();
     talker.kill();
@@ -210,7 +219,7 @@ fn test_zephyr_c_cyclonedds_pubsub_e2e() {
     eprintln!("zephyr c cyclonedds e2e listener output:\n{}", output);
 
     assert!(
-        output.contains("Received"),
+        output.contains(nros_tests::output::LISTENER_LOG_PREFIX),
         "cyclonedds c listener did not receive any talker sample over \
          SPDP discovery (expected a `Received` line)"
     );

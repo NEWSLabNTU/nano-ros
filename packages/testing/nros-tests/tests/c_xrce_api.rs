@@ -142,7 +142,11 @@ fn test_c_xrce_talker_listener_communication(
         .expect("Failed to start c-xrce-talker");
 
     let message_output = listener
-        .wait_for_output_count("Received", 3, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(12),
+        )
         .expect("C XRCE listener did not receive 3 messages");
     let listener_output = format!("{init_output}{message_output}");
 
@@ -158,7 +162,7 @@ fn test_c_xrce_talker_listener_communication(
     );
 
     // Verify message reception (expect at least 3 messages)
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("C XRCE listener received {} messages", received_count);
 
     assert!(

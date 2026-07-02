@@ -77,7 +77,10 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     let mut talker = ManagedProcess::spawn_command(cmd, "native-rs-talker-declarative-bridge")
         .expect("spawn talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
     talker
 }
@@ -132,7 +135,11 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     let mut talker = spawn_zenoh_talker(&talker_binary, &zenoh_locator);
 
     let listener_output = listener
-        .wait_for_output_count("Received", 2, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(12),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -141,7 +148,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     drop(zenohd);
 
     eprintln!("nano cyclone listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, "Received");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("nano cyclone listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

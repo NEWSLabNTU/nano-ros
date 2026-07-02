@@ -182,12 +182,15 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
 
     // a's listener receives b's talker pubs (cross-process).
     let out = a
-        .wait_for_output_pattern("Received", Duration::from_secs(20))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(20),
+        )
         .unwrap_or_default();
     a.kill();
     b.kill();
 
-    let received = count_pattern(&out, "Received");
+    let received = count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("[typed-entry] received: {received}\n{out}");
     assert!(
         received > 0,

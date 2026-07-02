@@ -158,14 +158,17 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
     .expect("start ros2 cyclone pub");
 
     let listener_output = listener
-        .wait_for_output_pattern("Received", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
     ros2_pub.kill();
     listener.kill();
 
     eprintln!("nano cyclone listener output:\n{listener_output}");
     assert!(
-        listener_output.contains("Received"),
+        listener_output.contains(nros_tests::output::LISTENER_LOG_PREFIX),
         "nano cyclone listener received no sample from the ROS 2 publisher, got:\n{listener_output}"
     );
 }

@@ -95,7 +95,10 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str, label: &'static str) -> Managed
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
     let mut talker = ManagedProcess::spawn_command(cmd, label).expect("spawn talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
     talker
 }
@@ -141,7 +144,10 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
         ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-cyclonedds-bridge")
             .expect("spawn talker");
     talker
-        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(8),
+        )
         .expect("talker did not publish first sample");
 
     // 3. Collect the bridge's forward log for a window covering ≥ 2 of the 1 Hz
@@ -203,7 +209,11 @@ fn test_zenoh_to_cyclonedds_bridge_to_nano_listener(
     );
 
     let listener_output = listener
-        .wait_for_output_count("Received", 2, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(12),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -211,7 +221,7 @@ fn test_zenoh_to_cyclonedds_bridge_to_nano_listener(
     listener.kill();
 
     eprintln!("nano cyclone listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, "Received");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("nano cyclone listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

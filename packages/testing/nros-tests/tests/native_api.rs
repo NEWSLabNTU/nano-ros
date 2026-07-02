@@ -328,7 +328,7 @@ fn test_native_talker_listener_communication(
         listener_output
     );
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!(
         "{} listener received {} messages",
         lang.label(),
@@ -948,7 +948,7 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
         listener_output
     );
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!(
         "Rust listener received {} messages from {} talker",
         received_count,
@@ -1075,7 +1075,7 @@ fn test_native_cyclonedds_talker_to_rust_listener(
         listener_output
     );
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received_count >= 2,
         "Expected at least 2 CycloneDDS samples from {} talker, got {}.\nOutput:\n{}",
@@ -1120,7 +1120,7 @@ fn test_native_cyclonedds_rust_talker_to_listener(
         listener_output
     );
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received_count >= 2,
         "Expected at least 2 CycloneDDS samples from Rust talker, got {}.\nOutput:\n{}",
@@ -1183,7 +1183,7 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
         .unwrap_or_default();
     eprintln!("Native listener output (threadx-linux talker):\n{listener_output}");
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received_count >= 2,
         "Expected ≥2 CycloneDDS samples from the threadx-linux talker, got {received_count}.\n\

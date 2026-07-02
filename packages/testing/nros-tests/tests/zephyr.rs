@@ -142,7 +142,10 @@ fn test_zephyr_talker_to_listener_e2e() {
         nros_tests::output::talker_line(3).as_str(),
         Duration::from_secs(30),
     );
-    let _ = listener.wait_for_pattern("Received", Duration::from_secs(30));
+    let _ = listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
@@ -405,7 +408,7 @@ fn test_native_to_zephyr_e2e() {
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_declare_subscriber failed")
         || zephyr_output.contains("Failed to create subscriber");
-    let talker_published = talker_output.contains("Published");
+    let talker_published = talker_output.contains(nros_tests::output::TALKER_LOG_PREFIX);
 
     if received_count >= 1 {
         eprintln!(
@@ -524,7 +527,10 @@ fn test_bidirectional_native_zephyr_e2e() {
             Duration::from_secs(45),
         )
         .unwrap_or_default();
-    let _ = zephyr_listener.wait_for_pattern("Received", Duration::from_secs(45));
+    let _ = zephyr_listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(45),
+    );
 
     // Collect outputs
     let native_remaining = native_listener
@@ -1345,7 +1351,7 @@ fn test_zephyr_xrce_c_talker_listener() {
         talker_output.contains("failed") || talker_output.contains("Network not ready");
 
     // Check listener status (C API uses LOG_INF format)
-    let listener_received = listener_output.contains("Received");
+    let listener_received = listener_output.contains(nros_tests::output::LISTENER_LOG_PREFIX);
     let listener_waiting = listener_output.contains("Waiting for messages");
     let listener_error =
         listener_output.contains("failed") || listener_output.contains("Network not ready");
@@ -1358,7 +1364,7 @@ fn test_zephyr_xrce_c_talker_listener() {
     }
 
     if listener_received {
-        let count = count_pattern(&listener_output, "Received");
+        let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
         eprintln!(
             "\nSUCCESS: Zephyr XRCE C listener received {} messages from talker",
             count
@@ -1966,7 +1972,7 @@ fn test_zephyr_xrce_cpp_talker_listener() {
             talker_output, listener_output
         );
     }
-    let count = count_pattern(&listener_output, "Received");
+    let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("SUCCESS: cpp/xrce listener got {} messages", count);
 }
 
@@ -2272,7 +2278,8 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     // Check talker connected and published
     let talker_published = output::parse_talker(&talker_output).published_count > 0;
     // Check listener received messages
-    let listener_received = count_pattern(&listener_output, "Received");
+    let listener_received =
+        count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     if listener_received >= 3 {
         eprintln!(
@@ -2359,7 +2366,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     eprintln!("\n=== Native listener output ===\n{}", listener_output);
     eprintln!("\n=== Zephyr C++ talker output ===\n{}", talker_output);
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     if received_count >= 2 {
         eprintln!(
@@ -2447,14 +2454,14 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     eprintln!("\n=== Native talker output ===\n{}", talker_output);
     eprintln!("\n=== Zephyr C++ listener output ===\n{}", listener_output);
 
-    let received_count = count_pattern(&listener_output, "Received");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     if received_count >= 2 {
         eprintln!(
             "\nSUCCESS: Zephyr C++ listener received {} messages from native talker",
             received_count
         );
-    } else if talker_output.contains("Published") {
+    } else if talker_output.contains(nros_tests::output::TALKER_LOG_PREFIX) {
         panic!(
             "Talker published but Zephyr got only {} messages (expected >= 2)",
             received_count
@@ -2690,12 +2697,15 @@ fn test_zephyr_c_talker_to_listener_e2e() {
     let mut listener = listener;
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let listener_out = listener.wait_for_pattern("Received", Duration::from_secs(30));
+    let listener_out = listener.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
     talker.kill();
     listener.kill();
     eprintln!("=== zephyr C zenoh listener ===\n{listener_out}");
     assert!(
-        listener_out.contains("Received"),
+        listener_out.contains(nros_tests::output::LISTENER_LOG_PREFIX),
         "zephyr C zenoh listener received no sample:\n{listener_out}"
     );
 }
