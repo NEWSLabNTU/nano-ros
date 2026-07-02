@@ -55,7 +55,7 @@ use nros_tests::{
 use rstest::rstest;
 
 const TOPIC: &str = "/chatter";
-const MSG_TYPE: &str = "std_msgs/msg/Int32";
+const MSG_TYPE: &str = "std_msgs/msg/String";
 
 /// Resolve (building if needed) the native Cyclone C listener, or skip when the
 /// fixtures aren't set up. Mirrors `cyclonedds_ros2_interop::nano_cyclone_c_binary`.
@@ -134,7 +134,7 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
         .wait_for_output_pattern("Spinning", Duration::from_secs(10))
         .expect("bridge did not finish session setup (zenoh + cyclonedds egress)");
 
-    // 2. Spawn the zenoh talker — its Int32 samples land on the bridge's zenoh
+    // 2. Spawn the zenoh talker — its String samples land on the bridge's zenoh
     //    ingress, which republishes them onto Cyclone DDS.
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd

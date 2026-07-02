@@ -76,7 +76,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     eprintln!("Starting ROS 2 DDS topic echo...");
     let mut ros2_listener = match Ros2DdsProcess::topic_echo_with_domain(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         DEFAULT_ROS_DISTRO,
         domain_id,
     ) {
@@ -182,8 +182,8 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     eprintln!("Starting ROS 2 DDS topic pub...");
     let mut ros2_publisher = match Ros2DdsProcess::topic_pub_with_domain(
         "/chatter",
-        "std_msgs/msg/Int32",
-        "{data: 42}",
+        "std_msgs/msg/String",
+        "{data: 'Hello World: 42'}",
         2,
         DEFAULT_ROS_DISTRO,
         domain_id,

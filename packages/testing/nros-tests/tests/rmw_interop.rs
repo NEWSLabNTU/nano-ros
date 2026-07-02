@@ -90,7 +90,7 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     eprintln!("Starting ROS 2 topic echo...");
     let mut ros2_listener = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         &locator,
         DEFAULT_ROS_DISTRO,
     ) {
@@ -161,8 +161,8 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     eprintln!("Starting ROS 2 topic pub...");
     let mut ros2_publisher = match Ros2Process::topic_pub(
         "/chatter",
-        "std_msgs/msg/Int32",
-        "{data: 42}",
+        "std_msgs/msg/String",
+        "{data: 'Hello World: 42'}",
         1,
         &locator,
         DEFAULT_ROS_DISTRO,
@@ -196,8 +196,8 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
         eprintln!("[PASS] ROS 2 → nros communication works");
 
         // Check data integrity
-        if nano_output.contains("data=42") {
-            eprintln!("[PASS] Data integrity verified (data=42)");
+        if nano_output.contains("Hello World: 42") {
+            eprintln!("[PASS] Data integrity verified (Hello World: 42)");
         }
     } else {
         eprintln!("[INFO] nros did not receive messages (may be timing issue)");
@@ -309,7 +309,7 @@ fn test_nano_to_ros2_inner(locator: &str, talker_path: &Path) -> bool {
     // Start ROS 2 listener
     let mut ros2_listener = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         locator,
         DEFAULT_ROS_DISTRO,
     ) {
@@ -351,8 +351,8 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
     // Start ROS 2 publisher
     let mut ros2_publisher = match Ros2Process::topic_pub(
         "/chatter",
-        "std_msgs/msg/Int32",
-        "{data: 42}",
+        "std_msgs/msg/String",
+        "{data: 'Hello World: 42'}",
         1,
         locator,
         DEFAULT_ROS_DISTRO,
@@ -396,9 +396,9 @@ fn test_keyexpr_format(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
 
     // Expected key expression format for Humble:
     // <domain_id>/<topic>/<type>/<hash>
-    // 0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported
+    // 0/chatter/std_msgs::msg::dds_::String_/TypeHashNotSupported
     eprintln!("[PASS] Talker started and registered key expression");
-    eprintln!("Expected format: 0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported");
+    eprintln!("Expected format: 0/chatter/std_msgs::msg::dds_::String_/TypeHashNotSupported");
 }
 
 #[rstest]
@@ -417,7 +417,7 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     // Start ROS 2 listener with BEST_EFFORT
     let mut ros2_listener = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         &locator,
         DEFAULT_ROS_DISTRO,
     ) {
@@ -796,7 +796,7 @@ fn test_ros2_topic_rate_via_echo_interop(zenohd_unique: ZenohRouter, talker_bina
 
     let mut echo = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         &locator,
         DEFAULT_ROS_DISTRO,
     ) {
@@ -1203,7 +1203,7 @@ fn test_qos_matrix(
     // Start ROS 2 subscriber with specified QoS
     let mut ros2_subscriber = match Ros2Process::topic_echo_with_qos(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         sub_qos.as_str(),
         &locator,
         DEFAULT_ROS_DISTRO,
@@ -1280,7 +1280,7 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     // Start ROS 2 subscriber
     let mut ros2_subscriber = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         &locator,
         DEFAULT_ROS_DISTRO,
     ) {
@@ -1349,7 +1349,7 @@ fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathB
     // Start ROS 2 subscriber
     let mut ros2_subscriber = match Ros2Process::topic_echo(
         "/chatter",
-        "std_msgs/msg/Int32",
+        "std_msgs/msg/String",
         &locator,
         DEFAULT_ROS_DISTRO,
     ) {

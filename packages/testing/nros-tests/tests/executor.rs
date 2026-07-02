@@ -84,10 +84,11 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Wait for at least 2 sequential messages
+    // Wait for at least 2 sequential messages (N counts from 1 — the official
+    // ROS 2 demo behavior since phase-277 W4)
     let output = proc
         .wait_for_output_pattern(
-            nros_tests::output::talker_line(1).as_str(),
+            nros_tests::output::talker_line(2).as_str(),
             Duration::from_secs(10),
         )
         .unwrap_or_default();
@@ -95,8 +96,8 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
     proc.kill();
 
     // Verify sequential counter values (indicating regular firing)
-    let has_sequential = output.contains(nros_tests::output::talker_line(0).as_str())
-        && output.contains(nros_tests::output::talker_line(1).as_str());
+    let has_sequential = output.contains(nros_tests::output::talker_line(1).as_str())
+        && output.contains(nros_tests::output::talker_line(2).as_str());
 
     assert!(
         has_sequential,

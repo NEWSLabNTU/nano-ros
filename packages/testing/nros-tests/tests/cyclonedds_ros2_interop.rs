@@ -50,7 +50,7 @@ use nros_tests::{
 };
 
 const TOPIC: &str = "/chatter";
-const MSG_TYPE: &str = "std_msgs/msg/Int32";
+const MSG_TYPE: &str = "std_msgs/msg/String";
 const SRV: &str = "/add_two_ints";
 const SRV_TYPE: &str = "example_interfaces/srv/AddTwoInts";
 const ACTION: &str = "/fibonacci";
@@ -150,7 +150,7 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
     let mut ros2_pub = Ros2DdsProcess::topic_pub_cyclonedds_with_domain(
         TOPIC,
         MSG_TYPE,
-        "{data: 42}",
+        "{data: 'Hello World: 42'}",
         5,
         DEFAULT_ROS_DISTRO,
         domain,
