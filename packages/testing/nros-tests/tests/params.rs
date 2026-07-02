@@ -5,7 +5,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test params`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_listener, build_native_talker,
+    ManagedProcess, ZenohRouter, build_native_listener, build_native_param_talker,
     build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -16,9 +16,9 @@ use std::{process::Command, time::Duration};
 // =============================================================================
 
 // (Phase 182.3) `test_talker_with_params_builds` removed — it only asserted
-// the param-services talker compiled, covered by `build-all` (the manifest
-// builds talker `--features param-services`) + the param e2e tests below
-// (which build the same binary via the shared `build_native_talker` resolver).
+// the parameterised talker compiled, covered by the fixture build (the
+// manifest builds bins/param-chatter-talker) + the param e2e tests below
+// (which spawn that binary via the shared `build_native_param_talker` resolver).
 
 /// Test that talker starts and uses default parameter value
 #[rstest]
@@ -27,7 +27,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build");
+    let binary = build_native_param_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -77,7 +77,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build");
+    let binary = build_native_param_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -132,7 +132,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 
 /// Helper to start a talker and wait for parameter services to register
 fn start_talker_with_params(locator: &str) -> ManagedProcess {
-    let binary = build_native_talker().expect("Failed to build");
+    let binary = build_native_param_talker().expect("Failed to build");
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
@@ -365,7 +365,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build");
+    let binary = build_native_param_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);

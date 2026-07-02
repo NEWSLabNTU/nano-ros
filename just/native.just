@@ -238,9 +238,10 @@ build-fixture-extras:
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    # Phase 181.6 — every native *Rust* fixture (the param-services talker; the
-    # link-tls / safety-e2e / unstable-zenoh-api variants; the per-RMW
-    # target-<rmw>/ collapsed roles; the custom-transport pair; the nros-bench
+    # Phase 181.6 — every native *Rust* fixture (the link-tls /
+    # unstable-zenoh-api variants; the param / safety / header chatter bins
+    # under packages/testing/nros-tests/bins/; the per-RMW target-<rmw>/
+    # collapsed roles; the custom-transport pair; the nros-bench
     # binaries; the large-buf stress build) is now a row in
     # examples/fixtures.toml and built by `build-fixture-rust`. This recipe owns
     # only what the manifest can't express: the gated CMake/Corrosion Cyclone

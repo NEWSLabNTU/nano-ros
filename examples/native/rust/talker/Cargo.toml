@@ -29,19 +29,10 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
-# Carry-over feature gates that previously lived in
-# `native/rust/talker/`. These are zenoh-specific and silently
-# no-op (or fail to compile) under the other RMWs — the matrix lint
-# advertises only `rmw-*` for each example; downstream tooling
-# should not combine zenoh-specific gates with `rmw-cyclonedds` /
-# `rmw-xrce`. The E2E-safety talker variant lives in
-# `packages/testing/nros-tests/bins/safety-chatter-talker`.
-param-services = ["nros/param-services"]
-link-tls       = ["nros-rmw-zenoh?/link-tls"]
-# phase-267 (non-flat bridge e2e) — also publish a NESTED message
-# (std_msgs/Header = builtin_interfaces/Time stamp + string) on /header, so the
-# declarative bridge's non-flat forwarding path can be exercised end-to-end.
-header         = ["dep:builtin_interfaces"]
+# Zenoh-specific link plumbing (no source gate). The test-only variants that
+# used to be feature gates here (safety-e2e / param-services / header) live in
+# `packages/testing/nros-tests/bins/{safety,param,header}-chatter-talker`.
+link-tls = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
@@ -59,15 +50,9 @@ nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-f
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 std_msgs = { version = "*", default-features = false }
-# phase-267 — only for the `header` feature (the nested Header's `stamp` field).
-builtin_interfaces = { version = "*", default-features = false, optional = true }
 log = "0.4"
 env_logger = "0.11"
 
-# Phase 118 — RMW shim crates as optional deps. Each `rmw-*`
-# feature toggles the matching dep on. Exactly one of the three
-# is enabled per build; the cfg-chain in `src/main.rs` calls the
-# corresponding `register()` entry.
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
 # outer nano-ros workspace (in nested checkouts) or gets adopted by a user's

@@ -44,15 +44,6 @@ fn main() {
     let cfg = ctx.config("talker");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 
-    #[cfg(feature = "param-services")]
-    {
-        executor
-            .register_parameter_services()
-            .expect("Failed to register parameter services");
-        executor.declare_parameter("start_value", ParameterValue::Integer(0));
-        info!("Parameter services registered for /talker");
-    }
-
     let publisher = {
         let mut node = executor
             .create_node("talker")
@@ -65,48 +56,13 @@ fn main() {
         pub_
     };
 
-    // phase-267 (non-flat bridge e2e) — a NESTED publisher on /header so the
-    // declarative bridge's typed-`register::<Header>` egress can be exercised with
-    // live data. Own node (the executor dedups sessions; 2 nodes < MAX_NODES).
-    #[cfg(feature = "header")]
-    let header_pub = {
-        let mut node = executor
-            .create_node("talker_header")
-            .expect("Failed to create header node");
-        node.create_publisher::<std_msgs::msg::Header>("/header")
-            .expect("Failed to create /header publisher")
-    };
-
-    #[cfg(feature = "param-services")]
-    let counter_start = {
-        let v = executor.get_parameter_integer("start_value").unwrap_or(0) as i32;
-        info!("Counter start value: {}", v);
-        v
-    };
-    #[cfg(not(feature = "param-services"))]
-    let counter_start = 0i32;
-
-    let mut count: i32 = counter_start;
+    let mut count: i32 = 0;
     executor
         .register_timer(nros::TimerDuration::from_millis(1000), move || {
             let msg = Int32 { data: count };
             match publisher.publish(&msg) {
                 Ok(()) => info!("Published: {}", count),
                 Err(e) => error!("Publish error: {:?}", e),
-            }
-            #[cfg(feature = "header")]
-            {
-                let hdr = std_msgs::msg::Header {
-                    stamp: builtin_interfaces::msg::Time {
-                        sec: count,
-                        nanosec: 0,
-                    },
-                    frame_id: Default::default(),
-                };
-                match header_pub.publish(&hdr) {
-                    Ok(()) => info!("Published Header: {}", count),
-                    Err(e) => error!("Header publish error: {:?}", e),
-                }
             }
             count = count.wrapping_add(1);
         })

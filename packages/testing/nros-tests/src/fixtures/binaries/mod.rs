@@ -1842,16 +1842,32 @@ fn require_stm32f4_fixture(binary_name: &str) -> TestResult<PathBuf> {
     require_shared_fixture_binary("stm32f4", "thumbv7em-none-eabihf", binary_name)
 }
 
-/// Build native-rs-talker with param-services feature (cached)
+/// Build native-rs-talker (cached). phase-277 W3.a: the default-target talker
+/// fixture is now the PLAIN talker build (the parameterised variant moved to
+/// the `param-chatter-talker` bin — see [`build_native_param_talker`]).
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
+        .get_or_try_init(|| build_example("native/rust/talker", "talker", None, None))
+        .map(|p| p.as_path())
+}
+
+/// Resolve the prebuilt `param-chatter-talker` fixture (cached).
+///
+/// phase-277 W3.a: was `examples/native/rust/talker --features param-services`
+/// (the default-target talker build); now a dedicated bin
+/// (`packages/testing/nros-tests/bins/param-chatter-talker`) with the
+/// parameter services baked. Same behavior: registers the REP-2002 parameter
+/// services, declares `start_value`, logs `Counter start value: N`, publishes
+/// Int32 on /chatter every 1 s. Consumed by tests/params.rs.
+pub fn build_native_param_talker() -> TestResult<&'static Path> {
+    static NATIVE_PARAM_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NATIVE_PARAM_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/talker",
-                "talker",
-                Some(&["param-services"]),
-                None,
-            )
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/param-chatter-talker");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/param-chatter-talker"));
+            require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -2654,18 +2670,19 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// phase-267 — native-rs-talker built with the `header` feature (cached): it also
-/// publishes a NESTED `std_msgs/Header` on /header, for the declarative bridge's
-/// non-flat forwarding e2e. Separate `target-header` dir so it never overwrites
-/// the standard talker binary other tests use.
+/// Resolve the prebuilt `header-chatter-talker` fixture (cached): it also
+/// publishes a NESTED `std_msgs/Header` on /header, for the declarative
+/// bridge's non-flat forwarding e2e. phase-277 W3.a: was the talker `header`
+/// feature build in `target-header/`; now a dedicated bin
+/// (`packages/testing/nros-tests/bins/header-chatter-talker`).
 pub fn build_native_talker_header() -> TestResult<&'static Path> {
     NATIVE_TALKER_HEADER_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/talker");
-            let target_dir = example_dir.join("target-header");
-            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            let dir = root.join("packages/testing/nros-tests/bins/header-chatter-talker");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/header-chatter-talker"));
+            require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
 }
