@@ -74,7 +74,11 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
     // add_client publishes a+1 at 1 Hz with a = 0,1,2,… → the server returns 1,2,3,…;
     // seeing the third confirms ≥3 successful same-session round-trips.
     let out = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(25))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(25),
+        )
         .unwrap_or_else(|_| {
             entry_proc.kill();
             listener.kill();
@@ -89,9 +93,10 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
     listener.kill();
 
     // The first three sums must be exactly the server-computed 1, 2, 3 (a=0,1,2 + b=1).
-    for expected in ["Received: 1", "Received: 2", "Received: 3"] {
+    for n in [1, 2, 3] {
+        let expected = nros_tests::output::listener_line(n);
         assert!(
-            out.contains(expected),
+            out.contains(expected.as_str()),
             "expected server-computed sum line {expected:?} on /sum, got:\n{out}"
         );
     }

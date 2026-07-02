@@ -42,7 +42,10 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 
     // Wait for ~5 messages at 1Hz (event-driven: wait for "Published: 4" which means 5 publishes)
     let output = proc
-        .wait_for_output_pattern("Published: 4", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::talker_line(4).as_str(),
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     proc.kill();
@@ -51,7 +54,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
     println!("{}", output);
 
     // Count "Published:" lines
-    let published_count = count_pattern(&output, "Published:");
+    let published_count = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     // At 1Hz for 5 seconds, we expect ~5 messages (allow 3-7 for timing variance)
     println!("Published count: {}", published_count);
@@ -83,13 +86,17 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     // Wait for at least 2 sequential messages
     let output = proc
-        .wait_for_output_pattern("Published: 1", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::talker_line(1).as_str(),
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     proc.kill();
 
     // Verify sequential counter values (indicating regular firing)
-    let has_sequential = output.contains("Published: 0") && output.contains("Published: 1");
+    let has_sequential = output.contains(nros_tests::output::talker_line(0).as_str())
+        && output.contains(nros_tests::output::talker_line(1).as_str());
 
     assert!(
         has_sequential,
@@ -140,7 +147,10 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
 
     // Wait for listener to receive messages (event-driven)
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     // Kill both
@@ -201,7 +211,10 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
 
     // Wait for listener to receive messages (event-driven)
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -217,14 +230,14 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     println!("{}", listener_output);
 
     // Verify talker timer fired (published messages)
-    let published_count = count_pattern(&talker_output, "Published:");
+    let published_count = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     assert!(
         published_count > 0,
         "Talker timer should fire and publish messages"
     );
 
     // Verify listener subscription fired (received messages)
-    let received_count = count_pattern(&listener_output, "Received:");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received_count > 0,
         "Listener subscription callback should fire"
@@ -262,14 +275,17 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
 
     // Wait for at least one publish (event-driven)
     let output = proc
-        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     proc.kill();
 
     // The talker uses spin_once() in its main loop.
     // If spin_once processes work correctly, we should see "Published:" messages.
-    let published = count_pattern(&output, "Published:");
+    let published = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     assert!(
         published > 0,
@@ -315,17 +331,23 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
 
     // Wait for both to publish at least once (event-driven)
     let output1 = talker1
-        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
     let output2 = talker2
-        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     talker1.kill();
     talker2.kill();
 
-    let count1 = count_pattern(&output1, "Published:");
-    let count2 = count_pattern(&output2, "Published:");
+    let count1 = count_pattern(&output1, nros_tests::output::TALKER_LOG_PREFIX);
+    let count2 = count_pattern(&output2, nros_tests::output::TALKER_LOG_PREFIX);
 
     println!("Talker 1 published: {}", count1);
     println!("Talker 2 published: {}", count2);
@@ -363,7 +385,10 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
 
     // Wait for at least one publish (event-driven)
     let output = proc
-        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     proc.kill();

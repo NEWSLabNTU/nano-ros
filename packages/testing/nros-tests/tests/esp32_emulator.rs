@@ -212,19 +212,25 @@ fn test_esp32_talker_listener_e2e() {
     // Reaching the first "Published:" implies session open + publisher
     // declaration succeeded.
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .expect("ESP32 talker timed out waiting for publish");
 
-    let published_count = count_pattern(&talker_output, "Published:");
+    let published_count = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!("Talker published {} messages", published_count);
 
     // Step 4: Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     let all_output = format!("{}{}", listener_startup, listener_output);
-    let received_count = count_pattern(&all_output, "Received:");
+    let received_count = count_pattern(&all_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("Listener received {} messages", received_count);
 
     assert!(
@@ -316,15 +322,21 @@ fn test_esp32_to_native() {
     // Wait for ESP32 talker to publish messages. The first "Published:"
     // implies the session opened and the publisher was declared.
     let _talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .expect("ESP32 talker timed out");
 
     // Wait for native listener to receive messages
     let listener_output = native_proc
-        .wait_for_output_pattern("Received:", Duration::from_secs(15))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(15),
+        )
         .unwrap_or_default();
 
-    let received_count = count_pattern(&listener_output, "Received:");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!(
         "Native listener received {} messages from ESP32 talker",
         received_count
@@ -392,15 +404,21 @@ fn test_native_to_esp32() {
         .expect("Failed to start native talker");
 
     // Wait for native talker to start publishing
-    let _ = native_proc.wait_for_output_pattern("Published:", Duration::from_secs(10));
+    let _ = native_proc.wait_for_output_pattern(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(10),
+    );
 
     // Wait for ESP32 listener to receive messages
     let listener_output = esp32_listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     let all_output = format!("{}{}", listener_startup, listener_output);
-    let received_count = count_pattern(&all_output, "Received:");
+    let received_count = count_pattern(&all_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!(
         "ESP32 listener received {} messages from native talker",
         received_count
@@ -495,9 +513,12 @@ fn test_esp32_workspace_entry_e2e() {
 
     // The external listener must log at least one real `Received:` line.
     let listener_output = native_proc
-        .wait_for_output_pattern("Received:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("Native listener received {received} message(s) from the workspace Entry");
 
     assert!(

@@ -115,7 +115,11 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
         .expect("talker did not publish first sample");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -124,7 +128,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
     drop(agent);
 
     eprintln!("xrce listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("xrce listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

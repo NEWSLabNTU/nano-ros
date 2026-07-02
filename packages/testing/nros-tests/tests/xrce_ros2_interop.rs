@@ -103,7 +103,10 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for talker to publish
-    let _ = talker.wait_for_output_pattern("Published:", Duration::from_secs(5));
+    let _ = talker.wait_for_output_pattern(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(5),
+    );
 
     // Give ROS 2 time to receive messages via DDS
     std::thread::sleep(Duration::from_secs(2));
@@ -197,7 +200,10 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 
     // Wait for XRCE listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     ros2_publisher.kill();
@@ -205,7 +211,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 
     eprintln!("XRCE listener output:\n{}", listener_output);
 
-    let received_count = count_pattern(&listener_output, "Received:");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!(
         "XRCE listener received {} messages from ROS 2 DDS",
         received_count

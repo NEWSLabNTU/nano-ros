@@ -9,6 +9,45 @@
 //! This module provides `parse_*` functions to extract structured data from
 //! process output, and `assert_*` convenience functions that panic with
 //! diagnostic messages on failure.
+//!
+//! phase-277 W2.a — [`TALKER_LOG_PREFIX`] / [`LISTENER_LOG_PREFIX`] (plus the
+//! [`talker_line`] / [`listener_line`] helpers) are the SINGLE source of truth
+//! for the standalone talker/listener chatter wording. Every test that
+//! asserts on the plain talker/listener example output (any platform / RMW /
+//! language variant of `examples/*/talker` + `examples/*/listener`) should go
+//! through these instead of hard-coding `"Published:"` / `"Received:"`, so
+//! that a future wording flip (e.g. to ROS-2-parity `Publishing: 'Hello
+//! World: N'` / `I heard: [Hello World: N]`) is a one-file change. This does
+//! NOT apply to nodes with their own wording (workspace feature packages
+//! like the QoS/lifecycle demos, bridge forwarders, or purpose-built test
+//! bins) — see `packages/testing/nros-tests/tests/*.rs` call sites for the
+//! per-test rationale.
+
+/// The talker (publisher) log-line prefix used by the standalone
+/// talker/listener chatter examples (`"Published:"`).
+pub const TALKER_LOG_PREFIX: &str = "Published:";
+
+/// The listener (subscriber) log-line prefix used by the standalone
+/// talker/listener chatter examples (`"Received:"`).
+pub const LISTENER_LOG_PREFIX: &str = "Received:";
+
+/// Readiness marker some talker boot banners print before their first
+/// publish (e.g. Zephyr / FreeRTOS talkers). Used by a couple of e2e tests
+/// as an early "the talker is alive" signal, alongside (or instead of) the
+/// first [`TALKER_LOG_PREFIX`] line. W4 may delete/replace this marker
+/// alongside the wording flip, so it lives here rather than as a raw
+/// literal at each call site.
+pub const TALKER_READY_MARKER: &str = "Publishing messages";
+
+/// The exact talker log line for sequence value `n` (`"Published: N"`).
+pub fn talker_line(n: impl std::fmt::Display) -> String {
+    format!("{TALKER_LOG_PREFIX} {n}")
+}
+
+/// The exact listener log line for value `n` (`"Received: N"`).
+pub fn listener_line(n: impl std::fmt::Display) -> String {
+    format!("{LISTENER_LOG_PREFIX} {n}")
+}
 
 /// Parsed talker (publisher) output.
 #[derive(Debug)]
@@ -44,7 +83,7 @@ pub fn parse_talker(output: &str) -> TalkerOutput {
     let mut values = Vec::new();
     let mut count = 0;
     for line in output.lines() {
-        if let Some(rest) = extract_after(line, "Published:") {
+        if let Some(rest) = extract_after(line, TALKER_LOG_PREFIX) {
             count += 1;
             if let Ok(v) = rest.parse::<i64>() {
                 values.push(v);
@@ -62,7 +101,7 @@ pub fn parse_listener(output: &str) -> ListenerOutput {
     let mut values = Vec::new();
     let mut count = 0;
     for line in output.lines() {
-        if let Some(rest) = extract_after(line, "Received:") {
+        if let Some(rest) = extract_after(line, LISTENER_LOG_PREFIX) {
             count += 1;
             if let Ok(v) = rest.parse::<i64>() {
                 values.push(v);
@@ -162,6 +201,19 @@ fn extract_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_talker_line_and_listener_line() {
+        assert_eq!(talker_line(4), "Published: 4");
+        assert_eq!(listener_line(250), "Received: 250");
+        // The helpers build on the same prefix constants `parse_talker` /
+        // `parse_listener` use, so a line built by `talker_line`/`listener_line`
+        // round-trips through the parser.
+        let output = format!("{}\n", talker_line(7));
+        assert_eq!(parse_talker(&output).values, vec![7]);
+        let output = format!("{}\n", listener_line(7));
+        assert_eq!(parse_listener(&output).values, vec![7]);
+    }
 
     #[test]
     fn test_parse_talker() {

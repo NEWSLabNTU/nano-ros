@@ -131,7 +131,11 @@ fn test_zenoh_to_xrce_bridge_e2e(
     //    at most one major frame = 10 ms later, so 8 s of 1 Hz publishes ≥ 5
     //    bridged samples).
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -140,7 +144,7 @@ fn test_zenoh_to_xrce_bridge_e2e(
     drop(agent);
 
     eprintln!("xrce listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("xrce listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

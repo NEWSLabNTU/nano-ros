@@ -178,14 +178,18 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     };
 
     let nano_output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(8))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(8),
+        )
         .unwrap_or_default();
     ros2_publisher.kill();
 
     eprintln!("nros output:\n{}", nano_output);
 
     // Check if nros received messages
-    let received_count = count_pattern(&nano_output, "Received:");
+    let received_count = count_pattern(&nano_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("nros received {} messages", received_count);
 
     if received_count > 0 {
@@ -288,11 +292,15 @@ fn test_nano_to_nano_inner(locator: &str, talker_path: &Path, listener_path: &Pa
         .expect("Failed to start talker");
 
     let output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(8))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(8),
+        )
         .unwrap_or_default();
     talker.kill();
 
-    count_pattern(&output, "Received:") > 0
+    count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX) > 0
 }
 
 fn test_nano_to_ros2_inner(locator: &str, talker_path: &Path) -> bool {
@@ -354,11 +362,15 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
     };
 
     let output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(8))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(8),
+        )
         .unwrap_or_default();
     ros2_publisher.kill();
 
-    count_pattern(&output, "Received:") > 0
+    count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX) > 0
 }
 
 // =============================================================================

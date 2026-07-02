@@ -82,14 +82,22 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
 
     // Talker must publish at least one message.
     let talker_out = talker
-        .wait_for_output_count("Published:", 1, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            1,
+            Duration::from_secs(15),
+        )
         .expect("talker did not publish any message");
 
     // Listener must receive messages through the custom-transport loopback.
     // Waiting for three (rather than one) confirms the data plane keeps
     // flowing after pub/sub matching, not just a single lucky frame.
     let listener_out = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(20),
+        )
         .expect("listener did not receive messages via custom-transport loopback");
 
     talker.kill();
@@ -98,8 +106,8 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
     println!("=== Talker output ===\n{talker_out}");
     println!("=== Listener output ===\n{listener_out}");
 
-    let published = count_pattern(&talker_out, "Published:");
-    let received = count_pattern(&listener_out, "Received:");
+    let published = count_pattern(&talker_out, nros_tests::output::TALKER_LOG_PREFIX);
+    let received = count_pattern(&listener_out, nros_tests::output::LISTENER_LOG_PREFIX);
     println!("Published: {published}, Received: {received}");
 
     assert!(published > 0, "talker must publish at least one message");

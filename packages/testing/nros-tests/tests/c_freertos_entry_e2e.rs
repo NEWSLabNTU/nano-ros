@@ -90,7 +90,11 @@ fn freertos_entry_delivers_cross_process() {
     // guest's talker reached a separate process through the router. QEMU cold boot +
     // lwIP + zenoh connect is slow, so allow a generous window.
     let out = obs
-        .wait_for_output_count("Received:", 3, Duration::from_secs(90))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             qemu.kill();
             obs.kill();
@@ -103,6 +107,6 @@ fn freertos_entry_delivers_cross_process() {
     qemu.kill();
     obs.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(n >= 3, "expected ≥3 cross-process deliveries, got {n}");
 }

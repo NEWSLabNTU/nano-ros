@@ -129,7 +129,10 @@ fn test_talker_listener_communication(
 
     // Wait for listener to receive messages (event-driven instead of fixed sleep)
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -190,7 +193,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     // Wait for listener to receive messages (event-driven)
     eprintln!("Waiting for peer communication...");
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     // Kill talker first
@@ -431,7 +437,10 @@ fn test_tls_talker_listener_communication(
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(15))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(15),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -495,11 +504,17 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-talker");
 
     // Wait for talker to publish messages
-    let _ = talker.wait_for_output_pattern("Published:", Duration::from_secs(30));
+    let _ = talker.wait_for_output_pattern(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    );
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker.kill();

@@ -377,7 +377,10 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     // Wait for the first timer publish, not just the startup log.
     let early_output = proc
-        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     // Kill the process before collecting output
@@ -391,7 +394,8 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     // The counter is used as i32, so it should work with the i64 parameter
     assert!(
-        output.contains("Published: 0") || output.contains("Published: 1"),
+        output.contains(nros_tests::output::talker_line(0).as_str())
+            || output.contains(nros_tests::output::talker_line(1).as_str()),
         "Should publish with integer counter. Output:\n{}",
         output
     );
@@ -452,7 +456,11 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
 
     // Baked initial (250) must be on the wire first (node up + publishing live reads).
     if listener
-        .wait_for_output_count("Received: 250", 2, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::listener_line(250).as_str(),
+            2,
+            Duration::from_secs(15),
+        )
         .is_err()
     {
         entry.kill();
@@ -505,7 +513,11 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
 
     // The node's callback now reads 500 from the store and publishes it.
     let out = listener
-        .wait_for_output_count("Received: 500", 2, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::listener_line(500).as_str(),
+            2,
+            Duration::from_secs(15),
+        )
         .unwrap_or_else(|_| {
             entry.kill();
             listener.kill();
@@ -519,7 +531,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     listener.kill();
 
     assert!(
-        nros_tests::count_pattern(&out, "Received: 500") >= 2,
+        nros_tests::count_pattern(&out, nros_tests::output::listener_line(500).as_str()) >= 2,
         "the live read should follow the reconfigured value"
     );
 }

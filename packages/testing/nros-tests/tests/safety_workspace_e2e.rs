@@ -82,7 +82,11 @@ fn safety_workspace_publishes_crc_validated_count(zenohd_unique: ZenohRouter) {
     // The talker publishes /chatter at 1 Hz with a CRC; each CRC-validated receive
     // republishes the count on /safe_ok. Seeing 3 confirms the validate path holds.
     let out = sub
-        .wait_for_output_count("Received:", 3, Duration::from_secs(22))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(22),
+        )
         .unwrap_or_else(|_| {
             tlk.kill();
             listener.kill();
@@ -97,7 +101,7 @@ fn safety_workspace_publishes_crc_validated_count(zenohd_unique: ZenohRouter) {
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"

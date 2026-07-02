@@ -77,7 +77,11 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: Ze
 
     // Wait for the slow tier (bulk/100 ms) to publish 5 times.
     let telem_out = telem
-        .wait_for_output_count("Received:", 5, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(20),
+        )
         .unwrap_or_else(|_| {
             proc.kill();
             ctrl.kill();
@@ -88,7 +92,11 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: Ze
             )
         });
     let ctrl_out = ctrl
-        .wait_for_output_count("Received:", 1, Duration::from_secs(2))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(2),
+        )
         .unwrap_or_else(|_| {
             proc.kill();
             ctrl.kill();
@@ -103,8 +111,8 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: Ze
     ctrl.kill();
     telem.kill();
 
-    let telem_n = nros_tests::count_pattern(&telem_out, "Received:");
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, "Received:");
+    let telem_n = nros_tests::count_pattern(&telem_out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let ctrl_n = nros_tests::count_pattern(&ctrl_out, nros_tests::output::LISTENER_LOG_PREFIX);
 
     assert!(
         telem_n >= 5,

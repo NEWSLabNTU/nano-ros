@@ -75,10 +75,18 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive messages");
     let talker_output = talker
-        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("talker did not publish");
 
     talker.kill();
@@ -89,8 +97,8 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     println!("=== Listener output ===");
     println!("{}", listener_output);
 
-    let published = count_pattern(&talker_output, "Published:");
-    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!("Published: {}, Received: {}", published, received);
 
@@ -153,7 +161,11 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive 3 messages");
 
     talker.kill();
@@ -237,7 +249,11 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive 2 messages");
 
     talker.kill();
@@ -307,10 +323,18 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive a message");
     let talker_output = talker
-        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("talker did not publish");
 
     talker.kill();
@@ -324,7 +348,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     );
 
     // Verify communication works
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received > 0,
         "Compatible QoS settings should allow communication"
@@ -382,18 +406,26 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener1_output = listener1
-        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(10),
+        )
         .expect("listener1 did not receive a message");
     let listener2_output = listener2
-        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(10),
+        )
         .expect("listener2 did not receive a message");
 
     talker.kill();
     listener1.kill();
     listener2.kill();
 
-    let received1 = count_pattern(&listener1_output, "Received:");
-    let received2 = count_pattern(&listener2_output, "Received:");
+    let received1 = count_pattern(&listener1_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received2 = count_pattern(&listener2_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!("Listener 1 received: {}", received1);
     println!("Listener 2 received: {}", received2);

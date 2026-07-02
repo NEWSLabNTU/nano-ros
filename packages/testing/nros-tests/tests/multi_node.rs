@@ -79,7 +79,11 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     }
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(12),
+        )
         .expect("listener did not receive from publishers");
 
     // Kill all processes
@@ -91,7 +95,7 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     println!("=== Listener output (3 publishers) ===");
     println!("{}", listener_output);
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     println!("Total messages received: {}", received);
 
     // With 3 talkers at ~1Hz for 5 seconds, expect at least some messages
@@ -156,10 +160,14 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
         let output = listener
-            .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+            .wait_for_output_count(
+                nros_tests::output::LISTENER_LOG_PREFIX,
+                1,
+                Duration::from_secs(10),
+            )
             .expect("listener did not receive a message");
         listener.kill();
-        let count = count_pattern(&output, "Received:");
+        let count = count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX);
         receive_counts.push(count);
     }
     talker.kill();
@@ -248,10 +256,14 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
         let output = listener
-            .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+            .wait_for_output_count(
+                nros_tests::output::LISTENER_LOG_PREFIX,
+                2,
+                Duration::from_secs(10),
+            )
             .expect("listener did not receive 2 messages");
         listener.kill();
-        let count = count_pattern(&output, "Received:");
+        let count = count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX);
         receive_counts.push(count);
     }
     for mut talker in talkers {
@@ -315,17 +327,25 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let talker_output = talker
-        .wait_for_output_count("Published:", 5, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            5,
+            Duration::from_secs(10),
+        )
         .expect("talker did not publish 5 messages");
     let listener_output = listener
-        .wait_for_output_count("Received:", 4, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            4,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive 4 messages");
 
     talker.kill();
     listener.kill();
 
-    let published = count_pattern(&talker_output, "Published:");
-    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!("Published: {}, Received: {}", published, received);
 
@@ -386,7 +406,11 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(10),
+        )
         .expect("listener did not receive 3 messages");
 
     talker.kill();
@@ -483,10 +507,14 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
         let output = listener
-            .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+            .wait_for_output_count(
+                nros_tests::output::LISTENER_LOG_PREFIX,
+                1,
+                Duration::from_secs(10),
+            )
             .expect("listener did not receive a message");
         listener.kill();
-        let count = count_pattern(&output, "Received:");
+        let count = count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX);
         receive_counts.push(count);
     }
     talker.kill();
@@ -555,7 +583,11 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     }
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 5, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(12),
+        )
         .expect("listener did not receive from 5 publishers");
 
     // Kill all talkers
@@ -565,7 +597,7 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
 
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!(
         "Publisher scalability - {} talkers, {} messages received",
@@ -634,10 +666,18 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
 
     let listener1_output = listener1
-        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
     let listener2_output = listener2
-        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(10),
+        )
         .unwrap_or_default();
 
     talker1.kill();
@@ -645,8 +685,8 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     listener1.kill();
     listener2.kill();
 
-    let received1 = count_pattern(&listener1_output, "Received:");
-    let received2 = count_pattern(&listener2_output, "Received:");
+    let received1 = count_pattern(&listener1_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received2 = count_pattern(&listener2_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!(
         "Concurrent startup - Listener 1: {}, Listener 2: {}",

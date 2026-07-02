@@ -84,13 +84,17 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(entry_cmd, "native_entry").expect("spawn native_entry");
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(15),
+        )
         .expect("cross-process subscriber received nothing from the deployed system");
 
     deploy.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received >= 1,
         "deployed native system must publish to the ROS graph (cross-process Received = {received}):\n{listener_output}"

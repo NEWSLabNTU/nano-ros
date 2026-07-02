@@ -59,7 +59,11 @@ fn c_multihost_delivers_across_hosts(zenohd_unique: ZenohRouter) {
     // robot2 prints `Received: <n>` per delivered message — 3 confirms cross-host
     // delivery through the host-partitioned entries.
     let out = r2
-        .wait_for_output_count("Received:", 3, Duration::from_secs(18))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(18),
+        )
         .unwrap_or_else(|_| {
             r1.kill();
             r2.kill();
@@ -72,7 +76,7 @@ fn c_multihost_delivers_across_hosts(zenohd_unique: ZenohRouter) {
     r1.kill();
     r2.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 cross-host deliveries on robot2, got {n}"

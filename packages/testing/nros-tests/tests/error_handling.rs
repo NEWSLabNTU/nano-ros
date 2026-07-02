@@ -63,7 +63,7 @@ fn test_connection_timeout_talker() {
     // 3. Or exit gracefully
     // It should NOT publish messages successfully
 
-    let published = count_pattern(&output, "Published:");
+    let published = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     if published == 0 {
         println!("SUCCESS: Talker did not publish (no router available)");
@@ -116,7 +116,7 @@ fn test_connection_timeout_listener() {
     println!("{}", output);
 
     // The listener should not receive any messages
-    let received = count_pattern(&output, "Received:");
+    let received = count_pattern(&output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     assert_eq!(
         received, 0,
@@ -151,7 +151,11 @@ fn test_router_disconnect(zenohd_unique: ZenohRouter) {
     let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     let first_output = talker
-        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("talker did not publish before router disconnect");
 
     // Drop the router (kills zenohd)
@@ -166,7 +170,7 @@ fn test_router_disconnect(zenohd_unique: ZenohRouter) {
     println!("{}", output);
 
     // Verify the talker published some messages before disconnect
-    let published = count_pattern(&output, "Published:");
+    let published = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     println!("Published {} messages", published);
 
@@ -217,7 +221,10 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
 
     // Wait for first message to confirm communication works
     let recv_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     // Kill router mid-communication
@@ -235,7 +242,7 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
     println!("{}", listener_output);
 
     // Listener should have received some messages before disconnect
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     println!("Received {} messages", received);
 
@@ -300,7 +307,10 @@ fn test_router_reconnect() {
 
     // Wait for first message to confirm communication works
     let recv1 = listener1
-        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     // Kill everything
@@ -313,7 +323,7 @@ fn test_router_reconnect() {
         .unwrap_or_default();
     let listener1_output = format!("{}{}{}", ready1, recv1, remaining1);
 
-    let received1 = count_pattern(&listener1_output, "Received:");
+    let received1 = count_pattern(&listener1_output, nros_tests::output::LISTENER_LOG_PREFIX);
     println!("Phase 1: Received {} messages", received1);
 
     assert!(received1 >= 1, "Phase 1 should have received messages");
@@ -346,7 +356,10 @@ fn test_router_reconnect() {
 
     // Wait for first message to confirm communication resumes
     let recv2 = listener2
-        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     talker2.kill();
@@ -357,7 +370,7 @@ fn test_router_reconnect() {
         .unwrap_or_default();
     let listener2_output = format!("{}{}{}", ready2, recv2, remaining2);
 
-    let received2 = count_pattern(&listener2_output, "Received:");
+    let received2 = count_pattern(&listener2_output, nros_tests::output::LISTENER_LOG_PREFIX);
     println!("Phase 2: Received {} messages", received2);
 
     assert!(
@@ -473,7 +486,10 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
 
     // Wait for first message to confirm communication works with debug logging
     let recv_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(5),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -488,7 +504,7 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
     println!("Output length: {} chars", listener_output.len());
 
     // Verify communication still works with debug logging
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
 
     assert!(
         received >= 1,

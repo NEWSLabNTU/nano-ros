@@ -131,7 +131,8 @@ fn fvp_cpp_cyclonedds_talker_publishes() {
     // to absorb host load while still bounding a hung run. Drop kills the
     // FVP process group if we exceed the budget or the harness aborts.
     let timeout = Duration::from_secs(120);
-    let output = match proc.wait_for_output_pattern("Published:", timeout) {
+    let output = match proc.wait_for_output_pattern(nros_tests::output::TALKER_LOG_PREFIX, timeout)
+    {
         Ok(o) => o,
         Err(e) => {
             // ManagedProcess::Drop will kill the FVP; surface the captured
@@ -156,7 +157,7 @@ fn fvp_cpp_cyclonedds_talker_publishes() {
     // `examples/zephyr/cpp/cyclonedds/talker-aemv8r/src/main.cpp` logs
     // `Published: <count>` via `LOG_INF` after every successful pub.
     assert!(
-        output.contains("Published:"),
+        output.contains(nros_tests::output::TALKER_LOG_PREFIX),
         "missing talker `Published:` line in FVP UART output:\n{output}"
     );
 

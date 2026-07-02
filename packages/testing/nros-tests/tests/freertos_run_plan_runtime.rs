@@ -277,8 +277,8 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     // MUST print a run-plan success marker.
     let saw_executor_open_fail = combined.contains("Executor::open failed");
     let saw_app_setup_complete = combined.contains("Application setup complete");
-    let saw_publish = combined.contains("Published:");
-    let saw_receive = combined.contains("Received:");
+    let saw_publish = combined.contains(nros_tests::output::TALKER_LOG_PREFIX);
+    let saw_receive = combined.contains(nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         !saw_executor_open_fail,
         "Executor::open failed on the connected run — #48 regression (zenoh RMW \

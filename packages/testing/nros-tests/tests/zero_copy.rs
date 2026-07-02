@@ -90,7 +90,11 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
     let output = listener
-        .wait_for_output_count("Received:", 3, Duration::from_secs(30))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(30),
+        )
         .expect("Zero-copy listener did not receive 3 messages");
 
     let result = nros_tests::output::assert_listener(&output, 3);

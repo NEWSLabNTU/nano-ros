@@ -180,7 +180,10 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     // first delivery completes in a few seconds when it works; the generous
     // window covers SPDP retry cadence. `_talker` is dropped (and killed) at
     // end of scope.
-    let result = listener.wait_for_output_pattern("Received:", Duration::from_secs(90));
+    let result = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(90),
+    );
     listener.kill();
 
     match result {

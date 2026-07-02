@@ -303,10 +303,16 @@ fn test_qemu_bsp_pubsub_e2e() {
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker");
 
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -315,8 +321,8 @@ fn test_qemu_bsp_pubsub_e2e() {
     eprintln!("BSP listener output:\n{listener_output}");
     eprintln!("BSP talker output:\n{talker_output}");
 
-    let received = count_pattern(&listener_output, "Received:");
-    let published = count_pattern(&talker_output, "Published:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!("BSP QEMU pubsub: published={published}, received={received}");
 
     assert!(published > 0, "BSP talker published 0 messages");
@@ -404,12 +410,18 @@ fn test_qemu_serial_pubsub_e2e() {
 
     // Wait for listener to receive messages (examples now run forever)
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
 
     // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -419,8 +431,8 @@ fn test_qemu_serial_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received:");
-    let published = count_pattern(&talker_output, "Published:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!(
         "Serial QEMU pubsub: published={}, received={}",
         published, received
@@ -472,7 +484,10 @@ fn test_qemu_xrce_pubsub_e2e() {
         .expect("Failed to start talker-xrce QEMU");
 
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -480,7 +495,7 @@ fn test_qemu_xrce_pubsub_e2e() {
 
     eprintln!("Talker output:\n{}", talker_output);
 
-    let published = count_pattern(&talker_output, "Published:");
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!("Bare-metal XRCE QEMU: published={}", published);
 
     assert!(
@@ -540,12 +555,18 @@ fn test_qemu_rtic_pubsub_e2e() {
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
 
     // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -555,8 +576,8 @@ fn test_qemu_rtic_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received:");
-    let published = count_pattern(&talker_output, "Published:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!(
         "RTIC QEMU pubsub: published={}, received={}",
         published, received
@@ -773,12 +794,18 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
 
     // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output_pattern("Published:", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::TALKER_LOG_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -788,8 +815,8 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received:");
-    let published = count_pattern(&talker_output, "Published:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
     eprintln!(
         "RTIC mixed-priority QEMU pubsub: published={}, received={}",
         published, received

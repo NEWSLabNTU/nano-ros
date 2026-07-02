@@ -66,7 +66,11 @@ fn param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     // The published value IS the live param read. The baked initial is 250, so a node
     // that wired `ctx.parameter` correctly publishes "Received: 250" on the subscriber.
     let out = listener
-        .wait_for_output_count("Received: 250", 3, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::listener_line(250).as_str(),
+            3,
+            Duration::from_secs(15),
+        )
         .unwrap_or_else(|_| {
             entry.kill();
             listener.kill();
@@ -79,6 +83,6 @@ fn param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received: 250");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }

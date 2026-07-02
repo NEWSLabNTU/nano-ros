@@ -84,7 +84,7 @@ fn action_roundtrip_publishes_result_last_element(zenohd_unique: ZenohRouter) {
 
     // The result's last sequence element is 55 (fib up to 11 elements).
     let out = listener
-        .wait_for_output_pattern("Received: 55", Duration::from_secs(25))
+        .wait_for_output_pattern(nros_tests::output::listener_line(55).as_str(), Duration::from_secs(25))
         .unwrap_or_else(|_| {
             cli.kill();
             srv.kill();
@@ -100,7 +100,7 @@ fn action_roundtrip_publishes_result_last_element(zenohd_unique: ZenohRouter) {
     listener.kill();
 
     assert!(
-        out.contains("Received: 55"),
+        out.contains(nros_tests::output::listener_line(55).as_str()),
         "expected the Fibonacci result last element 55 on /fib_result, got:\n{out}"
     );
 }

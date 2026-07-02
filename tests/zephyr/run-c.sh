@@ -26,6 +26,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
 
 # =============================================================================
+# phase-277 W2.a — mirror of the talker/listener log-line prefixes.
+#
+# Shell can't import the Rust constants, so these are a manually-kept mirror
+# of `TALKER_LOG_PREFIX` / `LISTENER_LOG_PREFIX` in
+# packages/testing/nros-tests/src/output.rs (the source of truth). If a
+# future wording flip changes those constants, update this mirror too.
+# =============================================================================
+TALKER_LOG_PREFIX="Published:"
+# shellcheck disable=SC2034  # kept for mirror completeness; this script only checks the talker side
+LISTENER_LOG_PREFIX="Received:"
+
+# =============================================================================
 # Utilities (shared via tests/lib/common.sh)
 # =============================================================================
 
@@ -218,7 +230,7 @@ test_zephyr_to_native() {
     while [ $elapsed -lt $TEST_TIMEOUT ]; do
         # Check if talker has published at least 3 messages
         local count
-        count=$(grep -c "Published:" "$(tmpfile zephyr_talker.txt)" 2>/dev/null | head -1 || echo "0")
+        count=$(grep -c "$TALKER_LOG_PREFIX" "$(tmpfile zephyr_talker.txt)" 2>/dev/null | head -1 || echo "0")
         count="${count:-0}"
         if [ "$count" -ge 3 ] 2>/dev/null; then
             break
@@ -233,7 +245,7 @@ test_zephyr_to_native() {
 
     # Check results
     local pub_count
-    pub_count=$(grep -c "Published:" "$(tmpfile zephyr_talker.txt)" 2>/dev/null || echo 0)
+    pub_count=$(grep -c "$TALKER_LOG_PREFIX" "$(tmpfile zephyr_talker.txt)" 2>/dev/null || echo 0)
 
     if [ "$pub_count" -ge 3 ]; then
         log_success "Zephyr C talker published $pub_count messages successfully!"

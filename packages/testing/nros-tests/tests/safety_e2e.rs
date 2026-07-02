@@ -133,10 +133,16 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
         .expect("Failed to start safety talker");
 
     let output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(30))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(30),
+        )
         .expect("standard listener did not receive 2 messages");
 
-    let received_count = output.matches("Received:").count();
+    let received_count = output
+        .matches(nros_tests::output::LISTENER_LOG_PREFIX)
+        .count();
 
     eprintln!(
         "mixed-mode: standard listener received {} messages",

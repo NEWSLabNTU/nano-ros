@@ -49,7 +49,10 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
         ManagedProcess::spawn_command(cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for readiness (talker prints "Publishing" after setup)
-    match talker.wait_for_output_pattern("Published:", Duration::from_secs(30)) {
+    match talker.wait_for_output_pattern(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(30),
+    ) {
         Ok(_) => eprintln!("xrce-talker started and published successfully"),
         Err(_) => {
             if talker.is_running() {
@@ -124,7 +127,10 @@ fn test_xrce_talker_listener_communication(
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(15))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(15),
+        )
         .unwrap_or_default();
 
     // Kill both processes
@@ -164,7 +170,11 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
 
     // Wait for listener to receive enough messages (or exit on its own after 5)
     let listener_output = listener
-        .wait_for_output_count("Received:", 5, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(20),
+        )
         .unwrap_or_default();
 
     talker.kill();
@@ -386,7 +396,10 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     let mut talker = ManagedProcess::spawn_command(cmd, "xrce-serial-talker")
         .expect("Failed to start serial talker");
 
-    match talker.wait_for_output_pattern("Published:", Duration::from_secs(15)) {
+    match talker.wait_for_output_pattern(
+        nros_tests::output::TALKER_LOG_PREFIX,
+        Duration::from_secs(15),
+    ) {
         Ok(_) => eprintln!("xrce-serial-talker started and published successfully"),
         Err(_) => {
             if talker.is_running() {
@@ -479,7 +492,10 @@ fn test_xrce_serial_communication(
 
     // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(25))
+        .wait_for_output_pattern(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            Duration::from_secs(25),
+        )
         .unwrap_or_default();
 
     // Kill both processes

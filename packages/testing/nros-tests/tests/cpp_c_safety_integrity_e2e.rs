@@ -91,7 +91,11 @@ fn c_component_subscription_validated_delivers_crc_valid_count(zenohd_unique: Ze
     // At 1 Hz with CRC, each frame validated → /safe_ok count climbs.
     // Waiting for 3 confirms the full validated-callback path is functional.
     let out = sub
-        .wait_for_output_count("Received:", 3, Duration::from_secs(25))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(25),
+        )
         .unwrap_or_else(|_| {
             tlk.kill();
             listener.kill();
@@ -107,7 +111,7 @@ fn c_component_subscription_validated_delivers_crc_valid_count(zenohd_unique: Ze
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"
@@ -136,7 +140,11 @@ fn cpp_component_subscription_with_safety_delivers_crc_valid_count(zenohd_unique
     let mut tlk = spawn_entry(talker, "cpp-safety-talker", &locator, 20000);
 
     let out = sub
-        .wait_for_output_count("Received:", 3, Duration::from_secs(25))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(25),
+        )
         .unwrap_or_else(|_| {
             tlk.kill();
             listener.kill();
@@ -152,7 +160,7 @@ fn cpp_component_subscription_with_safety_delivers_crc_valid_count(zenohd_unique
     listener.kill();
     sub.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         n >= 3,
         "expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}"

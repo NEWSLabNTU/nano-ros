@@ -59,7 +59,11 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     let mut entry = spawn_entry(path, "c_param_talker", &locator, 8000);
 
     let out = listener
-        .wait_for_output_count("Received: 250", 3, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::listener_line(250).as_str(),
+            3,
+            Duration::from_secs(20),
+        )
         .unwrap_or_else(|_| {
             entry.kill();
             listener.kill();
@@ -72,7 +76,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received: 250");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }
 
@@ -92,7 +96,11 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     let mut entry = spawn_entry(path, "cpp_param_talker", &locator, 8000);
 
     let out = listener
-        .wait_for_output_count("Received: 250", 3, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::listener_line(250).as_str(),
+            3,
+            Duration::from_secs(20),
+        )
         .unwrap_or_else(|_| {
             entry.kill();
             listener.kill();
@@ -105,6 +113,6 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received: 250");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }

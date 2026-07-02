@@ -39,7 +39,7 @@ fn count_zephyr_received(output: &str) -> usize {
     // `Received: <n>` (Phase 198.2 normalized the rust fixture off `Received[`).
     output
         .lines()
-        .filter(|line| line.contains("Received:"))
+        .filter(|line| line.contains(nros_tests::output::LISTENER_LOG_PREFIX))
         .count()
 }
 
@@ -138,7 +138,10 @@ fn test_zephyr_talker_to_listener_e2e() {
     // native_sim cold-boot + session open can take >8 s, so the
     // old fixed-8 s `wait_for_output` regularly missed the first
     // couple of publishes. 30 s cap is comfortable headroom.
-    let _ = talker.wait_for_pattern("Published: 3", Duration::from_secs(30));
+    let _ = talker.wait_for_pattern(
+        nros_tests::output::talker_line(3).as_str(),
+        Duration::from_secs(30),
+    );
     let _ = listener.wait_for_pattern("Received", Duration::from_secs(30));
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
@@ -160,7 +163,7 @@ fn test_zephyr_talker_to_listener_e2e() {
     let talker_connected = !talker_output.contains("session error");
     let talker_created_pub = talker_output.contains("Declared publisher")
         || talker_output.contains("Publisher created")
-        || talker_output.contains("Publishing messages");
+        || talker_output.contains(nros_tests::output::TALKER_READY_MARKER);
 
     // Check listener status
     let listener_received = count_zephyr_received(&listener_output) > 0;
@@ -192,7 +195,7 @@ fn test_zephyr_talker_to_listener_e2e() {
             eprintln!("This is a known limitation when multiple clients connect simultaneously");
             eprintln!(
                 "Talker published {} messages successfully",
-                count_pattern(&talker_output, "Published:")
+                count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX)
             );
             // Don't fail the test - this is a known limitation
             return;
@@ -299,7 +302,7 @@ fn test_zephyr_to_native_e2e() {
 
     // Strict delivery check: the native listener must log at least one
     // real "Received: <N>" line (not setup text like "Waiting for Int32 ...").
-    let received_count = count_pattern(&listener_output, "Received:");
+    let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_publisher_put failed")
         || zephyr_output.contains("Failed to publish");
@@ -515,7 +518,11 @@ fn test_bidirectional_native_zephyr_e2e() {
     // publish (~20 s after boot), and the Zephyr listener's own subscription
     // setup is slow before the fast native talker's samples land.
     let native_ready_output = native_listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(45))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(45),
+        )
         .unwrap_or_default();
     let _ = zephyr_listener.wait_for_pattern("Received", Duration::from_secs(45));
 
@@ -555,7 +562,10 @@ fn test_bidirectional_native_zephyr_e2e() {
     // Strict delivery counts: match only real sample lines, not setup
     // text like "Waiting for Int32 messages ...". All fixtures log the
     // canonical `Received: <n>` (198.2).
-    let native_received_count = count_pattern(&native_listener_output, "Received:");
+    let native_received_count = count_pattern(
+        &native_listener_output,
+        nros_tests::output::LISTENER_LOG_PREFIX,
+    );
     let zephyr_received_count = count_zephyr_received(&zephyr_listener_output);
 
     eprintln!("\n=== Results ===");
@@ -1250,7 +1260,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
     }
 
     if listener_received {
-        let count = count_pattern(&listener_output, "Received:");
+        let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
         eprintln!(
             "\nSUCCESS: Zephyr XRCE listener received {} messages from talker",
             count
@@ -1330,7 +1340,7 @@ fn test_zephyr_xrce_c_talker_listener() {
 
     // Check talker status (C API uses LOG_INF format)
     let talker_published = output::parse_talker(&talker_output).published_count > 0;
-    let talker_init = talker_output.contains("Publishing messages");
+    let talker_init = talker_output.contains(nros_tests::output::TALKER_READY_MARKER);
     let talker_error =
         talker_output.contains("failed") || talker_output.contains("Network not ready");
 
@@ -2239,8 +2249,14 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     // Probe for the 3rd publish + 3rd Received, early-exiting
     // instead of a fixed 8 s wait that couldn't keep up with
     // `max-threads = 3` parallel cold-boot variance.
-    let _ = talker.wait_for_pattern("Published: 3", Duration::from_secs(30));
-    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
+    let _ = talker.wait_for_pattern(
+        nros_tests::output::talker_line(3).as_str(),
+        Duration::from_secs(30),
+    );
+    let _ = listener.wait_for_pattern(
+        nros_tests::output::listener_line(3).as_str(),
+        Duration::from_secs(30),
+    );
 
     // Collect outputs
     let talker_output = talker
@@ -2330,7 +2346,11 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     // talker publishes repeatedly (~every 2.5 s after a 5 s warm-up), so 2
     // messages arrive well within the 30 s budget.
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(30))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
@@ -2412,7 +2432,10 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     // Probe for the 3rd Received on the Zephyr side (early-exits
     // instead of the old 8 s+3 s blind sleep that couldn't keep
     // up with parallel-load variance).
-    let _ = listener.wait_for_pattern("Received: 3", Duration::from_secs(30));
+    let _ = listener.wait_for_pattern(
+        nros_tests::output::listener_line(3).as_str(),
+        Duration::from_secs(30),
+    );
 
     let talker_output = talker
         .wait_for_all_output(Duration::from_secs(2))
@@ -2937,7 +2960,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     eprintln!("\n=== Workspace Entry output ===\n{entry_output}");
     eprintln!("\n=== Native listener output ===\n{listener_output}");
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     assert!(
         received >= 1,
         "Workspace Entry talker delivered no messages to the external native \

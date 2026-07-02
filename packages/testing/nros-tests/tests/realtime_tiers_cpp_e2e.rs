@@ -72,7 +72,11 @@ fn realtime_tiers_cpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
     // wall time (~0.5 s+) has elapsed that the 10 ms ctrl tier should have
     // published many more — proving both tiers are live and the high tier runs faster.
     let telem_out = telem
-        .wait_for_output_count("Received:", 5, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(20),
+        )
         .unwrap_or_else(|_| {
             proc.kill();
             ctrl.kill();
@@ -80,7 +84,11 @@ fn realtime_tiers_cpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
             panic!("low-tier /telem never reached 5 publishes — the low tier was not scheduled")
         });
     let ctrl_out = ctrl
-        .wait_for_output_count("Received:", 1, Duration::from_secs(2))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(2),
+        )
         .unwrap_or_else(|_| {
             proc.kill();
             ctrl.kill();
@@ -92,8 +100,8 @@ fn realtime_tiers_cpp_schedule_high_and_low(zenohd_unique: ZenohRouter) {
     ctrl.kill();
     telem.kill();
 
-    let telem_n = nros_tests::count_pattern(&telem_out, "Received:");
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, "Received:");
+    let telem_n = nros_tests::count_pattern(&telem_out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let ctrl_n = nros_tests::count_pattern(&ctrl_out, nros_tests::output::LISTENER_LOG_PREFIX);
 
     assert!(
         telem_n >= 5,
