@@ -27,6 +27,27 @@ for the full walkthrough.
 
 **RMW backend selection:** Pass `-DNANO_ROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.
 
+### `NANO_ROS_RMW` vs `NROS_RMW`
+
+Two cache variables select the RMW backend and they are **not** the same knob:
+
+- **`NANO_ROS_RMW`** — the root API knob, read directly by
+  `packages/core/nros-c/CMakeLists.txt` when you `add_subdirectory(nano-ros)`
+  it yourself (as in the `Usage` example above). This is the variable the
+  nano-ros build itself branches on.
+- **`NROS_RMW`** — a shorthand used by the standalone-example and
+  workspace-helper CMake (`cmake/NanoRosWorkspace.cmake`, `nano_ros_workspace()`
+  / `nano_ros_workspace_pkg_guard()`, ~lines 158-243). It is set from the
+  `BACKEND` argument (or read back as a default when omitted) and then mapped
+  onto `NANO_ROS_RMW` before nano-ros is imported — so anything set via
+  `-DNROS_RMW=…` on one of the copy-out `examples/**/CMakeLists.txt` ultimately
+  drives the same root knob.
+
+In short: writing your own top-level `CMakeLists.txt` against nano-ros directly
+→ set `NANO_ROS_RMW`. Using the `nano_ros_workspace()` / workspace-pkg-guard
+helper (as the standalone examples and `templates/` workspaces do) → set
+`NROS_RMW` (or the `BACKEND` argument), and let the helper translate it.
+
 ## Code Generation
 
 C code generation uses `nano_ros_generate_interfaces()` (from `cmake/NanoRosGenerateInterfaces.cmake`, included automatically by the root `CMakeLists.txt` once nano-ros is `add_subdirectory`'d). The codegen tool (`nros-codegen`) is a Corrosion-built target reachable via `$<TARGET_FILE:nros-codegen>`.

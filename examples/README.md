@@ -14,7 +14,7 @@ examples/
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-- **Platform** (11): `native`, `stm32f4`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
+- **Platform** (11): `native`, `stm32f4`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv-nuttx`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
@@ -40,6 +40,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `qemu-arm-nuttx`          | cpp      | 6     | –    | –          | –    |
 | `qemu-arm-nuttx`          | rust     | 6     | –    | –          | –    |
 | `qemu-esp32-baremetal`    | rust     | 2     | –    | –          | –    |
+| `qemu-riscv-nuttx`        | c        | 1     | –    | –          | –    |
 | `qemu-riscv64-threadx`    | c        | 6     | –    | –          | –    |
 | `qemu-riscv64-threadx`    | cpp      | 6     | –    | –          | –    |
 | `qemu-riscv64-threadx`    | rust     | 6     | –    | –          | –    |
@@ -50,8 +51,12 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `zephyr`                  | cpp      | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
 | `zephyr`                  | rust     | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
 
-Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
-plan that fills these:
+`qemu-riscv-nuttx` currently ships only `c/talker`, built by the separate
+`build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board
+lane — not the `qemu-arm-nuttx` build path above).
+
+Gap themes — see `docs/roadmap/archived/phase-118-example-matrix-coverage.md`
+for the plan that fills these:
 
 - **CycloneDDS matrix-fill** — Phase 175 replaced the old
   `nros-rmw-cyclonedds-staticlib` idea with CMake/Corrosion fixture
@@ -92,11 +97,12 @@ Phase 118.I blocks untriaged retired RMW roots.
 Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
 - `bridges/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
+- `bridges/tt-zenoh-to-cyclonedds/` — Rust bridge, zenoh ↔ Cyclone DDS
 
 ### `workspaces/` — product-shaped multi-package workspaces
 
 Workspaces that follow the book's Node package + Bringup package + Entry
-package workflow. These are built with `nros setup`, `nros ws sync`,
+package workflow. These are built with `nros setup`, `nros sync`,
 `nros codegen-system`, then the platform build tool (`cargo`, `cmake`, `west`,
 `idf.py`, etc.).
 
@@ -104,6 +110,15 @@ package workflow. These are built with `nros setup`, `nros ws sync`,
 - `workspaces/c/` — C Node packages and a C native Entry package
 - `workspaces/cpp/` — C++ Node packages and a C++ native Entry package
 - `workspaces/mixed/` — mixed C / C++ Node packages and a C++ native Entry package
+
+Beyond those four layer-shape references, `examples/workspaces/` also holds 27
+`ws-<topic>-<lang>` capability workspaces — small single-capability demos, one
+per (topic, language) combination, following the same Node + Bringup + Entry
+two-layer scheme. Topics: `bridge` (rust, xrce-rust), `custom-msg` (c, cpp,
+mixed, rust), `launch` (rust), `lifecycle` (c, cpp, rust), `params` (c, cpp,
+rust), `qos` (c, cpp, mixed, rust), `realtime` (c, cpp, rust + `cpp-mps2` /
+`cpp-rclcpp` / `cpp-subnode` / `cpp-subnode-portable` variants), `safety` (c,
+cpp, rust). A full per-workspace table lands in a later wave.
 
 ### `templates/` — multi-platform copy-out recipes
 
@@ -162,9 +177,9 @@ cd examples/native/rust/listener && cargo run     # terminal 3
 ### QEMU bare-metal Cortex-M3 (MPS2-AN385)
 
 ```bash
-just qemu-baremetal setup
-just qemu-baremetal build
-just qemu-baremetal talker      # spawns QEMU + nros-rs-talker
+just qemu setup
+just qemu build
+just qemu talker      # spawns QEMU + nros-rs-talker
 ```
 
 ### STM32F4 + RTIC (NUCLEO-F429ZI)
@@ -210,5 +225,5 @@ For DDS-side interop (cyclonedds), see `docs/reference/rmw_zenoh_interop.md`.
 - [`CLAUDE.md`](../CLAUDE.md) — development guidelines, "Examples = Standalone Projects" section
 - [`docs/guides/zephyr-setup.md`](../docs/guides/zephyr-setup.md) — Zephyr workspace bootstrap
 - [`docs/reference/rmw_zenoh_interop.md`](../docs/reference/rmw_zenoh_interop.md) — ROS 2 wire protocol
-- [`docs/roadmap/phase-118-example-matrix-coverage.md`](../docs/roadmap/phase-118-example-matrix-coverage.md) — coverage-gap fill plan
-- [`docs/roadmap/phase-131-examples-tree-revision.md`](../docs/roadmap/phase-131-examples-tree-revision.md) — this tree's restructuring history
+- [`docs/roadmap/archived/phase-118-example-matrix-coverage.md`](../docs/roadmap/archived/phase-118-example-matrix-coverage.md) — coverage-gap fill plan
+- [`docs/roadmap/archived/phase-131-examples-tree-revision.md`](../docs/roadmap/archived/phase-131-examples-tree-revision.md) — this tree's restructuring history
