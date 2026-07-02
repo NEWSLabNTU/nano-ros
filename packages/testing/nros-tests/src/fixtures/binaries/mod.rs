@@ -64,11 +64,13 @@ static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the native-rs-talker binary with safety-e2e
+/// Cached path to the `safety-chatter-talker` fixture bin (phase-277 W3.a —
+/// was the talker `safety-e2e` feature build).
 static NATIVE_TALKER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the native-rs-listener binary with safety-e2e
+/// Cached path to the `safety-chatter-listener` fixture bin (phase-277 W3.a —
+/// was the listener `safety-e2e`-gated second `main`).
 static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-listener binary with unstable-zenoh-api (zero-copy)
@@ -2633,18 +2635,21 @@ pub fn build_native_action_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-talker with safety-e2e feature (cached)
+/// Resolve the prebuilt `safety-chatter-talker` fixture (cached).
 ///
-/// Uses a separate `target-safety` directory to avoid overwriting the
-/// standard talker binary that other parallel test processes use.
+/// phase-277 W3.a: was `examples/native/rust/talker --features safety-e2e`
+/// in `target-safety/`; now a dedicated bin
+/// (`packages/testing/nros-tests/bins/safety-chatter-talker`) with the
+/// safety features baked, so the example manifest carries no test-only
+/// features. Same behavior: Int32 on /chatter every 1 s + backend CRC attach.
 pub fn build_native_talker_safety() -> TestResult<&'static Path> {
     NATIVE_TALKER_SAFETY_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/talker");
-            let target_dir = example_dir.join("target-safety");
-            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-talker");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/safety-chatter-talker"));
+            require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -2665,18 +2670,21 @@ pub fn build_native_talker_header() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-listener with safety-e2e feature (cached)
+/// Resolve the prebuilt `safety-chatter-listener` fixture (cached).
 ///
-/// Uses a separate `target-safety` directory to avoid overwriting the
-/// standard listener binary that other parallel test processes use.
+/// phase-277 W3.a: was the `safety-e2e`-gated second `main` of
+/// `examples/native/rust/listener` (built into `target-safety/`); now a
+/// dedicated bin (`packages/testing/nros-tests/bins/safety-chatter-listener`)
+/// so the example keeps a single cfg-free `main`. Same behavior: `.safety()`
+/// subscription on /chatter logging `[SAFETY] seq_gap=.. dup=.. crc=..`.
 pub fn build_native_listener_safety() -> TestResult<&'static Path> {
     NATIVE_LISTENER_SAFETY_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/listener");
-            let target_dir = example_dir.join("target-safety");
-            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-listener");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/safety-chatter-listener"));
+            require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
 }

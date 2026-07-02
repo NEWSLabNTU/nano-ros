@@ -25,11 +25,9 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
-# Zenoh-specific feature carry-overs. NOTE: `nros/safety-e2e` does NOT forward to
-# the zenoh backend — the CRC attach/validate lives behind `nros-rmw-zenoh`'s own
-# `safety-e2e`, so enable it directly (optional → only on the rmw-zenoh path), else
-# `crc_valid` is always None on the wire.
-safety-e2e         = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+# Zenoh-specific feature carry-overs (link/feature plumbing only — no source
+# gates). The E2E-safety listener variant lives in
+# `packages/testing/nros-tests/bins/safety-chatter-listener`.
 unstable-zenoh-api = ["nros/unstable-zenoh-api"]
 link-tls           = ["nros-rmw-zenoh?/link-tls"]
 

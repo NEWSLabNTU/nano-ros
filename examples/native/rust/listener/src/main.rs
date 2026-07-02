@@ -26,52 +26,6 @@ use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-/// Safety-e2e listener (zenoh-specific): validates CRC + tracks seq gaps.
-#[cfg(feature = "safety-e2e")]
-fn main() {
-    // Register the RMW backend the build linked (idempotent; must run before
-    // the executor opens). RMW selection is build/config, never source.
-    nros_board_native::register_linked_rmw();
-
-    env_logger::init();
-    info!("nros Native Listener (Safety E2E)");
-
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
-    let cfg = ctx.config("listener");
-    let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
-
-    let nid = executor
-        .node_builder("listener")
-        .build()
-        .expect("Failed to build node");
-    let mut count: u64 = 0;
-    executor
-        .node_mut(nid)
-        .subscription("/chatter")
-        .typed::<Int32>()
-        .safety()
-        .build(move |msg, status| {
-            count += 1;
-            let crc_str = match status.crc_valid {
-                Some(true) => "ok",
-                Some(false) => "FAIL",
-                None => "n/a",
-            };
-            info!(
-                "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
-                count, msg.data, status.gap, status.duplicate, crc_str
-            );
-        })
-        .expect("Failed to add safety subscription");
-    info!("Safety subscriber created for topic: /chatter");
-    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
-        error!("Spin error: {:?}", e);
-    }
-}
-
-/// Standard listener — subscribe to `std_msgs/Int32` on `/chatter` and
-/// log each message.
-#[cfg(not(feature = "safety-e2e"))]
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens). RMW selection is build/config, never source.

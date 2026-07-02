@@ -34,11 +34,8 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 # no-op (or fail to compile) under the other RMWs — the matrix lint
 # advertises only `rmw-*` for each example; downstream tooling
 # should not combine zenoh-specific gates with `rmw-cyclonedds` /
-# `rmw-xrce`.
-# The CRC attach lives behind the zenoh backend's OWN safety-e2e feature;
-# `nros/safety-e2e` does not forward to it, so enable it directly (optional, so it
-# only applies on the rmw-zenoh path — cyclone/xrce carry no zenoh CRC gate).
-safety-e2e     = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+# `rmw-xrce`. The E2E-safety talker variant lives in
+# `packages/testing/nros-tests/bins/safety-chatter-talker`.
 param-services = ["nros/param-services"]
 link-tls       = ["nros-rmw-zenoh?/link-tls"]
 # phase-267 (non-flat bridge e2e) — also publish a NESTED message

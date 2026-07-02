@@ -1,0 +1,40 @@
+[workspace]
+
+[package]
+name = "safety-chatter-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Imperative E2E-safety listener fixture (moved out of examples/native/rust/listener in phase-277 W3.a). Subscribes /chatter Int32 via the builder `.safety()` opt-in and logs the per-message IntegrityStatus (`[SAFETY] seq_gap=.. dup=.. crc=..`). Cross-process subscriber for tests/safety_e2e.rs, paired with the safety-chatter-talker fixture over zenohd. The declarative (`Node` + NodeContext) sibling lives in bins/declarative-safety-listener."
+
+[[bin]]
+name = "safety-chatter-listener"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+    "safety-e2e",
+] }
+nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+    # The CRC attach (publisher) + validate (subscriber) live behind the
+    # BACKEND's own safety-e2e feature; `nros/safety-e2e` does not forward to it,
+    # so it must be enabled directly or `crc_valid` is always None.
+    "safety-e2e",
+] }
+std_msgs = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+std_msgs = { path = "generated/std_msgs" }
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

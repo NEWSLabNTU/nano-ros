@@ -1357,13 +1357,13 @@ dir = "examples/native/rust/listener"
 features = ["link-tls"]
 target_dir = "target-tls"
 
-# Safety-e2e variant.
+# E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
+# build in target-safety/; now a dedicated fixture bin with the safety
+# features baked, so the example manifest stays free of test-only features).
 [[fixture]]
 platform = "native"
 lang = "rust"
-dir = "examples/native/rust/talker"
-features = ["safety-e2e"]
-target_dir = "target-safety"
+dir = "packages/testing/nros-tests/bins/safety-chatter-talker"
 
 # phase-267 — `header` variant: also publishes a NESTED std_msgs/Header on /header,
 # for the declarative bridge's non-flat forwarding e2e
@@ -1375,12 +1375,12 @@ dir = "examples/native/rust/talker"
 features = ["header"]
 target_dir = "target-header"
 
+# E2E-safety listener (phase-277 W3.a — was the listener `safety-e2e`-gated
+# second `main`; the example keeps only the plain listener).
 [[fixture]]
 platform = "native"
 lang = "rust"
-dir = "examples/native/rust/listener"
-features = ["safety-e2e"]
-target_dir = "target-safety"
+dir = "packages/testing/nros-tests/bins/safety-chatter-listener"
 
 # Zero-copy (unstable zenoh receive API) variant.
 [[fixture]]
