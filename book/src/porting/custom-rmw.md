@@ -470,9 +470,11 @@ through `MessageInfo`:
 - **DDS**: sample identity and source timestamp fall out of the DDS
   sample info — your backend only has to forward them.
 
-If you skip this, `add_subscription_with_info()` on consumers always
-reports `MessageInfo::default()`, and downstream features (safety-e2e
-checks, source-timestamp ordering) silently degrade.
+If you skip this, subscriptions built with the `.message_info()` builder
+(`node.subscription(topic).generic(...).message_info().build(cb)`, or
+`.typed::<M>().message_info()`) on consumers always report
+`MessageInfo::default()`, and downstream features (safety-e2e checks,
+source-timestamp ordering) silently degrade.
 
 ### 3. Actions decompose into five underlying channels
 

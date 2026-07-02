@@ -117,7 +117,7 @@ stub that wires signal handling and forwards to your function.
 #include "std_msgs.h"
 
 int nros_app_main(int argc, char** argv) {
-    // 1. nros_init() — opens the zenoh session
+    // 1. nros_support_init() — opens the zenoh session
     // 2. nros_executor_init() / nros_node_init()
     // 3. std_msgs_msg_int32_publisher_init() — typed publisher
     // 4. nros_timer_init() with a 1 Hz period + publish callback

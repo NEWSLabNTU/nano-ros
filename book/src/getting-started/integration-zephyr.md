@@ -76,44 +76,96 @@ The application `CMakeLists.txt` is a stock Zephyr app — `find_package(Zephyr)
 + `target_sources`. **No `add_subdirectory(<nano-ros>)`** is needed;
 the module shell handles it once `CONFIG_NROS=y` flips on.
 
-A minimal `apps/my_app/` looks like this (mirrors
+A minimal `apps/my_app/` looks like this — the shipped
 [`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker)
-with the names stripped to the essentials):
+quoted directly (only the project/class names are trimmed to `my_app`), so
+this page can't drift from the real API surface. It is a **stateful C
+component** (a struct + a `configure` function, RFC-0043 / phase-244.C2) —
+not a hand-written `main()` — because the Zephyr typed carrier generates
+the entry point and calls into the component by identity:
 
 ```cmake
 # apps/my_app/CMakeLists.txt
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_app)
-target_sources(app PRIVATE src/main.c)
+
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      talker
+    CLASS     my_app::Talker
+    LANGUAGE  C
+    TYPED
+    SOURCES   src/Talker.c
+    DEPLOY    zephyr)
 ```
 
 ```c
-// apps/my_app/src/main.c
-#include <nros/nros.h>
-#include <nros/publisher.h>
-#include <std_msgs/msg/int32.h>
+// apps/my_app/src/Talker.c
+// `talker_configure` creates a raw publisher on `/chatter` + a timer that
+// publishes a CDR-encoded Int32 counter each tick. `NROS_C_COMPONENT` emits
+// the C-ABI factory/configure the Zephyr typed Entry carrier calls.
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
-int main(void) {
-    nros_init_args_t args = nros_init_args_default();
-    nros_context_t ctx;
-    nros_init(&args, &ctx);
-    nros_node_t node;
-    nros_create_node(&ctx, "my_app", &node);
-    nros_publisher_t pub;
-    nros_create_publisher(&node, std_msgs__msg__Int32_type_support(),
-                          "/chatter", &pub);
-    std_msgs__msg__Int32 msg = { .data = 0 };
-    while (nros_ok(&ctx)) {
-        nros_publish(&pub, &msg);
-        msg.data++;
-        k_sleep(K_SECONDS(1));
-    }
-    return 0;
+#include <nros/component.h>
+
+typedef struct {
+    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    int32_t count;
+} talker_t;
+
+static void write_u32_le(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
 }
+
+static void on_tick(void* ctx) {
+    talker_t* self = (talker_t*)ctx;
+    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
+    uint8_t buf[8];
+    buf[0] = 0x00;
+    buf[1] = 0x01;
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+    write_u32_le(buf + 4, (uint32_t)self->count);
+    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
+        printf("Published: %d\n", (int)self->count);
+    }
+    self->count++;
+}
+
+static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+    self->count = 0;
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
+                                           nros_c_qos_default(), self->pub);
+    if (rc != 0) {
+        return rc;
+    }
+    size_t timer_handle;
+    return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
+}
+
+NROS_C_COMPONENT(talker_t, talker_configure)
 ```
 
-`prj.conf` is the one shown in [Configure](#configure) below.
+See [`examples/zephyr/c/talker/src/Talker.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/c/talker/src/Talker.c)
+for the up-to-date source (this is a verbatim copy, only stripped of its file
+header comment). Note the `nros_cpp_*` symbol prefix: those are C-ABI
+functions from `nros-cpp` (the `cpp` is a namespace prefix, not C++
+linkage) — a C component links against them directly, and shares the same
+executor + node as a C++ component would.
+
+`prj.conf` is the one shown in [Configure](#configure) below — note it needs
+**both** `CONFIG_NROS_C_API=y` and `CONFIG_NROS_CPP_API=y`: the typed
+Zephyr carrier that drives this component's `configure` is C++, so the
+`nros-cpp` header surface must be on the app include path even though
+`Talker.c` itself is C.
 
 ## Prerequisites
 

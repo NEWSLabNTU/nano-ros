@@ -40,7 +40,7 @@ Provision the ThreadX flavour you need (+ the RMW):
 ```bash
 nros setup threadx-linux --rmw zenoh          # POSIX-sim flavour; --rmw defaults to zenoh
 nros setup qemu-riscv64-threadx --rmw zenoh   # only if you need the RISC-V64 QEMU flow
-source ./setup.bash
+source ./activate.sh
 ```
 
 The RMW host daemon must be **running** before any example: `zenohd` for zenoh,

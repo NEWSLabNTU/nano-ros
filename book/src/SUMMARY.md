@@ -28,12 +28,15 @@
 
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
 - [Zephyr (west module)](./getting-started/integration-zephyr.md)
+  - [Zephyr (contributor)](./getting-started/zephyr.md)
 - [NuttX (apps/external)](./getting-started/integration-nuttx.md)
+  - [NuttX (contributor)](./getting-started/nuttx.md)
 - [ThreadX](./getting-started/threadx.md)
 - [ESP32 (esp-hal)](./getting-started/esp32.md)
 - [ESP32 (ESP-IDF component)](./getting-started/integration-esp-idf.md)
 - [Bare-metal Cortex-M3](./getting-started/bare-metal.md)
 - [PX4 Autopilot](./getting-started/px4.md)
+  - [PX4 (integration shell)](./getting-started/integration-px4.md)
 - [ARM FVP (Cortex-A SMP)](./getting-started/arm-fvp.md)
 - [Native POSIX (reference)](./platform-guides/native-posix.md)
 
