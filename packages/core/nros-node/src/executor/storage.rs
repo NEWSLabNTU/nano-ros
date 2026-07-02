@@ -301,8 +301,14 @@ mod tests {
 
     #[test]
     fn carve_yields_right_lengths_and_inits() {
+        // Heap-allocate: the default test config (MAX_CBS/MAX_SC/ARENA_SIZE from
+        // build.rs) makes this backing array tens of KB, well past
+        // `clippy::large_stack_arrays`'s threshold — and the size here is
+        // incidental (mirrors production config), not the point under test, so
+        // boxing is the right fix rather than an allow.
         let mut backing =
-            [const { MaybeUninit::<u64>::uninit() }; executor_storage_u64_len(CBS, SC, ARENA)];
+            alloc::vec![const { MaybeUninit::<u64>::uninit() }; executor_storage_u64_len(CBS, SC, ARENA)]
+                .into_boxed_slice();
         let s = unsafe { carve(&mut backing, CBS, SC, ARENA) };
         assert_eq!(s.arena.len(), ARENA);
         assert_eq!(s.entries.len(), CBS);
