@@ -13,4 +13,16 @@ unsafe extern "C" {
     fn nros_cpp_publish_raw(handle: *mut core::ffi::c_void, data: *const u8, len: usize) -> i32;
 }
 
+/// View a fixed-capacity C string buffer (`char[N]`, NUL-terminated) as a
+/// `&str`, stopping at the FIRST NUL. The bytes after the terminator are
+/// uninitialized C++ stack memory (`nros::FixedString` only writes the
+/// terminator), so validating the WHOLE buffer with `from_utf8` would
+/// spuriously fail on garbage and silently serialize "" (phase-277 W4 bug,
+/// found when the chatter examples flipped to std_msgs/String).
+#[allow(dead_code)]
+fn fixed_str(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    core::str::from_utf8(&buf[..end]).unwrap_or("")
+}
+
 @NROS_CPP_FFI_INCLUDES@

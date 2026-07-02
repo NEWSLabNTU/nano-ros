@@ -72,14 +72,14 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
         writer.write_string(s)?;
     }
 {%- else %}
-    writer.write_string(core::str::from_utf8(&msg.{{ field.name }}).unwrap_or("").trim_end_matches('\0'))?;
+    writer.write_string(fixed_str(&msg.{{ field.name }}))?;
 {%- endif %}
 {%- else if field.is_array %}
     for i in 0..{{ field.array_size }} {
 {%- if field.is_primitive_element %}
         writer.{{ field.element_cdr_write_method }}(msg.{{ field.name }}[i])?;
 {%- else if field.is_string_element %}
-        writer.write_string(core::str::from_utf8(&msg.{{ field.name }}[i]).unwrap_or("").trim_end_matches('\0'))?;
+        writer.write_string(fixed_str(&msg.{{ field.name }}[i]))?;
 {%- else %}
         {{ field.nested_serialize_fn }}(&msg.{{ field.name }}[i], writer)?;
 {%- endif %}
@@ -90,7 +90,7 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
     for i in 0..msg.{{ field.name }}.size {
 {%- if field.is_string_element %}
         let e = unsafe { &*msg.{{ field.name }}.data.add(i) };
-        writer.write_string(core::str::from_utf8(e).unwrap_or("").trim_end_matches('\0'))?;
+        writer.write_string(fixed_str(e))?;
 {%- else if field.is_primitive_element %}
         writer.{{ field.element_cdr_write_method }}(unsafe { *msg.{{ field.name }}.data.add(i) })?;
 {%- else %}
@@ -103,7 +103,7 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
 {%- if field.is_primitive_element %}
         writer.{{ field.element_cdr_write_method }}(msg.{{ field.name }}.data[i])?;
 {%- else if field.is_string_element %}
-        writer.write_string(core::str::from_utf8(&msg.{{ field.name }}.data[i]).unwrap_or("").trim_end_matches('\0'))?;
+        writer.write_string(fixed_str(&msg.{{ field.name }}.data[i]))?;
 {%- else %}
         {{ field.nested_serialize_fn }}(&msg.{{ field.name }}.data[i], writer)?;
 {%- endif %}
