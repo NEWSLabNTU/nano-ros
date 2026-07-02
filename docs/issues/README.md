@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#135** — [Native zenoh service/action query path
+  broken](0135-native-zenoh-service-query-path-broken.md): client `get` returns
+  `Transport(Timeout)` instantly, server never receives; reproduced with pre-W5 examples at
+  `origin/main`; pub/sub, XRCE, and Cyclone unaffected (found in phase-277 W5).
 - **#134** — [nros-c `AtomicU64` breaks riscv32 NuttX
   builds](0134-nros-c-atomicu64-breaks-riscv32-nuttx.md): `qemu-riscv-nuttx` C examples cannot
   compile nros-c (no 64-bit atomics on riscv32); pre-existing, baselined during phase-277 W4.
