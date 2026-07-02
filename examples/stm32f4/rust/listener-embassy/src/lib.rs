@@ -56,10 +56,10 @@
 //!
 //! Phase 216.C.5 ships the trait-shaped scaffolding only. The body
 //! deserialises a 4-byte little-endian `i32` (the wire shape of
-//! `std_msgs/Int32`), avoiding a dep on `std_msgs` (which would
+//! `std_msgs/String`), avoiding a dep on `std_msgs` (which would
 //! require `nros ws sync` to materialise `generated/std_msgs/`
 //! before cross-check). A follow-up that finishes the trampoline-
-//! registration story swaps this for a typed `Int32` subscribe once
+//! registration story swaps this for a typed `String` subscribe once
 //! `generated/` ships.
 
 #![no_std]
@@ -81,7 +81,7 @@ pub struct Listener;
 /// spawn-from-sync escape. See the module doc for the Spawner
 /// plumbing TODO.
 pub struct ListenerState {
-    /// Tag returned from `create_subscription_static::<PlaceholderInt32>("/chatter")`.
+    /// Tag returned from `create_subscription_static::<PlaceholderString>("/chatter")`.
     /// Macro-emitted init bodies use [`SubscriptionTag::placeholder`]
     /// as a sentinel; the real tag is bound at register time by a
     /// follow-up wave of Phase 216.C.
@@ -108,7 +108,7 @@ impl Node for Listener {
         // returned `SubscriptionTag` is what `on_callback` matches
         // against the delivered `Callback<'_>`. See the module
         // doc for the Deferred dispatch rationale.
-        let _sub_chatter = node.create_subscription_static::<PlaceholderInt32>("/chatter")?;
+        let _sub_chatter = node.create_subscription_static::<PlaceholderString>("/chatter")?;
         Ok(())
     }
 }
@@ -139,12 +139,12 @@ impl ExecutableNode for Listener {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if state.sub_chatter == callback {
-            // 4-byte LE decode == wire shape of `std_msgs/Int32`
+            // CDR string decode == wire shape of `std_msgs/String`
             // (CDR-PL, header omitted — placeholder; the Embassy
             // dispatch path is not yet hooked up, so this never
             // reaches the wire on a real flash).
             let payload = ctx.payload();
-            let msg = decode_placeholder_int32(payload);
+            let msg = decode_placeholder_string(payload);
 
             // Spawn-from-sync escape: enqueue async work. `on_callback`
             // is a sync stack frame (the framework's deferred-
@@ -163,24 +163,31 @@ impl ExecutableNode for Listener {
     }
 }
 
-/// Decode a [`PlaceholderInt32`] from a raw CDR payload. 4-byte LE
-/// `i32` (header omitted in the placeholder; mirrors the
-/// `talker_pkg` encode path).
-fn decode_placeholder_int32(payload: &[u8]) -> PlaceholderInt32 {
-    let mut bytes = [0u8; 4];
-    let n = core::cmp::min(payload.len(), 4);
-    bytes[..n].copy_from_slice(&payload[..n]);
-    PlaceholderInt32 {
-        data: i32::from_le_bytes(bytes),
+/// Decode a [`PlaceholderString`] from a raw CDR payload: u32 LE
+/// length (includes the NUL) + bytes (header omitted in the
+/// placeholder; mirrors the placeholder encode path).
+fn decode_placeholder_string(payload: &[u8]) -> PlaceholderString {
+    let mut msg = PlaceholderString {
+        data: [0; 32],
+        len: 0,
+    };
+    if payload.len() >= 4 {
+        let strlen = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+        let text = strlen.saturating_sub(1); // drop the trailing NUL
+        let avail = payload.len() - 4;
+        let n = text.min(avail).min(msg.data.len());
+        msg.data[..n].copy_from_slice(&payload[4..4 + n]);
+        msg.len = n;
     }
+    msg
 }
 
 /// Async sidekick driven by the spawn-from-sync escape. The body is
 /// a stub today (`defmt::info!` log only); a real listener would do
 /// I/O, a publish that yields, etc.
 #[embassy_executor::task]
-async fn handle_downstream(msg: PlaceholderInt32) {
-    defmt::info!("Received: {}", msg.data);
+async fn handle_downstream(msg: PlaceholderString) {
+    defmt::info!("I heard: [{=str}]", msg.as_str());
     // Real bodies put `.await`-shaped work here, e.g.
     // `embassy_time::Timer::after_secs(1).await;`.
 }
@@ -191,26 +198,37 @@ nros::node!(Listener);
 // declarative `create_subscription_static` call type-checks without
 // dragging `std_msgs` (which is codegen-materialised under
 // `generated/std_msgs/`) into this skeleton. The wire shape matches
-// `std_msgs/Int32`. Follow-ups switch to the real type once
+// `std_msgs/String` (phase-277 W4: the chatter payload is the official
+// demo `Hello World: N`). Follow-ups switch to the real type once
 // `generated/` ships for this example.
 #[derive(Copy, Clone)]
-pub struct PlaceholderInt32 {
-    pub data: i32,
+pub struct PlaceholderString {
+    pub data: [u8; 32],
+    pub len: usize,
 }
 
-impl nros::Serialize for PlaceholderInt32 {
+impl PlaceholderString {
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.data[..self.len]).unwrap_or("")
+    }
+}
+
+impl nros::Serialize for PlaceholderString {
     fn serialize(&self, _writer: &mut nros::CdrWriter) -> Result<(), nros::SerError> {
         Ok(())
     }
 }
 
-impl nros::Deserialize for PlaceholderInt32 {
+impl nros::Deserialize for PlaceholderString {
     fn deserialize(_reader: &mut nros::CdrReader) -> Result<Self, nros::DeserError> {
-        Ok(Self { data: 0 })
+        Ok(Self {
+            data: [0; 32],
+            len: 0,
+        })
     }
 }
 
-impl nros::RosMessage for PlaceholderInt32 {
-    const TYPE_NAME: &'static str = "std_msgs/msg/Int32";
+impl nros::RosMessage for PlaceholderString {
+    const TYPE_NAME: &'static str = "std_msgs/msg/String";
     const TYPE_HASH: &'static str = "";
 }

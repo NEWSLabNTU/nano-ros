@@ -4,7 +4,7 @@
 //! which is a board-build + deploy-overlay concern (the entry pkg builds the
 //! board with the `serial` feature + sets a `serial/UART_0#…` locator), never
 //! node logic. Declares a `/chatter` subscription bound to `on_message`; each
-//! typed `std_msgs/Int32` delivery logs `Received: {data}`.
+//! typed `std_msgs/String` delivery logs `I heard: [Hello World: N]`.
 
 #![no_std]
 
@@ -13,7 +13,7 @@ use nros::{
     NodeResult, TickCtx,
 };
 use nros_log::{Logger, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 static LOGGER: Logger = Logger::new("serial_listener");
 
@@ -26,8 +26,8 @@ impl Node for SerialListenerNode {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("serial_listener"))?;
-        node.create_subscription_for_callback_name::<Int32>("on_message", "/chatter")?;
-        nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/Int32)");
+        node.create_subscription_for_callback_name::<StringMsg>("on_message", "/chatter")?;
+        nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/String)");
         nros_info!(&LOGGER, "Subscriber declared");
         nros_info!(&LOGGER, "Waiting for messages...");
         Ok(())
@@ -41,9 +41,9 @@ impl ExecutableNode for SerialListenerNode {
 
     fn on_callback(_state: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_message"
-            && let Ok(msg) = ctx.message::<Int32>()
+            && let Ok(msg) = ctx.message::<StringMsg>()
         {
-            nros_info!(&LOGGER, "Received: {}", msg.data);
+            nros_info!(&LOGGER, "I heard: [{}]", msg.data);
         }
     }
 

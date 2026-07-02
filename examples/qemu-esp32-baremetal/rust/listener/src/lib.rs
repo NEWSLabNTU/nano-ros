@@ -1,6 +1,6 @@
 //! ESP32-C3 QEMU Listener — Node pkg (agnostic application logic).
 //!
-//! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last
+//! Subscribes to `std_msgs/String` on `/chatter` and tracks the last
 //! value seen.
 //!
 //! Node pkg shape: `register()` declares the node + subscription;
@@ -12,7 +12,7 @@
 #![no_std]
 
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 /// Listener component — last value seen on `/chatter`.
 pub struct Listener;
@@ -22,13 +22,14 @@ impl Node for Listener {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
-        let _sub = node.create_subscription_for_callback_name::<Int32>("on_chatter", "/chatter")?;
+        let _sub =
+            node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
         Ok(())
     }
 }
 
 impl ExecutableNode for Listener {
-    /// Last value seen on `/chatter` (state shared across callback ticks).
+    /// Number of messages seen on `/chatter`.
     type State = i32;
 
     fn init() -> Self::State {
@@ -37,11 +38,11 @@ impl ExecutableNode for Listener {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_chatter" {
-            if let Ok(msg) = ctx.message::<Int32>() {
-                *state = msg.data;
+            if let Ok(msg) = ctx.message::<StringMsg>() {
+                *state = state.wrapping_add(1);
                 // Observable per-receive line (routed to the console by the
-                // board's log writer) — the e2e harness asserts on `Received:`.
-                log::info!("Received: {}", msg.data);
+                // board's log writer) — the e2e harness asserts on `I heard:`.
+                log::info!("I heard: [{}]", msg.data);
             }
         }
     }

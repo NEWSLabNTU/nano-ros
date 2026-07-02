@@ -2,7 +2,7 @@
 //!
 //! Platform/RMW-agnostic application logic (RFC-0024 shape): declares a
 //! subscription on `/chatter` bound to the `on_message` callback; each typed
-//! `std_msgs/Int32` delivery logs `Received: {data}`. The boot scaffold
+//! `std_msgs/String` delivery logs `I heard: [Hello World: N]`. The boot scaffold
 //! (reset → `BoardEntry::run_with_deploy` → executor → spin) is owned by
 //! `nros::main!()` + `nros-board-mps2-an385` (Phase 244.D1 enabler) — none of
 //! it appears here. The old imperative `run(Config, |cfg| { … })` closure
@@ -16,7 +16,7 @@ use nros::{
     NodeResult, TickCtx,
 };
 use nros_log::{Logger, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 // Phase 88.16.C — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("listener");
@@ -30,8 +30,8 @@ impl Node for ListenerNode {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
-        node.create_subscription_for_callback_name::<Int32>("on_message", "/chatter")?;
-        nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/Int32)");
+        node.create_subscription_for_callback_name::<StringMsg>("on_message", "/chatter")?;
+        nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/String)");
         nros_info!(&LOGGER, "Subscriber declared");
         nros_info!(&LOGGER, "Waiting for messages...");
         Ok(())
@@ -45,9 +45,9 @@ impl ExecutableNode for ListenerNode {
 
     fn on_callback(_state: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_message"
-            && let Ok(msg) = ctx.message::<Int32>()
+            && let Ok(msg) = ctx.message::<StringMsg>()
         {
-            nros_info!(&LOGGER, "Received: {}", msg.data);
+            nros_info!(&LOGGER, "I heard: [{}]", msg.data);
         }
     }
 
