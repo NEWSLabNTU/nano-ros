@@ -143,18 +143,18 @@ static void freertos_tier_task(void* arg) {
         }
     }
 
-    /* Spin loop: spin_once then yield for spin_period_us. */
+    /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
+     * read (issue #126 defect B): timeout 0 returns immediately and never drives
+     * the zenoh-pico session's TX/handshake from the spin path, so the shared
+     * session never connects. `run_components` (`component_spin_loop`) and the
+     * Rust `run_tiers_entry` both spin with a real timeout; mirror that. */
     uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
-    TickType_t delay_ticks = pdMS_TO_TICKS(period_ms);
-    if (delay_ticks == 0) {
-        delay_ticks = 1;
-    }
     for (;;) {
-        nros_cpp_spin_once(ctx->executor_storage, 0);
-        vTaskDelay(delay_ticks);
+        nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
+        vTaskDelay(1);
     }
 }
 
@@ -294,18 +294,17 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
         }
     }
 
-    /* Boot tier spin loop — runs forever on embedded firmware. */
+    /* Boot tier spin loop — runs forever on embedded firmware. Blocking-read
+     * spin_once (period as timeout) so the boot session's zenoh handshake is
+     * driven from the spin path (issue #126 defect B); timeout 0 did not
+     * connect. Mirrors run_components / the Rust run_tiers_entry. */
     uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
-    TickType_t delay_ticks = pdMS_TO_TICKS(period_ms);
-    if (delay_ticks == 0) {
-        delay_ticks = 1;
-    }
     for (;;) {
-        nros_cpp_spin_once(boot_storage, 0);
-        vTaskDelay(delay_ticks);
+        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        vTaskDelay(1);
     }
 
     /* Unreachable — satisfies the compiler. */

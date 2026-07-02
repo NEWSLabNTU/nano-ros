@@ -56,11 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   the standalone Entry-pkg `[[bin]]` won't link against NuttX libc (`undefined reference to
   write/clock_gettime/__errno/exit`), plus a duplicate `[patch.crates-io]` TOML bug in the
   sync + libc-patch path. Tracked as W6-gate exceptions so it is not a silent gap.
-- **#126** — [Embedded C/C++ `run_tiers` (FreeRTOS) does not run: tier-task stack overflow +
-  shared session never connects under the multi-task structure](0126-embedded-run-tiers-freertos-session-and-stack.md):
-  phase-274 W3 landed embedded C/C++ Model 1 (FreeRTOS/mps2) code-complete + builds/links, but the
-  QEMU run fails on (A) tier-task stack sizing and (B) the run_tiers boot session never connecting
-  where run_components does — the shared-session-across-tasks (zenoh-pico) issue.
 - **#125** — [Rust `nros::main!` multi-tier path does not seed `bind_group_sched` from
   `group_tiers`](0125-rust-entry-macro-group-seed-bind-group-sched.md): the Rust seed deferred from
   phase-273 W4 (portability e2e lifted `NodeSpansTiers`).
@@ -77,7 +72,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#103** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#126** —
+[Embedded C/C++ `run_tiers` (FreeRTOS) does not
+run](archived/0126-embedded-run-tiers-freertos-session-and-stack.md): phase-274 W3's embedded
+RFC-0015 Model 1 now runs on QEMU mps2-an385. Three fixes — (0) the "native single-tier emit" was a
+**stale `nros` CLI** (`just setup-cli`); (A) **256 KiB tier-task stack** (64 KiB HardFaulted); (B)
+the session-never-connects blocker was **`spin_once(storage, 0)`** — timeout 0 never drove the
+zenoh-pico handshake; passing the tier period as the spin timeout (blocking read, as `run_components`
++ the Rust path do) fixes it. Both tiers now schedule + publish at their periods (`[ctrl]` 10 ms ~6×
+`[telem]` 100 ms, each tick gated on `publish_raw().ok()`). **#103** —
 [C++ lifecycle had no idiomatic wrapper
 class](archived/0103-cross-language-capability-surface-gaps.md): the last cross-language capability
 gap. Its other two audited gaps were already closed (multi-type params — Phase 91.C/117.9; RT tiers

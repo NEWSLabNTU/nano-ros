@@ -1,11 +1,25 @@
 ---
 id: 126
 title: "Embedded C/C++ run_tiers (FreeRTOS) does not run: tier-task stack overflow + shared session never connects under the multi-task structure"
-status: open
+status: resolved
 type: bug
 area: freertos
 related: [phase-274, rfc-0015, rfc-0016]
+resolved_in: "phase-274 W3 follow-up (2026-07-03)"
 ---
+
+> **RESOLVED (2026-07-03).** All three blockers fixed + verified on QEMU mps2-an385:
+> (0) the "native single-tier emit" was a **stale `nros` CLI** — `just setup-cli` →
+> correct `FreertosBoard::run_tiers` emit + link; (A) **256 KiB tier-task stack** →
+> no HardFault; (B) the session-never-connects blocker was **`spin_once(storage, 0)`**
+> in the C run_tiers spin loops — timeout 0 returns immediately and never drives the
+> zenoh-pico session RX/TX/handshake, so the executor never ran. Passing the tier
+> **period as the spin timeout** (blocking read, as `component_spin_loop` + the Rust
+> `run_tiers_entry` do) fixes it. Result: both tiers schedule + **publish** at their
+> declared periods — `[ctrl] tick` (10 ms) ~6× the rate of `[telem] tick` (100 ms),
+> and each tick prints only on `publish_raw().ok()`, proving the shared session
+> connects. RFC-0015 Model 1 (per-tier executors over one shared session) is proven
+> on embedded FreeRTOS. See the resolution section at the end.
 
 ## Summary
 
@@ -75,16 +89,20 @@ does NOT propagate `[tiers.*.freertos].stack_bytes` into `NativeTierSpec` (the e
 `stack_bytes = 0`), so config-driven per-tier sizing needs an `emit_cpp` fix; the 256 KiB C default
 is the working stopgap.
 
-### Defect B (session never connects) — STILL OPEN, but narrowed
-With A fixed, `run_tiers` executes **completely** (init ok, tier spawned, boot spins — no crash),
-and the connect **locator is correctly threaded** (`FreertosBoard::run_tiers` passes the
-compile-time `NROS_ENTRY_LOCATOR = tcp/192.0.3.1:17851`). Yet the zenoh session never reaches the
-host `zenohd` (zero connections seen, no `[ctrl]`/`[telem]` ticks). **Ruled out this pass:** tier
-stack (A), tier-task starvation (a 3 s **uncontended boot-session warm-up before spawning tiers did
-NOT help** — so it is not a scheduling-starvation race), a crash, and a missing/empty locator.
-**Remaining:** `nros_cpp_init` returns OK (session object opened) but the zenoh-pico session never
-completes its TCP/handshake to `zenohd` under the C `run_tiers` path — the single-tier
-`run_components` (`nros::init` + spin) connects in the identical env. Next: diff the zenoh-pico
-session **connect + read/lease task** bring-up between `nros_cpp_init` (C run_tiers) and the
-`run_components` path — whichever drives the connection completion is missing/mis-ordered in the
-former. That is the load-bearing remaining item.
+### Defect B (session never connects) — RESOLVED (root cause: `spin_once(…, 0)`)
+Isolated by a control experiment: the single-tier sibling (`workspace-cpp-freertos`,
+`run_components`) **connects + publishes** (`Published: 0..N`) in the exact same QEMU/zenohd/slirp
+harness (`net=192.0.3.0/24,host=192.0.3.1`, zenohd on the fixture's locator port) — so the harness,
+network, backend register, RNG seed, and locator are all fine. The bug was **run_tiers-specific**:
+the C spin loops called `nros_cpp_spin_once(storage, 0)`. Timeout **0** returns immediately without
+driving the zenoh-pico session's RX/TX/handshake from the spin path, so the executor never ran and
+the session never completed its transport. `component_spin_loop` (`run_components`) spins
+`spin_once(10)` and the Rust `run_tiers_entry` spins `spin_once(period_ms)` — both **blocking
+reads**. **Fix:** pass the tier `period_ms` as the `spin_once` timeout in both the boot-tier and
+spawned-tier loops. After the fix, both tiers schedule + publish: `[ctrl] tick` (10 ms period) runs
+~6× the rate of `[telem] tick` (100 ms), and each tick prints only on `publish_raw().ok()` — i.e.
+the shared session is connected and both tiers publish over it. RFC-0015 Model 1 (per-tier executors
+over one shared session) verified on embedded FreeRTOS/mps2-an385.
+
+The earlier warm-up-before-spawn experiment (which did NOT help) correctly ruled out
+tier-task starvation — it was never a scheduling race; the executor simply wasn't being driven.
