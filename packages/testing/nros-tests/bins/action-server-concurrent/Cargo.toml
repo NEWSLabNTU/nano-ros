@@ -1,0 +1,51 @@
+[workspace]
+
+[package]
+name = "action-server-concurrent"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Concurrent Fibonacci action-server fixture (extracted from the examples/native/rust/action-server `NROS_ACTION_CONCURRENT` escape hatch in phase-277 W5, when the example slimmed to the official single-goal demo). Accepts and advances several goals at once, draining get_result every spin so multiple early get_result requests are held (deferred) simultaneously — exercises the backends' seq-keyed reply tables under real concurrent load. Consumed by tests/rmw_interop.rs and tests/xrce_ros2_interop.rs concurrent action tests."
+
+[[bin]]
+name = "action-server-concurrent"
+path = "src/main.rs"
+
+[features]
+# RMW selected at build time via mutually exclusive features (same shape as
+# the examples): each `rmw-*` activates the optional backend dep and forwards
+# to `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
+# registers the selected backend before the executor opens.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-native = { path = "../../../../boards/nros-board-native", default-features = false }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../xrce/nros-rmw-xrce-cffi", default-features = false, features = [
+    "std",
+], optional = true }
+example_interfaces = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+heapless = "0.8"
+
+[patch.crates-io]
+action_msgs = { path = "generated/action_msgs" }
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+example_interfaces = { path = "generated/example_interfaces" }
+unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

@@ -1,4 +1,4 @@
-//! Zephyr Fibonacci action server — Phase 212.M.3 / Phase 212.L Node pkg.
+//! Zephyr Fibonacci action server.
 //!
 //! Declarative: node + action server with distinct goal / cancel /
 //! accepted callbacks. Bodies:
@@ -30,6 +30,8 @@ impl Node for FibonacciServer {
             "on_cancel",
             "on_accepted",
         )?;
+        // Readiness marker the e2e harness greps before sending a goal.
+        log::info!("Waiting for action goals");
         Ok(())
     }
 }
@@ -42,14 +44,11 @@ impl ExecutableNode for FibonacciServer {
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
-                let accept = ctx
-                    .message::<FibonacciGoal>()
-                    .map(|g| g.order >= 0)
-                    .unwrap_or(false);
-                if accept {
-                    // Harness marker: server_received_goal keys off "Goal accepted".
-                    log::info!("Goal accepted");
+                let order = ctx.message::<FibonacciGoal>().ok().map(|g| g.order);
+                if let Some(order) = order {
+                    log::info!("Received goal request with order {}", order);
                 }
+                let accept = matches!(order, Some(o) if o >= 0);
                 let _ = ctx.set_goal_response(if accept {
                     GoalResponse::AcceptAndExecute
                 } else {
@@ -62,6 +61,7 @@ impl ExecutableNode for FibonacciServer {
             "on_accepted" => {
                 // No imperative work here; the executor drives feedback
                 // and result through `tick()` when it is free for action ops.
+                log::info!("Executing goal");
             }
             _ => {}
         }
@@ -84,6 +84,7 @@ impl ExecutableNode for FibonacciServer {
             let feedback = FibonacciFeedback {
                 sequence: sequence.clone(),
             };
+            log::info!("Publish feedback");
             let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 128>(
                 "/fibonacci",
                 &goal_id,
@@ -91,12 +92,17 @@ impl ExecutableNode for FibonacciServer {
             );
 
             let result = FibonacciResult { sequence };
-            let _ = ctx.complete_goal_for_name::<FibonacciResult, 128>(
-                "/fibonacci",
-                &goal_id,
-                GoalStatus::Succeeded,
-                &result,
-            );
+            if ctx
+                .complete_goal_for_name::<FibonacciResult, 128>(
+                    "/fibonacci",
+                    &goal_id,
+                    GoalStatus::Succeeded,
+                    &result,
+                )
+                .is_ok()
+            {
+                log::info!("Goal succeeded");
+            }
         }
     }
 }

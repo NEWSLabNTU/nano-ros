@@ -1,4 +1,4 @@
-//! QEMU MPS2-AN385 RTIC Fibonacci Action Server — phase-244.D1 node logic.
+//! QEMU MPS2-AN385 RTIC Fibonacci Action Server node logic.
 //!
 //! Serves an `example_interfaces/Fibonacci` action on `/fibonacci`. Declarative,
 //! platform/RMW-agnostic Node: `register()` declares node + action server (goal /
@@ -16,22 +16,28 @@ use nros::{
     Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalId, GoalResponse, GoalStatus, Node,
     NodeContext, NodeOptions, NodeResult, TickCtx,
 };
+use nros_log::{Logger, nros_info};
+
+// Diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("fibonacci_action_server");
 
 /// Fibonacci action server — accepts non-negative goal orders and completes
 /// each accepted goal with a canonical Fibonacci sequence.
 pub struct FibonacciServer;
 
 impl Node for FibonacciServer {
-    const NAME: &'static str = "fibonacci_server";
+    const NAME: &'static str = "fibonacci_action_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeOptions::new("fibonacci_server"))?;
+        nros_log::register_logger(&LOGGER);
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
         let _action = node.create_action_server_for_name_with_callbacks::<Fibonacci>(
             "/fibonacci",
             "on_goal",
             "on_cancel",
             "on_accepted",
         )?;
+        nros_info!(&LOGGER, "Waiting for action goals...");
         Ok(())
     }
 }
@@ -48,7 +54,10 @@ impl ExecutableNode for FibonacciServer {
         match callback.as_str() {
             "on_goal" => {
                 let response = match ctx.message::<FibonacciGoal>() {
-                    Ok(goal) if goal.order >= 0 => GoalResponse::AcceptAndExecute,
+                    Ok(goal) if goal.order >= 0 => {
+                        nros_info!(&LOGGER, "Received goal request with order {}", goal.order);
+                        GoalResponse::AcceptAndExecute
+                    }
                     _ => GoalResponse::Reject,
                 };
                 let _ = ctx.set_goal_response(response);
@@ -76,9 +85,10 @@ impl ExecutableNode for FibonacciServer {
 
         for goal_id in pending {
             // The app-node shape doesn't surface the goal payload at tick time,
-            // so emit a fixed order = 5 sequence incrementally as feedback, then
-            // complete the goal.
-            const ORDER: i32 = 5;
+            // so emit a fixed order = 10 sequence incrementally as feedback,
+            // then complete the goal.
+            const ORDER: i32 = 10;
+            nros_info!(&LOGGER, "Executing goal");
             let mut seq: heapless::Vec<i32, 64> = heapless::Vec::new();
             for i in 0..=ORDER {
                 let next = match i {
@@ -93,20 +103,30 @@ impl ExecutableNode for FibonacciServer {
                 let feedback = FibonacciFeedback {
                     sequence: seq.clone(),
                 };
-                let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 256>(
-                    "/fibonacci",
-                    &goal_id,
-                    &feedback,
-                );
+                if ctx
+                    .publish_feedback_for_name::<FibonacciFeedback, 256>(
+                        "/fibonacci",
+                        &goal_id,
+                        &feedback,
+                    )
+                    .is_ok()
+                {
+                    nros_info!(&LOGGER, "Publish feedback");
+                }
             }
 
             let result = FibonacciResult { sequence: seq };
-            let _ = ctx.complete_goal_for_name::<FibonacciResult, 256>(
-                "/fibonacci",
-                &goal_id,
-                GoalStatus::Succeeded,
-                &result,
-            );
+            if ctx
+                .complete_goal_for_name::<FibonacciResult, 256>(
+                    "/fibonacci",
+                    &goal_id,
+                    GoalStatus::Succeeded,
+                    &result,
+                )
+                .is_ok()
+            {
+                nros_info!(&LOGGER, "Goal succeeded");
+            }
             *state = state.wrapping_add(1);
         }
     }

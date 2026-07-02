@@ -23,11 +23,11 @@ node_pkgs = ["qemu-rtic-action-client"]
 
 [package.metadata.nros.node]
 class = "qemu_rtic_action_client::FibonacciClient"
-name = "fibonacci_client"
+name = "fibonacci_action_client"
 default_namespace = "/"
 dispatch = "deferred"
 
-# Phase 244.D1 — this example's own net, overlaid onto the board's baked
+# This example's own net, overlaid onto the board's baked
 # qemu_config by `RticBoardEntry::init_hardware_with_deploy`. Distinct ip/port
 # from the talker (.10/7450), listener (.11), and action-server (.12/7470) so
 # they coexist on the QEMU net.
@@ -43,6 +43,9 @@ example_interfaces = { version = "*", default-features = false }
 heapless = "0.8"
 # nros Executor API + bare-metal platform glue.
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+# User diagnostics route through `nros-log`; the dispatcher is installed by the
+# board boot scaffold.
+nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
 # RTIC board entry: brings up hardware + network, opens the executor, builds the
 # RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }
@@ -70,13 +73,13 @@ lto = "fat"
 opt-level = "s"
 overflow-checks = false
 
-# Phase 204.3 — size-optimized profile.
+# Size-optimized profile.
 [profile.size]
 inherits = "release"
 opt-level = "s"
 debug = false
 strip = true
 
-# Phase 208.F1 — empty `[workspace]` table makes this example a standalone
+# The empty `[workspace]` table makes this example a standalone
 # workspace root (copy-out template promise).
 [workspace]

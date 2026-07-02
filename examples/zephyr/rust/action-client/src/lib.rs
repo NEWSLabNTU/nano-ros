@@ -1,10 +1,9 @@
-//! Zephyr Fibonacci action client — Phase 212.M.3 / Phase 212.L Node pkg.
+//! Zephyr Fibonacci action client.
 //!
 //! Declarative: node + action client.
 //!
-//! One-shot `send_goal` on the first `tick`; the terminal result is delivered
-//! to `on_callback("on_result")` (phase-212 M-F.23 wires the single-node
-//! runtime's action-client result dispatch).
+//! One-shot `send_goal` on the first `tick`; feedback and the terminal
+//! result are delivered to `on_callback` (`on_feedback` / `on_result`).
 
 #![no_std]
 
@@ -46,21 +45,14 @@ impl ExecutableNode for FibonacciClient {
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_feedback" => {
-                let len = ctx
-                    .message::<FibonacciFeedback>()
-                    .map(|f| f.sequence.len())
-                    .unwrap_or(0);
-                // Harness marker: client_got_feedback keys off "Feedback #".
-                log::info!("Feedback #: sequence len={}", len);
+                if let Ok(f) = ctx.message::<FibonacciFeedback>() {
+                    log::info!("Next number in sequence received: {:?}", f.sequence);
+                }
             }
             "on_result" => {
-                let n = ctx
-                    .message::<FibonacciResult>()
-                    .map(|r| r.sequence.len())
-                    .unwrap_or(0);
-                // Harness markers: "Action client finished" + "Result:".
-                log::info!("Result: sequence len={}", n);
-                log::info!("Action client finished");
+                if let Ok(r) = ctx.message::<FibonacciResult>() {
+                    log::info!("Result received: {:?}", r.sequence);
+                }
             }
             _ => {}
         }
@@ -71,12 +63,13 @@ impl ExecutableNode for FibonacciClient {
             return;
         }
         let goal = FibonacciGoal { order: 10 };
+        log::info!("Sending goal");
         if ctx
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
             state.sent = true;
-            log::info!("Action client sent goal");
+            log::info!("Goal accepted by server, waiting for result");
         }
     }
 }

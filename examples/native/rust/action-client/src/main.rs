@@ -1,9 +1,9 @@
-//! Native Action Client — Phase 212.L.2 Application pkg shape.
+//! Native Action Client.
 //!
-//! Sends a `Fibonacci` goal, waits for acceptance, then streams
-//! feedback. Single-file `[[bin]]`: explicit
-//! [`nros::init_with_launch_auto`] (Pattern 2) then a user-owned spin
-//! loop.
+//! Sends a `Fibonacci` goal of order 10, streams feedback, then fetches the
+//! result — matching the official ROS 2 `action_tutorials`
+//! `fibonacci_action_client` demo. Single-file `[[bin]]`: explicit
+//! [`nros::init_with_launch_auto`] then a user-owned spin loop.
 //!
 //! ```bash
 //! cargo run -p native-rs-action-server   # then this client
@@ -14,14 +14,11 @@ use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use log::{error, info, warn};
 use nros::prelude::*;
 
-/// Action-client body — send a `Fibonacci` goal and collect feedback.
-/// Returns 0 if any feedback arrived, 1 otherwise.
+/// Action-client body — send a `Fibonacci` goal, stream feedback, fetch the
+/// result. Returns the process exit code.
 fn run() -> i32 {
-    info!("nros Action Client Example");
-    info!("================================");
-
-    // Phase 244 E3 — CancelGoal / GoalStatusArray protocol types are registered
-    // by the framework via `RosAction::register_protocol_types` (generated impl);
+    // CancelGoal / GoalStatusArray protocol types are registered by the
+    // framework via `RosAction::register_protocol_types` (generated impl);
     // no example-side registration needed.
     let ctx = match nros::init_with_launch_auto() {
         Ok(c) => c,
@@ -37,7 +34,6 @@ fn run() -> i32 {
         Ok(n) => n,
         Err(_) => return 1,
     };
-    info!("Node created: fibonacci_action_client");
     let mut client = match node.create_action_client::<Fibonacci>("/fibonacci") {
         Ok(c) => c,
         Err(_) => {
@@ -45,7 +41,6 @@ fn run() -> i32 {
             return 1;
         }
     };
-    info!("Action client created: /fibonacci");
 
     // Wait for the action server before the first goal: send_goal is a
     // service call under the hood, and its request races the
@@ -56,7 +51,7 @@ fn run() -> i32 {
     // discovery and blocks until the endpoints match. Proceed anyway on
     // timeout (backends without liveliness probing fall back to the spin).
     match client.wait_for_action_server(&mut executor, core::time::Duration::from_secs(10)) {
-        Ok(true) => info!("Action server discovered"),
+        Ok(true) => {}
         Ok(false) => warn!("Action server not confirmed within 10s — sending goal anyway"),
         Err(e) => warn!(
             "wait_for_action_server error: {:?} — sending goal anyway",
@@ -65,7 +60,7 @@ fn run() -> i32 {
     }
 
     let goal = FibonacciGoal { order: 10 };
-    info!("Sending goal: order={}", goal.order);
+    info!("Sending goal");
     let (goal_id, mut promise) = match client.send_goal(&goal) {
         Ok(pair) => pair,
         Err(e) => {
@@ -85,18 +80,16 @@ fn run() -> i32 {
         warn!("Goal was rejected by the server");
         return 1;
     }
-    info!("Goal accepted! ID: {:?}", goal_id);
-    info!("Waiting for feedback...");
+    info!("Goal accepted by server, waiting for result");
 
+    // Stream feedback until the sequence is complete (the server publishes
+    // the growing sequence once per step).
     let mut stream = client.feedback_stream_for(goal_id);
-    let mut feedback_count = 0;
     for _ in 0..30 {
         match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
             Ok(Some(feedback)) => {
-                feedback_count += 1;
-                info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                info!("Next number in sequence received: {:?}", feedback.sequence);
                 if feedback.sequence.len() as i32 > goal.order {
-                    info!("Final sequence: {:?}", feedback.sequence);
                     break;
                 }
             }
@@ -107,8 +100,29 @@ fn run() -> i32 {
             }
         }
     }
-    info!("Action client finished ({} feedback msgs)", feedback_count);
-    if feedback_count > 0 { 0 } else { 1 }
+
+    // Fetch the terminal result (replied immediately once the goal
+    // completed — the server holds earlier get_result requests until then).
+    let mut result_promise = match client.get_result(&goal_id) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to request result: {:?}", e);
+            return 1;
+        }
+    };
+    match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+        Ok((status, result)) => {
+            if status != GoalStatus::Succeeded {
+                warn!("Goal finished with status {:?}", status);
+            }
+            info!("Result received: {:?}", result.sequence);
+            0
+        }
+        Err(e) => {
+            error!("Failed to get result: {:?}", e);
+            1
+        }
+    }
 }
 
 fn main() {

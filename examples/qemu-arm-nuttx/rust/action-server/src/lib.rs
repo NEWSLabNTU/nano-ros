@@ -1,4 +1,4 @@
-//! NuttX QEMU ARM Fibonacci action server — Phase 212.L Node pkg.
+//! NuttX QEMU ARM Fibonacci action server — declarative Node pkg.
 //!
 //! Declarative: node + action server with distinct goal / cancel /
 //! accepted callbacks. Bodies:
@@ -28,6 +28,7 @@ impl Node for FibonacciServer {
             "on_cancel",
             "on_accepted",
         )?;
+        log::info!("Waiting for action goals");
         Ok(())
     }
 }
@@ -40,10 +41,11 @@ impl ExecutableNode for FibonacciServer {
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
-                let accept = ctx
-                    .message::<FibonacciGoal>()
-                    .map(|g| g.order >= 0)
-                    .unwrap_or(false);
+                let order = ctx.message::<FibonacciGoal>().map(|g| g.order).ok();
+                if let Some(order) = order {
+                    log::info!("Received goal request with order {}", order);
+                }
+                let accept = order.map(|o| o >= 0).unwrap_or(false);
                 let _ = ctx.set_goal_response(if accept {
                     GoalResponse::AcceptAndExecute
                 } else {
@@ -71,6 +73,7 @@ impl ExecutableNode for FibonacciServer {
         });
 
         for (goal_id, _order) in goals {
+            log::info!("Executing goal");
             // Publish one canonical Fibonacci-shaped feedback frame.
             let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
             let _ = sequence.push(0);
@@ -79,6 +82,7 @@ impl ExecutableNode for FibonacciServer {
             let feedback = FibonacciFeedback {
                 sequence: sequence.clone(),
             };
+            log::info!("Publish feedback");
             let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 128>(
                 "/fibonacci",
                 &goal_id,
@@ -92,6 +96,7 @@ impl ExecutableNode for FibonacciServer {
                 GoalStatus::Succeeded,
                 &result,
             );
+            log::info!("Goal succeeded");
         }
     }
 }

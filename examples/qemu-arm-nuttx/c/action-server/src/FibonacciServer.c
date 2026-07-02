@@ -1,5 +1,5 @@
 /// @file FibonacciServer.c
-/// @brief NuttX C Fibonacci action server — typed component (RFC-0043, 240.5).
+/// @brief NuttX C Fibonacci action server — typed component.
 ///
 /// `server_configure` binds goal/cancel callbacks (by identity) as a raw action
 /// server on `/fibonacci`, and a timer that drives goal execution. The real
@@ -41,7 +41,7 @@ static int32_t on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t le
     memcpy(self->goal_id, goal_id, 16);
     self->order = read_i32_le(data + 4);
     self->pending = 1;
-    printf("Goal accepted: order=%d\n", (int)self->order);
+    printf("Received goal request with order %d\n", (int)self->order);
     return NROS_C_GOAL_ACCEPT_AND_EXECUTE;
 }
 
@@ -57,6 +57,7 @@ static void on_tick(void* ctx) {
         return;
     }
     self->pending = 0;
+    printf("Executing goal\n");
 
     int32_t n = self->order;
     if (n < 0) {
@@ -85,7 +86,9 @@ static void on_tick(void* ctx) {
 
     int32_t rc = nros_cpp_action_server_complete_goal(
         self->storage, self->executor, (const uint8_t(*)[16])self->goal_id, buf, result_len);
-    printf("Goal succeeded: %d terms (rc=%d)\n", (int)n, (int)rc);
+    if (rc == 0) {
+        printf("Goal succeeded\n");
+    }
 }
 
 static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
@@ -110,7 +113,7 @@ static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
     size_t timer_handle;
     rc = nros_cpp_timer_create(executor, /*period_ms=*/200, on_tick, self, &timer_handle);
     if (rc == 0) {
-        printf("Waiting for goals\n");
+        printf("Waiting for action goals\n");
     }
     return rc;
 }

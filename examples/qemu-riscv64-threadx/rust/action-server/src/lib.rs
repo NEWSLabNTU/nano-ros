@@ -1,4 +1,4 @@
-//! ThreadX QEMU RISC-V Fibonacci Action Server — Phase 245 app-node logic.
+//! ThreadX QEMU RISC-V Fibonacci Action Server — app-node logic.
 //!
 //! Serves an `example_interfaces/Fibonacci` action on `/fibonacci`. This is an
 //! **app node** (it owns `main`, via `src/main.rs`'s `nros::main!()`), not a
@@ -44,6 +44,8 @@ impl Node for FibonacciServer {
             "on_cancel",
             "on_accepted",
         )?;
+        // Readiness marker the e2e harness greps before sending a goal.
+        log::info!("Waiting for action goals");
         Ok(())
     }
 }
@@ -59,11 +61,16 @@ impl ExecutableNode for FibonacciServer {
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
-                let response = match ctx.message::<FibonacciGoal>() {
-                    Ok(goal) if goal.order >= 0 => GoalResponse::AcceptAndExecute,
-                    _ => GoalResponse::Reject,
-                };
-                let _ = ctx.set_goal_response(response);
+                let order = ctx.message::<FibonacciGoal>().ok().map(|g| g.order);
+                if let Some(order) = order {
+                    log::info!("Received goal request with order {}", order);
+                }
+                let accept = matches!(order, Some(o) if o >= 0);
+                let _ = ctx.set_goal_response(if accept {
+                    GoalResponse::AcceptAndExecute
+                } else {
+                    GoalResponse::Reject
+                });
             }
             "on_cancel" => {
                 let _ = ctx.set_cancel_response(CancelResponse::Ok);
@@ -71,6 +78,7 @@ impl ExecutableNode for FibonacciServer {
             "on_accepted" => {
                 // No imperative work here — feedback/result are driven from
                 // `tick()`, the only place the executor is free for action ops.
+                log::info!("Executing goal");
             }
             _ => {}
         }
@@ -89,8 +97,8 @@ impl ExecutableNode for FibonacciServer {
 
         for goal_id in pending {
             // The app-node shape doesn't surface the goal payload at tick
-            // time (W.5.6 minimum), so we emit a fixed order = 5 sequence
-            // incrementally as feedback, then complete the goal.
+            // time, so we emit a fixed order = 5 sequence incrementally as
+            // feedback, then complete the goal.
             const ORDER: i32 = 5;
             let mut seq: heapless::Vec<i32, 64> = heapless::Vec::new();
             for i in 0..=ORDER {
@@ -106,6 +114,7 @@ impl ExecutableNode for FibonacciServer {
                 let feedback = FibonacciFeedback {
                     sequence: seq.clone(),
                 };
+                log::info!("Publish feedback");
                 let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 256>(
                     "/fibonacci",
                     &goal_id,
@@ -114,12 +123,17 @@ impl ExecutableNode for FibonacciServer {
             }
 
             let result = FibonacciResult { sequence: seq };
-            let _ = ctx.complete_goal_for_name::<FibonacciResult, 256>(
-                "/fibonacci",
-                &goal_id,
-                GoalStatus::Succeeded,
-                &result,
-            );
+            if ctx
+                .complete_goal_for_name::<FibonacciResult, 256>(
+                    "/fibonacci",
+                    &goal_id,
+                    GoalStatus::Succeeded,
+                    &result,
+                )
+                .is_ok()
+            {
+                log::info!("Goal succeeded");
+            }
             *state = state.wrapping_add(1);
         }
     }
@@ -135,8 +149,7 @@ nros::node!(FibonacciServer);
 // `nros::main!()` instead and never compiles this. Both are thin — the board owns
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the FibonacciServer. No manual `Executor::open` /
-// `register_rmw` / spin loop / hardcoded locator in the example
-// (Phase 245 / issue 0049 P1/P3/P4/P6).
+// `register_rmw` / spin loop / hardcoded locator in the example.
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
     nros_board_threadx_qemu_riscv64::run_app_thread(register)

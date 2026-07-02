@@ -1,5 +1,5 @@
 /// @file FibonacciServer.cpp
-/// @brief FreeRTOS C++ Fibonacci action server — typed component (RFC-0043, 240.5).
+/// @brief FreeRTOS C++ Fibonacci action server — typed component.
 
 #include "FibonacciServer.hpp"
 
@@ -30,7 +30,7 @@ int32_t FibonacciServer::on_goal(const uint8_t goal_id[16], const uint8_t* data,
     std::memcpy(goal_id_, goal_id, 16);
     order_ = read_i32_le(data + 4);
     pending_ = true;
-    std::printf("Goal accepted: order=%d\n", static_cast<int>(order_));
+    std::printf("Received goal request with order %d\n", static_cast<int>(order_));
     return static_cast<int32_t>(::nros::GoalResponse::AcceptAndExecute);
 }
 
@@ -45,6 +45,7 @@ void FibonacciServer::on_tick() {
         return;
     }
     pending_ = false;
+    std::printf("Executing goal\n");
 
     // Clamp the term count to the result buffer (encap + u32 len + N int32).
     int32_t n = order_;
@@ -81,7 +82,9 @@ void FibonacciServer::on_tick() {
     nros_cpp_ret_t rc = nros_cpp_action_server_complete_goal(
         storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_), buf,
         result_len);
-    std::printf("Goal succeeded: %d terms (rc=%d)\n", static_cast<int>(n), static_cast<int>(rc));
+    if (rc == 0) {
+        std::printf("Goal succeeded\n");
+    }
 }
 
 ::nros::Result FibonacciServer::configure(::nros::Node& node) {
@@ -95,7 +98,7 @@ void FibonacciServer::on_tick() {
     r = ::nros::bind_timer<FibonacciServer, &FibonacciServer::on_tick>(node, timer_, 200, this);
     if (r.ok()) {
         // Readiness marker the rtos_e2e harness greps before sending a goal.
-        std::printf("Waiting for goals\n");
+        std::printf("Waiting for action goals\n");
     }
     return r;
 }

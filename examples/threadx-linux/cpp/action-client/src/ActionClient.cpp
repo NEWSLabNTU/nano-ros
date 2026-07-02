@@ -19,9 +19,23 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
     p[3] = static_cast<uint8_t>(v >> 24);
 }
 
+// Print an int32 sequence CDR payload (encap header + u32 length + N int32)
+// as `<prefix>[0, 1, 1, ...]`.
+static void print_sequence(const char* prefix, const uint8_t* data, size_t len) {
+    uint32_t count = (len >= 8) ? read_u32_le(data + 4) : 0u;
+    printf("%s[", prefix);
+    for (uint32_t i = 0; i < count && static_cast<size_t>(8 + 4 * i + 4) <= len; ++i) {
+        if (i > 0) {
+            printf(", ");
+        }
+        printf("%d", static_cast<int>(static_cast<int32_t>(read_u32_le(data + 8 + 4 * i))));
+    }
+    printf("]\n");
+}
+
 void ActionClient::on_goal_response(bool accepted, const uint8_t goal_id[16]) {
     if (accepted) {
-        printf("Goal accepted by server\n");
+        printf("Goal accepted by server, waiting for result\n");
         nros_cpp_action_client_get_result_async(client_.bytes,
                                                 reinterpret_cast<const uint8_t(*)[16]>(goal_id));
     } else {
@@ -29,17 +43,13 @@ void ActionClient::on_goal_response(bool accepted, const uint8_t goal_id[16]) {
     }
 }
 
-void ActionClient::on_feedback(const uint8_t* /*goal_id*/, const uint8_t* /*data*/,
-                               size_t /*len*/) {
-    // Fibonacci feedback (partial_sequence) is not asserted by this example.
+void ActionClient::on_feedback(const uint8_t* /*goal_id*/, const uint8_t* data, size_t len) {
+    print_sequence("Next number in sequence received: ", data, len);
 }
 
-void ActionClient::on_result(const uint8_t* /*goal_id*/, int32_t status, const uint8_t* data,
+void ActionClient::on_result(const uint8_t* /*goal_id*/, int32_t /*status*/, const uint8_t* data,
                              size_t len) {
-    uint32_t count = (len >= 8) ? read_u32_le(data + 4) : 0;
-    printf("Result (status=%d): %u terms\n", static_cast<int>(status),
-           static_cast<unsigned>(count));
-    printf("Action completed successfully\n");
+    print_sequence("Result received: ", data, len);
 }
 
 ::nros::Result ActionClient::configure(::nros::Node& node) {
@@ -58,8 +68,8 @@ void ActionClient::on_result(const uint8_t* /*goal_id*/, int32_t status, const u
     goal[3] = 0x00;
     write_u32_le(goal + 4, static_cast<uint32_t>(order_));
     uint8_t goal_id[16];
+    printf("Sending goal\n");
     nros_cpp_action_client_send_goal_async(client_.bytes, goal, sizeof(goal), &goal_id);
-    printf("Goal sent: order=%d\n", static_cast<int>(order_));
     return ::nros::Result();
 }
 

@@ -20,7 +20,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # action goal/cancel handlers + a timer-driven execution loop on the executor.
 # Raw action register carries the type name as a string — no message headers.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    freertos_c_action_server::FibonacciServer
     LANGUAGE C
     TYPED

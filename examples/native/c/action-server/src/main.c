@@ -57,6 +57,7 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
                                           const uint8_t* goal_request, size_t goal_len,
                                           void* context) {
     (void)server;
+    (void)goal;
     (void)context;
 
     // Deserialize goal using generated function
@@ -67,16 +68,14 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
         return NROS_GOAL_REJECT;
     }
 
-    printf("Goal request: order=%d (uuid=%02x%02x...)\n", goal_msg.order, goal->uuid.uuid[0],
-           goal->uuid.uuid[1]);
+    printf("Received goal request with order %d\n", goal_msg.order);
 
     // Reject negative orders or orders too large
     if (goal_msg.order < 0 || goal_msg.order >= 64) {
-        printf("  -> REJECTED (order out of range)\n");
+        printf("Goal rejected: order out of range\n");
         return NROS_GOAL_REJECT;
     }
 
-    printf("  -> ACCEPTED\n");
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
@@ -93,8 +92,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     server_context_t* ctx = (server_context_t*)context;
     ctx->goal_count++;
 
-    printf("Executing goal [%d] (uuid=%02x%02x...)\n", ctx->goal_count, goal->uuid.uuid[0],
-           goal->uuid.uuid[1]);
+    printf("Executing goal\n");
 
     // NOTE: In a real application you'd track per-goal state (parsed goal
     // data, progress, etc.) in a user-side {uuid → state} table keyed by
@@ -133,12 +131,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
             if (ret != NROS_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
-                printf("  Feedback: [");
-                for (uint32_t j = 0; j < fb.sequence.size; j++) {
-                    if (j > 0) printf(", ");
-                    printf("%d", fb.sequence.data[j]);
-                }
-                printf("]\n");
+                printf("Publish feedback\n");
             }
         }
     }
@@ -157,7 +150,7 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Failed to send result: %d\n", ret);
         } else {
-            printf("  Goal SUCCEEDED\n");
+            printf("Goal succeeded\n");
         }
     }
 }
@@ -171,7 +164,7 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     printf("nros C Action Server (Fibonacci)\n");
@@ -207,7 +200,7 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_server", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "fibonacci_action_server", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",

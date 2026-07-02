@@ -1,14 +1,14 @@
-//! NuttX QEMU ARM Fibonacci action client — Phase 212.L Node pkg.
+//! NuttX QEMU ARM Fibonacci action client — declarative Node pkg.
 //!
 //! Declarative: node + action client.
 //!
-//! Phase 212.M-F.4.b transcription: one-shot `send_goal` on the first
-//! `tick` call (after registration completes). Feedback + result
-//! callbacks land via `on_callback` once codegen wires the feedback-
-//! stream + result-subscriber + `GoalStatusArray` topics through to
-//! dispatch. The in-tree `UnsupportedClients` stub returns
-//! `NodeDeclError::Runtime` from `send_goal_raw` until the M-F.4.a
-//! `GenClientDispatch` reaches the installed nros-cli.
+//! One-shot `send_goal` on the first `tick` call (after registration
+//! completes). Feedback + result callbacks land via `on_callback` once
+//! codegen wires the feedback-stream + result-subscriber +
+//! `GoalStatusArray` topics through to dispatch; the demo-parity
+//! wording for those transitions ("Goal accepted by server, waiting
+//! for result" / "Next number in sequence received: [...]" /
+//! "Result received: [...]") lands with that wiring.
 
 #![no_std]
 
@@ -30,6 +30,8 @@ impl Node for FibonacciClient {
 }
 
 pub struct State {
+    /// Set once the "Sending goal" line has been logged (first attempt).
+    announced: bool,
     /// Set once the goal has been sent — keeps `tick` idempotent.
     sent: bool,
 }
@@ -38,19 +40,25 @@ impl ExecutableNode for FibonacciClient {
     type State = State;
 
     fn init() -> Self::State {
-        State { sent: false }
+        State {
+            announced: false,
+            sent: false,
+        }
     }
 
     fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Feedback / result callbacks land here once codegen wires the
         // `GoalStatusArray` + feedback-stream + result-future
-        // subscribers. The id-driven dispatch is the M-F.4.a + N
-        // runtime plumbing; this body is the seam.
+        // subscribers; this body is the seam.
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         if state.sent {
             return;
+        }
+        if !state.announced {
+            log::info!("Sending goal");
+            state.announced = true;
         }
         let goal = FibonacciGoal { order: 10 };
         // 32 B is more than enough for one `i32` + CDR header.
@@ -60,9 +68,7 @@ impl ExecutableNode for FibonacciClient {
         {
             state.sent = true;
         }
-        // On `Err(NodeDeclError::Runtime)` (today's stub), `sent`
-        // stays false — the next tick retries. Once M-F.4.a ships the
-        // real dispatch, the first successful send flips the flag.
+        // On send failure `sent` stays false — the next tick retries.
     }
 }
 

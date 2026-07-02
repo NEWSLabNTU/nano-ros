@@ -760,6 +760,7 @@ dependencies = [
  "mps2-an385-pac",
  "nros",
  "nros-board-rtic-mps2-an385",
+ "nros-log",
  "nros-rmw-zenoh",
  "panic-semihosting",
  "rtic",

@@ -1,4 +1,4 @@
-//! STM32F4 Action Server Node pkg — Phase 216.B.5.
+//! STM32F4 Action Server Node pkg.
 //!
 //! Board-agnostic Node pkg that the sibling Entry pkg
 //! (`action-server-rtic` for the RTIC framework; a parallel
@@ -9,7 +9,7 @@
 //!
 //! ## Deferred dispatch + tag-based action server
 //!
-//! Like the sibling `listener_pkg` (Phase 216.C.5), this pkg declares
+//! Like the sibling `listener_pkg`, this pkg declares
 //!
 //! ```ignore
 //! const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
@@ -21,7 +21,7 @@
 //! without blocking the spin task. The action server is registered
 //! via the tag-shaped
 //! [`NodeContext::create_action_static`](nros::NodeContext::create_action_static)
-//! helper landed in 216.A.4-followup, which returns an
+//! helper, which returns an
 //! [`ActionTag`] the Node author stores on `Self::State` and matches
 //! against the `Callback<'_>` delivered to
 //! [`ExecutableNode::on_callback`]. Note: the action variant fans the
@@ -35,12 +35,12 @@
 //! escape from `on_callback` to async-shaped work is the RTIC
 //! `task::spawn()` API exposed via the board crate's runtime handle.
 //! That handle's type only exists in the Entry pkg's `#[rtic::app]`
-//! scope, so for now the placeholder body stores `()` and a follow-
-//! up wave of Phase 216.B threads the handle through.
+//! scope, so for now the placeholder body stores `()` and a follow-up
+//! wave threads the handle through.
 //!
 //! ## Placeholder action
 //!
-//! Phase 216.B.5 ships the trait-shaped scaffolding only. The action
+//! This example ships the trait-shaped scaffolding only. The action
 //! type is a local `PlaceholderAct: RosAction` with
 //! Goal/Result/Feedback all aliased to a 4-byte little-endian `i32`
 //! shape (mirrors `example_interfaces/action/Fibonacci`'s `order`
@@ -60,8 +60,7 @@ use nros::{
 };
 
 /// Action server component — accepts Fibonacci-shaped goals and
-/// (eventually) publishes feedback per iteration. Phase 216.B.5
-/// skeleton.
+/// (eventually) publishes feedback per iteration. Skeleton.
 pub struct ActionServer;
 
 /// Per-instance mutable state. Holds the [`ActionTag`] returned from
@@ -74,30 +73,29 @@ pub struct ActionServerState {
     /// Tag returned from `create_action_static::<PlaceholderAct>("/fibonacci")`.
     /// Macro-emitted init bodies use [`ActionTag::placeholder`]
     /// as a sentinel; the real tag is bound at register time by a
-    /// follow-up wave of Phase 216.B.
+    /// follow-up wave.
     pub act_fibonacci: ActionTag,
 }
 
 impl Node for ActionServer {
-    const NAME: &'static str = "fibonacci_server";
+    const NAME: &'static str = "fibonacci_action_server";
 
-    /// Phase 216.B.5 — declares Deferred dispatch. Action callbacks
-    /// are exactly the Deferred-dispatch use case; the RTIC board
-    /// crate's `NodeDispatchRuntime::dispatch_strategy()` returns
-    /// `Deferred`; `nros check` (Phase 216.D.1) accepts the
-    /// `(RTIC, Deferred)` matrix cell.
+    /// Declares Deferred dispatch. Action callbacks are exactly the
+    /// Deferred-dispatch use case; the RTIC board crate's
+    /// `NodeDispatchRuntime::dispatch_strategy()` returns `Deferred`;
+    /// `nros check` accepts the `(RTIC, Deferred)` matrix cell.
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeOptions::new("fibonacci_server"))?;
-        // Phase 216.B.5 — tag-based action server. The action-name
-        // literal becomes both the stable entity ID and the
-        // (single, fanned-out) callback ID; the returned
-        // `ActionTag` is what `on_callback` matches against the
-        // delivered `Callback<'_>` for goal, cancel, and
-        // accepted deliveries. See the module doc for the
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
+        // Tag-based action server. The action-name literal becomes
+        // both the stable entity ID and the (single, fanned-out)
+        // callback ID; the returned `ActionTag` is what `on_callback`
+        // matches against the delivered `Callback<'_>` for goal,
+        // cancel, and accepted deliveries. See the module doc for the
         // Deferred dispatch rationale.
         let _act_fibonacci = node.create_action_static::<PlaceholderAct>("/fibonacci")?;
+        defmt::info!("Waiting for action goals...");
         Ok(())
     }
 }
@@ -106,14 +104,13 @@ impl ExecutableNode for ActionServer {
     type State = ActionServerState;
 
     fn init() -> Self::State {
-        // Phase 216.B.5 — the `act_fibonacci` tag uses
-        // `ActionTag::placeholder()` as the macro-emit sentinel; the
-        // real tag (returned by `create_action_static` in `register`)
-        // is bound at register time by a follow-up wave of Phase
-        // 216.B. The RTIC-side dispatch handle TODO (see module doc)
-        // means there is no Spawner / runtime-handle field here yet —
-        // once the plumbing lands, this struct grows a `dispatch:
-        // RticDispatchHandle` field initialised from
+        // The `act_fibonacci` tag uses `ActionTag::placeholder()` as
+        // the macro-emit sentinel; the real tag (returned by
+        // `create_action_static` in `register`) is bound at register
+        // time by a follow-up wave. The RTIC-side dispatch handle TODO
+        // (see module doc) means there is no Spawner / runtime-handle
+        // field here yet — once the plumbing lands, this struct grows
+        // a `dispatch: RticDispatchHandle` field initialised from
         // `RticBoardEntry::init_hardware`'s return shape.
         ActionServerState {
             act_fibonacci: ActionTag::placeholder(),
@@ -124,11 +121,11 @@ impl ExecutableNode for ActionServer {
         if state.act_fibonacci == callback {
             // Goal / cancel / accepted all share the synthesized
             // callback ID (per `create_action_static`'s fan-out).
-            // The trampoline-registration story (a follow-up wave of
-            // Phase 216.B) will split these into per-slot
-            // dispatch entries once the runtime exposes a discriminator
-            // on `CallbackCtx`. For now, log the delivery as a
-            // placeholder so a real flash surfaces the wiring.
+            // The trampoline-registration story (a follow-up wave)
+            // will split these into per-slot dispatch entries once the
+            // runtime exposes a discriminator on `CallbackCtx`. For
+            // now, log the delivery as a placeholder so a real flash
+            // surfaces the wiring.
             defmt::info!("Fibonacci action callback fired");
 
             // RTIC spawn-from-sync escape (see module doc) lands
@@ -143,8 +140,8 @@ impl ExecutableNode for ActionServer {
 
 nros::node!(ActionServer);
 
-// Phase 216.B.5 placeholder — minimal `RosAction` stand-in so the
-// declarative `create_action_static` call type-checks without dragging
+// Placeholder — minimal `RosAction` stand-in so the declarative
+// `create_action_static` call type-checks without dragging
 // `example_interfaces` (and its transitive `action_msgs` +
 // `unique_identifier_msgs` + `builtin_interfaces` deps, all codegen-
 // materialised under `generated/`) into this skeleton. Goal /

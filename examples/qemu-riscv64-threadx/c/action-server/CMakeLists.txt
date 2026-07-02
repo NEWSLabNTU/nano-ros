@@ -27,7 +27,7 @@ nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 # the carrier-emitted `app_main`. No manual support/executor init, no spin loop,
 # no per-example `main.c`.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    riscv64_threadx_c_action_server::ActionServer
     LANGUAGE C
     TYPED

@@ -29,7 +29,7 @@ int32_t ActionServer::on_goal(const uint8_t goal_id[16], const uint8_t* data, si
     memcpy(goal_id_, goal_id, 16);
     order_ = read_i32_le(data + 4);
     pending_ = true;
-    printf("Goal accepted: order=%d\n", static_cast<int>(order_));
+    printf("Received goal request with order %d\n", static_cast<int>(order_));
     return static_cast<int32_t>(::nros::GoalResponse::AcceptAndExecute);
 }
 
@@ -42,6 +42,7 @@ void ActionServer::on_tick() {
         return;
     }
     pending_ = false;
+    printf("Executing goal\n");
 
     int32_t n = order_;
     if (n < 0) {
@@ -77,21 +78,25 @@ void ActionServer::on_tick() {
     nros_cpp_ret_t rc = nros_cpp_action_server_complete_goal(
         storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_), buf,
         result_len);
-    printf("Goal succeeded: %d terms (rc=%d)\n", static_cast<int>(n), static_cast<int>(rc));
+    if (rc == 0) {
+        printf("Goal succeeded\n");
+    } else {
+        printf("Failed to complete goal (rc=%d)\n", static_cast<int>(rc));
+    }
 }
 
 ::nros::Result ActionServer::configure(::nros::Node& node) {
     executor_ = node.executor_handle();
-    ::nros::Result r =
-        ::nros::bind_action_server_raw<ActionServer, &ActionServer::on_goal,
-                                       &ActionServer::on_cancel>(
-            node, storage_.bytes, "/fibonacci", "example_interfaces/action/Fibonacci", this);
+    ::nros::Result r = ::nros::bind_action_server_raw<ActionServer, &ActionServer::on_goal,
+                                                      &ActionServer::on_cancel>(
+        node, storage_.bytes, "/fibonacci", "example_interfaces/action/Fibonacci", this);
     if (!r.ok()) {
         return r;
     }
     r = ::nros::bind_timer<ActionServer, &ActionServer::on_tick>(node, timer_, 200, this);
     if (r.ok()) {
-        printf("Waiting for goals\n");
+        // Readiness marker the e2e harness greps before sending a goal.
+        printf("Waiting for action goals\n");
     }
     return r;
 }

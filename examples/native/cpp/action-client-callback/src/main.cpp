@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ action client example — **callback** variant (RFC-0041 / Phase 239).
+/// @brief C++ action client example — **callback** variant.
 ///
 /// Mirrors the Future/stream `action-client` example, but receives goal
 /// acceptance, feedback, and the result through `SendGoalOptions` callbacks
@@ -34,7 +34,9 @@ void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     (void)goal_id;
     g_accepted = accepted ? 1 : 0;
-    std::printf("Goal response (callback): %s\n", accepted ? "ACCEPTED" : "REJECTED");
+    if (accepted) {
+        std::printf("Goal accepted by server, waiting for result\n");
+    }
 }
 
 void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
@@ -43,9 +45,14 @@ void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, voi
     g_feedback_count++;
     example_interfaces::action::Fibonacci::Feedback fb;
     if (example_interfaces::action::Fibonacci::Feedback::ffi_deserialize(data, len, &fb) == 0) {
-        std::printf("Feedback (callback): sequence length=%u\n", fb.sequence.length());
+        std::printf("Next number in sequence received: [");
+        for (uint32_t i = 0; i < fb.sequence.length(); i++) {
+            if (i > 0) std::printf(", ");
+            std::printf("%d", fb.sequence[i]);
+        }
+        std::printf("]\n");
     } else {
-        std::printf("Feedback (callback): received %zu bytes\n", len);
+        std::fprintf(stderr, "Failed to deserialize feedback (%zu bytes)\n", len);
     }
 }
 
@@ -57,14 +64,14 @@ void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, s
     g_result_len = static_cast<int>(len);
     example_interfaces::action::Fibonacci::Result result;
     if (example_interfaces::action::Fibonacci::Result::ffi_deserialize(data, len, &result) == 0) {
-        std::printf("Result (callback): status=%d sequence=[", status);
+        std::printf("Result received: [");
         for (uint32_t i = 0; i < result.sequence.length(); i++) {
             if (i > 0) std::printf(", ");
             std::printf("%d", result.sequence[i]);
         }
         std::printf("]\n");
     } else {
-        std::printf("Result (callback): status=%d, %zu bytes\n", status, len);
+        std::fprintf(stderr, "Failed to deserialize result (%zu bytes)\n", len);
     }
 }
 } // namespace
@@ -77,12 +84,12 @@ int main(int argc, char** argv) {
     std::printf("nros C++ Action Client (Fibonacci, callback)\n");
     std::printf("=============================================\n");
 
-    // Launch-aware init (Phase 212.M.2). Env overlay
+    // Launch-aware init. Env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
     NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_action_client_callback"), 1);
+    NROS_TRY_RET(nros::create_node(node, "fibonacci_action_client_cb"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
@@ -107,7 +114,7 @@ int main(int argc, char** argv) {
     if (const char* ord = std::getenv("NROS_TEST_GOAL_ORDER")) {
         order = std::atoi(ord);
     }
-    std::printf("\nSending goal (async): order=%d\n", order);
+    std::printf("\nSending goal\n");
 
     example_interfaces::action::Fibonacci::Goal goal;
     goal.order = order;
@@ -150,14 +157,11 @@ int main(int argc, char** argv) {
         client.poll();
     }
 
-    std::printf("\nFeedback callbacks: %d\n", g_feedback_count);
-
     int rc;
     if (g_result_status >= 0) {
-        std::printf("Action completed via callbacks [OK]\n");
         rc = 0;
     } else {
-        std::fprintf(stderr, "Timed out waiting for result callback [FAIL]\n");
+        std::fprintf(stderr, "Timed out waiting for result callback\n");
         rc = 1;
     }
 

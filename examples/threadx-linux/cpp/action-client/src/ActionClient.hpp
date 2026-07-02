@@ -16,7 +16,7 @@ namespace threadx_linux_cpp_action_client {
 class ActionClient {
     ::nros::ActionClientStorage client_;
     ::nros::Timer poll_timer_;
-    int32_t order_ = 5;
+    int32_t order_ = 10;
 
     void on_goal_response(bool accepted, const uint8_t goal_id[16]);
     void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len);

@@ -24,7 +24,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # timer-driven execution loop on the executor. Raw action register carries the
 # type name as a string, so no generated message headers are needed.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    freertos_cpp_action_server::FibonacciServer
     LANGUAGE CPP
     HEADER   FibonacciServer.hpp

@@ -21,7 +21,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # Phase 246 (RFC-0043) — TYPED carrier: constructs the typed ActionServer +
 # `configure(node)` binds the real goal/cancel callbacks + execution timer.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    threadx_linux_cpp_action_server::ActionServer
     LANGUAGE CPP
     HEADER   ActionServer.hpp

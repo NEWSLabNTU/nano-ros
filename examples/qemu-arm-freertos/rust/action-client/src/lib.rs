@@ -1,17 +1,21 @@
-//! FreeRTOS QEMU MPS2-AN385 Fibonacci action client —
-//! Phase 212.L Node pkg.
+//! FreeRTOS QEMU MPS2-AN385 Fibonacci action client — declarative Node pkg.
 //!
-//! Phase 212.M.5.b — declarative-metadata-only.
-//! Service-client runtime body deferred to M-F.4 (TickCtx call() seam) —
-//! the same dependency applies to action-client send_goal /
-//! feedback-stream wiring. The declarative metadata below is the stable
-//! contract; the generated runtime will own the imperative driver once
-//! the seam ships.
+//! Declarative: node + action client.
+//!
+//! One-shot `send_goal` on the first `tick` call (after registration
+//! completes). Feedback + result callbacks land via `on_callback` once
+//! codegen wires the feedback-stream + result-subscriber +
+//! `GoalStatusArray` topics through to dispatch; the demo-parity
+//! wording for those transitions ("Goal accepted by server, waiting
+//! for result" / "Next number in sequence received: [...]" /
+//! "Result received: [...]") lands with that wiring.
 
 #![no_std]
 
-use example_interfaces::action::Fibonacci;
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
+use nros::{
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+};
 
 pub struct FibonacciClient;
 
@@ -25,16 +29,46 @@ impl Node for FibonacciClient {
     }
 }
 
-impl ExecutableNode for FibonacciClient {
-    type State = ();
+pub struct State {
+    /// Set once the "Sending goal" line has been logged (first attempt).
+    announced: bool,
+    /// Set once the goal has been sent — keeps `tick` idempotent.
+    sent: bool,
+}
 
-    fn init() -> Self::State {}
+impl ExecutableNode for FibonacciClient {
+    type State = State;
+
+    fn init() -> Self::State {
+        State {
+            announced: false,
+            sent: false,
+        }
+    }
 
     fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        // Phase 212.M.5.b — declarative-metadata-only.
-        // Service-client runtime body deferred to M-F.4
-        // (TickCtx call() seam). Codegen-system will own the imperative
-        // driver once the seam ships.
+        // Feedback / result callbacks land here once codegen wires the
+        // `GoalStatusArray` + feedback-stream + result-future
+        // subscribers; this body is the seam.
+    }
+
+    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        if state.sent {
+            return;
+        }
+        if !state.announced {
+            log::info!("Sending goal");
+            state.announced = true;
+        }
+        let goal = FibonacciGoal { order: 10 };
+        // 32 B is more than enough for one `i32` + CDR header.
+        if ctx
+            .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
+            .is_ok()
+        {
+            state.sent = true;
+        }
+        // On send failure `sent` stays false — the next tick retries.
     }
 }
 

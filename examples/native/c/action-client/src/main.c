@@ -52,28 +52,25 @@ static void print_sequence(const example_interfaces_action_fibonacci_feedback* f
 // Feedback callback
 // ----------------------------------------------------------------------------
 
-static int g_feedback_count = 0;
-
 static void feedback_callback(const nros_goal_uuid_t* goal_uuid, const uint8_t* feedback,
                               size_t feedback_len, void* context) {
     (void)goal_uuid;
     (void)context;
 
-    g_feedback_count++;
-
     example_interfaces_action_fibonacci_feedback fb;
     if (example_interfaces_action_fibonacci_feedback_deserialize(&fb, feedback, feedback_len) ==
         0) {
-        printf("Feedback #%d: ", g_feedback_count);
+        printf("Next number in sequence received: ");
         print_sequence(&fb);
         printf("\n");
     } else {
-        fprintf(stderr, "Feedback #%d: failed to deserialize\n", g_feedback_count);
+        fprintf(stderr, "Failed to deserialize feedback\n");
     }
 }
 
 // ----------------------------------------------------------------------------
-// Result callback
+// Result callback — receipt is noted here; the terminal `Result received:`
+// line is printed by the blocking get_result round-trip in main.
 // ----------------------------------------------------------------------------
 
 static int g_result_received = 0;
@@ -81,25 +78,12 @@ static int g_result_received = 0;
 static void result_callback(const nros_goal_uuid_t* goal_uuid, nros_goal_status_t status,
                             const uint8_t* result, size_t result_len, void* context) {
     (void)goal_uuid;
+    (void)status;
+    (void)result;
+    (void)result_len;
     (void)context;
 
     g_result_received = 1;
-
-    printf("Result (status=%s): ", nros_goal_status_to_string(status));
-
-    if (result && result_len > 0) {
-        // Reuse feedback struct for deserialization — same layout as result
-        example_interfaces_action_fibonacci_feedback seq;
-        if (example_interfaces_action_fibonacci_feedback_deserialize(&seq, result, result_len) ==
-            0) {
-            print_sequence(&seq);
-            printf("\n");
-        } else {
-            printf("(deserialize failed)\n");
-        }
-    } else {
-        printf("(no result data)\n");
-    }
 }
 
 // ----------------------------------------------------------------------------
@@ -111,7 +95,7 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     printf("nros C Action Client (Fibonacci)\n");
@@ -146,7 +130,7 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "fibonacci_action_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(
@@ -180,7 +164,7 @@ int nros_app_main(int argc, char** argv) {
         goto cleanup;
     }
 
-    printf("\nSending goal: order=%d\n", goal.order);
+    printf("\nSending goal\n");
 
     nros_goal_uuid_t goal_uuid;
     ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, (size_t)goal_len,
@@ -192,14 +176,11 @@ int nros_app_main(int argc, char** argv) {
         goto cleanup;
     }
 
-    printf("Goal accepted! (uuid=%02x%02x%02x%02x...)\n", goal_uuid.uuid[0], goal_uuid.uuid[1],
-           goal_uuid.uuid[2], goal_uuid.uuid[3]);
+    printf("Goal accepted by server, waiting for result\n");
 
     // Wait for result with timeout
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    printf("\nWaiting for result...\n\n");
 
     // Poll for result using get_result (blocking)
     nros_goal_status_t final_status;
@@ -209,19 +190,17 @@ int nros_app_main(int argc, char** argv) {
                                  result_buf, sizeof(result_buf), &result_len);
 
     if (ret == NROS_RET_OK) {
-        printf("Final result (status=%s): ", nros_goal_status_to_string(final_status));
-
         example_interfaces_action_fibonacci_result result;
         if (example_interfaces_action_fibonacci_result_deserialize(&result, result_buf,
                                                                    result_len) == 0) {
-            printf("[");
+            printf("Result received: [");
             for (uint32_t i = 0; i < result.sequence.size; i++) {
                 if (i > 0) printf(", ");
                 printf("%d", result.sequence.data[i]);
             }
             printf("]\n");
         } else {
-            printf("(deserialize failed)\n");
+            fprintf(stderr, "Failed to deserialize result\n");
         }
     } else if (ret == NROS_RET_TIMEOUT) {
         fprintf(stderr, "Timeout waiting for result\n");

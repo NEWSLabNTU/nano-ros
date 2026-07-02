@@ -1,9 +1,9 @@
-// NuttX C++ Fibonacci action client — typed CALLBACK component (RFC-0041/0043).
+// NuttX C++ Fibonacci action client — typed CALLBACK component.
 //
 // `configure` binds member callbacks (goal-response / feedback / result) by
-// identity via `bind_action_client` (callback by default, RFC-0041; issue-0047),
-// then sends one goal. The acceptance + result arrive in the member callbacks,
-// dispatched by the binding's poll-timer pump each spin tick.
+// identity via `bind_action_client`, then sends one goal. The acceptance,
+// feedback, and result arrive in the member callbacks, dispatched by the
+// binding's poll-timer pump each spin tick.
 #ifndef NUTTX_CPP_ACTION_CLIENT_FIBONACCICLIENT_HPP
 #define NUTTX_CPP_ACTION_CLIENT_FIBONACCICLIENT_HPP
 
@@ -18,7 +18,7 @@ namespace nuttx_cpp_action_client {
 class FibonacciClient {
     ::nros::ActionClientStorage client_;
     ::nros::Timer poll_timer_;
-    int32_t order_ = 5;
+    int32_t order_ = 10;
 
     // Member callbacks, bound by identity (no naming).
     void on_goal_response(bool accepted, const uint8_t goal_id[16]);

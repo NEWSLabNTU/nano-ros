@@ -14,7 +14,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 
 # Phase 240.5 (RFC-0043) — TYPED carrier: poll-style C action client component.
 nano_ros_node_register(
-    NAME     action_client
+    NAME     fibonacci_action_client
     CLASS    nuttx_c_action_client::FibonacciClient
     LANGUAGE C
     TYPED

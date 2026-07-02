@@ -1,10 +1,10 @@
 /// @file FibonacciClient.c
-/// @brief Zephyr C Fibonacci action client — TYPED component (RFC-0043 / phase-244.C2).
+/// @brief Zephyr C Fibonacci action client — typed component.
 ///
-/// `client_configure` registers member-style callbacks (goal-response / feedback
-/// / result) via set_callbacks (callback by default, RFC-0041; issue-0047) + a
-/// poll timer that drains the GET-query replies each spin tick, then sends one
-/// goal. Acceptance + result arrive in the callbacks.
+/// `client_configure` registers member-style callbacks (goal-response /
+/// feedback / result) via set_callbacks + a poll timer that drains the
+/// GET-query replies each spin tick, then sends one goal. Acceptance +
+/// result arrive in the callbacks.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -28,10 +28,25 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
     p[3] = (uint8_t)(v >> 24);
 }
 
+/* Print an int32 sequence CDR payload (encap header + u32 length + N int32)
+ * as `<prefix>[0, 1, 1, ...]`. */
+static void print_sequence(const char* prefix, const uint8_t* data, size_t len) {
+    uint32_t count = (len >= 8) ? read_u32_le(data + 4) : 0u;
+    uint32_t i;
+    printf("%s[", prefix);
+    for (i = 0; i < count && (size_t)(8 + 4 * i + 4) <= len; ++i) {
+        if (i > 0) {
+            printf(", ");
+        }
+        printf("%d", (int)(int32_t)read_u32_le(data + 8 + 4 * i));
+    }
+    printf("]\n");
+}
+
 static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx) {
     fib_client_t* self = (fib_client_t*)ctx;
     if (accepted) {
-        printf("Goal accepted by server\n");
+        printf("Goal accepted by server, waiting for result\n");
         nros_cpp_action_client_get_result_async(self->storage, (const uint8_t(*)[16])goal_id);
     } else {
         printf("Goal rejected by server\n");
@@ -40,18 +55,16 @@ static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx
 
 static void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
     (void)goal_id;
-    (void)data;
-    (void)len;
     (void)ctx;
+    print_sequence("Next number in sequence received: ", data, len);
 }
 
 static void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
                       void* ctx) {
     (void)goal_id;
+    (void)status;
     (void)ctx;
-    uint32_t count = (len >= 8) ? read_u32_le(data + 4) : 0u;
-    printf("Result (status=%d): %u terms\n", (int)status, (unsigned)count);
-    printf("Action completed successfully\n");
+    print_sequence("Result received: ", data, len);
 }
 
 static void on_poll(void* ctx) {
@@ -62,7 +75,7 @@ static void on_poll(void* ctx) {
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    fib_client_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0); /* callbacks print on transitions only */
-    self->order = 5;
+    self->order = 10;
     int32_t rc =
         nros_cpp_action_client_create(node, "/fibonacci", "example_interfaces/action/Fibonacci", "",
                                       nros_c_qos_default(), self->storage);
@@ -87,8 +100,8 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     goal[3] = 0x00;
     write_u32_le(goal + 4, (uint32_t)self->order);
     uint8_t goal_id[16];
+    printf("Sending goal\n");
     nros_cpp_action_client_send_goal_async(self->storage, goal, sizeof(goal), &goal_id);
-    printf("Goal sent: order=%d\n", (int)self->order);
     return 0;
 }
 

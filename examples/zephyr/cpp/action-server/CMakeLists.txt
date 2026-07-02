@@ -30,7 +30,7 @@ set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
-    NAME      action_server
+    NAME      fibonacci_action_server
     CLASS     nros_zephyr_action_server_cpp::FibonacciServer
     LANGUAGE  CPP
     HEADER    FibonacciServer.hpp

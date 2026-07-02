@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/nros.hpp>
@@ -20,11 +20,11 @@ int main(int argc, char** argv) {
     std::printf("nros C++ Action Client (Fibonacci)\n");
     std::printf("===================================\n");
 
-    // Phase 212.M.2 — launch-aware init. Env overlay active today.
+    // Launch-aware init. Env overlay active today.
     NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_action_client"), 1);
+    NROS_TRY_RET(nros::create_node(node, "fibonacci_action_client"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     if (const char* ord = std::getenv("NROS_TEST_GOAL_ORDER")) {
         order = std::atoi(ord);
     }
-    std::printf("\nSending goal: order=%d\n", order);
+    std::printf("\nSending goal\n");
 
     example_interfaces::action::Fibonacci::Goal goal;
     goal.order = order;
@@ -45,14 +45,14 @@ int main(int argc, char** argv) {
     uint8_t goal_id[16];
     ret = client.send_goal(goal, goal_id);
     if (!ret.ok()) {
-        std::fprintf(stderr, "Goal REJECTED by server (order=%d, ret=%d)\n", order, ret.raw());
+        std::fprintf(stderr, "Goal was rejected by server (order=%d, ret=%d)\n", order, ret.raw());
         nros::shutdown();
         return 2;
     }
-    std::printf("Goal sent: order=%d [OK]\n", order);
+    std::printf("Goal accepted by server, waiting for result\n");
 
-    // Poll for feedback while waiting — drain via the new Stream<T> API
-    // (Phase 84.G7) which aligns the feedback receive surface with
+    // Poll for feedback while waiting — drain via the Stream<T> API,
+    // which aligns the feedback receive surface with
     // Subscription<M>::stream() / Promise<T>::wait(). `try_recv_feedback`
     // below is still supported for callers that want the bool-convertible
     // helper.
@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
 
         example_interfaces::action::Fibonacci::Feedback fb;
         while (feedback.try_next(fb).ok()) {
-            std::printf("Feedback: sequence=[");
+            std::printf("Next number in sequence received: [");
             for (uint32_t k = 0; k < fb.sequence.length(); k++) {
                 if (k > 0) std::printf(", ");
                 std::printf("%d", fb.sequence[k]);
@@ -75,14 +75,14 @@ int main(int argc, char** argv) {
     example_interfaces::action::Fibonacci::Result result;
     ret = client.get_result(goal_id, result);
     if (ret.ok()) {
-        std::printf("Result: sequence=[");
+        std::printf("Result received: [");
         for (uint32_t i = 0; i < result.sequence.length(); i++) {
             if (i > 0) std::printf(", ");
             std::printf("%d", result.sequence[i]);
         }
-        std::printf("] [OK]\n");
+        std::printf("]\n");
     } else {
-        std::fprintf(stderr, "Failed to get result: %d [FAIL]\n", ret.raw());
+        std::fprintf(stderr, "Failed to get result: %d\n", ret.raw());
         nros::shutdown();
         return 1;
     }
@@ -94,4 +94,3 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return 0;
 }
-

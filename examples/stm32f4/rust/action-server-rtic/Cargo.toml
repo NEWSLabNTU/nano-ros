@@ -3,17 +3,17 @@ name = "stm32f4-rtic-action-server"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "RTIC action server example for nros on STM32F4 — Phase 216.B.5 nros::main!() shape"
+description = "RTIC action server example for nros on STM32F4 — nros::main!() shape"
 
 [[bin]]
 name = "stm32f4-rtic-action-server"
 path = "src/main.rs"
 
-# Phase 216.B.5 — Entry pkg `[package.metadata.nros.entry] deploy =
+# Entry pkg `[package.metadata.nros.entry] deploy =
 # "rtic-stm32f4"` routes the `nros::main!()` proc-macro onto the
 # B.3 RTIC emit branch (`#[rtic::app] mod app` body that delegates to
 # `RticBoardEntry::init_hardware`). The deploy key also feeds
-# `nros check` (Phase 216.D.1) — which validates the Node pkg's
+# `nros check` — which validates the Node pkg's
 # `DISPATCH = Deferred` against the RTIC framework's
 # `dispatch_strategy() = Deferred`.
 # Self-contained standalone example (issue 0100): node logic in this crate's
@@ -28,12 +28,12 @@ node_pkgs = ["stm32f4-rtic-action-server"]
 
 [package.metadata.nros.node]
 class = "stm32f4_rtic_action_server::ActionServer"
-name = "fibonacci_server"
+name = "fibonacci_action_server"
 default_namespace = "/"
 dispatch = "deferred"
 
 [dependencies]
-# Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits
+# `nros::main!()` proc-macro family. The macro emits
 # the `#[rtic::app]` body + `__nros_spin` / `__nros_dispatch` RTIC task
 # sidekicks via the B.3 routing branch, so this Entry pkg only needs
 # `nros` + the board crate + the action_server Node pkg. The legacy
@@ -41,7 +41,7 @@ dispatch = "deferred"
 # nros-rmw-zenoh, example_interfaces, heapless) is dropped — the
 # macro emit + the board crate own those.
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
-# Phase 216.B.2 board crate — supplies the `RticStm32F4` ZST the
+# Board crate — supplies the `RticStm32F4` ZST the
 # macro-generated body delegates init to via
 # `RticBoardEntry::init_hardware`. Today the bringup body is
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
@@ -84,7 +84,7 @@ debug = 2
 incremental = false
 opt-level = 1
 
-# Phase 204.3 — size-optimized profile: opt-level "z" + strip, inheriting
+# Size-optimized profile: opt-level "z" + strip, inheriting
 # release's lto/codegen-units. Build with `cargo build --profile size`
 # (or fleet-wide via `NROS_CARGO_PROFILE=size just <plat> build`).
 [profile.size]
@@ -93,7 +93,7 @@ opt-level = "s"
 debug = false
 strip = true
 
-# Phase 208.F1 — empty `[workspace]` table makes this example a standalone
+# The empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
 # outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
 # workspace `members` glob when they copy this example out, breaking the

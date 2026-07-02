@@ -17,7 +17,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # timer-driven execution loop on the executor. Raw action register carries the
 # type name as a string, so no generated message headers are needed.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    nuttx_cpp_action_server::FibonacciServer
     LANGUAGE CPP
     HEADER   FibonacciServer.hpp

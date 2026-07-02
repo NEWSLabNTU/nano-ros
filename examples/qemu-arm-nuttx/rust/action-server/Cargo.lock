@@ -290,6 +290,7 @@ name = "nuttx_rs_action_server"
 version = "0.1.0"
 dependencies = [
  "example_interfaces",
+ "log",
  "nros",
  "nros-platform",
 ]

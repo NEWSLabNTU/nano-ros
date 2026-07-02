@@ -21,7 +21,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # Phase 246 (RFC-0043) — TYPED carrier: constructs the typed ActionClient +
 # `configure(node)` binds the goal-response/feedback/result callbacks + sends a goal.
 nano_ros_node_register(
-    NAME     action_client
+    NAME     fibonacci_action_client
     CLASS    threadx_linux_cpp_action_client::ActionClient
     LANGUAGE CPP
     HEADER   ActionClient.hpp

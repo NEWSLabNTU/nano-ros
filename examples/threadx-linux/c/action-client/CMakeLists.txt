@@ -19,7 +19,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # callbacks + a poll timer, then sends one goal. Raw register carries the
 # type-name verbatim, no generated message sources. No manual init/spin, no main.c.
 nano_ros_node_register(
-    NAME     action_client
+    NAME     fibonacci_action_client
     CLASS    threadx_c_action_client::ActionClient
     LANGUAGE C
     TYPED

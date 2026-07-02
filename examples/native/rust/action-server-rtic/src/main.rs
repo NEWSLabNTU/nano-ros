@@ -12,7 +12,7 @@ use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, Fi
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 
-// Phase 88.16.B — diagnostics route through `nros-log`.
+// Diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server-rtic");
 
 extern crate nros_platform_cffi as _;
@@ -27,18 +27,18 @@ fn main() {
 
     nros_info!(&LOGGER, "nros RTIC-pattern Action Server (native)");
 
-    let config = ExecutorConfig::from_env().node_name("fibonacci_server");
+    let config = ExecutorConfig::from_env().node_name("fibonacci_action_server");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
-        .create_node("fibonacci_server")
+        .create_node("fibonacci_action_server")
         .expect("Failed to create node");
     let mut server = node
         .create_action_server::<Fibonacci>("/fibonacci")
         .expect("Failed to create action server");
 
     nros_info!(&LOGGER, "Action server ready: /fibonacci");
-    nros_info!(&LOGGER, "Waiting for goals (RTIC pattern)...");
+    nros_info!(&LOGGER, "Waiting for action goals (RTIC pattern)...");
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
@@ -47,16 +47,15 @@ fn main() {
 
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
-            nros_info!(&LOGGER, "Goal request: order={}", goal.order);
+            nros_info!(&LOGGER, "Received goal request with order {}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
-                nros_info!(&LOGGER, "Goal accepted: {}", goal_id);
-
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
 
                     server.set_goal_status(&goal_id, GoalStatus::Executing);
+                    nros_info!(&LOGGER, "Executing goal");
 
                     // Compute Fibonacci with feedback
                     let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
@@ -78,7 +77,7 @@ fn main() {
                         if let Err(e) = server.publish_feedback(&goal_id, &feedback) {
                             nros_error!(&LOGGER, "Feedback error: {:?}", e);
                         } else {
-                            nros_info!(&LOGGER, "Feedback: {:?}", &feedback.sequence[..]);
+                            nros_info!(&LOGGER, "Publish feedback");
                         }
 
                         // Drive I/O between feedback publishes
@@ -89,7 +88,7 @@ fn main() {
                     }
 
                     let result = FibonacciResult { sequence };
-                    nros_info!(&LOGGER, "Goal completed: {:?}", &result.sequence[..]);
+                    nros_info!(&LOGGER, "Goal succeeded");
                     server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
                 }
 

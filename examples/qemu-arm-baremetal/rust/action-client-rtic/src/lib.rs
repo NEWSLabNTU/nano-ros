@@ -1,4 +1,4 @@
-//! QEMU MPS2-AN385 RTIC Fibonacci Action Client — phase-244.D1 node logic.
+//! QEMU MPS2-AN385 RTIC Fibonacci Action Client node logic.
 //!
 //! Sends an `example_interfaces/Fibonacci` goal on `/fibonacci`. Declarative,
 //! platform/RMW-agnostic Node: `register()` declares node + action client;
@@ -16,16 +16,21 @@ use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
+use nros_log::{Logger, nros_info};
+
+// Diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("fibonacci_action_client");
 
 /// Fibonacci action client — declares the client, then issues a single goal
-/// (`order = 5`) on the first `tick`.
+/// (`order = 10`) on the first `tick`.
 pub struct FibonacciClient;
 
 impl Node for FibonacciClient {
-    const NAME: &'static str = "fibonacci_client";
+    const NAME: &'static str = "fibonacci_action_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeOptions::new("fibonacci_client"))?;
+        nros_log::register_logger(&LOGGER);
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
         let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
         Ok(())
     }
@@ -46,20 +51,20 @@ impl ExecutableNode for FibonacciClient {
     fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Feedback / result callbacks land here once codegen wires the
         // `GoalStatusArray` + feedback-stream + result-future subscribers.
-        // The id-driven dispatch is the M-F.4.a + N runtime plumbing; this
-        // body is the seam.
+        // This body is the seam for that runtime plumbing.
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         if state.sent {
             return;
         }
-        let goal = FibonacciGoal { order: 5 };
+        let goal = FibonacciGoal { order: 10 };
         // 32 B is more than enough for one `i32` + CDR header.
         if ctx
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
+            nros_info!(&LOGGER, "Sending goal");
             state.sent = true;
         }
         // On a `Runtime` stub error, `sent` stays false — the next tick

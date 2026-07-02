@@ -25,7 +25,7 @@ set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
-    NAME      action_client
+    NAME      fibonacci_action_client
     CLASS     nros_zephyr_zenoh_action_client_c::FibonacciClient
     LANGUAGE  C
     TYPED

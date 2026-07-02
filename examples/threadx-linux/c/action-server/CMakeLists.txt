@@ -19,7 +19,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # /fibonacci + an execution timer. Raw register carries the type-name verbatim,
 # no generated message sources. No manual support/executor init, no spin, no main.c.
 nano_ros_node_register(
-    NAME     action_server
+    NAME     fibonacci_action_server
     CLASS    threadx_c_action_server::ActionServer
     LANGUAGE C
     TYPED
