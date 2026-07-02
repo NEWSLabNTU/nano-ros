@@ -44,13 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#129** — [Zephyr rust workspace-entry lane broken on current main — executor heap alloc
-  panics the default malloc arena; with that fixed, `Executor::open` fails
-  `Transport(ConnectionFailed)`](0129-zephyr-rust-workspace-entry-lane-broken.md): a stale
-  prebuilt `zephyr.exe` masked both since ~phase-271. Layer 1 mitigated (arena bump in the
-  entries' prj-zenoh.conf); layer 2 (suspected missing RMW backend register on the Rust-Zephyr
-  path) blocks the base zephyr rust e2e AND phase-276 W1 params-on-Zephyr (its e2e is
-  `#[ignore]`d on this).
+- **#129** — [Zephyr rust workspace-entry lane broken on current main](0129-zephyr-rust-workspace-entry-lane-broken.md):
+  a stale prebuilt `zephyr.exe` masked it since ~phase-248/271. Three layers: (1) executor's
+  ~75 KiB heap alloc vs picolibc's 16 KiB malloc arena — mitigated (arena bump); (2) NO RMW
+  backend in the Rust-Zephyr graph nor registration (phase-248 C6g removed both; the C-port
+  premise only held for C/C++) — **FIXED** (entry-owned `dep:nros-rmw-zenoh` + the `nros::main!`
+  Zephyr arm's deploy-rmw `register()` emit, the RFC-0031 C5b amendment; session now connects +
+  handshakes, strace-verified); (3) NEW: after the first liveliness declare the app thread
+  deadlocks on Zephyr's per-fd `fdtable` mutex against the zenoh read task — the remaining
+  blocker for the zephyr-rust e2es (params e2e stays `#[ignore]`d).
 - **#128** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
   lifecycle / run_tiers](0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
   W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only

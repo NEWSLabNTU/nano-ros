@@ -75,3 +75,34 @@ build/zenohd/zenohd --listen tcp/127.0.0.1:7456 --no-multicast-scouting &
 ../nano-ros-workspace/build-ws-rs-entry-zenoh/zephyr/zephyr.exe           # layer 1 panic
 # apply the arena bump → rebuild → rerun → layer 2 ConnectionFailed
 ```
+
+## Update (2026-07-03) — layer 2 root-caused + FIXED; layer 3 isolated
+
+**Layer 2 root cause (registration) — confirmed + fixed.** The June-13 prebuilt images
+predate phase-248 C6g: back then the entries carried `rmw-zenoh = ["nros/rmw-zenoh",
+"dep:nros-rmw-zenoh"]` and the macro emitted `__register_linked_rmw()`. C6g made the
+feature an inert marker and C5c/249-P1 removed the emit, on the premise the backend
+"enters the link graph via the board crate / CMake C-port" — which only ever held for
+C/C++ entries. On current main the Rust-Zephyr graph had NO backend crate and NO
+registration (`cargo tree -i nros-rmw-zenoh` → not in graph; zero zenoh symbols in the
+image). **Fix (the RFC-0031 C5b amendment, finally implemented):**
+- the Zephyr entries' `rmw-zenoh = ["dep:nros-rmw-zenoh"]` is a real dep again
+  (`platform-zephyr` + `ros-humble`; `zpico-sys/zephyr` consumes the west build's
+  INCLUDE_DIRS/INCLUDE_DEFINES env);
+- `nros::main!`'s Zephyr arm emits `::nros_rmw_<x>::register()` from the deploy
+  metadata's `rmw` key (cfg-gated on the entry's matching `rmw-<x>` feature), mirroring
+  the bridge-entry emit and the FreeRTOS C5a board-owned register.
+Verified by strace: the image now performs the full TCP connect + zenoh open handshake +
+`@ros2_lv` node-liveliness declare against zenohd (previously zero network syscalls).
+
+**Layer 3 (NEW, isolated) — fdtable mutex deadlock after the first liveliness declare.**
+With registration fixed, the entry connects and declares the first node, then hangs:
+gdb shows the app thread blocked forever in `k_mutex_lock(<fdtable+288>)` (a per-fd lock
+in Zephyr's `fdtable.c`), while the zenoh-pico read task sits in `k_poll` and the lease
+task in `k_sleep` — the main thread and the read task share the single session socket fd
+and deadlock on its fdtable entry lock. Keepalives flowed before the hang (both LWPs
+interleaved sends/recvs), so the lock-ordering breaks at/after the first declare batch.
+Next: reproduce with the fdtable lock instrumented; suspects are the NSOS/zvfs per-fd
+locking vs zenoh-pico's MT model (`Z_FEATURE_MULTI_THREAD=1`, one socket shared by main +
+read task) — same family as the repo's earlier NSOS patches. The C/C++ Zephyr entries
+(same socket model through the C API) may or may not share this; verify.

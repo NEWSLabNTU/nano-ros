@@ -31,10 +31,11 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 default = ["rmw-zenoh"]
-# Inert build-target marker (#60 T5) — the Zephyr board's CMake C-port links
-# the concrete backend from `CONFIG_NROS_RMW_<X>`; this row only satisfies the
-# CMakeLists `EXTRA_CARGO_ARGS --features rmw-zenoh`.
-rmw-zenoh = []
+# Issue #129 (RFC-0031 C5b amendment) — a REAL backend dep, not an inert
+# marker: on a Rust Zephyr app the entry owns the backend link + register
+# (the `nros::main!` Zephyr arm emits `::nros_rmw_zenoh::register()` from the
+# deploy metadata's `rmw` key; nothing else registers on `target_os = "none"`).
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 
 # Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
 # proc-macro onto the `Framework::Zephyr` emit branch.
@@ -70,6 +71,14 @@ nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" 
 
 # Concrete platform vtable — the Zephyr board/CMake also links it.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+
+# Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
+# Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west
+# build's INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-zephyr",
+    "ros-humble",
+], optional = true }
 
 # The launch-named Node pkg (platform/RMW-agnostic).
 param_talker_pkg = { path = "../param_talker_pkg", default-features = false }

@@ -40,7 +40,16 @@ default = ["rmw-zenoh"]
 # Rust `nros rmw-*` dep. These rows are now inert build-target markers, kept so
 # the Zephyr `CMakeLists.txt` EXTRA_CARGO_ARGS `--features rmw-<x>` still
 # resolves; they no longer forward `nros rmw-*`. (#60 T5)
-rmw-zenoh = []
+#
+# Issue #129 (RFC-0031 C5b amendment, 2026-07-03) — `rmw-zenoh` is a REAL
+# backend dep again, NOT an inert marker: on a Rust Zephyr app nothing else
+# links or registers the backend (`nros-board-zephyr` is NetworkWait-only and
+# `.init_array` ctors are compiled out on `target_os = "none"`), so the entry
+# carries the direct `nros-rmw-zenoh` dep and the `nros::main!` Zephyr arm
+# emits the explicit `register()` from the deploy metadata's `rmw` key. The
+# C6g "the CMake C-port links the backend" premise only ever held for C/C++
+# entries; the Rust lane silently lost its backend (masked by stale fixtures).
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds = []
 rmw-xrce = []
 
@@ -81,6 +90,14 @@ nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" 
 # Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
 # for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+
+# Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
+# Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west
+# build's INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-zephyr",
+    "ros-humble",
+], optional = true }
 
 # Node pkg rlibs (platform/RMW-agnostic after Phase 248 C6a) — the launch XML
 # names `talker` + `listener`, so the macro emits both `register` calls; the

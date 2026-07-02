@@ -819,6 +819,36 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     }
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
+    // Issue #129 (RFC-0031 C5b amendment) — explicit backend register for the
+    // Zephyr framework arm. On every OwnedSpin board the BOARD's boot path owns
+    // `nros_rmw_<x>::register()` (Phase 248 C5a); Zephyr has no BoardEntry and
+    // its board crate is NetworkWait-only, so registration must come from the
+    // entry itself. `.init_array` ctors are compiled out on `target_os = "none"`
+    // (this includes native_sim's `x86_64-unknown-none`), so without this emit
+    // the CFFI registry stays empty and `Executor::open` fails
+    // `Transport(ConnectionFailed)` (NoBackend). The entry deps the concrete
+    // backend under its `rmw-<x>` feature (C5b), keeping the crate + this call
+    // resolvable; unknown rmw names emit nothing (data-driven fallbacks).
+    let zephyr_rmw_register_ts: proc_macro2::TokenStream = deploy_for_framework
+        .as_deref()
+        .and_then(|board_key| read_deploy_rmw(&manifest_dir.join("Cargo.toml"), board_key))
+        .and_then(|rmw| rmw_crate_ident(&rmw).map(|ident| (rmw, ident)))
+        .map(|(rmw, crate_ident)| {
+            let id = Ident::new(crate_ident, Span::call_site());
+            // Gate on the entry's matching `rmw-<x>` cargo feature so an entry
+            // built with a different `--features rmw-<y>` selection (the
+            // Kconfig-driven multi-RMW shape) still compiles — the register
+            // call cfg-outs together with the optional backend dep.
+            let feature = format!("rmw-{rmw}");
+            quote! {
+                #[cfg(feature = #feature)]
+                {
+                    let _ = ::#id::register();
+                }
+            }
+        })
+        .unwrap_or_default();
+
     // W4b — bake the single-node boot identity into a `NROS_BOOT_CONFIG` static
     // placed in the `.nros_boot_config` linker section (bare-metal only; hosted
     // gets a plain `#[unsafe(no_mangle)] #[used]` static that is still referenceable).
@@ -1182,6 +1212,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // functions with no link symbol, so the native_sim final link
                 // fails with undefined references.)
                 let _ = ::nros_platform::zephyr::wait_network(2000);
+
+                // Issue #129 (RFC-0031 C5b amendment) — explicit backend register.
+                // Zephyr has no BoardEntry boot path to own it (the C5a home) and
+                // `.init_array` ctors are compiled out on `target_os = "none"`, so
+                // the codegen emits the register from the entry's own backend dep
+                // (`rmw-<x> = ["dep:nros-rmw-<x>"]`). Without it the CFFI registry
+                // is empty and `Executor::open` fails Transport(ConnectionFailed).
+                #zephyr_rmw_register_ts
 
                 // Phase 249 P1 — RMW register is board-owned (Phase 248 C5a); the
                 // backend-agnostic `nros` crate cannot register (no backend dep), so
@@ -1907,6 +1945,26 @@ fn parse_ipv4_lit(s: &str) -> Option<[u8; 4]> {
 /// `Cargo.toml`. Missing block / keys → all-`None` overlay (the firmware keeps
 /// its compiled-in `Config::default()`). Only the network/locator/domain keys
 /// are consumed here; `rmw` is handled elsewhere (feature/link wiring).
+/// Issue #129 (RFC-0031 C5b amendment) — the entry's deploy RMW key
+/// (`[package.metadata.nros.deploy.<board>].rmw`). The Zephyr framework arm
+/// uses it to emit the explicit `::nros_rmw_<x>::register()` call: Zephyr has
+/// no `BoardEntry` boot path to own registration (the FreeRTOS C5a home), the
+/// board crate is NetworkWait-only, and `.init_array` ctors don't run on
+/// `target_os = "none"` — so per the C5b amendment the ENTRY carries the
+/// direct backend dep and codegen emits the register.
+fn read_deploy_rmw(cargo_toml: &Path, board_key: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(cargo_toml).ok()?;
+    let v = toml::from_str::<toml::Value>(&raw).ok()?;
+    v.get("package")?
+        .get("metadata")?
+        .get("nros")?
+        .get("deploy")?
+        .get(board_key)?
+        .get("rmw")?
+        .as_str()
+        .map(str::to_string)
+}
+
 fn read_deploy_overlay(cargo_toml: &Path, board_key: &str) -> DeployOverlayLit {
     let Ok(raw) = std::fs::read_to_string(cargo_toml) else {
         return DeployOverlayLit::default();
