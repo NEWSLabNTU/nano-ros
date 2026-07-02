@@ -215,7 +215,7 @@ cd examples/native/rust/talker && cargo run
 # terminal 3
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 For DDS-side interop (cyclonedds), see `docs/reference/rmw_zenoh_interop.md`.
