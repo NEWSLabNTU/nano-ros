@@ -300,6 +300,9 @@ static NUTTX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// sim + FreeRTOS QEMU), the C++ siblings of the C2a/C2b C entries.
 static THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-274 W3 (#126) — cached path to the 2-tier C++ realtime FreeRTOS entry
+/// (`ws-realtime-cpp-mps2`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
+static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached path to the MIXED (C + C++ + Rust) threadx-linux embedded entry.
 static THREADX_LINUX_WORKSPACE_MIXED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1451,6 +1454,22 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos",
                 "cpp",
+                "build-workspace-fixtures-freertos",
+                "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-274 W3 (#126) — the 2-tier C++ realtime FreeRTOS/mps2 entry
+/// (`ws-realtime-cpp-mps2`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
+/// over one shared session via `FreertosBoard::run_tiers` (RFC-0015 Model 1).
+pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
+    FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-freertos-realtime",
+                "ws-realtime-cpp-mps2",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )
