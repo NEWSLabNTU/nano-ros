@@ -88,8 +88,10 @@ fn test_service_client_starts_without_server(
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Without a server the client must report the wait-for-service timeout
-    // (and exit non-zero) rather than hanging or crashing.
+    // Without a server the client must report a failure (and exit non-zero)
+    // rather than hanging or crashing: either the wait-for-service timeout,
+    // or — on backends whose readiness probe is optimistic (the CFFI zenoh
+    // path has no liveliness probe) — the per-call timeout.
     let output = client
         .wait_for_output_pattern("Timed out waiting", Duration::from_secs(10))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
@@ -98,8 +100,9 @@ fn test_service_client_starts_without_server(
     eprintln!("Client output (no server):\n{}", output);
 
     assert!(
-        output.contains("Timed out waiting for /add_two_ints service"),
-        "client without a server should report the wait-for-service timeout"
+        output.contains("Timed out waiting for /add_two_ints service")
+            || output.contains("Service call failed"),
+        "client without a server should report the wait-for-service or call timeout"
     );
 }
 
@@ -264,7 +267,7 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
 
-    // Wait for client to report the wait-for-service timeout or exit
+    // Wait for client to report the wait-for-service/call timeout or exit
     let output = client
         .wait_for_output_pattern("Timed out waiting", Duration::from_secs(12))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
@@ -273,7 +276,9 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     eprintln!("Timeout test output:\n{}", output);
 
     assert!(
-        output.contains("Timed out waiting for /add_two_ints service") || !client.is_running(),
+        output.contains("Timed out waiting for /add_two_ints service")
+            || output.contains("Service call failed")
+            || !client.is_running(),
         "client without a server should report the timeout (or exit)"
     );
 }
