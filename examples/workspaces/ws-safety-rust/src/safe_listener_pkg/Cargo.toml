@@ -14,18 +14,19 @@ name = "safe_listener"
 default_namespace = "/"
 
 [features]
-# phase-263 B1 — forward the E2E-safety axis to nros so `CallbackCtx::integrity()`
-# (the per-message CRC/gap/dup status) is in scope. The Entry pkg enables this
-# (`safe_listener_pkg/safety-e2e`) when the system declares `features=["safety"]`;
-# cargo feature unification then builds every `nros` in the graph with safety-e2e.
-# Off → the safety subscription still works (validated receive), just no status read.
-default = []
-safety-e2e = ["nros/safety-e2e"]
+# phase-277 W3.c — this pkg IS the safety-CRC listener (its whole purpose is
+# reading `CallbackCtx::integrity()`), so the E2E-safety axis is unconditional
+# on `nros` below. `safety-e2e` is kept as a no-op feature name so existing
+# consumers (native_entry, native_safety_listener_entry) that request
+# `features = ["safety-e2e"]` keep working.
+default = ["safety-e2e"]
+safety-e2e = []
 
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",
+    "safety-e2e",
 ] }
 std_msgs = { version = "*", default-features = false }

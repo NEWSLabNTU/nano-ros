@@ -23,7 +23,7 @@ path = "src/lib.rs"
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section", "nros/alloc"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "nros/alloc"]
 
 # Phase 245 — app-node shape. `nros::main!()` (src/main.rs) reads
 # `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"` (the macro maps
@@ -48,7 +48,7 @@ example_interfaces = { version = "*", default-features = false }
 
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }
+nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section" }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

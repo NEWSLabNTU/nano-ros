@@ -20,9 +20,7 @@
 // target has no panic handler and fails to compile.
 extern crate nros_board_threadx_qemu_riscv64 as _;
 
-#[cfg(feature = "rmw-cyclonedds")]
 extern crate alloc;
-#[cfg(feature = "rmw-cyclonedds")]
 extern crate nros_platform_critical_section as _;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
@@ -139,7 +137,6 @@ nros::node!(FibonacciServer);
 // `register` declares the FibonacciServer. No manual `Executor::open` /
 // `register_rmw` / spin loop / hardcoded locator in the example
 // (Phase 245 / issue 0049 P1/P3/P4/P6).
-#[cfg(feature = "rmw-cyclonedds")]
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
     nros_board_threadx_qemu_riscv64::run_app_thread(register)

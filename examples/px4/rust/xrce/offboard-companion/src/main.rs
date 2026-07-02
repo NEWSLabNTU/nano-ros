@@ -43,8 +43,9 @@ extern crate nros_platform_cffi as _;
 
 // Phase 248 C6 — force-link the xrce backend rlib so its `RMW_INIT_ENTRIES`
 // self-register section survives pruning (the board-less app owns its backend,
-// no `nros/rmw-xrce` umbrella feature). Inert unless `rmw-xrce` selects it.
-#[cfg(feature = "rmw-xrce")]
+// no `nros/rmw-xrce` umbrella feature). This is the only RMW this example
+// supports, so the backend dep (and this force-link) are unconditional
+// (phase-277 W3.b).
 #[doc(hidden)]
 #[used]
 static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =

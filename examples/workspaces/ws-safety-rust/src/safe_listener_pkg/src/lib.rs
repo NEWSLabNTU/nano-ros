@@ -1,9 +1,9 @@
 //! SafeListener Node pkg — E2E message-integrity (CRC) subscriber on `/chatter`.
 //!
-//! Declares a SAFETY subscription via
-//! `create_subscription_for_callback_name_with_safety` (ungated — works with or
-//! without the `safety-e2e` build feature; off ⇒ a basic subscription). When the
-//! system declares `[system].features = ["safety"]`, the zenoh backend attaches a
+//! This pkg IS the safety-CRC listener, so `safety-e2e` is unconditional (see
+//! Cargo.toml — phase-277 W3.c). It declares a SAFETY subscription via
+//! `create_subscription_for_callback_name_with_safety`. When the system
+//! declares `[system].features = ["safety"]`, the zenoh backend attaches a
 //! CRC + sequence number on publish, the runtime validates it on receive, and the
 //! callback reads the per-message `CallbackCtx::integrity()` — CRC ok, sequence
 //! gap, or duplicate — alongside the payload. The first WORKSPACE example of the
@@ -14,8 +14,7 @@
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::Int32;
 
-/// SafeListener — counts received messages + (when built with `safety-e2e`) CRC
-/// failures / sequence gaps seen.
+/// SafeListener — counts received messages + CRC failures / sequence gaps seen.
 pub struct SafeListener;
 
 #[derive(Default)]
@@ -54,12 +53,12 @@ impl ExecutableNode for SafeListener {
             if ctx.message::<Int32>().is_ok() {
                 state.received = state.received.wrapping_add(1);
             }
-            // The integrity status describes the message just received; present
-            // only when the safety axis is compiled in (the `.safety()` opt-in +
-            // the `safety-e2e` build feature). A non-ok CRC / sequence gap / dup
-            // bumps the fault counter; a valid one republishes the running count on
-            // `/safe_ok` so a subscriber can assert the E2E CRC-validate path works.
-            #[cfg(feature = "safety-e2e")]
+            // The integrity status describes the message just received (the
+            // `.safety()` opt-in on the subscription; `safety-e2e` is
+            // unconditional on this pkg — see Cargo.toml). A non-ok CRC /
+            // sequence gap / dup bumps the fault counter; a valid one
+            // republishes the running count on `/safe_ok` so a subscriber can
+            // assert the E2E CRC-validate path works.
             if let Some(status) = ctx.integrity() {
                 if status.is_valid() {
                     let msg = Int32 {

@@ -29,8 +29,8 @@ use px4_msgs::msg::TimesyncStatus;
 extern crate nros_platform_cffi as _;
 
 // Phase 248 C6 — force-link the xrce backend (board-less app owns it; no
-// `nros/rmw-xrce`). Inert unless `rmw-xrce` selects it.
-#[cfg(feature = "rmw-xrce")]
+// `nros/rmw-xrce`). This is the only RMW this example supports, so the
+// backend dep (and this force-link) are unconditional (phase-277 W3.b).
 #[doc(hidden)]
 #[used]
 static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
