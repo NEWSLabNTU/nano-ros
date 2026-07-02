@@ -87,7 +87,7 @@ If you're porting from micro-ROS to nano-ros:
 
 ## See also
 
-- [Build / config / deploy workflow comparison](https://github.com/jerry73204/nano-ros/blob/main/docs/research/build-config-deploy-comparison.md)
+- [Build / config / deploy workflow comparison](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/research/build-config-deploy-comparison.md)
   — historical comparison of the three workflow axes vs micro-ROS, Zenoh-pico,
   embedded DDS, and Arduino-ROS.
 - [Choosing an RMW Backend](../user-guide/rmw-backends.md) — the

@@ -41,67 +41,62 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 ## Requirements
 
 - Rust nightly (edition 2024)
-- zenohd router (built from submodule via `just build-zenohd`)
+- `nros setup native --rmw <zenoh|xrce|cyclonedds>` provisions the RMW host
+  daemon (zenohd, Micro-XRCE-DDS Agent, or Cyclone DDS) — no manual build step
 - (Optional) ROS 2 Humble with rmw_zenoh_cpp for interop
 - (Optional) cmake for C examples
 
 ## Quick Start (Rust)
 
-### As a Git Dependency
+nano-ros is distributed as **source** — nothing is published to crates.io.
+Consumers either build in-tree (below) or add a path dependency (see
+[Rust-only consumers](book/src/getting-started/installation.md#rust-only-consumers)).
 
-Add nros to your project's `Cargo.toml`:
-
-```toml
-[dependencies]
-nros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
-std_msgs = { version = "*", default-features = false }
-```
-
-Generate message bindings with `nros`:
+### 1. Get the `nros` CLI
 
 ```bash
-# Install the nros CLI. nano-ros is a source release (its crates are NOT on
-# crates.io — RFC-0040); the CLI lives in the in-tree sub-workspace packages/cli/.
-git clone https://github.com/NEWSLabNTU/nano-ros
+git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup-cli                 # builds packages/cli/ → nros (on PATH via ./activate.sh)
-# or, full quick-start:  ./scripts/bootstrap.sh base
-
-# Source ROS 2 and generate bindings in your package
-source /opt/ros/humble/setup.bash
-nros generate-rust
+./scripts/bootstrap.sh base
 ```
 
-This creates `generated/` with Rust types for your ROS 2 messages and a `.cargo/config.toml` with the necessary patch entries.
+Already have cargo?
+`cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
+Tagged release, no Rust at all? `./scripts/install-nros-prebuilt.sh`.
 
-See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough.
-
-### From the Repository
+### 2. Activate the workspace (every new shell)
 
 ```bash
-git clone https://github.com/jerry73204/nano-ros.git
-cd nano-ros
-scripts/bootstrap.sh       # Install/check just, then show setup choices
-just setup base            # Native/ROS/zenoh quick start
-source ./setup.bash
+source ./activate.sh          # or: direnv allow / source ./activate.fish
 ```
 
-Platform developers can run `scripts/bootstrap.sh platform zephyr`
-or `just <platform> setup`. Contributors preparing the full matrix use
-`scripts/bootstrap.sh all`.
-
-Run the demo:
+### 3. Provision a board + RMW
 
 ```bash
-# Terminal 1: Zenoh router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+nros setup native --rmw zenoh
+```
+
+Installs the zenoh router (`zenohd`) into `~/.nros/sdk`. See
+[Supported Boards](book/src/reference/supported-boards.md) for cross
+targets (Zephyr, FreeRTOS, NuttX, ThreadX, ESP32, bare-metal).
+
+### 4. Run the demo
+
+```bash
+# Terminal 1: Zenoh router (installed by `nros setup native --rmw zenoh`)
+export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
+zenohd
 
 # Terminal 2: Talker
-cd examples/native/rust/talker && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run
 
 # Terminal 3: Listener
-cd examples/native/rust/listener && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
+cd examples/native/rust/listener && RUST_LOG=info cargo run
 ```
+
+See [Installation](book/src/getting-started/installation.md) and
+[First Node — Rust](book/src/getting-started/first-node-rust.md) for the
+complete walkthrough.
 
 ## Quick Start (C API)
 
@@ -130,7 +125,7 @@ target_link_libraries(c_talker PRIVATE NanoRos::NanoRos)
 nros_platform_link_app(c_talker)
 ```
 
-See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrough.
+See [First Node — C](book/src/getting-started/first-node-c.md) for a complete C walkthrough.
 
 ## On Zephyr (west module)
 
@@ -146,11 +141,12 @@ the version-spanning consumption guide + compatibility matrix.
 nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
-# Terminal 1: zenohd
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+# Terminal 1: zenohd (installed by `nros setup native --rmw zenoh`)
+export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
+zenohd
 
 # Terminal 2: nano-ros talker
-cd examples/native/rust/talker && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -192,12 +188,12 @@ nano-ros uses `nros generate rust` to create Rust bindings from ROS 2 `.msg`/`.s
 
 | Topic                  | Location                                                     |
 |------------------------|--------------------------------------------------------------|
-| Getting started        | [docs/guides/getting-started.md](docs/guides/getting-started.md)           |
+| Getting started        | [book/src/getting-started/installation.md](book/src/getting-started/installation.md) |
 | Message generation     | [docs/guides/message-generation.md](docs/guides/message-generation.md)     |
 | ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
 | Testing                | [tests/README.md](tests/README.md)                           |
 | Zephyr setup           | [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md)                 |
-| Embedded integration   | [docs/reference/embedded-integration.md](docs/reference/embedded-integration.md) |
+| Embedded integration   | [book/src/concepts/board-integration.md](book/src/concepts/board-integration.md) |
 | Troubleshooting        | [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)           |
 
 ## License

@@ -110,7 +110,7 @@ the result in a bounded `no_std` registry. No per-msg-pkg backend
 code is required.
 
 Tracking + sizing knob (`NROS_CYCLONEDDS_MAX_TYPES`): see
-[`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)
+[`docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md)
 section 212.K.7.
 
 ## Git Dependency Workflow
@@ -120,7 +120,7 @@ For projects that consume nros as a **git dependency** (not from within the nros
 **Step 1:** Add git dependency to `Cargo.toml`:
 ```toml
 [dependencies]
-nros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+nros = { git = "https://github.com/NEWSLabNTU/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 ```
 
@@ -135,8 +135,8 @@ nros generate-rust --config --nano-ros-git
 This generates `.cargo/config.toml` with git-based patches:
 ```toml
 [patch.crates-io]
-nros-core = { git = "https://github.com/jerry73204/nano-ros" }
-nros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
+nros-core = { git = "https://github.com/NEWSLabNTU/nano-ros" }
+nros-serdes = { git = "https://github.com/NEWSLabNTU/nano-ros" }
 std_msgs = { path = "generated/std_msgs" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 ```
