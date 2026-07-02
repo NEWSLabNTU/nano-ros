@@ -1,5 +1,6 @@
 // QEMU RISC-V ThreadX C++ talker — typed component (RFC-0043). A timer member
-// publishes a real Int32 counter on `/chatter` via a typed `Publisher<Int32>`.
+// publishes a the official ROS 2 demo payload (`std_msgs/String`, `Hello World: N`)
+// on `/chatter` via a typed `Publisher<String>`.
 // No string callback name, no synthesizing interpreter — the executor dispatches
 // `on_tick` each spin tick. Platform / RMW (zenoh|cyclonedds) selection lives in
 // CMake, not here.
@@ -14,7 +15,7 @@
 namespace riscv64_threadx_cpp_talker {
 
 class Talker {
-    ::nros::Publisher<std_msgs::msg::Int32> pub_;
+    ::nros::Publisher<std_msgs::msg::String> pub_;
     ::nros::Timer timer_;
     int count_ = 0;
 

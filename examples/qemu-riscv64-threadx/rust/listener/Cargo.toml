@@ -45,6 +45,9 @@ nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-boa
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "ros-humble"] }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 std_msgs = { version = "*", default-features = false }
+# phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
+# the `log` facade; the platform entry runtime owns the sink.
+log = "0.4"
 
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }

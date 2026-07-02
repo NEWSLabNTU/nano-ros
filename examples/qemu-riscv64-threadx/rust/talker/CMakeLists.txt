@@ -20,7 +20,7 @@ set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
-nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
+nros_generate_interfaces(std_msgs "msg/String.msg" LANGUAGE C SKIP_INSTALL)
 # Phase 212.M.10 — `nros.toml` retired; the Config literal lives in
 # `src/lib.rs::start_from_reset()`. The Cyclone path here doesn't
 # reference `NROS_APP_CONFIG`, so the generated app_config.h was dead

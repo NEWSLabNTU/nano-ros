@@ -15,9 +15,14 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# package.xml SSoT: generate the typed C bindings for the interface closure
+# (std_msgs) — the component uses the generated String struct + serializer
+# (phase-277 W4; was hand-rolled CDR).
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
 # Phase 246 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C Talker
 # component + `talker_configure(node, executor)` creates a raw publisher + a timer
-# publishing a CDR-encoded Int32 counter. Raw publish carries the DDS-mangled
+# publishing the std_msgs/String demo payload. Raw publish carries the DDS-mangled
 # keyexpr verbatim, so no generated message sources are needed. No manual
 # support/executor init, no spin loop, no per-example main.c.
 nano_ros_node_register(

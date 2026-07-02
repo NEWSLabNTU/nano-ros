@@ -173,20 +173,20 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
 pub fn build_threadx_cpp_talker() -> TestResult<&'static Path> {
     THREADX_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "talker", "threadx_cpp_talker"))
+        .get_or_try_init(|| build_cmake_example("cpp", "talker", "threadx_linux_cpp_talker"))
         .map(|p| p.as_path())
 }
 
 pub fn build_threadx_cpp_listener() -> TestResult<&'static Path> {
     THREADX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "threadx_cpp_listener"))
+        .get_or_try_init(|| build_cmake_example("cpp", "listener", "threadx_linux_cpp_listener"))
         .map(|p| p.as_path())
 }
 
 pub fn build_threadx_cpp_service_server() -> TestResult<&'static Path> {
     THREADX_CPP_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-server", "threadx_cpp_service_server")
+            build_cmake_example("cpp", "service-server", "threadx_linux_cpp_service_server")
         })
         .map(|p| p.as_path())
 }
@@ -194,7 +194,7 @@ pub fn build_threadx_cpp_service_server() -> TestResult<&'static Path> {
 pub fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
     THREADX_CPP_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-client", "threadx_cpp_service_client")
+            build_cmake_example("cpp", "service-client", "threadx_linux_cpp_service_client")
         })
         .map(|p| p.as_path())
 }
@@ -203,7 +203,7 @@ pub fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
 pub fn build_threadx_cpp_action_server() -> TestResult<&'static Path> {
     THREADX_CPP_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "action-server", "threadx_cpp_action_server")
+            build_cmake_example("cpp", "action-server", "threadx_linux_cpp_action_server")
         })
         .map(|p| p.as_path())
 }
@@ -212,7 +212,7 @@ pub fn build_threadx_cpp_action_server() -> TestResult<&'static Path> {
 pub fn build_threadx_cpp_action_client() -> TestResult<&'static Path> {
     THREADX_CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_cmake_example("cpp", "action-client", "threadx_cpp_action_client")
+            build_cmake_example("cpp", "action-client", "threadx_linux_cpp_action_client")
         })
         .map(|p| p.as_path())
 }

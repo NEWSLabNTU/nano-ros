@@ -11,6 +11,8 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp"
+
 namespace riscv64_threadx_cpp_listener {
 
 class Listener {

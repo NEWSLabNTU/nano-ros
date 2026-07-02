@@ -41,7 +41,7 @@ target_link_libraries(riscv64_threadx_cpp_listener_listener_component
 
 nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
 
-# CycloneDDS needs the per-app Int32 descriptor registration (register_* from the
+# CycloneDDS needs the per-app String descriptor registration (register_* from the
 # idlc type support) hooked into nros_rmw_cyclonedds_register_app_descriptors.
 if(NROS_RMW STREQUAL "cyclonedds")
     target_sources(${PROJECT_NAME} PRIVATE src/cyclonedds_app.c)

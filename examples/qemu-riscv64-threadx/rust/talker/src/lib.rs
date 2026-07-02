@@ -1,6 +1,7 @@
 //! ThreadX QEMU RISC-V Talker — Phase 245 app-node logic.
 //!
-//! Publishes `std_msgs/Int32` on `/chatter` once per second. This is an **app
+//! Publishes `std_msgs/String` (`Hello World: N`) on `/chatter` once per
+//! second, matching the official ROS 2 `demo_nodes_cpp` talker. This is an **app
 //! node** (it owns `main`, via `src/main.rs`'s `nros::main!()`), not a workspace
 //! Node lib — but the *logic* is still platform/RMW-agnostic: `register()`
 //! declares node + publisher + timer; `on_callback("on_tick")` runs the body. The
@@ -21,11 +22,13 @@ extern crate nros_board_threadx_qemu_riscv64 as _;
 extern crate alloc;
 extern crate nros_platform_critical_section as _;
 
+use core::fmt::Write as _;
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
-use std_msgs::msg::Int32;
+
+use std_msgs::msg::String as StringMsg;
 
 /// Talker node — counter state + chatter publish on every tick.
 pub struct Talker;
@@ -35,7 +38,7 @@ impl Node for Talker {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker"))?;
-        let pub_chatter = node.create_publisher_for_topic::<Int32>("/chatter")?;
+        let pub_chatter = node.create_publisher_for_topic::<StringMsg>("/chatter")?;
         let _timer =
             node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
         node.callback_for_name("on_tick")
@@ -45,7 +48,7 @@ impl Node for Talker {
 }
 
 impl ExecutableNode for Talker {
-    /// Monotonic counter — the next int32 to publish.
+    /// Monotonic counter — the next sequence number to publish.
     type State = i32;
 
     fn init() -> Self::State {
@@ -54,9 +57,14 @@ impl ExecutableNode for Talker {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
-            let msg = Int32 { data: *state };
-            let _ = ctx.publish_to_topic::<Int32, 64>("/chatter", &msg);
+            // Official ROS 2 demo behavior (phase-277 W4): payload
+            // "Hello World: N" (N from 1) + the canonical `Publishing:` log
+            // line the e2e harness counts.
             *state = state.wrapping_add(1);
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {}", *state);
+            let _ = ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg);
+            log::info!("Publishing: '{}'", msg.data);
         }
     }
 }

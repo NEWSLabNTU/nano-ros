@@ -9,13 +9,18 @@
 namespace riscv64_threadx_cpp_talker {
 
 void Talker::on_tick() {
-    std_msgs::msg::Int32 m;
-    m.data = count_++;
+    // Pre-increment so the first payload is "Hello World: 1", matching the
+    // official ROS 2 demo talker.
+    ++count_;
+    // Global printf/snprintf/setvbuf (not std::) — picolibc's <cstdio> on the
+    // bare-metal riscv64 toolchain declares them in the global namespace
+    // only. Portable to glibc/newlib too.
+    char payload[64];
+    snprintf(payload, sizeof(payload), "Hello World: %d", count_);
+    std_msgs::msg::String m;
+    m.data = payload;
     if (pub_.publish(m).ok()) {
-        // Global printf/setvbuf (not std::) — picolibc's <cstdio> on the
-        // bare-metal riscv64 toolchain declares them in the global namespace
-        // only. Portable to glibc/newlib too.
-        printf("Published: %d\n", m.data);
+        printf("Publishing: '%s'\n", m.data.c_str());
     }
 }
 

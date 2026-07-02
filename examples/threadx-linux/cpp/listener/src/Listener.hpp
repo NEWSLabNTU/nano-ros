@@ -11,6 +11,8 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp"
+
 namespace threadx_linux_cpp_listener {
 
 class Listener {

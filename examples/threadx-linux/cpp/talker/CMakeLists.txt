@@ -17,13 +17,13 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-# Typed Publisher<Int32> needs the std_msgs C++ binding. The carrier auto-links
+# Typed Publisher<String> needs the std_msgs C++ binding. The carrier auto-links
 # the generated interface lib (Phase 220.G.2).
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # Phase 246 (RFC-0043) — TYPED carrier: the bootable ELF constructs the typed
 # Talker component + `configure(node)` creates a typed publisher + binds the real
-# `on_tick` timer (publishes an Int32 counter) on the executor. No baker, no
+# `on_tick` timer (publishes the demo String payload) on the executor. No baker, no
 # `nros_system_main` stub, no per-example `main.c`.
 nano_ros_node_register(
     NAME      talker

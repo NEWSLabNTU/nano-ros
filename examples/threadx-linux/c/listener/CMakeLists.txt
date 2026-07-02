@@ -14,6 +14,11 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# package.xml SSoT: generate the typed C bindings for the interface closure
+# (std_msgs) — the component uses the generated String struct + serializer
+# (phase-277 W4; was hand-rolled CDR).
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
 # Phase 246 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C Listener
 # component + `listener_configure` binds a raw zero-copy subscription on /chatter.
 # Raw register carries the type-name verbatim, no generated message sources. No

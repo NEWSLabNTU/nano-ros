@@ -1,7 +1,7 @@
 //! ThreadX QEMU RISC-V Listener — Phase 245 app-node logic.
 //!
-//! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last seen
-//! value. This is an **app node** (it owns `main`, via `src/main.rs`'s
+//! Subscribes to `std_msgs/String` on `/chatter` and logs each message
+//! (`I heard: [Hello World: N]`). This is an **app node** (it owns `main`, via `src/main.rs`'s
 //! `nros::main!()`), not a workspace Node lib — but the *logic* is still
 //! platform/RMW-agnostic: `register()` declares node + subscription;
 //! `on_callback("on_chatter")` runs the body. The board
@@ -23,7 +23,7 @@ extern crate alloc;
 extern crate nros_platform_critical_section as _;
 
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 /// Listener node — tracks the last value seen on `/chatter`.
 pub struct Listener;
@@ -33,13 +33,14 @@ impl Node for Listener {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
-        let _sub = node.create_subscription_for_callback_name::<Int32>("on_chatter", "/chatter")?;
+        let _sub =
+            node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
         Ok(())
     }
 }
 
 impl ExecutableNode for Listener {
-    /// Last value seen on `/chatter` (state shared across callback ticks).
+    /// Number of messages seen on `/chatter`.
     type State = i32;
 
     fn init() -> Self::State {
@@ -48,8 +49,12 @@ impl ExecutableNode for Listener {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_chatter" {
-            if let Ok(msg) = ctx.message::<Int32>() {
-                *state = msg.data;
+            if let Ok(msg) = ctx.message::<StringMsg>() {
+                *state = state.wrapping_add(1);
+                // Canonical delivery line (phase-277 W4) — the rtos e2e
+                // harness counts `I heard:` lines; without it a working
+                // listener looked silent (pre-existing gap found in T4).
+                log::info!("I heard: [{}]", msg.data);
             }
         }
     }
