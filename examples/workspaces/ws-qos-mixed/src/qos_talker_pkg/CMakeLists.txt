@@ -14,11 +14,15 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Typed component (RFC-0043): the raw `/chatter` publisher carries the type name
-# as a string and hand-encodes the CDR payload (std_msgs/Int32). The
-# differentiator vs the committed c_talker_pkg is the QoS: this declares a
-# NON-DEFAULT profile (reliable + transient-local + keep-last-10) in code rather
-# than `nros_c_qos_default()` (see src/QosTalker.c).
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# Typed component (RFC-0043): publishes std_msgs/Int32 on /chatter via the
+# generated C serializer. The differentiator vs the committed c_talker_pkg is
+# the QoS: this declares a NON-DEFAULT profile (reliable + transient-local +
+# keep-last-10) in code rather than `nros_c_qos_default()` (see
+# src/QosTalker.c).
 nano_ros_node_register(
     NAME     qos_talker
     CLASS    qos_talker_pkg::QosTalker

@@ -14,7 +14,9 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 273 W4 (RFC-0047) — portability copy of subnode_pkg.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# Portability copy of subnode_pkg (RFC-0047).
 # IDENTICAL to ws-realtime-cpp-subnode/src/subnode_pkg/CMakeLists.txt.
 # The CALLBACK_GROUPS declares "ctrl" and "telem" group IDs; the tier names
 # ("fast" / "bulk") are in deploy_bringup/system.toml — not here.
@@ -26,3 +28,12 @@ nano_ros_node_register(
     SHAPE    rclcpp
     CALLBACK_GROUPS ctrl telem
     SOURCES  src/SubNode.cpp)
+
+# `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
+# carrying generated headers' include dirs. Guard with `if(TARGET)`: some
+# embedded generators fold the generated interface into the app target
+# instead of exposing a `<pkg>__nano_ros_cpp` lib.
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(subnode_pkg_subnode_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()

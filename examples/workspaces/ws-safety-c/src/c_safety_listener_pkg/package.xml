@@ -5,6 +5,7 @@
   <description>Phase 269 W3 — C validated-subscription listener: checks the CRC on /chatter, republishes count on /safe_ok.</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
   <export>
     <build_type>cmake</build_type>
   </export>

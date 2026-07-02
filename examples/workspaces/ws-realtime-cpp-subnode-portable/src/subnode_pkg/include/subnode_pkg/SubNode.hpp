@@ -1,23 +1,17 @@
 #pragma once
 
-#include <cstdint>
-
 #include <nros/component_node.hpp>
+
+#include "std_msgs.hpp"
 
 namespace subnode_pkg {
 
-/// Minimal type tag for std_msgs/Int32 (raw-CDR path).
-struct Int32Tag {
-    static constexpr const char *TYPE_NAME = "std_msgs::msg::dds_::Int32_";
-    static constexpr const char *TYPE_HASH = "";
-};
-
-/// Phase 273 W4 (RFC-0047) — portability copy of SubNode. IDENTICAL to
+/// Portability copy of SubNode (RFC-0047). IDENTICAL to
 /// ws-realtime-cpp-subnode's SubNode. Deployed here with "fast"/"bulk" tier names
 /// instead of "high"/"low" — no package change, tier binding from system.toml.
 class SubNode : public ::nros::ComponentNode {
-    ::nros::Publisher<Int32Tag> ctrl_pub_;
-    ::nros::Publisher<Int32Tag> telem_pub_;
+    ::nros::Publisher<std_msgs::msg::Int32> ctrl_pub_;
+    ::nros::Publisher<std_msgs::msg::Int32> telem_pub_;
     int ctrl_count_ = 0;
     int telem_count_ = 0;
 

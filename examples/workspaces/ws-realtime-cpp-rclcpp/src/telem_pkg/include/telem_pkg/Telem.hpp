@@ -1,22 +1,16 @@
 #pragma once
 
-#include <cstdint>
-
 #include <nros/component_node.hpp>
+
+#include "std_msgs.hpp"
 
 namespace telem_pkg {
 
-/// Minimal type tag for std_msgs/Int32 (raw-CDR path).
-struct Int32Tag {
-    static constexpr const char *TYPE_NAME = "std_msgs::msg::dds_::Int32_";
-    static constexpr const char *TYPE_HASH = "";
-};
-
-/// Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape low-tier telemetry node.
+/// rclcpp-shape low-tier telemetry node (RFC-0047, issue #124).
 /// IS-A `nros::ComponentNode`: creates publisher + 100 ms timer in the ctor.
-/// Tier binding resolved via the seeded `node_name → sched_context` table (W1+W2).
+/// Tier binding resolved via the seeded `node_name → sched_context` table.
 class Telem : public ::nros::ComponentNode {
-    ::nros::Publisher<Int32Tag> pub_;
+    ::nros::Publisher<std_msgs::msg::Int32> pub_;
     int count_ = 0;
 
     void on_tick();

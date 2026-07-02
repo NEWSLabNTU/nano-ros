@@ -14,8 +14,13 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 269 W2 — typed managed-node C component (RFC-0043): publishes a counter
-# on /chatter. Lifecycle autostart is wired in the entry by emit_c.rs W2.
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# Typed managed-node C component (RFC-0043): publishes a counter on /chatter
+# via the generated std_msgs/Int32 serializer. Lifecycle autostart is wired
+# in the generated entry.
 nano_ros_node_register(
     NAME     talker
     CLASS    c_lifecycle_talker_pkg::Talker

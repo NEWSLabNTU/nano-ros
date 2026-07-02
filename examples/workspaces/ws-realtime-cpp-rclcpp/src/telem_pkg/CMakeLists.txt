@@ -14,9 +14,11 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape low-tier telemetry node.
-# Publishes a counter on /telem every 100 ms as an IS-A-node (nros::ComponentNode
-# subclass). SHAPE rclcpp; tier binding via bind_node_name_sched (W2).
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# rclcpp-shape low-tier telemetry node (RFC-0047, issue #124). Publishes a
+# counter on /telem every 100 ms as an IS-A-node (nros::ComponentNode
+# subclass). SHAPE rclcpp; tier binding via bind_node_name_sched.
 nano_ros_node_register(
     NAME     telem
     CLASS    telem_pkg::Telem
@@ -24,3 +26,12 @@ nano_ros_node_register(
     SHAPE    rclcpp
     CALLBACK_GROUPS telem
     SOURCES  src/Telem.cpp)
+
+# `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
+# carrying generated headers' include dirs. Guard with `if(TARGET)`: some
+# embedded generators fold the generated interface into the app target
+# instead of exposing a `<pkg>__nano_ros_cpp` lib.
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(telem_pkg_telem_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()

@@ -14,8 +14,12 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 269 W4 (C tiers fixture) — low-tier telemetry node. Publishes a counter
-# on /telem every 100 ms. CALLBACK_GROUPS declares the "telem" group ID; system.toml
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# Low-tier telemetry node (C tiers fixture). Publishes a counter on /telem
+# every 100 ms. CALLBACK_GROUPS declares the "telem" group ID; system.toml
 # [[node_overrides]] maps it to the [tiers.low] tier (RFC-0015 §4.2).
 nano_ros_node_register(
     NAME     telem

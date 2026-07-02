@@ -14,8 +14,10 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 269 W4 (C++ tiers fixture) — low-tier telemetry node. Publishes a counter
-# on /telem every 100 ms. CALLBACK_GROUPS declares the "telem" group ID; system.toml
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# Low-tier telemetry node. Publishes a counter on /telem every 100 ms.
+# CALLBACK_GROUPS declares the "telem" group ID; system.toml
 # [[node_overrides]] maps it to the [tiers.low] tier (RFC-0015 §4.2).
 nano_ros_node_register(
     NAME     telem
@@ -23,3 +25,12 @@ nano_ros_node_register(
     HEADER   telem_pkg/Telem.hpp
     CALLBACK_GROUPS telem
     SOURCES  src/Telem.cpp)
+
+# `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
+# carrying generated headers' include dirs. Guard with `if(TARGET)`: some
+# embedded generators fold the generated interface into the app target
+# instead of exposing a `<pkg>__nano_ros_cpp` lib.
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(telem_pkg_telem_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()

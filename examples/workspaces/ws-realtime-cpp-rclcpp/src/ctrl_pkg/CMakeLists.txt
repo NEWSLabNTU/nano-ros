@@ -14,10 +14,12 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape high-tier control node.
-# Publishes a counter on /ctrl every 10 ms as an IS-A-node (nros::ComponentNode
-# subclass). SHAPE rclcpp tells the codegen to emit placement-new with executor
-# handle; the tier binding is seeded via bind_node_name_sched (not NodeBuilder::sched).
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# rclcpp-shape high-tier control node (RFC-0047, issue #124). Publishes a
+# counter on /ctrl every 10 ms as an IS-A-node (nros::ComponentNode subclass).
+# SHAPE rclcpp tells the codegen to emit placement-new with executor handle;
+# the tier binding is seeded via bind_node_name_sched (not NodeBuilder::sched).
 nano_ros_node_register(
     NAME     ctrl
     CLASS    ctrl_pkg::Ctrl
@@ -25,3 +27,12 @@ nano_ros_node_register(
     SHAPE    rclcpp
     CALLBACK_GROUPS ctrl
     SOURCES  src/Ctrl.cpp)
+
+# `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
+# carrying generated headers' include dirs. Guard with `if(TARGET)`: some
+# embedded generators fold the generated interface into the app target
+# instead of exposing a `<pkg>__nano_ros_cpp` lib.
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(ctrl_pkg_ctrl_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()

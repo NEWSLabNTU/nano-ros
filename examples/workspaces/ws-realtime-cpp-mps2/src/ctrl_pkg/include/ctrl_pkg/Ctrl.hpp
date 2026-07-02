@@ -1,24 +1,19 @@
 #pragma once
 
-#include <cstdint>
-
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp"
+
 namespace ctrl_pkg {
 
-/// Minimal type tag for std_msgs/Int32 (raw-CDR path, RFC-0043).
-struct Int32Tag {
-    static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::Int32_";
-    static constexpr const char* TYPE_HASH = "";
-};
-
-/// Phase 274.W3 (ws-realtime-cpp-mps2) — high-tier control node. Publishes a
-/// monotonic counter on /ctrl every 10 ms. The configure-shape (RFC-0043) receives
-/// a Node& to create publishers and timers. The entry binds it to the high-priority
-/// freertos task (priority 5) via FreertosBoard::run_tiers (RFC-0015 §5 embedded).
+/// ws-realtime-cpp-mps2 — high-tier control node. Publishes a monotonic
+/// counter on /ctrl every 10 ms. The configure-shape (RFC-0043) receives a
+/// Node& to create publishers and timers. The entry binds it to the
+/// high-priority freertos task (priority 5) via FreertosBoard::run_tiers
+/// (RFC-0015 §5 embedded).
 class Ctrl {
-    ::nros::Publisher<Int32Tag> pub_;
+    ::nros::Publisher<std_msgs::msg::Int32> pub_;
     ::nros::Timer timer_;
     int count_ = 0;
 

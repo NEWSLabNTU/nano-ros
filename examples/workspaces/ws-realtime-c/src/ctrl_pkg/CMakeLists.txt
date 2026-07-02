@@ -14,8 +14,12 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 269 W4 (C tiers fixture) — high-tier control node. Publishes a counter
-# on /ctrl every 10 ms. CALLBACK_GROUPS declares the "ctrl" group ID; system.toml
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# High-tier control node (C tiers fixture). Publishes a counter on /ctrl
+# every 10 ms. CALLBACK_GROUPS declares the "ctrl" group ID; system.toml
 # [[node_overrides]] maps it to the [tiers.high] tier (RFC-0015 §4.2).
 nano_ros_node_register(
     NAME     ctrl

@@ -5,6 +5,7 @@
   <description>Phase 272 W3 — rclcpp-shape low-tier C++ telemetry node; publishes std_msgs/Int32 on /telem every 100 ms via nros::ComponentNode.</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
   <export>
     <build_type>cmake</build_type>
   </export>

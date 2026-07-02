@@ -14,10 +14,15 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 269 W3 — typed managed-node C component: publishes a counter on /chatter.
-# With NANO_ROS_SAFETY_E2E=ON (from [system].features = ["safety"]) the zenoh backend
-# automatically attaches a CRC-32 + sequence number on every publish — no component code
-# change required. The CRC is what the paired safe_listener validates.
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# Typed managed-node C component: publishes a counter on /chatter via the
+# generated std_msgs/Int32 serializer. With NANO_ROS_SAFETY_E2E=ON (from
+# [system].features = ["safety"]) the zenoh backend automatically attaches a
+# CRC-32 + sequence number on every publish — no component code change
+# required. The CRC is what the paired safe_listener validates.
 nano_ros_node_register(
     NAME     talker
     CLASS    c_safety_talker_pkg::Talker

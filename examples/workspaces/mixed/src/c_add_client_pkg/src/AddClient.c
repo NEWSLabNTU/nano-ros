@@ -17,6 +17,7 @@
 #include <nros/component.h>
 
 #include "example_interfaces.h"
+#include "std_msgs.h"
 
 typedef struct {
     _Alignas(8) uint8_t client[NROS_C_SERVICE_CLIENT_STORAGE_SIZE];
@@ -25,13 +26,6 @@ typedef struct {
     bool in_flight; /* a request is awaiting its reply */
     int waits;      /* ticks waited for the current reply (resend guard) */
 } add_client_t;
-
-static void write_u32_le(uint8_t* p, uint32_t v) {
-    p[0] = (uint8_t)v;
-    p[1] = (uint8_t)(v >> 8);
-    p[2] = (uint8_t)(v >> 16);
-    p[3] = (uint8_t)(v >> 24);
-}
 
 static void send_next(add_client_t* self) {
     example_interfaces_srv_add_two_ints_request req;
@@ -59,14 +53,15 @@ static void on_tick(void* ctx) {
             if (example_interfaces_srv_add_two_ints_response_deserialize(&r, resp, rlen) == 0) {
                 self->in_flight = false;
                 printf("[c_add_client_pkg] sum: %lld\n", (long long)r.sum);
-                /* republish the result on /sum (raw std_msgs/Int32 CDR) */
-                uint8_t pbuf[8];
-                pbuf[0] = 0x00;
-                pbuf[1] = 0x01;
-                pbuf[2] = 0x00;
-                pbuf[3] = 0x00;
-                write_u32_le(pbuf + 4, (uint32_t)(int32_t)r.sum);
-                (void)nros_cpp_publish_raw(self->pub, pbuf, sizeof(pbuf));
+                /* republish the result on /sum (std_msgs/Int32, generated serializer) */
+                std_msgs_msg_int32 sum_msg;
+                std_msgs_msg_int32_init(&sum_msg);
+                sum_msg.data = (int32_t)r.sum;
+                uint8_t pbuf[16];
+                size_t plen = 0;
+                if (std_msgs_msg_int32_serialize(&sum_msg, pbuf, sizeof(pbuf), &plen) == 0) {
+                    (void)nros_cpp_publish_raw(self->pub, pbuf, plen);
+                }
             }
         } else if (++self->waits > 6) {
             /* No reply (request dropped before discovery) — resend. */
@@ -92,8 +87,9 @@ static nros_ret_t add_client_configure(const nros_cpp_node_t* node, void* execut
     if (rc != 0) {
         return rc;
     }
-    rc = nros_cpp_publisher_create(node, "/sum", "std_msgs::msg::dds_::Int32_", "",
-                                   nros_c_qos_default(), self->pub);
+    rc = nros_cpp_publisher_create(node, "/sum", std_msgs_msg_int32_get_type_name(),
+                                   std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                   self->pub);
     if (rc != 0) {
         return rc;
     }

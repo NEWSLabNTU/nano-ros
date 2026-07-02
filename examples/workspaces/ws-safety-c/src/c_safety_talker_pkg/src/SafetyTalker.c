@@ -1,7 +1,8 @@
 /// @file SafetyTalker.c
-/// @brief Phase 269 W3 — C talker component for the E2E-safety workspace.
+/// @brief C talker component for the E2E-safety workspace.
 ///
-/// Publishes a monotonic counter on /chatter (std_msgs/Int32) every 1 s.
+/// Publishes a monotonic counter on /chatter (std_msgs/Int32) every 1 s using
+/// the generated C serializer (std_msgs_msg_int32_serialize).
 /// When built with NANO_ROS_SAFETY_E2E=ON (lowered from
 /// `[system].features = ["safety"]` via NanoRosCapabilities.cmake), the
 /// zenoh backend automatically attaches a CRC-32 + sequence number on every
@@ -16,28 +17,22 @@
 #include <nros/nros_cpp_ffi.h>
 #include <nros/component.h>
 
+#include "std_msgs.h"
+
 typedef struct {
     _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
     int32_t counter;
 } safety_talker_t;
 
-static void write_u32_le(uint8_t* p, uint32_t v) {
-    p[0] = (uint8_t)v;
-    p[1] = (uint8_t)(v >> 8);
-    p[2] = (uint8_t)(v >> 16);
-    p[3] = (uint8_t)(v >> 24);
-}
-
 static void on_tick(void* ctx) {
     safety_talker_t* self = (safety_talker_t*)ctx;
-    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
-    uint8_t buf[8];
-    buf[0] = 0x00;
-    buf[1] = 0x01;
-    buf[2] = 0x00;
-    buf[3] = 0x00;
-    write_u32_le(buf + 4, (uint32_t)self->counter);
-    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
+    msg.data = self->counter;
+    uint8_t buf[16];
+    size_t len = 0;
+    if (std_msgs_msg_int32_serialize(&msg, buf, sizeof(buf), &len) == 0 &&
+        nros_cpp_publish_raw(self->pub, buf, len) == 0) {
         printf("[TALKER] Published: %d\n", self->counter);
         fflush(stdout);
     }
@@ -46,10 +41,10 @@ static void on_tick(void* ctx) {
 
 static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
                                    safety_talker_t* self) {
-    (void)executor;
     self->counter = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                           nros_c_qos_default(), self->pub);
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(),
+                                           std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                           self->pub);
     if (rc != 0) {
         return rc;
     }

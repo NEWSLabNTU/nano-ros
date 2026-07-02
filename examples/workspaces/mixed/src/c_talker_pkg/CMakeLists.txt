@@ -14,8 +14,12 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Typed component (RFC-0043): raw `/chatter` publisher carries the type name as
-# a string, so no generated C bindings are needed.
+# Generates the std_msgs C bindings (serialize/deserialize); the auto-link
+# sidecar links the generated `std_msgs__nano_ros_c` interface lib.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
+# Typed component (RFC-0043): publishes std_msgs/Int32 on `/chatter` via the
+# generated C serializer.
 nano_ros_node_register(
     NAME     talker
     CLASS    c_talker_pkg::Talker
