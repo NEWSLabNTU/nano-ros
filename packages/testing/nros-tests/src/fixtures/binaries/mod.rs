@@ -2160,6 +2160,16 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
     require_prebuilt_binary(&binary_path)
 }
 
+/// phase-276 W1 (#128) — the Zephyr (native_sim) PARAMETERISED Rust workspace Entry
+/// (`ws-params-rust/src/zephyr_entry`): the param_talker node + the six ROS 2 parameter
+/// services (the #128 fix made the `Framework::Zephyr` macro arm emit that registration).
+/// Built by the west lane into `<zephyr-build-root>/build-ws-rs-params-entry-zenoh/zephyr/
+/// zephyr.exe`; consumed by `tests/params_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-rs-params-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

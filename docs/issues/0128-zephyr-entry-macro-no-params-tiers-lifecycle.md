@@ -79,3 +79,21 @@ Extend the `Framework::Zephyr` arm to reach parity with `OwnedSpin`:
 
 Until then, phase-276 W1/W2/W3-on-Zephyr are parked here; W4/W5/W6-on-Zephyr and
 W1-on-FreeRTOS remain the achievable slices.
+
+## Progress (2026-07-03) — half 1 LANDED; Esp32 arm included
+
+The **params/lifecycle emits landed**: both the `Framework::Zephyr` arm
+(`#param_services_call` before the registers, `#lifecycle_call` after, inside
+`__nros_zephyr_entry_run`) and the `Framework::Esp32` arm's `run_with_deploy`
+closure now carry them — inert token streams without the `system.toml`
+declarations / cargo features, so plain pub/sub entries are unchanged.
+Proven compiling end-to-end by the phase-276 W1 fixture
+(`ws-params-rust/src/zephyr_entry`, west lane `build-ws-rs-params-entry-zenoh`):
+the launch `<param>` seed is baked into the ELF and `apply_param_services`
+compiles on the `no_std` Zephyr target. **Runtime verification is blocked by
+issue #129** (the whole Zephyr rust entry lane fails `Executor::open` on current
+main — base entry included); the `params_zephyr_entry_e2e` test is `#[ignore]`d
+on #129 and ready to unignore.
+
+**Remaining here: half 2 — tiers** (`ZephyrBoard::run_tiers` + the multi-tier
+`entry_call` in the Zephyr arm).

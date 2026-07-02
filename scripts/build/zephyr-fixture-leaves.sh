@@ -434,6 +434,55 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$ws_sig" "$ws_sig_file" 0 "$pristine"
     fi
 
+    # phase-276 W1 (#128) — the PARAMETERISED Rust workspace Entry
+    # (examples/workspaces/ws-params-rust/src/zephyr_entry): the params-on-embedded
+    # coverage cell. Same native_sim/NSOS west path as the base Rust workspace
+    # entry above; `system.toml [param_services]` + the entry's
+    # `nros/param-services` feature make the (#128-fixed) Framework::Zephyr emit
+    # register the six ROS 2 parameter services. Dials a DISTINCT zenohd port
+    # (17845), so it does NOT serialize with the pubsub fixtures. Consumed by
+    # tests/params_zephyr_entry_e2e.rs.
+    wsp_board="native_sim/native/64"
+    wsp_lang="rust"
+    wsp_lang_tag="rs"
+    wsp_role="entry"
+    wsp_rmw="zenoh"
+    wsp_build_name="build-ws-rs-params-entry-zenoh"
+    wsp_build_dir="$build_root/$wsp_build_name"
+    wsp_src="workspaces/ws-params-rust/src/zephyr_entry"
+    wsp_src_dir="$nros_root/examples/$wsp_src"
+    wsp_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wsp_zenoh_locator="tcp/127.0.0.1:17845"
+    wsp_id="zephyr/native_sim/native/64/workspace-params-entry"
+    wsp_target="fixture/zephyr/native_sim/native/64/workspace-params-entry"
+    wsp_filter_haystack="$wsp_board $wsp_build_name $wsp_src $wsp_conf_files $wsp_id"
+    if [ -d "$wsp_src_dir" ] && { [ -z "$fixture_filter" ] || [[ "$wsp_filter_haystack" =~ $fixture_filter ]]; }; then
+        selected=$((selected + 1))
+        wsp_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wsp_extra_cmake_defs="$wsp_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wsp_zenoh_locator\""
+        wsp_extra_cmake_defs="$wsp_extra_cmake_defs -DCONF_FILE=$wsp_conf_files"
+        wsp_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wsp_sccache_launcher=1
+            wsp_extra_cmake_defs="$wsp_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wsp_sig_file="$wsp_build_dir/.nros-zephyr-fixture.sig"
+        wsp_sig="$(printf '%s\n' \
+            "board=$wsp_board" \
+            "src=$wsp_src" \
+            "xrce_port=" \
+            "conf_files=$wsp_conf_files" \
+            "zenoh_locator=$wsp_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wsp_sccache_launcher")"
+        emit_record fixture "$wsp_id" "$wsp_target" "$wsp_board" "$wsp_lang" "$wsp_lang_tag" "$wsp_role" "$wsp_rmw" \
+            "$wsp_src" "$wsp_src_dir" "$wsp_build_name" "$wsp_build_dir" "$log_dir/${wsp_build_name}.log" "" \
+            "$wsp_zenoh_locator" "" "$wsp_conf_files" "$wsp_extra_cmake_defs" \
+            "$wsp_sig" "$wsp_sig_file" 0 "$pristine"
+    fi
+
     # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS west path as
     # the Rust workspace entry above, but the Zephyr application dir is
     # examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) + nano_ros_entry(BOARD

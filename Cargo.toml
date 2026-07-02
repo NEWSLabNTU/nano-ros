@@ -329,6 +329,9 @@ exclude = [
     # root). Without this repo-root exclude, cargo's workspace walker
     # would otherwise leak it up to the repo-root workspace and error.
     "examples/workspaces/rust/src/zephyr_entry",
+    # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry, same
+    # west-built shape (and same repo-root-exclude rationale) as above.
+    "examples/workspaces/ws-params-rust/src/zephyr_entry",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

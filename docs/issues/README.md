@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#129** — [Zephyr rust workspace-entry lane broken on current main — executor heap alloc
+  panics the default malloc arena; with that fixed, `Executor::open` fails
+  `Transport(ConnectionFailed)`](0129-zephyr-rust-workspace-entry-lane-broken.md): a stale
+  prebuilt `zephyr.exe` masked both since ~phase-271. Layer 1 mitigated (arena bump in the
+  entries' prj-zenoh.conf); layer 2 (suspected missing RMW backend register on the Rust-Zephyr
+  path) blocks the base zephyr rust e2e AND phase-276 W1 params-on-Zephyr (its e2e is
+  `#[ignore]`d on this).
 - **#128** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
   lifecycle / run_tiers](0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
   W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only

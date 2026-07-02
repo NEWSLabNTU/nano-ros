@@ -1,0 +1,24 @@
+# phase-276 W1 (#128) — nano-ros parameterised Rust workspace Entry as a
+# Zephyr sample (Twister-discoverable). Boots the param_talker node with
+# the six ROS 2 parameter services from a single launch file + system.toml.
+sample:
+  name: nano-ros Rust Params Workspace Entry
+  description: nano-ros parameterised (param services) workspace Entry on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "nros: zephyr workspace entry up"
+tests:
+  sample.nano-ros.rust.ws-params-entry.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh

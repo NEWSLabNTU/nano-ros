@@ -233,6 +233,15 @@ build-fixtures:
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
           NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
+    # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry. Pure-cargo
+    # `nros::main!` path: `ws sync` provisions generated/ + the patch table; NO
+    # codegen-system (the proc-macro bakes the system + the launch `<param>`
+    # initials, same as the native ws-params lane).
+    if [ -d examples/workspaces/ws-params-rust/src/zephyr_entry ]; then
+        echo "  → ws-params workspace-entry prep (nros ws sync)"
+        ( cd examples/workspaces/ws-params-rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
 
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"

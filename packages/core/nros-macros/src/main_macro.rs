@@ -1225,7 +1225,16 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     &mut node_runtime,
                 );
                 let runtime = &mut ctx;
+                // Issue #128 — OwnedSpin parity for the capability emits. Param
+                // services BEFORE the node registers (the store must exist when
+                // each cell captures it — W4c), lifecycle AFTER (the executor is
+                // built, the nodes are installed). Both are inert token streams
+                // when system.toml doesn't declare them, and no-ops without the
+                // `nros/param-services` / `nros/lifecycle-services` features, so
+                // plain pub/sub Zephyr entries are byte-identical to pre-#128.
+                #param_services_call
                 #( #register_calls )*
+                #lifecycle_call
                 ::log::info!(
                     "nros: zephyr workspace entry up ({} nodes)",
                     #num_register_calls
@@ -1282,7 +1291,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             ::nros::__macro_support::nros_platform::RuntimeError,
                         >
                     {
+                        // Issue #128 — OwnedSpin parity: param services before
+                        // the registers, lifecycle after. Inert without the
+                        // system.toml declarations / cargo features.
+                        #param_services_call
                         #( #register_calls )*
+                        #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
                 )

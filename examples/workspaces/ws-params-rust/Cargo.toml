@@ -13,6 +13,12 @@ members = [
     "src/native_entry",
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+# `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W1, #128) — a
+# `staticlib` exporting `rust_main`, built for a Zephyr target, not plain
+# cargo — so it is `exclude`d rather than listed. It carries NO `[workspace]`
+# table of its own so the `nros::main!` pkg-index resolves the sibling
+# `param_talker_pkg` / `demo_bringup` against THIS workspace root.
+exclude = ["src/zephyr_entry"]
 
 [workspace.metadata.nros]
 default_system = "demo_bringup"
