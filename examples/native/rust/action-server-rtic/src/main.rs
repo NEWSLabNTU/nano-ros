@@ -12,31 +12,22 @@ use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, Fi
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 
-// Phase 248 C6d — board-LESS APP owns + force-links the zenoh backend rlib (the
-// `nros` umbrella no longer carries `rmw-*`). The `#[used]` static keeps the
-// backend's linkme `RMW_INIT_ENTRIES` self-register section in the link graph so
-// it auto-registers on POSIX.
-#[used]
-static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server-rtic");
 
 extern crate nros_platform_cffi as _;
 
 fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 
     nros_info!(&LOGGER, "nros RTIC-pattern Action Server (native)");
 
     let config = ExecutorConfig::from_env().node_name("fibonacci_server");
-    // Phase 227.3 (unified RMW) — no explicit `register()` call. The RMW is
-    // declared via the `nros/rmw-zenoh` build feature; `nros`'s `#[used]
-    // __FORCE_LINK_ZENOH` static keeps the backend's self-register section in
-    // the link graph, and it fires inside `Executor::open` via the cffi-rmw
-    // walker.
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor

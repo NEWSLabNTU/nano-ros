@@ -11,40 +11,22 @@ use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 use std_msgs::msg::Int32;
 
-// Phase 248 C6d — board-LESS APP owns + force-links its selected backend rlib.
-// The `nros` umbrella no longer carries `rmw-*`, so its `__FORCE_LINK_*` statics
-// are inert here; this `#[used]` static keeps the backend rlib (and its linkme
-// `RMW_INIT_ENTRIES` self-register section) in the link graph so the backend
-// auto-registers on POSIX. Mirrors `packages/core/nros/src/lib.rs`.
-#[cfg(feature = "rmw-zenoh")]
-#[used]
-static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-#[cfg(feature = "rmw-xrce")]
-#[used]
-static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
-    nros_rmw_xrce_cffi::register;
-#[cfg(feature = "rmw-cyclonedds")]
-#[used]
-static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
-    nros_rmw_cyclonedds_sys::register;
-
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("talker-rtic");
 
 extern crate nros_platform_cffi as _;
 
 fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 
     nros_info!(&LOGGER, "nros RTIC-pattern Talker (native)");
 
     let config = ExecutorConfig::from_env().node_name("talker");
-    // Phase 227.3 (unified RMW) — no explicit `register()`. The RMW is declared
-    // via the build feature (routed through the `nros` umbrella); `nros`'s
-    // `#[used] __FORCE_LINK_*` static keeps the backend's self-register section
-    // in the link graph, and it fires inside `Executor::open` via the cffi walker.
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor

@@ -17,19 +17,15 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-# Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
-# (`rmw-zenoh` above); `nros` forwards the backend features + force-links it
-# (`__FORCE_LINK_ZENOH`), so no project-level `nros-rmw-zenoh` dep and no
-# `register()` call in `main.rs`. This example is zenoh-only (no RMW matrix).
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
-# Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
-# umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
-# the concrete backend + force-links its rlib in `main.rs` for POSIX
-# self-registration (`.init_array` ctor, loader-fired before main).
+# Native board shim: `nros_board_native::register_linked_rmw()` (called first
+# thing in `main`) registers the linked backend. The app still owns its
+# concrete backend dep so the backend's feature set is pinned here.
+nros-board-native = { path = "../../../../packages/boards/nros-board-native", default-features = false, features = ["rmw-zenoh"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }

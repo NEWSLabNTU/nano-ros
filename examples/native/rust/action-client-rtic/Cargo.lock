@@ -360,6 +360,7 @@ version = "0.1.0"
 dependencies = [
  "example_interfaces",
  "nros",
+ "nros-board-native",
  "nros-log",
  "nros-platform-cffi",
  "nros-rmw-zenoh",
@@ -390,6 +391,24 @@ dependencies = [
  "nros-build-paths",
  "serde",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "nros-board-native"
+version = "0.5.0"
+dependencies = [
+ "nros-board-posix",
+ "nros-platform",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
+name = "nros-board-posix"
+version = "0.5.0"
+dependencies = [
+ "nros",
+ "nros-log",
+ "nros-platform",
 ]
 
 [[package]]

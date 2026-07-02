@@ -19,19 +19,16 @@ path = "src/main.rs"
 # (nros-rmw-xrce) through the cffi-shim Rust crate. The `serial://`
 # / `/dev/...` locator routes to `xrce_posix_serial_init` inside
 # `session.c`; no separate `xrce-serial` Cargo feature needed.
-# Phase 227.3 (unified RMW) — xrce via the umbrella; `nros` force-links the
-# backend (no project dep, no register()). Serial routes by the `serial://`
-# locator, not a feature.
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
-# Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
-# umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
-# the concrete backend + force-links its rlib in `main.rs` for POSIX
-# self-registration (`.init_array` ctor, loader-fired before main).
+# Native board shim: `nros_board_native::register_linked_rmw()` (called first
+# thing in `main`) registers the linked backend. The app still owns its
+# concrete backend dep so the backend's feature set is pinned here.
+nros-board-native = { path = "../../../../packages/boards/nros-board-native", default-features = false, features = ["rmw-xrce"] }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }

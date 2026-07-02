@@ -20,20 +20,16 @@ use std_msgs::msg::Int32;
 
 use nros_log::{Logger, nros_info, nros_warn};
 
-// Phase 248 C6d — board-LESS APP owns + force-links the xrce backend rlib (the
-// `nros` umbrella no longer carries `rmw-*`). The `#[used]` static keeps the
-// backend's linkme `RMW_INIT_ENTRIES` self-register section in the link graph so
-// it auto-registers on POSIX.
-#[used]
-static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
-    nros_rmw_xrce_cffi::register;
-
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("serial-listener");
 
 extern crate nros_platform_cffi as _;
 
 fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
     let pty_path = std::env::var("XRCE_SERIAL_PTY")
@@ -72,8 +68,6 @@ fn main() {
     let config = ExecutorConfig::new(&locator)
         .domain_id(domain_id)
         .node_name("xrce_serial_listener");
-    // Phase 227.3 (unified RMW) — no explicit register(); `nros`'s
-    // `__FORCE_LINK_XRCE` + the cffi walker self-register the backend.
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
     nros_warn!(&LOGGER, "Session created");
 

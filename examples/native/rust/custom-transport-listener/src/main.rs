@@ -10,20 +10,16 @@ use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 use std_msgs::msg::Int32;
 
-// Phase 248 C6d — board-LESS APP owns + force-links the zenoh backend rlib (the
-// `nros` umbrella no longer carries `rmw-*`). The `#[used]` static keeps the
-// backend's linkme `RMW_INIT_ENTRIES` self-register section in the link graph so
-// it auto-registers on POSIX.
-#[used]
-static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("custom-transport-listener");
 
 extern crate nros_platform_cffi as _;
 
 fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 
@@ -55,8 +51,6 @@ fn main() {
     // drains the slot during session_open).
 
     let config = ExecutorConfig::new("custom/loopback").node_name("listener");
-    // Phase 227.3 (unified RMW) — no explicit register(); `nros`'s
-    // `__FORCE_LINK_ZENOH` + the cffi walker self-register the backend.
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     let nid = executor

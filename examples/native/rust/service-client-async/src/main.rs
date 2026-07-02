@@ -26,28 +26,6 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 
-// RMW selection is build/config, never application logic (RFC-0031): the backend
-// is the one `nros-rmw-*` optional dep activated by the config-lowered
-// `rmw-{zenoh,xrce,cyclonedds}` feature. The `#[used]` static(s) below are a pure
-// LINK-FORCE — they reference the backend's `register` symbol so the rlib's
-// linkme `RMW_INIT_ENTRIES` self-register section is pulled into the link graph
-// (rlib archive linking drops unreferenced objects, so this reference is
-// required, NOT a `register()` call). The cffi walker in `nros::init` then
-// discovers + registers the backend. Accepted link-force pattern (cf.
-// `extern crate nros_platform_cffi as _`), not an RMW leak.
-#[cfg(feature = "rmw-zenoh")]
-#[used]
-static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-#[cfg(feature = "rmw-xrce")]
-#[used]
-static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
-    nros_rmw_xrce_cffi::register;
-#[cfg(feature = "rmw-cyclonedds")]
-#[used]
-static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
-    nros_rmw_cyclonedds_sys::register;
-
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client-async");
 
@@ -55,6 +33,10 @@ extern crate nros_platform_cffi as _;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 

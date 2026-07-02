@@ -14,28 +14,6 @@ use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use log::{error, info, warn};
 use nros::prelude::*;
 
-// RMW selection is build/config, never application logic (RFC-0031): the backend
-// is the one `nros-rmw-*` optional dep activated by the config-lowered
-// `rmw-{zenoh,xrce,cyclonedds}` feature. The `#[used]` static(s) below are a pure
-// LINK-FORCE — they reference the backend's `register` symbol so the rlib's
-// linkme `RMW_INIT_ENTRIES` self-register section is pulled into the link graph
-// (rlib archive linking drops unreferenced objects, so this reference is
-// required, NOT a `register()` call). The cffi walker in `nros::init` then
-// discovers + registers the backend. Accepted link-force pattern (cf.
-// `extern crate nros_platform_cffi as _`), not an RMW leak.
-#[cfg(feature = "rmw-zenoh")]
-#[used]
-static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-#[cfg(feature = "rmw-xrce")]
-#[used]
-static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
-    nros_rmw_xrce_cffi::register;
-#[cfg(feature = "rmw-cyclonedds")]
-#[used]
-static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
-    nros_rmw_cyclonedds_sys::register;
-
 /// Action-client body — send a `Fibonacci` goal and collect feedback.
 /// Returns 0 if any feedback arrived, 1 otherwise.
 fn run() -> i32 {
@@ -134,6 +112,10 @@ fn run() -> i32 {
 }
 
 fn main() {
+    // Register the RMW backend the build linked (idempotent; must run before
+    // the executor opens). RMW selection is build/config, never source.
+    nros_board_native::register_linked_rmw();
+
     env_logger::init();
     std::process::exit(run());
 }
