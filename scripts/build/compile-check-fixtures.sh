@@ -260,6 +260,9 @@ done
 # (same resolver as the cargo compile-checks).
 CXX_SYNTAX_FIXTURES=(
     "rclcpp_node_options"
+    # phase-277 W5 — create_subscription_with_info template instantiation
+    # (was an `if (false)` block inside examples/native/cpp/listener).
+    "subscription_with_info"
 )
 snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
 

@@ -50,21 +50,6 @@ int main(int argc, char** argv) {
     nros::Subscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
 
-    // Phase 189.M3.4 — compile + link coverage for the callback-style
-    // subscription-with-attachment path (`create_subscription_with_info`). Never
-    // runs (poll-style listener stays unchanged); instantiating the template here
-    // proves the header method compiles and the FFI symbol resolves.
-    if (false) {
-        nros::Subscription<std_msgs::msg::String> info_sub;
-        (void)node.create_subscription_with_info<std_msgs::msg::String>(
-            info_sub, "/chatter_info",
-            [](const std_msgs::msg::String& m, const uint8_t* attachment, size_t attachment_len) {
-                (void)m;
-                (void)attachment;
-                (void)attachment_len;
-            });
-    }
-
     // Set up signal handler
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
