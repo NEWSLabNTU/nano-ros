@@ -44,6 +44,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#134** — [nros-c `AtomicU64` breaks riscv32 NuttX
+  builds](0134-nros-c-atomicu64-breaks-riscv32-nuttx.md): `qemu-riscv-nuttx` C examples cannot
+  compile nros-c (no 64-bit atomics on riscv32); pre-existing, baselined during phase-277 W4.
+- **#133** — [ros2-interop tests soft-pass on 0
+  received](0133-ros2-interop-tests-soft-pass-on-zero-received.md): log-and-return instead of
+  assert/skip hides broken interop; violates the tests-must-fail rule (found in phase-277 W4).
+- **#132** — [Rust RTOS pubsub fixture resolvers reference binaries no lane
+  builds](0132-rust-rtos-pubsub-fixture-resolvers-point-at-unbuilt-binaries.md): those e2e combos
+  silently never run; needs resolver↔lane inventory + a coverage lint (found in phase-277 W4).
+- **#131** — [ThreadX RISC-V64 firmware faults at NULL `c_app_main` after any
+  rebuild](0131-threadx-riscv64-null-c-app-main-on-rebuild.md): lane green only on stale
+  binaries — false-green gate; reproduces at pre-phase-277 baseline; W4 runtime unproven there.
 - **#130** — [NuttX Entry path never configures eth0 —
   `nros_platform::BoardInit::init_hardware` no-op](0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
   every NuttX Rust Entry image boots to `Executor::open` then fails
