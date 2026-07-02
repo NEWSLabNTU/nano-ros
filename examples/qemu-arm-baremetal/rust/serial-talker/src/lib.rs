@@ -4,7 +4,7 @@
 //! is a board-build + deploy-overlay concern (the entry pkg builds the board
 //! with the `serial` feature + sets a `serial/UART_0#…` locator), never node
 //! logic. Publishes the `std_msgs/String` demo payload (`Hello World: N`) on `/chatter` once per
-//! second, logging `Published: {n}` (the marker the QEMU E2E asserts).
+//! second, logging `Publishing: 'Hello World: N'` (the marker the QEMU E2E asserts).
 
 #![no_std]
 

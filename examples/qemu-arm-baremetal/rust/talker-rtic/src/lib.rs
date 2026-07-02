@@ -11,7 +11,7 @@
 //! none of it appears here.
 //!
 //! Publishes the `std_msgs/String` demo payload (`Hello World: N`) on `/chatter` once per second,
-//! logging `Published: {n}` (the marker the QEMU E2E asserts).
+//! logging `Publishing: 'Hello World: N'` (the marker the QEMU E2E asserts).
 
 #![no_std]
 

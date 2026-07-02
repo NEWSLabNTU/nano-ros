@@ -14,7 +14,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)
 
     # Phase 11W.9 — generate the Cyclone DDS C type descriptor for
-    # std_msgs/Int32 (the backend's find_descriptor looks it up by
+    # std_msgs/String (the backend's find_descriptor looks it up by
     # mangled name; Rust codegen only emits Rust types). Same wiring
     # as the talker.
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
@@ -24,7 +24,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
         PKG_NAME   std_msgs
         PKG_DIR    "$ENV{NROS_STD_MSGS_DIR}"
-        INTERFACES msg/Int32.msg)
+        INTERFACES msg/String.msg)
     target_sources(app PRIVATE ${_nros_cyc_types})
 else()
     message(FATAL_ERROR
