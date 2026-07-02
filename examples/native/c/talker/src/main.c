@@ -9,11 +9,9 @@
 // nros modular includes (rclc-style)
 #include <nros/app_main.h>
 #include <nros/check.h>
-#include <nros/clock.h>
 #include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/parameter.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
 
@@ -32,9 +30,6 @@ typedef struct {
 
 // Static allocation — all nros structs live in .bss, not on the stack
 static struct {
-    nros_clock_t clock;
-    nros_parameter_t param_storage[8];
-    nros_param_server_t params;
     nros_support_t support;
     nros_node_t node;
     nros_publisher_t publisher;
@@ -83,11 +78,8 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
-
-    printf("nros C Talker\n");
-    printf("=================\n");
 
     // Get configuration from environment
     const char* locator = getenv("NROS_LOCATOR");
@@ -101,63 +93,16 @@ int nros_app_main(int argc, char** argv) {
         domain_id = (uint8_t)atoi(domain_str);
     }
 
-    printf("Locator: %s\n", locator);
-    printf("Domain ID: %d\n", domain_id);
-
     // Zero-initialize all static state (avoids return-by-value temporaries on stack)
     memset(&app, 0, sizeof(app));
 
-    // Demo: Initialize and use clock API
-    nros_ret_t clock_ret = nros_clock_init(&app.clock, NROS_CLOCK_SYSTEM_TIME);
-    if (clock_ret == NROS_RET_OK) {
-        nros_time_t now;
-        if (nros_clock_get_now(&app.clock, &now) == NROS_RET_OK) {
-            printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
-        }
-        (void)nros_clock_fini(&app.clock);
-    }
-
-    // Demo: Initialize and use parameter server
-    if (nros_param_server_init(&app.params, app.param_storage, 8) == NROS_RET_OK) {
-        // Declare parameters with default values
-        nros_param_declare_bool(&app.params, "verbose", false);
-        nros_param_declare_integer(&app.params, "publish_rate_hz", 1);
-        nros_param_declare_double(&app.params, "scale_factor", 1.0);
-        nros_param_declare_string(&app.params, "topic_name", "/chatter");
-
-        // Read back and display parameter values
-        bool verbose = false;
-        int64_t rate_hz = 0;
-        double scale = 0.0;
-        char topic[64] = {0};
-
-        nros_param_get_bool(&app.params, "verbose", &verbose);
-        nros_param_get_integer(&app.params, "publish_rate_hz", &rate_hz);
-        nros_param_get_double(&app.params, "scale_factor", &scale);
-        nros_param_get_string(&app.params, "topic_name", topic, sizeof(topic));
-
-        printf("Parameters: verbose=%s, rate=%lld Hz, scale=%.2f, topic=%s\n",
-               verbose ? "true" : "false", (long long)rate_hz, scale, topic);
-
-        // Demonstrate parameter modification
-        nros_param_set_bool(&app.params, "verbose", true);
-        nros_param_get_bool(&app.params, "verbose", &verbose);
-        printf("After set: verbose=%s\n", verbose ? "true" : "false");
-
-        // Clean up (parameters are local demo only)
-        (void)nros_param_server_fini(&app.params);
-    }
-
     // Initialize support context
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "talker", "/"), 1);
-    printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
                                        std_msgs_msg_string_get_type_support(), "/chatter"),
                    1);
-    printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     // Create application context
     app.talker_ctx = (talker_context_t){
@@ -173,13 +118,10 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
     NROS_CHECK_RET(nros_executor_register_timer(&app.executor, &app.timer), 1);
-    printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
     nros_ret_t ret = nros_executor_spin_period(&app.executor, 100000000ULL);
@@ -188,14 +130,12 @@ int nros_app_main(int argc, char** argv) {
     }
 
     // Cleanup
-    printf("\nShutting down...\n");
     nros_executor_fini(&app.executor);
     nros_timer_fini(&app.timer);
     nros_publisher_fini(&app.publisher);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
 
-    printf("Goodbye!\n");
     return 0;
 }
 
