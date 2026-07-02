@@ -21,7 +21,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # Phase 246 (RFC-0043) — TYPED carrier: constructs the typed ServiceClient +
 # `configure(node)` creates the service client + binds the poll-driver timer.
 nano_ros_node_register(
-    NAME     service_client
+    NAME     add_two_ints_client
     CLASS    threadx_linux_cpp_service_client::ServiceClient
     LANGUAGE CPP
     HEADER   ServiceClient.hpp

@@ -1,19 +1,18 @@
-//! FreeRTOS QEMU MPS2-AN385 AddTwoInts service client —
-//! Phase 212.L Node pkg.
+//! FreeRTOS QEMU MPS2-AN385 AddTwoInts service client — declarative Node pkg.
 //!
-//! Phase 212.M.5.b — declarative-metadata-only.
-//! Service-client runtime body deferred to M-F.4 (TickCtx call() seam).
+//! Declarative metadata: node + service client + driver timer.
 //!
-//! The component model expresses *what* entities exist; the imperative
-//! call sequencing (issue request → await reply) currently has no
-//! `TickCtx` seam — service-client invocation is a follow-up wave for
-//! the generated runtime. The body is a declarative no-op stub.
+//! The timer fires → `on_callback` flips the state's `pending` flag;
+//! the call dispatch lives in `tick` (the only place `&mut Executor`
+//! is free — see `TickCtx` docs). Embedded client: one fixed request
+//! (2, 3), no argv on firmware. On the first successful reply it logs
+//! the sum and goes idle; the runtime keeps spinning.
 
 #![no_std]
 
-use example_interfaces::srv::AddTwoInts;
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
     TimerDuration,
 };
 
@@ -31,20 +30,51 @@ impl Node for AddTwoIntsClient {
     }
 }
 
+pub struct State {
+    /// Set by `on_callback` when the timer fires; drained by `tick`
+    /// after dispatching the call.
+    pending: bool,
+    /// Set once the reply has been logged — the single-shot client
+    /// then idles while the runtime keeps spinning.
+    done: bool,
+}
+
 impl ExecutableNode for AddTwoIntsClient {
-    /// Index into the canned test-case table for the next call.
-    type State = u8;
+    type State = State;
 
     fn init() -> Self::State {
-        0
+        State {
+            pending: false,
+            done: false,
+        }
     }
 
-    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        // Phase 212.M.5.b — declarative-metadata-only.
-        // Service-client runtime body deferred to M-F.4
-        // (TickCtx call() seam). Codegen-system will wire the imperative
-        // call loop here once the seam ships; the declarative metadata
-        // above is the stable contract.
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+        if callback.as_str() == "issue_call" && !state.done {
+            state.pending = true;
+        }
+    }
+
+    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        if !state.pending || state.done {
+            return;
+        }
+        state.pending = false;
+        let req = AddTwoIntsRequest { a: 2, b: 3 };
+        // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
+        // response = 1 × i64 + header = 16 B. 64 each is generous.
+        match ctx
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
+        {
+            Ok(reply) => {
+                log::info!("Result of add_two_ints: {}", reply.sum);
+                state.done = true;
+            }
+            Err(_) => {
+                // Server not reachable yet — the next timer fire retries
+                // the same request.
+            }
+        }
     }
 }
 

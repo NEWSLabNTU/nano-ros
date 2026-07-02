@@ -14,7 +14,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 
-// Phase 88.16.B — diagnostics route through `nros-log`.
+// Diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client-rtic");
 
 extern crate nros_platform_cffi as _;
@@ -29,11 +29,11 @@ fn main() {
 
     nros_info!(&LOGGER, "nros RTIC-pattern Service Client (native)");
 
-    let config = ExecutorConfig::from_env().node_name("add_client");
+    let config = ExecutorConfig::from_env().node_name("add_two_ints_client");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
-        .create_node("add_client")
+        .create_node("add_two_ints_client")
         .expect("Failed to create node");
     let mut client = node
         .create_client::<AddTwoInts>("/add_two_ints")
@@ -50,51 +50,35 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    let test_cases: [(i64, i64); 4] = [(5, 3), (10, 20), (100, 200), (-5, 10)];
-    let mut success_count = 0u32;
+    // One fixed request — mirrors the embedded RTIC clients (no argv).
+    let request = AddTwoIntsRequest { a: 2, b: 3 };
 
-    for (a, b) in test_cases {
-        let request = AddTwoIntsRequest { a, b };
-        nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
+    let mut promise = match client.call(&request) {
+        Ok(p) => p,
+        Err(e) => {
+            nros_error!(&LOGGER, "Failed to send request: {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
-        let mut promise = match client.call(&request) {
-            Ok(p) => p,
-            Err(e) => {
-                nros_error!(&LOGGER, "Failed to send request: {:?}", e);
-                continue;
-            }
-        };
+    // Poll for reply with timeout (~30 seconds) — RTIC-compatible pattern.
+    // Only one request can be in flight per client, so give the single
+    // query generous discovery slack instead of re-issuing it.
+    let mut got_reply = false;
+    for _ in 0..3000 {
+        executor.spin_once(core::time::Duration::from_millis(0));
 
-        // Poll for reply with timeout (~5 seconds) — RTIC-compatible pattern
-        let mut got_reply = false;
-        for _ in 0..500 {
-            executor.spin_once(core::time::Duration::from_millis(0));
-
-            if let Ok(Some(reply)) = promise.try_recv() {
-                nros_info!(&LOGGER, "Reply: {} + {} = {}", a, b, reply.sum);
-                success_count += 1;
-                got_reply = true;
-                break;
-            }
-
-            std::thread::sleep(std::time::Duration::from_millis(10));
+        if let Ok(Some(reply)) = promise.try_recv() {
+            nros_info!(&LOGGER, "Result of add_two_ints: {}", reply.sum);
+            got_reply = true;
+            break;
         }
 
-        if !got_reply {
-            nros_error!(&LOGGER, "Timeout waiting for reply to {} + {}", a, b);
-        }
-
-        // Brief pause between calls
-        for _ in 0..50 {
-            executor.spin_once(core::time::Duration::from_millis(0));
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    nros_info!(
-        &LOGGER,
-        "Done. {} of {} calls succeeded",
-        success_count,
-        test_cases.len()
-    );
+    if !got_reply {
+        nros_error!(&LOGGER, "Timeout waiting for reply");
+        std::process::exit(1);
+    }
 }

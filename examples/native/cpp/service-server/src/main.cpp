@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <csignal>
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/nros.hpp>
@@ -36,12 +36,12 @@ int main(int argc, char** argv) {
     std::printf("nros C++ Service Server (AddTwoInts)\n");
     std::printf("=====================================\n");
 
-    // Phase 212.M.2 — launch-aware init. Env overlay is the active
-    // source today (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`).
+    // Launch-aware init. Env overlay is the active source today
+    // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`).
     NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_service_server"), 1);
+    NROS_TRY_RET(nros::create_node(node, "add_two_ints_server"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
@@ -68,9 +68,8 @@ int main(int argc, char** argv) {
             example_interfaces::srv::AddTwoInts::Response resp;
             resp.sum = req.a + req.b;
 
-            std::printf("Request [%d]: %lld + %lld = %lld\n", request_count,
-                        static_cast<long long>(req.a), static_cast<long long>(req.b),
-                        static_cast<long long>(resp.sum));
+            std::printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(req.a),
+                        static_cast<long long>(req.b));
 
             ret = srv.send_reply(seq_id, resp);
             if (!ret.ok()) {
@@ -87,4 +86,3 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return 0;
 }
-

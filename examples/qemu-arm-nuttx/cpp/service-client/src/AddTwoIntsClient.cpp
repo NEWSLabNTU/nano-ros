@@ -1,5 +1,5 @@
 /// @file AddTwoIntsClient.cpp
-/// @brief NuttX C++ AddTwoInts service client — typed poll component (240.5).
+/// @brief NuttX C++ AddTwoInts service client — typed poll component.
 
 #include "AddTwoIntsClient.hpp"
 
@@ -23,6 +23,9 @@ static void write_i64_le(uint8_t* p, int64_t x) {
 }
 
 void AddTwoIntsClient::on_tick() {
+    if (done_) {
+        return; // single-shot client: keep spinning idle for the harness
+    }
     if (!awaiting_) {
         // Request CDR: encapsulation header (CDR_LE) + int64 a + int64 b.
         uint8_t req[20];
@@ -42,10 +45,9 @@ void AddTwoIntsClient::on_tick() {
     if (nros_cpp_service_client_try_recv_reply(client_.bytes, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
-        std::printf("Response: %lld\n", static_cast<long long>(sum));
-        ++a_;
-        ++b_;
+        std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(sum));
         awaiting_ = false;
+        done_ = true;
     }
 }
 
@@ -55,7 +57,7 @@ void AddTwoIntsClient::on_tick() {
     if (!r.ok()) return r;
     r = ::nros::bind_timer<AddTwoIntsClient, &AddTwoIntsClient::on_tick>(node, timer_, 1000, this);
     if (r.ok()) {
-        std::printf("Sending requests\n");
+        std::printf("Sending request\n");
     }
     return r;
 }

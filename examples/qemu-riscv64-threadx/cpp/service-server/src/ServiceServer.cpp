@@ -37,8 +37,8 @@ bool ServiceServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* resp
     resp[3] = req[3];
     write_i64_le(resp + 4, sum);
     *resp_len = 12;
-    printf("Serving: %lld + %lld = %lld\n", static_cast<long long>(a), static_cast<long long>(b),
-           static_cast<long long>(sum));
+    printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(a),
+           static_cast<long long>(b));
     return true;
 }
 
@@ -47,7 +47,8 @@ bool ServiceServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* resp
     ::nros::Result r = ::nros::bind_service_raw<ServiceServer, &ServiceServer::handle_add>(
         node, "/add_two_ints", "example_interfaces/srv/AddTwoInts", this);
     if (r.ok()) {
-        printf("Waiting for requests\n");
+        // Readiness marker the e2e harness greps before driving the client.
+        printf("Waiting for service requests\n");
     }
     return r;
 }

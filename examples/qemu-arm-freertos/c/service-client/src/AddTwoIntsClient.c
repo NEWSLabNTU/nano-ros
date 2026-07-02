@@ -1,9 +1,9 @@
 /// @file AddTwoIntsClient.c
-/// @brief FreeRTOS C AddTwoInts service client — typed poll component (240.5).
+/// @brief FreeRTOS C AddTwoInts service client — typed poll component.
 ///
-/// `client_configure` creates a service client + a timer that polls: each cycle
-/// sends a request (a, b) and, on later ticks, polls the reply and prints the
-/// sum. (Poll model — clients move to callbacks when RFC-0041's C/C++ wave lands.)
+/// `client_configure` creates a service client + a timer that polls: the first
+/// tick sends one fixed request (2, 3); later ticks poll the reply and print
+/// the sum, then go idle. (Poll model — the C/C++ client API is poll-based.)
 
 #include <stddef.h>
 #include <stdint.h>
@@ -17,6 +17,7 @@ typedef struct {
     int64_t a;
     int64_t b;
     int awaiting;
+    int done;
 } add_client_t;
 
 static int64_t read_i64_le(const uint8_t* p) {
@@ -38,6 +39,9 @@ static void write_i64_le(uint8_t* p, int64_t x) {
 
 static void on_tick(void* ctx) {
     add_client_t* self = (add_client_t*)ctx;
+    if (self->done) {
+        return; /* single-shot client: keep spinning idle for the harness */
+    }
     if (!self->awaiting) {
         uint8_t req[20];
         req[0] = 0x00;
@@ -56,18 +60,19 @@ static void on_tick(void* ctx) {
     if (nros_cpp_service_client_try_recv_reply(self->storage, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
-        printf("Response: %lld\n", (long long)sum);
-        self->a++;
-        self->b++;
+        printf("Result of add_two_ints: %lld\n", (long long)sum);
         self->awaiting = 0;
+        self->done = 1;
     }
 }
 
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    add_client_t* self) {
     self->executor = executor;
-    self->a = 1;
-    self->b = 2;
+    /* Embedded client: one fixed request (2, 3) — no argv on firmware. */
+    self->a = 2;
+    self->b = 3;
+    self->done = 0;
     int32_t rc =
         nros_cpp_service_client_create(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
                                        "", nros_c_qos_default(), self->storage);
@@ -77,7 +82,7 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     size_t timer_handle;
     rc = nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
     if (rc == 0) {
-        printf("Sending requests\n");
+        printf("Sending request\n");
     }
     return rc;
 }

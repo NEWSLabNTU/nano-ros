@@ -1,15 +1,12 @@
-//! NuttX QEMU ARM AddTwoInts service client — Phase 212.L Node pkg.
+//! NuttX QEMU ARM AddTwoInts service client — declarative Node pkg.
 //!
 //! Declarative metadata: node + service client + driver timer.
 //!
-//! Phase 212.M-F.4.b transcription: timer fires → `on_callback` flips
-//! the state's `pending` flag + bumps the operand counter. Real call
-//! dispatch lives in `tick` (the only place `&mut Executor` is free —
-//! see `TickCtx` docs). Once `nros::TickCtx::call` returns the typed
-//! `AddTwoIntsResponse`, the body would log / store `sum`; here we
-//! just observe the dispatch outcome (the in-tree `UnsupportedClients`
-//! stub returns `NodeDeclError::Runtime` until the M-F.4.a-shipped
-//! `GenClientDispatch` reaches the installed nros-cli).
+//! The timer fires → `on_callback` flips the state's `pending` flag;
+//! the call dispatch lives in `tick` (the only place `&mut Executor`
+//! is free — see `TickCtx` docs). Embedded client: one fixed request
+//! (2, 3), no argv on firmware. On the first successful reply it logs
+//! the sum and goes idle; the runtime keeps spinning.
 
 #![no_std]
 
@@ -37,8 +34,9 @@ pub struct State {
     /// Set by `on_callback` when the timer fires; drained by `tick`
     /// after dispatching the call.
     pending: bool,
-    /// Monotonic counter used as the request operands.
-    counter: i64,
+    /// Set once the reply has been logged — the single-shot client
+    /// then idles while the runtime keeps spinning.
+    done: bool,
 }
 
 impl ExecutableNode for AddTwoIntsClient {
@@ -47,33 +45,36 @@ impl ExecutableNode for AddTwoIntsClient {
     fn init() -> Self::State {
         State {
             pending: false,
-            counter: 0,
+            done: false,
         }
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "issue_call" {
+        if callback.as_str() == "issue_call" && !state.done {
             state.pending = true;
-            state.counter = state.counter.wrapping_add(1);
         }
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        if !state.pending {
+        if !state.pending || state.done {
             return;
         }
         state.pending = false;
-        let req = AddTwoIntsRequest {
-            a: state.counter,
-            b: state.counter.wrapping_add(1),
-        };
+        let req = AddTwoIntsRequest { a: 2, b: 3 };
         // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
         // response = 1 × i64 + header = 16 B. 64 each is generous.
-        let _: nros::NodeResult<AddTwoIntsResponse> = ctx
-            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req);
-        // Result discarded: until M-F.4.a reaches the installed CLI, the
-        // runtime returns `NodeDeclError::Runtime`; once it ships, the
-        // returned `AddTwoIntsResponse.sum` is what we'd log here.
+        match ctx
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
+        {
+            Ok(reply) => {
+                log::info!("Result of add_two_ints: {}", reply.sum);
+                state.done = true;
+            }
+            Err(_) => {
+                // Server not reachable yet — the next timer fire retries
+                // the same request.
+            }
+        }
     }
 }
 

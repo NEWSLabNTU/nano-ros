@@ -19,7 +19,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # real service handler on the executor. The raw service register carries the
 # type name as a string, so no generated message headers are needed.
 nano_ros_node_register(
-    NAME     service_server
+    NAME     add_two_ints_server
     CLASS    freertos_c_service_server::AddTwoIntsServer
     LANGUAGE C
     TYPED

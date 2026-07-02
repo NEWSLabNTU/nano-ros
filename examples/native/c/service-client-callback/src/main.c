@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief C service client example — **callback** variant (RFC-0041 / Phase 239).
+/// @brief C service client example — **callback** variant.
 ///
 /// Mirrors the blocking `service-client` example, but receives each reply
 /// through a `nros_response_callback_t` dispatched by `nros_executor_spin_some`
@@ -33,8 +33,7 @@ static struct {
     nros_client_t client;
     nros_executor_t executor;
     // Reply state shared with the callback.
-    int reply_count;  // bumped each time the callback fires
-    int64_t last_sum; // sum from the most recent reply
+    int reply_count; // bumped each time the callback fires
 } app;
 
 // ----------------------------------------------------------------------------
@@ -46,9 +45,8 @@ static void on_response(const uint8_t* response, size_t response_len, void* cont
     example_interfaces_srv_add_two_ints_response resp;
     if (example_interfaces_srv_add_two_ints_response_deserialize(&resp, response, response_len) ==
         0) {
-        app.last_sum = resp.sum;
         app.reply_count++;
-        printf("Response (callback): sum = %lld\n", (long long)resp.sum);
+        printf("Result of add_two_ints: %lld\n", (long long)resp.sum);
     } else {
         fprintf(stderr, "Callback: failed to deserialize response\n");
     }
@@ -59,15 +57,26 @@ static void on_response(const uint8_t* response, size_t response_len, void* cont
 // ----------------------------------------------------------------------------
 
 int nros_app_main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
-
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     printf("nros C Service Client (AddTwoInts, callback)\n");
     printf("=============================================\n");
+
+    // Operands from the first two positional args (default: 2 3).
+    int64_t a = 2;
+    int64_t b = 3;
+    if (argc >= 3) {
+        char* end_a = NULL;
+        char* end_b = NULL;
+        long long parsed_a = strtoll(argv[1], &end_a, 10);
+        long long parsed_b = strtoll(argv[2], &end_b, 10);
+        if (end_a && *end_a == '\0' && end_b && *end_b == '\0') {
+            a = (int64_t)parsed_a;
+            b = (int64_t)parsed_b;
+        }
+    }
 
     const char* locator = getenv("NROS_LOCATOR");
     if (!locator) {
@@ -92,18 +101,18 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client_callback", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "add_two_ints_client_cb", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"),
                    1);
     printf("Client created for service: %s\n", nros_client_get_service_name(&app.client));
 
-    // Phase 82: clients must be registered with an executor before use.
+    // Clients must be registered with an executor before use.
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
 
-    // RFC-0041: register the reply callback. It fires at spin, not via poll.
+    // Register the reply callback. It fires at spin, not via poll.
     NROS_CHECK_RET(nros_client_set_response_callback(&app.client, on_response, NULL), 1);
     printf("Response callback registered\n");
 
@@ -112,61 +121,38 @@ int nros_app_main(int argc, char** argv) {
         nros_executor_spin_some(&app.executor, 50ull * 1000 * 1000);
     }
 
-    struct {
-        int64_t a;
-        int64_t b;
-    } test_cases[] = {{5, 3}, {10, 20}, {100, 200}, {-5, 10}};
-    int num_cases = sizeof(test_cases) / sizeof(test_cases[0]);
+    int exit_code = 0;
 
-    printf("\nCalling service %d times (async + callback)...\n\n", num_cases);
+    example_interfaces_srv_add_two_ints_request request;
+    example_interfaces_srv_add_two_ints_request_init(&request);
+    request.a = a;
+    request.b = b;
 
-    int success_count = 0;
-
-    for (int i = 0; i < num_cases; i++) {
-        example_interfaces_srv_add_two_ints_request request;
-        example_interfaces_srv_add_two_ints_request_init(&request);
-        request.a = test_cases[i].a;
-        request.b = test_cases[i].b;
-
-        uint8_t req_buf[256];
-        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf,
-                                                                                sizeof(req_buf));
-        if (req_len < 0) {
-            fprintf(stderr, "Failed to serialize request\n");
-            continue;
-        }
-
-        int before = app.reply_count;
-        printf("Calling service: %lld + %lld = ?\n", (long long)request.a, (long long)request.b);
-
+    uint8_t req_buf[256];
+    int32_t req_len =
+        example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf, sizeof(req_buf));
+    if (req_len < 0) {
+        fprintf(stderr, "Failed to serialize request\n");
+        exit_code = 1;
+    } else {
         nros_ret_t ret = nros_client_send_request_async(&app.client, req_buf, (size_t)req_len);
         if (ret != NROS_RET_OK) {
-            fprintf(stderr, "Call [%d]: async send failed with error %d\n", i + 1, ret);
-            continue;
-        }
-
-        // Spin until the reply callback fires (or a 5 s budget elapses).
-        uint64_t waited_ms = 0;
-        while (app.reply_count == before && waited_ms < 5000) {
-            nros_executor_spin_some(&app.executor, 50ull * 1000 * 1000);
-            waited_ms += 50;
-        }
-
-        if (app.reply_count > before) {
-            int64_t expected = request.a + request.b;
-            if (app.last_sum == expected) {
-                printf("Call [%d]: OK (sum = %lld)\n", i + 1, (long long)app.last_sum);
-                success_count++;
-            } else {
-                printf("Call [%d]: MISMATCH (got %lld, expected %lld)\n", i + 1,
-                       (long long)app.last_sum, (long long)expected);
-            }
+            fprintf(stderr, "Async send failed with error %d\n", ret);
+            exit_code = 1;
         } else {
-            fprintf(stderr, "Call [%d]: timeout waiting for callback\n", i + 1);
+            // Spin until the reply callback fires (or a 5 s budget elapses).
+            uint64_t waited_ms = 0;
+            while (app.reply_count == 0 && waited_ms < 5000) {
+                nros_executor_spin_some(&app.executor, 50ull * 1000 * 1000);
+                waited_ms += 50;
+            }
+
+            if (app.reply_count == 0) {
+                fprintf(stderr, "Timeout waiting for callback\n");
+                exit_code = 1;
+            }
         }
     }
-
-    printf("\n%d/%d callback calls succeeded\n", success_count, num_cases);
 
     printf("\nShutting down...\n");
     nros_executor_fini(&app.executor);
@@ -175,7 +161,7 @@ int nros_app_main(int argc, char** argv) {
     nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
-    return (success_count == num_cases) ? 0 : 1;
+    return exit_code;
 }
 
 NROS_APP_MAIN_REGISTER_POSIX()

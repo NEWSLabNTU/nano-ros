@@ -1,4 +1,4 @@
-//! STM32F4 Service Client Node pkg — Phase 216.B.5.
+//! STM32F4 Service Client Node pkg.
 //!
 //! Board-agnostic Node pkg that the sibling Entry pkg
 //! (`service-client-rtic` for the RTIC framework — and the same pkg
@@ -26,16 +26,17 @@
 //!
 //! ## Skeleton status — `register()` only
 //!
-//! Phase 216.B.5 ships the trait-shaped scaffolding only. The
+//! This example ships the trait-shaped scaffolding only. The
 //! `NodeServiceClient` handle returned by
 //! [`NodeContext::create_service_client`](nros::NodeContext::create_service_client)
 //! is dropped at the end of `register` — there is no mechanism yet for
 //! a Node pkg to hold the handle across calls into a user body (the
 //! handle isn't `'static`, and the trampoline-registration story that
-//! would thread it onto `Self::State` is the next 216.B wave). A
-//! real client call body (request → `Promise::try_recv()` loop →
-//! reply log) lives as a `// todo` placeholder until then; mirrors
-//! the server skeleton's "register-only" stance.
+//! would thread it onto `Self::State` is a follow-up wave). A
+//! real client call body (one fixed request → `Promise::try_recv()`
+//! loop → `Result of add_two_ints: <sum>` log) lives as a `// todo`
+//! placeholder until then; mirrors the server skeleton's
+//! "register-only" stance.
 //!
 //! ## Placeholder service type
 //!
@@ -54,38 +55,35 @@ use nros::{
     NodeResult,
 };
 
-/// Service client component — calls `/echo` requests. Phase 216.B.5
-/// skeleton.
+/// Service client component — calls `/echo` requests. Skeleton.
 pub struct ServiceClient;
 
 impl Node for ServiceClient {
-    const NAME: &'static str = "service_client";
+    const NAME: &'static str = "add_two_ints_client";
 
-    /// Phase 216.B.5 — declares Inline dispatch. The legacy Pattern A
-    /// client polled `Promise::try_recv()` from a user-owned RTIC
-    /// `#[task]` — no callbacks fire on the reply path, so the
-    /// dispatch runtime never needs to deliver one. Inline matches
-    /// the legacy semantics; `nros check` (Phase 216.D.1) accepts the
-    /// `(RTIC, Inline)` matrix cell.
+    /// Declares Inline dispatch. The legacy Pattern A client polled
+    /// `Promise::try_recv()` from a user-owned RTIC `#[task]` — no
+    /// callbacks fire on the reply path, so the dispatch runtime never
+    /// needs to deliver one. Inline matches the legacy semantics;
+    /// `nros check` accepts the `(RTIC, Inline)` matrix cell.
     const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeOptions::new("service_client"))?;
-        // Phase 216.B.5 — register the client handle. The metadata-only
-        // tag pattern doesn't fit clients (a `ServiceTag` can't issue
-        // requests; you need the handle), but Phase 216.B's
-        // trampoline-registration story for client handles is the next
-        // wave — so the returned `NodeServiceClient` is dropped at the
-        // end of `register` and the real call body (request →
-        // `Promise::try_recv()` loop → reply log) is a `// todo`
-        // below.
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
+        // Register the client handle. The metadata-only tag pattern
+        // doesn't fit clients (a `ServiceTag` can't issue requests; you
+        // need the handle), but the trampoline-registration story for
+        // client handles is a follow-up wave — so the returned
+        // `NodeServiceClient` is dropped at the end of `register` and
+        // the real call body (one fixed request → `Promise::try_recv()`
+        // loop → result log) is a `// todo` below.
         let _client = node.create_service_client_for_name::<PlaceholderSrv>("/echo")?;
-        // todo(216.B.5-followup): thread `_client` onto `Self::State`
-        // once the client-handle trampoline lands, then wire a
-        // periodic call body — e.g. a tick callback that builds a
-        // `PlaceholderInt32 { data: counter }` request, calls
-        // `client.call(&req)`, polls the returned promise to logged
-        // reply. The legacy Pattern A loop lived at
+        // todo(followup): thread `_client` onto `Self::State` once the
+        // client-handle trampoline lands, then wire a one-shot call
+        // body — build a fixed `PlaceholderInt32` request, call
+        // `client.call(&req)`, poll the returned promise, and log
+        // `Result of add_two_ints: <sum>` on the reply. The legacy
+        // Pattern A loop lived at
         // `examples/stm32f4/rust/service-client-rtic/src/main.rs`
         // (pre-migration) — `let mut promise = client.call(&request)`
         // followed by a `promise.try_recv()` + `Mono::delay` poll.
@@ -94,10 +92,10 @@ impl Node for ServiceClient {
 }
 
 impl ExecutableNode for ServiceClient {
-    /// Monotonic counter — the next `i32` request value. The real call
-    /// body is the next 216.B wave; today the field is unused but
-    /// kept on `State` so the trampoline-registration follow-up can
-    /// land without touching the `init` signature again.
+    /// The next `i32` request value. The real call body is a follow-up
+    /// wave; today the field is unused but kept on `State` so the
+    /// trampoline-registration follow-up can land without touching the
+    /// `init` signature again.
     type State = i32;
 
     fn init() -> Self::State {
@@ -105,13 +103,12 @@ impl ExecutableNode for ServiceClient {
     }
 
     fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        // Phase 216.B.5 — Inline dispatch + no Node-registered
-        // callbacks (no timer, no subscription) ⇒ this trampoline is
-        // never invoked today. Kept as a stub so the `ExecutableNode`
-        // trait impl is complete and a follow-up can drop a real
-        // tick-driven call body in without breaking the
-        // `nros::node!()` emit.
-        defmt::trace!("service_client on_callback (no-op skeleton)");
+        // Inline dispatch + no Node-registered callbacks (no timer, no
+        // subscription) ⇒ this trampoline is never invoked today. Kept
+        // as a stub so the `ExecutableNode` trait impl is complete and
+        // a follow-up can drop a real one-shot call body in without
+        // breaking the `nros::node!()` emit.
+        defmt::trace!("add_two_ints_client on_callback (no-op skeleton)");
     }
 }
 

@@ -1,4 +1,4 @@
-//! STM32F4 Service Server Node pkg — Phase 216.B.5.
+//! STM32F4 Service Server Node pkg.
 //!
 //! Board-agnostic Node pkg that the sibling Entry pkg
 //! (`service-server-rtic` for the RTIC framework — and the same pkg
@@ -9,7 +9,7 @@
 //!
 //! ## Deferred dispatch + tag-based service server
 //!
-//! Like the sibling `listener_pkg` (216.C.5), this pkg declares
+//! Like the sibling `listener_pkg`, this pkg declares
 //!
 //! ```ignore
 //! const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
@@ -22,14 +22,14 @@
 //! instead of the spin task, and the handler body runs there. The
 //! server is registered via the tag-shaped
 //! [`NodeContext::create_service_static`](nros::NodeContext::create_service_static)
-//! helper landed in the 216.A.4-followup, which returns a
+//! helper, which returns a
 //! [`ServiceTag`] the Node author stores on `Self::State` and matches
 //! against the `Callback<'_>` delivered to
 //! [`ExecutableNode::on_callback`].
 //!
 //! ## Placeholder service type
 //!
-//! Phase 216.B.5 ships the trait-shaped scaffolding only. The body
+//! This example ships the trait-shaped scaffolding only. The body
 //! uses a tiny local [`PlaceholderSrv`] `RosService` impl (Request +
 //! Reply both shaped like `std_msgs/Int32` — 4-byte LE `i32`),
 //! avoiding a dep on `example_interfaces` (which would require
@@ -52,8 +52,7 @@ use nros::{
     NodeResult, ServiceTag,
 };
 
-/// Service server component — answers `/echo` requests. Phase 216.B.5
-/// skeleton.
+/// Service server component — answers `/echo` requests. Skeleton.
 pub struct ServiceServer;
 
 /// Per-instance mutable state. Holds the [`ServiceTag`] returned from
@@ -62,30 +61,30 @@ pub struct ServiceServer;
 pub struct ServiceServerState {
     /// Tag returned from `create_service_static::<PlaceholderSrv>("/echo")`.
     /// Macro-emitted init bodies use [`ServiceTag::placeholder`] as a
-    /// sentinel; the real tag is bound at register time by a follow-
-    /// up wave of Phase 216.B.
+    /// sentinel; the real tag is bound at register time by a follow-up
+    /// that finishes the trampoline-registration story.
     pub srv_echo: ServiceTag,
 }
 
 impl Node for ServiceServer {
-    const NAME: &'static str = "service_server";
+    const NAME: &'static str = "add_two_ints_server";
 
-    /// Phase 216.B.5 — declares Deferred dispatch. Service callbacks
-    /// are the canonical Deferred-dispatch use case: a request hits
-    /// the wire, the dispatch runtime enqueues the callback onto a
-    /// framework-owned task, the handler body builds the reply
-    /// off the spin task. `nros check` (Phase 216.D.1) accepts the
-    /// `(RTIC, Deferred)` matrix cell.
+    /// Declares Deferred dispatch. Service callbacks are the canonical
+    /// Deferred-dispatch use case: a request hits the wire, the
+    /// dispatch runtime enqueues the callback onto a framework-owned
+    /// task, the handler body builds the reply off the spin task.
+    /// `nros check` accepts the `(RTIC, Deferred)` matrix cell.
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeOptions::new("service_server"))?;
-        // Phase 216.B.5 — tag-based service server. The service-name
-        // literal becomes both the stable entity ID and the callback
-        // ID; the returned `ServiceTag` is what `on_callback` matches
-        // against the delivered `Callback<'_>`. See the module doc
-        // for the Deferred dispatch rationale.
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_server"))?;
+        // Tag-based service server. The service-name literal becomes
+        // both the stable entity ID and the callback ID; the returned
+        // `ServiceTag` is what `on_callback` matches against the
+        // delivered `Callback<'_>`. See the module doc for the
+        // Deferred dispatch rationale.
         let _srv_echo = node.create_service_static::<PlaceholderSrv>("/echo")?;
+        defmt::info!("Waiting for service requests...");
         Ok(())
     }
 }
@@ -94,10 +93,10 @@ impl ExecutableNode for ServiceServer {
     type State = ServiceServerState;
 
     fn init() -> Self::State {
-        // Phase 216.B.5 — `srv_echo` uses `ServiceTag::placeholder()`
-        // as the macro-emit sentinel; the real tag (returned by
+        // `srv_echo` uses `ServiceTag::placeholder()` as the
+        // macro-emit sentinel; the real tag (returned by
         // `create_service_static` in `register`) is bound at register
-        // time by the follow-up wave that finishes the trampoline-
+        // time by the follow-up that finishes the trampoline-
         // registration story.
         ServiceServerState {
             srv_echo: ServiceTag::placeholder(),
@@ -113,10 +112,13 @@ impl ExecutableNode for ServiceServer {
             // real flash). A real handler would build a reply via
             // `ctx.send_reply(...)` (the typed surface lands with
             // the trampoline-registration follow-up); for the
-            // skeleton the request is decoded and logged only.
+            // skeleton the request is decoded and logged only. The
+            // placeholder request carries a single int, so it logs
+            // as `a` with `b` fixed at 0.
             let payload = ctx.payload();
             let req = decode_placeholder_int32(payload);
-            defmt::info!("Service request received: {}", req.data);
+            defmt::info!("Incoming request");
+            defmt::info!("a: {} b: {}", req.data, 0);
         }
     }
 }
@@ -135,12 +137,12 @@ fn decode_placeholder_int32(payload: &[u8]) -> PlaceholderInt32 {
 
 nros::node!(ServiceServer);
 
-// Phase 216.B.5 placeholder — minimal `RosMessage` stand-in (shared
-// between Request + Reply) so the declarative `create_service_static`
-// call type-checks without dragging `example_interfaces` (which is
-// codegen-materialised under `generated/example_interfaces/`) into
-// this skeleton. The wire shape matches `std_msgs/Int32`. Follow-ups
-// switch to the real types once `generated/` ships for this example.
+// Placeholder — minimal `RosMessage` stand-in (shared between Request +
+// Reply) so the declarative `create_service_static` call type-checks
+// without dragging `example_interfaces` (which is codegen-materialised
+// under `generated/example_interfaces/`) into this skeleton. The wire
+// shape matches `std_msgs/Int32`. Follow-ups switch to the real types
+// once `generated/` ships for this example.
 #[derive(Copy, Clone)]
 pub struct PlaceholderInt32 {
     pub data: i32,
@@ -163,13 +165,12 @@ impl nros::RosMessage for PlaceholderInt32 {
     const TYPE_HASH: &'static str = "";
 }
 
-// Phase 216.B.5 placeholder — minimal `RosService` stand-in so the
-// declarative `create_service_static::<PlaceholderSrv>(...)` call
-// type-checks without dragging `example_interfaces` into this
-// skeleton. Request + Reply are both `PlaceholderInt32` (a 4-byte LE
-// `i32`); a real flash would swap this for `example_interfaces::srv::
-// AddTwoInts` once the trampoline-registration story lands and
-// `generated/` ships.
+// Placeholder — minimal `RosService` stand-in so the declarative
+// `create_service_static::<PlaceholderSrv>(...)` call type-checks
+// without dragging `example_interfaces` into this skeleton. Request +
+// Reply are both `PlaceholderInt32` (a 4-byte LE `i32`); a real flash
+// would swap this for `example_interfaces::srv::AddTwoInts` once the
+// trampoline-registration story lands and `generated/` ships.
 pub struct PlaceholderSrv;
 
 impl nros::RosService for PlaceholderSrv {

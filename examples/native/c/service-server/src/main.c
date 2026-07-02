@@ -73,8 +73,7 @@ static bool service_callback(const uint8_t* request_data, size_t request_len,
     example_interfaces_srv_add_two_ints_response_init(&response);
     response.sum = request.a + request.b;
 
-    printf("Request [%d]: %lld + %lld = %lld\n", ctx->request_count, (long long)request.a,
-           (long long)request.b, (long long)response.sum);
+    printf("Incoming request\na: %lld b: %lld\n", (long long)request.a, (long long)request.b);
 
     // Serialize response using generated function
     int32_t len = example_interfaces_srv_add_two_ints_response_serialize(&response, response_data,
@@ -97,7 +96,7 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     printf("nros C Service Server (AddTwoInts)\n");
@@ -129,7 +128,7 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_server", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "add_two_ints_server", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type, "/add_two_ints",

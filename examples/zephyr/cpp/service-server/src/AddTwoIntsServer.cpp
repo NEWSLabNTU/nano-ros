@@ -1,5 +1,5 @@
 /// @file AddTwoIntsServer.cpp
-/// @brief Zephyr C++ AddTwoInts service server — typed component (RFC-0043, 244.C2).
+/// @brief Zephyr C++ AddTwoInts service server — typed component.
 
 #include "AddTwoIntsServer.hpp"
 
@@ -39,8 +39,8 @@ bool AddTwoIntsServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* r
     resp[3] = req[3];
     write_i64_le(resp + 4, sum);
     *resp_len = 12;
-    std::printf("Serving: %lld + %lld = %lld\n", static_cast<long long>(a),
-                static_cast<long long>(b), static_cast<long long>(sum));
+    std::printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(a),
+                static_cast<long long>(b));
     return true;
 }
 
@@ -48,8 +48,8 @@ bool AddTwoIntsServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* r
     ::nros::Result r = ::nros::bind_service_raw<AddTwoIntsServer, &AddTwoIntsServer::handle_add>(
         node, "/add_two_ints", "example_interfaces/srv/AddTwoInts", this);
     if (r.ok()) {
-        // Readiness marker the rtos_e2e harness greps before driving the client.
-        std::printf("Waiting for requests\n");
+        // Readiness marker the e2e harness greps before driving the client.
+        std::printf("Waiting for service requests\n");
     }
     return r;
 }

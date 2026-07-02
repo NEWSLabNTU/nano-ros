@@ -14,7 +14,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 
 # Phase 240.6 (RFC-0043) — TYPED carrier: poll-style C service client component.
 nano_ros_node_register(
-    NAME     service_client
+    NAME     add_two_ints_client
     CLASS    freertos_c_service_client::AddTwoIntsClient
     LANGUAGE C
     TYPED

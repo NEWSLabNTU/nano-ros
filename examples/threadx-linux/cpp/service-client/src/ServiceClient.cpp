@@ -23,6 +23,9 @@ static void write_i64_le(uint8_t* p, int64_t x) {
 }
 
 void ServiceClient::on_tick() {
+    if (done_) {
+        return;
+    }
     if (!awaiting_) {
         // Request CDR: encapsulation header (CDR_LE) + int64 a + int64 b.
         uint8_t req[20];
@@ -42,10 +45,8 @@ void ServiceClient::on_tick() {
     if (nros_cpp_service_client_try_recv_reply(client_.bytes, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
-        printf("Response: %lld\n", static_cast<long long>(sum));
-        ++a_;
-        ++b_;
-        awaiting_ = false;
+        printf("Result of add_two_ints: %lld\n", static_cast<long long>(sum));
+        done_ = true;
     }
 }
 
@@ -56,7 +57,7 @@ void ServiceClient::on_tick() {
     if (!r.ok()) return r;
     r = ::nros::bind_timer<ServiceClient, &ServiceClient::on_tick>(node, timer_, 1000, this);
     if (r.ok()) {
-        printf("Sending requests\n");
+        printf("Sending request\n");
     }
     return r;
 }

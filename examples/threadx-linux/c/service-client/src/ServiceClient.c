@@ -1,9 +1,10 @@
 /// @file ServiceClient.c
 /// @brief ThreadX-Linux C AddTwoInts service client — typed poll component (RFC-0043).
 ///
-/// `client_configure` creates a service client + a timer that polls: each cycle
-/// sends a request (a, b) and polls the reply, printing the sum. (Poll model —
-/// clients move to callbacks when RFC-0041's C/C++ wave lands.)
+/// `client_configure` creates a service client + a timer that polls: the first
+/// tick sends ONE fixed request (2, 3); later ticks poll the reply and print
+/// the sum, then the client goes quiet. (Poll model — clients move to
+/// callbacks when RFC-0041's C/C++ wave lands.)
 
 #include <stddef.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@ typedef struct {
     int64_t a;
     int64_t b;
     int awaiting;
+    int done;
 } add_client_t;
 
 static int64_t read_i64_le(const uint8_t* p) {
@@ -38,6 +40,9 @@ static void write_i64_le(uint8_t* p, int64_t x) {
 
 static void on_tick(void* ctx) {
     add_client_t* self = (add_client_t*)ctx;
+    if (self->done) {
+        return;
+    }
     if (!self->awaiting) {
         uint8_t req[20];
         req[0] = 0x00;
@@ -56,18 +61,16 @@ static void on_tick(void* ctx) {
     if (nros_cpp_service_client_try_recv_reply(self->storage, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
-        printf("Response: %lld\n", (long long)sum);
-        self->a++;
-        self->b++;
-        self->awaiting = 0;
+        printf("Result of add_two_ints: %lld\n", (long long)sum);
+        self->done = 1;
     }
 }
 
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    add_client_t* self) {
     self->executor = executor;
-    self->a = 1;
-    self->b = 2;
+    self->a = 2;
+    self->b = 3;
     int32_t rc =
         nros_cpp_service_client_create(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
                                        "", nros_c_qos_default(), self->storage);
@@ -77,7 +80,7 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     size_t timer_handle;
     rc = nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
     if (rc == 0) {
-        printf("Sending requests\n");
+        printf("Sending request\n");
     }
     return rc;
 }

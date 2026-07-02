@@ -1,4 +1,4 @@
-//! ThreadX QEMU RISC-V Service Server — Phase 245 app-node logic.
+//! ThreadX QEMU RISC-V Service Server — app-node logic.
 //!
 //! Handles `example_interfaces/AddTwoInts` requests on `/add_two_ints`. This is
 //! an **app node** (it owns `main`, via `src/main.rs`'s `nros::main!()`), not a
@@ -37,6 +37,8 @@ impl Node for AddTwoIntsServer {
             "/add_two_ints",
             "on_add",
         )?;
+        // Readiness marker the e2e harness greps before driving the client.
+        log::info!("Waiting for service requests");
         Ok(())
     }
 }
@@ -50,12 +52,14 @@ impl ExecutableNode for AddTwoIntsServer {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_add" {
-            if let Ok(req) = ctx.message::<AddTwoIntsRequest>() {
-                let resp = AddTwoIntsResponse { sum: req.a + req.b };
-                let _ = ctx.reply::<AddTwoIntsResponse, 64>(&resp);
-                *state = state.wrapping_add(1);
-            }
+        if callback.as_str() == "on_add"
+            && let Ok(req) = ctx.message::<AddTwoIntsRequest>()
+        {
+            log::info!("Incoming request");
+            log::info!("a: {} b: {}", req.a, req.b);
+            let resp = AddTwoIntsResponse { sum: req.a + req.b };
+            let _ = ctx.reply::<AddTwoIntsResponse, 64>(&resp);
+            *state = state.wrapping_add(1);
         }
     }
 }
@@ -70,7 +74,7 @@ nros::node!(AddTwoIntsServer);
 // `nros::main!()` instead and never compiles this. Both are thin — the board owns
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the server. No manual `Executor::open` / `register_rmw` /
-// spin loop / hardcoded locator in the example (Phase 245 / issue 0049 P1/P3/P4/P6).
+// spin loop / hardcoded locator in the example.
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
     nros_board_threadx_qemu_riscv64::run_app_thread(register)

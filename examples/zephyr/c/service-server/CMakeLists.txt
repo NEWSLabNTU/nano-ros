@@ -38,7 +38,7 @@ set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
-    NAME      service_server
+    NAME      add_two_ints_server
     CLASS     nros_zephyr_zenoh_service_server_c::AddTwoIntsServer
     LANGUAGE  C
     TYPED

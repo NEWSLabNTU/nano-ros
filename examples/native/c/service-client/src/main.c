@@ -33,15 +33,26 @@ static struct {
 // ----------------------------------------------------------------------------
 
 int nros_app_main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
-
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
-    // a test harness each line must flush on its newline (Phase 177.34).
+    // a test harness each line must flush on its newline.
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     printf("nros C Service Client (AddTwoInts)\n");
     printf("=====================================\n");
+
+    // Operands from the first two positional args (default: 2 3).
+    int64_t a = 2;
+    int64_t b = 3;
+    if (argc >= 3) {
+        char* end_a = NULL;
+        char* end_b = NULL;
+        long long parsed_a = strtoll(argv[1], &end_a, 10);
+        long long parsed_b = strtoll(argv[2], &end_b, 10);
+        if (end_a && *end_a == '\0' && end_b && *end_b == '\0') {
+            a = (int64_t)parsed_a;
+            b = (int64_t)parsed_b;
+        }
+    }
 
     // Get configuration from environment
     const char* locator = getenv("NROS_LOCATOR");
@@ -69,76 +80,57 @@ int nros_app_main(int argc, char** argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "add_two_ints_client", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"),
                    1);
     printf("Client created for service: %s\n", nros_client_get_service_name(&app.client));
 
-    // Phase 82: clients must be registered with an executor before use.
+    // Clients must be registered with an executor before use.
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
-    nros_ret_t ret = NROS_RET_OK;
 
-    // Test cases: (a, b) pairs
-    struct {
-        int64_t a;
-        int64_t b;
-    } test_cases[] = {{5, 3}, {10, 20}, {100, 200}, {-5, 10}};
-    int num_cases = sizeof(test_cases) / sizeof(test_cases[0]);
+    int exit_code = 0;
 
-    printf("\nCalling service %d times...\n\n", num_cases);
+    // Prepare the single request using the generated type
+    example_interfaces_srv_add_two_ints_request request;
+    example_interfaces_srv_add_two_ints_request_init(&request);
+    request.a = a;
+    request.b = b;
 
-    int success_count = 0;
-
-    for (int i = 0; i < num_cases; i++) {
-        // Prepare request using generated type
-        example_interfaces_srv_add_two_ints_request request;
-        example_interfaces_srv_add_two_ints_request_init(&request);
-        request.a = test_cases[i].a;
-        request.b = test_cases[i].b;
-
-        // Serialize request using generated function
-        uint8_t req_buf[256];
-        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf,
-                                                                                sizeof(req_buf));
-        if (req_len < 0) {
-            fprintf(stderr, "Failed to serialize request\n");
-            continue;
-        }
-
+    // Serialize request using generated function
+    uint8_t req_buf[256];
+    int32_t req_len =
+        example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf, sizeof(req_buf));
+    if (req_len < 0) {
+        fprintf(stderr, "Failed to serialize request\n");
+        exit_code = 1;
+    } else {
         // Call service (blocking)
         uint8_t resp_buf[256];
         size_t resp_len = 0;
-        ret = nros_client_call(&app.client, req_buf, (size_t)req_len, resp_buf, sizeof(resp_buf),
-                               &resp_len);
+        nros_ret_t ret = nros_client_call(&app.client, req_buf, (size_t)req_len, resp_buf,
+                                          sizeof(resp_buf), &resp_len);
 
         if (ret == NROS_RET_OK) {
             // Deserialize response using generated function
             example_interfaces_srv_add_two_ints_response response;
             if (example_interfaces_srv_add_two_ints_response_deserialize(&response, resp_buf,
                                                                          resp_len) == 0) {
-                printf("Call [%d]: %lld + %lld = %lld", i + 1, (long long)request.a,
-                       (long long)request.b, (long long)response.sum);
-
-                if (response.sum == request.a + request.b) {
-                    printf(" [OK]\n");
-                    success_count++;
-                } else {
-                    printf(" [MISMATCH: expected %lld]\n", (long long)(request.a + request.b));
-                }
+                printf("Result of add_two_ints: %lld\n", (long long)response.sum);
             } else {
-                fprintf(stderr, "Call [%d]: Failed to deserialize response\n", i + 1);
+                fprintf(stderr, "Failed to deserialize response\n");
+                exit_code = 1;
             }
         } else if (ret == NROS_RET_TIMEOUT) {
-            fprintf(stderr, "Call [%d]: Timeout (is the server running?)\n", i + 1);
+            fprintf(stderr, "Service call timed out (is the server running?)\n");
+            exit_code = 1;
         } else {
-            fprintf(stderr, "Call [%d]: Failed with error %d\n", i + 1, ret);
+            fprintf(stderr, "Service call failed with error %d\n", ret);
+            exit_code = 1;
         }
     }
-
-    printf("\n%d/%d calls succeeded\n", success_count, num_cases);
 
     // Cleanup
     printf("\nShutting down...\n");
@@ -148,7 +140,7 @@ int nros_app_main(int argc, char** argv) {
     nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
-    return (success_count == num_cases) ? 0 : 1;
+    return exit_code;
 }
 
 NROS_APP_MAIN_REGISTER_POSIX()

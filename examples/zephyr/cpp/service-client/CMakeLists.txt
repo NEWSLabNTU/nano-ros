@@ -42,7 +42,7 @@ set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
-    NAME      service_client
+    NAME      add_two_ints_client
     CLASS     nros_zephyr_service_client_cpp::AddTwoIntsClient
     LANGUAGE  CPP
     HEADER    AddTwoIntsClient.hpp

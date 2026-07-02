@@ -1,11 +1,10 @@
-//! ThreadX Linux Service Client — Phase 212.L Node pkg.
+//! ThreadX Linux Service Client — Node pkg.
 //!
 //! Declares a service client for `example_interfaces/AddTwoInts` on
-//! `/add_two_ints`. Phase 212.M-F.4.b transcription: one-shot
-//! `send_request` on the first `tick` call. Until the M-F.4.a
-//! `GenClientDispatch` reaches the installed nros-cli, the in-tree
-//! `UnsupportedClients` stub returns `NodeDeclError::Runtime`; the
-//! body still compiles + the seam is honest.
+//! `/add_two_ints` and sends ONE fixed request (2, 3) from `tick`.
+//! A failed call (server not yet discovered) retries on the next tick;
+//! once the reply lands the client logs the sum and goes quiet. The
+//! generated runtime owns init / executor / spin.
 
 #![no_std]
 
@@ -27,29 +26,31 @@ impl Node for ServiceClient {
 }
 
 pub struct State {
-    /// Set once the call has been sent — keeps `tick` idempotent.
-    sent: bool,
+    /// Set once the reply has been received — the client sends ONE request.
+    done: bool,
 }
 
 impl ExecutableNode for ServiceClient {
     type State = State;
 
     fn init() -> Self::State {
-        State { sent: false }
+        State { done: false }
     }
 
     fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        if state.sent {
+        if state.done {
             return;
         }
-        let req = AddTwoIntsRequest { a: 7, b: 35 };
-        let result: nros::NodeResult<AddTwoIntsResponse> = ctx
-            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req);
-        if result.is_ok() {
-            state.sent = true;
+        let req = AddTwoIntsRequest { a: 2, b: 3 };
+        if let Ok(resp) = ctx
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
+        {
+            log::info!("Result of add_two_ints: {}", resp.sum);
+            state.done = true;
         }
+        // On failure (server not yet discovered) the next tick retries.
     }
 }
 

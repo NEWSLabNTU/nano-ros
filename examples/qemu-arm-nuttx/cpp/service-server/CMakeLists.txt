@@ -17,7 +17,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # executor (`NuttxBoard::run_components`). Raw service register carries the
 # type name as a string, so no generated message headers are needed.
 nano_ros_node_register(
-    NAME     service_server
+    NAME     add_two_ints_server
     CLASS    nuttx_cpp_service_server::AddTwoIntsServer
     LANGUAGE CPP
     HEADER   AddTwoIntsServer.hpp

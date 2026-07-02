@@ -1,5 +1,5 @@
 /// @file AddTwoIntsServer.c
-/// @brief Zephyr C AddTwoInts service server — TYPED component (RFC-0043 / phase-244.C2).
+/// @brief Zephyr C AddTwoInts service server — typed component.
 ///
 /// `server_configure` binds `handle_add` (by identity) as a raw callback-style
 /// service on `/add_two_ints`; the real handler decodes the CDR request
@@ -51,7 +51,7 @@ static bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t
     write_i64_le(resp + 4, sum);
     *resp_len = 12;
     self->served++;
-    printf("Serving: %lld + %lld = %lld\n", (long long)a, (long long)b, (long long)sum);
+    printf("Incoming request\na: %lld b: %lld\n", (long long)a, (long long)b);
     return true;
 }
 
@@ -64,7 +64,8 @@ static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
                                          "", nros_c_qos_default(), handle_add, self,
                                          /*sched_context=*/0, &handle);
     if (rc == 0) {
-        printf("Waiting for requests\n");
+        /* Readiness marker the e2e harness greps before driving the client. */
+        printf("Waiting for service requests\n");
     }
     return rc;
 }

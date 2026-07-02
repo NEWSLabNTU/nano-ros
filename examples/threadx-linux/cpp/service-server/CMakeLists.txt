@@ -21,7 +21,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # Phase 246 (RFC-0043) — TYPED carrier: constructs the typed ServiceServer +
 # `configure(node)` binds the real `handle_add` service callback on the executor.
 nano_ros_node_register(
-    NAME     service_server
+    NAME     add_two_ints_server
     CLASS    threadx_linux_cpp_service_server::ServiceServer
     LANGUAGE CPP
     HEADER   ServiceServer.hpp

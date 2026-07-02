@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "NuttX QEMU ARM AddTwoInts service server — Phase 212.L Component pkg"
+description = "NuttX QEMU ARM AddTwoInts service server — Component pkg"
 
 [lib]
 crate-type = ["rlib", "staticlib"]
@@ -13,6 +13,9 @@ crate-type = ["rlib", "staticlib"]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { version = "*", default-features = false }
+# Demo-parity log lines route through the `log` facade; the platform
+# entry runtime owns the sink.
+log = "0.4"
 
 [package.metadata.nros.node]
 class = "nuttx_rs_service_server::AddTwoIntsServer"

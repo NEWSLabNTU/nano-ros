@@ -19,7 +19,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # timer. Raw register carries the type-name verbatim, no generated message
 # sources. No manual support/executor init, no spin loop, no main.c.
 nano_ros_node_register(
-    NAME     service_client
+    NAME     add_two_ints_client
     CLASS    threadx_c_service_client::ServiceClient
     LANGUAGE C
     TYPED

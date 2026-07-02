@@ -11,7 +11,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
 
-// Phase 88.16.B — diagnostics route through `nros-log`.
+// Diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-server-rtic");
 
 extern crate nros_platform_cffi as _;
@@ -26,18 +26,18 @@ fn main() {
 
     nros_info!(&LOGGER, "nros RTIC-pattern Service Server (native)");
 
-    let config = ExecutorConfig::from_env().node_name("add_server");
+    let config = ExecutorConfig::from_env().node_name("add_two_ints_server");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
-        .create_node("add_server")
+        .create_node("add_two_ints_server")
         .expect("Failed to create node");
     let mut service = node
         .create_service::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service");
 
     nros_info!(&LOGGER, "Service server ready: /add_two_ints");
-    nros_info!(&LOGGER, "Waiting for requests (RTIC pattern)...");
+    nros_info!(&LOGGER, "Waiting for service requests (RTIC pattern)...");
 
     let mut handled = 0u32;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -46,9 +46,9 @@ fn main() {
         executor.spin_once(core::time::Duration::from_millis(0));
 
         match service.handle_request(|req| {
-            let sum = req.a + req.b;
-            nros_info!(&LOGGER, "Request: {} + {} = {}", req.a, req.b, sum);
-            AddTwoIntsResponse { sum }
+            nros_info!(&LOGGER, "Incoming request");
+            nros_info!(&LOGGER, "a: {} b: {}", req.a, req.b);
+            AddTwoIntsResponse { sum: req.a + req.b }
         }) {
             Ok(true) => handled += 1,
             Ok(false) => {}

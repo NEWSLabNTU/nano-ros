@@ -1,14 +1,11 @@
-//! Zephyr AddTwoInts service client — Phase 212.M.3 / Phase 212.L Node pkg.
+//! Zephyr AddTwoInts service client.
 //!
 //! Declarative metadata: node + service client + driver timer.
 //!
-//! Phase 212.M-F.4.b transcription: timer fires → `on_callback` flips
-//! the state's `pending` flag + bumps the operand counter. Real call
-//! dispatch lives in `tick` (the only place `&mut Executor` is free —
-//! see `TickCtx` docs). Until `nros::TickCtx::call`'s underlying
-//! `ClientDispatch` impl ships in the installed nros-cli (M-F.4.a),
-//! the in-tree `UnsupportedClients` stub returns `NodeDeclError::
-//! Runtime`; the body still compiles + the seam is honest.
+//! The timer fires → `on_callback` flips the state's `pending` flag. Real
+//! call dispatch lives in `tick` (the only place `&mut Executor` is free —
+//! see `TickCtx` docs). Sends ONE fixed request (2, 3); the timer retries
+//! until the call succeeds (discovery warm-up), then goes quiet.
 
 #![no_std]
 
@@ -38,8 +35,8 @@ pub struct State {
     /// Set by `on_callback` when the timer fires; drained by `tick`
     /// after dispatching the call.
     pending: bool,
-    /// Monotonic counter used as the request operands.
-    counter: i64,
+    /// Set once a reply has been received — the client sends ONE request.
+    done: bool,
 }
 
 impl ExecutableNode for AddTwoIntsClient {
@@ -48,34 +45,32 @@ impl ExecutableNode for AddTwoIntsClient {
     fn init() -> Self::State {
         State {
             pending: false,
-            counter: 0,
+            done: false,
         }
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "issue_call" {
+        if callback.as_str() == "issue_call" && !state.done {
             state.pending = true;
-            state.counter = state.counter.wrapping_add(1);
         }
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        if !state.pending {
+        if !state.pending || state.done {
             return;
         }
         state.pending = false;
-        let req = AddTwoIntsRequest {
-            a: state.counter,
-            b: state.counter.wrapping_add(1),
-        };
-        // Canonical service-client fixture marker — the e2e harness asserts on
-        // "Response: sum=<n>". The single-node runtime now dispatches the call
-        // for real (phase-212 M-F.23); log the reply so the test can observe it.
+        let req = AddTwoIntsRequest { a: 2, b: 3 };
         match ctx
             .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
         {
-            Ok(resp) => log::info!("Response: sum={}", resp.sum),
-            Err(_) => log::info!("service call failed"),
+            Ok(resp) => {
+                log::info!("Result of add_two_ints: {}", resp.sum);
+                state.done = true;
+            }
+            // The timer re-arms `pending`, so a failed call (server not yet
+            // discovered) is retried on the next fire.
+            Err(_) => log::error!("service call failed, retrying"),
         }
     }
 }

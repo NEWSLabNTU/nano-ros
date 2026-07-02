@@ -26,7 +26,7 @@ nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 # dispatches to the carrier-emitted `app_main`. No manual support/executor init,
 # no spin loop, no per-example `main.c`.
 nano_ros_node_register(
-    NAME     service_server
+    NAME     add_two_ints_server
     CLASS    riscv64_threadx_c_service_server::ServiceServer
     LANGUAGE C
     TYPED

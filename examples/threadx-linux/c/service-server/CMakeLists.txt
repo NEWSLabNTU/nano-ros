@@ -19,7 +19,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 # on /add_two_ints. Raw register carries the type-name verbatim, no generated
 # message sources. No manual support/executor init, no spin loop, no main.c.
 nano_ros_node_register(
-    NAME     service_server
+    NAME     add_two_ints_server
     CLASS    threadx_c_service_server::ServiceServer
     LANGUAGE C
     TYPED
