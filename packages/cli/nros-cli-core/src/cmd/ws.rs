@@ -2052,6 +2052,42 @@ nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
         }
     }
 
+    /// Phase 277 W2.e — board crates (`packages/boards/*`) must resolve to a
+    /// `[patch.crates-io]` path so `nros sync` can rewrite a scaffolded
+    /// project's registry-style `nros-board-<x> = "*"` dep (W6 flips example
+    /// board deps to registry-style). Board crates are NOT enumerated in the
+    /// static [`nros_crate_path_lookup`] table — `is_managed_runtime_crate_name`
+    /// / `nros_crate_subpath` recognize any `nros-board-`-prefixed name
+    /// generically (RFC-0040 D-Q3) and derive `packages/boards/<name>`
+    /// uniformly, since every current board crate's Cargo package name
+    /// equals its directory name under `packages/boards/`. This test locks
+    /// that resolution in for the concrete crates phase-277 cares about
+    /// (verified against each crate's actual `Cargo.toml` `name =` field —
+    /// note the bare-metal board crate is `nros-board-bare-metal`, not
+    /// `nros-board-baremetal-cortex-m`).
+    #[test]
+    fn board_crates_resolve_via_generic_fallback() {
+        let boards = [
+            "nros-board-native",
+            "nros-board-freertos",
+            "nros-board-mps2-an385-freertos",
+            "nros-board-threadx",
+            "nros-board-threadx-qemu-riscv64",
+            "nros-board-bare-metal",
+        ];
+        for name in &boards {
+            assert!(
+                is_managed_runtime_crate_name(name),
+                "board crate `{name}` not recognized as managed"
+            );
+            assert_eq!(
+                nros_crate_subpath(name),
+                Some(format!("packages/boards/{name}")),
+                "board crate `{name}` resolved to an unexpected subpath"
+            );
+        }
+    }
+
     /// Issue #94 case B — explicit dependency-table form
     /// `[dependencies.<name>]` (and target-scoped variants) must be scanned:
     /// a `version`-carrying entry needs a `[patch.crates-io]` path, a

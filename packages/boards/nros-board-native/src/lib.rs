@@ -97,8 +97,17 @@ impl BoardExit for NativeBoard {
 /// Gated on the board's own `rmw-<x>` feature; the call also force-links the
 /// backend (strictly stronger than the `#[used] __FORCE_LINK_*` static). Inert
 /// when no backend feature is selected.
+///
+/// Phase 277 W2.b — public under the name [`register_linked_rmw`] so a
+/// plain-API example (no `BoardEntry` / `nros::main!` framework, just
+/// `NativeBoard` + `Executor::open` directly) can trigger registration
+/// itself before opening the executor. Idempotent — safe to call more than
+/// once; re-registering an already-registered backend is a no-op. Apps
+/// that boot through `nros::main!()` or any `BoardEntry::run*`/`run_tiers`
+/// entry point never need to call this themselves — `NativeBoard` already
+/// calls it internally on every entry path.
 #[inline]
-fn register_backend() {
+pub fn register_linked_rmw() {
     #[cfg(feature = "rmw-zenoh")]
     {
         let _ = nros_rmw_zenoh::register();
@@ -124,7 +133,7 @@ impl BoardEntry for NativeBoard {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        register_backend();
+        register_linked_rmw();
         <PosixBoard as BoardEntry>::run::<F, E>(setup)
     }
 
@@ -139,7 +148,7 @@ impl BoardEntry for NativeBoard {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        register_backend();
+        register_linked_rmw();
         <PosixBoard as BoardEntry>::run_with_deploy::<F, E>(deploy, setup)
     }
 
@@ -160,7 +169,7 @@ impl BoardEntry for NativeBoard {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        register_backend();
+        register_linked_rmw();
         <PosixBoard as BoardEntry>::run_with_deploy_sized::<F, E>(
             deploy,
             max_cbs,
@@ -186,7 +195,7 @@ impl NativeBoard {
         E: core::fmt::Debug,
     {
         // Phase 249 P3.5 — register the linked backend before the tiers open.
-        register_backend();
+        register_linked_rmw();
         // Issue #48 — hosted boards take their locator from the environment, so
         // the deploy overlay is a no-op; forwarded for signature parity.
         PosixBoard::run_tiers::<F, E>(deploy, tiers, setup)

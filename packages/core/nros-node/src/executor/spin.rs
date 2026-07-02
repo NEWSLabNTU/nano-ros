@@ -147,6 +147,29 @@ impl<'s> Executor<'s> {
         executor.install_wake_signal_on_primary();
         #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary_alloc();
+        // Phase 277 W2.c — readiness marker for E2E harnesses. This is the
+        // single call-through `open()`/`open_sized()` share, so it fires on
+        // every platform that reaches here (native, freertos, zephyr,
+        // threadx, …) regardless of which RMW backend or board owns the
+        // boot path. It replaces the per-example synthetic
+        // `log::info!("Publishing messages")` markers W4 removes — those
+        // only proved a callback had fired at least once; this line proves
+        // the session itself is up, before any node/callback exists.
+        //
+        // STABILITY CONTRACT: the leading `"nros: session open"` text is
+        // load-bearing — test harnesses grep for it verbatim. Keep it
+        // stable even if the trailing `(rmw=...)` detail changes.
+        #[cfg(feature = "log")]
+        {
+            if let Some(name) = sel_ref {
+                log::info!(
+                    "nros: session open (rmw={})",
+                    core::str::from_utf8(name).unwrap_or("?")
+                );
+            } else {
+                log::info!("nros: session open");
+            }
+        }
         Ok(executor)
     }
 }
