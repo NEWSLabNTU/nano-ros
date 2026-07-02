@@ -460,9 +460,8 @@ impl QemuProcess {
                         || output.contains("Benchmark complete")
                         || output.contains("TEST COMPLETE")
                         || output.contains("QEMU: Terminated")
-                        || output.contains("All service calls completed")
-                        || output.contains("Action client finished")
-                        || output.contains("Action completed successfully")
+                        || output.contains(crate::output::SERVICE_RESULT_PREFIX)
+                        || output.contains(crate::output::ACTION_RESULT_PREFIX)
                     {
                         std::thread::sleep(Duration::from_millis(100));
                         kill_process_group(&mut self.handle);

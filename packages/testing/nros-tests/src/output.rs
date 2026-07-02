@@ -1,11 +1,15 @@
 //! Shared output validation utilities for integration tests.
 //!
-//! All nano-ros standalone chatter examples match the official ROS 2 demo
-//! wording (phase-277 W4):
+//! All nano-ros standalone examples match the official ROS 2 demo wording
+//! (phase-277 W4 chatter, W5 service/action):
 //! - Talker: `"Publishing: 'Hello World: N'"`
 //! - Listener: `"I heard: [Hello World: N]"`
-//! - Service: `"[OK]"` for successful responses
-//! - Action: `"Feedback #N: [...]"`, `"Goal accepted"`, `"Action client finished"`
+//! - Service server: `"Incoming request"` + `"a: A b: B"`;
+//!   client: `"Result of add_two_ints: N"`
+//! - Action server: `"Received goal request with order N"`, `"Executing goal"`,
+//!   `"Publish feedback"`, `"Goal succeeded"`; client: `"Sending goal"`,
+//!   `"Goal accepted by server, waiting for result"`,
+//!   `"Next number in sequence received: [...]"`, `"Result received: [...]"`
 //!
 //! This module provides `parse_*` functions to extract structured data from
 //! process output, and `assert_*` convenience functions that panic with
@@ -69,6 +73,84 @@ pub fn talker_line(n: impl std::fmt::Display) -> String {
     format!("{TALKER_LOG_PREFIX} 'Hello World: {n}'")
 }
 
+// ---------------------------------------------------------------------------
+// Service (AddTwoInts) demo wording — phase-277 W5.
+//
+// Single source of truth for the standalone service-server / service-client
+// example wording (any platform / RMW / language variant), matching the
+// official `demo_nodes_cpp` `add_two_ints` demo. Same one-file-flip rationale
+// as the chatter constants above. Workspace feature packages and purpose-built
+// test bins keep their own wording.
+// ---------------------------------------------------------------------------
+
+/// First line the service server logs per request (`"Incoming request"`).
+pub const SERVICE_INCOMING_REQUEST_MARKER: &str = "Incoming request";
+
+/// Second line the service server logs per request (`"a: A b: B"`).
+pub fn service_request_line(a: impl std::fmt::Display, b: impl std::fmt::Display) -> String {
+    format!("a: {a} b: {b}")
+}
+
+/// Prefix of the service client's single result line
+/// (`"Result of add_two_ints:"`, as in the official demo
+/// `Result of add_two_ints: 5`).
+pub const SERVICE_RESULT_PREFIX: &str = "Result of add_two_ints:";
+
+/// The exact service client result line for `sum`
+/// (`"Result of add_two_ints: N"`).
+pub fn service_result_line(sum: impl std::fmt::Display) -> String {
+    format!("{SERVICE_RESULT_PREFIX} {sum}")
+}
+
+/// Readiness marker: the service server prints a line containing this once
+/// its service is up (`"Waiting for service requests"`).
+pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";
+
+// ---------------------------------------------------------------------------
+// Action (Fibonacci) demo wording — phase-277 W5.
+//
+// Single source of truth for the standalone action-server / action-client
+// example wording, matching the official `action_tutorials` fibonacci demo
+// (feedback/result sequences printed rclpy-style: `[0, 1, 1, 2, ...]`).
+// ---------------------------------------------------------------------------
+
+/// Action server log prefix when a goal request arrives
+/// (`"Received goal request with order"`, followed by the order).
+pub const ACTION_GOAL_REQUEST_PREFIX: &str = "Received goal request with order";
+
+/// Action server log line when goal execution starts (`"Executing goal"`).
+pub const ACTION_EXECUTING_MARKER: &str = "Executing goal";
+
+/// Action server log line on each feedback publish (`"Publish feedback"`).
+pub const ACTION_PUBLISH_FEEDBACK_MARKER: &str = "Publish feedback";
+
+/// Action server log line when the goal succeeds (`"Goal succeeded"`).
+pub const ACTION_GOAL_SUCCEEDED_MARKER: &str = "Goal succeeded";
+
+/// Readiness marker: the action server prints a line containing this once
+/// its action is up (`"Waiting for action goals"`).
+pub const ACTION_SERVER_READY_MARKER: &str = "Waiting for action goals";
+
+/// Action client log line before sending the goal (`"Sending goal"`).
+pub const ACTION_SENDING_GOAL_MARKER: &str = "Sending goal";
+
+/// Action client log line once the server accepts the goal
+/// (`"Goal accepted by server, waiting for result"`).
+pub const ACTION_GOAL_ACCEPTED_MARKER: &str = "Goal accepted by server, waiting for result";
+
+/// Action client log prefix for each feedback sample
+/// (`"Next number in sequence received:"`, followed by the partial sequence
+/// like `[0, 1, 1, 2]`).
+pub const ACTION_FEEDBACK_PREFIX: &str = "Next number in sequence received:";
+
+/// Action client terminal log prefix for the result
+/// (`"Result received:"`, followed by the full sequence).
+pub const ACTION_RESULT_PREFIX: &str = "Result received:";
+
+/// The full-sequence suffix for a Fibonacci goal of order 10, as the action
+/// client prints it (`"[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"`).
+pub const FIBONACCI_ORDER_10_SEQUENCE: &str = "[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]";
+
 /// The exact listener log line for value `n`
 /// (`"I heard: [Hello World: N]"`).
 pub fn listener_line(n: impl std::fmt::Display) -> String {
@@ -115,7 +197,7 @@ pub struct ListenerOutput {
 pub struct ActionClientOutput {
     /// Whether the goal was accepted.
     pub goal_accepted: bool,
-    /// Number of `"Feedback #"` lines.
+    /// Number of [`ACTION_FEEDBACK_PREFIX`] lines.
     pub feedback_count: usize,
     /// Whether the action completed.
     pub completed: bool,
@@ -157,13 +239,13 @@ pub fn parse_listener(output: &str) -> ListenerOutput {
     }
 }
 
-/// Parse action client output.
+/// Parse action client output (the W5 fibonacci demo wording).
 pub fn parse_action_client(output: &str) -> ActionClientOutput {
+    // `"Goal accepted"` also matches the official rclpy/rclcpp client's
+    // `"Goal accepted by server, waiting for result"` line.
     let goal_accepted = output.contains("Goal accepted");
-    let feedback_count = output.matches("Feedback #").count();
-    let completed = output.contains("action completed")
-        || output.contains("Action client finished")
-        || output.contains("Action client done");
+    let feedback_count = output.matches(ACTION_FEEDBACK_PREFIX).count();
+    let completed = output.contains(ACTION_RESULT_PREFIX);
     ActionClientOutput {
         goal_accepted,
         feedback_count,
@@ -299,7 +381,10 @@ mod tests {
 
     #[test]
     fn test_parse_action_client() {
-        let output = "Goal accepted! ID: [1,2,3]\nFeedback #1: [0]\nFeedback #2: [0, 1]\nAction client finished\n";
+        let output = "Goal accepted by server, waiting for result\n\
+                      Next number in sequence received: [0]\n\
+                      Next number in sequence received: [0, 1]\n\
+                      Result received: [0, 1]\n";
         let result = parse_action_client(output);
         assert!(result.goal_accepted);
         assert_eq!(result.feedback_count, 2);
