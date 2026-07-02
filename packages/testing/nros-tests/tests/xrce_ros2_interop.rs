@@ -27,8 +27,8 @@ use nros_tests::{
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, is_rmw_fastrtps_available,
         is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_action_client_binary,
-        xrce_action_server_binary, xrce_listener_binary, xrce_service_client_binary,
-        xrce_service_server_binary, xrce_talker_binary,
+        xrce_action_server_binary, xrce_action_server_concurrent_binary, xrce_listener_binary,
+        xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
     },
     unique_ros_domain_id,
 };
@@ -265,7 +265,10 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         .expect("Failed to start service server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(5));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Wait for DDS discovery to propagate the service
     std::thread::sleep(Duration::from_secs(1));
@@ -400,7 +403,7 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
 /// replies (the case a single stored `SampleIdentity` would cross-wire). Each
 /// client must get its OWN `SUCCEEDED` result.
 #[rstest]
-fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
+fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBuf) {
     use std::process::Command;
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
@@ -412,16 +415,16 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
 
-    let mut server_cmd = Command::new(&xrce_action_server_binary);
+    // Concurrent fixture bin: accepts + advances several goals at once,
+    // draining get_result every spin so two early get_result requests are
+    // held simultaneously (phase-277 W5 — was the example's
+    // NROS_ACTION_CONCURRENT mode).
+    let mut server_cmd = Command::new(&xrce_action_server_concurrent_binary);
     server_cmd
         .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "40")
-        // Concurrent mode: accept + advance several goals at once, draining
-        // get_result every spin so two early get_result requests are held
-        // simultaneously.
-        .env("NROS_ACTION_CONCURRENT", "1")
         .env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server-concurrent")
         .expect("Failed to start xrce action server");
@@ -522,10 +525,13 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
         .expect("Failed to start xrce action client");
-    // The example logs "Final sequence" once it has streamed the full
-    // Fibonacci feedback; "Action client finished" is its terminal line.
+    // The example streams `Next number in sequence received: [...]` feedback
+    // and ends with the terminal `Result received: [...]` line.
     let client_output = client
-        .wait_for_output_pattern("Action client finished", Duration::from_secs(20))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_RESULT_PREFIX,
+            Duration::from_secs(20),
+        )
         .unwrap_or_default();
     client.kill();
     ros2_server.kill();
@@ -537,7 +543,10 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     // least one non-empty feedback proves the feedback topic + UUID framing
     // round-trips from a real `rcl_action` server.
     let accepted = client_output.contains("Goal accepted");
-    let got_feedback = client_output.contains("Feedback #1: [0, 1");
+    let got_feedback = client_output.contains(&format!(
+        "{} [0, 1",
+        nros_tests::output::ACTION_FEEDBACK_PREFIX
+    ));
     assert!(
         accepted && got_feedback,
         "ROS 2 DDS action server ↔ XRCE action client did not complete (233.6): \
@@ -579,16 +588,18 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
-        .env("XRCE_REQUEST_COUNT", "3")
         .env("XRCE_TIMEOUT", "30")
-        // The client logs "Response: ..." at INFO — surface it so the assert
-        // below can see the reply (without this the test can't tell success
-        // from failure).
+        // The client logs "Result of add_two_ints: ..." at INFO — surface it
+        // so the assert below can see the reply (without this the test can't
+        // tell success from failure).
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
         .expect("Failed to start xrce service client");
     let client_output = client
-        .wait_for_output_pattern("Response", Duration::from_secs(20))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_RESULT_PREFIX,
+            Duration::from_secs(20),
+        )
         .unwrap_or_default();
     client.kill();
     ros2_server.kill();
@@ -598,9 +609,9 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     // Phase 233.6 wave 2 — reverse direction (nano-ros XRCE service client →
     // real ROS 2 service server). Hard assert: the client must get a reply.
     assert!(
-        client_output.contains("Response") || client_output.contains("sum"),
+        client_output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "nano-ros XRCE service client got no reply from the ROS 2 service server \
-         — XRCE-DDS reverse service interop regression (233.6). Output:\n{client_output}"
+         — XRCE-DDS reverse service interop regression. Output:\n{client_output}"
     );
     eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
 }

@@ -714,12 +714,14 @@ fn test_qemu_rtic_action_e2e() {
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    // Wait for client to complete (it exits after receiving feedback).
-    // Phase 182.6 — early-exit on the feedback-summary marker; on timeout the
-    // collected output is still returned, so this never captures less than the
-    // old blind 60 s wait.
+    // Wait for the client's terminal `Result received: [...]` line; on
+    // timeout the collected output is still returned, so this never captures
+    // less than a blind 60 s wait.
     let client_output = client
-        .wait_for_output_pattern("feedback messages", Duration::from_secs(60))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_RESULT_PREFIX,
+            Duration::from_secs(60),
+        )
         .unwrap_or_default();
 
     // Collect server output
@@ -739,11 +741,12 @@ fn test_qemu_rtic_action_e2e() {
         "RTIC QEMU action client: goal was not accepted"
     );
     assert!(
-        client_output.contains("Got") && client_output.contains("feedback messages"),
+        client_output.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX),
         "RTIC QEMU action client did not receive feedback messages"
     );
     assert!(
-        server_output.contains("Goal accepted"),
+        server_output.contains("Received goal request")
+            || server_output.contains(nros_tests::output::ACTION_EXECUTING_MARKER),
         "RTIC QEMU action server did not accept goal"
     );
 }

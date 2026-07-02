@@ -712,10 +712,17 @@ fn test_rtos_service_e2e(
             .wait_for_output(Duration::from_secs(30))
             .unwrap_or_default(),
         _ => server
-            .wait_for_output_pattern("Waiting for requests", Duration::from_secs(30))
+            .wait_for_output_pattern(
+                nros_tests::output::SERVICE_SERVER_READY_MARKER,
+                Duration::from_secs(30),
+            )
             .unwrap_or_default(),
     };
-    ensure_ready(&server_boot, "Waiting for requests", platform);
+    ensure_ready(
+        &server_boot,
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        platform,
+    );
 
     // Give the client the same boot delay as the server so its first
     // query doesn't race ahead of the server queryable's declaration.
@@ -732,13 +739,13 @@ fn test_rtos_service_e2e(
         (Platform::Nuttx, Lang::C) => Duration::from_secs(180),
         _ => Duration::from_secs(60),
     };
-    // Phase 182.6 — early-exit when the client reports it finished all calls,
-    // rather than blind-collecting the full timeout. On timeout
+    // Early-exit when the client logs its single `Result of add_two_ints: N`
+    // line rather than blind-collecting the full timeout. On timeout
     // `wait_for_output_pattern` still returns whatever it read (it only errors
-    // when nothing was captured), so this never collects less than the old
-    // blind wait — it just returns as soon as the run completes.
+    // when nothing was captured), so this never collects less than a blind
+    // wait — it just returns as soon as the run completes.
     let client_out = client
-        .wait_for_output_pattern("All service calls completed", client_timeout)
+        .wait_for_output_pattern(nros_tests::output::SERVICE_RESULT_PREFIX, client_timeout)
         .unwrap_or_default();
 
     server.kill();
@@ -746,38 +753,27 @@ fn test_rtos_service_e2e(
 
     eprintln!("Client output:\n{}", client_out);
 
-    let response_count = count_pattern(&client_out, "Response:");
-    let completed = client_out.contains("All service calls completed");
-    eprintln!(
-        "[{} {}] responses: {}, completed: {}",
-        platform, lang, response_count, completed
-    );
+    // W5: the client sends ONE request (2, 3) and logs one result line.
+    let response_count = count_pattern(&client_out, nros_tests::output::SERVICE_RESULT_PREFIX);
+    eprintln!("[{} {}] responses: {}", platform, lang, response_count);
 
-    // Keep the original assertion shape: at least one response counts as
-    // partial success on platforms with boot-flakiness (NuttX, ThreadX
-    // Linux on slower hosts). Tight platforms assert >= 3.
-    let required = match platform {
-        Platform::Nuttx | Platform::ThreadxLinux => 1,
-        _ => 3,
-    };
     assert!(
-        response_count >= required,
-        "{} {} service E2E failed — got {} responses (expected >= {})",
+        response_count >= 1,
+        "{} {} service E2E failed — got {} responses (expected >= 1)",
         platform,
         lang,
         response_count,
-        required
     );
     eprintln!(
-        "[PASS] {} {} service E2E: {} responses (completed={})",
-        platform, lang, response_count, completed
+        "[PASS] {} {} service E2E: {} responses",
+        platform, lang, response_count
     );
 }
 
 /// End-to-end action (goal / feedback / result). First node is the
 /// action server; second is the action client. We assert the client
-/// saw "Goal accepted" plus either "Action completed successfully" or
-/// "Result (status=..." (NuttX C action example uses the latter).
+/// saw "Goal accepted" plus the terminal `Result received: [...]` line
+/// (phase-277 W5 demo wording).
 // Phase 182.5 — action is the wall-clock critical path (90–270 s/cell ×
 // retries). Keep **all three language bindings** (each exercises distinct
 // goal/feedback/result serialization), but only on the platforms where action
@@ -826,10 +822,17 @@ fn test_rtos_action_e2e(
             .wait_for_output(Duration::from_secs(30))
             .unwrap_or_default(),
         _ => server
-            .wait_for_output_pattern("Waiting for goals", Duration::from_secs(30))
+            .wait_for_output_pattern(
+                nros_tests::output::ACTION_SERVER_READY_MARKER,
+                Duration::from_secs(30),
+            )
             .unwrap_or_default(),
     };
-    ensure_ready(&server_boot, "Waiting for goals", platform);
+    ensure_ready(
+        &server_boot,
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        platform,
+    );
 
     if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
         std::thread::sleep(platform.stabilization_delay());
@@ -851,13 +854,13 @@ fn test_rtos_action_e2e(
         (Platform::Freertos, Lang::C) => Duration::from_secs(90),
         _ => Duration::from_secs(60),
     };
-    // Phase 182.6 — early-exit on the action-completed marker rather than
+    // Early-exit on the terminal `Result received: [...]` line rather than
     // blind-collecting the full timeout. `wait_for_output_pattern` returns the
     // collected output on timeout too (errors only when nothing was read), so
-    // variants that print a different terminal ("Result (status=", etc.) fall
-    // back to exactly the old blind-wait behaviour — never collecting less.
+    // a variant that never reaches the result falls back to exactly the old
+    // blind-wait behaviour — never collecting less.
     let client_out = client
-        .wait_for_output_pattern("Action completed successfully", client_timeout)
+        .wait_for_output_pattern(nros_tests::output::ACTION_RESULT_PREFIX, client_timeout)
         .unwrap_or_default();
 
     let server_post = server
@@ -872,10 +875,7 @@ fn test_rtos_action_e2e(
     eprintln!("Client output:\n{}", client_out);
 
     let goal_accepted = client_out.contains("Goal accepted");
-    let completed = client_out.contains("Action completed successfully")
-        || client_out.contains("Action client finished")
-        || client_out.contains("All feedback received")
-        || client_out.contains("Result (status=");
+    let completed = client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
     assert!(
         goal_accepted && completed,

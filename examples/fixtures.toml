@@ -1355,6 +1355,29 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/int32-sink"
 
+# Concurrent Fibonacci action server (phase-277 W5 — was the example
+# action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
+# to the official single-goal demo, so the concurrent-goals stress role moved
+# here). Built per-RMW: Zenoh variant consumed by tests/rmw_interop.rs, XRCE
+# variant by tests/xrce_ros2_interop.rs.
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/action-server-concurrent"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/action-server-concurrent"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
 # TLS variant (isolated target dir).
 [[fixture]]
 platform = "native"
@@ -2378,6 +2401,15 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/parameters"
 target = "cpp_parameters"
+
+# phase-277 W5 — C sibling of cpp/parameters (the parameter/clock demo block
+# extracted from native/c/talker when the talker slimmed to chatter-only).
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/parameters"
+target = "c_parameters"
 
 # Phase 275 W2 (#102 H3) — native/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the

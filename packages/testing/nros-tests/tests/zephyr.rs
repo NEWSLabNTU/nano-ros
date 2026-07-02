@@ -865,7 +865,10 @@ fn test_zephyr_action_e2e() {
     // (with `NROS_SERVICE_TIMEOUT_MS` raised to 30 s). Total
     // ~110 s. 150 s leaves headroom for `max-threads = 3`
     // parallelism load.
-    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(150));
+    let client_output = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(150),
+    );
     // Server output can stop shortly after the client finishes —
     // give the reader a few seconds to drain any trailing feedback.
     let server_output = server
@@ -894,9 +897,9 @@ fn test_zephyr_action_e2e() {
         client_output.contains("Session opened") || client_output.contains("Waiting for messages");
     let _client_subscribed = client_output.contains("Feedback subscriber ready")
         || client_output.contains("Subscriber created");
-    let client_got_feedback =
-        client_output.contains("Feedback #") || client_output.contains("feedback");
-    let client_completed = client_output.contains("completed") || client_output.contains("Result:");
+    let client_got_feedback = client_output.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX)
+        || client_output.contains("feedback");
+    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
     // Report results
     if !server_connected {
@@ -909,7 +912,8 @@ fn test_zephyr_action_e2e() {
     // Full success case — if client got feedback and completed, the action worked
     // regardless of whether the "subscriber ready" log message appeared
     if server_received_goal && client_got_feedback && client_completed {
-        let feedback_count = count_pattern(&client_output, "Feedback #");
+        let feedback_count =
+            count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
         eprintln!("\nSUCCESS: Zephyr action communication works!");
         eprintln!("  - Server received goal");
         eprintln!("  - Client received {} feedback messages", feedback_count);
@@ -1119,15 +1123,17 @@ fn test_native_server_zephyr_client() {
     let zephyr_sent_request = zephyr_output.contains("Sending request")
         || zephyr_output.contains("Request:")
         || zephyr_output.contains("Sending:");
-    let zephyr_got_response = zephyr_output.contains("Response:") || zephyr_output.contains("sum=");
+    let zephyr_got_response = zephyr_output.contains(nros_tests::output::SERVICE_RESULT_PREFIX);
 
     // Check native server status
-    let server_received = server_output.contains("Received request")
-        || server_output.contains("Processing request")
+    let server_received = server_output
+        .contains(nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER)
+        || server_output.contains("Received request")
         || server_output.contains("Request:");
 
     if zephyr_got_response {
-        let response_count = count_pattern(&zephyr_output, "Response");
+        let response_count =
+            count_pattern(&zephyr_output, nros_tests::output::SERVICE_RESULT_PREFIX);
         eprintln!(
             "\nSUCCESS: Zephyr client received {} responses from native server",
             response_count
@@ -1431,7 +1437,10 @@ fn test_zephyr_xrce_rust_service_e2e() {
     eprintln!("Starting Zephyr XRCE service server...");
     let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE service server");
-    let _ = server.wait_for_pattern("Service server ready", Duration::from_secs(30));
+    let _ = server.wait_for_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
 
     eprintln!("Starting Zephyr XRCE service client...");
     let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
@@ -1450,8 +1459,11 @@ fn test_zephyr_xrce_rust_service_e2e() {
     eprintln!("\n=== XRCE service server output ===\n{}", server_output);
     eprintln!("\n=== XRCE service client output ===\n{}", client_output);
 
-    let response_count = count_pattern(&client_output, "Response: sum=");
-    let request_count = count_pattern(&server_output, " + ");
+    let response_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
+    let request_count = count_pattern(
+        &server_output,
+        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+    );
 
     if response_count >= 1 {
         eprintln!(
@@ -1476,7 +1488,7 @@ fn test_zephyr_xrce_rust_service_e2e() {
 /// E2E integration test for XRCE action path on Zephyr:
 /// 1. Starts MicroXRCEAgent on port 2018
 /// 2. Runs Fibonacci server + client (both native_sim)
-/// 3. Verifies "Action client finished" marker
+/// 3. Verifies the client's terminal `Result received: [...]` line
 #[test]
 fn test_zephyr_xrce_rust_action_e2e() {
     if !require_zephyr() {
@@ -1500,8 +1512,11 @@ fn test_zephyr_xrce_rust_action_e2e() {
     let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE action server");
 
-    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(30));
-    if !server_ready.contains("Action server ready") {
+    let server_ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!(
             "Zephyr XRCE action server didn't reach readiness within 30s.\nOutput:\n{}",
             server_ready
@@ -1518,7 +1533,10 @@ fn test_zephyr_xrce_rust_action_e2e() {
     let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE action client");
 
-    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(60));
+    let client_output = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(60),
+    );
     let server_output = server
         .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
@@ -1529,11 +1547,10 @@ fn test_zephyr_xrce_rust_action_e2e() {
     eprintln!("\n=== XRCE action server output ===\n{}", server_output);
     eprintln!("\n=== XRCE action client output ===\n{}", client_output);
 
-    let server_received_goal =
-        server_output.contains("Goal request") || server_output.contains("Executing goal");
-    let client_got_feedback = client_output.contains("Feedback #");
-    let client_completed =
-        client_output.contains("Action client finished") || client_output.contains("Result:");
+    let server_received_goal = server_output.contains("Received goal request")
+        || server_output.contains(nros_tests::output::ACTION_EXECUTING_MARKER);
+    let client_got_feedback = client_output.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX);
+    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
     if client_completed && client_got_feedback {
         eprintln!("\nSUCCESS: XRCE action client received feedback and completed");
@@ -1679,9 +1696,11 @@ fn test_zephyr_dds_cpp_action_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action server");
-    let server_ready =
-        server.wait_for_pattern("Waiting for goal requests", Duration::from_secs(30));
-    if !server_ready.contains("Waiting for goal requests") {
+    let server_ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!(
             "Zephyr C++ Cyclone action server didn't reach readiness.\nOutput:\n{}",
             server_ready
@@ -1706,8 +1725,8 @@ fn test_zephyr_dds_cpp_action_e2e() {
         client_output
     );
 
-    let server_completed = server_output.contains("Goal completed");
-    let client_completed = client_output.contains("Result received");
+    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
+    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
     if !(server_completed && client_completed) {
         panic!(
             "C++ Cyclone action E2E failed (server_completed={}, client_completed={}).",
@@ -1743,7 +1762,10 @@ fn test_zephyr_dds_rs_action_e2e() {
 
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start rs/dds action client");
-    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(90));
+    let client_output = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(90),
+    );
     let server_output = server
         .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
@@ -1759,9 +1781,9 @@ fn test_zephyr_dds_rs_action_e2e() {
         client_output
     );
 
-    let server_received_goal = server_output.contains("Goal accepted");
-    let client_completed =
-        client_output.contains("Action client finished") && client_output.contains("Result:");
+    let server_received_goal = server_output.contains("Received goal request")
+        || server_output.contains(nros_tests::output::ACTION_EXECUTING_MARKER);
+    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
     if !(server_received_goal && client_completed) {
         panic!(
             "Rust Cyclone action E2E failed (server_received_goal={}, client_completed={}).",
@@ -1863,7 +1885,10 @@ fn test_zephyr_dds_c_action_e2e() {
 
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action client");
-    let client_output = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    let client_output = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(60),
+    );
     let server_output = server
         .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
@@ -1879,8 +1904,8 @@ fn test_zephyr_dds_c_action_e2e() {
         client_output
     );
 
-    let server_completed = server_output.contains("Goal completed");
-    let client_completed = client_output.contains("Sequence length");
+    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
+    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
     if !(server_completed && client_completed) {
         panic!(
             "C Cyclone action E2E failed (server_completed={}, client_completed={}).",
@@ -2122,7 +2147,10 @@ fn test_zephyr_server_native_client() {
     let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr service server");
 
-    let _ = zephyr.wait_for_pattern("Service server ready", Duration::from_secs(30));
+    let _ = zephyr.wait_for_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
 
     // Start native service client
     use nros_tests::process::ManagedProcess;
@@ -2144,7 +2172,11 @@ fn test_zephyr_server_native_client() {
 
     // Get outputs
     let client_output = client
-        .wait_for_output_count("Response:", 1, Duration::from_secs(30))
+        .wait_for_output_count(
+            nros_tests::output::SERVICE_RESULT_PREFIX,
+            1,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
     let zephyr_output = zephyr
         .wait_for_output(Duration::from_secs(2))
@@ -2160,18 +2192,17 @@ fn test_zephyr_server_native_client() {
 
     // Check Zephyr server status
     let zephyr_connected = zephyr_output.contains("Session opened");
-    let zephyr_ready = zephyr_output.contains("Service server ready")
-        || zephyr_output.contains("Waiting for service requests");
+    let zephyr_ready = zephyr_output.contains(nros_tests::output::SERVICE_SERVER_READY_MARKER);
     let zephyr_received =
-        zephyr_output.contains("Received request") || zephyr_output.contains("Request:");
-    let zephyr_replied = zephyr_output.contains("Sent reply") || zephyr_output.contains("sum=");
+        zephyr_output.contains(nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER);
+    let zephyr_replied = zephyr_output.contains("a: ");
 
     // Check native client status
-    let client_got_response = client_output.contains("Response:") || client_output.contains("= ");
-    let client_completed = client_output.contains("completed successfully");
+    let client_got_response = client_output.contains(nros_tests::output::SERVICE_RESULT_PREFIX);
 
     if client_got_response {
-        let response_count = count_pattern(&client_output, "Response:");
+        let response_count =
+            count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
         eprintln!(
             "\nSUCCESS: Native client received {} responses from Zephyr server",
             response_count
@@ -2185,13 +2216,8 @@ fn test_zephyr_server_native_client() {
         panic!("Zephyr server failed to connect to zenohd");
     } else {
         panic!(
-            "Service communication failed:\n  zephyr_connected={}\n  zephyr_ready={}\n  zephyr_received={}\n  zephyr_replied={}\n  client_response={}\n  client_completed={}",
-            zephyr_connected,
-            zephyr_ready,
-            zephyr_received,
-            zephyr_replied,
-            client_got_response,
-            client_completed
+            "Service communication failed:\n  zephyr_connected={}\n  zephyr_ready={}\n  zephyr_received={}\n  zephyr_replied={}\n  client_response={}",
+            zephyr_connected, zephyr_ready, zephyr_received, zephyr_replied, client_got_response
         );
     }
 }
@@ -2607,9 +2633,11 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
     // (see test_zephyr_action_e2e for the same observation). Total
     // readiness time ~30 s — fixed-3-s sleep used to race the client
     // ahead of the server's first queryable and the test failed.
-    let server_ready =
-        server.wait_for_pattern("Waiting for goal requests", Duration::from_secs(60));
-    if !server_ready.contains("Waiting for goal requests") {
+    let server_ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(60),
+    );
+    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!(
             "Zephyr C++ action server didn't reach readiness within 60 s.\nOutput:\n{}",
             server_ready
@@ -2623,7 +2651,10 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
     // mirror the server's 3 queryables — each declaration serializes at
     // ~10 s on Zephyr zenoh-pico). Then goal exec + get_result. Was
     // racing the 30 s window before this bump.
-    let client_output = client.wait_for_pattern("[OK]", Duration::from_secs(90));
+    let client_output = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(90),
+    );
     let server_output = server
         .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
@@ -2637,14 +2668,14 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         client_output
     );
 
-    let client_ok = client_output.contains("[OK]");
-    let server_completed = server_output.contains("Goal completed");
+    let client_ok = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
+    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
 
     if client_ok && server_completed {
         eprintln!("\nSUCCESS: C++ action server completed goal, client received result");
     } else if server_completed {
         panic!("Server completed goal but client didn't get result");
-    } else if server_output.contains("Goal received") {
+    } else if server_output.contains("Received goal request") {
         panic!("Server received goal but didn't complete");
     } else {
         panic!(
@@ -2771,12 +2802,15 @@ fn test_zephyr_c_action_server_to_client_e2e() {
     let mut server = server;
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let client_out = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    let client_out = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(60),
+    );
     client.kill();
     server.kill();
     eprintln!("=== zephyr C zenoh action client ===\n{client_out}");
     assert!(
-        client_out.contains("Sequence length"),
+        client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX),
         "zephyr C zenoh action client did not complete:\n{client_out}"
     );
 }
@@ -2833,12 +2867,15 @@ fn test_zephyr_xrce_c_action_e2e() {
     let mut server = server;
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let client_out = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    let client_out = client.wait_for_pattern(
+        nros_tests::output::ACTION_RESULT_PREFIX,
+        Duration::from_secs(60),
+    );
     client.kill();
     server.kill();
     eprintln!("=== zephyr C xrce action client ===\n{client_out}");
     assert!(
-        client_out.contains("Sequence length"),
+        client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX),
         "zephyr C xrce action client did not complete:\n{client_out}"
     );
 }
@@ -2866,12 +2903,15 @@ fn test_zephyr_rust_service_e2e() {
     let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let client_out = client.wait_for_pattern("Response: sum=", Duration::from_secs(30));
+    let client_out = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(30),
+    );
     client.kill();
     server.kill();
     eprintln!("=== zephyr rust zenoh service client ===\n{client_out}");
     assert!(
-        client_out.contains("Response: sum=") || client_out.contains("sum="),
+        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "zephyr rust zenoh service client got no reply:\n{client_out}"
     );
 }

@@ -23,6 +23,10 @@ use nros_tests::{
         build_native_listener_rmw, build_native_service_client_callback, build_native_talker_rmw,
         require_cmake, require_zenohd, zenohd_unique,
     },
+    output::{
+        ACTION_EXECUTING_MARKER, ACTION_RESULT_PREFIX, ACTION_SERVER_READY_MARKER,
+        SERVICE_RESULT_PREFIX, service_result_line,
+    },
 };
 use rstest::rstest;
 use std::{
@@ -366,27 +370,33 @@ fn test_native_service_communication(
 
     let mut client = spawn_native(&client_bin, lang, "service-client", &locator);
 
-    // Client makes 4 blocking calls then exits.
+    // Client makes ONE blocking call (the official demo default `2 3`) then
+    // exits, logging `Result of add_two_ints: 5` (phase-277 W5 wording).
     let client_output = client
-        .wait_for_output_pattern("calls succeeded", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(1))
+        .unwrap_or_default();
     server.kill();
 
     eprintln!("{} service client output:\n{}", lang.label(), client_output);
+    eprintln!("{} service server output:\n{}", lang.label(), server_output);
 
-    let ok_count = count_pattern(&client_output, "[OK]");
-    eprintln!(
-        "{} service client: {} successful calls",
+    assert!(
+        client_output.contains(&service_result_line(5)),
+        "Expected `{}` from the {} client.\nOutput:\n{}",
+        service_result_line(5),
         lang.label(),
-        ok_count
+        client_output
     );
     assert!(
-        ok_count >= 3,
-        "Expected at least 3 successful service calls, got {}.\nOutput:\n{}",
-        ok_count,
-        client_output
+        server_output.contains("Incoming request") && server_output.contains("a: 2 b: 3"),
+        "Expected the {} server to log the official two-line request form.\nOutput:\n{}",
+        lang.label(),
+        server_output
     );
 }
 
@@ -398,8 +408,9 @@ fn test_native_service_communication(
 /// server. Proves the RFC-0041 callback receive path E2E: replies arrive
 /// through the typed response handler dispatched at `spin_once`
 /// (`nros_executor_spin_some` / `nros::spin_once`) — no Promise/Future poll.
-/// Both `service-client-callback` variants print the same markers
-/// (`Response (callback)`, `Call [`, `callback calls succeeded`).
+/// Both `service-client-callback` variants log the demo result line
+/// (`Result of add_two_ints: N`) from inside the registered callback, so its
+/// presence proves the callback dispatched.
 #[rstest]
 fn test_native_service_communication_callback(
     zenohd_unique: ZenohRouter,
@@ -425,7 +436,7 @@ fn test_native_service_communication_callback(
     let mut client = spawn_native(&client_bin, lang, "service-client-callback", &locator);
 
     let client_output = client
-        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -437,24 +448,12 @@ fn test_native_service_communication_callback(
         client_output
     );
 
-    // The reply must arrive via the callback, not a poll: every successful
-    // call prints a "Response (callback)" line from the registered handler.
-    let cb_count = count_pattern(&client_output, "Response (callback)");
-    eprintln!(
-        "{} callback service client: {} callback dispatches",
-        lang.label(),
-        cb_count
-    );
+    // The reply must arrive via the callback, not a poll: the result line is
+    // printed from inside the registered handler.
     assert!(
-        cb_count >= 3,
-        "Expected at least 3 callback-dispatched replies, got {}.\nOutput:\n{}",
-        cb_count,
-        client_output
-    );
-    let ok_count = count_pattern(&client_output, "Call [");
-    assert!(
-        ok_count >= 3 && client_output.contains("callback calls succeeded"),
-        "Expected the callback client to report successful calls.\nOutput:\n{}",
+        client_output.contains(&service_result_line(5)),
+        "Expected the callback-dispatched `{}` reply.\nOutput:\n{}",
+        service_result_line(5),
         client_output
     );
 }
@@ -485,17 +484,16 @@ fn service_callback_interop_body(
 
     let mut client = spawn_native(client_bin, client_lang, "service-client-callback", locator);
     let client_output = client
-        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     server.kill();
 
     eprintln!("cross-lang callback client output:\n{}", client_output);
-    let cb_count = count_pattern(&client_output, "Response (callback)");
     assert!(
-        cb_count >= 3,
-        "Expected >=3 callback-dispatched replies cross-language, got {}.\nOutput:\n{}",
-        cb_count,
+        client_output.contains(&service_result_line(5)),
+        "Expected the callback-dispatched `{}` reply cross-language.\nOutput:\n{}",
+        service_result_line(5),
         client_output
     );
 }
@@ -538,7 +536,7 @@ fn test_service_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter)
 
 /// Spawn the native Rust callback service client. Unlike the C / C++ binaries it
 /// logs via `env_logger`, so `RUST_LOG=info` is required to surface the
-/// `Response (callback)` markers.
+/// `Result of add_two_ints:` marker.
 fn spawn_rust_callback_client(binary: &Path, locator: &str) -> ManagedProcess {
     let mut cmd = stdbuf_command(binary);
     cmd.env("NROS_LOCATOR", locator);
@@ -562,7 +560,7 @@ fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Lan
 
     let mut client = spawn_rust_callback_client(&client_bin, locator);
     let client_output = client
-        .wait_for_output_pattern("callback service calls succeeded", Duration::from_secs(20))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(20))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     server.kill();
@@ -572,12 +570,11 @@ fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Lan
         server_lang.label(),
         client_output
     );
-    let cb_count = count_pattern(&client_output, "Response (callback)");
     assert!(
-        cb_count >= 3,
-        "Expected >=3 callback-dispatched replies (rust↔{}), got {}.\nOutput:\n{}",
+        client_output.contains(&service_result_line(5)),
+        "Expected the callback-dispatched `{}` reply (rust↔{}).\nOutput:\n{}",
+        service_result_line(5),
         server_lang.label(),
-        cb_count,
         client_output
     );
 }
@@ -620,13 +617,9 @@ fn native_action_communication_body(lang: Language, locator: &str) {
 
     let mut client = spawn_native(&client_bin, lang, "action-client", locator);
 
-    // C client signals completion with "Goodbye", C++ client with "[OK]".
-    let completion_marker = match lang {
-        Language::C => "Goodbye",
-        Language::Cpp => "[OK]",
-    };
+    // Both clients end with the demo terminal line `Result received: [...]`.
     let client_output = client
-        .wait_for_output_pattern(completion_marker, Duration::from_secs(20))
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(20))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -646,30 +639,24 @@ fn native_action_communication_body(lang: Language, locator: &str) {
         client_output
     );
 
-    match lang {
-        Language::C => {
-            // Full accept + execute assertion for C (matches the old test).
-            assert!(
-                client_output.contains("Goal accepted"),
-                "C action client failed to send goal or get acceptance.\nOutput:\n{}",
-                client_output
-            );
-            assert!(
-                server_output.contains("ACCEPTED") || server_output.contains("Executing goal"),
-                "C action server did not process the goal.\nServer output:\n{}",
-                server_output
-            );
-            eprintln!("[PASS] C action server/client communication works");
-        }
-        Language::Cpp => {
-            // C++ test just checks the [OK] success marker from the client.
-            assert!(
-                client_output.contains("[OK]"),
-                "Expected action client to succeed.\nOutput:\n{}",
-                client_output
-            );
-        }
-    }
+    assert!(
+        client_output.contains("Goal accepted"),
+        "{} action client failed to send goal or get acceptance.\nOutput:\n{}",
+        lang.label(),
+        client_output
+    );
+    assert!(
+        client_output.contains(ACTION_RESULT_PREFIX),
+        "{} action client did not receive a result.\nOutput:\n{}",
+        lang.label(),
+        client_output
+    );
+    assert!(
+        server_output.contains(ACTION_EXECUTING_MARKER),
+        "{} action server did not process the goal.\nServer output:\n{}",
+        lang.label(),
+        server_output
+    );
 }
 
 #[rstest]
@@ -721,7 +708,7 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
     );
 
     let client_output = client
-        .wait_for_output_pattern("Action completed via callbacks", Duration::from_secs(25))
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -730,22 +717,21 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
     eprintln!("C++ callback action client output:\n{}", client_output);
 
     assert!(
-        client_output.contains("Goal response (callback): ACCEPTED"),
+        client_output.contains("Goal accepted by server, waiting for result"),
         "Expected goal-response callback to fire with acceptance.\nOutput:\n{}",
         client_output
     );
-    // Full Fibonacci(order=10) result delivered via the result callback.
+    // Fibonacci(order=10) result delivered via the result callback.
     assert!(
-        client_output
-            .contains("Result (callback): status=4 sequence=[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]"),
-        "Expected the result callback to deliver the full Fibonacci sequence.\nOutput:\n{}",
+        client_output.contains("Result received: [0, 1, 1, 2, 3, 5, 8"),
+        "Expected the result callback to deliver the Fibonacci sequence.\nOutput:\n{}",
         client_output
     );
     // At least one feedback callback fired during execution.
-    let fb_count = count_pattern(&client_output, "Feedback (callback)");
+    let fb_count = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
     assert!(
-        fb_count >= 1 && client_output.contains("Action completed via callbacks [OK]"),
-        "Expected >=1 feedback callback + completion, got {} feedback.\nOutput:\n{}",
+        fb_count >= 1,
+        "Expected >=1 feedback callback, got {} feedback.\nOutput:\n{}",
         fb_count,
         client_output
     );
@@ -788,7 +774,7 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
     );
 
     let client_output = client
-        .wait_for_output_pattern("Action completed via callbacks", Duration::from_secs(25))
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     server.kill();
@@ -798,13 +784,12 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
         client_output
     );
     assert!(
-        client_output.contains("Goal response (callback): ACCEPTED"),
-        "Expected goal-response ACCEPTED across languages.\nOutput:\n{}",
+        client_output.contains("Goal accepted by server, waiting for result"),
+        "Expected goal-response acceptance across languages.\nOutput:\n{}",
         client_output
     );
     assert!(
-        client_output.contains("Result (callback): status=4 sequence=[0, 1, 1, 2")
-            && client_output.contains("Action completed via callbacks [OK]"),
+        client_output.contains("Result received: [0, 1, 1, 2"),
         "Expected the result callback to deliver the Fibonacci prefix.\nOutput:\n{}",
         client_output
     );
@@ -836,9 +821,8 @@ fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) 
         .expect("C++ action server did not become ready");
     let mut client = spawn_native(&client_bin, Language::C, "action-client", &locator);
 
-    // The C action client signals completion with "Goodbye".
     let client_output = client
-        .wait_for_output_pattern("Goodbye", Duration::from_secs(25))
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     server.kill();
@@ -848,12 +832,12 @@ fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) 
         client_output
     );
     assert!(
-        client_output.contains("Goal accepted!"),
+        client_output.contains("Goal accepted"),
         "Expected the C client to get goal acceptance from the C++ server.\nOutput:\n{}",
         client_output
     );
     assert!(
-        client_output.contains("Final result (status=SUCCEEDED): [0, 1, 1, 2"),
+        client_output.contains(ACTION_RESULT_PREFIX) && client_output.contains("[0, 1, 1, 2"),
         "Expected the C++ server to return the full Fibonacci result.\nOutput:\n{}",
         client_output
     );
@@ -887,7 +871,7 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
         .expect("Failed to start cpp-action-client");
 
     let client_output = client
-        .wait_for_output_pattern("REJECTED", Duration::from_secs(20))
+        .wait_for_output_pattern("rejected", Duration::from_secs(20))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -895,7 +879,7 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
     eprintln!("C++ action client output:\n{}", client_output);
 
     assert!(
-        client_output.contains("REJECTED"),
+        client_output.contains("Goal was rejected by server"),
         "Expected goal rejection marker in client output.\nOutput:\n{}",
         client_output
     );
@@ -1217,7 +1201,7 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
         .expect("Failed to start Rust service client");
 
     let client_output = client
-        .wait_for_output_pattern("completed successfully", Duration::from_secs(30))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -1232,16 +1216,11 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
         client_output
     );
 
-    let response_count = count_pattern(&client_output, "Response:");
-    eprintln!(
-        "Rust client received {} responses from {} server",
-        response_count,
-        lang.label()
-    );
     assert!(
-        response_count >= 2,
-        "Expected at least 2 cross-language service responses, got {}.\nOutput:\n{}",
-        response_count,
+        client_output.contains(&service_result_line(5)),
+        "Expected the Rust client's `{}` from the {} server.\nOutput:\n{}",
+        service_result_line(5),
+        lang.label(),
         client_output
     );
 }
@@ -1314,11 +1293,11 @@ fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: La
     );
 
     let client_out = client
-        .wait_for_output_pattern("calls succeeded", Duration::from_secs(30))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
         .unwrap_or_default();
     std::thread::sleep(Duration::from_millis(500));
     let server_out = server
-        .wait_for_output_pattern("Request", Duration::from_secs(2))
+        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
         .unwrap_or_default();
     client.kill();
     server.kill();
@@ -1327,8 +1306,8 @@ fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: La
         "{} Cyclone service client:\n{client_out}\n--- server ---\n{server_out}",
         lang.label()
     );
-    let calls = count_pattern(&client_out, "Call [");
-    let handled = count_pattern(&server_out, "Request");
+    let calls = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
+    let handled = count_pattern(&server_out, "Incoming request");
     assert!(
         calls >= 1 || handled >= 1,
         "{} Cyclone service roundtrip produced no calls/requests.\nclient:\n{client_out}\nserver:\n{server_out}",
@@ -1364,7 +1343,7 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
     );
 
     let client_out = client
-        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(30))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
         .unwrap_or_default();
     client.kill();
     server.kill();
@@ -1374,7 +1353,7 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
         lang.label()
     );
     // Replies dispatched via the spin-time callback over CycloneDDS.
-    let cb = count_pattern(&client_out, "Response (callback)");
+    let cb = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
     assert!(
         cb >= 1,
         "{} Cyclone callback service roundtrip produced no callback-dispatched replies.\nclient:\n{client_out}",
@@ -1388,11 +1367,10 @@ fn test_native_cyclonedds_action(#[values(Language::C, Language::Cpp)] lang: Lan
     if !require_cmake() {
         nros_tests::skip!("cmake not found");
     }
-    // C and C++ action examples print different ready/result markers.
-    let (server_ready, client_done): (&str, &str) = match lang {
-        Language::C => ("Waiting for action goals", "Final result"),
-        Language::Cpp => ("Waiting for goal requests", "Result: sequence="),
-    };
+    // Both action servers print the shared W5 ready marker; both clients end
+    // with the `Result received: [...]` terminal line.
+    let (server_ready, client_done): (&str, &str) =
+        (ACTION_SERVER_READY_MARKER, ACTION_RESULT_PREFIX);
     let domain = next_cyclonedds_domain();
     let server_bin = cyclone_role_binary(lang, "action-server");
     let client_bin = cyclone_role_binary(lang, "action-client");
@@ -1414,7 +1392,7 @@ fn test_native_cyclonedds_action(#[values(Language::C, Language::Cpp)] lang: Lan
         .unwrap_or_default();
     std::thread::sleep(Duration::from_millis(500));
     let server_out = server
-        .wait_for_output_pattern("Goal request", Duration::from_secs(2))
+        .wait_for_output_pattern("Received goal request", Duration::from_secs(2))
         .unwrap_or_default();
     client.kill();
     server.kill();

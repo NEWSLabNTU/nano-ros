@@ -1894,6 +1894,59 @@ pub fn build_int32_sink() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve the prebuilt concurrent Fibonacci action-server fixture for `rmw`
+/// (cached per RMW).
+///
+/// phase-277 W5: was the example action-server's `NROS_ACTION_CONCURRENT`
+/// escape hatch; the example slimmed to the official single-goal
+/// `fibonacci_action_server` demo, so the concurrent-goals stress role moved
+/// to a dedicated bin
+/// (`packages/testing/nros-tests/bins/action-server-concurrent`, built
+/// per-RMW into `target-zenoh/` / `target-xrce/`). Accepts + advances several
+/// goals at once, draining get_result every spin.
+pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_BIN,
+        Rmw::Xrce => &XRCE_BIN,
+        other => {
+            return Err(TestError::BuildFailed(format!(
+                "action-server-concurrent has no {other:?} fixture build"
+            )));
+        }
+    };
+    cell.get_or_try_init(|| {
+        let root = project_root();
+        let dir = root.join("packages/testing/nros-tests/bins/action-server-concurrent");
+        let profile = cargo_target_profile_dir();
+        let binary = dir.join(format!(
+            "{}/{profile}/action-server-concurrent",
+            rmw.target_dir()
+        ));
+        require_prebuilt_binary(&binary)
+    })
+    .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the concurrent action-server fixture binary
+/// (Zenoh build).
+#[rstest::fixture]
+pub fn action_server_concurrent_binary() -> PathBuf {
+    build_action_server_concurrent(Rmw::Zenoh)
+        .expect("Failed to build action-server-concurrent (zenoh)")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the concurrent action-server fixture binary
+/// (XRCE build).
+#[rstest::fixture]
+pub fn xrce_action_server_concurrent_binary() -> PathBuf {
+    build_action_server_concurrent(Rmw::Xrce)
+        .expect("Failed to build action-server-concurrent (xrce)")
+        .to_path_buf()
+}
+
 /// Resolve a build-stage "compile-check" fixture's `.compile-ok` stamp (issue
 /// 0034). `scripts/build/compile-check-fixtures.sh` (run by
 /// `build-test-fixtures`) stages the template, rewrites placeholders, runs
@@ -3901,6 +3954,25 @@ pub fn build_cpp_parameters() -> TestResult<&'static Path> {
 pub fn cpp_parameters_binary() -> PathBuf {
     build_cpp_parameters()
         .expect("Failed to build cpp-parameters")
+        .to_path_buf()
+}
+
+/// Build c-parameters example (cached) — phase-277 W5, the C sibling of
+/// cpp-parameters (extracted from the pre-W5 native/c/talker demo block).
+pub fn build_c_parameters() -> TestResult<&'static Path> {
+    static C_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    C_PARAMETERS_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/c/parameters", "c_parameters", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the c-parameters binary path
+#[rstest::fixture]
+pub fn c_parameters_binary() -> PathBuf {
+    build_c_parameters()
+        .expect("Failed to build c-parameters")
         .to_path_buf()
 }
 

@@ -216,21 +216,27 @@ fn test_xrce_service_request_response(
     // Stabilization delay — let XRCE Agent propagate the service
     std::thread::sleep(Duration::from_secs(2));
 
-    // Start service client
+    // Start service client (one request, official demo default `2 3`)
     let mut client_cmd = Command::new(&xrce_service_client_binary);
-    set_xrce_udp_locator(&mut client_cmd, &addr, &domain).env("XRCE_REQUEST_COUNT", "3");
+    set_xrce_udp_locator(&mut client_cmd, &addr, &domain);
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
         .expect("Failed to start service client");
 
-    // Wait for client to complete requests
+    // Wait for the client's single result line
     let client_output = client
-        .wait_for_output_pattern("service calls succeeded", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_RESULT_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     // Give server time to flush output, then collect
     std::thread::sleep(Duration::from_millis(500));
     let server_output = server
-        .wait_for_output_pattern("Received request:", Duration::from_secs(2))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+            Duration::from_secs(2),
+        )
         .unwrap_or_default();
 
     // Kill both processes
@@ -240,8 +246,8 @@ fn test_xrce_service_request_response(
     eprintln!("Client output:\n{}", client_output);
     eprintln!("Server output:\n{}", server_output);
 
-    // Verify client received replies
-    let reply_count = count_pattern(&client_output, "Response:");
+    // Verify client received the reply
+    let reply_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
     eprintln!("Client received {} replies", reply_count);
     assert!(
         reply_count >= 1,
@@ -283,21 +289,27 @@ fn test_xrce_action_fibonacci(
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(2));
 
-    // Start action client (requests Fibonacci order=5)
+    // Start action client (sends the demo Fibonacci order=10 goal)
     let mut client_cmd = Command::new(&xrce_action_client_binary);
-    set_xrce_udp_locator(&mut client_cmd, &addr, &domain).env("XRCE_FIBONACCI_ORDER", "5");
+    set_xrce_udp_locator(&mut client_cmd, &addr, &domain);
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
         .expect("Failed to start action client");
 
-    // Wait for client to complete
+    // Wait for the client's terminal `Result received: [...]` line
     let client_output = client
-        .wait_for_output_pattern("Action client finished", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_RESULT_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     // Give server time to flush output
     std::thread::sleep(Duration::from_millis(500));
     let server_output = server
-        .wait_for_output_pattern("Goal completed", Duration::from_secs(2))
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER,
+            Duration::from_secs(2),
+        )
         .unwrap_or_default();
 
     client.kill();
@@ -314,7 +326,7 @@ fn test_xrce_action_fibonacci(
     );
 
     // Verify feedback was received
-    let feedback_count = count_pattern(&client_output, "Feedback");
+    let feedback_count = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
     assert!(
         feedback_count >= 1,
         "Expected at least 1 feedback message, got {}.\nClient output:\n{}",
@@ -324,7 +336,7 @@ fn test_xrce_action_fibonacci(
 
     // Verify result was received
     assert!(
-        client_output.contains("Action client finished"),
+        client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX),
         "Client should have completed the action.\nClient output:\n{}",
         client_output,
     );

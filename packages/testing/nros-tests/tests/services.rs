@@ -9,6 +9,7 @@ use nros_tests::{
         ManagedProcess, ZenohRouter, require_zenohd, service_client_binary, service_server_binary,
         zenohd_unique,
     },
+    output::{SERVICE_RESULT_PREFIX, service_result_line},
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -87,33 +88,19 @@ fn test_service_client_starts_without_server(
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Wait for client to report failure or exit (no server running)
+    // Without a server the client must report the wait-for-service timeout
+    // (and exit non-zero) rather than hanging or crashing.
     let output = client
-        .wait_for_output_pattern("failed", Duration::from_secs(10))
+        .wait_for_output_pattern("Timed out waiting", Duration::from_secs(10))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     eprintln!("Client output (no server):\n{}", output);
 
-    // Client should have started and created the service client
-    let client_created =
-        output.contains("Service client created") || output.contains("add_two_ints_client");
-
-    if client_created {
-        eprintln!("[PASS] native-rs-service-client started and created client");
-    }
-
-    // Client will likely exit with error since no server is running
-    // That's expected behavior - we just want to verify it starts
-    let call_failed = output.contains("Service call failed")
-        || output.contains("timeout")
-        || output.contains("Timeout");
-
-    if call_failed {
-        eprintln!("[PASS] Client correctly reported service call failure (no server)");
-    } else {
-        eprintln!("[INFO] Client behavior without server - check output above");
-    }
+    assert!(
+        output.contains("Timed out waiting for /add_two_ints service"),
+        "client without a server should report the wait-for-service timeout"
+    );
 }
 
 // =============================================================================
@@ -160,60 +147,31 @@ fn test_service_request_response(
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Wait for client to complete all calls (event-driven)
+    // The client sends ONE request (the official demo default `2 3`) and
+    // logs `Result of add_two_ints: 5` (phase-277 W5 wording).
     let client_output = client
-        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     // Kill server and collect its output
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(1))
+        .unwrap_or_default();
     server.kill();
 
     eprintln!("=== Client output ===\n{}", client_output);
+    eprintln!("=== Server output ===\n{}", server_output);
 
-    // Check for successful service calls
-    // Client example makes 4 calls: (5+3), (10+20), (100+200), (-5+10)
-    let response_count = count_pattern(&client_output, "Response:");
-    eprintln!("Responses received: {}", response_count);
-
-    // Check for specific expected results
-    let has_8 = client_output.contains("= 8"); // 5 + 3 = 8
-    let has_30 = client_output.contains("= 30"); // 10 + 20 = 30
-    let has_300 = client_output.contains("= 300"); // 100 + 200 = 300
-    let has_5 = client_output.contains("= 5"); // -5 + 10 = 5
-
-    eprintln!(
-        "Expected results: 8={}, 30={}, 300={}, 5={}",
-        has_8, has_30, has_300, has_5
+    assert!(
+        client_output.contains(&service_result_line(5)),
+        "client should log `{}` for the default 2 + 3 request",
+        service_result_line(5)
     );
-
-    // Check for completion message
-    let completed = client_output.contains("All service calls completed successfully");
-
-    // Verify results
-    if response_count >= 4 && completed {
-        eprintln!("[PASS] Service request/response communication works");
-        eprintln!("  - Client made {} service calls", response_count);
-        eprintln!("  - All calls completed successfully");
-    } else if response_count > 0 {
-        eprintln!("[PARTIAL] Some service calls succeeded");
-        eprintln!("  - {} responses received (expected 4)", response_count);
-        if !completed {
-            eprintln!("  - Client did not report full completion");
-        }
-        // Still pass if we got at least some responses
-        if response_count >= 2 {
-            eprintln!("[PASS] Service communication functional (partial success)");
-        } else {
-            panic!(
-                "Service communication incomplete: only {} responses",
-                response_count
-            );
-        }
-    } else {
-        eprintln!("[FAIL] No service responses received");
-        panic!("Service request/response failed - no responses received");
-    }
+    assert!(
+        server_output.contains("Incoming request") && server_output.contains("a: 2 b: 3"),
+        "server should log the official two-line request form"
+    );
 }
 
 // =============================================================================
@@ -260,13 +218,13 @@ fn test_service_multiple_sequential_calls(
         let mut client = ManagedProcess::spawn_command(client_cmd, "service-client")
             .expect("Failed to start service client");
 
-        // Wait for client to complete (event-driven)
+        // Wait for the client's single result line (event-driven)
         let output = client
-            .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+            .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
             .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
             .unwrap_or_default();
 
-        let responses = count_pattern(&output, "Response:");
+        let responses = count_pattern(&output, SERVICE_RESULT_PREFIX);
         eprintln!("Run {}: {} responses", run, responses);
         total_responses += responses;
     }
@@ -275,12 +233,12 @@ fn test_service_multiple_sequential_calls(
 
     eprintln!("Total responses across all runs: {}", total_responses);
 
-    if total_responses >= 6 {
-        // 2 runs * ~4 calls each, allow some variance
+    // One result per client run.
+    if total_responses >= 2 {
         eprintln!("[PASS] Multiple sequential client runs work correctly");
     } else {
         eprintln!(
-            "[FAIL] Expected at least 6 total responses, got {}",
+            "[FAIL] Expected at least 2 total responses, got {}",
             total_responses
         );
         panic!("Multiple sequential calls failed");
@@ -306,27 +264,18 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
 
-    // Wait for client to report timeout or exit
+    // Wait for client to report the wait-for-service timeout or exit
     let output = client
-        .wait_for_output_pattern("failed", Duration::from_secs(12))
+        .wait_for_output_pattern("Timed out waiting", Duration::from_secs(12))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     eprintln!("Timeout test output:\n{}", output);
 
-    // Client should report failure
-    let timed_out = output.contains("Service call failed")
-        || output.contains("timeout")
-        || output.contains("Timeout")
-        || output.contains("error");
-
-    let exited = !client.is_running();
-
-    if timed_out || exited {
-        eprintln!("[PASS] Client correctly handles missing server (timeout/error)");
-    } else {
-        eprintln!("[WARN] Client may still be waiting - timeout behavior unclear");
-    }
+    assert!(
+        output.contains("Timed out waiting for /add_two_ints service") || !client.is_running(),
+        "client without a server should report the timeout (or exit)"
+    );
 }
 
 // =============================================================================
@@ -378,13 +327,13 @@ fn test_service_server_multiple_clients(
     let mut client2 = ManagedProcess::spawn_command(client2_cmd, "service-client-2")
         .expect("Failed to start client 2");
 
-    // Wait for both clients to complete (event-driven)
+    // Wait for both clients' single result line (event-driven)
     let output1 = client1
-        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client1.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     let output2 = client2
-        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
         .or_else(|_| client2.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -393,8 +342,8 @@ fn test_service_server_multiple_clients(
     eprintln!("=== Client 1 output ===\n{}", output1);
     eprintln!("=== Client 2 output ===\n{}", output2);
 
-    let responses1 = count_pattern(&output1, "Response:");
-    let responses2 = count_pattern(&output2, "Response:");
+    let responses1 = count_pattern(&output1, SERVICE_RESULT_PREFIX);
+    let responses2 = count_pattern(&output2, SERVICE_RESULT_PREFIX);
 
     eprintln!(
         "Client 1 responses: {}, Client 2 responses: {}",

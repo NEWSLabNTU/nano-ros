@@ -232,7 +232,7 @@ fn test_zephyr_c_cyclonedds_pubsub_e2e() {
 /// `service_type_name` fix: the nros codegen emits SERVICE_NAME with a
 /// trailing `_`, so the backend must strip it before appending
 /// `_Request_`/`_Response_` to match the registered descriptor. Client
-/// logs `Response: sum=` once the server replies.
+/// logs `Result of add_two_ints:` once the server replies.
 #[test]
 fn test_zephyr_rust_cyclonedds_service_e2e() {
     use std::time::Duration;
@@ -262,7 +262,10 @@ fn test_zephyr_rust_cyclonedds_service_e2e() {
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr service-client (cyclonedds)");
 
-    let output = client.wait_for_pattern("Response: sum=", Duration::from_secs(20));
+    let output = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
 
     client.kill();
     server.kill();
@@ -273,9 +276,9 @@ fn test_zephyr_rust_cyclonedds_service_e2e() {
     );
 
     assert!(
-        output.contains("Response: sum="),
+        output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "cyclonedds service client did not receive a reply (expected a \
-         `Response: sum=` line)"
+         `Result of add_two_ints:` line)"
     );
 }
 

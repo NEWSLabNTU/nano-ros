@@ -16,9 +16,10 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
-        action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
-        ros2_node_list, ros2_service_list, ros2_topic_hz, ros2_topic_info, ros2_topic_list,
-        service_client_binary, service_server_binary, talker_binary, zenohd_unique,
+        action_server_binary, action_server_concurrent_binary, is_rmw_zenoh_available,
+        is_ros2_available, listener_binary, ros2_node_list, ros2_service_list, ros2_topic_hz,
+        ros2_topic_info, ros2_topic_list, service_client_binary, service_server_binary,
+        talker_binary, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -462,7 +463,7 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
 #[rstest]
 fn test_action_concurrent_nano_server_ros2_clients(
     zenohd_unique: ZenohRouter,
-    action_server_binary: PathBuf,
+    action_server_concurrent_binary: PathBuf,
 ) {
     use std::process::Command;
 
@@ -472,13 +473,13 @@ fn test_action_concurrent_nano_server_ros2_clients(
 
     let locator = zenohd_unique.locator();
 
-    let mut server_cmd = Command::new(&action_server_binary);
+    // Concurrent fixture bin: accepts + advances several goals at once,
+    // draining get_result every spin so two early get_results are held
+    // together (phase-277 W5 — was the example's NROS_ACTION_CONCURRENT mode).
+    let mut server_cmd = Command::new(&action_server_concurrent_binary);
     server_cmd
         .env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", &locator)
-        // Concurrent mode: accept + advance several goals at once, draining
-        // get_result every spin so two early get_results are held together.
-        .env("NROS_ACTION_CONCURRENT", "1");
+        .env("NROS_LOCATOR", &locator);
     let mut server =
         ManagedProcess::spawn_command(server_cmd, "native-rs-action-server-concurrent")
             .expect("Failed to start action server");
@@ -651,9 +652,8 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
 
     // Check if nros received goal response and feedback
     let goal_accepted = nano_output.contains("Goal accepted");
-    let feedback_count = count_pattern(&nano_output, "Feedback #");
-    let completed =
-        nano_output.contains("action completed") || nano_output.contains("Action client finished");
+    let feedback_count = count_pattern(&nano_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
+    let completed = nano_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
     if goal_accepted || feedback_count > 0 || completed {
         eprintln!("[PASS] ROS 2 action server ↔ nros action client works");
@@ -1130,11 +1130,9 @@ fn test_service_ros2_server_nano_client(
 
     eprintln!("nros service client output:\n{}", nano_output);
 
-    // Check if service calls succeeded
-    let response_count = count_pattern(&nano_output, "Response:");
-    let success = nano_output.contains("completed successfully")
-        || nano_output.contains("sum")
-        || response_count > 0;
+    // Check if the single service call succeeded
+    let response_count = count_pattern(&nano_output, nros_tests::output::SERVICE_RESULT_PREFIX);
+    let success = response_count > 0;
 
     if success {
         eprintln!("[PASS] ROS 2 service server ↔ nros service client works");

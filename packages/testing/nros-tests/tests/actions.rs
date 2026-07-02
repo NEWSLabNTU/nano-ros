@@ -2,9 +2,12 @@
 //!
 //! Tests for ROS 2 action communication between nros nodes.
 
-use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
-    zenohd_unique,
+use nros_tests::{
+    fixtures::{
+        ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
+        zenohd_unique,
+    },
+    output::{ACTION_RESULT_PREFIX, FIBONACCI_ORDER_10_SEQUENCE, parse_action_client},
 };
 use rstest::rstest;
 use std::{path::PathBuf, time::Duration};
@@ -86,7 +89,6 @@ fn test_action_server_client_communication(
     action_server_binary: PathBuf,
     action_client_binary: PathBuf,
 ) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
@@ -119,9 +121,10 @@ fn test_action_server_client_communication(
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
-    // Wait for client to complete (event-driven — Fibonacci(10) takes ~5.5s)
+    // Wait for the client's terminal `Result received: [...]` line
+    // (event-driven — Fibonacci(10) takes ~5.5s)
     let client_output = client
-        .wait_for_output_pattern("finished", Duration::from_secs(20))
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(20))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
@@ -130,41 +133,25 @@ fn test_action_server_client_communication(
 
     eprintln!("Client output:\n{}", client_output);
 
-    // Check client received goal acceptance
-    let goal_accepted = client_output.contains("Goal accepted");
-    eprintln!("Goal accepted: {}", goal_accepted);
+    let parsed = parse_action_client(&client_output);
+    eprintln!(
+        "Goal accepted: {}, feedback: {}, completed: {}",
+        parsed.goal_accepted, parsed.feedback_count, parsed.completed
+    );
 
-    // Count feedback messages received
-    let feedback_count = count_pattern(&client_output, "Feedback #");
-    eprintln!("Feedback messages received: {}", feedback_count);
-
-    // Check if action completed
-    let completed = client_output.contains("action completed")
-        || client_output.contains("Action client finished");
-    eprintln!("Action completed: {}", completed);
-
-    // Verify results
-    if goal_accepted && feedback_count > 0 && completed {
-        eprintln!("[PASS] Action server-client communication works");
-        eprintln!("  - Goal was accepted");
-        eprintln!("  - Received {} feedback messages", feedback_count);
-        eprintln!("  - Action completed successfully");
-    } else {
-        eprintln!("[FAIL] Action communication incomplete");
-        if !goal_accepted {
-            eprintln!("  - Goal was NOT accepted");
-        }
-        if feedback_count == 0 {
-            eprintln!("  - No feedback received");
-        }
-        if !completed {
-            eprintln!("  - Action did not complete");
-        }
-        panic!(
-            "Action communication failed: goal_accepted={}, feedback_count={}, completed={}",
-            goal_accepted, feedback_count, completed
-        );
-    }
+    assert!(
+        parsed.goal_accepted && parsed.feedback_count > 0 && parsed.completed,
+        "Action communication failed: goal_accepted={}, feedback_count={}, completed={}",
+        parsed.goal_accepted,
+        parsed.feedback_count,
+        parsed.completed
+    );
+    // Order-10 goal → the result is the full 11-element sequence.
+    assert!(
+        client_output.contains(FIBONACCI_ORDER_10_SEQUENCE),
+        "Result line should carry the full order-10 sequence {}",
+        FIBONACCI_ORDER_10_SEQUENCE
+    );
 }
 
 // =============================================================================

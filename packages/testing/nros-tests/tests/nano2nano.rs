@@ -556,7 +556,10 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-service-server");
 
     // Wait for server readiness
-    let _ = server.wait_for_output_pattern("Waiting for requests", Duration::from_secs(5));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Start client
     let mut client_cmd = Command::new(rtic_client);
@@ -566,14 +569,17 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-service-client")
         .expect("Failed to start rtic-service-client");
 
-    // Wait for client to finish all calls
+    // Wait for the client's single result line
     let client_output = client
-        .wait_for_output_pattern("calls succeeded", Duration::from_secs(30))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_RESULT_PREFIX,
+            Duration::from_secs(30),
+        )
         .unwrap_or_default();
 
     server.kill();
 
-    let reply_count = count_pattern(&client_output, "Reply:");
+    let reply_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
     eprintln!("RTIC service: client got {} replies", reply_count);
     eprintln!("Client output:\n{}", client_output);
 
@@ -614,7 +620,10 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
         .expect("Failed to start rtic-action-server");
 
     // Wait for server readiness
-    let _ = server.wait_for_output_pattern("Waiting for goals", Duration::from_secs(5));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(5),
+    );
 
     // Start client
     let mut client_cmd = Command::new(rtic_client);
@@ -624,14 +633,14 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-action-client")
         .expect("Failed to start rtic-action-client");
 
-    // Wait for client to finish
+    // Wait for the client to report acceptance
     let client_output = client
-        .wait_for_output_pattern("goal accepted", Duration::from_secs(30))
+        .wait_for_output_pattern("Goal accepted", Duration::from_secs(30))
         .unwrap_or_default();
 
     server.kill();
 
-    let feedback_count = count_pattern(&client_output, "Feedback #");
+    let feedback_count = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
     let accepted = count_pattern(&client_output, "Goal accepted");
     eprintln!(
         "RTIC action: accepted={}, feedback={}",
