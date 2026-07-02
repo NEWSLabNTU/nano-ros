@@ -44,17 +44,26 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#126** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
-  lifecycle / run_tiers](0126-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
+- **#128** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
+  lifecycle / run_tiers](0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
   W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only
-  in the `OwnedSpin` arms). W4/W5/W6 (pub/sub) remain achievable on Zephyr. Fix: extend the Zephyr
-  arm to OwnedSpin parity (params/lifecycle small; tiers needs a `ZephyrBoard::run_tiers`).
-- **#125** — [NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone
-  `[[bin]]` link fails on unresolved libc/syscall symbols](0125-nuttx-rust-entry-demos-cannot-link-standalone.md):
+  in the `OwnedSpin` arms). W4/W5/W6 (pub/sub) remain achievable on Zephyr. The Rust-Zephyr sibling
+  of the phase-274 W3 embedded convergence. Fix: extend the Zephyr arm to OwnedSpin parity
+  (params/lifecycle small; tiers needs a `ZephyrBoard::run_tiers`).
+- **#127** — [NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone
+  `[[bin]]` link fails on unresolved libc/syscall symbols](0127-nuttx-rust-entry-demos-cannot-link-standalone.md):
   Phase 275 W1 landed the freertos + threadx-linux entry-demo coverage; the nuttx slice is blocked —
   the standalone Entry-pkg `[[bin]]` won't link against NuttX libc (`undefined reference to
   write/clock_gettime/__errno/exit`), plus a duplicate `[patch.crates-io]` TOML bug in the
   sync + libc-patch path. Tracked as W6-gate exceptions so it is not a silent gap.
+- **#126** — [Embedded C/C++ `run_tiers` (FreeRTOS) does not run: tier-task stack overflow +
+  shared session never connects under the multi-task structure](0126-embedded-run-tiers-freertos-session-and-stack.md):
+  phase-274 W3 landed embedded C/C++ Model 1 (FreeRTOS/mps2) code-complete + builds/links, but the
+  QEMU run fails on (A) tier-task stack sizing and (B) the run_tiers boot session never connecting
+  where run_components does — the shared-session-across-tasks (zenoh-pico) issue.
+- **#125** — [Rust `nros::main!` multi-tier path does not seed `bind_group_sched` from
+  `group_tiers`](0125-rust-entry-macro-group-seed-bind-group-sched.md): the Rust seed deferred from
+  phase-273 W4 (portability e2e lifted `NodeSpansTiers`).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo

@@ -1,5 +1,5 @@
 ---
-id: 126
+id: 128
 title: "`nros::main!` Zephyr (and Esp32) emit branch wires only register+spin — no param-services / lifecycle / run_tiers, blocking phase-276 W1/W2/W3 on Zephyr"
 status: open
 type: tech-debt

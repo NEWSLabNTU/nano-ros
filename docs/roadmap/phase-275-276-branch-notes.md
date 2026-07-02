@@ -45,12 +45,12 @@ Re-scoped after investigation. The 18 `*_entry` dirs split three ways:
 - **threadx-linux (6) — DONE.** Landed as 6 bare `[[fixture]]` rows (each Entry pkg bakes
   board+zenoh via `nros::main!` + the board shim) + `tests/threadx_linux_entry_build.rs`
   (prebuilt-only build-assert, no compile-in-test). Host x86_64 build; all 6 ELFs verified.
-- **nuttx (6) — BLOCKED, issue #125.** Adding rows surfaced two bugs: (1) `nros sync` +
+- **nuttx (6) — BLOCKED, issue #127.** Adding rows surfaced two bugs: (1) `nros sync` +
   `nuttx-libc-patch.sh` emit a duplicate `[patch.crates-io]` header → invalid TOML (a localized
   awk-insert fix works but is unexercised without (2)); (2) the standalone Entry-pkg `[[bin]]`
   fails to link against NuttX libc (`undefined reference to write/clock_gettime/__errno/exit`) —
   a per-platform link-wiring design gap. Reverted the rows + the libc-patch change; documented in
-  #125. Still tracked as W6-gate exceptions (not silent).
+  #127. Still tracked as W6-gate exceptions (not silent).
 
 ### 275 W2 — native C/C++ variants (remaining)
 Uncovered: native/c `{custom-msg, custom-platform, custom-transport-loopback, logging}`, native/cpp
@@ -111,8 +111,8 @@ embedded fixture + a runtime test asserting the capability on-target. Model exac
 
 Zephyr provisioned + verified building (native_sim `c/talker` links). But the `nros::main!`
 **Zephyr** emit branch wires only register+spin — no param-services / lifecycle / run_tiers (those
-emits are `OwnedSpin`-only). So **276 W1/W2/W3 on Zephyr are macro-blocked (issue #126)**; adding a
+emits are `OwnedSpin`-only). So **276 W1/W2/W3 on Zephyr are macro-blocked (issue #128)**; adding a
 fixture can't express the capability. **W4 (safety/CRC), W5 (QoS), W6 (multihost)** are node-level
 pub/sub and remain achievable on Zephyr (ride the proven `zephyr_entry` register+spin path). Fix
-direction for #126: extend the Zephyr arm to `OwnedSpin` parity (emit `param_services_call` +
+direction for #128: extend the Zephyr arm to `OwnedSpin` parity (emit `param_services_call` +
 `lifecycle_call`; add a `ZephyrBoard::run_tiers` for tiers).

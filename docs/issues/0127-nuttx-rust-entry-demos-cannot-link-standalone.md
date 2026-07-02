@@ -1,5 +1,5 @@
 ---
-id: 125
+id: 127
 title: "NuttX Rust `*_entry` demos can't be build-asserted as fixtures — standalone `[[bin]]` link fails on unresolved libc/syscall symbols"
 status: open
 type: tech-debt

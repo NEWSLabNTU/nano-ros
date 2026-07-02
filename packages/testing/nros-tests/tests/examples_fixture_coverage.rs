@@ -86,32 +86,32 @@ const ALLOWLIST: &[(&str, &str)] = &[
     // freertos: covered by the run-plan harness (TEST_DRIVEN_BUILDERS).
     // threadx-linux: covered by the `[[fixture]]` rows added in W1
     // (fixtures.toml) + tests/threadx_linux_entry_build.rs.
-    // nuttx: BLOCKED (issue #125) — the standalone Entry-pkg `[[bin]]` fails to
+    // nuttx: BLOCKED (issue #127) — the standalone Entry-pkg `[[bin]]` fails to
     // link against NuttX's libc (undefined `write`/`clock_gettime`/`__errno`/
     // `exit`), a per-platform link-wiring design gap, not a mechanical row.
     (
         "qemu-arm-nuttx/rust/talker_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
     (
         "qemu-arm-nuttx/rust/listener_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
     (
         "qemu-arm-nuttx/rust/service-server_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
     (
         "qemu-arm-nuttx/rust/service-client_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
     (
         "qemu-arm-nuttx/rust/action-server_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
     (
         "qemu-arm-nuttx/rust/action-client_entry",
-        "275 W1: nuttx Entry-pkg link blocked — issue #125",
+        "275 W1: nuttx Entry-pkg link blocked — issue #127",
     ),
 ];
 

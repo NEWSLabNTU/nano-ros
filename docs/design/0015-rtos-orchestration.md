@@ -69,7 +69,7 @@ superseded-by: null
 > C/C++ convergence is phase-274 W3. **Rust caveat:** the Rust `nros::main!`
 > **Zephyr** emit branch is the one framework arm NOT on Model 1 — it wires only
 > register+spin (no `run_tiers` / param-services / lifecycle); that gap is the
-> Rust-Zephyr sibling of phase-274 W3, tracked by **issue #126**.)
+> Rust-Zephyr sibling of phase-274 W3, tracked by **issue #128**.)
 >
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
 > generate-main" template orchestrator and §11.4 item 2 predate the current
