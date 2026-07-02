@@ -2,10 +2,11 @@
 /// @brief NuttX C listener — typed component (RFC-0043, phase-240.4).
 ///
 /// A stateful C component: `listener_configure` binds the `on_raw` callback (by
-/// identity, fn-ptr + self ctx) as a raw zero-copy subscription on `/chatter`.
-/// `NROS_C_COMPONENT` emits the C-ABI factory + configure the typed Entry
-/// carrier calls. No declarative descriptor, no synthesizing interpreter, no
-/// callback name.
+/// identity, fn-ptr + self ctx) as a raw zero-copy subscription on `/chatter`
+/// and hand-decodes the `std_msgs/String` CDR (phase-277 W4 fallback: the
+/// NuttX kernel link has no plumbing for the GENERATED typed C interface
+/// sources yet, so this example keeps the platform's raw + hand-CDR shape).
+/// Logs the official ROS 2 demo line (`I heard: [Hello World: N]`).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -19,13 +20,18 @@ typedef struct {
 
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     listener_t* self = (listener_t*)ctx;
-    /* CDR-encoded std_msgs/Int32: 4-byte encapsulation header, then LE i32. */
-    int32_t v = 0;
-    if (len >= 8) {
-        v = (int32_t)((uint32_t)data[4] | ((uint32_t)data[5] << 8) | ((uint32_t)data[6] << 16) |
-                      ((uint32_t)data[7] << 24));
+    /* std_msgs/String CDR: 4-byte encapsulation header, u32 LE length
+     * (payload incl. NUL), then the bytes. */
+    if (len < 8) {
+        return;
     }
-    printf("Received: %d\n", (int)v);
+    uint32_t n = (uint32_t)data[4] | ((uint32_t)data[5] << 8) | ((uint32_t)data[6] << 16) |
+                 ((uint32_t)data[7] << 24);
+    if (n == 0 || (size_t)n > len - 8) {
+        return;
+    }
+    /* n includes the trailing NUL; print the text portion. */
+    printf("I heard: [%.*s]\n", (int)(n - 1), (const char*)data + 8);
     self->recv++;
 }
 
@@ -33,8 +39,8 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
                                      listener_t* self) {
     (void)executor; /* node-scoped sub; executor unused */
     size_t handle;
-    int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                                nros_c_qos_default(), on_raw, self,
+    int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs::msg::dds_::String_",
+                                                "", nros_c_qos_default(), on_raw, self,
                                                 /*sched_context=*/0, &handle,
                                                 /*callback_group=*/NULL);
     if (rc == 0) {

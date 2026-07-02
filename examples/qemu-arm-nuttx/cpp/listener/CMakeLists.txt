@@ -12,6 +12,11 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# package.xml SSoT: generate the typed C++ bindings for the interface closure
+# (std_msgs) — the component decodes /chatter via the generated String
+# deserializer (phase-277 W4; was hand-rolled CDR).
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
 # Phase 240.3 (RFC-0043) — TYPED carrier: the NuttX bootable ELF constructs
 # the `Listener` component + calls `configure(node)` on the real executor
 # (`NuttxBoard::run_components`), instead of the declarative register-symbol →

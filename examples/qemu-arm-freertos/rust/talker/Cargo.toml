@@ -25,6 +25,9 @@ crate-type = ["rlib"]
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
+# phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
+# the `log` facade; the platform entry runtime owns the sink.
+log = "0.4"
 
 [package.metadata.nros.node]
 class = "freertos_rs_talker::Talker"

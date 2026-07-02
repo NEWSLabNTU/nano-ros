@@ -17,8 +17,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake
 
 # Phase 240.6 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C
 # Talker component + `talker_configure(node, executor)` creates a raw publisher +
-# a timer publishing a CDR-encoded Int32 counter. The raw publish carries the
-# DDS-mangled keyexpr verbatim, so no generated message sources are needed.
+# a timer publishing the std_msgs/String demo payload (hand-encoded CDR —
+# the NuttX kernel link has no generated-interface plumbing yet, so the
+# typed generated C bindings the other platforms use are unavailable here).
+# The raw publish carries the DDS-mangled keyexpr verbatim.
 nano_ros_node_register(
     NAME     talker
     CLASS    nuttx_riscv_c_talker::Talker

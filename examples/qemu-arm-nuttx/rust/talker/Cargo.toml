@@ -17,6 +17,9 @@ crate-type = ["rlib", "staticlib"]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }
+# phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
+# the `log` facade; the platform entry runtime owns the sink.
+log = "0.4"
 
 [package.metadata.nros.node]
 class = "nuttx_rs_talker::Talker"

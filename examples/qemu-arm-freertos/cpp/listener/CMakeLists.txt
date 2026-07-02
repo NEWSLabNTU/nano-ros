@@ -15,8 +15,9 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-# Raw subscription decodes the std_msgs/Int32 CDR payload by hand, but the
-# carrier still links the generated interface lib for the C++ binding.
+# Raw subscription decodes the std_msgs/String payload via the generated
+# C++ deserializer (phase-277 W4); the carrier links the generated
+# interface lib for the C++ binding.
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # Phase 240.6 (RFC-0043) — TYPED carrier: the bootable ELF constructs the typed

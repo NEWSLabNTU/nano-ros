@@ -14,6 +14,11 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# package.xml SSoT: generate the typed C bindings for the interface closure
+# (std_msgs) — the component uses the generated String struct + serializer
+# (phase-277 W4; was hand-rolled CDR).
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
 # Phase 240.6 (RFC-0043) — TYPED carrier: the FreeRTOS bootable ELF constructs the
 # C component via its `__nros_c_component_<pkg>_*` factory/configure seam
 # (NROS_C_COMPONENT) + runs it on the real executor (`FreertosBoard::run_components`),

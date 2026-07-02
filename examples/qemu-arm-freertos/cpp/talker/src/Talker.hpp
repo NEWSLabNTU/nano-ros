@@ -1,5 +1,6 @@
 // FreeRTOS C++ talker — typed component (RFC-0043). A timer member publishes a
-// real Int32 counter on `/chatter` via a typed `Publisher<Int32>`. No string
+// the official ROS 2 demo payload (`std_msgs/String`, `Hello World: N`)
+// on `/chatter` via a typed `Publisher<String>`. No string
 // callback name, no synthesizing interpreter.
 #ifndef FREERTOS_CPP_TALKER_TALKER_HPP
 #define FREERTOS_CPP_TALKER_TALKER_HPP
@@ -12,7 +13,7 @@
 namespace freertos_cpp_talker {
 
 class Talker {
-    ::nros::Publisher<std_msgs::msg::Int32> pub_;
+    ::nros::Publisher<std_msgs::msg::String> pub_;
     ::nros::Timer timer_;
     int count_ = 0;
 

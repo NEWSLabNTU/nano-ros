@@ -13,6 +13,8 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp"
+
 namespace freertos_cpp_listener {
 
 class Listener {
