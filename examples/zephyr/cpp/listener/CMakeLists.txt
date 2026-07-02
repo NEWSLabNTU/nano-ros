@@ -22,7 +22,7 @@ find_package(std_msgs REQUIRED)
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
 # mangled name). The C++ codegen only emits C++ types, so generate the
-# Cyclone C descriptor here from std_msgs/Int32 and compile it into the
+# Cyclone C descriptor here from std_msgs/String and compile it into the
 # app. Uses the host-built idlc + the msg→IDL converter.
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
@@ -32,7 +32,7 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
         PKG_NAME   std_msgs
         PKG_DIR    "$ENV{NROS_STD_MSGS_DIR}"
-        INTERFACES msg/Int32.msg)
+        INTERFACES msg/String.msg)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()
 

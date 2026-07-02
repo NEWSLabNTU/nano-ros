@@ -27,7 +27,7 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
         PKG_NAME   std_msgs
         PKG_DIR    "$ENV{NROS_STD_MSGS_DIR}"
-        INTERFACES msg/Int32.msg)
+        INTERFACES msg/String.msg)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()
 

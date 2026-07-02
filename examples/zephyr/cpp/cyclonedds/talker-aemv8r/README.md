@@ -51,7 +51,7 @@ Pair with:
 
 - A second `native_sim` instance running
   `examples/zephyr/cpp/dds/listener` for an in-tree round-trip.
-- Stock ROS 2 `ros2 topic echo /chatter std_msgs/msg/Int32` for
+- Stock ROS 2 `ros2 topic echo /chatter std_msgs/msg/String` for
   cross-stack interop.
 
 ## Wire backend

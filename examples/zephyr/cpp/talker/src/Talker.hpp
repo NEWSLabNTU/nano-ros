@@ -1,5 +1,6 @@
 // Zephyr C++ talker — typed component (RFC-0043 / phase-244.C2). A timer member
-// publishes a real Int32 counter on `/chatter` via a typed `Publisher<Int32>`.
+// publishes the official ROS 2 demo payload (`std_msgs/String`, `Hello World: N`)
+// on `/chatter` via a typed `Publisher<String>`.
 // The Zephyr typed carrier (`zephyr_entry_main_typed.cpp.in`) constructs this
 // object + calls `configure(node)` and runs `ZephyrBoard::run_components`.
 #ifndef NROS_ZEPHYR_TALKER_CPP_TALKER_HPP
@@ -13,7 +14,7 @@
 namespace nros_zephyr_talker_cpp {
 
 class Talker {
-    ::nros::Publisher<std_msgs::msg::Int32> pub_;
+    ::nros::Publisher<std_msgs::msg::String> pub_;
     ::nros::Timer timer_;
     int count_ = 0;
 

@@ -12,6 +12,8 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp"
+
 namespace nros_zephyr_listener_cpp {
 
 class Listener {

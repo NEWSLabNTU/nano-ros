@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_aemv8r_cyclonedds_talker LANGUAGES CXX)
 
-# Generate C++ message bindings for the Int32 type used by the talker.
+# Generate C++ message bindings for the String type used by the talker.
 # `nros_generate_interfaces()` is provided by the nros Zephyr module
 # (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y). KEEP this (not the rclcpp-compat
 # `find_package` + explicit `NROS_CYCLONE_*` descriptor block the native_sim

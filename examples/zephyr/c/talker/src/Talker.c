@@ -1,12 +1,12 @@
 /// @file Talker.c
 /// @brief Zephyr C talker — typed component (RFC-0043 / phase-244.C2).
 ///
-/// `talker_configure` creates a raw publisher on `/chatter` + a timer that
-/// publishes a CDR-encoded Int32 counter each tick. The keyexpr is the
-/// DDS-mangled `std_msgs::msg::dds_::Int32_` — the same one the typed C++
-/// `Publisher<Int32>` registers, so a typed or raw subscriber matches.
-/// `NROS_C_COMPONENT` emits the C-ABI factory/configure the Zephyr typed Entry
-/// carrier (`zephyr_entry_main_c_typed.cpp.in`) calls.
+/// `talker_configure` creates a publisher on `/chatter` + a timer that
+/// publishes the official ROS 2 demo payload (`std_msgs/String`,
+/// `Hello World: N`) each tick, via the GENERATED typed C bindings
+/// (`nros_find_interfaces(LANGUAGE C)` in CMakeLists — phase-277 W4; was
+/// hand-rolled CDR). `NROS_C_COMPONENT` emits the C-ABI factory/configure the
+/// Zephyr typed Entry carrier (`zephyr_entry_main_c_typed.cpp.in`) calls.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -14,38 +14,39 @@
 
 #include <nros/component.h>
 
+#include <std_msgs/msg/std_msgs_msg_string.h>
+
 typedef struct {
     _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
     int32_t count;
+    /* Message + CDR scratch live in the component (not the tick stack):
+     * String is ~256 B and RTOS timer/app stacks are small. */
+    std_msgs_msg_string msg;
+    uint8_t buf[300];
 } talker_t;
-
-static void write_u32_le(uint8_t* p, uint32_t v) {
-    p[0] = (uint8_t)v;
-    p[1] = (uint8_t)(v >> 8);
-    p[2] = (uint8_t)(v >> 16);
-    p[3] = (uint8_t)(v >> 24);
-}
 
 static void on_tick(void* ctx) {
     talker_t* self = (talker_t*)ctx;
-    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
-    uint8_t buf[8];
-    buf[0] = 0x00;
-    buf[1] = 0x01;
-    buf[2] = 0x00;
-    buf[3] = 0x00;
-    write_u32_le(buf + 4, (uint32_t)self->count);
-    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
-        printf("Published: %d\n", (int)self->count);
-    }
+    /* Pre-increment so the first payload is "Hello World: 1", matching the
+     * official ROS 2 demo talker. */
     self->count++;
+    std_msgs_msg_string_init(&self->msg);
+    snprintf(self->msg.data, sizeof(self->msg.data), "Hello World: %d", (int)self->count);
+    /* Serialize via the generated typed serializer, publish through the
+     * component (nros-cpp) raw seam. Buffer: 4-byte CDR header + 4-byte
+     * length + payload + NUL. */
+    size_t len = 0;
+    if (std_msgs_msg_string_serialize(&self->msg, self->buf, sizeof(self->buf), &len) == 0 &&
+        nros_cpp_publish_raw(self->pub, self->buf, len) == 0) {
+        printf("Publishing: '%s'\n", self->msg.data);
+    }
 }
 
 static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->count = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                           nros_c_qos_default(), self->pub);
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_string_get_type_name(),
+                                           "", nros_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
     }

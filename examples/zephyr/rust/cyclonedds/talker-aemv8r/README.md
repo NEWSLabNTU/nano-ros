@@ -3,7 +3,7 @@
 Phase 217.D.1 — nano-ros **Rust** pub/sub demo on the ARM FVP
 `Base_RevC AEMv8-R` Cortex-A SMP target under Zephyr 3.7. Rust-side
 sibling of `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`; same
-`std_msgs/Int32` payload on `/chatter` so a single FVP run + peer
+`std_msgs/String` payload on `/chatter` so a single FVP run + peer
 listener exercises both languages.
 
 Carve-out per CLAUDE.md "Examples = Standalone Projects" — this
@@ -57,7 +57,7 @@ Pair with:
 - A second `native_sim` instance running
   `examples/zephyr/rust/listener` (or the cpp sibling) for an in-tree
   round-trip.
-- Stock ROS 2 `ros2 topic echo /chatter std_msgs/msg/Int32` for
+- Stock ROS 2 `ros2 topic echo /chatter std_msgs/msg/String` for
   cross-stack interop.
 
 ## Wire backend

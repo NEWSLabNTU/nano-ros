@@ -8,10 +8,15 @@
 namespace nros_zephyr_talker_typed_cpp {
 
 void Talker::on_tick() {
-    std_msgs::msg::Int32 m;
-    m.data = count_++;
+    // Pre-increment so the first payload is "Hello World: 1", matching the
+    // official ROS 2 demo talker.
+    ++count_;
+    char payload[64];
+    std::snprintf(payload, sizeof(payload), "Hello World: %d", count_);
+    std_msgs::msg::String m;
+    m.data = payload;
     if (pub_.publish(m).ok()) {
-        std::printf("Published: %d\n", m.data);
+        std::printf("Publishing: '%s'\n", m.data.c_str());
     }
 }
 
