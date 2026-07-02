@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief C listener example - subscribes to std_msgs/Int32 messages
+/// @brief C listener example - subscribes to std_msgs/String messages
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,12 +56,12 @@ static void signal_handler(int signum) {
 static void subscription_callback(const uint8_t* data, size_t len, void* context) {
     listener_context_t* ctx = (listener_context_t*)context;
 
-    std_msgs_msg_int32 msg;
-    std_msgs_msg_int32_init(&msg);
+    std_msgs_msg_string msg;
+    std_msgs_msg_string_init(&msg);
 
-    if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
+    if (std_msgs_msg_string_deserialize(&msg, data, len) == 0) {
         ctx->message_count++;
-        printf("Received: %d\n", msg.data);
+        printf("I heard: [%s]\n", msg.data);
     } else {
         fprintf(stderr, "Failed to deserialize message (len=%zu)\n", len);
     }
@@ -106,7 +106,7 @@ int nros_app_main(int argc, char** argv) {
     // Initialize support context
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_listener", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "listener", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create application context
@@ -115,7 +115,7 @@ int nros_app_main(int argc, char** argv) {
     };
 
     NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node,
-                                          std_msgs_msg_int32_get_type_support(), "/chatter",
+                                          std_msgs_msg_string_get_type_support(), "/chatter",
                                           subscription_callback, &app.listener_ctx),
                    1);
     printf("Subscription created for topic: %s\n",

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("custom-transport-listener");
@@ -59,8 +59,8 @@ fn main() {
         .expect("Failed to build node");
     executor
         .node_mut(nid)
-        .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-            nros_info!(&LOGGER, "Received: {}", msg.data);
+        .create_subscription::<StringMsg, _>("/chatter", |msg: &StringMsg| {
+            nros_info!(&LOGGER, "I heard: [{}]", msg.data);
         })
         .expect("Failed to add subscription");
     nros_info!(&LOGGER, "Subscriber created on /chatter");

@@ -1,4 +1,4 @@
-//! XRCE-DDS serial listener — subscribes to Int32 on /chatter via serial transport.
+//! XRCE-DDS serial listener — subscribes to std_msgs/String on /chatter via serial transport.
 //!
 //! Uses the callback+spin pattern: registers a subscription callback, then
 //! spins the executor which drives I/O and dispatches callbacks automatically.
@@ -16,7 +16,7 @@ use std::{
     },
     time::Instant,
 };
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 use nros_log::{Logger, nros_info, nros_warn};
 
@@ -80,9 +80,9 @@ fn main() {
         .expect("Failed to build node");
     executor
         .node_mut(nid)
-        .create_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
+        .create_subscription::<StringMsg, _>("/chatter", move |msg: &StringMsg| {
             let n = received_cb.fetch_add(1, Ordering::SeqCst) + 1;
-            nros_info!(&LOGGER, "[{}] Received: {}", n, msg.data);
+            nros_info!(&LOGGER, "[{}] I heard: [{}]", n, msg.data);
         })
         .expect("Failed to add subscription");
     nros_warn!(&LOGGER, "Subscriber created on /chatter");

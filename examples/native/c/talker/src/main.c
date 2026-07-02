@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief C talker example - publishes std_msgs/Int32 messages using timer
+/// @brief C talker example - publishes std_msgs/String "Hello World: N" using a timer
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +26,7 @@
 
 typedef struct {
     nros_publisher_t* publisher;
-    std_msgs_msg_int32 message;
+    std_msgs_msg_string message;
     int count;
 } talker_context_t;
 
@@ -66,12 +66,12 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
-    // Post-increment so the first publish is 0, matching ROS demo nodes
-    // (rclpy_demos `talker.py`, rclcpp_demos `talker.cpp`). Phase 208.D.9.
-    ctx->message.data = ctx->count;
-    NROS_SOFTCHECK(std_msgs_msg_int32_publish(ctx->publisher, &ctx->message));
-    printf("Published: %d\n", ctx->message.data);
+    // Pre-increment so the first payload is "Hello World: 1", matching the
+    // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
     ctx->count++;
+    snprintf(ctx->message.data, sizeof(ctx->message.data), "Hello World: %d", ctx->count);
+    NROS_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
+    printf("Publishing: '%s'\n", ctx->message.data);
 }
 
 // ----------------------------------------------------------------------------
@@ -151,11 +151,11 @@ int nros_app_main(int argc, char** argv) {
     // Initialize support context
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_talker", "/"), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "talker", "/"), 1);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
-                                       std_msgs_msg_int32_get_type_support(), "/chatter"),
+                                       std_msgs_msg_string_get_type_support(), "/chatter"),
                    1);
     printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
@@ -165,7 +165,7 @@ int nros_app_main(int argc, char** argv) {
         .message = {0},
         .count = 0,
     };
-    std_msgs_msg_int32_init(&app.talker_ctx.message);
+    std_msgs_msg_string_init(&app.talker_ctx.message);
 
     NROS_CHECK_RET(
         nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),

@@ -1,4 +1,4 @@
-//! XRCE-DDS serial talker — publishes Int32 on /chatter via serial transport.
+//! XRCE-DDS serial talker — publishes std_msgs/String on /chatter via serial transport.
 //!
 //! Uses the timer+spin pattern: registers a timer callback that publishes
 //! messages periodically, then spins the executor.
@@ -7,12 +7,14 @@
 //!   XRCE_SERIAL_PTY  — PTY device path (required)
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
+use core::fmt::Write as _;
+
 use nros::{Executor, ExecutorConfig, TimerDuration};
 use std::sync::{
     Arc,
     atomic::{AtomicI32, Ordering},
 };
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 use nros_log::{Logger, nros_info, nros_warn};
 
@@ -67,19 +69,20 @@ fn main() {
         .create_node("xrce_serial_talker")
         .expect("Failed to create node");
     let publisher = node
-        .create_publisher::<Int32>("/chatter")
+        .create_publisher::<StringMsg>("/chatter")
         .expect("Failed to create publisher");
     nros_warn!(&LOGGER, "Publisher created on /chatter");
 
     // Register timer callback that publishes every 500ms
-    nros_info!(&LOGGER, "Publishing Int32 messages...");
     let counter = Arc::new(AtomicI32::new(0));
     let counter_cb = counter.clone();
     executor
         .register_timer(TimerDuration::from_millis(500), move || {
-            let i = counter_cb.fetch_add(1, Ordering::SeqCst);
-            match publisher.publish(&Int32 { data: i }) {
-                Ok(()) => nros_info!(&LOGGER, "Published: {}", i),
+            let i = counter_cb.fetch_add(1, Ordering::SeqCst) + 1;
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {i}");
+            match publisher.publish(&msg) {
+                Ok(()) => nros_info!(&LOGGER, "Publishing: '{}'", msg.data),
                 Err(e) => nros_warn!(&LOGGER, "Publish error: {:?}", e),
             }
         })

@@ -1,7 +1,8 @@
 //! Native Talker Example — Phase 212.L.2 Application pkg shape.
 //!
-//! Publishes `std_msgs/Int32` on `/chatter` every 1 s using nros on
-//! native x86. Single-file `[[bin]]`: explicit
+//! Publishes `std_msgs/String` (`Hello World: N`) on `/chatter` every
+//! 1 s using nros on native x86, matching the official ROS 2
+//! `demo_nodes_cpp` talker. Single-file `[[bin]]`: explicit
 //! [`nros::init_with_launch_auto`] (Pattern 2 — picks up launch
 //! overlay env vars from the environment) then a user-owned spin
 //! loop.
@@ -23,9 +24,11 @@
 //! Override the locator at runtime with `NROS_LOCATOR` (or the legacy
 //! `ZENOH_LOCATOR`). Enable debug logs with `RUST_LOG=debug`.
 
+use core::fmt::Write as _;
+
 use log::{error, info};
 use nros::prelude::*;
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
@@ -50,7 +53,7 @@ fn main() {
             .expect("Failed to create node");
         info!("Node created: talker");
         let pub_ = node
-            .create_publisher::<Int32>("/chatter")
+            .create_publisher::<StringMsg>("/chatter")
             .expect("Failed to create publisher");
         info!("Publisher created for topic: /chatter");
         pub_
@@ -59,15 +62,15 @@ fn main() {
     let mut count: i32 = 0;
     executor
         .register_timer(nros::TimerDuration::from_millis(1000), move || {
-            let msg = Int32 { data: count };
+            count = count.wrapping_add(1);
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {count}");
             match publisher.publish(&msg) {
-                Ok(()) => info!("Published: {}", count),
+                Ok(()) => info!("Publishing: '{}'", msg.data),
                 Err(e) => error!("Publish error: {:?}", e),
             }
-            count = count.wrapping_add(1);
         })
         .expect("Failed to register publish timer");
-    info!("Publishing Int32 messages every 1s...");
 
     executor
         .spin_blocking(SpinOptions::default())

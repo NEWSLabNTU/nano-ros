@@ -7,9 +7,11 @@
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/rtic-talker/`.
 
+use core::fmt::Write as _;
+
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("talker-rtic");
@@ -33,10 +35,10 @@ fn main() {
         .create_node("talker")
         .expect("Failed to create node");
     let publisher = node
-        .create_publisher::<Int32>("/chatter")
+        .create_publisher::<StringMsg>("/chatter")
         .expect("Failed to create publisher");
 
-    nros_info!(&LOGGER, "Publishing Int32 on /chatter (RTIC pattern)...");
+    nros_info!(&LOGGER, "Publishing on /chatter (RTIC pattern)...");
 
     // Stabilization delay (like RTIC Mono::delay(2000.millis()))
     for _ in 0..200 {
@@ -46,11 +48,13 @@ fn main() {
 
     let mut count: i32 = 0;
     loop {
-        match publisher.publish(&Int32 { data: count }) {
-            Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+        count = count.wrapping_add(1);
+        let mut msg = StringMsg::default();
+        let _ = write!(msg.data, "Hello World: {count}");
+        match publisher.publish(&msg) {
+            Ok(()) => nros_info!(&LOGGER, "Publishing: '{}'", msg.data),
             Err(e) => nros_error!(&LOGGER, "Publish error: {:?}", e),
         }
-        count = count.wrapping_add(1);
 
         // Drive I/O with spin_once(0) — non-blocking, like RTIC net_poll task
         for _ in 0..100 {

@@ -9,7 +9,7 @@
 
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("listener-rtic");
@@ -33,12 +33,12 @@ fn main() {
         .create_node("listener")
         .expect("Failed to create node");
     let mut subscription = node
-        .create_subscription::<Int32>("/chatter")
+        .create_subscription::<StringMsg>("/chatter")
         .expect("Failed to create subscription");
 
     nros_info!(
         &LOGGER,
-        "Waiting for Int32 messages on /chatter (RTIC pattern)..."
+        "Waiting for messages on /chatter (RTIC pattern)..."
     );
 
     loop {
@@ -46,7 +46,7 @@ fn main() {
 
         match subscription.try_recv() {
             Ok(Some(msg)) => {
-                nros_info!(&LOGGER, "Received: {}", msg.data);
+                nros_info!(&LOGGER, "I heard: [{}]", msg.data);
             }
             Ok(None) => {}
             Err(e) => nros_error!(&LOGGER, "Receive error: {:?}", e),

@@ -13,7 +13,7 @@
 //! ```text
 //! talker (this binary)            zenohd (separate process)
 //! ──────────────────              ─────────────
-//! Publisher<Int32>                tcp/127.0.0.1:N
+//! Publisher<String>               tcp/127.0.0.1:N
 //!     │
 //!     ▼
 //! zenoh-pico session
@@ -37,9 +37,10 @@
 
 use std::time::Duration;
 
+use core::fmt::Write as _;
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("custom-transport-talker");
@@ -107,7 +108,7 @@ fn main() {
         .expect("Failed to create node");
 
     let publisher = node
-        .create_publisher::<Int32>("/chatter")
+        .create_publisher::<StringMsg>("/chatter")
         .expect("Failed to create publisher");
     nros_info!(&LOGGER, "Publisher created on /chatter");
 
@@ -116,12 +117,13 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(20);
 
-    for i in 0..max_msgs {
-        let msg = Int32 { data: i };
+    for i in 1..=max_msgs {
+        let mut msg = StringMsg::default();
+        let _ = write!(msg.data, "Hello World: {i}");
         if let Err(e) = publisher.publish(&msg) {
             nros_error!(&LOGGER, "Publish failed: {e:?}");
         } else {
-            nros_info!(&LOGGER, "Published: {i}");
+            nros_info!(&LOGGER, "Publishing: '{}'", msg.data);
         }
         std::thread::sleep(Duration::from_millis(100));
         // Drive session I/O so writes flush.

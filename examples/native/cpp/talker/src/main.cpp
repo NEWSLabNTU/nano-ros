@@ -1,17 +1,17 @@
 /// @file main.cpp
-/// @brief C++ talker example - publishes std_msgs/Int32 at 1 Hz using a timer
+/// @brief C++ talker example - publishes std_msgs/String "Hello World: N" at 1 Hz
 
 #include <cstdio>
 #include <cstdlib>
 #include <csignal>
 
 // Route NROS_TRY_RET through std::fprintf (we have stdio).
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/nros.hpp>
 
-// Generated C++ bindings for std_msgs/msg/Int32
+// Generated C++ bindings for std_msgs/msg/String
 #include "std_msgs.hpp"
 
 // ----------------------------------------------------------------------------
@@ -19,7 +19,7 @@
 // ----------------------------------------------------------------------------
 
 struct TalkerContext {
-    nros::Publisher<std_msgs::msg::Int32>* publisher;
+    nros::Publisher<std_msgs::msg::String>* publisher;
     int count;
 };
 
@@ -41,18 +41,20 @@ static void signal_handler(int signum) {
 static void timer_callback(void* context) {
     TalkerContext* ctx = static_cast<TalkerContext*>(context);
 
-    // Post-increment so the first publish is 0, matching ROS demo nodes
-    // (rclcpp_demos `talker.cpp`). Phase 208.D.9.
-    std_msgs::msg::Int32 msg;
-    msg.data = ctx->count;
+    // Pre-increment so the first payload is "Hello World: 1", matching the
+    // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
+    ctx->count++;
+    char payload[64];
+    std::snprintf(payload, sizeof(payload), "Hello World: %d", ctx->count);
+    std_msgs::msg::String msg;
+    msg.data = payload;
 
     nros::Result ret = ctx->publisher->publish(msg);
     if (ret.ok()) {
-        std::printf("Published: %d\n", ctx->count);
+        std::printf("Publishing: '%s'\n", msg.data.c_str());
     } else {
         std::fprintf(stderr, "Publish failed: %d\n", ret.raw());
     }
-    ctx->count++;
 }
 
 // ----------------------------------------------------------------------------
@@ -72,10 +74,10 @@ int main(int argc, char** argv) {
     NROS_TRY_RET(nros::init(), 1);
 
     nros::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_talker"), 1);
+    NROS_TRY_RET(nros::create_node(node, "talker"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    nros::Publisher<std_msgs::msg::Int32> pub;
+    nros::Publisher<std_msgs::msg::String> pub;
     NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
     TalkerContext ctx;
@@ -103,4 +105,3 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return 0;
 }
-

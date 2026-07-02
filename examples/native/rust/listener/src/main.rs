@@ -1,6 +1,8 @@
 //! Native Listener Example — Phase 212.L.2 Application pkg shape.
 //!
-//! Subscribes to `std_msgs/Int32` on `/chatter` and logs each message.
+//! Subscribes to `std_msgs/String` on `/chatter` and logs each message
+//! (`I heard: [Hello World: N]`), matching the official ROS 2
+//! `demo_nodes_cpp` listener.
 //! Single-file `[[bin]]`: explicit [`nros::init_with_launch_auto`]
 //! (Pattern 2 — picks up launch overlay env vars from the environment)
 //! then a user-owned spin loop.
@@ -24,7 +26,7 @@
 
 use log::{error, info};
 use nros::prelude::*;
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
@@ -44,19 +46,14 @@ fn main() {
         .node_builder("listener")
         .build()
         .expect("Failed to build node");
-    // Default `/chatter`; override with `NROS_SUB_TOPIC` so the same binary can
-    // subscribe to another Int32 topic (e.g. `/sum` for the service-showcase e2e).
-    let topic: &'static str = match std::env::var("NROS_SUB_TOPIC") {
-        Ok(t) if !t.is_empty() => Box::leak(t.into_boxed_str()),
-        _ => "/chatter",
-    };
+    let topic = "/chatter";
     executor
         .node_mut(nid)
         .subscription(topic)
-        .typed::<Int32>()
+        .typed::<StringMsg>()
         .message_info()
         .build(move |msg, info| {
-            info!("Received: {}", msg.data);
+            info!("I heard: [{}]", msg.data);
             if let Some(info) = info {
                 let gid = info.publisher_gid();
                 log::trace!(
@@ -75,7 +72,7 @@ fn main() {
         })
         .expect("Failed to add subscription");
     info!("Subscriber created for topic: {topic}");
-    info!("Waiting for Int32 messages on {topic}...");
+    info!("Waiting for messages on {topic}...");
 
     if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
         error!("Spin error: {:?}", e);

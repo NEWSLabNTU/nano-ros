@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ listener example - subscribes to std_msgs/Int32 (manual-poll)
+/// @brief C++ listener example - subscribes to std_msgs/String (manual-poll)
 
 #include <cstdio>
 #include <cstdlib>
@@ -10,7 +10,7 @@
 
 #include <nros/nros.hpp>
 
-// Generated C++ bindings for std_msgs/msg/Int32
+// Generated C++ bindings for std_msgs/msg/String
 #include "std_msgs.hpp"
 
 // ----------------------------------------------------------------------------
@@ -44,10 +44,10 @@ int main(int argc, char** argv) {
     NROS_TRY_RET(nros::init(), 1);
 
     nros::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_listener"), 1);
+    NROS_TRY_RET(nros::create_node(node, "listener"), 1);
     std::printf("Node created: %s\n", node.get_name());
 
-    nros::Subscription<std_msgs::msg::Int32> sub;
+    nros::Subscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
 
     // Phase 189.M3.4 — compile + link coverage for the callback-style
@@ -55,10 +55,10 @@ int main(int argc, char** argv) {
     // runs (poll-style listener stays unchanged); instantiating the template here
     // proves the header method compiles and the FFI symbol resolves.
     if (false) {
-        nros::Subscription<std_msgs::msg::Int32> info_sub;
-        (void)node.create_subscription_with_info<std_msgs::msg::Int32>(
+        nros::Subscription<std_msgs::msg::String> info_sub;
+        (void)node.create_subscription_with_info<std_msgs::msg::String>(
             info_sub, "/chatter_info",
-            [](const std_msgs::msg::Int32& m, const uint8_t* attachment, size_t attachment_len) {
+            [](const std_msgs::msg::String& m, const uint8_t* attachment, size_t attachment_len) {
                 (void)m;
                 (void)attachment;
                 (void)attachment_len;
@@ -74,17 +74,17 @@ int main(int argc, char** argv) {
     int message_count = 0;
 
     // Alternative: use Stream::wait_next for blocking reception
-    // std_msgs::msg::Int32 msg;
+    // std_msgs::msg::String msg;
     // sub.stream().wait_next(nros::global_handle(), 1000, msg);
 
     // Spin + poll loop
     while (g_running && nros::ok()) {
         nros::spin_once(100);
 
-        std_msgs::msg::Int32 msg;
+        std_msgs::msg::String msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            std::printf("Received: %d\n", msg.data);
+            std::printf("I heard: [%s]\n", msg.data.c_str());
         }
     }
 
@@ -96,4 +96,3 @@ int main(int argc, char** argv) {
     std::printf("Goodbye!\n");
     return 0;
 }
-
