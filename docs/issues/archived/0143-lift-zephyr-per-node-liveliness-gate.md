@@ -1,7 +1,7 @@
 ---
 id: 143
 title: "Lift the Zephyr per-node-liveliness gate now that the #139 socket-timeout root cause is fixed"
-status: open
+status: resolved
 type: tech-debt
 area: rmw-zenoh
 related: [phase-276, issue-0139]
@@ -31,3 +31,18 @@ secondary nodes is degraded.
 3. If boots stay ~3 s and all e2es stay green, land; if the wedge
    reappears, capture a `thread apply all bt` (the #139 gdb recipe) before
    re-gating — it would mean a second, distinct tx-path defect.
+
+## Resolution (2026-07-04) — gate lifted, per-node graph restored
+
+Reverted the `platform-zephyr` early-return in
+`nros-rmw-zenoh/src/shim/session.rs::ensure_node_liveliness` (plus the paired
+`cfg_attr(allow(dead_code))` field shims and the `cfg(not(...))` on
+`drop_primary_node_liveliness_if_superseded`), rebuilt all ten zephyr west
+images, and re-ran the full zephyr e2e suite: green, boots stay ~3-4 s — the
+"deadlock" was indeed the #139 socket-timeout starvation, not the declare
+itself.
+
+Fidelity check: `ros2 node list` against the multi-node ws-qos-rust image now
+shows `/qos_listener` AND `/reliable_talker` (previously only the primary
+session node) — per-component graph identity on Zephyr matches every other
+platform again.

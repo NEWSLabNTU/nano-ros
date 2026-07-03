@@ -52,19 +52,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   filter](0144-run-tiers-spawned-tier-declare-race.md): the 0128-W2 fix serialized boot-vs-tier
   declares; tier-vs-tier remains (latent — demos use 2 tiers). FreeRTOS `run_tiers_entry` has
   the boot race too and its e2e never asserts per-tier delivery.
-- **#143** — [Lift the Zephyr per-node-liveliness
-  gate](0143-lift-zephyr-per-node-liveliness-gate.md): the #129 gate treated a symptom of the
-  #139 socket-timeout starvation; with the 100 ms fix landed it likely can be reverted —
-  rebuild the west lane + rerun the zephyr e2es to confirm (restores per-node graph fidelity).
 - **#142** — [stm32f4 talker dual
   classification](0142-stm32f4-talker-dual-classification-fails-example-shape.md): the 0100.W4
   Entry/Node collapse left BOTH `[…nros.entry]` and `[…nros.node]` on one crate —
   `example_shape::component_or_application_classification_present` red since June 27.
-- **#141** — [nros publisher → rmw_zenoh_cpp subscriber delivers no
-  data](0141-nros-pub-to-rmw-zenoh-cpp-sub-no-data.md): `ros2 topic echo` sees nothing from
-  healthy nros publishers while graph discovery + the service path interop fine and a native
-  nros subscriber receives the same stream — the pub direction of the ROS 2 interop matrix is
-  unproven (found in 276-W5; relates to #133's soft-pass masking).
 - **#138** — [qemu-riscv64-threadx Rust examples pass
   `--allow-multiple-definition`](0138-threadx-riscv64-examples-allow-multiple-definition.md):
   6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251
@@ -114,7 +105,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#140** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#143** —
+[Zephyr per-node-liveliness gate lifted](archived/0143-lift-zephyr-per-node-liveliness-gate.md):
+the #129-era gate treated a #139 symptom; reverted, all ten zephyr images rebuilt, suite green,
+and `ros2 node list` now shows every per-component node on Zephyr (multi-node images previously
+advertised only the primary session node). **#141** —
+[nros publisher → rmw_zenoh_cpp subscriber delivers no
+data](archived/0141-nros-pub-to-rmw-zenoh-cpp-sub-no-data.md): not reproducible — router debug
+logs show `ros2 topic echo` subscribing on the exact keyexpr nros publishes (TypeHashNotSupported
+both sides), and both rclpy and echo receive from the same image the failures were seen on; the
+original observations were #139-era environmental. The real gap (zero coverage of the
+nros-pub → ros2-sub direction) is closed by the new `qos_zephyr_ros2_interop_e2e`. **#140** —
 [Native per-host entry (hosted spin) subscription receives
 nothing](archived/0140-native-per-host-entry-subscription-receives-nothing.md): observability, not
 delivery — gdb showed the full chain live (declare, 8 pushes, ring drained, `dispatch_into_cell`

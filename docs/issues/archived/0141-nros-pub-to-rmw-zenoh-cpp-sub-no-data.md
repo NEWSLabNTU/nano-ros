@@ -1,7 +1,7 @@
 ---
 id: 141
 title: "nros publisher → rmw_zenoh_cpp subscriber delivers no data (`ros2 topic echo` sees nothing) while graph discovery and the service path interop fine"
-status: open
+status: resolved
 type: bug
 area: rmw-zenoh
 related: [phase-276, issue-0133, issue-0135]
@@ -52,3 +52,25 @@ publisher shows the same gap (suspected yes — the shim is shared).
   echo` silently empty against nros publishers).
 - Interop coverage hole: the pub direction of the ROS 2 interop matrix is
   unproven; #133's soft-pass cleanup will surface it as failures.
+
+## Resolution (2026-07-04) — not reproducible; direction pinned with coverage
+
+Re-investigated with the router at `RUST_LOG=zenoh=debug`: `ros2 topic echo`
+declares its subscriber on the EXACT keyexpr nros publishes
+(`0/qos_ok/std_msgs::msg::dds_::Int32_/TypeHashNotSupported` — no wildcard,
+no real hash), so the suspected type-hash mismatch does not exist on this
+humble rmw_zenoh_cpp build. A debug-logging `rclpy` subscriber received the
+Zephyr image's `/qos_ok` samples immediately (GOT 2/3/4), and `ros2 topic
+echo` now delivers with BOTH the default sensor_data profile and explicit
+`--qos-reliability reliable` — against the very same (pre-#143) image build
+the failures were observed on. The original zero-delivery observations were
+environmental (the #139 tx-starvation era plus accumulated stale router/
+session state during that debugging session), not a product defect.
+
+The REAL residual gap — no green coverage of the nros-pub → ros2-sub
+direction — is closed by the new `qos_zephyr_ros2_interop_e2e`
+(`nros_zephyr_publisher_reaches_ros2_topic_echo`, 5.2 s): boots the W5 qos
+image and asserts `ros2 topic echo --once /qos_ok` sees a sample; serialized
+with the sink-based qos e2e via the `zephyr-qos-port` nextest group (shared
+baked router port). A regression on this axis can no longer hide behind
+#133-style soft-passes.

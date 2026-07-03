@@ -99,14 +99,11 @@ pub struct ZenohSession {
     /// `drop_primary_node_liveliness_if_superseded` can compare it against
     /// per-node names from W2 entity creation and decide whether to drop the
     /// primary (multi-node case) or keep it (single-node case).
-    // (#129: read only off-Zephyr — the per-node token path is gated there.)
-    #[cfg_attr(feature = "platform-zephyr", allow(dead_code))]
     primary_node_name: heapless::String<64>,
     /// Phase 268 W2 — one NN liveliness token per distinct node name seen
     /// via entity creation, so each launch component appears as its own node
     /// in `ros2 node list`.  Bounded; held for the session lifetime (dropping
     /// a token undeclares it).
-    #[cfg_attr(feature = "platform-zephyr", allow(dead_code))]
     per_node_liveliness:
         heapless::Vec<(heapless::String<64>, LivelinessToken), MAX_PER_NODE_LIVELINESS>,
     /// Phase 124.B.3 — executor wake callback. Installed by
@@ -384,33 +381,12 @@ impl ZenohSession {
     /// Subsequent calls for the same name are no-ops (dedup).  The token is
     /// held in `per_node_liveliness` for the session lifetime; dropping it
     /// would undeclare the node in `ros2 node list`.
-    #[allow(unused_variables)]
+    // Issue #143 — the #129-era Zephyr gate here is LIFTED: the "deadlock"
+    // this declare hit was the #139 socket-timeout starvation (5 s recv
+    // window serializing every tx), fixed at the root. Per-node tokens are
+    // back on every platform, restoring per-component `ros2 node list`
+    // fidelity on Zephyr.
     fn ensure_node_liveliness(&mut self, domain_id: u32, namespace: &str, node_name: &str) {
-        // Issue #129 layer 3 — per-node NN tokens are DISABLED on the Zephyr
-        // platform. Bisect (b6836a91c..4fc3d5a22 → first bad 6601c7e52, 268-W2b)
-        // + a stub experiment isolated the zephyr native_sim silent hang to
-        // exactly this lazy `declare_liveliness` from the entity-create path:
-        // with the read task live, the app thread wedges in the kernel's per-fd
-        // lock (gdb: `k_mutex_lock(<fdtable>)` vs the zenoh-pico read task in
-        // `k_poll`) and the entry never reaches its first publish. The #104
-        // PRIMARY token (declared during session open, pre-contention) is
-        // unaffected, so `ros2 node list` still shows the session node on
-        // Zephyr — it loses only the per-component names until the underlying
-        // create-window race in the zenoh-pico Zephyr port is fixed (#129).
-        // Every other platform keeps full per-node liveliness.
-        #[cfg(feature = "platform-zephyr")]
-        {
-            return;
-        }
-        #[cfg(not(feature = "platform-zephyr"))]
-        {
-            self.ensure_node_liveliness_inner(domain_id, namespace, node_name);
-        }
-    }
-
-    /// The pre-#129 body of [`Self::ensure_node_liveliness`] — see the gate above.
-    #[cfg(not(feature = "platform-zephyr"))]
-    fn ensure_node_liveliness_inner(&mut self, domain_id: u32, namespace: &str, node_name: &str) {
         if node_name.is_empty() {
             return;
         }
@@ -444,7 +420,6 @@ impl ZenohSession {
     /// **Multi-node case**: primary generic name (e.g. `"node"`) differs from
     /// the per-node name (e.g. `"talker"`) → drop primary → `ros2 node list`
     /// shows only `/talker` + `/listener`, not a spurious `/node`.
-    #[cfg(not(feature = "platform-zephyr"))]
     fn drop_primary_node_liveliness_if_superseded(&mut self, new_name: &str) {
         if self.node_liveliness.is_some()
             && !self.primary_node_name.is_empty()

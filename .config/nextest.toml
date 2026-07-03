@@ -49,6 +49,12 @@ max-threads = 3
 [test-groups.qemu-baremetal-shared]
 max-threads = 1
 
+# issue #141 — the qos zephyr entry image + its baked router port (17849) are
+# shared by the sink-based capability e2e and the ros2-echo interop e2e;
+# serialize them so the routers never collide.
+[test-groups.zephyr-qos-port]
+max-threads = 1
+
 # Phase 89.10 — slirp-isolated QEMU platforms can run the three rtos_e2e
 # cases (pubsub/service/action) concurrently because (a) slirp gives each
 # QEMU instance a fully isolated 10.0.2.0/24 so guest IPs can't collide
@@ -282,6 +288,12 @@ retries = 2
 # a parallel suite the CLI contention pushes past the default 60 s ceiling.
 [[profile.default.overrides]]
 filter = "binary(lifecycle_zephyr_entry_e2e)"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# issue #141 — see [test-groups.zephyr-qos-port].
+[[profile.default.overrides]]
+filter = "binary(qos_zephyr_entry_e2e) or binary(qos_zephyr_ros2_interop_e2e)"
+test-group = "zephyr-qos-port"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 # Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros

@@ -156,9 +156,10 @@ Consequences and rules:
   to the session it came from. Without it a same-image pair (e.g. ws-qos-rust's
   `reliable_talker → qos_listener`) never delivers, silently.
 - The #129 per-node-liveliness "deadlock" was this same mechanism — the first
-  declare to hit the recv window. The per-node token gate on `platform-zephyr`
-  (`nros-rmw-zenoh/src/shim/session.rs`) predates the timeout fix and can likely
-  be lifted; retest before doing so.
+  declare to hit the recv window. The `platform-zephyr` gate it prompted was
+  LIFTED after the timeout fix (issue 0143): per-node NN tokens declare fine
+  on Zephyr now, and multi-node images list every component in
+  `ros2 node list`.
 - **tx throughput ceiling**: because every send waits for the read task's recv
   window, total tx is capped at ~one send per window (plus inbound-traffic
   wakes). At the 100 ms default that is ~10 msg/s for the WHOLE image — fine
