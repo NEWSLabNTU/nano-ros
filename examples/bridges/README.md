@@ -16,3 +16,7 @@ home for plain cross-RMW gateways is this sibling category.
   publisher. Demonstrates the multi-RMW registry plus the Phase 110.G
   time-triggered scheduling path. Relocated 2026-06-02 from
   `examples/native/rust/bridge/` per §212.L sibling-category rule.
+- `tt-zenoh-to-cyclonedds/` — POSIX Rust binary; Zenoh subscriber,
+  Cyclone DDS publisher (issue #53). Same time-triggered frame as the
+  XRCE sibling, plus the Cyclone `dds_topic_descriptor_t` staging step
+  (`register_type_descriptor`) a raw Cyclone publisher requires.
