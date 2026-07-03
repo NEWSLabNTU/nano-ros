@@ -255,6 +255,12 @@ build-fixtures:
         ( cd examples/workspaces/ws-qos-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
+    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (ws sync only).
+    if [ -d examples/workspaces/ws-safety-rust/src/zephyr_entry ]; then
+        echo "  → ws-safety workspace-entry prep (nros ws sync)"
+        ( cd examples/workspaces/ws-safety-rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
 
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"

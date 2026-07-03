@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#140** — [Native per-host workspace entry (hosted spin) subscription receives
+  nothing](0140-native-per-host-entry-subscription-receives-nothing.md): `native_entry_robot2`
+  exits `message_callbacks=0` while a robot1 talker publishes and the plain listener example
+  receives the same stream — `multihost_runtime_e2e` red (was stale-fixture-masked). Blocks the
+  276-W6 zephyr multihost e2e's native half (`multihost_zephyr_entry_e2e` `#[ignore]`d on this).
 - **#138** — [qemu-riscv64-threadx Rust examples pass
   `--allow-multiple-definition`](0138-threadx-riscv64-examples-allow-multiple-definition.md):
   6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251

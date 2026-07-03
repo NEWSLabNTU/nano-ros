@@ -12,8 +12,14 @@ RFC-0006 (feature axes).
 > root-caused to the zenoh-pico Zephyr 5 s socket timeout starving all tx under Zephyr's per-fd
 > zsock serialization (fork patch → 100 ms) plus missing `Z_FEATURE_LOCAL_SUBSCRIBER` for
 > intra-image pub→sub (RFC-0015 Model 1: one shared session per image). All six zephyr entry e2es
-> green post-fix. Remaining: W2 (tiers — needs `ZephyrBoard::run_tiers`, the #128 hard half),
-> W4 (safety/CRC), W6 (multihost).
+> green post-fix. **W4 (safety/CRC) ✅** (`safety_zephyr_entry_e2e` — on-target CRC attach →
+> in-image deliver → validate → `/safe_ok` republish observed cross-process). **W6 (multihost):
+> embedded half landed** (`zephyr_entry_robot1` bakes the robot1 slice via the macro's
+> `host = "robot1"` filter; boots + publishes) but the e2e is `#[ignore]`d on issue #140 — the
+> NATIVE per-host entry's (robot2) subscription is dead on current main (`multihost_runtime_e2e`
+> fails identically; pre-existing, stale-fixture-masked). Remaining: W2 (tiers — needs
+> `ZephyrBoard::run_tiers`, the #128 hard half; folds into the phase-274 W3 convergence track)
+> and the #140 native fix to un-gate W6.
 
 > **Blocker found (issue #128).** The `nros::main!` **Zephyr** emit branch wires only
 > register+spin — it emits none of `param_services_call` / `lifecycle_call` / `run_tiers` (those

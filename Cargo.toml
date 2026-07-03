@@ -330,6 +330,10 @@ exclude = [
     "examples/workspaces/ws-lifecycle-rust/src/zephyr_entry",
     # phase-276 W5 — the QoS-override workspace's Zephyr Entry.
     "examples/workspaces/ws-qos-rust/src/zephyr_entry",
+    # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry.
+    "examples/workspaces/ws-safety-rust/src/zephyr_entry",
+    # phase-276 W6 — the multihost robot1 (talker) Zephyr Entry.
+    "examples/workspaces/rust/src/zephyr_entry_robot1",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

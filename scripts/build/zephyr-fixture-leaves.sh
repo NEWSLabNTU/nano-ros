@@ -578,6 +578,102 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$wsq_sig" "$wsq_sig_file" 0 "$pristine"
     fi
 
+    # phase-276 W4 — the E2E-SAFETY (CRC) Rust workspace Entry
+    # (examples/workspaces/ws-safety-rust/src/zephyr_entry): the
+    # safety-on-embedded coverage cell. The system declares
+    # [system].features = ["safety"] → the zenoh backend attaches the E2E CRC +
+    # sequence number on publish and validates on receive; the on-target
+    # safe_listener republishes its CRC-VALIDATED count on /safe_ok. Distinct
+    # zenohd port (17851). Consumed by tests/safety_zephyr_entry_e2e.rs.
+    wss_board="native_sim/native/64"
+    wss_lang="rust"
+    wss_lang_tag="rs"
+    wss_role="entry"
+    wss_rmw="zenoh"
+    wss_build_name="build-ws-rs-safety-entry-zenoh"
+    wss_build_dir="$build_root/$wss_build_name"
+    wss_src="workspaces/ws-safety-rust/src/zephyr_entry"
+    wss_src_dir="$nros_root/examples/$wss_src"
+    wss_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wss_zenoh_locator="tcp/127.0.0.1:17851"
+    wss_id="zephyr/native_sim/native/64/workspace-safety-entry"
+    wss_target="fixture/zephyr/native_sim/native/64/workspace-safety-entry"
+    wss_filter_haystack="$wss_board $wss_build_name $wss_src $wss_conf_files $wss_id"
+    if [ -d "$wss_src_dir" ] && { [ -z "$fixture_filter" ] || [[ "$wss_filter_haystack" =~ $fixture_filter ]]; }; then
+        selected=$((selected + 1))
+        wss_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wss_extra_cmake_defs="$wss_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wss_zenoh_locator\""
+        wss_extra_cmake_defs="$wss_extra_cmake_defs -DCONF_FILE=$wss_conf_files"
+        wss_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wss_sccache_launcher=1
+            wss_extra_cmake_defs="$wss_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wss_sig_file="$wss_build_dir/.nros-zephyr-fixture.sig"
+        wss_sig="$(printf '%s\n' \
+            "board=$wss_board" \
+            "src=$wss_src" \
+            "xrce_port=" \
+            "conf_files=$wss_conf_files" \
+            "zenoh_locator=$wss_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wss_sccache_launcher")"
+        emit_record fixture "$wss_id" "$wss_target" "$wss_board" "$wss_lang" "$wss_lang_tag" "$wss_role" "$wss_rmw" \
+            "$wss_src" "$wss_src_dir" "$wss_build_name" "$wss_build_dir" "$log_dir/${wss_build_name}.log" "" \
+            "$wss_zenoh_locator" "" "$wss_conf_files" "$wss_extra_cmake_defs" \
+            "$wss_sig" "$wss_sig_file" 0 "$pristine"
+    fi
+
+    # phase-276 W6 — the MULTIHOST robot1 (talker) Rust workspace Entry
+    # (examples/workspaces/rust/src/zephyr_entry_robot1): the
+    # multihost-on-embedded coverage cell. `nros::main!(launch =
+    # "demo_bringup:multihost.launch.xml", host = "robot1")` bakes only the
+    # robot1 slice (the talker); the robot2 listener is a native per-host
+    # entry in the paired e2e, so /chatter crosses hosts. Distinct zenohd
+    # port (17853). Consumed by tests/multihost_zephyr_entry_e2e.rs.
+    wsm_board="native_sim/native/64"
+    wsm_lang="rust"
+    wsm_lang_tag="rs"
+    wsm_role="entry"
+    wsm_rmw="zenoh"
+    wsm_build_name="build-ws-rs-mh-robot1-entry-zenoh"
+    wsm_build_dir="$build_root/$wsm_build_name"
+    wsm_src="workspaces/rust/src/zephyr_entry_robot1"
+    wsm_src_dir="$nros_root/examples/$wsm_src"
+    wsm_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wsm_zenoh_locator="tcp/127.0.0.1:17853"
+    wsm_id="zephyr/native_sim/native/64/workspace-mh-robot1-entry"
+    wsm_target="fixture/zephyr/native_sim/native/64/workspace-mh-robot1-entry"
+    wsm_filter_haystack="$wsm_board $wsm_build_name $wsm_src $wsm_conf_files $wsm_id"
+    if [ -d "$wsm_src_dir" ] && { [ -z "$fixture_filter" ] || [[ "$wsm_filter_haystack" =~ $fixture_filter ]]; }; then
+        selected=$((selected + 1))
+        wsm_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wsm_extra_cmake_defs="$wsm_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wsm_zenoh_locator\""
+        wsm_extra_cmake_defs="$wsm_extra_cmake_defs -DCONF_FILE=$wsm_conf_files"
+        wsm_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wsm_sccache_launcher=1
+            wsm_extra_cmake_defs="$wsm_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wsm_sig_file="$wsm_build_dir/.nros-zephyr-fixture.sig"
+        wsm_sig="$(printf '%s\n' \
+            "board=$wsm_board" \
+            "src=$wsm_src" \
+            "xrce_port=" \
+            "conf_files=$wsm_conf_files" \
+            "zenoh_locator=$wsm_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wsm_sccache_launcher")"
+        emit_record fixture "$wsm_id" "$wsm_target" "$wsm_board" "$wsm_lang" "$wsm_lang_tag" "$wsm_role" "$wsm_rmw" \
+            "$wsm_src" "$wsm_src_dir" "$wsm_build_name" "$wsm_build_dir" "$log_dir/${wsm_build_name}.log" "" \
+            "$wsm_zenoh_locator" "" "$wsm_conf_files" "$wsm_extra_cmake_defs" \
+            "$wsm_sig" "$wsm_sig_file" 0 "$pristine"
+    fi
+
     # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS west path as
     # the Rust workspace entry above, but the Zephyr application dir is
     # examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) + nano_ros_entry(BOARD

@@ -2295,6 +2295,31 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
     require_prebuilt_binary(&binary_path)
 }
 
+/// phase-276 W4 — the Zephyr (native_sim) E2E-SAFETY (CRC) Rust workspace Entry
+/// (`ws-safety-rust/src/zephyr_entry`): the system declares `features = ["safety"]`,
+/// so the zenoh backend attaches the E2E CRC + sequence number on publish and
+/// validates on receive; safe_listener republishes its CRC-VALIDATED count on
+/// `/safe_ok`. Built by the west lane into
+/// `<zephyr-build-root>/build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/safety_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
+/// phase-276 W6 — the Zephyr (native_sim) MULTIHOST robot1 (talker) Rust workspace
+/// Entry (`workspaces/rust/src/zephyr_entry_robot1`): `nros::main!(launch =
+/// "demo_bringup:multihost.launch.xml", host = "robot1")` bakes only the robot1
+/// slice of the multi-host launch — the talker. Paired with the NATIVE robot2
+/// (listener) per-host entry so `/chatter` crosses hosts. Built by the west lane
+/// into `<zephyr-build-root>/build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/multihost_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

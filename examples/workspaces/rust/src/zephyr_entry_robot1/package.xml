@@ -1,12 +1,11 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>zephyr_entry</name>
+  <name>zephyr_entry_robot1</name>
   <version>0.1.0</version>
-  <description>Entry pkg — boots the QoS-override system on Zephyr (west app, zenoh RMW).</description>
+  <description>Entry pkg — boots the demo topology on Zephyr (west app, multi-RMW).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
-  <exec_depend>reliable_talker_pkg</exec_depend>
-  <exec_depend>qos_listener_pkg</exec_depend>
+  <exec_depend>talker_pkg</exec_depend>
   <exec_depend>demo_bringup</exec_depend>
   <export>
     <build_type>ament_cargo</build_type>

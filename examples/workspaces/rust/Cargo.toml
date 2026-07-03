@@ -41,7 +41,7 @@ members = [
 # member. It deliberately carries NO `[workspace]` table of its own so
 # the `nros::main!` macro's pkg-index still resolves the sibling node
 # pkgs against THIS workspace root (see src/zephyr_entry/Cargo.toml).
-exclude = ["src/zephyr_entry"]
+exclude = ["src/zephyr_entry", "src/zephyr_entry_robot1"]
 
 [workspace.metadata.nros]
 default_system = "demo_bringup"

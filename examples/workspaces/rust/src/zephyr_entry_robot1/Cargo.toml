@@ -1,0 +1,132 @@
+# Entry pkg — boots the `demo_bringup` demo topology on Zephyr.
+#
+# Phase 225.P — Zephyr is its own framework: the RTOS owns boot + the C
+# `main`, so this is a `staticlib` exporting `rust_main` (consumed by
+# `zephyr-lang-rust`'s `rust_cargo_application()`), NOT a `[[bin]]`. The
+# Entry source is the same one-line `nros::main!(launch = ...)` the
+# native / freertos / threadx entries use — the macro routes
+# `deploy = "zephyr"` to the `Framework::Zephyr` emit shape that exports
+# `rust_main` instead of a (Zephyr-forbidden) Rust `fn main`.
+#
+# RMW selection flows Kconfig overlay (`prj-<rmw>.conf`) →
+# `CONFIG_NROS_RMW_<X>` → CMakeLists `EXTRA_CARGO_ARGS`
+# (`--no-default-features --features rmw-<x>`); board comes from
+# `west build -b <board>`. The user types no nano-ros build verb.
+#
+# Built by `west build`, NOT plain cargo, so the parent workspace
+# `exclude`s `src/zephyr_entry`. Deliberately has NO `[workspace]` table:
+# the `nros::main!` macro's `detect_workspace_root` must walk UP to the
+# real `examples/workspaces/rust` workspace so its pkg-index can resolve
+# the sibling `talker_pkg` / `listener_pkg` / `demo_bringup`.
+
+[package]
+name = "zephyr_entry_robot1"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on Zephyr (west app, multi-RMW)."
+
+[lib]
+# Must be `rustapp`: zephyr-lang-rust's `rust_cargo_application()` links the
+# app staticlib by the fixed name `librustapp.a`. The package stays
+# `zephyr_entry` (the fixtures.toml `entry` + `cargo -p` handle).
+name = "rustapp"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["rmw-zenoh"]
+# Phase 248 C6g — RMW is selected by config and the Zephyr board's CMake C-port
+# (zenoh-pico Zephyr module / Cyclone CMake) links the concrete backend, NOT a
+# Rust `nros rmw-*` dep. These rows are now inert build-target markers, kept so
+# the Zephyr `CMakeLists.txt` EXTRA_CARGO_ARGS `--features rmw-<x>` still
+# resolves; they no longer forward `nros rmw-*`. (#60 T5)
+#
+# Issue #129 (RFC-0031 C5b amendment, 2026-07-03) — `rmw-zenoh` is a REAL
+# backend dep again, NOT an inert marker: on a Rust Zephyr app nothing else
+# links or registers the backend (`nros-board-zephyr` is NetworkWait-only and
+# `.init_array` ctors are compiled out on `target_os = "none"`), so the entry
+# carries the direct `nros-rmw-zenoh` dep and the `nros::main!` Zephyr arm
+# emits the explicit `register()` from the deploy metadata's `rmw` key. The
+# C6g "the CMake C-port links the backend" premise only ever held for C/C++
+# entries; the Rust lane silently lost its backend (masked by stale fixtures).
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-cyclonedds = []
+rmw-xrce = []
+
+# Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
+# proc-macro onto the `Framework::Zephyr` emit branch and feeds
+# `nros check`.
+[package.metadata.nros.entry]
+deploy = "zephyr"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7469"
+
+[package.metadata.ament]
+exec_depend = ["talker_pkg", "demo_bringup"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+# Agnostic `nros` dep — `alloc` (no `std`; Zephyr is a `no_std` target) +
+# `rmw-cffi` vtable + ROS edition. Phase 248 C6g: the concrete RMW backend is
+# linked by the Zephyr board's CMake C-port (zenoh-pico Zephyr module / Cyclone
+# CMake / Micro-XRCE) selected from `CONFIG_NROS_RMW_<X>`, NOT a Rust
+# `nros rmw-*` or `nros platform-*` feature.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+
+# Zephyr family board — supplies `ZephyrBoard` (NetworkWait link-up gate;
+# the macro uses it for the carrier gate only, NOT BoardEntry).
+nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }
+
+# Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
+# for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+
+# Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
+# Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west
+# build's INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-zephyr",
+    "ros-humble",
+], optional = true }
+
+# Node pkg rlibs (platform/RMW-agnostic after Phase 248 C6a) — the launch XML
+# names `talker` + `listener`, so the macro emits both `register` calls; the
+# staticlib links both. `platform-zephyr` + the selected `rmw-*` come from THIS
+# entry's `nros` dep / feature matrix (the Zephyr board crate is NetworkWait-
+# only and carries no platform/rmw, so per the RFC-0031 C5b amendment Zephyr is
+# the documented transitional exception — codegen links the backend via the
+# entry's direct `nros-rmw-*` dep + explicit register, NOT a board feature).
+# Only robot1's node: the `host = "robot1"` filter keeps the talker; the
+# listener lives on the robot2 host (a native process in the e2e).
+talker_pkg = { path = "../talker_pkg", default-features = false }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+# Message-binding + intra-repo crate resolution. Because this Entry is
+# `exclude`d from the parent workspace, it builds standalone and does NOT
+# inherit the parent's `[patch.crates-io]`. The generated message crates
+# live at the workspace-root `generated/` dir (provisioned once by
+# `nros ws sync` at `examples/workspaces/rust/`); reference them from one
+# level up (`../../generated`). nros-core / nros-serdes are patched to the
+# in-repo crates the generated message crates depend on via `version = "*"`.
+[patch.crates-io]
+builtin_interfaces = { path = "../../generated/builtin_interfaces" }
+std_msgs = { path = "../../generated/std_msgs" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }

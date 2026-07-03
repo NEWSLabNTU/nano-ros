@@ -19,6 +19,16 @@ related: [phase-276, phase-274, rfc-0015, rfc-0032, phase-270]
 > belongs with the phase-274 W3 embedded convergence (they share the Zephyr
 > `k_thread` per-tier-task machinery); params/lifecycle are the cheaper half.
 
+> **Progress 2026-07-03 — the cheap half LANDED.** The `Framework::Zephyr` (and
+> Esp32) arm now emits `param_services_call` + `lifecycle_call` + the deploy-rmw
+> `register()` (RFC-0031 C5b amendment), and 276 **W1 (params)** and **W3
+> (lifecycle)** are proven on Zephyr e2e (`params_zephyr_entry_e2e`,
+> `lifecycle_zephyr_entry_e2e` — autostart reaches `active`, all five REP-2002
+> services answer; the service-path blocker was issue #139, resolved). **What
+> remains of this issue is exactly the hard half: `ZephyrBoard::run_tiers`**
+> (Model-1 per-tier `k_thread` tasks on the Rust side — 276 W2), which belongs
+> with the phase-274 W3 embedded convergence machinery.
+
 ## Summary
 
 Phase 276 (capability-on-embedded) targets **Zephyr `native_sim`** as the primary
