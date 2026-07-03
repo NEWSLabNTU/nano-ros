@@ -1648,7 +1648,7 @@ dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 [[fixture]]
 platform = "qemu-arm-baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/qemu-baremetal-main-e2e"
+dir = "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e"
 
 [[fixture]]
 platform = "qemu-arm-baremetal"

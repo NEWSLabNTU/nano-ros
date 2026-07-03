@@ -11,7 +11,7 @@
 //!
 //! ## Fixture
 //!
-//! `examples/qemu-arm-baremetal/rust/qemu-baremetal-main-e2e/` — a single
+//! `packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/` — a single
 //! self-contained crate (issue 0100): `main.rs` is the 5-line `nros::main!()`
 //! Entry (`#![no_std]/#![no_main]/panic` + the macro), `lib.rs` is the node
 //! (`nros::node!(E2eNode)`); the macro owns the whole boot scaffold.
@@ -26,8 +26,8 @@
 //! arm (`Application setup complete`) appears only when a peer is present.
 //!
 //! Per issue 0041 ("No compilation inside tests") the fixture is built in the
-//! build stage by `just qemu-baremetal build-fixtures` (auto-discovered by the
-//! `examples/qemu-arm-baremetal` Cargo.toml walk); this test only locates the
+//! build stage by `just qemu-baremetal build-fixtures` (staged via its
+//! `examples/fixtures.toml` manifest entry); this test only locates the
 //! prebuilt ELF and runs it. Absent fixture / QEMU / target → skip.
 
 use std::{process::Command, time::Duration};

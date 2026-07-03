@@ -2913,8 +2913,9 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
 }
 
 /// Phase 244.D1 — resolve the prebuilt bare-metal `nros::main!()` BoardEntry
-/// E2E fixture (`qemu-baremetal-main-e2e`) from the shared qemu-arm-baremetal
-/// fixture target dir. No caching needed — it only stats a path. Absent →
+/// E2E fixture (`qemu-baremetal-main-e2e`, source at
+/// `packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/`) from the
+/// shared qemu-arm-baremetal fixture target dir. No caching needed — it only stats a path. Absent →
 /// `BuildFailed` (the test skips, prompting `just qemu-baremetal build-fixtures`).
 pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
     require_qemu_baremetal_fixture("qemu-baremetal-main-e2e")
