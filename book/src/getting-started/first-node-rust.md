@@ -161,14 +161,16 @@ zenohd                               # installed by `nros setup native`
 
 # Terminal 2 — the talker. The talker logs via `log::info!`, so set
 # RUST_LOG=info — without it `env_logger` only shows errors and the
-# `Published: N` lines stay hidden.
+# `Publishing:` lines stay hidden.
 cd examples/native/rust/talker
 RUST_LOG=info cargo run
 # Expected output (on stderr):
-#   [INFO  native_rs_talker] nros Native Talker (Zenoh Transport)
-#   [INFO  native_rs_talker] =========================================
-#   [INFO  native_rs_talker] Published: 0
-#   [INFO  native_rs_talker] Published: 1
+#   [INFO  talker] nros Native Talker
+#   [INFO  talker] =========================================
+#   [INFO  talker] Node created: talker
+#   [INFO  talker] Publisher created for topic: /chatter
+#   [INFO  talker] Publishing: 'Hello World: 1'
+#   [INFO  talker] Publishing: 'Hello World: 2'
 #   …
 ```
 
@@ -188,20 +190,21 @@ ros2 run rmw_zenoh_cpp rmw_zenohd &       # in its own subshell
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 If `ros2 topic echo` shows no output despite the talker printing
-`Published:`, the routers aren't peering — confirm both processes
+`Publishing:`, the routers aren't peering — confirm both processes
 point at the same port (default `tcp/127.0.0.1:7447`).
 
-**Readiness signal.** Within 5 seconds of `RUST_LOG=info cargo run`,
-the talker should print `Published: 0` (the Rust talker pre-publishes
-`0` before the counter advances). If no `Published:` line in 30
+**Readiness signal.** Within ~6 seconds of `RUST_LOG=info cargo run`
+(session open + the first 1 s timer tick), the talker should print
+`Publishing: 'Hello World: 1'` — the count starts at 1, matching the
+official ROS 2 `demo_nodes_cpp` talker. If no `Publishing:` line in 30
 seconds:
 
 1. Confirm `RUST_LOG` is set. Without `RUST_LOG=info` (or `debug`),
-   `env_logger` filters out the `Published:` lines and the run looks
+   `env_logger` filters out the `Publishing:` lines and the run looks
    silent even when it's working.
 2. Confirm `zenohd` is running (terminal 1). Without it, the talker
    blocks on `Executor::open` indefinitely.

@@ -164,11 +164,9 @@ zenohd                               # installed by `nros setup native`
 cd examples/native/c/talker
 ./build/c_talker
 # Expected output:
-#   nros C Talker
-#   =================
-#   Published: 0
-#   Published: 1
-#   Published: 2
+#   Publishing: 'Hello World: 1'
+#   Publishing: 'Hello World: 2'
+#   Publishing: 'Hello World: 3'
 #   …
 
 # 3. Verify from stock ROS 2:
@@ -177,13 +175,14 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-**Readiness signal.** Within 5 seconds of `./build/c_talker`, the
-binary should print `Published: 0` on stdout — Rust + C + C++ all
-start the counter at 0 (Phase 208.D.9). If no `Published:` line
-in 30 seconds:
+**Readiness signal.** Within ~6 seconds of `./build/c_talker` (session
+open + the first 1 s timer tick), the binary should print
+`Publishing: 'Hello World: 1'` on stdout — Rust + C + C++ all start
+the count at 1, matching the official ROS 2 demo talker. If no
+`Publishing:` line in 30 seconds:
 
 1. Confirm `zenohd` is running (terminal 1). Without it,
    `nros_support_init` returns immediately with `-4`

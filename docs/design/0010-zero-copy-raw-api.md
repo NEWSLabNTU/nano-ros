@@ -19,7 +19,7 @@ superseded-by: null
 
 The **only** crate users (and example code) reach into is `nros::*` (the nano-ros facade crate). RMW backend crates (`nros-rmw-uorb`, `nros-rmw-zenoh`, `nros-rmw-xrce`, …) are **internal** plumbing — they implement the `nros-rmw` trait surface and are pulled in by `nros` via Cargo features (`nros = { features = ["rmw-uorb"] }`). Users never write `use nros_rmw_uorb::publication;` etc. in application code.
 
-This rule applies equally to the bundled examples: the on-disk `examples/px4/rust/uorb/{talker,listener}` route through `nros::Executor` + `nros::Node` + `nros::EmbeddedRawPublisher` + `nros::RawSubscription`, not through `nros_rmw_uorb::publication::<T>` / `subscription::<T>`. The latter typed-direct path still exists inside the RMW crate as the implementation entrypoint for the trampoline registry, but it is not the user-facing API.
+This rule applies equally to the bundled examples: the (since-retired) `examples/px4/rust/uorb/{talker,listener}` routed through `nros::Executor` + `nros::Node` + `nros::EmbeddedRawPublisher` + `nros::RawSubscription`, not through `nros_rmw_uorb::publication::<T>` / `subscription::<T>` — the discipline any future uORB example must follow. The typed-direct path still exists inside the RMW crate as the implementation entrypoint for the trampoline registry, but it is not the user-facing API.
 
 ### Two API classes
 

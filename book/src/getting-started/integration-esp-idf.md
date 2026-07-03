@@ -95,7 +95,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 # Expected serial output:
 #   I (1234) nano-ros: Wi-Fi connected
 #   I (1456) nano-ros: zenoh session opened
-#   I (1567) nano-ros: Published: 0
+#   I (2567) nano-ros: Publishing: 'Hello World: 1'
 
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
@@ -103,7 +103,7 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 QEMU ESP32 testing path: see the `just esp_idf` recipes — they
@@ -112,8 +112,9 @@ patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by
-`I (XXXX) nano-ros: Published: 0` within 10 seconds — Rust + C + C++
-all start the counter at 0 (Phase 208.D.9). If no `Published:` line:
+`I (XXXX) nano-ros: Publishing: 'Hello World: 1'` within 10 seconds
+— Rust + C + C++ talkers all start the count at 1, matching the
+official ROS 2 demo talker. If no `Publishing:` line:
 
 1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
    must carry SSID + password OR your `nros.toml` must.

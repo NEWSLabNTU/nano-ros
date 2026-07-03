@@ -33,7 +33,7 @@ cargo run -p native-rs-talker --features zenoh -- --tcp 127.0.0.1:7447
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ## Protocol Requirements
@@ -50,7 +50,7 @@ For ROS 2 Humble, the data key expression format is:
 
 Example:
 ```
-0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported
+0/chatter/std_msgs::msg::dds_::String_/TypeHashNotSupported
 ```
 
 **Note:** Newer ROS 2 versions (Iron+) use `RIHS01_<hash>` format with actual type hashes.
@@ -153,8 +153,8 @@ fn to_hex_string(&self) -> String {
 **Cause:** Data keyexpr format mismatch.
 
 **Solution:** For Humble, don't use `RIHS01_` prefix in data keyexprs:
-- Wrong: `0/chatter/std_msgs::msg::dds_::Int32_/RIHS01_TypeHashNotSupported`
-- Correct: `0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported`
+- Wrong: `0/chatter/std_msgs::msg::dds_::String_/RIHS01_TypeHashNotSupported`
+- Correct: `0/chatter/std_msgs::msg::dds_::String_/TypeHashNotSupported`
 
 ### Issue: Topic not visible in ros2 topic list
 
@@ -175,7 +175,7 @@ fn to_hex_string(&self) -> String {
 
 **Solution:** Use BEST_EFFORT for both:
 ```bash
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ### Issue: rmw_zenoh not connecting to router

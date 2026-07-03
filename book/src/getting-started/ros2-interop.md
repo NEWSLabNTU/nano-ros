@@ -32,15 +32,15 @@ RUST_LOG=info cargo run
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 You should see the ROS 2 listener printing messages published by nano-ros:
 
 ```
-data: 1
+data: 'Hello World: 1'
 ---
-data: 2
+data: 'Hello World: 2'
 ---
 ```
 
@@ -57,7 +57,7 @@ RUST_LOG=info cargo run
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 topic pub /chatter std_msgs/msg/Int32 "{data: 42}" --qos-reliability best_effort
+ros2 topic pub /chatter std_msgs/msg/String "{data: 'Hello from ROS 2'}" --qos-reliability best_effort
 ```
 
 ## Discovery
@@ -93,7 +93,7 @@ nano-ros defaults to BEST_EFFORT reliability and VOLATILE durability. When
 using ROS 2 subscribers, match the QoS:
 
 ```bash
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 Without `--qos-reliability best_effort`, ROS 2 defaults to RELIABLE, which
@@ -115,7 +115,7 @@ Set this before any `ros2` command.
 nano-ros uses the same wire format as `rmw_zenoh_cpp`:
 
 - **Data key expression**: `<domain_id>/<topic>/<type>/TypeHashNotSupported`
-  (Humble). Example: `0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported`
+  (Humble). Example: `0/chatter/std_msgs::msg::dds_::String_/TypeHashNotSupported`
 - **Liveliness tokens**: `@ros2_lv/<domain>/<zid>/0/...` for discovery
 - **Message encoding**: CDR little-endian with 4-byte encapsulation header
   `[0x00, 0x01, 0x00, 0x00]`

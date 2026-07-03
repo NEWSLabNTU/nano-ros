@@ -93,8 +93,8 @@ All examples are in `examples/qemu-arm-nuttx/rust/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|
-| `talker`         | Publishes `std_msgs/Int32` on `/chatter`         |
-| `listener`       | Subscribes to `std_msgs/Int32` on `/chatter`     |
+| `talker`         | Publishes `std_msgs/String` on `/chatter`        |
+| `listener`       | Subscribes to `std_msgs/String` on `/chatter`    |
 | `service-server` | Serves `AddTwoInts` on `/add_two_ints`           |
 | `service-client` | Calls `AddTwoInts` on `/add_two_ints`            |
 | `action-server`  | Serves `Fibonacci` action on `/fibonacci`        |

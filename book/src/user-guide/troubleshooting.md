@@ -140,7 +140,7 @@ The `--seed` parameter initializes the test entropy source with a different valu
 
 ### Cyclone DDS: Two native_sim Nodes Never Discover Each Other
 
-**Symptom**: Two native_sim nodes with the **Cyclone DDS** RMW (e.g. talker + listener) each start, the publisher reports `Published: N`, but the subscriber stays at `Received: 0` — no abort, no error.
+**Symptom**: Two native_sim nodes with the **Cyclone DDS** RMW (e.g. talker + listener) each start, the publisher reports `Publishing: 'Hello World: N'`, but the subscriber never prints an `I heard:` line — no abort, no error.
 
 **Root Cause**: Same fixed-entropy issue as above. Cyclone derives each participant's DDSI **GUID prefix** from the entropy source; with identical entropy, both processes get the *same* GUID. DDSI requires per-participant unique GUIDs — a node treats SPDP from a peer that shares its own GUID as a self-announcement and drops it, so the two never form a proxy-participant pair and discovery never closes.
 

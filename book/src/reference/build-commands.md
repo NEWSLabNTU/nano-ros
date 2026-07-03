@@ -175,7 +175,7 @@ cd examples/native/rust/talker && RUST_LOG=info cargo run --features zenoh
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ## Actions

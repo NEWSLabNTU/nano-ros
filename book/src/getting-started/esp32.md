@@ -101,11 +101,9 @@ just esp32 build-qemu
 just esp32 zenohd &
 # Then boot the talker binary in qemu-system-riscv32 (esp32c3):
 just esp32 talker
-# Expected serial output (per src/main.rs):
-#   Declaring publisher on /chatter (std_msgs/Int32)
-#   Publisher declared
-#   Published: 0
-#   Published: 1
+# Expected serial output (per src/lib.rs):
+#   Publishing: 'Hello World: 1'
+#   Publishing: 'Hello World: 2'
 #   ...
 
 # Verify from stock ROS 2 on the same network:
@@ -114,13 +112,13 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 **Readiness signal.** QEMU ESP32: ~15 seconds **after** a warm cache —
 the `just esp32 talker` recipe re-runs `build-qemu` every invocation,
 so a first / cold run adds ~25 s of build time on top. If no
-`Published:` line:
+`Publishing:` line:
 
 1. Wrong locator → talker logs `zenoh open failed` and retries.
    Confirm `zenohd` is reachable on the host IP (`10.0.2.2:7454`).

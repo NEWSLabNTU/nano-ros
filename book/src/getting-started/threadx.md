@@ -152,11 +152,9 @@ builds finish in seconds.
 # matching just recipe — same binary the example dir builds.
 just threadx_linux zenohd &
 just threadx_linux talker
-# Expected (per src/main.rs structured logs):
-#   Declaring publisher on /chatter (std_msgs/Int32)
-#   Publisher declared
-#   Published: 0
-#   Published: 1
+# Expected (per src/lib.rs structured logs):
+#   Publishing: 'Hello World: 1'
+#   Publishing: 'Hello World: 2'
 #   ...
 
 # threadx-riscv64 (QEMU virt). Same shape — zenohd on 7453 first,
@@ -171,17 +169,17 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 For batch testing: `just threadx_linux test` runs every pubsub /
 service / action against an in-test zenohd.
 
-**Readiness signal.** threadx-linux: `Published: 0` within 3
-seconds of `just threadx_linux talker` **on a warm cache**; a cold
-first run rebuilds the Rust example (~80 s on a fresh checkout)
-before the first publish lands. threadx-riscv64 (QEMU): within
-~15 seconds of QEMU boot. If no `Published:` line:
+**Readiness signal.** threadx-linux: `Publishing: 'Hello World: 1'`
+within a few seconds of `just threadx_linux talker` **on a warm
+cache**; a cold first run rebuilds the Rust example (~80 s on a
+fresh checkout) before the first publish lands. threadx-riscv64
+(QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:
 
 1. Confirm `zenohd` reachable on the locator from `nros.toml`
    (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).

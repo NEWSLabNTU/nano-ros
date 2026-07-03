@@ -17,12 +17,13 @@ flowchart TB
 
 Four layers, swappable independently: the same node code runs over any RMW
 backend on any platform. Here is a complete Linux publisher — register a
-backend, open the executor, publish `std_msgs/Int32` on `/chatter` once a
-second:
+backend, open the executor, publish `std_msgs/String` (`Hello World: N`)
+on `/chatter` once a second:
 
 ```rust
+use core::fmt::Write as _;
 use nros::prelude::*;
-use std_msgs::msg::Int32;
+use std_msgs::msg::String as StringMsg;
 
 fn main() {
     // Pick the backend at compile time; this one line registers it.
@@ -32,13 +33,15 @@ fn main() {
     let mut executor: Executor = Executor::open(&config).unwrap();
 
     let mut node = executor.create_node("talker").unwrap();
-    let publisher = node.create_publisher::<Int32>("/chatter").unwrap();
+    let publisher = node.create_publisher::<StringMsg>("/chatter").unwrap();
 
     let mut count = 0i32;
     executor
         .register_timer(nros::TimerDuration::from_millis(1000), move || {
-            publisher.publish(&Int32 { data: count }).unwrap();
             count += 1;
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {count}");
+            publisher.publish(&msg).unwrap();
         })
         .unwrap();
 

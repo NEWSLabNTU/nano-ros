@@ -98,7 +98,7 @@ After deployment, verify from ROS 2 side:
 
 ```bash
 ros2 topic list
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 If discovery works but samples do not arrive, check domain ID, router

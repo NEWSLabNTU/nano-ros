@@ -145,24 +145,24 @@ and your locator config, but the markers to look for are:
 ```text
 *** Booting Zephyr OS build v3.7.0 ***
 [00:00:00.xxx,000] <inf> nros: session up (domain 0)
-Published: 0/1
-Published: 1/2
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
 ...
 ```
 
 For the cpp/cyclonedds recipe, the same banner is followed by
-Cyclone DDS reader-match logs and `std_msgs/Int32` publish lines.
+Cyclone DDS reader-match logs and `std_msgs/String` publish lines.
 Verify ROS 2 interop by running a sibling listener in another
 terminal:
 
 ```bash
 # stock ROS 2 — reads the FVP's Cyclone DDS publisher
-ros2 topic echo /chatter std_msgs/msg/Int32
+ros2 topic echo /chatter std_msgs/msg/String
 ```
 
-The same `std_msgs/Int32` payload + byte-equal CDR framing must
-appear on both sides — that's the Phase 117 stock-RMW interop
-contract.
+The same `std_msgs/String` payload (`Hello World: N`) + byte-equal
+CDR framing must appear on both sides — that's the Phase 117
+stock-RMW interop contract.
 
 ## Cross-references
 

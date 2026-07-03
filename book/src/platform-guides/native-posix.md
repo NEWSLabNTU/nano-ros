@@ -52,27 +52,34 @@ my_posix_node/
     └── main.rs         # or main.c / main.cpp
 ```
 
-Keep package beside `nano-ros` in workspace `src/`. Use path
-dependencies for Rust or `add_subdirectory(<path-to-nano-ros>)` for
-C/C++.
+Examples are copy-out ready: for Rust, `cp -r` the example, run
+`NROS_REPO_DIR=<nano-ros checkout> nros sync`, and `cargo build`;
+for C/C++, `cp -r` and configure with
+`-DNANO_ROS_ROOT=<nano-ros checkout>` (or export `NROS_REPO_DIR`) —
+the example `CMakeLists.txt` resolves the checkout via its
+`NANO_ROS_ROOT` guard.
 
 ## Code Example
 
 Rust publisher skeleton:
 
 ```rust,ignore
+use core::fmt::Write as _;
 use nros::prelude::*;
+use std_msgs::msg::String as StringMsg;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = ExecutorConfig::from_env().node_name("talker");
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("talker")?;
-    let publisher = node.create_publisher::<std_msgs::msg::Int32>("/chatter")?;
+    let publisher = node.create_publisher::<StringMsg>("/chatter")?;
 
-    let mut msg = std_msgs::msg::Int32 { data: 0 };
+    let mut count = 0i32;
     loop {
+        count += 1;
+        let mut msg = StringMsg::default();
+        let _ = write!(msg.data, "Hello World: {count}");
         publisher.publish(&msg)?;
-        msg.data += 1;
         executor.spin_once(100);
     }
 }

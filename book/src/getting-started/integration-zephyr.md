@@ -154,9 +154,12 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, 
 NROS_C_COMPONENT(talker_t, talker_configure)
 ```
 
-See [`examples/zephyr/c/talker/src/Talker.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/c/talker/src/Talker.c)
-for the up-to-date source (this is a verbatim copy, only stripped of its file
-header comment). Note the `nros_cpp_*` symbol prefix: those are C-ABI
+See [`examples/templates/zephyr-byo/app/src/Talker.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/templates/zephyr-byo/app/src/Talker.c)
+for the up-to-date source (this is that BYO starter's talker, only stripped
+of its file header comment; the canonical in-tree
+[`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker)
+uses the generated **typed** `std_msgs/String` bindings instead of raw CDR).
+Note the `nros_cpp_*` symbol prefix: those are C-ABI
 functions from `nros-cpp` (the `cpp` is a namespace prefix, not C++
 linkage) — a C component links against them directly, and shares the same
 executor + node as a C++ component would.
@@ -331,23 +334,30 @@ west build -t run
 # native_sim:
 ./build/zephyr/zephyr.exe
 
-# 3. Verify from stock ROS 2 in another terminal:
+# 3. Verify from stock ROS 2 in another terminal. Match the message
+# type to the app you booted: the canonical in-tree talker publishes
+# std_msgs/String; the raw BYO Talker.c shown above publishes
+# std_msgs/Int32.
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort   # just zephyr talker
+# ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort  # BYO my_app
 ```
 
-The Zephyr boot banner runs first, then nano-ros prints
-`Published: 0`, `Published: 1`, ... as the talker fires — Rust + C +
-C++ all start at 0 (Phase 208.D.9).
+The Zephyr boot banner runs first, then the talker fires: the
+canonical in-tree talker prints `Publishing: 'Hello World: 1'`,
+`Publishing: 'Hello World: 2'`, ... (Rust + C + C++ all count from
+1, matching the official ROS 2 demo talker); the raw BYO `Talker.c`
+above prints `Published: 0`, `Published: 1`, ...
 
-**Readiness signal.** On `native_sim`, expect `Published: 0`
-within 5 seconds of `just zephyr talker` (or
+**Readiness signal.** On `native_sim`, expect the first publish line
+(`Publishing: 'Hello World: 1'` for `just zephyr talker`;
+`Published: 0` for the BYO app) within 5 seconds of boot (or
 `./build/zephyr/zephyr.exe`); on `qemu_cortex_a9` expect it within
-~15 seconds (QEMU cold boot + Zephyr init). If no `Published:` line
+~15 seconds (QEMU cold boot + Zephyr init). If no publish line
 in 30 seconds:
 
 1. Confirm `CONFIG_NROS=y` lit up via `west build -t menuconfig`;

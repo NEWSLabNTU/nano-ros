@@ -193,13 +193,14 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 **Readiness signal.** After typing the app's NSH command (e.g.
-`nuttx_c_talker`), expect `Published: 0` on the NSH console within
-5 seconds — Rust + C + C++ all start the counter at 0
-(Phase 208.D.9). If no `Published:` line:
+`nuttx_c_talker`), expect `Publishing: 'Hello World: 1'` on the NSH
+console within ~6 seconds — Rust + C + C++ talkers all start the
+count at 1, matching the official ROS 2 demo talker. If no
+`Publishing:` line:
 
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.

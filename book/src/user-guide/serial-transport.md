@@ -111,7 +111,7 @@ The MCU's messages are now bridged to the zenoh network. Any zenoh subscriber (i
 z_sub -k "0/chatter/**"
 
 # Or from a ROS 2 node
-ros2 topic echo /chatter std_msgs/msg/Int32
+ros2 topic echo /chatter std_msgs/msg/String
 ```
 
 ## Configuration

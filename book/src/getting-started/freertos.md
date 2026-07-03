@@ -155,7 +155,7 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 QEMU exits via Ctrl-A x.
@@ -165,10 +165,11 @@ test` runs every E2E (pub/sub, service, action) against a temporary
 in-test zenohd.
 
 **Readiness signal.** Within ~20 seconds of QEMU boot, the talker
-should print `Published: 0` on its semihosting stdout (the Rust
-talker pre-publishes `0` before the first counter bump). QEMU
-cold-boot through FreeRTOS init + lwIP DHCP + zenoh session open
-typically takes 10–15 s. If no `Published:` line in 30 seconds:
+should print `Publishing: 'Hello World: 1'` on its semihosting
+stdout — the count starts at 1, matching the official ROS 2 demo
+talker. QEMU cold-boot through FreeRTOS init + lwIP DHCP + zenoh
+session open typically takes 10–15 s. If no `Publishing:` line in
+30 seconds:
 
 1. Confirm `zenohd` is running on the host (Slirp forwards
    `10.0.2.2:7451` → host:7451). Without it the talker retries the

@@ -74,5 +74,9 @@ manifests into the same root CMake. Each shell is a
 ## Worked example
 
 The `examples/native/c/talker/CMakeLists.txt` is the canonical
-copy-out template — 20 lines including codegen + per-app fixup. All
-83 in-tree C/C++ examples follow the same shape after.
+copy-out template: it resolves the nano-ros checkout root once
+(`-DNANO_ROS_ROOT` cache var → `NROS_REPO_DIR` env var → in-repo
+walk-up), includes the workspace helpers, generates the message
+bindings (`nros_find_interfaces`), and declares the app via
+`nano_ros_entry(...)` — ~55 lines including codegen + per-app fixup.
+All in-tree C/C++ examples follow the same shape.

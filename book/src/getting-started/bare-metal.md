@@ -111,11 +111,9 @@ just qemu zenohd &
 #    no `-nic socket,model=lan9118,…`, so a plain `cargo run` boots
 #    QEMU without networking):
 just qemu talker
-# Expected serial-over-semihosting output (per src/main.rs):
-#   Declaring publisher on /chatter (std_msgs/Int32)
-#   Publisher declared
-#   Published: 0
-#   Published: 1
+# Expected serial-over-semihosting output (per src/lib.rs):
+#   Publishing: 'Hello World: 1'
+#   Publishing: 'Hello World: 2'
 #   ...
 
 # 3. Verify from stock ROS 2:
@@ -124,16 +122,16 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 QEMU exits via Ctrl-A x.
 
 **Readiness signal.** Within ~15 seconds of QEMU boot (no RTOS
 init delay, but smoltcp + zenoh handshake still takes a few
-seconds), expect `Published: 0` on semihosting stdout (the Rust
-talker pre-publishes `0` before the counter advances). If no
-`Published:` line:
+seconds), expect `Publishing: 'Hello World: 1'` on semihosting
+stdout — the count starts at 1, matching the official ROS 2 demo
+talker. If no `Publishing:` line:
 
 1. `zenohd` not running — talker spins on smoltcp poll until
    killed.

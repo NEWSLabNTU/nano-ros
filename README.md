@@ -100,28 +100,37 @@ complete walkthrough.
 
 ## Quick Start (C API)
 
-Consume nano-ros from a CMake project via `add_subdirectory`:
+The C examples are standalone CMake projects — build them in place, or
+copy the directory out and point it back at a nano-ros checkout:
 
 ```bash
-# Clone alongside (or as a submodule of) your project.
+# In-tree:
 cd examples/native/c/talker
 cmake -B build -S .
 cmake --build build
 ./build/c_talker
+
+# Copied out: pass the checkout explicitly (or export NROS_REPO_DIR).
+cmake -B build -S . -DNANO_ROS_ROOT=<path-to-nano-ros>
 ```
 
-The example's `CMakeLists.txt` is 20 lines:
+The example's `CMakeLists.txt` resolves the nano-ros checkout root once
+(`-DNANO_ROS_ROOT` cache var → `NROS_REPO_DIR` env var → in-repo
+walk-up), pulls in the workspace helpers, then declares the app in a
+few lines:
 
 ```cmake
-cmake_minimum_required(VERSION 3.22)
-project(c_talker LANGUAGES C)
+include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
+nano_ros_workspace_pkg_guard()
 
-set(NANO_ROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
-add_subdirectory(<path-to-nano-ros> nano_ros)
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)   # generated msg bindings
 
-add_executable(c_talker src/main.c)
-target_link_libraries(c_talker PRIVATE NanoRos::NanoRos)
+nano_ros_entry(
+    NAME c_talker
+    SOURCES src/main.c
+    DEPLOY native)
+
+target_link_libraries(c_talker PRIVATE std_msgs__nano_ros_c)
 nros_platform_link_app(c_talker)
 ```
 
@@ -151,7 +160,7 @@ cd examples/native/rust/talker && RUST_LOG=info cargo run
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ## Project Structure
@@ -159,25 +168,29 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 packages/
 ├── core/                      # The nros library stack
-│   ├── nros/              # Unified API (re-exports all sub-crates)
-│   ├── nros-core/         # Core types, traits, node abstraction
-│   ├── nros-serdes/       # CDR serialization
-│   ├── nros-macros/       # #[derive(RosMessage)] proc macros
-│   ├── nros-params/       # Parameter server
-│   ├── nros-rmw/          # Transport abstraction (middleware traits)
-│   ├── nros-node/         # High-level node API + parameter services
-│   └── nros-c/            # C API (rclc-style)
-├── zpico/                     # Zenoh-pico transport backend
-│   ├── nros-rmw-zenoh/        # Safe Rust API for zenoh-pico
-│   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
-│   └── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
-├── interfaces/                # Generated ROS 2 types
-│   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
-├── bsp/                       # Board Support Packages
+│   ├── nros/                  # Unified API (re-exports all sub-crates)
+│   ├── nros-core/             # Core types, traits, node abstraction
+│   ├── nros-serdes/           # CDR serialization
+│   ├── nros-macros/           # #[derive(RosMessage)] proc macros
+│   ├── nros-params/           # Parameter server
+│   ├── nros-rmw/              # Transport abstraction (middleware traits)
+│   ├── nros-node/             # High-level node API + parameter services
+│   ├── nros-c/                # C API (rclc-style)
+│   ├── nros-cpp/              # C++ API (rclcpp-style)
+│   └── nros-platform-*/       # Per-RTOS platform glue (posix, zephyr, …)
+├── zpico/                     # Zenoh RMW backend (zenoh-pico)
+├── xrce/                      # XRCE-DDS RMW backend (Micro XRCE-DDS)
+├── dds/                       # Cyclone DDS RMW backend
+├── px4/                       # PX4 uORB RMW backend
+├── bridge/                    # nros-bridge (cross-RMW relay)
+├── boards/                    # Board crates (native, mps2-an385, stm32f4, …)
+├── platforms/                 # Board-specific platform crates
 ├── drivers/                   # Hardware drivers (lan9118, openeth)
+├── interfaces/                # Generated ROS 2 types (rcl_interfaces, …)
+├── cli/                       # `nros` CLI: codegen + orchestration (sub-workspace)
 ├── testing/                   # Integration test infrastructure
-├── reference/                 # Low-level platform reference implementations
-└── codegen/                   # Message binding generator (`nros`)
+├── verification/              # Kani / Verus proof harnesses
+└── reference/                 # Low-level platform reference implementations
 ```
 
 ## Message Generation

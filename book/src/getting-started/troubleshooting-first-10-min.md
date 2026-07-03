@@ -256,7 +256,7 @@ subscriber is created but receives no data. Force best-effort on
 the echo:
 
 ```bash
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ## D. Doctor + last-resort
@@ -318,39 +318,37 @@ A correctly-running Rust Linux talker
 stderr (with `RUST_LOG=info`):
 
 ```text
-[INFO  native_rs_talker] nros Native Talker (Zenoh Transport)
-[INFO  native_rs_talker] =========================================
-[INFO  native_rs_talker] Node created: talker
-[INFO  native_rs_talker] Publisher created for topic: /chatter
-[INFO  native_rs_talker] Published: 0
-[INFO  native_rs_talker] Published: 1
-[INFO  native_rs_talker] Published: 2
+[INFO  talker] nros Native Talker
+[INFO  talker] =========================================
+[INFO  talker] Node created: talker
+[INFO  talker] Publisher created for topic: /chatter
+[INFO  talker] Publishing: 'Hello World: 1'
+[INFO  talker] Publishing: 'Hello World: 2'
+[INFO  talker] Publishing: 'Hello World: 3'
 ```
 
 A correctly-running C talker (`examples/native/c/talker`) prints
 on stdout:
 
 ```text
-nros C Talker
-=================
-Published: 0
-Published: 1
-Published: 2
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+Publishing: 'Hello World: 3'
 ```
 
-A correctly-running C++ talker prints the same `Published: N`
-line once per second.
+A correctly-running C++ talker prints the same
+`Publishing: 'Hello World: N'` line once per second.
 
-The ROS 2 side (`ros2 topic echo /chatter std_msgs/msg/Int32
+The ROS 2 side (`ros2 topic echo /chatter std_msgs/msg/String
 --qos-reliability best_effort` with
 `RMW_IMPLEMENTATION=rmw_zenoh_cpp`) should see:
 
 ```text
-data: 0
+data: 'Hello World: 1'
 ---
-data: 1
+data: 'Hello World: 2'
 ---
-data: 2
+data: 'Hello World: 3'
 ---
 ```
 
