@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Phase 216.B generated nros::main RTIC E2E fixture for QEMU MPS2-AN385"
+description = "Generated nros::main RTIC run-plan E2E fixture for QEMU MPS2-AN385 (phase-216.B)"
 
 [[bin]]
 name = "qemu-rtic-main-e2e"
@@ -23,7 +23,7 @@ node_pkgs = ["qemu-rtic-main-e2e"]
 
 [package.metadata.nros.node]
 class = "qemu_rtic_main_e2e::E2eNode"
-name = "phase216_rtic_e2e"
+name = "rtic_run_plan_e2e"
 default_namespace = "/"
 dispatch = "deferred"
 

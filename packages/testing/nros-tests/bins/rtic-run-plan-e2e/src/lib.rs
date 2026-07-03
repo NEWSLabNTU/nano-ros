@@ -1,10 +1,9 @@
-//! Phase 216.B RTIC `nros::main!()` E2E node.
+//! RTIC `nros::main!()` run-plan E2E node (introduced in phase-216.B).
 //!
 //! Self-contained standalone fixture (issue 0100): the node logic lives in this
-//! crate's `lib.rs` (was a sibling `phase216_rtic_e2e_pkg`); `main.rs` is the
-//! `nros::main!()` RTIC Entry. The synthetic `__nros_e2e` callback (fired by the
-//! board's `e2e-synthetic-callback` feature) signals a clean QEMU semihosting
-//! exit on the first delivery.
+//! crate's `lib.rs`; `main.rs` is the `nros::main!()` RTIC Entry. The synthetic
+//! `__nros_e2e` callback (fired by the board's `e2e-synthetic-callback`
+//! feature) signals a clean QEMU semihosting exit on the first delivery.
 
 #![no_std]
 
@@ -19,7 +18,7 @@ pub struct E2eState {
 }
 
 impl Node for E2eNode {
-    const NAME: &'static str = "phase216_rtic_e2e";
+    const NAME: &'static str = "rtic_run_plan_e2e";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {

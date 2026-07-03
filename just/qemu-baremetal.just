@@ -188,7 +188,7 @@ build-rtic-main-e2e:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cd examples/qemu-arm-baremetal/rust/phase216-rtic-e2e
+    cd packages/testing/nros-tests/bins/rtic-run-plan-e2e
     cargo build $cargo_profile_args --quiet
 
 # Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
@@ -211,7 +211,7 @@ test-rtic-main-e2e verbose="": build-rtic-main-e2e
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
             -icount shift=auto \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm-baremetal/rust/phase216-rtic-e2e/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e \
+            -kernel packages/testing/nros-tests/bins/rtic-run-plan-e2e/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e \
             -nic user,model=lan9118
 
 # Run all QEMU tests including networked E2E and RTIC

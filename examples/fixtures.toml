@@ -1637,7 +1637,7 @@ dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 [[fixture]]
 platform = "qemu-arm-baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/phase216-rtic-e2e"
+dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 
 # Phase 244.D1 bare-metal `nros::main!()` BoardEntry E2E fixture (deploy =
 # qemu-mps2-an385). Consumed by `baremetal_run_plan_runtime` (boots MPS2-AN385,
