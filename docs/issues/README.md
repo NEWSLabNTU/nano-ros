@@ -44,6 +44,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#143** — [Lift the Zephyr per-node-liveliness
+  gate](0143-lift-zephyr-per-node-liveliness-gate.md): the #129 gate treated a symptom of the
+  #139 socket-timeout starvation; with the 100 ms fix landed it likely can be reverted —
+  rebuild the west lane + rerun the zephyr e2es to confirm (restores per-node graph fidelity).
+- **#142** — [stm32f4 talker dual
+  classification](0142-stm32f4-talker-dual-classification-fails-example-shape.md): the 0100.W4
+  Entry/Node collapse left BOTH `[…nros.entry]` and `[…nros.node]` on one crate —
+  `example_shape::component_or_application_classification_present` red since June 27.
+- **#141** — [nros publisher → rmw_zenoh_cpp subscriber delivers no
+  data](0141-nros-pub-to-rmw-zenoh-cpp-sub-no-data.md): `ros2 topic echo` sees nothing from
+  healthy nros publishers while graph discovery + the service path interop fine and a native
+  nros subscriber receives the same stream — the pub direction of the ROS 2 interop matrix is
+  unproven (found in 276-W5; relates to #133's soft-pass masking).
 - **#140** — [Native per-host workspace entry (hosted spin) subscription receives
   nothing](0140-native-per-host-entry-subscription-receives-nothing.md): `native_entry_robot2`
   exits `message_callbacks=0` while a robot1 talker publishes and the plain listener example
