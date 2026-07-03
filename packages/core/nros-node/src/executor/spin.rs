@@ -2405,6 +2405,18 @@ impl<'s> Executor<'s> {
         self.component_slots.len()
     }
 
+    /// issue #140 — the enrolled components' opaque `state` pointers, in enroll
+    /// order. Each is the *leaked* `Arc<ComponentCell>` `enroll_component` was
+    /// handed (see [`ComponentSlot::state`]); the `nros` layer re-borrows them
+    /// to fold per-component dispatch counters into
+    /// `observed_callback_counts` — install-seam components
+    /// (`register_node_borrowed`) live ONLY here, not in
+    /// `ExecutorNodeRuntime::components`, so the hosted-spin counts read zero
+    /// without this surface.
+    pub fn enrolled_component_states(&self) -> impl Iterator<Item = *mut core::ffi::c_void> + '_ {
+        self.component_slots.iter().map(|slot| slot.state)
+    }
+
     /// Phase 216 final dispatch hook — stable entry point the
     /// framework's dispatch task (RTIC `__nros_run` /
     /// Embassy `__nros_run_task`) calls for each `SignaledCallback`

@@ -57,11 +57,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   healthy nros publishers while graph discovery + the service path interop fine and a native
   nros subscriber receives the same stream — the pub direction of the ROS 2 interop matrix is
   unproven (found in 276-W5; relates to #133's soft-pass masking).
-- **#140** — [Native per-host workspace entry (hosted spin) subscription receives
-  nothing](0140-native-per-host-entry-subscription-receives-nothing.md): `native_entry_robot2`
-  exits `message_callbacks=0` while a robot1 talker publishes and the plain listener example
-  receives the same stream — `multihost_runtime_e2e` red (was stale-fixture-masked). Blocks the
-  276-W6 zephyr multihost e2e's native half (`multihost_zephyr_entry_e2e` `#[ignore]`d on this).
 - **#138** — [qemu-riscv64-threadx Rust examples pass
   `--allow-multiple-definition`](0138-threadx-riscv64-examples-allow-multiple-definition.md):
   6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251
@@ -111,7 +106,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#135** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#140** —
+[Native per-host entry (hosted spin) subscription receives
+nothing](archived/0140-native-per-host-entry-subscription-receives-nothing.md): observability, not
+delivery — gdb showed the full chain live (declare, 8 pushes, ring drained, `dispatch_into_cell`
+×8) while `observed_callback_counts` folded only `ExecutorNodeRuntime::components`, which the
+macro install seam (`register_node_borrowed`) never populates (its cells live only as the
+executor's enrolled slots). Counts now fold the enrolled cells too;
+`multihost_runtime_e2e` + the un-ignored 276-W6 `multihost_zephyr_entry_e2e` both green —
+phase-276 complete (all six waves on Zephyr). **#135** —
 [Native zenoh service/action query path
 broken](archived/0135-native-zenoh-service-query-path-broken.md): a C ABI mismatch, not a protocol
 bug — the 0096 loopback fix enabled `Z_FEATURE_LOCAL_QUERYABLE` in the generated zenoh config, but

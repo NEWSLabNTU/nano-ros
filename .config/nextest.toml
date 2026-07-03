@@ -277,6 +277,13 @@ test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# issue #139 follow-up — the lifecycle zephyr e2e polls `ros2 lifecycle` CLIs
+# (multi-second python startup per poll); solo it finishes in ~10 s but under
+# a parallel suite the CLI contention pushes past the default 60 s ceiling.
+[[profile.default.overrides]]
+filter = "binary(lifecycle_zephyr_entry_e2e)"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 # Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
 # to build a generated crate or workspace, so a COLD build legitimately exceeds
 # the 60s default kill (period 30s × terminate-after 2). Measured: a single

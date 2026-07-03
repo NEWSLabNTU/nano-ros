@@ -570,9 +570,32 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     }
 
     fn observed_callback_counts(&self) -> (usize, usize) {
-        self.components
+        let direct = self
+            .components
             .iter()
             .fold((0, 0), |(callbacks, messages), cell| {
+                (
+                    callbacks + cell.callback_dispatches.load(Ordering::Relaxed),
+                    messages + cell.message_dispatches.load(Ordering::Relaxed),
+                )
+            });
+        // issue #140 — install-seam components (`nros::node!` →
+        // `install_node_typed*` → `register_node_borrowed`) never enter
+        // `self.components`; their cells live only as the executor's enrolled
+        // component slots (leaked `Arc<ComponentCell>`s). Without folding them
+        // the hosted spin reported callbacks=0 for every macro-baked entry
+        // (multihost robot2 et al.) while dispatch demonstrably ran. The two
+        // populations are disjoint by construction: `register_node` pushes to
+        // `components` and does not enroll; `register_node_borrowed` enrolls
+        // and does not push.
+        self.executor
+            .enrolled_component_states()
+            .fold(direct, |(callbacks, messages), state| {
+                // SAFETY: every enrolled state is a leaked `Arc<ComponentCell>`
+                // from `register_node_borrowed` (the only enroll site); the
+                // executor keeps it alive until `Executor::drop`, and we only
+                // read its atomic counters here.
+                let cell = unsafe { &*(state as *const ComponentCell) };
                 (
                     callbacks + cell.callback_dispatches.load(Ordering::Relaxed),
                     messages + cell.message_dispatches.load(Ordering::Relaxed),

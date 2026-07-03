@@ -32,10 +32,6 @@ use std::{process::Command, time::Duration};
 const MULTIHOST_ZEPHYR_ENTRY_PORT: u16 = 17853;
 
 #[test]
-#[ignore = "blocked by issue #140 — the NATIVE per-host entry (robot2, hosted spin) \
-            subscription receives nothing even from a native robot1 talker \
-            (multihost_runtime_e2e fails the same way); the zephyr robot1 half is \
-            proven (boots, host filter bakes 1 node, publishes). Unignore when #140 lands"]
 fn multihost_zephyr_robot1_delivers_to_native_robot2() {
     let entry = build_zephyr_workspace_rust_multihost_robot1_entry().unwrap_or_else(|e| {
         nros_tests::skip!("zephyr multihost robot1 entry not built (west): {e}")
