@@ -215,13 +215,13 @@ What landed, per wave (commit ranges on `examples-ux-overhaul`):
   `zephyr/rust/service-client-async` leftover removed; three README tiers
   (11 platform + 20 ws + bridge + template READMEs) + README lint in
   `check-example-matrix.sh`; 31-row workspaces table; RFC-0026 refresh;
-  issue #132 filed.
+  issue #136 filed.
 
-**Issues filed during the phase:** #127 (threadx-riscv64 NULL `c_app_main`
-on rebuild), #128 (rust RTOS pubsub fixture resolvers point at unbuilt
-binaries), #129 (ros2-interop tests soft-pass on zero received), #130
-(nros-c AtomicU64 breaks riscv32 NuttX), #131 (native zenoh service/action
-query path broken at origin/main), #132 (example naming drift — deferred
+**Issues filed during the phase:** #131 (threadx-riscv64 NULL `c_app_main`
+on rebuild), #132 (rust RTOS pubsub fixture resolvers point at unbuilt
+binaries), #133 (ros2-interop tests soft-pass on zero received), #134
+(nros-c AtomicU64 breaks riscv32 NuttX), #135 (native zenoh service/action
+query path broken at origin/main), #136 (example naming drift — deferred
 polish sweep).
 
 **Deferred, with owners:**
@@ -229,7 +229,7 @@ polish sweep).
 - `component-poc` / `component-node-poc` / `transform-poc` dir moves —
   owned by in-flight **phase-242** close-out.
 - `_entry` → `-entry` rename — waits on **phase-275**; RFC-0026 blesses the
-  interim exception (tracked in #132).
+  interim exception (tracked in #136).
 - ws-* copy-out smoke coverage (W6 covered standalone examples only) —
   follow-up candidate.
 
@@ -238,17 +238,17 @@ identically pre-phase):
 
 - Zephyr cyclonedds runtime lane (W4 String flip verified by pattern +
   C-twin only; local lane env-broken).
-- ThreadX riscv64 runtime (#127 — green only on stale binaries locally).
-- Native zenoh service/action lane (#131 — broken at origin/main; W5 tests
+- ThreadX riscv64 runtime (#131 — green only on stale binaries locally).
+- Native zenoh service/action lane (#135 — broken at origin/main; W5 tests
   stay correctly red on the positive path until it is fixed).
 
 **Follow-ups** (from the whole-branch review; filed or one-liners for later
 pickup):
 
-- **#133** — embedded declarative action clients are send-only (no
+- **#137** — embedded declarative action clients are send-only (no
   feedback/result seam; client `Result received:` line unobservable; E2Es
   retargeted to fail-if-run).
-- **#134** — qemu-riscv64-threadx Rust example CMakeLists pass
+- **#138** — qemu-riscv64-threadx Rust example CMakeLists pass
   `-Wl,--allow-multiple-definition`; policy conflict with the phase-251 gate
   (which doesn't scan example CMake); removal tied to single-runtime.
 - Shared example `target/` build-order note — sibling examples sharing one
@@ -260,9 +260,9 @@ pickup):
   examples get absolute paths only; relative rows would survive moves.
 - `scripts/fixtures-build.sh --id <unknown>` silently no-ops instead of
   erroring.
-- `test_service_client_timeout` soft-pass — fold into #129.
+- `test_service_client_timeout` soft-pass — fold into #133.
 - stm32f4 stale root `Cargo.toml` excludes + `listener-embassy` doc path —
-  fold into #132.
+  fold into #136.
 - `docs/reference/cyclonedds-known-limitations.md` NULL-loan section is
   stale against the current embedded Cyclone behavior — re-verify + refresh.
 - `book/src/SUMMARY.md` px4 chapter nesting is off (px4 pages not grouped

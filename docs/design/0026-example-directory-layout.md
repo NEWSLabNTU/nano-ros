@@ -82,7 +82,7 @@ Variant naming uses a **suffix** form so variants sort with their peers:
 dirs use a snake_case `_entry` suffix (`talker_entry`, `listener_entry`, … on
 `qemu-arm-freertos`, `qemu-arm-nuttx`, `threadx-linux`). The kebab-case
 `-entry` rename waits on phase-275, which owns the fixture-manifest/lane
-renames; tracked in issue #132.
+renames; tracked in issue #136.
 
 ## README tiers
 
