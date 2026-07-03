@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
+  structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
+  (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
+  phase-277 W7 for one mechanical sweep.
 - **#135** — [Native zenoh service/action query path
   broken](0135-native-zenoh-service-query-path-broken.md): client `get` returns
   `Transport(Timeout)` instantly, server never receives; reproduced with pre-W5 examples at
