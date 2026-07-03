@@ -20,7 +20,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
+# Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
+#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
+#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
+#   3. in-repo relative walk-up (this example inside the nano-ros tree).
+if(NOT DEFINED NANO_ROS_ROOT)
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+    else()
+        get_filename_component(NANO_ROS_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    endif()
+endif()
+add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
 # 2) Point the smart Find-stub at this workspace's `src/` so
 #    `find_package(local_msgs)` resolves to the local definition (rather
@@ -31,7 +43,7 @@ set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 # 3) rclcpp source-compat surface (the per-package CMakeLists.txt files use
 #    `find_package(rclcpp)` etc. — resolved through the compat module's stubs).
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
+include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
 
 # 4) Bulk-build every workspace msg package in topo order — one call
 #    instead of N `add_subdirectory(src/<pkg>)` lines. Picks up

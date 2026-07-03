@@ -15,10 +15,22 @@ set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING
     "nano-ros root RMW backend" FORCE)
 set(NANO_ROS_BOARD riscv64-qemu)
 set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../scripts/cyclonedds/msg_to_cyclone_idl.py"
+# Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
+#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
+#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
+#   3. in-repo relative walk-up (this example inside the nano-ros tree).
+if(NOT DEFINED NANO_ROS_ROOT)
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+    else()
+        get_filename_component(NANO_ROS_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
+    endif()
+endif()
+    "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
+include("${NANO_ROS_ROOT}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
 nros_generate_interfaces(std_msgs "msg/String.msg" LANGUAGE C SKIP_INSTALL)
 # Phase 212.M.10 — `nros.toml` retired; the Config literal lives in

@@ -16,12 +16,24 @@ project(multi_node_workspace_cpp LANGUAGES C CXX)
 #
 # Workspace build (from this dir):
 #     cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros && cmake --build build
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+# Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
+#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
+#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
+#   3. in-repo relative walk-up (this example inside the nano-ros tree).
+if(NOT DEFINED NANO_ROS_ROOT)
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+    else()
+        get_filename_component(NANO_ROS_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    endif()
+endif()
+include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
 
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM posix
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+    NANO_ROS_ROOT "${NANO_ROS_ROOT}"
     SUBDIRS  src/talker_pkg
              src/listener_pkg
              src/robot_entry

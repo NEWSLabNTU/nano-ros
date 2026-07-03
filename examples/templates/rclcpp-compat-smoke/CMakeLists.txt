@@ -17,11 +17,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
+# Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
+#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
+#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
+#   3. in-repo relative walk-up (this example inside the nano-ros tree).
+if(NOT DEFINED NANO_ROS_ROOT)
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+    else()
+        get_filename_component(NANO_ROS_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    endif()
+endif()
+add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
 # 2) Drop-in source-compat for rclcpp / ament_cmake_auto / rclcpp_components /
 #    diagnostic_updater. Everything below mirrors a stock ROS 2 CMakeLists.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
+include("${NANO_ROS_ROOT}/cmake/compat/NrosRclcppCompat.cmake")
 
 # 3) Generate the C++ bindings for the message packages this node uses.
 #    package.xml is the single source of truth for the msg deps;
