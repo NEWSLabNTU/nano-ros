@@ -21,9 +21,9 @@ rmw-xrce = []
 rmw-cyclonedds = []
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 example_interfaces = { version = "*", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform entry
 # runtime owns the sink.

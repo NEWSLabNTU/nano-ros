@@ -27,7 +27,7 @@ locator = "tcp/10.0.2.2:7452"
 [dependencies]
 nuttx_rs_talker = { path = "../talker" }
 # Phase 213.C.2 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros", default-features = false }
+nros = { version = "*", default-features = false }
 # Phase 212.N.3 tier-1 per-board shim — provides
 # `<QemuArmVirt as BoardEntry>::run` that owns init → executor open →
 # `setup(runtime)` → spin → exit. The `BoardEntry` impl is gated
@@ -39,9 +39,9 @@ nros = { path = "../../../../packages/core/nros", default-features = false }
 # `run_entry` registers it explicitly — NuttX has no .init_array
 # auto-register); without it `Executor::open` fails instantly with
 # Transport(ConnectionFailed) before touching the network.
-nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm", features = ["rmw-zenoh"] }
+nros-board-nuttx-qemu-arm = { version = "*", features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`.
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
+nros-platform = { version = "*", default-features = false }
 
 # Sibling Component pkg dep deliberately NOT listed here — step-2
 # ships with an empty launch.xml, so codegen emits no

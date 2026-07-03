@@ -32,7 +32,7 @@ nros = { path = "../../../../packages/core/nros", default-features = false }
 # `run_entry` registers it explicitly — NuttX has no .init_array
 # auto-register); without it `Executor::open` fails instantly with
 # Transport(ConnectionFailed) before touching the network.
-nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm", features = ["rmw-zenoh"] }
+nros-board-nuttx-qemu-arm = { version = "*", features = ["rmw-zenoh"] }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
 
 # Sibling Component pkg dep deliberately omitted in step-2 — see the

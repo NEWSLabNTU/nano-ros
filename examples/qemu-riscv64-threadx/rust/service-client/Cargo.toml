@@ -41,17 +41,17 @@ domain_id = 0
 locator = "tcp/10.0.2.2:7463"
 
 [dependencies]
-nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "ros-humble"] }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
+nros-board-threadx-qemu-riscv64 = { version = "*" }
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 example_interfaces = { version = "*", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform entry
 # runtime owns the sink.
 log = "0.4"
 
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section" }
+nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"], optional = true }
+nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = true }
+nros-platform-critical-section = { version = "*" }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

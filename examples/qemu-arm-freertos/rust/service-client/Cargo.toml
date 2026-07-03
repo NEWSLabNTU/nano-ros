@@ -19,7 +19,7 @@ crate-type = ["rlib"]
 # `nros` features below (alloc + the rmw-cffi vtable seam + ROS edition).
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.

@@ -10,8 +10,8 @@ description = "NuttX QEMU ARM Fibonacci action client — Component pkg"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { version = "*", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.

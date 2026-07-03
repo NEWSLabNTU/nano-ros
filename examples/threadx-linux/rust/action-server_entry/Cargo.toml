@@ -24,9 +24,9 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7455"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros", default-features = false }
-nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros = { version = "*", default-features = false }
+nros-board-threadx-linux = { version = "*" }
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 threadx_linux_rs_action_server = { path = "../action-server" }
 
 # Phase 208.F1 — standalone workspace root.

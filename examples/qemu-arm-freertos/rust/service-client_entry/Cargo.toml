@@ -32,7 +32,7 @@ locator = "tcp/10.0.2.2:7451"
 [dependencies]
 freertos_rs_service_client = { path = "../service-client" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros", default-features = false }
+nros = { version = "*", default-features = false }
 # Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
 # Phase 248 C6f (#60 T5) — the BOARD is the RMW+platform selection point:
@@ -40,9 +40,9 @@ nros = { path = "../../../../packages/core/nros", default-features = false }
 # `nros-board-freertos`'s `nros-rmw-zenoh` dep + boot-path `register()`) AND
 # brings `nros-platform/platform-freertos`. The sibling node pkg + this Entry's
 # `nros` dep name neither `rmw-*` nor `platform-*`.
-nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", features = ["rmw-zenoh"] }
+nros-board-mps2-an385-freertos = { version = "*", features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-freertos"] }
 # NOTE: sibling Component pkg dep deliberately NOT listed in step-2.
 # The launch file is empty so codegen emits an `Ok(())` body; the
 # Component pkg's `register()` wrapper is reached only when a

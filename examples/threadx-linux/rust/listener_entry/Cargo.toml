@@ -24,14 +24,14 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7455"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros", default-features = false }
+nros = { version = "*", default-features = false }
 # Phase 212.N.3 tier-1 per-board shim. `<ThreadxLinux as BoardEntry>::run`
 # owns the legacy `node::run` lifecycle (init → tx_kernel_enter → app
 # thread → executor → spin). Selected at the `main.rs` Board::run call;
 # the codegen-emitted `run_plan` stays board-agnostic.
-nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
+nros-board-threadx-linux = { version = "*" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 
 # Component pkg this Entry pkg wraps. The codegen-emitted `run_plan`
 # dispatches `threadx_linux_rs_listener::register(runtime)?` per launch
