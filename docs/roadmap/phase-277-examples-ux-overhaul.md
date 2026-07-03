@@ -242,6 +242,32 @@ identically pre-phase):
 - Native zenoh service/action lane (#131 — broken at origin/main; W5 tests
   stay correctly red on the positive path until it is fixed).
 
+**Follow-ups** (from the whole-branch review; filed or one-liners for later
+pickup):
+
+- **#133** — embedded declarative action clients are send-only (no
+  feedback/result seam; client `Result received:` line unobservable; E2Es
+  retargeted to fail-if-run).
+- **#134** — qemu-riscv64-threadx Rust example CMakeLists pass
+  `-Wl,--allow-multiple-definition`; policy conflict with the phase-251 gate
+  (which doesn't scan example CMake); removal tied to single-runtime.
+- Shared example `target/` build-order note — sibling examples sharing one
+  checkout can contend/order-couple builds; document in RFC-0026 or
+  `examples/README.md` later.
+- `bins/` Cargo.lock convention split — `packages/testing/nros-tests/bins/*`
+  locks are tracked while `examples/**` locks are ignored; pick one story.
+- `nros sync` relative-path patch rows for out-of-repo copies — copied-out
+  examples get absolute paths only; relative rows would survive moves.
+- `scripts/fixtures-build.sh --id <unknown>` silently no-ops instead of
+  erroring.
+- `test_service_client_timeout` soft-pass — fold into #129.
+- stm32f4 stale root `Cargo.toml` excludes + `listener-embassy` doc path —
+  fold into #132.
+- `docs/reference/cyclonedds-known-limitations.md` NULL-loan section is
+  stale against the current embedded Cyclone behavior — re-verify + refresh.
+- `book/src/SUMMARY.md` px4 chapter nesting is off (px4 pages not grouped
+  under their platform parent).
+
 ## Sequencing constraints
 
 - W4 is atomic across platforms — the zenoh keyexpr embeds the type name, so a

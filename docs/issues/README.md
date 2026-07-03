@@ -44,6 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#138** — [qemu-riscv64-threadx Rust examples pass
+  `--allow-multiple-definition`](0138-threadx-riscv64-examples-allow-multiple-definition.md):
+  6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251
+  no-allow-multiple-def policy (the gate doesn't scan example CMake); removal tied to the
+  single-runtime consolidation (filed in phase-277 close-out).
+- **#137** — [Embedded declarative action clients are
+  send-only](0137-embedded-declarative-action-clients-send-only.md): freertos/nuttx/baremetal-RTIC
+  declarative action clients lack a feedback/result seam, so the client `Result received:` line is
+  unobservable; servers fine; E2Es retargeted to fail-if-run, not soft-pass (filed in phase-277
+  close-out).
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
