@@ -18,7 +18,27 @@ examples/
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
-Each example is a standalone Cargo + CMake package — no walk-up to the parent tree, no workspace coupling. Copy any directory out, set `*_DIR` env vars (or `-D…`) for SDK paths, and it builds. RMW is selected at build time: Cargo `rmw-*` features for Rust, `-DNROS_RMW=<backend>` for C/C++, and `prj-<backend>.conf` overlays for Zephyr. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169.
+Each example is a standalone Cargo + CMake package — no walk-up in the manifests, no workspace coupling. The tested copy-out contract (phase-277 W6):
+
+- **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`); the tracked `.cargo/config.toml` carries the `# nros-managed` `[patch.crates-io]` block that resolves them into a nano-ros checkout. Copy the directory anywhere, then re-point the patch block at your checkout and build:
+
+  ```bash
+  cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
+  NROS_REPO_DIR=/path/to/nano-ros nros sync   # regenerates msg crates + the patch block
+  cargo build && cargo run
+  ```
+
+- **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNANO_ROS_ROOT=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. Copy the directory anywhere, then:
+
+  ```bash
+  cp -r examples/native/c/talker ~/my-c-talker && cd ~/my-c-talker
+  cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+  cmake --build build
+  ```
+
+- Prefer vendoring the checkout into your own workspace instead? See [`templates/multi-package-workspace/`](templates/multi-package-workspace/), which documents the path-dep Pattern A layout.
+
+Embedded targets additionally need their SDK env vars (`*_DIR`, `FREERTOS_PORT`, …) — `source activate.sh` in the nano-ros checkout provides them. RMW is selected at build time: Cargo `rmw-*` features for Rust, `-DNROS_RMW=<backend>` for C/C++, and `prj-<backend>.conf` overlays for Zephyr. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169.
 
 ## Coverage matrix
 

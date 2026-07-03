@@ -54,14 +54,21 @@ name = "talker"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros",
-         default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh",
+nros = { version = "*", default-features = false,
+         features = ["std", "rmw-cffi", "ros-humble"] }
+nros-rmw-zenoh = { version = "*",
                    features = ["std", "platform-posix", "ros-humble"] }
 
 [workspace]
 ```
+
+nano-ros crates are declared **registry-style** (phase-277 W6): they are
+not on crates.io, so the example's tracked `.cargo/config.toml` carries
+the `# nros-managed` `[patch.crates-io]` block resolving them into the
+checkout. After adding/renaming nros deps or msg `<depend>` rows, re-run
+`NROS_REPO_DIR=<repo root> nros sync` in the example dir and commit the
+rewritten `.cargo/config.toml`. This is what makes the copy-out promise
+real — a copied example re-runs `nros sync` at its new location.
 
 `cargo build` / `cargo run` from inside the example directory is the
 canonical invocation. There is no workspace-wide `cargo build` that
@@ -80,7 +87,16 @@ project(my_example LANGUAGES C CXX)
 set(NANO_ROS_PLATFORM <plat>)
 set(NANO_ROS_RMW      <rmw>)
 set(NANO_ROS_BOARD    <board>)        # embedded only
-add_subdirectory(<rel-path-to-repo-root> nano_ros)
+# Phase-277 W6 standard root guard: cache var > NROS_REPO_DIR env > walk-up.
+if(NOT DEFINED NANO_ROS_ROOT)
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+    else()
+        get_filename_component(NANO_ROS_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/<rel-path-to-repo-root>" ABSOLUTE)
+    endif()
+endif()
+add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 
 add_executable(my_example src/main.c)
 target_link_libraries(my_example PRIVATE NanoRos::NanoRos)

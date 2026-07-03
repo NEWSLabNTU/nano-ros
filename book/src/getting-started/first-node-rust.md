@@ -66,9 +66,12 @@ POSIX talkers read the locator / domain from environment variables
 targets shows up under the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
-package. The in-tree talker is a **member of the nano-ros workspace**,
-so it does NOT carry a `[workspace]` table — `cargo` walks up and
-picks up the root `Cargo.toml`. Verbatim from
+package. Every example is its own standalone Cargo root (an empty
+`[workspace]` table stops `cargo` walking up the filesystem), and
+nano-ros crates are declared **registry-style** (`version = "*"`);
+the example's tracked `.cargo/config.toml` carries an auto-managed
+`[patch.crates-io]` block (written by `nros sync`) that resolves them
+into a nano-ros checkout. Verbatim from
 [`examples/native/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/rust/talker/Cargo.toml)
 (trimmed to the docs-relevant fields — the in-tree file also exposes
 `rmw-cyclonedds` / `rmw-xrce` features for the multi-RMW build path):
@@ -87,31 +90,37 @@ path = "src/main.rs"
 
 [features]
 default   = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros",
-         default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix"] }
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi",
-                       features = ["posix-c-port"] }
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh",
+nros = { version = "*", default-features = false,
+         features = ["std", "rmw-cffi", "ros-humble"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
+nros-board-native = { version = "*", default-features = false }
+nros-rmw-zenoh = { version = "*", default-features = false,
                    features = ["std", "platform-posix", "ros-humble"],
                    optional = true }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
+
+[workspace]
 ```
 
-**Copying this out of the workspace?** Once you move the directory
-elsewhere on disk, the path deps no longer resolve and there is no
-parent workspace to inherit from. Two options:
+**Copying this out of the workspace?** That is the intended workflow —
+nano-ros crates are not published to crates.io, so the `version = "*"`
+deps resolve through the `[patch.crates-io]` block in
+`.cargo/config.toml`, and `nros sync` rewrites that block (plus the
+generated message crates) for wherever the directory lives now:
 
-1. Replace each `path = "../../../../packages/..."` with an absolute
-   path to your nano-ros checkout, AND add an empty `[workspace]`
-   table to stop cargo walking further up the filesystem.
-2. Keep it inside `examples/` in your own fork of nano-ros — the
-   simpler path while you're learning the API.
+```bash
+cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
+NROS_REPO_DIR=/path/to/nano-ros nros sync
+cargo build && RUST_LOG=info cargo run
+```
+
+Prefer vendoring instead? `examples/templates/multi-package-workspace/`
+documents the path-dep workspace layout.
 
 ## Configure
 
@@ -205,8 +214,8 @@ seconds:
 Canonical, copy-out:
 [`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker)
 
-Copy the directory, rename the package, and your starter is ready to
-modify.
+Copy the directory, run `NROS_REPO_DIR=<nano-ros checkout> nros sync`
+inside it, rename the package, and your starter is ready to modify.
 
 ## Next
 

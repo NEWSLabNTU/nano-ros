@@ -11,24 +11,29 @@ one to try.
 
 ## A. Build failures (cargo / cmake)
 
-### A1. Missing path-deps onto in-tree crates
+### A1. nros crates don't resolve (missing / stale patch block)
 
 ```
 error[E0432]: unresolved import `nros`
 error: failed to load source for dependency `nros`
-error: could not find `nros-rmw-zenoh`
+error: no matching package named `nros` found
 ```
 
-The example's `Cargo.toml` carries a path-dep onto the in-tree
-`packages/core/nros*` crates (the canonical copy-out shape). When
-the example is cargo-built from a stripped-down checkout (e.g. you
-vendored only the example dir into your own workspace), those
-`path = "../../../../packages/…"` entries resolve to nothing. Fix
-one of:
+The example's `Cargo.toml` declares nano-ros crates registry-style
+(`nros = { version = "*" }` — they are not published to crates.io);
+the example's `.cargo/config.toml` carries the `# nros-managed`
+`[patch.crates-io]` block that resolves them into a nano-ros
+checkout. This error means the patch block is missing or its
+relative paths no longer reach a checkout (typical right after
+copying the example somewhere else). Fix:
 
-- Build inside a full nano-ros checkout, OR
-- Rewrite the `path = …` entries to `git = …` against
-  `github.com/NEWSLabNTU/nano-ros` and pin a rev.
+```bash
+cd <the example dir>
+NROS_REPO_DIR=/path/to/nano-ros nros sync
+```
+
+which regenerates the message crates and rewrites the patch block
+for the example's current location.
 
 This is **not** an `nros setup` issue — `nros setup` only fetches
 the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
