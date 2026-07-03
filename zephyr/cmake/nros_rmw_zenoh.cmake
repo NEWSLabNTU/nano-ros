@@ -61,6 +61,14 @@ zephyr_compile_definitions(ZENOH_ZEPHYR)
 # create high-rate executor wakeups.
 zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=0)
 
+# Intra-image topic delivery (RFC-0015 Model 1): every node in the image
+# shares ONE zenoh session, and neither zenoh-pico nor the router loops a
+# publication back to the session it came from. Without local subscriber
+# dispatch a same-image pub→sub pair (e.g. ws-qos-rust's reliable_talker →
+# qos_listener) silently never delivers. LOCAL_SUBSCRIBER routes each put
+# to matching subscribers on the local session in addition to the wire.
+zephyr_compile_definitions(Z_FEATURE_LOCAL_SUBSCRIBER=1)
+
 # Map NROS_ZENOH_* Kconfig options to Z_FEATURE_* compile definitions.
 # The function strips the CONFIG_NROS_ZENOH_ prefix and replaces it with
 # Z_FEATURE_, then sets =1 or =0 based on the Kconfig boolean value.

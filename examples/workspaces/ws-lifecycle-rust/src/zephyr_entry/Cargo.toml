@@ -1,0 +1,102 @@
+# Entry pkg — boots the managed (lifecycle) `demo_bringup` system on Zephyr.
+#
+# phase-276 W3 (#102 H1, issue #128) — the lifecycle-on-embedded projection of
+# `ws-lifecycle-rust`: the same one-line `nros::main!(launch = ...)` entry as the
+# native sibling, deployed as a Zephyr `west build` app (`staticlib` exporting
+# `rust_main`, consumed by zephyr-lang-rust's `rust_cargo_application()`).
+# `[lifecycle] autostart = "active"` in the bringup `system.toml` makes the
+# macro register the 5 REP-2002 lifecycle services + drive the boot autostart
+# (Configure → Activate) — the #128 fix made the `Framework::Zephyr` emit arm
+# carry that registration (it was OwnedSpin-only before).
+#
+# Shape mirrors `examples/workspaces/rust/src/zephyr_entry` (phase-225.P): RMW
+# flows Kconfig overlay (`prj-zenoh.conf`) → `CONFIG_NROS_RMW_ZENOH` →
+# EXTRA_CARGO_ARGS; board from `west build -b <board>`. Built by `west build`,
+# NOT plain cargo — the parent workspace `exclude`s this dir, and it carries NO
+# `[workspace]` table so the macro's pkg-index resolves the sibling
+# `talker_pkg` / `demo_bringup` against the real workspace root.
+
+[package]
+name = "zephyr_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the managed (lifecycle) system on Zephyr (west app, zenoh RMW)."
+
+[lib]
+# Must be `rustapp`: zephyr-lang-rust's `rust_cargo_application()` links the
+# app staticlib by the fixed name `librustapp.a`.
+name = "rustapp"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["rmw-zenoh"]
+# Issue #129 (RFC-0031 C5b amendment) — a REAL backend dep, not an inert
+# marker: on a Rust Zephyr app the entry owns the backend link + register
+# (the `nros::main!` Zephyr arm emits `::nros_rmw_zenoh::register()` from the
+# deploy metadata's `rmw` key; nothing else registers on `target_os = "none"`).
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+
+# Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
+# proc-macro onto the `Framework::Zephyr` emit branch.
+[package.metadata.nros.entry]
+deploy = "zephyr"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7463"
+
+[package.metadata.ament]
+exec_depend = ["talker_pkg", "demo_bringup"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+# Agnostic `nros` dep — `alloc` (no `std`; Zephyr is `no_std`) + `rmw-cffi`
+# vtable + ROS edition + `lifecycle-services` (the system.toml `[lifecycle]`
+# declaration needs the registration to compile in — same opt-in the native
+# entry carries).
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+    "lifecycle-services",
+] }
+
+# Zephyr family board — `ZephyrBoard` (NetworkWait link-up gate only).
+nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }
+
+# Concrete platform vtable — the Zephyr board/CMake also links it.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+
+# Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
+# Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west
+# build's INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-zephyr",
+    "ros-humble",
+], optional = true }
+
+# The launch-named Node pkg (platform/RMW-agnostic).
+talker_pkg = { path = "../talker_pkg", default-features = false }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+# Message-binding + intra-repo crate resolution. Excluded from the parent
+# workspace, so it does NOT inherit the parent's `[patch.crates-io]`; the
+# generated message crates live at the workspace-root `generated/` (provisioned
+# by `nros ws sync` at `examples/workspaces/ws-lifecycle-rust/`).
+[patch.crates-io]
+builtin_interfaces = { path = "../../generated/builtin_interfaces" }
+std_msgs = { path = "../../generated/std_msgs" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }

@@ -136,6 +136,30 @@ zenoh-pico needs ~8+ mutexes (transport TX/RX/peer + a write-filter mutex per pu
 Set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and `CONFIG_MAX_PTHREAD_COND_COUNT=16` in `prj.conf`
 (cyclonedds action overlays use 2048, archived Phase 184.8).
 
+## Zephyr zsock per-fd serialization vs zenoh-pico (issues 0129/0131)
+
+Zephyr's socket layer takes a per-fd `fdtable` mutex for the ENTIRE blocking call —
+NSOS offload included — so zenoh-pico's blocking read task holds the session socket
+for a full `SO_RCVTIMEO` window between inbound packets, and every tx (entity or
+liveliness declare, lease keepalive, publish, query reply) queues behind it.
+Consequences and rules:
+
+- **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix
+  port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and
+  zenohd silently drops the session — the image keeps spinning against a dead
+  transport (boot-time declares crawl at one per recv window, then everything
+  wedges). Fork patch in `zenoh-pico/include/zenoh-pico/config.h` (+ the
+  `zenoh_generic_config.h` twin); NuttX intentionally keeps 5000.
+- **Intra-image pub→sub needs `Z_FEATURE_LOCAL_SUBSCRIBER=1`** (set by
+  `zephyr/cmake/nros_rmw_zenoh.cmake`): all nodes in an image share ONE session
+  (RFC-0015 Model 1), and neither zenoh-pico nor zenohd loops a publication back
+  to the session it came from. Without it a same-image pair (e.g. ws-qos-rust's
+  `reliable_talker → qos_listener`) never delivers, silently.
+- The #129 per-node-liveliness "deadlock" was this same mechanism — the first
+  declare to hit the recv window. The per-node token gate on `platform-zephyr`
+  (`nros-rmw-zenoh/src/shim/session.rs`) predates the timeout fix and can likely
+  be lifted; retest before doing so.
+
 ## NuttX ↔ zenoh-pico cooperation (Phase 225.O)
 
 zenoh-pico is **not** platform-agnostic on the C side and is not meant to be;

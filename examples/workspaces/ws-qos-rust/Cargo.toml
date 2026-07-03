@@ -17,5 +17,9 @@ members = [
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 
+# `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W5) — excluded
+# (same rationale as the ws-params/ws-lifecycle siblings).
+exclude = ["src/zephyr_entry"]
+
 [workspace.metadata.nros]
 default_system = "demo_bringup"

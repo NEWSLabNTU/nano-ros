@@ -1,7 +1,19 @@
 # Phase 276 — Capability coverage on embedded (lifecycle / params / safety / QoS / multihost)
 
-Status: **Blocked (partial) — 2026-07-02** · Implements issue #102 (H1) · Informs RFC-0026,
+Status: **In progress — 2026-07-03** · Implements issue #102 (H1) · Informs RFC-0026,
 RFC-0006 (feature axes).
+
+> **Progress 2026-07-03.** #128's cheap half landed (the `Framework::Zephyr` arm now emits
+> `param_services_call` + `lifecycle_call` + the deploy-rmw register): **W1 (params) ✅**
+> (`params_zephyr_entry_e2e`), **W3 (lifecycle) ✅** (`lifecycle_zephyr_entry_e2e` — autostart
+> reaches `active`, all five REP-2002 services answer over `ros2 lifecycle`), **W5 (QoS) ✅**
+> (`qos_zephyr_entry_e2e` — on-target reliable+transient_local pair matched + delivered in-image,
+> republish observed by the new `int32-observer` fixture). W3/W5 were blocked by issue #131 →
+> root-caused to the zenoh-pico Zephyr 5 s socket timeout starving all tx under Zephyr's per-fd
+> zsock serialization (fork patch → 100 ms) plus missing `Z_FEATURE_LOCAL_SUBSCRIBER` for
+> intra-image pub→sub (RFC-0015 Model 1: one shared session per image). All six zephyr entry e2es
+> green post-fix. Remaining: W2 (tiers — needs `ZephyrBoard::run_tiers`, the #128 hard half),
+> W4 (safety/CRC), W6 (multihost).
 
 > **Blocker found (issue #128).** The `nros::main!` **Zephyr** emit branch wires only
 > register+spin — it emits none of `param_services_call` / `lifecycle_call` / `run_tiers` (those

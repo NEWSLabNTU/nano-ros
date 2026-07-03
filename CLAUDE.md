@@ -119,6 +119,9 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `try_handle_get_result()`. → platform-implementation-notes.md.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
   with -80). → platform-implementation-notes.md.
+- **Zephyr zsock serializes send/recv per-fd:** `Z_CONFIG_SOCKET_TIMEOUT` must stay 100 ms (5 s
+  starves tx → lease death, silent session drop); intra-image pub→sub needs
+  `Z_FEATURE_LOCAL_SUBSCRIBER=1`. → platform-implementation-notes.md (issues 0129/0131).
 - **NuttX spin uses `sem_timedwait`** (pthread condvar hangs). → platform-implementation-notes.md.
 - **NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not `INT` ms** (deadlock otherwise).
   → platform-implementation-notes.md.

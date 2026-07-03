@@ -1,0 +1,25 @@
+# phase-276 W3 (#128) — nano-ros managed (lifecycle) Rust workspace Entry as a
+# Zephyr sample (Twister-discoverable). Boots the talker node with the five
+# REP-2002 lifecycle services + boot autostart from a single launch file +
+# system.toml.
+sample:
+  name: nano-ros Rust Lifecycle Workspace Entry
+  description: nano-ros managed (lifecycle autostart) workspace Entry on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "nros: zephyr workspace entry up"
+tests:
+  sample.nano-ros.rust.ws-lifecycle-entry.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh

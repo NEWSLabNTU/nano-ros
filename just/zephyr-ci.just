@@ -242,6 +242,19 @@ build-fixtures:
         ( cd examples/workspaces/ws-params-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
+    # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
+    # Same pure-cargo `nros::main!` path as ws-params: `ws sync` only.
+    if [ -d examples/workspaces/ws-lifecycle-rust/src/zephyr_entry ]; then
+        echo "  → ws-lifecycle workspace-entry prep (nros ws sync)"
+        ( cd examples/workspaces/ws-lifecycle-rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
+    # phase-276 W5 — the QoS-override workspace's Zephyr Entry (ws sync only).
+    if [ -d examples/workspaces/ws-qos-rust/src/zephyr_entry ]; then
+        echo "  → ws-qos workspace-entry prep (nros ws sync)"
+        ( cd examples/workspaces/ws-qos-rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
 
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"

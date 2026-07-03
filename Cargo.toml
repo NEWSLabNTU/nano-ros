@@ -326,6 +326,10 @@ exclude = [
     # phase-276 W1 (#128) — the parameterised workspace's Zephyr Entry, same
     # west-built shape (and same repo-root-exclude rationale) as above.
     "examples/workspaces/ws-params-rust/src/zephyr_entry",
+    # phase-276 W3 (#128) — the managed (lifecycle) workspace's Zephyr Entry.
+    "examples/workspaces/ws-lifecycle-rust/src/zephyr_entry",
+    # phase-276 W5 — the QoS-override workspace's Zephyr Entry.
+    "examples/workspaces/ws-qos-rust/src/zephyr_entry",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

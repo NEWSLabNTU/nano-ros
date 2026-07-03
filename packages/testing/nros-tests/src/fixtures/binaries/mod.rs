@@ -57,6 +57,10 @@ static NATIVE_QOS_OVERRIDE_PUBSUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// (`packages/testing/nros-tests/bins/declarative-safety-listener`).
 static NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-276 W5 — cached path to the `int32-observer` fixture
+/// (`packages/testing/nros-tests/bins/int32-observer`).
+static NATIVE_INT32_OBSERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211 acceptance — cached path to the `ros2-string-interop` fixture
 /// (`packages/testing/nros-tests/bins/ros2-string-interop`).
 static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2269,6 +2273,28 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
     require_prebuilt_binary(&binary_path)
 }
 
+/// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
+/// (`ws-lifecycle-rust/src/zephyr_entry`): the talker node + the five REP-2002 lifecycle
+/// services with boot autostart (the #128 `Framework::Zephyr` `apply_lifecycle` emit).
+/// Built by the west lane into `<zephyr-build-root>/build-ws-rs-lifecycle-entry-zenoh/
+/// zephyr/zephyr.exe`; consumed by `tests/lifecycle_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-rs-lifecycle-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
+/// phase-276 W5 — the Zephyr (native_sim) QOS-OVERRIDE Rust workspace Entry
+/// (`ws-qos-rust/src/zephyr_entry`): reliable_talker publishes `/qos_chatter` with a
+/// non-default profile (reliable + transient_local) and qos_listener subscribes with the
+/// byte-identical profile, republishing the matched receive count on `/qos_ok`. Built by
+/// the west lane into `<zephyr-build-root>/build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/qos_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,
@@ -2443,6 +2469,24 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/declarative-safety-listener");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/declarative-safety-listener"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-276 W5 — resolve the prebuilt `int32-observer` fixture
+/// (`packages/testing/nros-tests/bins/int32-observer`). A raw `std_msgs/Int32`
+/// subscriber on an env-selected topic (default `/qos_ok`) that logs
+/// `Received:` per sample — the cross-process assertion half for
+/// embedded-image e2es whose on-target nodes republish a counter. Own Cargo
+/// workspace; the test skips cleanly when the binary is missing.
+pub fn build_int32_observer() -> TestResult<&'static Path> {
+    NATIVE_INT32_OBSERVER_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/int32-observer");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/int32-observer"));
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())

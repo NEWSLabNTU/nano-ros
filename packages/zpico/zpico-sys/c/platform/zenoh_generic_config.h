@@ -21,9 +21,15 @@
 #define Z_BATCH_UNICAST_SIZE 1024
 #define Z_BATCH_MULTICAST_SIZE 1024
 #ifndef Z_CONFIG_SOCKET_TIMEOUT
-#if defined(ZENOH_NUTTX) || defined(ZENOH_ZEPHYR)
+#ifdef ZENOH_NUTTX
 #define Z_CONFIG_SOCKET_TIMEOUT 5000
 #else
+// Zephyr MUST stay short (100 ms, like unix/freertos): zsock serializes
+// send/recv on a per-fd mutex, so the blocking read task holds the socket
+// for a full SO_RCVTIMEO window between inbound packets. Every tx (entity
+// declare, lease keepalive, publish, query reply) waits for that window —
+// at 5000 ms the client keepalives miss the 10 s lease and the router
+// silently drops the session (issues 0129/0131).
 #define Z_CONFIG_SOCKET_TIMEOUT 100
 #endif
 #endif

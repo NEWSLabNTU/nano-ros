@@ -103,7 +103,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#129** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#131** —
+[Zephyr native_sim service/queryable reply path
+unresponsive](archived/0131-zephyr-service-reply-path-unresponsive.md): not a reply-path defect —
+the session was silently dying. Zephyr zsock serializes send/recv on a per-fd mutex, and zenoh-pico's
+Zephyr `Z_CONFIG_SOCKET_TIMEOUT` of 5000 ms let the blocking read task starve every tx (declares,
+lease keepalives, replies) until zenohd dropped the lease. Fork patch drops Zephyr to the 100 ms the
+unix port uses; boot 29 s → ~3 s, all five REP-2002 services answer, `lifecycle_zephyr_entry_e2e`
+green. Same mechanism family as the #129 liveliness-declare wedge. **#129** —
 [Zephyr rust workspace-entry lane broken on current
 main](archived/0129-zephyr-rust-workspace-entry-lane-broken.md): stale June prebuilts had masked a
 three-layer rot. (1) executor's ~75 KiB heap alloc vs picolibc's 16 KiB malloc arena → arena bump;
