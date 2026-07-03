@@ -39,18 +39,18 @@ netmask = "255.255.255.0"
 
 [dependencies]
 # Node deps folded in from the former listener_rtic_pkg (issue 0100).
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+nros-log = { version = "*", default-features = false }
 std_msgs = { version = "*", default-features = false }
 # nros declarative-node + main! API.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # RTIC board entry (RticBoardEntry) for QEMU MPS2-AN385.
-nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }
+nros-board-rtic-mps2-an385 = { version = "*" }
 # RMW backend — bare-metal callers link it explicitly so the boot scaffold
 # can register it.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
-mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
+mps2-an385-pac = { version = "*" }
 
 # RTIC v2
 rtic = { version = "2.1", features = ["thumbv7-backend"] }

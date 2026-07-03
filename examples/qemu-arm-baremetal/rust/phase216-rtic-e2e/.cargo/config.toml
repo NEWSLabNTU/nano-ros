@@ -8,3 +8,11 @@ rustflags = [
     "-C",
     "link-arg=-Tlink.x",
 ]
+
+[patch.crates-io]
+mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }  # nros-managed
+nros = { path = "../../../../packages/core/nros" }  # nros-managed
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }  # nros-managed
+nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }  # nros-managed
+nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
+nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed

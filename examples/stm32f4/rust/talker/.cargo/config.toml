@@ -31,7 +31,11 @@ NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
 
 [patch.crates-io]
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
+nros = { path = "../../../../packages/core/nros" }  # nros-managed
+nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4" }  # nros-managed
 nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
+nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed
 

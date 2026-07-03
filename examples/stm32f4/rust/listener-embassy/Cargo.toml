@@ -41,13 +41,13 @@ dispatch = "deferred"
 # `__nros_dispatch_task` `#[embassy_executor::task]` sidekicks via the
 # C.3 routing branch, so this Entry pkg only needs `nros` + the
 # board crate + the listener Node pkg.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 216.C.2 board crate — supplies the `EmbassyStm32F4` ZST the
 # macro-generated body delegates init to via
 # `EmbassyBoardEntry::init_hardware`. Today the bringup body is
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
-nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }
+nros-board-embassy-stm32f4 = { version = "*" }
 # Embassy runtime — re-listed because the macro-emitted body
 # references `::embassy_executor::main`, `::embassy_executor::task`,
 # `::embassy_time::Timer`, etc. by absolute path. The Entry pkg owns

@@ -28,12 +28,12 @@ default_namespace = "/"
 dispatch = "deferred"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
-nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385", features = ["e2e-synthetic-callback"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros-board-rtic-mps2-an385 = { version = "*", features = ["e2e-synthetic-callback"] }
 # Plain MPS2-AN385 board — the node calls its `exit_success()` to signal the
 # QEMU semihosting E2E pass (was a transitive dep via the node pkg).
-nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }
-mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
+nros-board-mps2-an385 = { version = "*" }
+mps2-an385-pac = { version = "*" }
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }

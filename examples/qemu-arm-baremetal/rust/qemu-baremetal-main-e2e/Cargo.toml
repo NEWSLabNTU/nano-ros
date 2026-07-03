@@ -27,13 +27,13 @@ default_namespace = "/"
 dispatch = "deferred"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
 # impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board.
-nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", features = ["board-entry"] }
+nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }
 # Linked RMW backend (force-linked; self-registers via the macro's
 # `__register_linked_rmw()` on `target_os = "none"`).
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 # Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
 # the `qemu-mps2-an385` deploy; the reset trampoline halts via `cortex_m::asm`.

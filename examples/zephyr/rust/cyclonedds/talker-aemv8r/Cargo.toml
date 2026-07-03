@@ -40,7 +40,7 @@ log = "0.4"
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
 # for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
 std_msgs = { version = "*", default-features = false }
 

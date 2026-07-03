@@ -17,5 +17,7 @@ ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"
 DEFMT_LOG = "debug"
 
 [patch.crates-io]
+nros = { path = "../../../../packages/core/nros" }  # nros-managed
+nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }  # nros-managed
 nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed

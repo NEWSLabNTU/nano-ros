@@ -36,17 +36,17 @@ gateway = "192.168.1.1"
 netmask = "255.255.255.0"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 244.C5 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
 # impl so `nros::main!(deploy = "stm32f4")` can drive this board. Keeps the
 # board crate's existing ethernet + rmw-zenoh defaults.
-nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4", features = ["stm32f429", "ethernet", "rmw-zenoh", "board-entry"], default-features = false }
+nros-board-stm32f4 = { version = "*", features = ["stm32f429", "ethernet", "rmw-zenoh", "board-entry"], default-features = false }
 # Linked RMW backend (force-linked; self-registers via the macro's
 # `__register_linked_rmw()` on `target_os = "none"`).
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+nros-log = { version = "*", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { version = "*", default-features = false }
 

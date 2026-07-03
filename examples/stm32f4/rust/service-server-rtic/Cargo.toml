@@ -40,13 +40,13 @@ dispatch = "deferred"
 # hand-rolled `#[rtic::app] mod app` stack (rtic, rtic-monotonics,
 # stm32f4xx-hal, nros-rmw-zenoh, example_interfaces, cortex-m) is
 # dropped — the macro emit + the board crate own those.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Board crate — supplies the `RticStm32F4` ZST the
 # macro-generated body delegates init to via
 # `RticBoardEntry::init_hardware`. Today the bringup body is
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
-nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }
+nros-board-rtic-stm32f4 = { version = "*" }
 # RTIC runtime — re-listed because the macro-emitted body references
 # `::rtic::app`, `#[task]`, etc. by absolute path. The Entry pkg owns
 # the rtic version pin (`2.1` matches `nros-board-rtic-stm32f4`).

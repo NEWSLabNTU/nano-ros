@@ -43,10 +43,10 @@ locator = "tcp/10.0.2.2:7454"
 [dependencies]
 # Board crate — ESP32-C3 QEMU + OpenETH + zenoh. Provides the
 # `Esp32QemuEntry` board ZST + the `esp_bootloader_esp_idf` re-export.
-nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }
+nros-board-esp32-qemu = { version = "*" }
 
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }

@@ -38,13 +38,13 @@ domain_id = 0
 [dependencies]
 # nros + the XRCE RMW (rmw-xrce makes `__register_linked_rmw()` register the
 # XRCE backend on `target_os = "none"`; it pulls nros-rmw-xrce-cffi + linkme-register).
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Board built with the XRCE custom transport (xrce-transport → serial UART +
 # nros-rmw-xrce-cffi). `board-entry` pulls the BoardEntry impl + setup_transport.
-nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["board-entry", "xrce-transport"] }
+nros-board-mps2-an385 = { version = "*", default-features = false, features = ["board-entry", "xrce-transport"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+nros-log = { version = "*", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { version = "*", default-features = false }
 

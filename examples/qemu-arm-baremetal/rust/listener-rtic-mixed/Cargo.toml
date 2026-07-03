@@ -39,20 +39,20 @@ domain_id = 0
 
 [dependencies]
 # Node deps folded in from the former listener_rtic_mixed_pkg (issue 0100).
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+nros-log = { version = "*", default-features = false }
 std_msgs = { version = "*", default-features = false }
 # nros Executor API — ffi-sync enables critical_section guards around FFI calls.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
 
 # RTIC board Entry (RticBoardEntry) — owns the `#[rtic::app]` boot scaffold.
-nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }
+nros-board-rtic-mps2-an385 = { version = "*" }
 
 # RMW backend (zenoh-pico) linked + registered by the board Entry.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers).
-mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
+mps2-an385-pac = { version = "*" }
 
 # RTIC v2
 rtic = { version = "2.1", features = ["thumbv7-backend"] }

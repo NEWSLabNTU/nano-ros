@@ -22,6 +22,8 @@ NROS_EXECUTOR_ARENA_SIZE = "18432"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
 
 [patch.crates-io]
+nros = { path = "../../../../packages/core/nros" }  # nros-managed
+nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }  # nros-managed
 nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
 

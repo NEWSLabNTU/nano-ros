@@ -41,18 +41,18 @@ netmask = "255.255.255.0"
 # Node deps folded in from the former service_server_rtic_pkg (issue 0100).
 example_interfaces = { version = "*", default-features = false }
 # nros Executor API + bare-metal platform glue.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board boot scaffold.
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+nros-log = { version = "*", default-features = false }
 # RTIC board entry: brings up hardware + network, opens the executor, builds the
 # RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
-nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }
+nros-board-rtic-mps2-an385 = { version = "*" }
 # Linked RMW backend (registered by the board boot scaffold).
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
 
 # MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
-mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
+mps2-an385-pac = { version = "*" }
 
 # RTIC v2
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
