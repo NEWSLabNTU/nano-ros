@@ -1122,6 +1122,19 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("nros-log", "packages/core/nros-log"),
         ("nros-macros", "packages/core/nros-macros"),
         ("nros-params", "packages/core/nros-params"),
+        // Phase 277 W6 — crates the standalone examples reference registry-style
+        // after the path-dep flip but that don't ride the `nros-board-*` generic
+        // fallback (a support crate under core/, a driver, and a board PAC whose
+        // package name has no `nros-` prefix).
+        (
+            "nros-platform-critical-section",
+            "packages/core/nros-platform-critical-section",
+        ),
+        (
+            "nros-transport-callbacks",
+            "packages/drivers/nros-transport-callbacks",
+        ),
+        ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
         // RMW backends
         ("nros-rmw-zenoh", "packages/zpico/nros-rmw-zenoh"),
         (
@@ -2084,6 +2097,39 @@ nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
                 nros_crate_subpath(name),
                 Some(format!("packages/boards/{name}")),
                 "board crate `{name}` resolved to an unexpected subpath"
+            );
+        }
+    }
+
+    /// Phase 277 W6 — the standalone-example manifest flip (path-dep →
+    /// `version = "*"`) references three nros-owned crates that neither the
+    /// pre-W6 static table nor the `nros-board-*` generic fallback covered:
+    /// the critical-section support crate, the custom-transport driver crate,
+    /// and the MPS2 PAC (a `packages/boards/` crate WITHOUT the `nros-board-`
+    /// name prefix). Lock their table entries in so `nros sync` emits patch
+    /// rows for them instead of the "unknown runtime crate" skip warning.
+    #[test]
+    fn lookup_table_covers_w6_example_flip_extras() {
+        let extras = [
+            (
+                "nros-platform-critical-section",
+                "packages/core/nros-platform-critical-section",
+            ),
+            (
+                "nros-transport-callbacks",
+                "packages/drivers/nros-transport-callbacks",
+            ),
+            ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
+        ];
+        for (name, subpath) in &extras {
+            assert!(
+                is_managed_runtime_crate_name(name),
+                "lookup table missing `{name}`"
+            );
+            assert_eq!(
+                nros_crate_subpath(name),
+                Some((*subpath).to_string()),
+                "`{name}` resolved to an unexpected subpath"
             );
         }
     }
