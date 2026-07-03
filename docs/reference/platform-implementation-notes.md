@@ -136,7 +136,7 @@ zenoh-pico needs ~8+ mutexes (transport TX/RX/peer + a write-filter mutex per pu
 Set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and `CONFIG_MAX_PTHREAD_COND_COUNT=16` in `prj.conf`
 (cyclonedds action overlays use 2048, archived Phase 184.8).
 
-## Zephyr zsock per-fd serialization vs zenoh-pico (issues 0129/0131)
+## Zephyr zsock per-fd serialization vs zenoh-pico (issues 0129/0139)
 
 Zephyr's socket layer takes a per-fd `fdtable` mutex for the ENTIRE blocking call —
 NSOS offload included — so zenoh-pico's blocking read task holds the session socket

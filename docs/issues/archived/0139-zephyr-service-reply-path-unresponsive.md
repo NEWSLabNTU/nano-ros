@@ -1,5 +1,5 @@
 ---
-id: 131
+id: 139
 title: "Zephyr native_sim service/queryable reply path unresponsive — `ros2 lifecycle get` (and `ros2 service list`) never answered by the Rust zephyr entry"
 status: resolved
 type: bug

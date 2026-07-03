@@ -8,7 +8,7 @@ RFC-0006 (feature axes).
 > (`params_zephyr_entry_e2e`), **W3 (lifecycle) ✅** (`lifecycle_zephyr_entry_e2e` — autostart
 > reaches `active`, all five REP-2002 services answer over `ros2 lifecycle`), **W5 (QoS) ✅**
 > (`qos_zephyr_entry_e2e` — on-target reliable+transient_local pair matched + delivered in-image,
-> republish observed by the new `int32-observer` fixture). W3/W5 were blocked by issue #131 →
+> republish observed by the new `int32-observer` fixture). W3/W5 were blocked by issue #139 →
 > root-caused to the zenoh-pico Zephyr 5 s socket timeout starving all tx under Zephyr's per-fd
 > zsock serialization (fork patch → 100 ms) plus missing `Z_FEATURE_LOCAL_SUBSCRIBER` for
 > intra-image pub→sub (RFC-0015 Model 1: one shared session per image). All six zephyr entry e2es
