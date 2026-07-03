@@ -133,6 +133,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   is separate. → [docs/reference/cyclonedds-known-limitations.md](docs/reference/cyclonedds-known-limitations.md).
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
   → platform-implementation-notes.md.
+- **zpico shim + zenoh-pico library MUST share the generated zenoh config** — flag-gated struct
+  fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
+  session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
+  (archived). Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
 
 ## Verification
 Kani (bounded harnesses, `just verify-kani`) + Verus (unbounded proofs, `just verify-verus`).

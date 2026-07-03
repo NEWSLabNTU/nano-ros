@@ -239,8 +239,10 @@ identically pre-phase):
 - Zephyr cyclonedds runtime lane (W4 String flip verified by pattern +
   C-twin only; local lane env-broken).
 - ThreadX riscv64 runtime (#131 — green only on stale binaries locally).
-- Native zenoh service/action lane (#135 — broken at origin/main; W5 tests
-  stay correctly red on the positive path until it is fixed).
+- ~~Native zenoh service/action lane (#135)~~ — RESOLVED post-phase: a
+  build_c_shim/zenoh-pico generated-config ABI mismatch from the 0096
+  loopback fix; W5 service/action suites now 11/11 locally (see
+  `docs/issues/archived/0135-…`).
 
 **Follow-ups** (from the whole-branch review; filed or one-liners for later
 pickup):

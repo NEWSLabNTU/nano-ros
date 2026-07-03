@@ -76,10 +76,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
   phase-277 W7 for one mechanical sweep.
-- **#135** — [Native zenoh service/action query path
-  broken](0135-native-zenoh-service-query-path-broken.md): client `get` returns
-  `Transport(Timeout)` instantly, server never receives; reproduced with pre-W5 examples at
-  `origin/main`; pub/sub, XRCE, and Cyclone unaffected (found in phase-277 W5).
 - **#134** — [nros-c `AtomicU64` breaks riscv32 NuttX
   builds](0134-nros-c-atomicu64-breaks-riscv32-nuttx.md): `qemu-riscv-nuttx` C examples cannot
   compile nros-c (no 64-bit atomics on riscv32); pre-existing, baselined during phase-277 W4.
@@ -115,7 +111,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#128** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#135** —
+[Native zenoh service/action query path
+broken](archived/0135-native-zenoh-service-query-path-broken.md): a C ABI mismatch, not a protocol
+bug — the 0096 loopback fix enabled `Z_FEATURE_LOCAL_QUERYABLE` in the generated zenoh config, but
+`build_c_shim` compiled `zpico.c` against the in-tree fallback config, so `z_get_options_t` layouts
+diverged and the library read the shim's `target=ALL(1)` as `allowed_destination=SESSION_LOCAL(1)`;
+every cross-process query silently went session-local and finalized instantly with no reply. Fixed
+by compiling the shim (and the net-type size probes) with `ZENOH_GENERIC` + the OUT_DIR generated
+config, and deleting the stale `c/platform/zenoh_generic_config.h` shadow copy. Native zenoh
+service/action suites 11/11 incl. the 0096 in-process guard. **#128** —
 [`nros::main!` Zephyr/Esp32 emit branch wires only
 register+spin](archived/0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): both halves landed —
 params/lifecycle emits (276 W1/W3) and the hard half, `ZephyrBoard::run_tiers` (one `k_thread`

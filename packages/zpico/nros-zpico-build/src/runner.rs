@@ -377,6 +377,7 @@ pub fn run() {
                 &c_dir,
                 &include_dir,
                 &zenoh_pico_include,
+                &out_dir,
                 use_posix,
                 use_bare_metal,
                 &target,
@@ -631,7 +632,9 @@ pub fn run() {
     println!("cargo:rerun-if-changed=c/zpico/nuttx_clock.c");
     println!("cargo:rerun-if-changed=c/platform/bare-metal/platform.h");
     println!("cargo:rerun-if-changed=c/platform/errno_override.h");
-    println!("cargo:rerun-if-changed=c/platform/zenoh_generic_config.h");
+    // c/platform/zenoh_generic_config.h was a stale pre-134.3 copy that could
+    // shadow the OUT_DIR-generated header on the bare-metal shim include path;
+    // deleted in the #135 fix (every TU now consumes the generated config).
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
@@ -674,6 +677,10 @@ fn probe_net_type_sizes(
     let mut build = cc::Build::new();
     build.file(c_dir.join("size_probe.c"));
     build.include(zenoh_pico_include);
+    // Issue #135 — the ZENOH_GENERIC branches below used to find
+    // <zenoh_generic_config.h> via the stale c/platform copy (deleted);
+    // give every probe the OUT_DIR-generated config the library uses.
+    build.include(out_dir.join("zenoh-config"));
 
     // Set the same platform defines as the main build so platform.h selects
     // the correct platform header (unix.h, freertos/lwip.h, void.h, etc.)
@@ -1025,6 +1032,7 @@ fn build_c_shim(
     c_dir: &Path,
     include_dir: &Path,
     zenoh_pico_include: &Path,
+    out_dir: &Path,
     use_posix: bool,
     use_bare_metal: bool,
     target: &str,
@@ -1034,6 +1042,19 @@ fn build_c_shim(
     let mut build = cc::Build::new();
 
     // Include paths
+    //
+    // Issue #135 — the generated zenoh config MUST come first and the shim
+    // MUST compile with `ZENOH_GENERIC`, exactly like the zenoh-pico library
+    // TUs built by `build_zenoh_pico_unified`. `z_get_options_t` (and other
+    // public structs) change LAYOUT with `Z_FEATURE_LOCAL_QUERYABLE` /
+    // `Z_FEATURE_LOCAL_SUBSCRIBER`; a shim TU falling back to the in-tree
+    // `zenoh-pico/config.h` defaults while the library uses the generated
+    // header is an ABI mismatch: the library's `z_get` read the shim's
+    // `opts.target` (`Z_QUERY_TARGET_ALL` = 1) as `opts.allowed_destination`
+    // (`Z_LOCALITY_SESSION_LOCAL` = 1), so every cross-process query was
+    // silently downgraded to session-local and never reached the router.
+    build.include(out_dir.join("zenoh-config"));
+    build.define("ZENOH_GENERIC", None);
     build.include(include_dir);
     build.include(zenoh_pico_include);
     // Phase 154 — `zpico.c` now `#include <nros/platform_net.h>` from
@@ -1051,6 +1072,12 @@ fn build_c_shim(
     if use_posix {
         #[cfg(target_os = "linux")]
         build.define("ZENOH_LINUX", None);
+        // Mirror `zenoh_platforms.toml [platform.posix] defines_kv` — the
+        // generated header's `#ifndef Z_FEATURE_MULTI_THREAD` fallback is 0,
+        // so without this the shim would flip single-threaded while the
+        // library runs multi-threaded (same ABI-divergence class as #135).
+        build.define("Z_FEATURE_MULTI_THREAD", "1");
+        build.define("ZENOH_DEBUG", "0");
     } else if use_bare_metal {
         let platform_dir = c_dir.join("platform");
 
@@ -1077,7 +1104,7 @@ fn build_c_shim(
         if link.serial && !has_network {
             build.define("ZPICO_SERIAL", None);
         }
-        build.define("ZENOH_GENERIC", None);
+        // ZENOH_GENERIC is set unconditionally above (issue #135).
         build.define("Z_FEATURE_MULTI_THREAD", "0");
         // Phase 134.4 — every `Z_FEATURE_LINK_*` / `Z_FEATURE_RAWETH_*`
         // / `Z_FEATURE_SCOUTING_UDP` / `Z_FEATURE_UNSTABLE_API` value
