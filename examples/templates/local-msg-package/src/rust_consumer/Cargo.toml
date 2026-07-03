@@ -43,11 +43,11 @@ locator = "tcp/127.0.0.1:7447"
 [dependencies]
 # Board crate — hosted Linux/macOS native board. Supplies the
 # `NativeBoard` ZST the macro resolves; force-links the zenoh RMW.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-native = { version = "*" }
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 248 C5c — posix platform symbols via a direct `nros-platform` dep
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform = { version = "*", default-features = false, features = ["platform-posix"] }
 
 # Msg deps — workspace + AMENT, all resolved through the auto-managed
 # [patch.crates-io] block below.

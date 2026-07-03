@@ -23,9 +23,9 @@ default = ["rmw-xrce"]
 rmw-xrce = []
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
-nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 
 # Generated CDR `px4_msgs::msg::*` (from the PX4 `.msg` tree via
 # `nros generate-px4-msgs`; trimmed to the two topics this example touches).
@@ -39,8 +39,7 @@ env_logger = "0.11"
 [workspace]
 
 [patch.crates-io]
-# === BEGIN nros-managed [patch.crates-io] ===
+# px4_msgs is generated from the PX4-Autopilot .msg tree by `nros
+# generate-px4-msgs` (just px4 build-fixtures) — this row is maintained by
+# hand, outside the nros-managed block (`nros sync` leaves it alone).
 px4_msgs = { path = "generated/px4_msgs" }
-nros-core = { path = "../../../../../packages/core/nros-core" }
-nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
-# === END nros-managed [patch.crates-io] ===

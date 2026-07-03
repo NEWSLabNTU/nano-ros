@@ -17,7 +17,7 @@ name = "listener"
 default_namespace = "/"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",

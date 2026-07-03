@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>px4_stub</name>
+  <version>0.1.0</version>
+  <description>nano-ros PX4 XRCE stub example</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- px4_msgs is NOT declared here: its crate is generated from the
+       PX4-Autopilot .msg tree by `nros generate-px4-msgs` (just px4
+       build-fixtures), not by `nros sync` AMENT codegen. The Cargo.toml
+       [patch.crates-io] row pins it to generated/px4_msgs. -->
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

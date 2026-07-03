@@ -1,0 +1,6 @@
+[patch.crates-io]
+nros = { path = "../../../../../packages/core/nros" }  # nros-managed
+nros-core = { path = "../../../../../packages/core/nros-core" }  # nros-managed
+nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi" }  # nros-managed
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }  # nros-managed

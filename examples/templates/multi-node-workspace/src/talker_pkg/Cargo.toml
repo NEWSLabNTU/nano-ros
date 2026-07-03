@@ -21,7 +21,7 @@ default_namespace = "/"
 # Single `nros` dep — matches the `nros::main!()` design. The RMW is
 # selected by the framework at runtime (`rmw-cffi` backend registry);
 # host targets use `platform-posix`.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",

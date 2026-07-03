@@ -3,7 +3,10 @@ builtin_interfaces = { path = "../../generated/builtin_interfaces" }  # nros-man
 extra_msgs = { path = "../../generated/extra_msgs" }  # nros-managed
 geometry_msgs = { path = "../../generated/geometry_msgs" }  # nros-managed
 local_msgs = { path = "../../generated/local_msgs" }  # nros-managed
+nros = { path = "../../../../../packages/core/nros" }  # nros-managed
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }  # nros-managed
 nros-core = { path = "../../../../../packages/core/nros-core" }  # nros-managed
+nros-platform = { path = "../../../../../packages/core/nros-platform" }  # nros-managed
 nros-serdes = { path = "../../../../../packages/core/nros-serdes" }  # nros-managed
 sensor_msgs = { path = "../../generated/sensor_msgs" }  # nros-managed
 std_msgs = { path = "../../generated/std_msgs" }  # nros-managed

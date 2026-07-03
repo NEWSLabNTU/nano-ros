@@ -21,22 +21,22 @@ rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-bo
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # Native board shim: `nros_board_native::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature
 # linked. The app still owns its concrete backend dep below so the backend's
 # feature set (std / ros edition / link options) is pinned here.
-nros-board-native = { path = "../../../../packages/boards/nros-board-native", default-features = false }
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
+nros-board-native = { version = "*", default-features = false }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
+nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"], optional = true }
+nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"], optional = true }
 # Phase 88.16.B — diagnostics route through `nros-log`.
-nros-log = { path = "../../../../packages/core/nros-log" }
+nros-log = { version = "*" }
 example_interfaces = { version = "*", default-features = false }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 

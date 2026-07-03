@@ -32,16 +32,16 @@ unstable-zenoh-api = ["nros/unstable-zenoh-api"]
 link-tls           = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # Native board shim: `nros_board_native::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature
 # linked. The app still owns its concrete backend dep below so the backend's
 # feature set (std / ros edition / link options) is pinned here.
-nros-board-native = { path = "../../../../packages/boards/nros-board-native", default-features = false }
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
+nros-board-native = { version = "*", default-features = false }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["std", "platform-posix", "ros-humble"], optional = true }
+nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"], optional = true }
+nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"], optional = true }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

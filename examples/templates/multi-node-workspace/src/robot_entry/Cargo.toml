@@ -20,7 +20,7 @@ path = "src/main.rs"
 deploy = "native"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",
@@ -29,7 +29,7 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 # `<NativeBoard as BoardEntry>::run(...)` call resolves. `deploy =
 # "native"` maps to `nros_board_native::NativeBoard` in the macro's
 # board lookup table.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-native = { version = "*" }
 # Node pkg rlibs — the launch XML names `talker` + `listener`, so the
 # macro emits `talker_pkg::register` + `listener_pkg::register`; the
 # bin target must link both.

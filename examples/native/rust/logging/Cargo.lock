@@ -53,7 +53,7 @@ dependencies = [
 
 [[package]]
 name = "nros-log"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
  "portable-atomic",
@@ -61,11 +61,11 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "nros-platform-api",
@@ -88,3 +88,11 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[patch.unused]]
+name = "nros-core"
+version = "0.5.0"
+
+[[patch.unused]]
+name = "nros-serdes"
+version = "0.5.0"

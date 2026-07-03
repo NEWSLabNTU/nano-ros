@@ -15,11 +15,11 @@ deploy = ["native"]
 
 [dependencies]
 # Phase 88 — `nros-log` facade + `PlatformSink` + the `nros_*!` macros.
-nros-log = { path = "../../../../packages/core/nros-log" }
+nros-log = { version = "*" }
 # POSIX `nros_platform_log_*` impl. `PlatformSink` forwards into
 # this. The `nros_platform_*` clock / alloc / etc. symbols are
 # also pulled in here so the example links standalone.
-nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

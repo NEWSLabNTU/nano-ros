@@ -1,0 +1,8 @@
+[patch.crates-io]
+nros = { path = "../../../packages/core/nros" }  # nros-managed
+nros-core = { path = "../../../packages/core/nros-core" }  # nros-managed
+nros-platform = { path = "../../../packages/core/nros-platform" }  # nros-managed
+nros-rmw = { path = "../../../packages/core/nros-rmw" }  # nros-managed
+nros-rmw-cyclonedds-sys = { path = "../../../packages/dds/nros-rmw-cyclonedds-sys" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-serdes = { path = "../../../packages/core/nros-serdes" }  # nros-managed

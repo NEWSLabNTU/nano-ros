@@ -26,9 +26,9 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7447"
 [dependencies]
 # Phase 212.N.9 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros" }
+nros = { version = "*" }
 # Phase 212.N.3 tier-1 per-board shim. `NativeBoard::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
-nros-board-native = { path = "../../../../packages/boards/nros-board-native" }
+nros-board-native = { version = "*" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
-nros-platform = { path = "../../../../packages/core/nros-platform", features = ["std"] }
+nros-platform = { version = "*", features = ["std"] }
