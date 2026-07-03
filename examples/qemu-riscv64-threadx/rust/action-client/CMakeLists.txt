@@ -14,7 +14,6 @@ set(NROS_RMW "cyclonedds" CACHE STRING
 set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING
     "nano-ros root RMW backend" FORCE)
 set(NANO_ROS_BOARD riscv64-qemu)
-set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
 # Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
 #   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
 #   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
@@ -27,6 +26,7 @@ if(NOT DEFINED NANO_ROS_ROOT)
             "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
     endif()
 endif()
+set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
     "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
