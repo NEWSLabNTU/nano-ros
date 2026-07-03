@@ -90,10 +90,11 @@ declarations / cargo features, so plain pub/sub entries are unchanged.
 Proven compiling end-to-end by the phase-276 W1 fixture
 (`ws-params-rust/src/zephyr_entry`, west lane `build-ws-rs-params-entry-zenoh`):
 the launch `<param>` seed is baked into the ELF and `apply_param_services`
-compiles on the `no_std` Zephyr target. **Runtime verification is blocked by
-issue #129** (the whole Zephyr rust entry lane fails `Executor::open` on current
-main — base entry included); the `params_zephyr_entry_e2e` test is `#[ignore]`d
-on #129 and ready to unignore.
+compiles on the `no_std` Zephyr target. **Runtime verified (2026-07-03, #129
+resolved):** `params_zephyr_entry_e2e` PASSES un-ignored — the launch-baked
+param initial (250) is seeded into the Zephyr entry's store, live-read by the
+node callback, and observed by a cross-process subscriber. phase-276 W1
+(params-on-Zephyr) is DONE.
 
 **Remaining here: half 2 — tiers** (`ZephyrBoard::run_tiers` + the multi-tier
 `entry_call` in the Zephyr arm).

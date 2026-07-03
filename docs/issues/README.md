@@ -51,15 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `SIOCSIFADDR` eth0 IP push, so the guest can't reach slirp's 10.0.2.2. Blocks networked
   nuttx-entry e2e; the #127 build-asserts are unaffected. Found by the #127 spike (the control
   fixture fails identically).
-- **#129** — [Zephyr rust workspace-entry lane broken on current main](0129-zephyr-rust-workspace-entry-lane-broken.md):
-  a stale prebuilt `zephyr.exe` masked it since ~phase-248/271. Three layers: (1) executor's
-  ~75 KiB heap alloc vs picolibc's 16 KiB malloc arena — mitigated (arena bump); (2) NO RMW
-  backend in the Rust-Zephyr graph nor registration (phase-248 C6g removed both; the C-port
-  premise only held for C/C++) — **FIXED** (entry-owned `dep:nros-rmw-zenoh` + the `nros::main!`
-  Zephyr arm's deploy-rmw `register()` emit, the RFC-0031 C5b amendment; session now connects +
-  handshakes, strace-verified); (3) NEW: after the first liveliness declare the app thread
-  deadlocks on Zephyr's per-fd `fdtable` mutex against the zenoh read task — the remaining
-  blocker for the zephyr-rust e2es (params e2e stays `#[ignore]`d).
 - **#128** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
   lifecycle / run_tiers](0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
   W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only
@@ -82,7 +73,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#126** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#129** —
+[Zephyr rust workspace-entry lane broken on current
+main](archived/0129-zephyr-rust-workspace-entry-lane-broken.md): stale June prebuilts had masked a
+three-layer rot. (1) executor's ~75 KiB heap alloc vs picolibc's 16 KiB malloc arena → arena bump;
+(2) phase-248 C6g removed the Rust-Zephyr backend dep + registration → restored per the RFC-0031
+C5b amendment (entry-owned `dep:nros-rmw-zenoh` + the `nros::main!` Zephyr arm's deploy-rmw
+`register()` emit); (3) `git bisect run` converged on 6601c7e52 (268-W2b): per-entity node identity
+made entity-creates fire the lazy per-node NN liveliness declare, which wedges the app thread in
+the kernel per-fd lock on native_sim — per-node tokens now gated off on the Zephyr platform (the
+#104 primary token stays). Lane green: C entry publishes; `params_zephyr_entry_e2e` (276 W1
+params-on-Zephyr) passes un-ignored. **#126** —
 [Embedded C/C++ `run_tiers` (FreeRTOS) does not
 run](archived/0126-embedded-run-tiers-freertos-session-and-stack.md): phase-274 W3's embedded
 RFC-0015 Model 1 now runs on QEMU mps2-an385. Three fixes — (0) the "native single-tier emit" was a

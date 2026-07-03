@@ -33,9 +33,6 @@ use std::{process::Command, time::Duration};
 const PARAMS_ZEPHYR_ENTRY_PORT: u16 = 17845;
 
 #[test]
-#[ignore = "blocked by issue #129 — the Zephyr rust workspace-entry lane fails \
-            Executor::open (Transport(ConnectionFailed)) on current main, base \
-            entry included; unignore when #129 lands"]
 fn params_zephyr_entry_publishes_baked_initial() {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
