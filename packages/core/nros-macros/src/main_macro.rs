@@ -1070,6 +1070,77 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `RticBoardEntry::init_hardware` from the framework-generated
     // `#[init]` body. `Embassy` is a hard error pointing at the
     // 216.C.3 sibling that lands the emit body.
+    // issue #128 (half 2) — the Zephyr arm's spin-or-tiers tail. Multi-tier
+    // systems route through `ZephyrBoard::run_tiers` (one k_thread per tier
+    // over the one shared session, RFC-0015 Model 1); single-tier keeps the
+    // plain register+spin scaffold, byte-identical to pre-#128-half-2.
+    let zephyr_body_tail: proc_macro2::TokenStream = match multi_tier {
+        Some(table) => {
+            let tiers_ts = tier_specs_tokens(table);
+            quote! {
+                return ::nros_board_zephyr::ZephyrBoard::run_tiers(
+                    &config,
+                    #tiers_ts,
+                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+                        -> ::core::result::Result<
+                            (),
+                            ::nros::__macro_support::nros_platform::RuntimeError,
+                        >
+                    {
+                        // Same per-tier closure sequence as the OwnedSpin
+                        // multi-tier path: param services BEFORE the node
+                        // registers (the store must exist when each cell
+                        // captures it), lifecycle AFTER; the board sets each
+                        // tier's `active_groups` filter and owns the spin.
+                        #param_services_call
+                        #( #register_calls )*
+                        #lifecycle_call
+                        ::core::result::Result::Ok(())
+                    },
+                );
+            }
+        }
+        None => quote! {
+            let executor = match ::nros::Executor::open(&config) {
+                ::core::result::Result::Ok(executor) => executor,
+                ::core::result::Result::Err(e) => {
+                    ::log::error!("nros: zephyr entry — executor open failed: {:?}", e);
+                    return ::core::result::Result::Err(
+                        ::nros::__macro_support::nros_platform::RuntimeError::Spin,
+                    );
+                }
+            };
+            let mut node_runtime = ::nros::ExecutorNodeRuntime::from_executor(executor);
+            let mut ctx = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(
+                &mut node_runtime,
+            );
+            let runtime = &mut ctx;
+            // Issue #128 — OwnedSpin parity for the capability emits. Param
+            // services BEFORE the node registers (the store must exist when
+            // each cell captures it — W4c), lifecycle AFTER (the executor is
+            // built, the nodes are installed). Both are inert token streams
+            // when system.toml doesn't declare them, and no-ops without the
+            // `nros/param-services` / `nros/lifecycle-services` features, so
+            // plain pub/sub Zephyr entries are byte-identical to pre-#128.
+            #param_services_call
+            #( #register_calls )*
+            #lifecycle_call
+            ::log::info!(
+                "nros: zephyr workspace entry up ({} nodes)",
+                #num_register_calls
+            );
+
+            // Forever-spin: native_sim is `no_std`, so the OwnedSpin
+            // `NROS_ENTRY_*` bounded path (which needs `std::time`) does
+            // not apply. The runtime drives the launch node set (the
+            // talker's timer publishes); the workspace E2E observes
+            // delivery from an external listener and stops the process.
+            loop {
+                let _ = runtime.runtime.spin_once(10);
+            }
+        },
+    };
+
     let body_ts: proc_macro2::TokenStream = match framework {
         Framework::OwnedSpin => quote! {
             // Phase 213.C follow-up — emit two cfg-gated entry shapes so
@@ -1249,43 +1320,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     _ => ::nros::ExecutorConfig::default_const()
                         .node_name(::core::env!("CARGO_PKG_NAME")),
                 };
-                let executor = match ::nros::Executor::open(&config) {
-                    ::core::result::Result::Ok(executor) => executor,
-                    ::core::result::Result::Err(e) => {
-                        ::log::error!("nros: zephyr entry — executor open failed: {:?}", e);
-                        return ::core::result::Result::Err(
-                            ::nros::__macro_support::nros_platform::RuntimeError::Spin,
-                        );
-                    }
-                };
-                let mut node_runtime = ::nros::ExecutorNodeRuntime::from_executor(executor);
-                let mut ctx = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(
-                    &mut node_runtime,
-                );
-                let runtime = &mut ctx;
-                // Issue #128 — OwnedSpin parity for the capability emits. Param
-                // services BEFORE the node registers (the store must exist when
-                // each cell captures it — W4c), lifecycle AFTER (the executor is
-                // built, the nodes are installed). Both are inert token streams
-                // when system.toml doesn't declare them, and no-ops without the
-                // `nros/param-services` / `nros/lifecycle-services` features, so
-                // plain pub/sub Zephyr entries are byte-identical to pre-#128.
-                #param_services_call
-                #( #register_calls )*
-                #lifecycle_call
-                ::log::info!(
-                    "nros: zephyr workspace entry up ({} nodes)",
-                    #num_register_calls
-                );
-
-                // Forever-spin: native_sim is `no_std`, so the OwnedSpin
-                // `NROS_ENTRY_*` bounded path (which needs `std::time`) does
-                // not apply. The runtime drives the launch node set (the
-                // talker's timer publishes); the workspace E2E observes
-                // delivery from an external listener and stops the process.
-                loop {
-                    let _ = runtime.runtime.spin_once(10);
-                }
+                // issue #128 (half 2) — spin-or-tiers tail: multi-tier
+                // systems route through `ZephyrBoard::run_tiers`; single-tier
+                // keeps the plain single-executor register+spin body.
+                #zephyr_body_tail
             }
         },
         // Phase 225.O — ESP32-C3 (esp-hal) framework. esp-riscv-rt's

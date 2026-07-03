@@ -261,6 +261,12 @@ build-fixtures:
         ( cd examples/workspaces/ws-safety-rust
           NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
     fi
+    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (ws sync only).
+    if [ -d examples/workspaces/ws-realtime-rust/src/zephyr_entry ]; then
+        echo "  → ws-realtime workspace-entry prep (nros ws sync)"
+        ( cd examples/workspaces/ws-realtime-rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+    fi
 
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"

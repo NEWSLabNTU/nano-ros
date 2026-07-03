@@ -17,5 +17,14 @@ publish = false
 [lib]
 name = "nros_board_zephyr"
 
+[features]
+# issue #128 (half 2) — `ZephyrBoard::run_tiers` (per-tier k_thread entry).
+# Off by default: NetworkWait-only consumers keep the tiny dep graph; the
+# `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
+# enables this on its `nros-board-zephyr` dep.
+tiers = ["dep:nros", "dep:log"]
+
 [dependencies]
 nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
+log = { version = "0.4", optional = true }

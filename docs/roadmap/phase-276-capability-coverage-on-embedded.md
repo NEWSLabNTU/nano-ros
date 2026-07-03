@@ -17,9 +17,11 @@ RFC-0006 (feature axes).
 > embedded half landed** (`zephyr_entry_robot1` bakes the robot1 slice via the macro's
 > `host = "robot1"` filter; boots + publishes) but the e2e is `#[ignore]`d on issue #140 — the
 > NATIVE per-host entry's (robot2) subscription is dead on current main (`multihost_runtime_e2e`
-> fails identically; pre-existing, stale-fixture-masked). Remaining: W2 (tiers — needs
-> `ZephyrBoard::run_tiers`, the #128 hard half; folds into the phase-274 W3 convergence track)
-> and the #140 native fix to un-gate W6.
+> fails identically; pre-existing, stale-fixture-masked). **W2 (tiers) ✅ 2026-07-04** — #128's hard half
+> landed: `ZephyrBoard::run_tiers` (one `k_thread` per tier over one shared session, raw
+> `[tiers.*.zephyr]` priorities) + the macro's multi-tier Zephyr emit;
+> `realtime_tiers_zephyr_entry_e2e` green (/ctrl 10 ms outruns /telem 100 ms cross-process).
+> Remaining: the #140 native fix to un-gate W6 — every other wave is proven on Zephyr e2e.
 
 > **Blocker found (issue #128).** The `nros::main!` **Zephyr** emit branch wires only
 > register+spin — it emits none of `param_services_call` / `lifecycle_call` / `run_tiers` (those

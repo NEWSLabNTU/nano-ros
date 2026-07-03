@@ -159,6 +159,20 @@ Consequences and rules:
   declare to hit the recv window. The per-node token gate on `platform-zephyr`
   (`nros-rmw-zenoh/src/shim/session.rs`) predates the timeout fix and can likely
   be lifted; retest before doing so.
+- **tx throughput ceiling**: because every send waits for the read task's recv
+  window, total tx is capped at ~one send per window (plus inbound-traffic
+  wakes). At the 100 ms default that is ~10 msg/s for the WHOLE image — fine
+  for 1 Hz demo lanes, fatal for high-rate publishers. Tune per-app via
+  `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` (→ `Z_CONFIG_SOCKET_TIMEOUT`); the
+  ws-realtime zephyr entry (100 Hz ctrl tier) uses 5 ms.
+- **Concurrent entity declares race the interest write filter**: a declare
+  triggers an interest handshake, and when two threads declare concurrently
+  on one session the losing publisher's zenoh-pico write filter can stay
+  closed — `z_publisher_put` succeeds while nothing reaches the wire.
+  `ZephyrBoard::run_tiers` therefore runs the boot tier's setup BEFORE
+  spawning the other tiers (issue 0128 resolution); with ≥3 tiers the
+  spawned tiers' setups still race each other — serialize them if a tier's
+  topic goes silent.
 
 ## NuttX ↔ zenoh-pico cooperation (Phase 225.O)
 

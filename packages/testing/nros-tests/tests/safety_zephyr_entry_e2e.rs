@@ -10,18 +10,18 @@
 //! `CallbackCtx::integrity()` and republishes its CRC-VALIDATED receive count
 //! on `/safe_ok` — the count climbs only while integrity is valid.
 //!
-//! Assertion mirrors `qos_zephyr_entry_e2e`: a native `int32-observer` fixture
+//! Assertion mirrors `qos_zephyr_entry_e2e`: the native `int32-sink` fixture
 //! subscribes `/safe_ok` over the same router and must log `Received:` —
 //! proving the CRC attach → in-image deliver → validate → republish chain ran
 //! on the embedded target.
 //!
 //! Requires the west-lane fixture (`just zephyr build-fixtures`; skips when
-//! `zephyr.exe` is absent) and the `int32-observer` fixture binary.
+//! `zephyr.exe` is absent) and the `int32-sink` fixture binary.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test safety_zephyr_entry_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess, build_int32_observer,
+    ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess, build_int32_sink,
     build_zephyr_workspace_rust_safety_entry,
 };
 use std::{process::Command, time::Duration};
@@ -35,9 +35,9 @@ fn safety_zephyr_entry_crc_validated_delivers() {
     let entry = build_zephyr_workspace_rust_safety_entry().unwrap_or_else(|e| {
         nros_tests::skip!("zephyr safety workspace entry not built (west): {e}")
     });
-    let observer = build_int32_observer()
+    let observer = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("int32-observer fixture not built: {e}"));
+        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
 
     // Router on the exact port the fixture's CONFIG_NROS_ZENOH_LOCATOR was baked with.
     let router = ZenohRouter::start_on("127.0.0.1", SAFETY_ZEPHYR_ENTRY_PORT).unwrap_or_else(|e| {
@@ -50,14 +50,15 @@ fn safety_zephyr_entry_crc_validated_delivers() {
         let mut cmd = Command::new(&observer);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
-            .env("NROS_TOPIC", "/safe_ok");
-        ManagedProcess::spawn_command(cmd, "int32-observer")
+            .env("NROS_SESSION_MODE", "client")
+            .env("NROS_SUB_TOPIC", "/safe_ok");
+        ManagedProcess::spawn_command(cmd, "int32-sink")
             .unwrap_or_else(|e| panic!("spawn observer: {e}"))
     };
-    obs.wait_for_output_pattern("Observing", Duration::from_secs(10))
+    obs.wait_for_output_pattern("Waiting for Int32", Duration::from_secs(10))
         .unwrap_or_else(|_| {
             obs.kill();
-            panic!("int32-observer never became ready")
+            panic!("int32-sink never became ready")
         });
 
     // Boot the Zephyr native_sim image (runs until killed).

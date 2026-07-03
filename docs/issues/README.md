@@ -99,12 +99,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `SIOCSIFADDR` eth0 IP push, so the guest can't reach slirp's 10.0.2.2. Blocks networked
   nuttx-entry e2e; the #127 build-asserts are unaffected. Found by the #127 spike (the control
   fixture fails identically).
-- **#128** — [`nros::main!` Zephyr/Esp32 emit branch wires only register+spin — no param-services /
-  lifecycle / run_tiers](0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): blocks phase-276
-  W1 (params) / W2 (tiers) / W3 (lifecycle) **on Zephyr** at the macro level (those emits live only
-  in the `OwnedSpin` arms). W4/W5/W6 (pub/sub) remain achievable on Zephyr. The Rust-Zephyr sibling
-  of the phase-274 W3 embedded convergence. Fix: extend the Zephyr arm to OwnedSpin parity
-  (params/lifecycle small; tiers needs a `ZephyrBoard::run_tiers`).
 - **#125** — [Rust `nros::main!` multi-tier path does not seed `bind_group_sched` from
   `group_tiers`](0125-rust-entry-macro-group-seed-bind-group-sched.md): the Rust seed deferred from
   phase-273 W4 (portability e2e lifted `NodeSpansTiers`).
@@ -121,7 +115,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#139** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#128** —
+[`nros::main!` Zephyr/Esp32 emit branch wires only
+register+spin](archived/0128-zephyr-entry-macro-no-params-tiers-lifecycle.md): both halves landed —
+params/lifecycle emits (276 W1/W3) and the hard half, `ZephyrBoard::run_tiers` (one `k_thread`
+per tier over one shared session, raw `[tiers.*.zephyr]` priorities, boot thread adopts tiers[0]'s;
+`realtime_tiers_zephyr_entry_e2e` green: /ctrl (10 ms) outruns /telem (100 ms) cross-process).
+En route: a concurrent-declare interest race (boot setup now precedes tier spawn — the losing
+publisher's write filter stayed closed) and the zsock tx-throughput ceiling (~1 send per recv
+window) made tunable via `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS`. **#139** —
 [Zephyr native_sim service/queryable reply path
 unresponsive](archived/0139-zephyr-service-reply-path-unresponsive.md): not a reply-path defect —
 the session was silently dying. Zephyr zsock serializes send/recv on a per-fd mutex, and zenoh-pico's

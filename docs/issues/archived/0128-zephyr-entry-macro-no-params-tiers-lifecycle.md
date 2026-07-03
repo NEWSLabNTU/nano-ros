@@ -1,7 +1,7 @@
 ---
 id: 128
 title: "`nros::main!` Zephyr (and Esp32) emit branch wires only register+spin — no param-services / lifecycle / run_tiers, blocking phase-276 W1/W2/W3 on Zephyr"
-status: open
+status: resolved
 type: tech-debt
 area: core
 related: [phase-276, phase-274, rfc-0015, rfc-0032, phase-270]
@@ -108,3 +108,95 @@ node callback, and observed by a cross-process subscriber. phase-276 W1
 
 **Remaining here: half 2 — tiers** (`ZephyrBoard::run_tiers` + the multi-tier
 `entry_call` in the Zephyr arm).
+
+## Work items — half 2 (tiers on Rust-Zephyr)
+
+Design facts (2026-07-03 exploration): the macro already resolves
+`[tiers.*.zephyr]` (`nros-orchestration-ir` `TierDef.zephyr` + `rtos_spec`,
+`derive_target_rtos("zephyr")`) and emits `<board_path>::run_tiers(&DEPLOY,
+TIERS, closure)` where `board_path_for("zephyr") =
+::nros_board_zephyr::ZephyrBoard` — so tier RESOLUTION needs no work; only the
+spawn machinery and the arm's emit are missing. `TierSpec.priority` is the RAW
+Zephyr value (i64; negatives = cooperative), so the spawn seam must be
+`k_thread_create`, NOT the existing `nros_zephyr_task_create` pthread shim
+(POSIX priorities can't express Zephyr coop priorities, and
+`nros_platform_task_init` ignores `attr` entirely).
+
+- **T1 — tier-spawn shim** (`zephyr/nros_platform_zephyr_shims.c`):
+  `nros_zephyr_tier_task_create(void *(*entry)(void*), void *arg,
+  int32_t priority, const char *name)` via `k_thread_create` on a dedicated
+  static pool (`NROS_ZEPHYR_MAX_TIERS`, `K_THREAD_STACK_ARRAY_DEFINE`) with the
+  raw priority. No POSIX dependency; compiled unconditionally by the module
+  CMake (same file as the pthread shim).
+- **T2 — `ZephyrBoard::run_tiers`** (`packages/boards/nros-board-zephyr`): add
+  an `nros` dep (`default-features = false, features = ["alloc", "rmw-cffi"]`,
+  same as nros-board-freertos) and mirror
+  `nros_board_freertos::run_tiers_entry` minus network/scheduler bring-up
+  (Zephyr owns boot; `rust_main` is already a running thread): open the boot
+  `Executor` from the caller-built `ExecutorConfig`, wrap in
+  `ExecutorNodeRuntime`, hand each `tiers[1..]` a
+  `Executor::session_handle()` + `TierSpec` + the `Copy` setup closure via a
+  leaked ctx, spawn through T1, each tier task
+  `open_with_session_handle` → `set_active_groups(tier.groups)` → setup →
+  `spin_once(period)` loop; tiers[0] runs on the caller thread.
+- **T3 — macro emit**: `Framework::Zephyr` arm branches on `multi_tier`
+  (same `resolved_tiers` filter the OwnedSpin path uses): keep the arm's
+  prelude (wait_network → deploy-rmw register → `BAKED_LOCATOR` config) and
+  replace the single-executor register+spin body with
+  `::nros_board_zephyr::ZephyrBoard::run_tiers(&config, #tiers_ts, closure)`
+  where the closure carries the SAME `#param_services_call` / registers /
+  `#lifecycle_call` sequence the OwnedSpin tier closure has (runs once per
+  tier; groups filter what registers).
+- **T4 — fixture + e2e**: `ws-realtime-rust` gains `[tiers.high.zephyr]` /
+  `[tiers.low.zephyr]` priorities (system.toml) + `src/zephyr_entry` (the
+  proven W5 recipe: workspace excludes, west leaf on port 17855, ws-sync prep,
+  resolver) and `realtime_tiers_zephyr_entry_e2e`: two `int32-sink` observers
+  on `/ctrl` (10 ms, high) and `/telem` (100 ms, low) — anchor on 5 telem
+  receives, assert ctrl count strictly higher (the native
+  `realtime_tiers_e2e` assertion, cross-process against the image).
+- **T5 — C/C++ parity note**: T1 is deliberately C-ABI-shaped so the
+  phase-274 W3 zephyr half (C/C++ `run_tiers` over `k_thread`) can reuse it;
+  wiring `nros_board_zephyr_run_tiers` into `nros/main.hpp` stays with
+  phase-274.
+- **T0 (pre-req cleanup)** — the 276-W5 `int32-observer` fixture bin
+  duplicated phase-277 W4's `int32-sink` (landed concurrently): retire
+  `int32-observer`, switch `qos_zephyr_entry_e2e` / `safety_zephyr_entry_e2e`
+  to `build_int32_sink` (`NROS_SUB_TOPIC`, ready-pattern "Listener").
+
+## Resolution (2026-07-04) — half 2 LANDED; issue closed
+
+All work items T0–T4 shipped (T5 stays with phase-274 as planned):
+
+- **T0**: `int32-observer` retired; qos/safety e2es ride `int32-sink`.
+- **T1**: `nros_zephyr_tier_task_create` + `nros_zephyr_set_current_priority`
+  in `zephyr/nros_platform_zephyr_shims.c` — `k_thread_create` on a static
+  pool (`NROS_ZEPHYR_MAX_TIERS`=4 × 16 KiB stacks), RAW Zephyr priorities.
+- **T2**: `ZephyrBoard::run_tiers` (`nros-board-zephyr`, feature `tiers`) —
+  boot executor on the caller thread, `SessionHandle`-shared tier tasks,
+  per-tier `active_groups` + spin period; the boot thread adopts `tiers[0]`'s
+  declared priority via the shim.
+- **T3**: the `Framework::Zephyr` arm branches on `multi_tier`
+  (`zephyr_body_tail` in `main_macro.rs`) — multi-tier emits
+  `ZephyrBoard::run_tiers(&config, TIERS, closure)` with the same
+  param/lifecycle/register closure sequence as OwnedSpin; single-tier stays
+  byte-identical. Native realtime e2e re-verified green after the refactor.
+- **T4**: `ws-realtime-rust` gained `[tiers.*.zephyr]` priorities +
+  `src/zephyr_entry` (leaf `build-ws-rs-realtime-entry-zenoh` on 17855);
+  `realtime_tiers_zephyr_entry_e2e` PASSES — two `int32-sink` observers see
+  `/ctrl` (10 ms, high tier) outrun `/telem` (100 ms, low tier)
+  cross-process.
+
+Two zephyr-lane defects found and fixed en route (both same zsock family as
+#139):
+
+1. **Concurrent-declare interest race**: entity declares carry an interest
+   handshake; when the boot thread and a spawned tier declared concurrently,
+   the losing publisher's zenoh-pico write filter stayed closed and every
+   put was silently dropped (`z_publisher_put` fired, `_z_send_n_msg`
+   never). Fix: `run_tiers` runs the boot tier's setup BEFORE spawning
+   tiers[1..]. Residual: with ≥3 tiers the spawned tiers' setups still race
+   each other — acceptable for now, noted in `entry_tiers.rs`.
+2. **tx throughput ceiling**: zsock's per-fd mutex caps total tx at ~one
+   send per recv window; at the 100 ms default both tiers throttled to
+   ~5 msg/s. Fix: `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` Kconfig (default
+   100; maps to `Z_CONFIG_SOCKET_TIMEOUT`); the realtime entry sets 5 ms.

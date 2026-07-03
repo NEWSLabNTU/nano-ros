@@ -88,7 +88,16 @@ fn lifecycle_zephyr_entry_autostart_reaches_active() {
         .unwrap_or_else(|e| panic!("boot zephyr native_sim: {e}"));
 
     // Discover the managed node (the entry's executor node hosting the 5 services).
-    let nodes_out = poll_ros2_until(&locator, "lifecycle nodes", "/", Duration::from_secs(40));
+    // `--no-daemon`: the env snippet stops the daemon (it holds its own zenoh
+    // session), so a daemon-using invocation would respawn one per poll — each
+    // poll then pays multi-second daemon startup and the 40 s budget (and
+    // nextest's 60 s slow-timeout) drains on CLI churn instead of discovery.
+    let nodes_out = poll_ros2_until(
+        &locator,
+        "lifecycle nodes --no-daemon --spin-time 2",
+        "/",
+        Duration::from_secs(40),
+    );
     let lifecycle_node = first_lifecycle_node(&nodes_out).unwrap_or_else(|| {
         zephyr.kill();
         panic!(

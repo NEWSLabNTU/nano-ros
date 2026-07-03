@@ -159,6 +159,20 @@ config NROS_ZENOH_MULTI_THREAD
       background read/lease tasks. Required for non-blocking operation.
       Maps to Z_FEATURE_MULTI_THREAD.
 
+config NROS_ZENOH_SOCKET_TIMEOUT_MS
+    int "zenoh-pico socket recv timeout (ms)"
+    default 100
+    help
+      SO_RCVTIMEO for the zenoh-pico session socket (Z_CONFIG_SOCKET_TIMEOUT).
+      Zephyr's zsock layer serializes send/recv on a per-fd mutex, so the
+      blocking read task holds the socket for a full recv window between
+      inbound packets and EVERY tx (declare, keepalive, publish, reply)
+      waits for that window — total tx throughput is capped at roughly one
+      send per window (issues 0129/0139). The 100 ms default suits ~1-10 Hz
+      demo lanes; high-rate publishers (e.g. RT-tier systems at 100 Hz)
+      must lower this (5 ms => ~200 tx windows/s) at the cost of more
+      read-task wakeups.
+
 config NROS_ZENOH_PUBLICATION
     bool "Publication support"
     default y

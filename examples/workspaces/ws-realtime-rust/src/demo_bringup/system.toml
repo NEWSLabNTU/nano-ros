@@ -27,8 +27,14 @@ group_tiers = { telem = "low" }
 spin_period_us = 1000
 [tiers.high.posix]
 priority = 80
+# phase-276 W2 / issue #128 half 2 — RAW Zephyr priority (preemptive; lower
+# number = higher priority). Consumed by the zephyr_entry projection.
+[tiers.high.zephyr]
+priority = 5
 
 [tiers.low]
 spin_period_us = 10000
 [tiers.low.posix]
+priority = 10
+[tiers.low.zephyr]
 priority = 10

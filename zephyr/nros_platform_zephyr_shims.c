@@ -29,7 +29,7 @@ int32_t nros_zephyr_msleep(int32_t ms) {
     return k_msleep(ms);
 }
 
-void nros_zephyr_rand_fill(void *dst, size_t len) {
+void nros_zephyr_rand_fill(void* dst, size_t len) {
     sys_rand_get(dst, len);
 }
 
@@ -64,25 +64,26 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
  * `void(*)(struct k_timer *)` expiration signature.
  */
 typedef struct {
-    void (*cb)(void *);
-    void *user_data;
+    void (*cb)(void*);
+    void* user_data;
 } nros_zephyr_timer_bridge_t;
 
-static void nros_zephyr_timer_expiry(struct k_timer *t) {
-    nros_zephyr_timer_bridge_t *b =
-        (nros_zephyr_timer_bridge_t *) k_timer_user_data_get(t);
+static void nros_zephyr_timer_expiry(struct k_timer* t) {
+    nros_zephyr_timer_bridge_t* b = (nros_zephyr_timer_bridge_t*)k_timer_user_data_get(t);
     if (b && b->cb) {
         b->cb(b->user_data);
     }
 }
 
-void * nros_zephyr_timer_create_periodic(unsigned int period_us,
-                                          void (*cb)(void *),
-                                          void *user_data) {
-    struct k_timer *t = k_malloc(sizeof(*t));
+void* nros_zephyr_timer_create_periodic(unsigned int period_us, void (*cb)(void*),
+                                        void* user_data) {
+    struct k_timer* t = k_malloc(sizeof(*t));
     if (!t) return NULL;
-    nros_zephyr_timer_bridge_t *b = k_malloc(sizeof(*b));
-    if (!b) { k_free(t); return NULL; }
+    nros_zephyr_timer_bridge_t* b = k_malloc(sizeof(*b));
+    if (!b) {
+        k_free(t);
+        return NULL;
+    }
     b->cb = cb;
     b->user_data = user_data;
     k_timer_init(t, nros_zephyr_timer_expiry, NULL);
@@ -91,11 +92,10 @@ void * nros_zephyr_timer_create_periodic(unsigned int period_us,
     return t;
 }
 
-void nros_zephyr_timer_destroy(void *timer) {
+void nros_zephyr_timer_destroy(void* timer) {
     if (!timer) return;
-    struct k_timer *t = (struct k_timer *) timer;
-    nros_zephyr_timer_bridge_t *b =
-        (nros_zephyr_timer_bridge_t *) k_timer_user_data_get(t);
+    struct k_timer* t = (struct k_timer*)timer;
+    nros_zephyr_timer_bridge_t* b = (nros_zephyr_timer_bridge_t*)k_timer_user_data_get(t);
     k_timer_stop(t);
     if (b) k_free(b);
     k_free(t);
@@ -104,13 +104,15 @@ void nros_zephyr_timer_destroy(void *timer) {
 /* Phase 110.E.b follow-up — oneshot variant (period = K_NO_WAIT
  * means fire once and stop).
  */
-void * nros_zephyr_timer_create_oneshot(unsigned int timeout_us,
-                                         void (*cb)(void *),
-                                         void *user_data) {
-    struct k_timer *t = k_malloc(sizeof(*t));
+void* nros_zephyr_timer_create_oneshot(unsigned int timeout_us, void (*cb)(void*),
+                                       void* user_data) {
+    struct k_timer* t = k_malloc(sizeof(*t));
     if (!t) return NULL;
-    nros_zephyr_timer_bridge_t *b = k_malloc(sizeof(*b));
-    if (!b) { k_free(t); return NULL; }
+    nros_zephyr_timer_bridge_t* b = k_malloc(sizeof(*b));
+    if (!b) {
+        k_free(t);
+        return NULL;
+    }
     b->cb = cb;
     b->user_data = user_data;
     k_timer_init(t, nros_zephyr_timer_expiry, NULL);
@@ -123,9 +125,9 @@ void * nros_zephyr_timer_create_oneshot(unsigned int timeout_us,
 /* Stop the timer without freeing. Returns 1 if the timer was running
  * and got stopped, 0 if it had already expired or was never started.
  */
-int nros_zephyr_timer_cancel(void *timer) {
+int nros_zephyr_timer_cancel(void* timer) {
     if (!timer) return 0;
-    struct k_timer *t = (struct k_timer *) timer;
+    struct k_timer* t = (struct k_timer*)timer;
     /* k_timer_status_get reports remaining time; 0 means already
      * fired. We use k_timer_remaining_get which returns 0 on fired. */
     unsigned int remaining = k_timer_remaining_get(t);
@@ -143,13 +145,12 @@ int nros_zephyr_timer_cancel(void *timer) {
 
 #include <zephyr/net/socket.h>
 
-int nros_zephyr_getaddrinfo(const char *node, const char *service,
-                            const struct zsock_addrinfo *hints,
-                            struct zsock_addrinfo **res) {
+int nros_zephyr_getaddrinfo(const char* node, const char* service,
+                            const struct zsock_addrinfo* hints, struct zsock_addrinfo** res) {
     return zsock_getaddrinfo(node, service, hints, res);
 }
 
-void nros_zephyr_freeaddrinfo(struct zsock_addrinfo *res) {
+void nros_zephyr_freeaddrinfo(struct zsock_addrinfo* res) {
     zsock_freeaddrinfo(res);
 }
 
@@ -161,11 +162,11 @@ int nros_zephyr_close(int fd) {
     return zsock_close(fd);
 }
 
-int nros_zephyr_connect(int fd, const struct sockaddr *addr, socklen_t addrlen) {
+int nros_zephyr_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) {
     return zsock_connect(fd, addr, addrlen);
 }
 
-int nros_zephyr_bind(int fd, const struct sockaddr *addr, socklen_t addrlen) {
+int nros_zephyr_bind(int fd, const struct sockaddr* addr, socklen_t addrlen) {
     return zsock_bind(fd, addr, addrlen);
 }
 
@@ -173,7 +174,7 @@ int nros_zephyr_listen(int fd, int backlog) {
     return zsock_listen(fd, backlog);
 }
 
-int nros_zephyr_accept(int fd, struct sockaddr *addr, socklen_t *addrlen) {
+int nros_zephyr_accept(int fd, struct sockaddr* addr, socklen_t* addrlen) {
     return zsock_accept(fd, addr, addrlen);
 }
 
@@ -181,8 +182,7 @@ int nros_zephyr_shutdown(int fd, int how) {
     return zsock_shutdown(fd, how);
 }
 
-int nros_zephyr_setsockopt(int fd, int level, int optname,
-                           const void *optval, socklen_t optlen) {
+int nros_zephyr_setsockopt(int fd, int level, int optname, const void* optval, socklen_t optlen) {
     return zsock_setsockopt(fd, level, optname, optval, optlen);
 }
 
@@ -190,21 +190,21 @@ int nros_zephyr_fcntl(int fd, int cmd, int arg) {
     return zsock_fcntl(fd, cmd, arg);
 }
 
-ssize_t nros_zephyr_recv(int fd, void *buf, size_t len, int flags) {
+ssize_t nros_zephyr_recv(int fd, void* buf, size_t len, int flags) {
     return zsock_recv(fd, buf, len, flags);
 }
 
-ssize_t nros_zephyr_recvfrom(int fd, void *buf, size_t len, int flags,
-                             struct sockaddr *src_addr, socklen_t *addrlen) {
+ssize_t nros_zephyr_recvfrom(int fd, void* buf, size_t len, int flags, struct sockaddr* src_addr,
+                             socklen_t* addrlen) {
     return zsock_recvfrom(fd, buf, len, flags, src_addr, addrlen);
 }
 
-ssize_t nros_zephyr_send(int fd, const void *buf, size_t len, int flags) {
+ssize_t nros_zephyr_send(int fd, const void* buf, size_t len, int flags) {
     return zsock_send(fd, buf, len, flags);
 }
 
-ssize_t nros_zephyr_sendto(int fd, const void *buf, size_t len, int flags,
-                           const struct sockaddr *dest_addr, socklen_t addrlen) {
+ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
+                           const struct sockaddr* dest_addr, socklen_t addrlen) {
     return zsock_sendto(fd, buf, len, flags, dest_addr, addrlen);
 }
 
@@ -226,21 +226,17 @@ ssize_t nros_zephyr_sendto(int fd, const void *buf, size_t len, int flags,
 #define NROS_ZEPHYR_STACK_SIZE CONFIG_MAIN_STACK_SIZE
 #endif
 
-K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS,
-                            NROS_ZEPHYR_STACK_SIZE);
+K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS, NROS_ZEPHYR_STACK_SIZE);
 static int nros_thread_index;
 
-int nros_zephyr_task_create(pthread_t *thread,
-                            void *(*entry)(void *),
-                            void *arg) {
+int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
     if (nros_thread_index >= NROS_ZEPHYR_MAX_THREADS) {
         return -1; /* no more stack slots */
     }
 
     pthread_attr_t attr;
     (void)pthread_attr_init(&attr);
-    (void)pthread_attr_setstack(&attr,
-                                &nros_thread_stacks[nros_thread_index++],
+    (void)pthread_attr_setstack(&attr, &nros_thread_stacks[nros_thread_index++],
                                 NROS_ZEPHYR_STACK_SIZE);
 
     int ret = pthread_create(thread, &attr, entry, arg);
@@ -301,4 +297,67 @@ void nros_zephyr_log_int(const char* tag, int64_t v) {
 
 void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
     printk("[nros] %s=%lld,%lld\n", tag, (long long)a, (long long)b);
+}
+
+/* ── RT-tier task spawn (issue #128 / RFC-0015 Model 1) ─────────────
+ *
+ * One `k_thread` per priority tier, RAW Zephyr priority (negatives =
+ * cooperative — the `[tiers.<name>.zephyr].priority` value verbatim,
+ * which the POSIX pthread shim above cannot express). Static pool:
+ * tier count is a compile-time property of the baked system, so a
+ * small fixed pool avoids CONFIG_DYNAMIC_THREAD. C-ABI-shaped so the
+ * phase-274 W3 C/C++ zephyr `run_tiers` can reuse it.
+ */
+
+#ifndef NROS_ZEPHYR_MAX_TIERS
+#define NROS_ZEPHYR_MAX_TIERS 4
+#endif
+
+#ifndef NROS_ZEPHYR_TIER_STACK_SIZE
+#define NROS_ZEPHYR_TIER_STACK_SIZE 16384
+#endif
+
+K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, NROS_ZEPHYR_MAX_TIERS, NROS_ZEPHYR_TIER_STACK_SIZE);
+static struct k_thread nros_tier_threads[NROS_ZEPHYR_MAX_TIERS];
+static int nros_tier_index;
+
+static void nros_zephyr_tier_trampoline(void* entry, void* arg, void* unused) {
+    (void)unused;
+    printk("[nros] tier task entered\n");
+    void* (*fn)(void*) = (void* (*)(void*))entry;
+    (void)fn(arg);
+    printk("[nros] tier task RETURNED (unexpected)\n");
+}
+
+/**
+ * Spawn one tier task. `entry(arg)` runs on a pool thread at the RAW
+ * Zephyr `priority` (cooperative if negative). `name` is the thread's
+ * debug name (may be NULL). Returns 0 on success, -1 when the pool is
+ * exhausted (more than NROS_ZEPHYR_MAX_TIERS spawns).
+ */
+int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
+                                 const char* name) {
+    if (entry == NULL || nros_tier_index >= NROS_ZEPHYR_MAX_TIERS) {
+        return -1;
+    }
+    int idx = nros_tier_index++;
+    k_tid_t tid = k_thread_create(&nros_tier_threads[idx], nros_tier_stacks[idx],
+                                  NROS_ZEPHYR_TIER_STACK_SIZE, nros_zephyr_tier_trampoline,
+                                  (void*)entry, arg, NULL, (int)priority, 0, K_NO_WAIT);
+    if (tid == NULL) {
+        return -1;
+    }
+    if (name != NULL) {
+        (void)k_thread_name_set(tid, name);
+    }
+    return 0;
+}
+
+/**
+ * Set the CALLING thread's priority to a raw Zephyr priority. The tier
+ * boot thread (`rust_main`) runs `tiers[0]` itself, so it must adopt that
+ * tier's declared priority instead of keeping the main-thread default.
+ */
+void nros_zephyr_set_current_priority(int32_t priority) {
+    k_thread_priority_set(k_current_get(), (int)priority);
 }

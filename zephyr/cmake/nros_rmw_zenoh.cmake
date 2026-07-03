@@ -61,6 +61,13 @@ zephyr_compile_definitions(ZENOH_ZEPHYR)
 # create high-rate executor wakeups.
 zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=0)
 
+# zsock serializes send/recv on a per-fd mutex, so total tx throughput is
+# capped at ~one send per recv window — make the window Kconfig-tunable
+# (issues 0129/0139; the vendored config.h default is #ifndef-guarded).
+if(CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS)
+    zephyr_compile_definitions(Z_CONFIG_SOCKET_TIMEOUT=${CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS})
+endif()
+
 # Intra-image topic delivery (RFC-0015 Model 1): every node in the image
 # shares ONE zenoh session, and neither zenoh-pico nor the router loops a
 # publication back to the session it came from. Without local subscriber

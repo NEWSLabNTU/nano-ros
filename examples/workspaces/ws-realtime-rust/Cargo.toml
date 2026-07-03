@@ -14,6 +14,9 @@ members = [
     "src/telem_pkg",
     "src/native_entry",
 ]
+# `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W2) — excluded
+# so plain `cargo build` in the workspace never tries to link the RTOS app.
+exclude = ["src/zephyr_entry"]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 
 [workspace.metadata.nros]

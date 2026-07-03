@@ -1278,14 +1278,6 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/declarative-safety-listener"
 
-# phase-276 W5 — generic raw std_msgs/Int32 subscriber on an env-selected
-# topic (default /qos_ok); logs `Received:` per sample. Cross-process
-# assertion half for embedded-image e2es (tests/qos_zephyr_entry_e2e.rs).
-[[fixture]]
-platform = "native"
-lang = "rust"
-dir = "packages/testing/nros-tests/bins/int32-observer"
-
 # Phase 211 acceptance — nano-ros raw std_msgs/String subscriber for interop
 # against a stock `ros2 run demo_nodes_cpp talker`. Consumed by
 # tests/demo_nodes_cpp_interop.rs (gated on ros2 + rmw_zenoh_cpp).

@@ -70,6 +70,27 @@ use nros_platform::{BoardExit, BoardInit, BoardPrint, NetworkError, NetworkWait}
 /// no-op stubs — see crate-level docs for the rationale.
 pub struct ZephyrBoard;
 
+// issue #128 (half 2) — per-tier multi-task entry (`ZephyrBoard::run_tiers`).
+// Gated so NetworkWait-only consumers keep the zero-dep footprint; the
+// `nros::main!` Zephyr arm's multi-tier emit requires the entry crate to
+// enable `tiers` on this board dep.
+#[cfg(feature = "tiers")]
+mod entry_tiers;
+
+/// Kernel sleep for in-crate callers (the tier tasks' fault parking loop).
+/// Routes through the module shim `nros_zephyr_msleep` — `k_msleep` itself
+/// is a header-inline/syscall wrapper with no reliably linkable symbol.
+#[cfg(feature = "tiers")]
+pub(crate) fn zephyr_msleep(ms: i32) {
+    unsafe extern "C" {
+        fn nros_zephyr_msleep(ms: i32) -> i32;
+    }
+    // SAFETY: plain kernel sleep — no invariants for Rust to uphold.
+    unsafe {
+        let _ = nros_zephyr_msleep(ms);
+    }
+}
+
 // -- Zephyr C surface ---------------------------------------------------------
 //
 // Hand-rolled `extern "C"` decls to avoid pulling the
