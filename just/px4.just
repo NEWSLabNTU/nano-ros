@@ -11,7 +11,7 @@ default:
 # nros ≥ 0.3.7 falls back to a depth-1 fetch-by-SHA, so the TOP tree is a real
 # shallow snapshot (Makefile present). PX4's ~50 OWN sub-submodules (cmake,
 # mavlink, ecl, …) are pulled shallow below. Total ~500 MB.
-# Required for `just px4 build-sitl` and `just px4 test-sitl`.
+# Required for `just px4 build-sitl-cpp` and `just px4 test-sitl`.
 [group("setup")]
 setup:
     # Phase 197.3 — px4-rs + PX4-Autopilot are index sources ([source.px4-rs],
@@ -22,7 +22,7 @@ setup:
     # that recursion is PX4's concern, not nano-ros source provisioning.
     git -C third-party/px4/PX4-Autopilot submodule update --init \
         --depth 1 --recommend-shallow --recursive
-    # Install PX4's Python build deps user-local so `just px4 build-sitl`
+    # Install PX4's Python build deps user-local so `just px4 build-sitl-cpp`
     # doesn't fail mid-build on missing imports (kconfiglib for the
     # menuconfig step, pyros-genmsg + jinja2 for uORB topic-header
     # generation, …). Mirrors PX4's own `Tools/setup/ubuntu.sh` step.
@@ -61,7 +61,7 @@ doctor:
     fi
     # PX4's uORB topic-header generator + Kconfig step pull in Python
     # modules listed in `Tools/setup/requirements.txt`. The few that
-    # are load-bearing for `build-sitl{,-cpp}` (and which silently
+    # are load-bearing for `build-sitl-cpp` (and which silently
     # break the build with "No module named X" if they're missing
     # after a submodule update) get spot-checked here so doctor
     # surfaces the staleness before the user spends 30s waiting for
@@ -133,28 +133,12 @@ build-sitl-cpp:
     make -C "$PX4_DIR" px4_sitl_default \
         EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
-# Build PX4 SITL with the nano-ros uORB examples linked in via
-# EXTERNAL_MODULES_LOCATION. Cold build ~10 min; warm <2 s (ninja
-# "no work to do"). Requires `just px4 setup` to have populated
-# PX4-Autopilot recursively.
-[group("examples")]
-build-sitl:
-    #!/usr/bin/env bash
-    set -e
-    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
-    EXT_DIR="$(pwd)/examples/px4/rust/uorb"
-    if [ ! -d "$PX4_DIR/Tools" ]; then
-        echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
-        echo "Run: just px4 setup"
-        exit 1
-    fi
-    echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
-    make -C "$PX4_DIR" px4_sitl_default \
-        EXTERNAL_MODULES_LOCATION="$EXT_DIR"
-
-# Build PX4 examples.
+# Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed
+# EXTERNAL_MODULES_LOCATION at the README-only `examples/px4/rust/uorb/`
+# placeholder — it compiled no nano-ros module and the placeholder dir is
+# retired; `build-sitl-cpp` is the real EXTERNAL_MODULES_LOCATION build.)
 [group("main")]
-build-examples: build-sitl build-sitl-cpp
+build-examples: build-sitl-cpp
     @echo "PX4 examples built."
 
 # Build PX4 test fixtures.
@@ -232,7 +216,7 @@ test:
 #   px4_xrce_e2e  — Track B (real PX4 uxrce_dds_client → agent → nano-ros
 #                   companion receives /fmu/out telemetry over nros-rmw-xrce)
 [group("debug")]
-test-sitl: build-sitl build-fixtures
+test-sitl: build-sitl-cpp build-fixtures
     #!/usr/bin/env bash
     # Phase 208.D.3 — `px4_e2e` moved to the out-of-workspace
     # `nros-px4-sitl-test` crate so the root workspace doesn't try to
