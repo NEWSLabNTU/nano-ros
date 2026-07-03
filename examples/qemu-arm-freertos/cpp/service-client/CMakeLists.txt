@@ -23,7 +23,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # AddTwoIntsClient component + `configure(node)` creates a typed service client +
 # binds the real `on_tick` poll timer on the executor.
 nano_ros_node_register(
-    NAME      service_client
+    NAME      add_two_ints_client
     CLASS     freertos_cpp_service_client::AddTwoIntsClient
     LANGUAGE  CPP
     HEADER    AddTwoIntsClient.hpp
@@ -31,7 +31,7 @@ nano_ros_node_register(
     SOURCES   src/AddTwoIntsClient.cpp
     DEPLOY    freertos)
 
-target_link_libraries(freertos_cpp_service_client_service_client_component
+target_link_libraries(freertos_cpp_service_client_add_two_ints_client_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(

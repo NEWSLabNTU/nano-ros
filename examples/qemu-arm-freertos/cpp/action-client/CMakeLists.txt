@@ -23,7 +23,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # FibonacciClient component + `configure(node)` binds the action client member
 # callbacks (goal-response / feedback / result) and sends one goal on the executor.
 nano_ros_node_register(
-    NAME      action_client
+    NAME      fibonacci_action_client
     CLASS     freertos_cpp_action_client::FibonacciClient
     LANGUAGE  CPP
     HEADER    FibonacciClient.hpp
@@ -31,7 +31,7 @@ nano_ros_node_register(
     SOURCES   src/FibonacciClient.cpp
     DEPLOY    freertos)
 
-target_link_libraries(freertos_cpp_action_client_action_client_component
+target_link_libraries(freertos_cpp_action_client_fibonacci_action_client_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(

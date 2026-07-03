@@ -24,7 +24,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # executor (`FreertosBoard::run_components`). Raw service register carries the
 # type name as a string, so no generated message headers are needed at runtime.
 nano_ros_node_register(
-    NAME      service_server
+    NAME      add_two_ints_server
     CLASS     freertos_cpp_service_server::AddTwoIntsServer
     LANGUAGE  CPP
     HEADER    AddTwoIntsServer.hpp
@@ -32,7 +32,7 @@ nano_ros_node_register(
     SOURCES   src/AddTwoIntsServer.cpp
     DEPLOY    freertos)
 
-target_link_libraries(freertos_cpp_service_server_service_server_component
+target_link_libraries(freertos_cpp_service_server_add_two_ints_server_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(

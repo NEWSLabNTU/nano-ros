@@ -28,7 +28,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # startup.c dispatches to the carrier-emitted `app_main`. No manual
 # `Executor::open` / spin / locator, no per-example `main.cpp`.
 nano_ros_node_register(
-    NAME      action_client
+    NAME      fibonacci_action_client
     CLASS     riscv64_threadx_cpp_action_client::ActionClient
     LANGUAGE  CPP
     HEADER    ActionClient.hpp
@@ -36,7 +36,7 @@ nano_ros_node_register(
     SOURCES   src/ActionClient.cpp
     DEPLOY    riscv64-qemu)
 
-target_link_libraries(riscv64_threadx_cpp_action_client_action_client_component
+target_link_libraries(riscv64_threadx_cpp_action_client_fibonacci_action_client_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)

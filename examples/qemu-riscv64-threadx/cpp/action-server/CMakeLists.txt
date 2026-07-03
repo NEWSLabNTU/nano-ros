@@ -28,7 +28,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 # executor. The board startup.c dispatches to the carrier-emitted `app_main`. No
 # manual `Executor::open` / spin / locator, no per-example `main.cpp`.
 nano_ros_node_register(
-    NAME      action_server
+    NAME      fibonacci_action_server
     CLASS     riscv64_threadx_cpp_action_server::ActionServer
     LANGUAGE  CPP
     HEADER    ActionServer.hpp
@@ -36,7 +36,7 @@ nano_ros_node_register(
     SOURCES   src/ActionServer.cpp
     DEPLOY    riscv64-qemu)
 
-target_link_libraries(riscv64_threadx_cpp_action_server_action_server_component
+target_link_libraries(riscv64_threadx_cpp_action_server_fibonacci_action_server_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
