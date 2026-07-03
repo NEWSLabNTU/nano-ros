@@ -1,7 +1,8 @@
 ---
 id: 129
 title: "Zephyr rust workspace-entry lane broken on current main: executor heap alloc panics the default malloc arena; with that fixed, Executor::open fails Transport(ConnectionFailed) — stale prebuilt ELF masked both"
-status: open
+status: resolved
+resolved_in: "2026-07-03 (three-layer fix: arena bump + C5b register emit + zephyr per-node-liveliness gate; culprit 6601c7e52 bisected)"
 type: bug
 area: zephyr
 related: [phase-271, phase-248, phase-276, phase-263]
@@ -132,3 +133,28 @@ prime suspect phase-271's executor externalisation)**, manifesting as an fd-lock
 stall on zephyr native_sim in every entry that links current nros-cpp. Next: bisect
 f418e3d08/77c745c7e (271) with the C entry as the repro, or instrument the
 executor's session/spin fd usage vs the read task.
+
+## RESOLVED (2026-07-03) — layer 3 bisected + fixed; lane green
+
+`git bisect run` (anchor b6836a91c GOOD .. 4fc3d5a22 BAD, 121 commits, automated
+west-build+boot probe) converged on **6601c7e52 "fix(268-W2b): thread per-entity node
+identity into CFFI session view (#105)"** — NOT phase-271. That commit made every
+entity-create carry its node identity, which triggers the Phase-268-W2 lazy
+`ensure_node_liveliness` → a zenoh liveliness-token declare from the app thread in the
+entity-create window, with the zenoh-pico read task live. On Zephyr native_sim that
+declare wedges the app thread in the kernel's per-fd lock (the gdb'd
+`k_mutex_lock(<fdtable>)` vs read-task `k_poll` hang); a stub experiment (declare
+disabled → entry connects + publishes) confirmed the mechanism exactly.
+
+**Fix:** per-node NN liveliness tokens are gated OFF on the Zephyr platform
+(`#[cfg(feature = "platform-zephyr")]` early-return in `ensure_node_liveliness`,
+nros-rmw-zenoh shim). The #104 PRIMARY token (session open, pre-contention) is kept, so
+`ros2 node list` still shows the session node on Zephyr; only per-component names are
+lost there until the create-window race in the zenoh-pico Zephyr port is fixed (a
+follow-up if per-component visibility on Zephyr is wanted). All other platforms keep
+full per-node liveliness.
+
+**Verified green:** the C workspace entry connects + publishes; the Rust workspace
+entries build + run; `params_zephyr_entry_e2e` (phase-276 W1 params-on-Zephyr) PASSES
+(un-ignored) — the launch-baked param initial round-trips from the Zephyr entry to a
+cross-process subscriber.
