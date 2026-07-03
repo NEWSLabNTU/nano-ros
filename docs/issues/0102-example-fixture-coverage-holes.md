@@ -39,8 +39,9 @@ at the end for history.
 The remaining holes are planned across two roadmap phases:
 - **[Phase 275](../roadmap/phase-275-example-fixture-gap-fill.md)** — mechanical gap-fill: **H2–H6**
   (`_entry` demos, native variants, zephyr leaves, threadx cyclone, stale cleanup, shape-gating).
-- **[Phase 276](../roadmap/phase-276-capability-coverage-on-embedded.md)** — **H1**: lifecycle /
-  parameters / safety / QoS / multihost on embedded targets.
+- **[Phase 276](../roadmap/archived/phase-276-capability-coverage-on-embedded.md)** — **H1**:
+  lifecycle / parameters / safety / QoS / multihost on embedded targets. **DONE 2026-07-04** —
+  all six waves (incl. RT-tiers) proven on Zephyr native_sim e2e; H1 is closed.
 
 ## Remaining holes (2026-07-01, priority order)
 
