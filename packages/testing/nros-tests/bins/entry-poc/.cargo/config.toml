@@ -1,6 +1,6 @@
 [patch.crates-io]
-nros = { path = "../../../../packages/core/nros" }  # nros-managed
-nros-board-native = { path = "../../../../packages/boards/nros-board-native" }  # nros-managed
-nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
-nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
+nros = { path = "../../../../core/nros" }  # nros-managed
+nros-board-native = { path = "../../../../boards/nros-board-native" }  # nros-managed
+nros-core = { path = "../../../../core/nros-core" }  # nros-managed
+nros-platform = { path = "../../../../core/nros-platform" }  # nros-managed
+nros-serdes = { path = "../../../../core/nros-serdes" }  # nros-managed
