@@ -1,7 +1,16 @@
 [build]
-target = "riscv32imac-unknown-nuttx-elf"
+# #134 follow-up: a LOCAL copy of the builtin `riscv32imac-unknown-nuttx-elf`
+# spec with two deltas the xpack riscv-none-elf toolchain needs:
+#   - `eh-frame-header: false` — xpack ld (2.43) is built without
+#     `--eh-frame-hdr`, which rustc otherwise always passes;
+#   - `panic-strategy: abort` — the builtin riscv spec (unlike
+#     `armv7a-nuttx-eabihf`) defaults to unwind, which no_std forbids.
+# Regenerate on toolchain bumps:
+#   rustc -Z unstable-options --print target-spec-json #     --target riscv32imac-unknown-nuttx-elf   (then re-apply the deltas)
+target = "riscv32imac-unknown-nuttx-elf.json"
 
 [unstable]
+json-target-spec = true
 build-std = ["std", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 

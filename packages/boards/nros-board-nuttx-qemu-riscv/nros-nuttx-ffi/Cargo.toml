@@ -25,6 +25,19 @@ nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", features = ["platform
 # NuttX FFI build helper (run_nuttx) + repo path resolution.
 nros-board-common = { path = "../../nros-board-common", features = ["build-helpers"] }
 
+# #134 follow-up: the cmake glue (packages/core/nros-c/cmake/nros-nuttx.cmake)
+# copies `<triple>/release/nros-nuttx-ffi` — the ARM crate's bin name. Pin the
+# same artifact name here so both NuttX families share one copy path.
+[[bin]]
+name = "nros-nuttx-ffi"
+path = "src/main.rs"
+
 [profile.release]
 opt-level = "s"
 lto = true
+# #134 follow-up: unlike `armv7a-nuttx-eabihf`, the tier-3
+# `riscv32imac-unknown-nuttx-elf` target spec does NOT bake
+# `panic-strategy: abort`, so without this the build-std `std` is built
+# with unwinding and nros-c fails "unwinding panics are not supported
+# without std".
+panic = "abort"

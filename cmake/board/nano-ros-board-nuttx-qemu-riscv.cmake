@@ -136,6 +136,18 @@ function(nros_board_link_app target)
         endforeach()
     endif()
 
+    # Phase 238 ferry (ported from the arm board cmake, #134 follow-up):
+    # carry the carrier's COMPILE_DEFINITIONS into the cargo cc-rs build so
+    # EXTRA_SOURCES (the declarative Component `Talker.c` etc.) see
+    # `NROS_PKG_NAME` — without it the component registers as
+    # `__nros_c_component_NROS_PKG_NAME_*` and the generated entry's
+    # `__nros_c_component_<pkg>_*` references fail to link.
+    get_target_property(_cdefs ${target} COMPILE_DEFINITIONS)
+    set(_compile_defs "")
+    if(_cdefs)
+        set(_compile_defs ${_cdefs})
+    endif()
+
     nros_nuttx_build_example(
         NAME            "${target}"
         MAIN_SOURCE     "${_main_src}"
@@ -143,6 +155,7 @@ function(nros_board_link_app target)
         TARGET_TRIPLE   "riscv32imac-unknown-nuttx-elf"
         INCLUDE_DIRS    ${_incs}
         SOURCES         ${_extra_srcs}
+        COMPILE_DEFS    ${_compile_defs}
         LINK_INTERFACES ${_link_ifaces})
 
     set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)

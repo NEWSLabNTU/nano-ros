@@ -191,14 +191,17 @@ pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) ->
         use std::time::{SystemTime, UNIX_EPOCH};
 
         // Simple UUID generation using system time and a counter
-        // Not cryptographically secure, but sufficient for goal IDs
-        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        // Not cryptographically secure, but sufficient for goal IDs.
+        // AtomicU32, not AtomicU64: 32-bit targets without 64-bit atomics
+        // (riscv32imac NuttX, thumbv7m) don't have the type at all (#134);
+        // the nanosecond timestamp carries the uniqueness across processes.
+        static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
         let nanos = now.as_nanos() as u64;
-        let count = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let count = COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed) as u64;
 
         // Fill UUID with time-based values
         uuid.uuid[0..8].copy_from_slice(&nanos.to_le_bytes());

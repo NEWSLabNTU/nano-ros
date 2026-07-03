@@ -394,10 +394,34 @@ pub fn run_nuttx() {
     println!("cargo:rustc-link-arg=-L{}", staging.display());
     println!("cargo:rustc-link-arg=-L{}", board_src.display());
     println!("cargo:rustc-link-arg=-Wl,--start-group");
-    for lib in [
-        "sched", "drivers", "boards", "c", "mm", "arch", "xx", "apps", "net", "crypto", "fs",
-        "binfmt", "openamp", "board",
-    ] {
+    // #134 follow-up: link every archive the NuttX build actually staged
+    // instead of a hardcoded list. Configs differ per board: the arm
+    // rv-virt defconfig stages libxx/libcrypto/libboard, the riscv one
+    // doesn't but adds libaudio (NXPLAYER/NXRECORDER) — a fixed list either
+    // aborts the group ("cannot find -lcrypto") or drops needed archives
+    // ("undefined reference to audio_register"). Order inside
+    // --start-group is irrelevant.
+    let mut staged: Vec<String> = std::fs::read_dir(&staging)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let lib = name.strip_prefix("lib")?.strip_suffix(".a")?;
+            Some(lib.to_string())
+        })
+        .collect();
+    staged.sort();
+    if board_src.join("libboard.a").exists() {
+        staged.push("board".to_string());
+    }
+    if staged.is_empty() {
+        panic!(
+            "NuttX staging dir {} contains no lib*.a archives — did the NuttX build run?",
+            staging.display()
+        );
+    }
+    for lib in staged {
         println!("cargo:rustc-link-arg=-l{lib}");
     }
     println!("cargo:rustc-link-arg={libgcc}");
