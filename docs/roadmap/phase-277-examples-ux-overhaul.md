@@ -1,7 +1,9 @@
 # Phase 277 — Examples UX overhaul (landing-user experience)
 
-Status: **In progress — 2026-07-03** · Implements RFC-0026 (layout), RFC-0031 (RMW
-selection surface) · Informs issue #102 (example coverage), RFC-0024/0025 (workspaces).
+Status: **Complete — 2026-07-03** (all waves landed on branch
+`examples-ux-overhaul`; three runtime lanes remote-CI-gated, see Outcome) ·
+Implements RFC-0026 (layout), RFC-0031 (RMW selection surface) · Informs issue
+#102 (example coverage), RFC-0024/0025 (workspaces).
 
 > **Goal.** A newcomer landing on nano-ros can (1) follow one canonical setup story,
 > (2) read any talker/listener/service/action example and see the same behavior and
@@ -51,127 +53,194 @@ Each wave is separately committable with `just ci` green.
 
 ### W1 — Docs correctness (no tree changes)
 
-- [ ] W1.a `README.md`: rewrite onboarding to the book's canonical flow
+- [x] W1.a `README.md`: rewrite onboarding to the book's canonical flow
       (`just setup-cli` → `source ./activate.sh` → `nros setup <plat>`); drop the
       git-dep snippet and `build/zenohd` model; org URL → `NEWSLabNTU` everywhere
       (also `book/src/concepts/comparison-vs-microros.md`,
       `book/src/user-guide/message-generation.md`); fix broken links
       (`docs/guides/getting-started.md` ×3, `docs/reference/embedded-integration.md`).
-- [ ] W1.b `book/src/getting-started/integration-zephyr.md:97-113`: replace the
+- [x] W1.b `book/src/getting-started/integration-zephyr.md:97-113`: replace the
       fabricated C API block with the real surface from
       `examples/zephyr/c/talker/src/Talker.c`.
-- [ ] W1.c Small verb fixes: `first-node-c.md` `nros_init()` → `nros_support_init()`;
+- [x] W1.c Small verb fixes: `first-node-c.md` `nros_init()` → `nros_support_init()`;
       `concepts/ros2-comparison.md` + `porting/custom-rmw.md` `add_subscription` →
       `create_subscription`; `threadx.md` `setup.bash` → `activate.sh` (+
       `config.toml` → `nros.toml` drift).
-- [ ] W1.d `book/src/SUMMARY.md`: add `integration-px4.md`; resolve
+- [x] W1.d `book/src/SUMMARY.md`: add `integration-px4.md`; resolve
       `zephyr.md`/`nuttx.md` orphans (link as contributor-path pages or merge;
       retarget `reference/build-commands.md` link if deleting).
-- [ ] W1.e `examples/README.md`: `just qemu-baremetal` → `just qemu`;
+- [x] W1.e `examples/README.md`: `just qemu-baremetal` → `just qemu`;
       `nros ws sync` → `nros sync`; add `tt-zenoh-to-cyclonedds` to bridges; add
       `qemu-riscv-nuttx` platform row (fixes the 11-vs-10 count); phase-118/131
       links → `archived/`. (Interop snippet Int32→String lands with W4.)
-- [ ] W1.f `examples/templates/README.md`: document all 11 templates; retire the
+- [x] W1.f `examples/templates/README.md`: document all 11 templates; retire the
       `west patch` reference in zephyr-byo.
-- [ ] W1.g `docs/reference/c-api-cmake.md`: document the two-variable contract —
+- [x] W1.g `docs/reference/c-api-cmake.md`: document the two-variable contract —
       `-DNANO_ROS_RMW` (root `add_subdirectory` knob) vs `-DNROS_RMW`
       (`NanoRosWorkspace.cmake` standalone-example shorthand).
 
 ### W2 — Test-harness + library prep (no example behavior change)
 
-- [ ] W2.a `packages/testing/nros-tests/src/output.rs`: named log-line constants +
+- [x] W2.a `packages/testing/nros-tests/src/output.rs`: named log-line constants +
       parsers; port ~250 raw `"Published:"`/`"Received:"` literals in
       `tests/*.rs` and `tests/zephyr/run-c.sh` so later format flips are one-file.
-- [ ] W2.b `nros-board-native`: expose the private `register_backend()` as
+- [x] W2.b `nros-board-native`: expose the private `register_backend()` as
       `pub fn register_linked_rmw()` (idempotent; ThreadX twin if W2.d needs it).
-- [ ] W2.c `nros-node`: executor-open `log::info!` readiness line to replace
+- [x] W2.c `nros-node`: executor-open `log::info!` readiness line to replace
       in-example harness markers.
-- [ ] W2.d Spikes: (i) `nros_find_interfaces(LANGUAGE C)` under an embedded
+- [x] W2.d Spikes: (i) `nros_find_interfaces(LANGUAGE C)` under an embedded
       example CMake; (ii) unconditional `nros_platform_critical_section` on the
       ThreadX zenoh path; (iii) Cyclone unbounded-string sample on RTOS heap.
-- [ ] W2.e CLI: extend `nros_crate_path_lookup()` (`cmd/ws.rs`) with board crates.
+- [x] W2.e CLI: extend `nros_crate_path_lookup()` (`cmd/ws.rs`) with board crates.
 
 ### W3 — Zero cfg/ifdef in example source (23 files → 0)
 
-- [ ] W3.a 13 `native/rust/*`: board-crate dep + manifest feature forwarding +
+- [x] W3.a 13 `native/rust/*`: board-crate dep + manifest feature forwarding +
       one unconditional `register_linked_rmw()` call; delete `#[used]` blocks;
       collapse listener dual-main; move `param-services`/`header`/`safety-e2e`
       variants to `packages/testing/nros-tests/bins/`; retarget
       `examples/fixtures.toml` + affected tests.
-- [ ] W3.b 6 `qemu-riscv64-threadx/rust/*`: unconditional `extern crate alloc` +
+- [x] W3.b 6 `qemu-riscv64-threadx/rust/*`: unconditional `extern crate alloc` +
       critical-section (per W2.d); `app_main` carrier → board crate if collision.
-- [ ] W3.c 3 `px4/rust/xrce/*`: non-optional dep, delete vestigial cfg;
+- [x] W3.c 3 `px4/rust/xrce/*`: non-optional dep, delete vestigial cfg;
       `ws-safety-rust`: unconditional feature.
-- [ ] W3.d Acceptance: `grep -r '#\[cfg' examples/ --include='*.rs'`
+- [x] W3.d Acceptance: `grep -r '#\[cfg' examples/ --include='*.rs'`
       (excl. `generated/`) returns nothing.
 
 ### W4 — Chatter parity (one atomic change across all platforms)
 
-- [ ] W4.a All standalone talkers/listeners → `std_msgs/String`
+- [x] W4.a All standalone talkers/listeners → `std_msgs/String`
       "Hello World: N" (count from 1), logs `Publishing: 'Hello World: N'` /
       `I heard: [Hello World: N]`. Rust `heapless::String` + `write!`; C
       `snprintf` into generated `std_msgs_msg_string`; C++ typed publisher.
-- [ ] W4.b Embedded C: generated `std_msgs_msg_string_serialize()` replaces
+- [x] W4.b Embedded C: generated `std_msgs_msg_string_serialize()` replaces
       hand-rolled CDR; type string → `"std_msgs::msg::dds_::String_"`; Cyclone
       `.msg` descriptor generation Int32 → String.
-- [ ] W4.c Node names: `c_talker`/`cpp_talker`/`c_listener`/`cpp_listener` →
+- [x] W4.c Node names: `c_talker`/`cpp_talker`/`c_listener`/`cpp_listener` →
       bare `talker`/`listener` (standalone only; workspaces keep distinct names).
-- [ ] W4.d Delete `"Publishing messages"` harness markers (readiness = W2.c
+- [x] W4.d Delete `"Publishing messages"` harness markers (readiness = W2.c
       line); flip W2.a constants; update `tests/zephyr/run-c.sh`; examples/README
       interop snippet → `std_msgs/msg/String`.
-- [ ] W4.e Fallback if W2.d(iii) fails: Cyclone-embedded examples keep Int32 +
+- [x] W4.e Fallback if W2.d(iii) fails: Cyclone-embedded examples keep Int32 +
       README note (surface the exception in examples/README matrix).
 
 ### W5 — Service/action parity + cleanliness
 
-- [ ] W5.a Service client: native takes argv `a b` (default 2 3), logs
+- [x] W5.a Service client: native takes argv `a b` (default 2 3), logs
       `Result of add_two_ints: N`; embedded sends one fixed request; drop
       hard-coded batches. Server logs the two-line `Incoming request` form.
-- [ ] W5.b Action logs → `action_tutorials` wording (`Sending goal` /
+- [x] W5.b Action logs → `action_tutorials` wording (`Sending goal` /
       `Received feedback` / `Result received:`); `NROS_ACTION_CONCURRENT`
       alternate path moves out of the example.
-- [ ] W5.c `native/c/talker/main.c` slims to node+pub+timer+spin; clock/param
+- [x] W5.c `native/c/talker/main.c` slims to node+pub+timer+spin; clock/param
       demos move to `nros-tests/bins/` or a dedicated parameters example;
       cpp listener `if (false)` block becomes a compile-only fixture.
-- [ ] W5.d Workspaces: `ws-realtime-cpp` `Ctrl.cpp` + `ws-lifecycle-c`
+- [x] W5.d Workspaces: `ws-realtime-cpp` `Ctrl.cpp` + `ws-lifecycle-c`
       `Talker.c` raw CDR → typed/generated serializers.
 
 ### W6 — Copy-out self-containedness
 
-- [ ] W6.a Flip 97 example `Cargo.toml` path-deps → `version = "*"`
+- [x] W6.a Flip 97 example `Cargo.toml` path-deps → `version = "*"`
       registry-style; refresh 111 `.cargo/config.toml` via `nros sync`
       (`# nros-managed`).
-- [ ] W6.b Standardize the CMake root guard across example CMakeLists:
+- [x] W6.b Standardize the CMake root guard across example CMakeLists:
       `-DNANO_ROS_ROOT` / `$ENV{NROS_REPO_DIR}` → walk-up only as last resort.
-- [ ] W6.c examples/README copy-out wording states the real contract (copy out →
+- [x] W6.c examples/README copy-out wording states the real contract (copy out →
       `nros sync` with `NROS_REPO_DIR`, or the vendored pattern per
       `templates/multi-package-workspace`).
-- [ ] W6.d Copy-out smoke: `cp -r` native/rust/talker outside the repo,
+- [x] W6.d Copy-out smoke: `cp -r` native/rust/talker outside the repo,
       `nros sync`, `cargo build`; one C example with `-DNANO_ROS_ROOT`.
 
 ### W7 — Organization + docs-of-record
 
-- [ ] W7.a Cargo.lock policy: gitignore `examples/**/Cargo.lock`, `git rm
+- [x] W7.a Cargo.lock policy: gitignore `examples/**/Cargo.lock`, `git rm
       --cached` the 55 tracked locks (first adjust
       `scripts/ci/dep-chain-check.sh` + `scripts/check-version-lockstep.sh`).
-- [ ] W7.b Moves (one dir per commit; fixtures.toml + `binaries/mod.rs` in
+- [x] W7.b Moves (one dir per commit; fixtures.toml + `binaries/mod.rs` in
       lockstep): `phase216-rtic-e2e` → `nros-tests/bins/rtic-run-plan-e2e`;
       `qemu-baremetal-main-e2e` → `nros-tests/bins/`; `entry-poc` →
       `nros-tests/bins/`; merge `zephyr/cpp/talker-typed` into `talker`;
       delete `px4/rust/uorb` placeholder + retire `build-sitl` recipe.
-- [ ] W7.c Deferred moves: `component{,-node}-poc`/`transform-poc` → phase-242
+- [x] W7.c Deferred moves: `component{,-node}-poc`/`transform-poc` → phase-242
       close-out; `_entry` → `-entry` rename waits on phase-275 (else bless the
       exception in RFC-0026).
-- [ ] W7.d READMEs, three tiers: matrix page (+ full workspaces table);
+- [x] W7.d READMEs, three tiers: matrix page (+ full workspaces table);
       per-platform READMEs (~10; prereqs, just module name, RMW knob, run steps,
       case table); ≤40-line per-example READMEs only for
       variants/bridges/`ws-*`/templates — priority: the five `ws-realtime-cpp*`
       variants. Presence linted via `scripts/check-example-matrix.sh` extension.
-- [ ] W7.e RFC-0026 refresh (changelog entry): workspaces two-layer scheme, RMW
+- [x] W7.e RFC-0026 refresh (changelog entry): workspaces two-layer scheme, RMW
       flag two-layer contract, rust aemv8r carve-out, `_entry` decision, README
       tiers, Cargo.lock policy, `qemu-riscv-nuttx` partial platform.
-- [ ] W7.f `docs/issues/` entry for deferred naming polish (`Talker` vs
+- [x] W7.f `docs/issues/` entry for deferred naming polish (`Talker` vs
       `TalkerNode`, C++ namespace word order, `setvbuf` inconsistency).
+
+## Status / Outcome (2026-07-03)
+
+What landed, per wave (commit ranges on `examples-ux-overhaul`):
+
+- **W1 — docs correctness** (`1b707fff1..85b7d1b3d`): README onboarding
+  rewritten to the canonical flow; fabricated Zephyr C API block replaced with
+  the real `Talker.c` surface; verb/link/SUMMARY fixes; examples/README +
+  templates/README refreshed; `c-api-cmake.md` two-variable RMW contract.
+- **W2 — harness + library prep** (`8b8266e75..a222740ff`, `19f02bdd6`,
+  `e9e1d9718`): `nros_tests::output` log-line constants (+ `run-c.sh`
+  mirrors); `register_linked_rmw()`; executor-open readiness log; W2.d spike
+  verdicts (typed C gen-interfaces on Zephyr YES; ThreadX unconditional
+  critical-section SAFE; Cyclone unbounded string SAFE on ddsrt); CLI board
+  crate lookup.
+- **W3 — zero cfg in examples** (`5c5f1352a..ea825a341`): 23 cfg-carrying
+  files → 0 (whole-tree acceptance grep empty); variant fixtures extracted to
+  `nros-tests/bins/` (safety-chatter-*, param-chatter-talker,
+  header-chatter-talker).
+- **W4 — chatter parity** (`9646045b4..f78467600` + `3eddd79a1`): every
+  talker/listener on every platform speaks `std_msgs/String`
+  "Hello World: N" with `Publishing:`/`I heard:`; bare node names; generated
+  serializers replace hand-rolled CDR (NuttX C pair documented fallback).
+  Real bugs fixed en route: codegen C++ FFI fixed-string NUL over-read
+  (`8e2076d81` + regression test), stale threadx-linux fixture resolvers,
+  silent RTOS chatter, Int32 type strings in interop tests.
+- **W5 — service/action parity** (`b80ef5aba..6c518db20` + `d39476007`):
+  add_two_ints argv shape + two-line server logs; action_tutorials wording;
+  native C talker slimmed; ws raw-CDR → typed serializers.
+- **W6 — copy-out self-containedness** (`691bf81b1..84544b625`): registry-style
+  deps + `# nros-managed` patch blocks everywhere; standard `NANO_ROS_ROOT`
+  guard; tested copy-out contract documented; live copy-out smokes (Rust +
+  C) passed.
+- **W7 — organization + docs-of-record** (`31e67f6c0..`): Cargo.lock policy
+  (56 locks untracked, `examples/**/Cargo.lock` ignored); fixture-bin moves
+  (`rtic-run-plan-e2e` ex `phase216-rtic-e2e`, `qemu-baremetal-main-e2e`,
+  `entry-poc` → `nros-tests/bins/`); `talker-typed` merged into `talker`;
+  `px4/rust/uorb` placeholder + `build-sitl` retired;
+  `zephyr/rust/service-client-async` leftover removed; three README tiers
+  (11 platform + 20 ws + bridge + template READMEs) + README lint in
+  `check-example-matrix.sh`; 31-row workspaces table; RFC-0026 refresh;
+  issue #132 filed.
+
+**Issues filed during the phase:** #127 (threadx-riscv64 NULL `c_app_main`
+on rebuild), #128 (rust RTOS pubsub fixture resolvers point at unbuilt
+binaries), #129 (ros2-interop tests soft-pass on zero received), #130
+(nros-c AtomicU64 breaks riscv32 NuttX), #131 (native zenoh service/action
+query path broken at origin/main), #132 (example naming drift — deferred
+polish sweep).
+
+**Deferred, with owners:**
+
+- `component-poc` / `component-node-poc` / `transform-poc` dir moves —
+  owned by in-flight **phase-242** close-out.
+- `_entry` → `-entry` rename — waits on **phase-275**; RFC-0026 blesses the
+  interim exception (tracked in #132).
+- ws-* copy-out smoke coverage (W6 covered standalone examples only) —
+  follow-up candidate.
+
+**Remote-CI-gated** (env-limited on the dev box; each baselined as failing
+identically pre-phase):
+
+- Zephyr cyclonedds runtime lane (W4 String flip verified by pattern +
+  C-twin only; local lane env-broken).
+- ThreadX riscv64 runtime (#127 — green only on stale binaries locally).
+- Native zenoh service/action lane (#131 — broken at origin/main; W5 tests
+  stay correctly red on the positive path until it is fixed).
 
 ## Sequencing constraints
 
