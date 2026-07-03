@@ -20,7 +20,7 @@ default = ["rmw-zenoh"]
 # `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens.
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]  # Phase 214.S.4.b — strict 1-entry parity
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
 [dependencies]

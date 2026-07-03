@@ -8,7 +8,7 @@ deployment.
 
 ## What it shows
 
-- `src/subnode_pkg/` — byte-identical node logic to the `-subnode` variant.
+- `src/subnode_pkg/` — functionally identical node logic to the `-subnode` variant.
 - `src/deploy_bringup/` (note: not `demo_bringup`) —
   `group_tiers = { ctrl = "fast", telem = "bulk" }`, with `[tiers.fast]`
   (10 ms, posix prio 80) and `[tiers.bulk]` (100 ms, prio 10) in

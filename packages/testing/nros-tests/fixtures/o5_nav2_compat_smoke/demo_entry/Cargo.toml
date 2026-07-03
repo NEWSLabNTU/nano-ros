@@ -1,6 +1,6 @@
 # Phase 212.O.5 fixture — Entry pkg consuming the nav2-style launch.xml.
 #
-# Mirrors `examples/native/rust/entry-poc/` but adds an explicit
+# Mirrors `packages/testing/nros-tests/bins/entry-poc/` but adds an explicit
 # `build.rs` that drives `nros_build::generate_run_plan(launch)` against
 # `launch/system.launch.xml`. The launch.xml uses the v1 tag set landed
 # in Phase 212.N.11 (`<arg>`, `<include>`, `<param value="$(arg …)"/>`,
