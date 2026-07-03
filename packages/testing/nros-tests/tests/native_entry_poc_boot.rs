@@ -2,7 +2,8 @@
 //! `<NativeBoard as BoardEntry>::run`) builds and boots through the
 //! BoardEntry lifecycle.
 //!
-//! `examples/native/rust/entry-poc/` carries the §11.6 one-line `main.rs`:
+//! `packages/testing/nros-tests/bins/entry-poc/` carries the §11.6 one-line
+//! `main.rs`:
 //!
 //! ```ignore
 //! nros::main!();   // expands via [package.metadata.nros.entry]

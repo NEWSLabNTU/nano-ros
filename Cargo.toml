@@ -153,12 +153,6 @@ exclude = [
     # Native Rust examples (desktop/Linux)
     # Phase 118 — collapsed per-RMW cells (build-time RMW feature selection)
     "examples/native/rust/talker",
-    # Phase 212.N.7 step-1 — Entry pkg POC. Empty [workspace] table;
-    # historically git dep on github.com/NEWSLabNTU/nros-cli for `nros-build`
-    # (212.N.4); post-Phase-218 the CLI lives in-tree at `packages/cli/` and
-    # the `nros-build` crate is a path dep under that sub-workspace. The
-    # standalone nros-cli repo is archived / read-only.
-    "examples/native/rust/entry-poc",
     "examples/native/rust/listener",
     "examples/native/rust/service-server",
     "examples/native/rust/service-client",

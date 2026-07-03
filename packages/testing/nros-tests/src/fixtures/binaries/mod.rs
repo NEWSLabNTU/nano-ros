@@ -2022,14 +2022,20 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 }
 
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
-/// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
-/// `BoardEntry::run`) is built by `just native build-fixtures` /
+/// `packages/testing/nros-tests/bins/entry-poc` Entry pkg (`nros::main!()` →
+/// native `BoardEntry::run`) is built by `just native build-fixtures` /
 /// `build-test-fixtures` (examples/fixtures.toml). Tests consume the artifact
 /// instead of running `cargo build` at run time (issue 0034).
 pub fn build_entry_poc() -> TestResult<&'static Path> {
     static ENTRY_POC_BINARY: OnceCell<PathBuf> = OnceCell::new();
     ENTRY_POC_BINARY
-        .get_or_try_init(|| build_example("native/rust/entry-poc", "entry-poc", None, None))
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/entry-poc");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/entry-poc"));
+            require_prebuilt_binary(&binary)
+        })
         .map(|p| p.as_path())
 }
 
