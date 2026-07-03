@@ -81,3 +81,9 @@ tools/*
 
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/
+
+# Phase 277 W7 — standalone example/workspace Cargo.locks are never committed.
+# They are not reproducibility-critical (scripts/build/cargo.sh prefetch
+# refreshes them without --locked) and committed copies go stale (known-issue
+# pattern: locks pinning nros-core 0.1.0 after the 218.J bump).
+examples/**/Cargo.lock

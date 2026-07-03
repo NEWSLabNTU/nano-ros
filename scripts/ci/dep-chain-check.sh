@@ -107,11 +107,12 @@ for cell in "${CELLS[@]}"; do
         #    generate, so skip codegen for them (#69).
         #    NROS_SKIP_VERSION_CHECK=1: this lane validates dep-chain *resolution*
         #    only (no compile, no runtime), so the abi_guard's stale-standalone-
-        #    lockfile mismatch is a false positive here — known-issue #12: the
-        #    committed example Cargo.locks still pin nros-core 0.1.0 (the 218.J
-        #    0.1.0->0.5.0 bump never propagated to standalone locks), tripping the
-        #    guard even though the real source tree is 0.5.0. Bypass so codegen
-        #    emits generated/ for the cargo-tree step.
+        #    lockfile mismatch is a false positive here. Example Cargo.locks are
+        #    gitignored since phase-277 W7 (never committed), but a stale local
+        #    lock from an earlier checkout can still pin an old nros-core
+        #    (known-issue #12 pattern: 0.1.0 lock vs 0.5.0 tree after 218.J),
+        #    tripping the guard. Bypass so codegen emits generated/ for the
+        #    cargo-tree step.
         if [ ! -f "$ex/package.xml" ]; then
             echo "  [ok] no package.xml — no generated interfaces, codegen skipped"
         elif ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" generate-rust >/dev/null 2>&1 ); then
