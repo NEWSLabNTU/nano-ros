@@ -125,39 +125,51 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     super::require_prebuilt_binary(&binary_path)
 }
 
+// #132 — the role crates (`talker`, `listener`, …) have been LIB-ONLY since
+// Phase 212.L.1 ("Component pkg shape — lib only, no [[bin]]"), so
+// `build_rust_example` resolved a `[[bin]]` that no longer exists and every
+// nuttx-rust rtos_e2e case silently fixture-skipped. The bootable images are
+// now the `<role>_entry` ELFs (ffi-linked, locator baked to the NUTTX 7452
+// port table by their `[[fixture]]` env). Resolve those instead. `build_rust_example`
+// is retained for any caller that still wants the raw staticlib path.
+#[allow(dead_code)]
+fn _keep_build_rust_example() {
+    let _ = build_rust_example;
+}
+
 pub fn build_nuttx_talker() -> TestResult<&'static Path> {
     NUTTX_TALKER_BINARY
-        .get_or_try_init(|| build_rust_example("talker", "nuttx-rs-talker"))
+        .get_or_try_init(|| require_entry_binary("talker", "nuttx_rs_talker_entry"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_listener() -> TestResult<&'static Path> {
     NUTTX_LISTENER_BINARY
-        .get_or_try_init(|| build_rust_example("listener", "nuttx-rs-listener"))
+        .get_or_try_init(|| require_entry_binary("listener", "nuttx_rs_listener_entry"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_service_server() -> TestResult<&'static Path> {
     NUTTX_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("service-server", "nuttx-rs-service-server"))
+        .get_or_try_init(|| require_entry_binary("service-server", "nuttx_rs_service_server_entry"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_service_client() -> TestResult<&'static Path> {
     NUTTX_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("service-client", "nuttx-rs-service-client"))
+        .get_or_try_init(|| require_entry_binary("service-client", "nuttx_rs_service_client_entry"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_action_server() -> TestResult<&'static Path> {
     NUTTX_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("action-server", "nuttx-rs-action-server"))
+        .get_or_try_init(|| require_entry_binary("action-server", "nuttx_rs_action_server_entry"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
     NUTTX_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("action-client", "nuttx-rs-action-client"))
+        .get_or_try_init(|| require_entry_binary("action-client", "nuttx_rs_action_client_entry"))
         .map(|p| p.as_path())
 }
 
