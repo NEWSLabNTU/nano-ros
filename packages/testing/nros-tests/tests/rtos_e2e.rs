@@ -709,23 +709,18 @@ fn test_rtos_service_e2e(
     )
     .expect("Failed to start server/client");
 
-    // Server boot check — NuttX lenient, others hard-fail.
-    let server_boot = match platform {
-        Platform::Nuttx => server
-            .wait_for_output(Duration::from_secs(30))
-            .unwrap_or_default(),
-        _ => server
-            .wait_for_output_pattern(
-                nros_tests::output::SERVICE_SERVER_READY_MARKER,
-                Duration::from_secs(30),
-            )
-            .unwrap_or_default(),
+    // Server boot check. #132 — the NuttX Rust server is an `*_entry` image
+    // whose board `run_entry` prints "nros entry ready" (the role crate is
+    // lib-only since 212.L.1, so there's no C-shaped "Waiting for service
+    // requests" line). Pick the marker per lang.
+    let server_ready_marker = match (platform, lang) {
+        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
-    ensure_ready(
-        &server_boot,
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        platform,
-    );
+    let server_boot = server
+        .wait_for_output_pattern(server_ready_marker, Duration::from_secs(30))
+        .unwrap_or_default();
+    ensure_ready(&server_boot, server_ready_marker, platform);
 
     // Give the client the same boot delay as the server so its first
     // query doesn't race ahead of the server queryable's declaration.
@@ -820,22 +815,16 @@ fn test_rtos_action_e2e(
     )
     .expect("Failed to start server/client");
 
-    let server_boot = match platform {
-        Platform::Nuttx => server
-            .wait_for_output(Duration::from_secs(30))
-            .unwrap_or_default(),
-        _ => server
-            .wait_for_output_pattern(
-                nros_tests::output::ACTION_SERVER_READY_MARKER,
-                Duration::from_secs(30),
-            )
-            .unwrap_or_default(),
+    // #132 — NuttX Rust action server is an `*_entry` image; readiness = the
+    // board's "nros entry ready" line (see the service e2e note).
+    let action_ready_marker = match (platform, lang) {
+        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
-    ensure_ready(
-        &server_boot,
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        platform,
-    );
+    let server_boot = server
+        .wait_for_output_pattern(action_ready_marker, Duration::from_secs(30))
+        .unwrap_or_default();
+    ensure_ready(&server_boot, action_ready_marker, platform);
 
     if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
         std::thread::sleep(platform.stabilization_delay());

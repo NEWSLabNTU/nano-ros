@@ -1877,7 +1877,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/service-server_entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7462", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -1885,7 +1885,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/service-client_entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7462", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -1893,7 +1893,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/action-server_entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7472", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -1901,7 +1901,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/action-client_entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:7472", NROS_DOMAIN_ID = "0" }
 
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,
