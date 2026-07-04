@@ -47,3 +47,17 @@ client's status/feedback/result channels, then:
    `action_tutorials` wording.
 2. Re-point the freertos/nuttx/baremetal-RTIC action-client E2Es at the
    terminal `Result received: [...]` marker.
+
+
+## 2026-07-04 confirmation (nuttx-rust action e2e)
+
+With the #132 resolver/port/log-sink work, `test_rtos_action_e2e`
+NuttX/Rust now RUNS and pins this gap precisely:
+- SERVER side is fully proven end-to-end: `Received goal request with order`,
+  `Publish feedback`, `Goal succeeded` all observed.
+- CLIENT side stops at `Sending goal` — no `Goal accepted`, no
+  `Result received`. Its goal-response + result promises never resolve, so
+  `accepted=false, completed=false` (rtos_e2e.rs:872).
+The declarative embedded action-client path has no feedback/result delivery
+seam; the pub/sub + service embedded paths are green (nuttx-rust). This is the
+one remaining red nuttx-rust rtos_e2e case and is blocked here, not on infra.
