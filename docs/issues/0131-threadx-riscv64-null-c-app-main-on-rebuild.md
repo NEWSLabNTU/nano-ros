@@ -40,6 +40,32 @@ symbol table against a fresh link.
 - Blocks trusting phase-277 W4 runtime verification on this platform
   (builds are green; runtime unproven).
 
+## 2026-07-04 update — three defects peeled, two remain
+
+Fresh-rebuild investigation (fixtures fully rebaked) split the "false-green
+lane" into five concrete defects. FIXED:
+1. phase-277 W6 guard mis-splice corrupted the 6 rust cyclonedds
+   CMakeLists (self-recursive add_subdirectory) — fixed, fixtures build.
+2. Port drift: bakes never followed the Phase 89.13 per-(variant,lang)
+   zenohd table — rust deploy blocks + 12 fixture rows now aligned.
+3. Guest IP: rust deploy blocks lacked net keys, so NetX came up on the
+   dgram-subnet default 192.0.3.10 under slirp — now 10.0.2.15/24.
+Result: **C++ pubsub e2e passes** (first ThreadX-RV64 zenoh runtime green).
+
+REMAINING (the real #131 tail):
+4. **C images crash `jalr -> 0`** (`mcause=1`, `mepc=0`) — only AFTER a
+   successful router connect; without a router `c_app_main` returns
+   cleanly. So the null call sits in the ACTIVE zenoh session path
+   (zenoh-pico rx/lease task or a platform vtable slot), not the entry
+   registration (`app_main` is present at 0x800000f0 and gets called).
+   Prime suspect: a wrong/absent symbol masked by the examples'
+   `-Wl,--allow-multiple-definition` (#138) — exactly the wrong-copy
+   hazard that flag hides.
+5. **Rust zenoh images emit NO wire traffic** (empty `filter-dump` pcap,
+   not even ARP) while booting to `Executor::open` — BSD/zpico TX path
+   dead on this port for the cargo-built images; cross-ref #132 (these
+   combos never ran green anywhere).
+
 ## Next steps
 
 1. Reproduce: clean `target*/` in one threadx example + fixture dir, rebuild,
