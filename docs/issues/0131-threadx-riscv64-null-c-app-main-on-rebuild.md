@@ -72,3 +72,36 @@ REMAINING (the real #131 tail):
    run lane, capture fault PC + symbol table diff vs a stale-good ELF.
 2. Bisect link inputs (board crate, startup objects, `--gc-sections`).
 3. Once fixed, re-run the W4 chatter e2e on this platform.
+
+
+## 2026-07-04 deep-dive — C defect root-caused to a null `drop_fn` in `Executor::drop`
+
+gdb (`hbreak *0`) on the freshly-rebuilt riscv64-threadx **C** talker pins the
+`jalr -> 0` exactly: the null call is
+`<nros_node::executor::spin::Executor as Drop>::drop+94` — the SECOND drop
+loop, `(meta.drop_fn)(arena + meta.offset)`, with `a0 = data_ptr` a valid
+arena address (`0x80048ae0`) but `a1 = meta.drop_fn = 0`. The crash fires
+**before any `Publishing:`** (executor is torn down almost immediately after
+`c_app_main`), so it is an early-exit teardown, and the C++ pubsub sibling is
+green (stays on the happy path, executor never drops).
+
+Ruled out:
+- **Uninitialised entries** — `storage::carve` writes `None` to every
+  `entries` slot (storage.rs:223), so a fresh Executor's Option discriminants
+  are valid.
+- **App-thread stack overflow** — the riscv64 board strong-overrides
+  `nros_board_app_stack_size` to 512 KB (board_threadx_qemu_riscv64.c:49).
+- **A defensive null-guard in `Executor::drop`** — tried and reverted: both
+  `slot.drop` and `meta.drop_fn` are non-nullable Rust `fn` types, so
+  `(x as usize) != 0` is a tautology the optimizer deletes. A `read_volatile`
+  guard would only MASK the corruption (violates the fail-loud rule).
+
+So a real `CallbackMeta` entry (valid `offset`) is written/held with a NULL
+`drop_fn` on the threadx-C path — genuine memory corruption or a specific
+entry-write that leaves `drop_fn = 0`. Next: instrument `add_*` / the C
+component (`nros_cpp_timer_create` -> `TimerEntry`) registration to catch the
+entry whose `drop_fn` is null at write time, or watchpoint the entry slot.
+Deep, dedicated-session work — not a quick fix.
+
+The RUST riscv64-threadx defect (empty pcap — no ARP, network never comes up)
+is a SEPARATE transport-down issue, unrelated to this teardown crash.
