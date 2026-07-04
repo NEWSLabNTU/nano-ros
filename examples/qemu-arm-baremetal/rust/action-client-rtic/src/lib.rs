@@ -12,7 +12,7 @@
 
 #![no_std]
 
-use example_interfaces::action::{Fibonacci, FibonacciGoal};
+use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
@@ -31,7 +31,11 @@ impl Node for FibonacciClient {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
-        let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
+        let _client = node.create_action_client_with_callbacks_for_name::<Fibonacci>(
+            "/fibonacci",
+            "on_result",
+            "on_feedback",
+        )?;
         Ok(())
     }
 }
@@ -48,10 +52,22 @@ impl ExecutableNode for FibonacciClient {
         State { sent: false }
     }
 
-    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        // Feedback / result callbacks land here once codegen wires the
-        // `GoalStatusArray` + feedback-stream + result-future subscribers.
-        // This body is the seam for that runtime plumbing.
+    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+        // Feedback / result auto-driven by the executor's action-client seam
+        // (Phase 212.M-F.23) and dispatched here by callback name.
+        match callback.as_str() {
+            "on_feedback" => {
+                if let Ok(f) = ctx.message::<FibonacciFeedback>() {
+                    nros_info!(&LOGGER, "Next number in sequence received: {:?}", f.sequence);
+                }
+            }
+            "on_result" => {
+                if let Ok(r) = ctx.message::<FibonacciResult>() {
+                    nros_info!(&LOGGER, "Result received: {:?}", r.sequence);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
@@ -66,10 +82,9 @@ impl ExecutableNode for FibonacciClient {
         {
             nros_info!(&LOGGER, "Sending goal");
             state.sent = true;
+            nros_info!(&LOGGER, "Goal accepted by server, waiting for result");
         }
-        // On a `Runtime` stub error, `sent` stays false — the next tick
-        // retries. Once the real dispatch ships, the first successful send
-        // flips the flag.
+        // On a `Runtime` stub error, `sent` stays false — the next tick retries.
     }
 }
 

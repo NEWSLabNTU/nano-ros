@@ -61,11 +61,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251
   no-allow-multiple-def policy (the gate doesn't scan example CMake); removal tied to the
   single-runtime consolidation (filed in phase-277 close-out).
-- **#137** — [Embedded declarative action clients are
-  send-only](0137-embedded-declarative-action-clients-send-only.md): freertos/nuttx/baremetal-RTIC
-  declarative action clients lack a feedback/result seam, so the client `Result received:` line is
-  unobservable; servers fine; E2Es retargeted to fail-if-run, not soft-pass (filed in phase-277
-  close-out).
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
@@ -105,7 +100,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#143** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#137** —
+[Embedded declarative action clients were
+send-only](archived/0137-embedded-declarative-action-clients-send-only.md): not a missing seam —
+`create_action_client_with_callbacks_for_name` (212.M-F.23) already auto-drives
+accept→feedback→result; the freertos/nuttx/baremetal-RTIC examples just used the plain send-only
+builder. Switched to the with-callbacks variant + filled `on_callback`; `test_rtos_action_e2e`
+NuttX/Rust green (client observes `Goal accepted` + `Result received`). **#143** —
 [Zephyr per-node-liveliness gate lifted](archived/0143-lift-zephyr-per-node-liveliness-gate.md):
 the #129-era gate treated a #139 symptom; reverted, all ten zephyr images rebuilt, suite green,
 and `ros2 node list` now shows every per-component node on Zephyr (multi-node images previously
