@@ -119,6 +119,7 @@ impl nros_platform::BoardEntry for QemuArmVirt {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        entry_net_init(None);
         nros_board_nuttx::run_entry::<Self, F, E>(None, setup)
     }
 
@@ -128,11 +129,44 @@ impl nros_platform::BoardEntry for QemuArmVirt {
     /// continue to be baked at compile time via `NROS_LOCATOR` / `NROS_DOMAIN_ID`
     /// (the `BAKED_LOCATOR` / `BAKED_DOMAIN` constants in `run_entry`); only the
     /// node-name originates from `deploy.boot_config` here.
+    ///
+    /// Issue #130 — additionally push the (overlay-merged) guest IP into `eth0`
+    /// before the family driver opens the executor; see [`entry_net_init`].
     fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        entry_net_init(Some(deploy));
         nros_board_nuttx::run_entry::<Self, F, E>(deploy.boot_config, setup)
     }
+}
+
+/// Issue #130 — the Entry-path twin of the legacy role path's
+/// [`crate::node::init_hardware`]: re-seed `/dev/urandom` from the guest IP and
+/// push it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway). Without the push
+/// the guest never reaches slirp's `10.0.2.2` and every networked entry image
+/// dies in `Executor::open` with `Transport(ConnectionFailed)` — the role
+/// fixtures always performed this step; the 212.N.3 parameterless
+/// `BoardInit::init_hardware` couldn't.
+///
+/// Defaults are the slirp e2e values (`10.0.2.30/24` via `10.0.2.2`, the same
+/// address the known-good role fixtures push); `[package.metadata.nros.deploy.
+/// nuttx]` `ip` / `netmask` / `gateway` keys override per entry so sibling
+/// guests can differ.
+#[cfg(target_os = "nuttx")]
+fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
+    let ip = deploy.and_then(|d| d.ip).unwrap_or([10, 0, 2, 30]);
+    let gateway = deploy.and_then(|d| d.gateway).unwrap_or([10, 0, 2, 2]);
+    let prefix = deploy
+        .and_then(|d| d.netmask)
+        .map(|m| u32::from_be_bytes(m).count_ones() as u8)
+        .unwrap_or(24);
+    let cfg = crate::config::Config {
+        ip,
+        prefix,
+        gateway,
+        ..Default::default()
+    };
+    crate::node::init_hardware(&cfg);
 }
