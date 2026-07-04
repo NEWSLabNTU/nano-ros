@@ -333,3 +333,59 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     uart_write_str("\n");
     exit_failure()
 }
+
+/// #131 — bare-metal `__assert_func` override.
+///
+/// newlib's `assert()` expands to `__assert_func`, whose default implementation
+/// does `fprintf(stderr, …)` + `abort()`. On this bare-metal RISC-V image there
+/// is no `stderr`, so pulling newlib's version (as registering the zenoh backend
+/// does — zenoh-pico/zpico C code contains `assert()` calls) fails the link with
+/// `undefined symbol: stderr`. Providing this strong definition satisfies every
+/// `__assert_func` reference from the board's own object, so the linker never
+/// pulls the stderr-dependent archive member. Routes to the UART + QEMU failure
+/// exit instead, matching the panic handler.
+///
+/// # Safety
+/// Called by C `assert()`; the four pointers are newlib-supplied NUL-terminated
+/// C strings (`file`, `func`, `failedexpr`) or null. We only read them to print.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __assert_func(
+    file: *const core::ffi::c_char,
+    line: core::ffi::c_int,
+    func: *const core::ffi::c_char,
+    failedexpr: *const core::ffi::c_char,
+) -> ! {
+    unsafe fn puts_cstr(p: *const core::ffi::c_char) {
+        if p.is_null() {
+            return;
+        }
+        // Bounded walk so a corrupt/unterminated pointer can't loop forever.
+        let mut i = 0usize;
+        let mut buf = [0u8; 256];
+        while i < buf.len() - 1 {
+            let b = unsafe { *p.add(i) } as u8;
+            if b == 0 {
+                break;
+            }
+            buf[i] = b;
+            i += 1;
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..i]) {
+            uart_write_str(s);
+        }
+    }
+    uart_write_str("ASSERT: ");
+    unsafe { puts_cstr(failedexpr) };
+    uart_write_str(" at ");
+    unsafe { puts_cstr(file) };
+    uart_write_str(":");
+    {
+        use core::fmt::Write;
+        let mut buf = UartWriter;
+        let _ = write!(buf, "{}", line);
+    }
+    uart_write_str(" (");
+    unsafe { puts_cstr(func) };
+    uart_write_str(")\n");
+    exit_failure()
+}

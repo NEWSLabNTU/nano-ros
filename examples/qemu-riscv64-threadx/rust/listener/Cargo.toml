@@ -22,7 +22,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-threadx-qemu-riscv64/rmw-zenoh"]
 rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "nros/alloc"]
 
 # Phase 245 — app-node shape. `nros::main!()` (src/main.rs) reads
@@ -39,7 +39,7 @@ board = "threadx-qemu-riscv64"
 rmw = "zenoh"
 domain_id = 0
 locator = "tcp/10.0.2.2:7453"
-ip = "10.0.2.15"
+ip = "10.0.2.16"
 netmask = "255.255.255.0"
 gateway = "10.0.2.2"
 

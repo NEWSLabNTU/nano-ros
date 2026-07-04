@@ -621,7 +621,12 @@ fn test_rtos_pubsub_e2e(
     // after the session opens; the C examples print "Waiting for messages". Pick
     // the marker per lang so the readiness gate matches the actual image.
     let ready_marker = match (platform, lang) {
-        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        // #131 / #132 — Rust `*_entry` images print "nros entry ready" from the
+        // board `run_*` after the session opens; only the C examples print
+        // "Waiting for messages". ThreadX-RV64 rust joins the nuttx case.
+        (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
+            "nros entry ready"
+        }
         _ => "Waiting for messages",
     };
     let listener_boot = listener
@@ -714,7 +719,9 @@ fn test_rtos_service_e2e(
     // lib-only since 212.L.1, so there's no C-shaped "Waiting for service
     // requests" line). Pick the marker per lang.
     let server_ready_marker = match (platform, lang) {
-        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
+            "nros entry ready"
+        }
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
     let server_boot = server
@@ -818,7 +825,9 @@ fn test_rtos_action_e2e(
     // #132 — NuttX Rust action server is an `*_entry` image; readiness = the
     // board's "nros entry ready" line (see the service e2e note).
     let action_ready_marker = match (platform, lang) {
-        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
+            "nros entry ready"
+        }
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
     let server_boot = server

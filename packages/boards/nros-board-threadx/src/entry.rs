@@ -46,9 +46,55 @@
 //! 212.N transition.
 
 use core::ffi::c_void;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use nros_board_common::ThreadxConfig;
 use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+
+// #131 — no_std `log` sink routing to the board's UART. The concrete print path
+// depends on the board type `B`, which a `static` logger can't name, so the
+// logger reads a function pointer set (once, monomorphised for `B`) by
+// `install_uart_logger::<B>()`. `log::info!` from the examples then reaches the
+// console; without a registered logger the `log` facade silently drops records
+// (bare-metal has no default stdout), so the harness never sees `Publishing:` /
+// `I heard:`. Mirrors the nuttx board's stdout logger (which can use `std`).
+static LOG_PRINT_FN: AtomicUsize = AtomicUsize::new(0);
+
+struct UartLogger;
+
+impl log::Log for UartLogger {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        let p = LOG_PRINT_FN.load(Ordering::Relaxed);
+        if p != 0 {
+            // SAFETY: `p` is only ever set by `install_uart_logger` to a valid
+            // `fn(core::fmt::Arguments)` cast to `usize`; 0 means unset (checked).
+            let f: fn(core::fmt::Arguments<'_>) = unsafe { core::mem::transmute(p) };
+            // `Arguments` is `Copy`; the examples bake the full human line into
+            // the message, so emit it verbatim (matches the nuttx sink).
+            f(*record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static UART_LOGGER: UartLogger = UartLogger;
+
+/// Install the UART `log` sink, routing records through `B::println`. Idempotent:
+/// re-arms the print fn each call and ignores a repeated `set_logger` (the second
+/// returns `Err`). Safe to call once per boot before the spin loop.
+fn install_uart_logger<B: BoardPrint>() {
+    fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
+        B::println(args);
+    }
+    LOG_PRINT_FN.store(print_via_board::<B> as usize, Ordering::Relaxed);
+    let _ = log::set_logger(&UART_LOGGER);
+    log::set_max_level(log::LevelFilter::Trace);
+}
 
 unsafe extern "C" {
     fn nros_threadx_set_config(
@@ -173,6 +219,25 @@ where
         },
         /* hosted_env = */ false,
     );
+
+    // #131 — register the linked zenoh CFFI backend before `Executor::open`.
+    // ThreadX is `target_os = "none"`: the `nros_rmw_register_backend!`
+    // `.init_array` ctor is a no-op and the flat image runs no static ctors, so
+    // without this explicit, idempotent call `resolve_backend` finds NoBackend
+    // and `Executor::open` returns `Transport(ConnectionFailed)` before any wire
+    // I/O (empty pcap — the observed threadx-riscv64 rust-lane failure). Mirrors
+    // the nuttx / freertos / mps2 boot paths (the sanctioned embedded path per
+    // nros/src/lib.rs: "embedded boards perform the explicit <backend>::register()
+    // in their boot path"). Gated by the overlay-forwarded `rmw-zenoh` feature →
+    // cyclonedds builds omit it.
+    #[cfg(feature = "rmw-zenoh")]
+    if let Err(err) = ::nros_rmw_zenoh::register() {
+        B::println(format_args!(
+            "nros: zenoh RMW backend register failed: {:?}",
+            err
+        ));
+    }
+
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -181,6 +246,14 @@ where
             B::exit_failure();
         }
     };
+    // #131 — install the UART `log` sink so the examples' `log::info!` lines
+    // (`Publishing: '...'` / `I heard: [...]`) reach the console, then emit the
+    // cross-RTOS readiness marker the e2e harness gates on (mirrors nuttx's
+    // `run_entry`). Both come AFTER `Executor::open` so the marker means "session
+    // up". `install_uart_logger` is idempotent (a second `set_logger` is a no-op).
+    install_uart_logger::<B>();
+    B::println(format_args!("nros entry ready"));
+
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 

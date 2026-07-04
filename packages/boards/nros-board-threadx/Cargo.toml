@@ -39,8 +39,23 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 # linked by the per-board overlay so `Executor::open` resolves a
 # backend at boot.
 nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+# #131 — `log` facade so `run_app_thread` can install a UART sink; the rust
+# examples emit their human lines (`Publishing: '...'` / `I heard: [...]`) via
+# `log::info!`, which is dropped without a registered logger (no std stdout on
+# this bare-metal target). Mirrors the nuttx board's stdout logger.
+log = { version = "0.4", default-features = false }
 nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
 nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
+# #131 — concrete Rust CFFI backend, registered explicitly in the boot path.
+# ThreadX is `target_os = "none"`: the `nros_rmw_register_backend!` `.init_array`
+# ctor is a no-op + the flat image runs no static ctors, so nothing registers the
+# zenoh vtable → `resolve_backend` → NoBackend → `Executor::open` fails with
+# `Transport(ConnectionFailed)` before any wire I/O. Linked + registered only when
+# the overlay forwards `rmw-zenoh`; cyclonedds builds leave it off.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-threadx",
+    "ros-humble",
+], optional = true }
 
 [build-dependencies]
 # 152.2.B.3 — generic `build.rs` lifts the ThreadX kernel +
@@ -58,3 +73,7 @@ default = []
 reference-linux = ["dep:nros-board-threadx-linux"]
 # Bare-metal RISC-V64 QEMU port (full NetX-Duo + virtio-net).
 reference-qemu-riscv64 = ["dep:nros-board-threadx-qemu-riscv64"]
+# #131 — link + register the zenoh CFFI backend in the boot path. Forwarded by the
+# per-board overlay (which the example forwards to from its own `rmw-zenoh`), so a
+# zenoh build registers a backend and a cyclonedds build (feature off) does not.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]

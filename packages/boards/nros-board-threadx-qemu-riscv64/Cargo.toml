@@ -31,3 +31,6 @@ nros-board-common = { path = "../nros-board-common", features = ["build-helpers"
 
 [features]
 default = []
+# #131 — forward the family board's zenoh-backend link + boot-path register().
+# The example forwards its own `rmw-zenoh` here; a cyclonedds build leaves it off.
+rmw-zenoh = ["nros-board-threadx/rmw-zenoh"]
