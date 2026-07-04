@@ -292,6 +292,20 @@ where
             std::process::exit(1);
         }
     };
+    // #132 — install a stdout `log::Log` sink so the chatter examples'
+    // `log::info!("Publishing:" / "I heard:")` reach the console. The facade is
+    // otherwise dark on NuttX, so pub/sub delivery was invisible to the e2e
+    // harness even when it worked. Idempotent + before the readiness marker.
+    install_stdout_logger();
+
+    // #132 — stable boot-readiness marker. A subscriber-only entry
+    // (`listener_entry`) prints nothing until it receives, so the rtos_e2e
+    // harness had no line to gate "session up, node registered" on (the C
+    // examples' "Waiting for messages" is C-only). Emit one after the session
+    // opens and before spin — greppable. The pattern is a test contract.
+    println!("nros entry ready");
+    let _ = std::io::stdout().flush();
+
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
     let setup_result = setup(&mut runtime);
@@ -315,4 +329,42 @@ where
             std::process::exit(1);
         }
     }
+}
+
+/// #132 — process-wide `log::Log` sink that writes each record to stdout as
+/// `<message>` (the examples pre-format the level/prefix into the message
+/// text). Installed once by [`run_entry`] so `log::info!` from the chatter /
+/// service / action examples reaches the NuttX serial console; without it the
+/// `log` facade drops every record on the floor (there is no default sink),
+/// and the rtos_e2e harness could not observe pub/sub delivery even though the
+/// transport worked. Idempotent — the `log` crate ignores a second
+/// `set_logger`, and the `Once` guard avoids the racey double-set path.
+#[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
+fn install_stdout_logger() {
+    use std::io::Write as _;
+    use std::sync::Once;
+
+    struct StdoutLogger;
+    impl log::Log for StdoutLogger {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            // The examples bake the full human line into the message
+            // (`Publishing: '...'` / `I heard: [...]`), so emit it verbatim.
+            let mut out = std::io::stdout();
+            let _ = writeln!(out, "{}", record.args());
+            let _ = out.flush();
+        }
+        fn flush(&self) {
+            let _ = std::io::stdout().flush();
+        }
+    }
+    static LOGGER: StdoutLogger = StdoutLogger;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        if log::set_logger(&LOGGER).is_ok() {
+            log::set_max_level(log::LevelFilter::Trace);
+        }
+    });
 }

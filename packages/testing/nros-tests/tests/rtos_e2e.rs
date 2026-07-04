@@ -616,15 +616,18 @@ fn test_rtos_pubsub_e2e(
     // Listener boot check: NuttX needs a lenient readiness probe because
     // its Rust apps sometimes fail to register with NSH. Other platforms
     // want a hard fail to surface environment regressions.
-    let listener_boot = match platform {
-        Platform::Nuttx => listener
-            .wait_for_output(Duration::from_secs(30))
-            .unwrap_or_default(),
-        _ => listener
-            .wait_for_output_pattern("Waiting for messages", Duration::from_secs(30))
-            .unwrap_or_default(),
+    // #132 — the NuttX Rust listener is an `*_entry` image (the role crate is
+    // lib-only since 212.L.1). Its board `run_entry` prints "nros entry ready"
+    // after the session opens; the C examples print "Waiting for messages". Pick
+    // the marker per lang so the readiness gate matches the actual image.
+    let ready_marker = match (platform, lang) {
+        (Platform::Nuttx, Lang::Rust) => "nros entry ready",
+        _ => "Waiting for messages",
     };
-    ensure_ready(&listener_boot, "Waiting for messages", platform);
+    let listener_boot = listener
+        .wait_for_output_pattern(ready_marker, Duration::from_secs(30))
+        .unwrap_or_default();
+    ensure_ready(&listener_boot, ready_marker, platform);
 
     // Let the talker run a bit and drain its output to avoid pipe back-pressure.
     // NuttX C needs a longer window: cold QEMU boot + 5s app sleep + session

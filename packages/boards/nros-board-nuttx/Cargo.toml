@@ -34,6 +34,12 @@ nros-board-common = { path = "../nros-board-common" }
 # `cfg(not(target_os = "none"))` keeps them active on host + nuttx
 # while excluding pure bare-metal.
 [target.'cfg(not(target_os = "none"))'.dependencies]
+# #132 — a minimal `log::Log` sink installed by `run_entry` so the chatter
+# examples' `log::info!("Publishing:" / "I heard:")` reach the NuttX console.
+# Without a sink the log facade is dark (C examples printf → visible; Rust →
+# nothing), so the rtos_e2e delivery assertion could never observe a sample
+# even though pub/sub works.
+log = { version = "0.4", default-features = false }
 # Phase 212.N.2 — `run_entry::<B, _, _>` consumes the 212.N.1
 # `BoardInit` / `RuntimeCtx` re-exports from the `nros-platform`
 # crate root (the trait family lives at
