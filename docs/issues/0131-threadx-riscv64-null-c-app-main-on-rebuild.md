@@ -1,7 +1,7 @@
 ---
 id: 131
 title: "ThreadX RISC-V64 zenoh firmware faults at NULL c_app_main after any rebuild — lane green only on stale binaries"
-status: open
+status: resolved
 type: bug
 area: threadx
 related: [phase-277, phase-177]
@@ -167,3 +167,35 @@ the operational cause above.
 Status: the **C** crash (defect 4) is root-caused, fixed-by-clean-build, and
 backstopped. Remaining open: defect 5 (Rust zenoh TX-dead / empty pcap), a
 separate transport issue.
+
+## 2026-07-05 — defect 5 (Rust zenoh TX-dead) FIXED; lane green
+
+The Rust "emits no wire traffic" defect was four stacked problems (commit
+`c523c5d68`); pubsub + service e2e now PASS.
+
+1. **No backend registered (the TX-dead root cause).** ThreadX is
+   `target_os = "none"`, so `nros_rmw_register_backend!`'s `.init_array` ctor is
+   a no-op and the flat image runs no static ctors — nothing registered the
+   zenoh vtable, so `resolve_backend` → NoBackend and `Executor::open` failed
+   with `Transport(ConnectionFailed)` BEFORE any socket I/O (hence the empty
+   pcap; it was never a NIC/transport bug). The example linked `nros-rmw-zenoh`
+   but never called `register()`. Fix: `run_app_thread` calls
+   `nros_rmw_zenoh::register()` before `Executor::open` (nuttx / freertos / mps2
+   pattern), forwarded family → per-board → example via `rmw-zenoh`. Validated:
+   pcap 24 B (empty) → full ARP → TCP → zenoh handshake.
+2. **`__assert_func` → undefined `stderr`** on link (registering zenoh pulls
+   `assert()` code → newlib `__assert_func` → `fprintf(stderr,…)`; no stderr on
+   bare-metal). Fix: board provides a strong `__assert_func` → UART + fail-exit.
+3. **`log::info!` dropped** (no sink) → the harness saw 0 messages. Fix:
+   `run_app_thread` installs a no_std UART `log` sink + emits `nros entry ready`;
+   rtos_e2e's readiness gate learns the ThreadX-RV64 rust case.
+4. **Duplicate zenoh session IDs → 0 delivery.** Both nodes baked the same
+   ip/mac → same `nros_board_compute_rng_seed` → same deterministic-RNG zid →
+   the router couldn't distinguish the peers (the exact failure mode zpico.c
+   warns about). Fix: second-in-pair examples bake ip `10.0.2.16` for a unique
+   seed/zid.
+
+`test_rtos_pubsub_e2e` (35s) + `test_rtos_service_e2e` (40s) ThreadxRiscv64 /
+Rust both PASS. No action e2e exists for this combo. This issue's defects 1–5
+are all resolved — ready to move to `archived/` once the C `#131` mirror
+backstop (b122bc6a1) and this land together.
