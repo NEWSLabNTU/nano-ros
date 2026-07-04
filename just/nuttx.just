@@ -33,11 +33,13 @@ build:
         echo "NuttX core: $nuttx_dir not provisioned — run 'just nuttx setup' first."
         exit 0
     fi
-    if [ -f "$nuttx_dir/staging/libc.a" ]; then
-        echo "NuttX core: staging/libc.a present — nothing to build."
-    else
-        scripts/nuttx/build-nuttx.sh
-    fi
+    # Always delegate to build-nuttx.sh: it self-guards on the NuttX HEAD +
+    # THIS BOARD's defconfig hash (194.5 marker), so a matching tree is a
+    # fast no-op. The old `staging/libc.a present -> skip` gate was
+    # arch-blind: after `just nuttx build-riscv-c` reconfigured the shared
+    # tree for rv-virt, the riscv staging satisfied the gate and the ARM
+    # lane linked against missing/foreign objects (arm_vectortab.o absent).
+    scripts/nuttx/build-nuttx.sh
 
 # Build NuttX QEMU ARM virt examples
 [group("main")]
@@ -61,10 +63,11 @@ build-examples:
     # (it early-returns without emitting the NuttX linker script + libc link when
     # libc.a is absent → `undefined reference to malloc/pthread_*`). config.h alone
     # isn't enough — a partial configure can leave config.h without a built libc.a.
-    if [ ! -f "$nuttx_dir/staging/libc.a" ]; then
-        echo "Provisioning NuttX kernel build (staging/libc.a + config.h)..."
-        scripts/nuttx/build-nuttx.sh
-    fi
+    # Always delegate: build-nuttx.sh self-guards on HEAD + THIS defconfig's
+    # hash, so a matching ARM tree is a fast no-op while a riscv-configured
+    # shared tree gets distcleaned + reconfigured (the old staging/libc.a
+    # gate was arch-blind — see the `build` recipe note).
+    scripts/nuttx/build-nuttx.sh
     echo "Building NuttX QEMU ARM virt examples..."
     # Build options come from the SSOT manifest (examples/fixtures.toml) via
     # the shared builder. No +nightly override — each example pins its nightly

@@ -27,13 +27,13 @@ locator = "tcp/10.0.2.2:7452"
 [dependencies]
 nuttx_rs_listener = { path = "../listener" }
 # Phase 213.C.2 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros", default-features = false }
+nros = { version = "*", default-features = false }
 # #127: `rmw-zenoh` bakes the zenoh RMW backend into the image (the board's
 # `run_entry` registers it explicitly — NuttX has no .init_array
 # auto-register); without it `Executor::open` fails instantly with
 # Transport(ConnectionFailed) before touching the network.
 nros-board-nuttx-qemu-arm = { version = "*", features = ["rmw-zenoh"] }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
+nros-platform = { version = "*", default-features = false }
 
 # Sibling Component pkg dep deliberately omitted in step-2 — see the
 # talker_entry sibling Cargo.toml for rationale.

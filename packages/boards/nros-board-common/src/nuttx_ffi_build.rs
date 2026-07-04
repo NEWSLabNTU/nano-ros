@@ -385,12 +385,13 @@ pub fn run_nuttx() {
     println!("cargo:rustc-link-arg=--entry=__start");
     println!("cargo:rustc-link-arg=-nostartfiles");
     println!("cargo:rustc-link-arg=-nodefaultlibs");
-    if !vectortab_obj.is_empty() {
-        println!(
-            "cargo:rustc-link-arg={}",
-            arch_src.join(&vectortab_obj).display()
-        );
-    }
+    // The vector table now travels inside `libnros_nuttx_boot.a`
+    // (nuttx_image_link.rs bundles `arm_vectortab.o` + the builtins stub and
+    // links it `+whole-archive`). Emitting the raw object here as well made
+    // every ARM C/C++ example link fail with `multiple definition of
+    // _vector_start` once the boot archive landed; the riscv board already
+    // opted out via `NUTTX_VECTORTAB_OBJ=""`.
+    let _ = &vectortab_obj;
     println!("cargo:rustc-link-arg=-L{}", staging.display());
     println!("cargo:rustc-link-arg=-L{}", board_src.display());
     println!("cargo:rustc-link-arg=-Wl,--start-group");
