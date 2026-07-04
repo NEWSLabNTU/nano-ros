@@ -105,3 +105,65 @@ Deep, dedicated-session work — not a quick fix.
 
 The RUST riscv64-threadx defect (empty pcap — no ARP, network never comes up)
 is a SEPARATE transport-down issue, unrelated to this teardown crash.
+
+## 2026-07-04 — C defect CONFIRMED + validated: FFI struct-size mismatch from a stale config-header mirror
+
+Root cause found and confirmed. The null `drop_fn` is a classic FFI
+struct-size disagreement, driven by a **stale in-tree config-header mirror**:
+
+- The C example's executor instance `__nros_c_inst_<pkg>` is a C global of
+  type `nros_executor_t`, whose `_opaque[…]` is sized on the C side from the
+  `NROS_*_STORAGE_SIZE` macro in `nros_config_generated.h` — the **mirror**
+  copy under `<build>/nano_ros/packages/core/nros-c/include/nros/`.
+- Rust (`nros_executor_init`) writes a fresh-sized `ExecutorInlineStorage`
+  (`carve` lays out `entries`/`sched_contexts`/arena for `ExecutorSizing::DEFAULT`)
+  straight into that C pointer, using `EXECUTOR_BACKING_U64S` — computed from
+  the crate's own fresh build. **No buffer length crosses the FFI.**
+- When the mirror is stale-small (observed 79984 vs fresh 81368), the C global
+  is smaller than what Rust writes; the carved `entries` table runs off the end
+  of `__nros_c_inst` into the adjacent `.bss` (zeroed) → a `CallbackMeta` with
+  `drop_fn = 0` → `jalr -> 0` in `Executor::drop`. The C++ sibling only stayed
+  green because it kept to the happy path (executor never dropped early).
+
+**Validated:** a clean rebuild (`rm -rf build-zenoh`, rebuild via
+`just threadx_riscv64 build-fixture-extras`) makes ALL five copies of the
+header agree at 81368 (build-dir == both mirrors), and
+`test_rtos_pubsub_e2e ThreadxRiscv64 lang_2_Lang__C` **PASSES** (35s). First
+green ThreadX-RV64 zenoh **C** runtime.
+
+**Why the mirror went stale — operational, not a code defect:** within a single
+clean build tree the mirror cannot drift. The header is a `build.rs` output, so
+any size change forces a `build.rs` rerun → the `cargo-build_nros_c` target
+reruns → `libnros_c.a` relinks → the mirror `add_custom_command`'s
+`DEPENDS cargo-build_nros_c` fires the `copy_if_different`. The stale mirror only
+arises from **interrupted / cross-arch incremental builds** (orphaned cargo
+children leaving a half-written tree — see agent-memory
+`env_disk_sccache_fixture_build_gotcha`). Fixture builds use fresh dirs, so CI
+is unaffected.
+
+**Durable backstop (shipped):** `executor::storage::carve` guarded its backing
+bound with `debug_assert!`, which is compiled out of the embedded
+release/`nros-fast-release` profiles — so an under-sized backing overflowed
+silently instead of panicking. Promoted to a real `assert!`: any
+backing/layout size disagreement now panics loudly at `Executor::open` on every
+profile, with both sizes named. (Note: this fires for callers that hand-size a
+backing via `from_session_in` / the `nros::main!` macro; it does NOT fire for
+the C-FFI path here, which passes the fresh `EXECUTOR_BACKING_U64S` length
+regardless of the C global's actual size — that mismatch has no length crossing
+the FFI to check. It is nonetheless the correct fail-loud hardening for the
+whole silent-overflow class.)
+
+**Rejected fix — cmake mirror `DEPENDS` on the generated source header:** tried
+adding the cargo-written headers to the mirror `add_custom_command` `DEPENDS`
+(+ `set_source_files_properties(GENERATED)`). Ninja rejects it —
+`'…/nros_config_generated.h', needed by '…/include/nros/…', missing and no known
+rule to make it` — because a file-level dependency needs a producing rule and
+cargo emits the header opaquely (corrosion does not declare it as a byproduct).
+Reverted. A bulletproof mirror-freshness guarantee (BYPRODUCTS on the corrosion
+target, or writing the header directly into the `nros/` include layout) is
+deferred as dedicated build-system work; it is not needed for correctness given
+the operational cause above.
+
+Status: the **C** crash (defect 4) is root-caused, fixed-by-clean-build, and
+backstopped. Remaining open: defect 5 (Rust zenoh TX-dead / empty pcap), a
+separate transport issue.

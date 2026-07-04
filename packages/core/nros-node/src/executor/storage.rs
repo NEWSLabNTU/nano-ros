@@ -204,9 +204,19 @@ pub(crate) unsafe fn carve<'s>(
     arena: usize,
 ) -> ExecutorSlices<'s> {
     let o = compute_offsets(cbs, sc, arena);
-    debug_assert!(
+    // Fail-loud on EVERY profile (not `debug_assert!`): embedded release builds
+    // strip debug-assertions, and a backing that is too small is silent memory
+    // corruption — the carved `entries`/`sched_contexts` tables run past the end
+    // of `backing` into whatever .bss follows (e.g. a C carrier's `__nros_c_inst`),
+    // leaving a NULL `drop_fn` that faults in `Executor::drop`. This is exactly
+    // how a STALE config-header mirror (C buffer sized from an out-of-date
+    // `NROS_*_STORAGE_SIZE`) manifested as a `jalr -> 0` on threadx-riscv64 (#131).
+    // Panic here instead, at open, with the two sizes named.
+    assert!(
         backing.len() * 8 >= o.size,
-        "executor backing too small: {} bytes < {}",
+        "executor backing too small: {} bytes < {} required — the storage buffer \
+         (NROS_*_STORAGE_SIZE) disagrees with the executor layout; rebuild clean so \
+         the generated config header matches",
         backing.len() * 8,
         o.size
     );
