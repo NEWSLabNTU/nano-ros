@@ -45,6 +45,25 @@ same QEMU harness, prints
 publishes — harness and link are sound; only the Entry runtime path skips
 the eth0 config.
 
+## 2026-07-04 update — fix landed, runtime verification gated
+
+`entry_net_init()` (nros-board-nuttx-qemu-arm/src/entry_212n.rs, commit
+703e840dd) now performs the urandom-reseed + SIOCSIFADDR push before
+`run_entry`: slirp defaults 10.0.2.30/24 via 10.0.2.2 (the values the
+known-good role fixtures push), overridable per entry via the
+`[package.metadata.nros.deploy.nuttx]` `ip`/`netmask`/`gateway` keys
+(direction 1 below, board-scoped). Compiles through the full ARM lane —
+which required un-breaking three adjacent pre-existing lane defects first
+(commit d395e3922: arch-blind provision gates, duplicate vectortab link,
+pre-W6 entry dep style).
+
+Runtime e2e verification still gated on test-infra holes:
+- `c_nuttx_entry_e2e` progressed from instant fixture-skip to a real 60 s
+  run that times out — needs its own follow-up (first time it has actually
+  executed on this box).
+- `rtos_e2e` nuttx-rust resolvers still point at the role `[[bin]]` retired
+  in phase-212 (#132) — those combos cannot exercise entry images yet.
+
 ## Fix direction
 
 Wire the IP/locator plumbing through the Entry path (the 212.N.4 direction

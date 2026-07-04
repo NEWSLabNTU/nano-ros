@@ -28,6 +28,18 @@ logging; the resolver drift is what still blocks the combos from running.
   `just/qemu-riscv64-threadx.just` lanes (see phase-277 working notes,
   `tmp/sdd-277/task-9-report.md`).
 
+## 2026-07-04 evidence
+
+`nuttx.rs::build_rust_example` resolves
+`examples/qemu-arm-nuttx/rust/<ex>/target/<triple>/release/<bin>` — but the
+role crates have been **lib-only since Phase 212.L.1** ("Component pkg
+shape — lib only, no [[bin]]"); only staticlibs exist there. Every
+`test_rtos_pubsub_e2e`/`test_rtos_service_e2e` NuttX-rust case has been a
+fixture-skip since then. The bootable images are now the `*_entry`
+ffi-linked ELFs; the resolvers must retarget there (and the threadx-rust
+resolvers DID get their fixtures built in the #131 work — those now
+resolve, exposing the runtime defects recorded in #131).
+
 ## Next steps
 
 1. Inventory: for each rust RTOS pubsub resolver, check the lane that should
