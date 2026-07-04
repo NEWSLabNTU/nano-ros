@@ -2700,72 +2700,84 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/talker"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7553" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/listener"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7553" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-server"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7563" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-client"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7563" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-server"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7573" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-client"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7573" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/talker"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7653" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/listener"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7653" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-server"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7663" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-client"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7663" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-server"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7673" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-client"
+cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7673" }
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
