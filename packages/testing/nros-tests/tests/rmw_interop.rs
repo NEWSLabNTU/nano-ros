@@ -124,11 +124,14 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     let received_count = count_pattern(&ros2_output, "data:");
     eprintln!("ROS 2 received {} messages", received_count);
 
-    if received_count > 0 {
-        eprintln!("[PASS] nros → ROS 2 communication works");
-    } else {
-        eprintln!("[INFO] ROS 2 did not receive messages (may be timing issue)");
-    }
+    // #133 — ROS 2 is provisioned (the skip! guards above passed), so delivery is
+    // the SUT: 0 received is a real failure, not a soft "may be timing" pass.
+    assert!(
+        received_count > 0,
+        "nros → ROS 2 delivered nothing: the ROS 2 subscriber received 0 'data:' \
+         samples from the nano talker over rmw_zenoh.\nROS 2 output:\n{ros2_output}"
+    );
+    eprintln!("[PASS] nros → ROS 2 communication works");
 }
 
 // =============================================================================
@@ -193,16 +196,19 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     let received_count = count_pattern(&nano_output, nros_tests::output::LISTENER_LOG_PREFIX);
     eprintln!("nros received {} messages", received_count);
 
-    if received_count > 0 {
-        eprintln!("[PASS] ROS 2 → nros communication works");
-
-        // Check data integrity
-        if nano_output.contains("Hello World: 42") {
-            eprintln!("[PASS] Data integrity verified (Hello World: 42)");
-        }
-    } else {
-        eprintln!("[INFO] nros did not receive messages (may be timing issue)");
-    }
+    // #133 — ROS 2 is provisioned, so 0 received is a real delivery failure.
+    assert!(
+        received_count > 0,
+        "ROS 2 → nros delivered nothing: the nano listener received 0 samples from \
+         the ROS 2 publisher over rmw_zenoh.\nnros output:\n{nano_output}"
+    );
+    // The publisher sent a known payload — verify integrity now that delivery held.
+    assert!(
+        nano_output.contains("Hello World: 42"),
+        "ROS 2 → nros data integrity: expected payload 'Hello World: 42' not found in \
+         the nano listener output.\nnros output:\n{nano_output}"
+    );
+    eprintln!("[PASS] ROS 2 → nros communication works (data integrity verified)");
 }
 
 // =============================================================================
@@ -259,14 +265,14 @@ fn test_communication_matrix(
         Direction::Ros2ToNano => test_ros2_to_nano_inner(&locator, &listener_binary),
     };
 
-    if success {
-        eprintln!("[PASS] {}", direction);
-    } else {
-        eprintln!(
-            "[INFO] {} - no messages received (may be timing)",
-            direction
-        );
-    }
+    // #133 — the inner helpers `skip!` when ROS 2 tooling is absent, so a `false`
+    // here can only mean the SUT delivered nothing. Fail loud.
+    assert!(
+        success,
+        "{direction} delivered no messages over rmw_zenoh — the SUT should have \
+         delivered at least one sample."
+    );
+    eprintln!("[PASS] {}", direction);
 }
 
 fn test_nano_to_nano_inner(locator: &str, talker_path: &Path, listener_path: &Path) -> bool {
@@ -315,7 +321,9 @@ fn test_nano_to_ros2_inner(locator: &str, talker_path: &Path) -> bool {
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
-        Err(_) => return false,
+        // #133 — a launch failure is an environment gap (skip), NOT a delivery
+        // failure; only 0-received should fail the caller's `assert!(success)`.
+        Err(e) => nros_tests::skip!("ROS 2 listener could not start: {e}"),
     };
 
     // Start nros talker with NROS_LOCATOR env var
@@ -359,7 +367,8 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
-        Err(_) => return false,
+        // #133 — launch failure = environment gap (skip), not a delivery failure.
+        Err(e) => nros_tests::skip!("ROS 2 publisher could not start: {e}"),
     };
 
     let output = listener
@@ -444,11 +453,14 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
         .unwrap_or_default();
     talker.kill();
 
-    if count_pattern(&output, "data:") > 0 {
-        eprintln!("[PASS] BEST_EFFORT QoS compatible");
-    } else {
-        eprintln!("[INFO] QoS test inconclusive");
-    }
+    // #133 — ROS 2 is provisioned; "inconclusive" hid a real BEST_EFFORT QoS /
+    // delivery failure. Assert the subscriber actually received the samples.
+    assert!(
+        count_pattern(&output, "data:") > 0,
+        "BEST_EFFORT QoS: the ROS 2 subscriber received 0 'data:' samples from the \
+         nano talker — QoS incompatible or delivery broken.\nROS 2 output:\n{output}"
+    );
+    eprintln!("[PASS] BEST_EFFORT QoS compatible");
 }
 
 // =============================================================================
@@ -655,20 +667,22 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
     let feedback_count = count_pattern(&nano_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
     let completed = nano_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
-    if goal_accepted || feedback_count > 0 || completed {
-        eprintln!("[PASS] ROS 2 action server ↔ nros action client works");
-        if goal_accepted {
-            eprintln!("  - Goal accepted");
-        }
-        if feedback_count > 0 {
-            eprintln!("  - Received {} feedback messages", feedback_count);
-        }
-        if completed {
-            eprintln!("  - Action completed");
-        }
-    } else {
-        eprintln!("[INFO] nros action client did not receive expected output");
-        eprintln!("  This may be a timing issue or protocol incompatibility");
+    // #133 — ROS 2 is provisioned; require at least one action signal (accept /
+    // feedback / result) to reach the nros client. Zero = broken interop, not timing.
+    assert!(
+        goal_accepted || feedback_count > 0 || completed,
+        "ROS 2 action server ↔ nros action client delivered nothing: no goal-accept, \
+         feedback, or result reached the nros client.\nnros action client output:\n{nano_output}"
+    );
+    eprintln!("[PASS] ROS 2 action server ↔ nros action client works");
+    if goal_accepted {
+        eprintln!("  - Goal accepted");
+    }
+    if feedback_count > 0 {
+        eprintln!("  - Received {} feedback messages", feedback_count);
+    }
+    if completed {
+        eprintln!("  - Action completed");
     }
 }
 
@@ -1075,15 +1089,16 @@ fn test_service_nano_server_ros2_client(
 
     // Check if service call succeeded
     // Expected output contains "sum: 8" or similar
-    if ros2_output.contains("sum") && (ros2_output.contains("8") || ros2_output.contains("= 8")) {
-        eprintln!("[PASS] nros service server ↔ ROS 2 service client works");
-        eprintln!("  - Request: 5 + 3 = 8 verified");
-    } else if ros2_output.contains("sum") {
-        eprintln!("[PASS] nros service server ↔ ROS 2 service client works");
-        eprintln!("  - Service call completed (sum field present)");
+    // #133 — ROS 2 is provisioned; the client must receive a `sum` response.
+    assert!(
+        ros2_output.contains("sum"),
+        "nros service server ↔ ROS 2 client got no response: expected a `sum` field \
+         (5 + 3 = 8) in the ROS 2 client output.\nROS 2 service call output:\n{ros2_output}"
+    );
+    if ros2_output.contains("8") || ros2_output.contains("= 8") {
+        eprintln!("[PASS] nros service server ↔ ROS 2 service client works — 5 + 3 = 8 verified");
     } else {
-        eprintln!("[INFO] ROS 2 service call did not receive expected response");
-        eprintln!("  This may be a timing issue or protocol incompatibility");
+        eprintln!("[PASS] nros service server ↔ ROS 2 service client works (sum field present)");
     }
 }
 
@@ -1134,15 +1149,14 @@ fn test_service_ros2_server_nano_client(
     let response_count = count_pattern(&nano_output, nros_tests::output::SERVICE_RESULT_PREFIX);
     let success = response_count > 0;
 
-    if success {
-        eprintln!("[PASS] ROS 2 service server ↔ nros service client works");
-        if response_count > 0 {
-            eprintln!("  - Received {} service responses", response_count);
-        }
-    } else {
-        eprintln!("[INFO] nros service client did not receive expected responses");
-        eprintln!("  This may be a timing issue or protocol incompatibility");
-    }
+    // #133 — ROS 2 is provisioned; the nros client must receive the reply.
+    assert!(
+        success,
+        "ROS 2 service server ↔ nros service client got no reply: 0 responses reached \
+         the nros client.\nnros service client output:\n{nano_output}"
+    );
+    eprintln!("[PASS] ROS 2 service server ↔ nros service client works");
+    eprintln!("  - Received {} service responses", response_count);
 }
 
 // =============================================================================
@@ -1234,25 +1248,35 @@ fn test_qos_matrix(
     // Note: nros talker uses BEST_EFFORT, so this tests BEST_EFFORT publisher
     match pub_qos {
         QosReliability::BestEffort => {
-            if received == should_work {
+            // #133 — fail loud only when delivery was EXPECTED but the subscriber
+            // got nothing (the 0-received soft-pass this issue targets). We do NOT
+            // assert the `should_work == false` cells as hard failures: those encode
+            // DDS request-vs-offered incompatibility, but the zenoh transport's
+            // reliability model is looser (a BEST_EFFORT publisher can still reach a
+            // RELIABLE subscriber), so over-delivery there is expected, not a bug.
+            if should_work {
+                assert!(
+                    received,
+                    "QoS {pub_qos}→{sub_qos}: expected delivery but the ROS 2 \
+                     subscriber received 0 samples from the BEST_EFFORT nano talker."
+                );
+                eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: received as expected");
+            } else if received {
                 eprintln!(
-                    "[PASS] QoS {}→{}: {} as expected",
-                    pub_qos,
-                    sub_qos,
-                    if received { "received" } else { "no data" }
+                    "[INFO] QoS {pub_qos}→{sub_qos}: delivered despite DDS-incompatible \
+                     QoS — zenoh reliability is looser than DDS RxO (not a failure)"
                 );
             } else {
-                eprintln!(
-                    "[INFO] QoS {}→{}: unexpected result (received={})",
-                    pub_qos, sub_qos, received
-                );
+                eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: no delivery, as expected");
             }
         }
         QosReliability::Reliable => {
-            // Skip test - nros talker doesn't support RELIABLE yet
-            eprintln!(
-                "[SKIP] QoS {}→{}: nros talker doesn't support RELIABLE",
-                pub_qos, sub_qos
+            // nros talker only supports BEST_EFFORT — a genuine capability gap, so
+            // skip! (fail-loud contract) rather than a bare log-and-pass.
+            nros_tests::skip!(
+                "QoS {}→{}: nros talker doesn't support RELIABLE yet",
+                pub_qos,
+                sub_qos
             );
         }
     }
@@ -1316,19 +1340,15 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
 
     talker.kill();
 
-    match first_message_time {
-        Some(elapsed) => {
-            eprintln!(
-                "[BENCHMARK] First message latency: {:?} (includes startup)",
-                elapsed
-            );
-            eprintln!("  Note: This measures time from talker start to first message received");
-            eprintln!("  Actual per-message latency is much lower");
-        }
-        None => {
-            eprintln!("[INFO] No messages received within timeout");
-        }
-    }
+    // #133 — after require_ros2, a total absence of messages is a delivery failure,
+    // not an informational note (the latency figure is a benchmark on top of delivery).
+    let elapsed = first_message_time.expect(
+        "nros → ROS 2 latency benchmark: no 'data:' message reached the ROS 2 \
+         subscriber within the 5 s window — delivery is broken.",
+    );
+    eprintln!("[BENCHMARK] First message latency: {elapsed:?} (includes startup)");
+    eprintln!("  Note: This measures time from talker start to first message received");
+    eprintln!("  Actual per-message latency is much lower");
 }
 
 /// Throughput measurement - count messages over fixed time
@@ -1378,6 +1398,12 @@ fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathB
         .unwrap_or_default();
 
     let message_count = count_pattern(&output, "data:");
+    // #133 — 0 messages is a delivery failure, not a 0.0 msg/sec "benchmark".
+    assert!(
+        message_count > 0,
+        "nros → ROS 2 throughput benchmark: the ROS 2 subscriber received 0 messages \
+         in {test_duration:?} — delivery is broken.\nROS 2 output:\n{output}"
+    );
     let rate = message_count as f64 / test_duration.as_secs_f64();
 
     eprintln!("[BENCHMARK] Messages received: {}", message_count);

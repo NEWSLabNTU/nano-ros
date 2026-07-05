@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#146** — [ROS 2 → nano native interop delivers
+  nothing](0146-ros2-to-nano-native-interop-delivers-nothing.md): `ros2 topic pub` → native nros
+  listener receives 0 over rmw_zenoh while nano → ROS 2 works; consistent across `test_ros2_to_nano`
+  + `test_communication_matrix::case_3`. Surfaced by the #133 fail-loud conversion (was soft-passing);
+  likely a sub-side keyexpr/liveliness discovery gap (mirror of the resolved #141). Needs clean-CI
+  confirm vs env.
 - **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
@@ -65,18 +71,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
   phase-277 W7 for one mechanical sweep.
-- **#134** — [nros-c `AtomicU64` breaks riscv32 NuttX
-  builds](0134-nros-c-atomicu64-breaks-riscv32-nuttx.md): `qemu-riscv-nuttx` C examples cannot
-  compile nros-c (no 64-bit atomics on riscv32); pre-existing, baselined during phase-277 W4.
-- **#133** — [ros2-interop tests soft-pass on 0
-  received](0133-ros2-interop-tests-soft-pass-on-zero-received.md): log-and-return instead of
-  assert/skip hides broken interop; violates the tests-must-fail rule (found in phase-277 W4).
-- **#132** — [Rust RTOS pubsub fixture resolvers reference binaries no lane
-  builds](0132-rust-rtos-pubsub-fixture-resolvers-point-at-unbuilt-binaries.md): those e2e combos
-  silently never run; needs resolver↔lane inventory + a coverage lint (found in phase-277 W4).
-- **#131** — [ThreadX RISC-V64 firmware faults at NULL `c_app_main` after any
-  rebuild](0131-threadx-riscv64-null-c-app-main-on-rebuild.md): lane green only on stale
-  binaries — false-green gate; reproduces at pre-phase-277 baseline; W4 runtime unproven there.
 - **#130** — [NuttX Entry path never configures eth0 —
   `nros_platform::BoardInit::init_hardware` no-op](0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
   every NuttX Rust Entry image boots to `Executor::open` then fails
@@ -100,7 +94,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#137** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#131** —
+[ThreadX RISC-V64 lane](archived/0131-threadx-riscv64-null-c-app-main-on-rebuild.md): the C
+`jalr->0` was a stale config-header mirror under-sizing `__nros_c_inst` (fixed by clean build +
+a fail-loud `carve` `assert!`); the Rust TX-dead was a four-part chain — no backend registered
+on bare-metal (`.init_array` no-op → explicit `nros_rmw_zenoh::register()`), `__assert_func`→stderr
+link fail, no `log` sink, and duplicate zids from identical baked ip/mac. pubsub + service e2e green.
+**#132** — [Rust RTOS fixture resolvers](archived/0132-rust-rtos-pubsub-fixture-resolvers-point-at-unbuilt-binaries.md):
+nuttx/threadx resolvers retargeted to the bootable `*_entry` ELFs so the combos run (the
+coverage-lint hardening is deferred). **#133** —
+[interop soft-pass on 0 received](archived/0133-ros2-interop-tests-soft-pass-on-zero-received.md):
+12 log-and-return sites in `rmw_interop.rs` converted to `assert!` (delivery is the SUT after
+`require_ros2`) / `skip!` (env gaps). **#134** —
+[nros-c `AtomicU64` on riscv32](archived/0134-nros-c-atomicu64-breaks-riscv32-nuttx.md):
+`AtomicU32` (counter range fits); qemu-riscv-nuttx C talker builds. **#137** —
 [Embedded declarative action clients were
 send-only](archived/0137-embedded-declarative-action-clients-send-only.md): not a missing seam —
 `create_action_client_with_callbacks_for_name` (212.M-F.23) already auto-drives

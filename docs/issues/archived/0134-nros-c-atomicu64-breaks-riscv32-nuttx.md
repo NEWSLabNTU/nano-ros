@@ -1,7 +1,7 @@
 ---
 id: 134
 title: "nros-c action/common.rs uses AtomicU64 — no such intrinsic on riscv32 → qemu-riscv-nuttx C examples cannot build"
-status: open
+status: resolved
 type: bug
 area: nuttx
 related: [phase-277]
@@ -29,3 +29,11 @@ atomics from elsewhere; mirror whatever mechanism they use.
 1. `cargo check` nros-c for `riscv32imac-unknown-none-elf` (or the exact
    NuttX target triple from the example's `.cargo/config.toml`) to reproduce.
 2. Land the portable fix; rebuild the qemu-riscv-nuttx c/talker example.
+
+## Resolution (2026-07-06)
+
+Fixed by `89574b4ee` (the #134 seven-defect chain). `action/common.rs:198` now
+uses `core::sync::atomic::AtomicU32` (the goal-counter range fits u32) with a
+comment naming the 32-bit-no-64-bit-atomics constraint. `examples/qemu-riscv-nuttx/c/talker`
+builds end-to-end (`build-zenoh` present). Verified: no `AtomicU64` remains in
+`packages/core/nros-c/src/action/common.rs`.

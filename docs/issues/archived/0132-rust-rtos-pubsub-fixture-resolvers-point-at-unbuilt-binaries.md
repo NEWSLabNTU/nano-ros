@@ -1,7 +1,7 @@
 ---
 id: 132
 title: "Rust RTOS pubsub fixture resolvers reference binaries no build lane produces — those e2e combos can never run"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [phase-277, phase-275]
@@ -46,3 +46,18 @@ resolve, exposing the runtime defects recorded in #131).
    produce its binary; fix name/path or add the missing fixture row.
 2. Extend the phase-275 W6-style coverage check so a resolver naming an
    unbuildable fixture is a CI failure, not a silent skip.
+
+## Resolution (2026-07-06)
+
+Step 1 done — the core defect (resolvers naming binaries no lane builds, so the
+combos silently skip) is fixed. `nuttx.rs` retargets its resolvers from the
+lib-only role crates to the bootable `*_entry` ffi ELFs
+(`require_entry_binary("<role>", "nuttx_rs_<role>_entry")`, `f9cea472a` /
+`02fad9dd7`); the threadx-riscv64 rust resolvers were fixed + their fixtures
+built in the #131 work and now run (pubsub + service e2e green). Both rust RTOS
+lanes execute rather than skip.
+
+Step 2 (a CI gate that fails when a resolver names an unbuildable fixture) is a
+separate recurrence-prevention hardening, not the reported defect — deferred as
+its own tech-debt task. The related "fail loud, don't soft-pass" gap on the
+interop side was addressed by #133 (2026-07-06).
