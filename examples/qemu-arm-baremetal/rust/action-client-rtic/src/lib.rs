@@ -58,7 +58,11 @@ impl ExecutableNode for FibonacciClient {
         match callback.as_str() {
             "on_feedback" => {
                 if let Ok(f) = ctx.message::<FibonacciFeedback>() {
-                    nros_info!(&LOGGER, "Next number in sequence received: {:?}", f.sequence);
+                    nros_info!(
+                        &LOGGER,
+                        "Next number in sequence received: {:?}",
+                        f.sequence
+                    );
                 }
             }
             "on_result" => {
