@@ -17,18 +17,23 @@ project(ws_realtime_cpp_mps2 LANGUAGES C CXX)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
 
 # Phase 274.W3 (RFC-0015 Model 1 embedded) — the FreeRTOS/mps2-an385 projection of
-# ws-realtime-cpp: a control node + a telemetry node whose bringup
+# ws-realtime-cpp: a control node + an aux node + a telemetry node whose bringup
 # `system.toml [tiers.*]` + per-node callback groups resolve to a multi-tier entry
 # via the entry codegen. The multi-tier FreeRTOS gate emits per-tier setup fns + a
 # NativeTierSpec array + nros_app_main calling FreertosBoard::run_tiers. The node
 # pkgs are listed BEFORE the entry so the entry codegen sees their
 # `nano_ros_node_register` metadata.
+#
+# Phase 144 (#144) — the aux node adds a 3rd (mid) tier so the tier chain has two
+# hops (boot high → mid → low): the mid tier is spawned BY a spawned tier, the
+# exact tier↔tier declare race the chained-spawn fix serializes.
 if(NOT NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM freertos)
 endif()
 
 set(_ws_subdirs
     src/ctrl_pkg
+    src/aux_pkg
     src/telem_pkg
     src/freertos_entry)
 

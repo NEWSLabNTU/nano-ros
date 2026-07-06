@@ -1,17 +1,24 @@
-//! phase-274 W3 (#126) — runtime E2E for embedded C/C++ **RFC-0015 Model 1**
-//! (`run_tiers`) on FreeRTOS/mps2-an385 (QEMU). The `ws-realtime-cpp-mps2`
-//! workspace deploys two nodes on two priority tiers over ONE shared zenoh
-//! session, each an `Executor` on its own FreeRTOS task:
+//! phase-274 W3 (#126) / phase-144 (#144) — runtime E2E for embedded C/C++
+//! **RFC-0015 Model 1** (`run_tiers`) on FreeRTOS/mps2-an385 (QEMU). The
+//! `ws-realtime-cpp-mps2` workspace deploys three nodes on three priority tiers
+//! over ONE shared zenoh session, each an `Executor` on its own FreeRTOS task:
 //!   - `ctrl`  — high tier, 10 ms period (boot task)
+//!   - `aux`   — mid tier, 50 ms period (spawned BY a spawned tier)
 //!   - `telem` — low tier, 100 ms period (spawned task)
 //!
 //! `FreertosBoard::run_tiers` (→ `nros_board_freertos_run_tiers`) opens the
-//! session on the boot task, spawns one task per non-boot tier (borrowed
-//! executor over the shared session, gated to its callback groups), and spins
-//! each at its period. Each node's `on_tick` calls `publish_raw(...)` and prints
-//! `[<tier>] tick=N` **only when the publish succeeds** — so observing both
-//! `[ctrl]` and `[telem]` ticks proves (a) the shared session connects to the
-//! host zenohd and (b) both tiers schedule + publish at their periods.
+//! session on the boot task, then spawns the non-boot tiers as a chain — each
+//! tier's setup spawns the next only after its own declares complete (the #144
+//! chained-spawn fix). The **mid** tier (`aux`) is therefore spawned by a
+//! spawned tier: it is the middle hop the old loop-spawn raced (two tiers
+//! declaring concurrently left aux's publisher write filter closed). Each
+//! node's `on_tick` calls `publish(...)` and prints `[<tier>] tick=N` **only
+//! when the publish succeeds** — so observing `[ctrl]`, `[aux]` AND `[telem]`
+//! ticks proves (a) the shared session connects to the host zenohd, (b) the
+//! chained spawn serialized the declares so tier-2's publisher opened, and
+//! (c) all three tiers schedule + publish at their periods. The `[aux]`
+//! assertion is the #144 regression signal: it would FAIL under the pre-fix
+//! loop-spawn race.
 //!
 //! The firmware uses a static 192.0.3.x lwIP config, so `start_mps2_an385_
 //! freertos_slirp` runs a matching slirp net (host 192.0.3.1) and the entry
@@ -30,7 +37,7 @@ use std::time::Duration;
 const REALTIME_ENTRY_PORT: u16 = 17851;
 
 #[test]
-fn realtime_tiers_cpp_freertos_both_tiers_publish() {
+fn realtime_tiers_cpp_freertos_all_three_tiers_publish() {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
@@ -74,6 +81,23 @@ fn realtime_tiers_cpp_freertos_both_tiers_publish() {
         });
     assert!(out_ctrl.contains("[ctrl] tick="));
 
+    // Mid tier (aux) is spawned BY a spawned tier — the middle hop of the
+    // boot→mid→low chain. Under the pre-#144 loop-spawn race two tiers declared
+    // concurrently and aux's publisher write filter stayed closed (no ticks).
+    // An `[aux] tick` proves the chained spawn serialized the declares so
+    // tier-2's publisher opened. This is the #144 regression signal.
+    let out_aux = qemu
+        .wait_for_output_pattern("[aux] tick=", Duration::from_secs(30))
+        .unwrap_or_else(|e| {
+            qemu.kill();
+            panic!(
+                "mid tier (aux) never published — the spawned-by-a-spawned tier's \
+                 publisher declare did not complete (the #144 chained-spawn race \
+                 the fix closes).\nerr: {e:?}"
+            )
+        });
+    assert!(out_aux.contains("[aux] tick="));
+
     // Low tier (spawned task, borrowed executor over the SAME session) must also
     // publish — proving the per-tier task + shared-session gating works.
     let out_telem = qemu
@@ -89,6 +113,7 @@ fn realtime_tiers_cpp_freertos_both_tiers_publish() {
 
     assert!(
         out_telem.contains("[telem] tick="),
-        "expected both tiers to publish (ctrl high 10 ms + telem low 100 ms)"
+        "expected all three tiers to publish (ctrl high 10 ms + aux mid 50 ms + \
+         telem low 100 ms)"
     );
 }

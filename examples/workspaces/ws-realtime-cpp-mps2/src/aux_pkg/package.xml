@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>aux_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 144 (#144) — mid-tier C++ auxiliary node; publishes std_msgs/Int32 on /aux every 50 ms. Spawned by a spawned tier; proves the chained-spawn fix.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

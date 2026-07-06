@@ -3,17 +3,27 @@ name = "realtime_cpp_mps2_demo"
 rmw = "zenoh"
 domain_id = 0
 
-# Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-tier C++ realtime demo on
-# FreeRTOS/mps2-an385 (QEMU). Two callback groups (ctrl / telem) on separate
-# RTOS tasks over ONE shared session. system.toml [tiers.*.freertos] carries
-# the raw FreeRTOS numeric priority (0–7 for configMAX_PRIORITIES=8 on MPS2).
-# Both [posix] and [freertos] entries allow the same bringup to deploy to
+# Phase 274.W3 (RFC-0015 Model 1 embedded) — 3-tier C++ realtime demo on
+# FreeRTOS/mps2-an385 (QEMU). Three callback groups (ctrl / aux / telem) on
+# separate RTOS tasks over ONE shared session. system.toml [tiers.*.freertos]
+# carries the raw FreeRTOS numeric priority (0–7 for configMAX_PRIORITIES=8 on
+# MPS2). Both [posix] and [freertos] entries allow the same bringup to deploy to
 # native (W2) or embedded FreeRTOS (W3) by changing the BOARD cmake variable.
+#
+# Phase 144 (#144) — the mid tier (aux) makes the spawn chain two hops
+# (boot high → mid → low): mid is spawned by a spawned tier, the tier↔tier
+# declare race the chained-spawn fix closes.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
 name = "ctrl_node"
 group_tiers = { ctrl = "high" }
+
+[[component]]
+pkg = "aux_pkg"
+class = "aux_pkg::Aux"
+name = "aux_node"
+group_tiers = { aux = "mid" }
 
 [[component]]
 pkg = "telem_pkg"
@@ -27,6 +37,13 @@ spin_period_us = 10000
 priority = 80
 [tiers.high.freertos]
 priority = 5
+
+[tiers.mid]
+spin_period_us = 50000
+[tiers.mid.posix]
+priority = 40
+[tiers.mid.freertos]
+priority = 3
 
 [tiers.low]
 spin_period_us = 100000
