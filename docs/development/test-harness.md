@@ -30,6 +30,24 @@ a 14 s test to 125 s on a saturated host racing against QEMU +
 zenohd; the prereq-then-assert shape keeps build and run phases
 cooperatively sequenced.
 
+**Staleness (phase-278, issue #147).** Existence alone let a bare
+`cargo nextest run` (which skips the `just test-all`
+`_check-fixtures-stale` preflight) silently run a fixture whose source
+had changed since it was built — the recurring hazard behind #146
+(a pre-W4 `Int32_` listener vs the `String_` test), #129, #140. The
+resolvers now also carry a DETECT-ONLY staleness probe that reads the
+toolchain's own recorded dependency graph and mtime-compares against
+the built binary — never invoking the compiler, so it cannot rebuild:
+`require_prebuilt_binary_fresh` (cargo `<binary>.d` dep-info, native
+rust + `bins/`), `require_prebuilt_binary_fresh_cmake` (`ninja -t deps`
+on the C/C++ cell), and `require_prebuilt_binary_fresh_zephyr` (the
+west staticlib's `.d` vs the linked `zephyr.exe`). A stale fixture
+hard-fails `"… is STALE"` naming the newer source; the fix is
+`just build-test-fixtures`, not `NROS_SKIP_FIXTURE_CHECK=1` (that
+bypass exists for "built it another way"). A missing `.d`/`.ninja_deps`
+falls back to existence-only, so non-cargo/non-ninja fixtures
+(qemu/west-image/idf) are unaffected.
+
 ## Skip vs. failure tally semantics
 
 ### The skip contract

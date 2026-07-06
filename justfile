@@ -1024,12 +1024,18 @@ _require-fixtures:
         exit 1
     fi
 
-# Warn (non-fatal) about prebuilt C/C++ fixture cells whose inputs changed
-# since the binary was built — sources edited without re-running
-# build-fixtures, so the harness would silently use a stale binary. Compares
-# each cell's stored .nros-fixture.inputsig (Phase 177.9, content hash of the
-# cell sources + shared crates/lockfile/toolchain/SDK pins) against a fresh
-# recompute. Skipped under NROS_SKIP_FIXTURE_CHECK=1. (Rust cells: follow-up.)
+# Warn (non-fatal) about prebuilt fixture cells whose inputs changed since the
+# binary was built — sources edited without re-running build-fixtures. Runs the
+# fixture's incremental build (rust: cargo `"fresh":false` probe; C/C++: cmake
+# self-heal) so a stale cell is rebuilt in place before the test run. Skipped
+# under NROS_SKIP_FIXTURE_CHECK=1.
+#
+# phase-278 (issue #147): this preflight WARN+self-heals, but only under
+# `just test-all`. The fixture RESOLVER now also guards independently — a bare
+# `cargo nextest run` hard-fails "… is STALE" (naming the newer source) instead
+# of silently running a stale binary, via a detect-only dep-info probe
+# (cargo `<binary>.d` / `ninja -t deps`; never rebuilds). Both honour
+# NROS_SKIP_FIXTURE_CHECK=1.
 [private]
 _check-fixtures-stale:
     ./scripts/check-fixtures-stale.sh

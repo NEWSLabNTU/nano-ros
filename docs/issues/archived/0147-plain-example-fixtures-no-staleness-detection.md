@@ -1,7 +1,7 @@
 ---
 id: 147
 title: "Fixture staleness is only enforced under `just test-all`, not at the resolver — a bare `cargo nextest` silently runs stale plain-example binaries"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [132, 146, 129, 140, phase-278]
@@ -117,3 +117,30 @@ recipe that always runs `_check-fixtures-stale` first, and document that bare
 A test whose subject clearly should deliver returns 0 / wrong type — check the
 on-disk fixture's baked keyexpr/type (`strings <binary> | grep std_msgs`)
 against current source before assuming a product bug.
+
+## Resolution (phase-278, 2026-07-06)
+
+Landed the resolver-level detect-only dep-info probe across three waves — a
+stale fixture now hard-fails under ANY launcher (incl. a bare
+`cargo nextest run`), naming the newer source, without ever rebuilding:
+
+- **W1** — `require_prebuilt_binary_fresh`: reads cargo's `<binary>.d` dep-info
+  + mtime-compares. Routed `build_example` / `build_example_rmw` (the #146
+  family: talker/listener/service/action/interop + RTIC + feature variants).
+- **W2** — `require_prebuilt_binary_fresh_cmake`: `ninja -t deps` (a pure query
+  of `.ninja_deps`, no build) for C/C++ cells; `bins/` reuse the W1 rust probe.
+  Proved the dep-coverage win — the C talker was flagged stale by a SHARED
+  `nros-c` header a content-hash would have missed.
+- **W3** — `require_prebuilt_binary_fresh_zephyr`: the 9 zephyr workspace-entry
+  images compare the west staticlib's `.d` against the linked `zephyr.exe`
+  (the Rust-source drift that caused the phase-276 stale-image reruns). Also
+  catches shared-crate changes.
+
+All probes read the toolchain's recorded dep graph + `stat()`; none invoke the
+compiler, per the constraint "a build probe is fine, building a final binary at
+test time is not." Missing `.d`/`.ninja_deps` → existence-only fallback, so
+non-cargo/non-ninja fixtures (qemu/west-image/idf) are unaffected (accepted
+non-goal; they rebuild wholesale per lane). Bypass: `NROS_SKIP_FIXTURE_CHECK=1`
+(same knob the `just test-all` preflight honours). The preflight stays for its
+self-heal convenience; the resolver guard is the direct-nextest safety net it
+couldn't reach.

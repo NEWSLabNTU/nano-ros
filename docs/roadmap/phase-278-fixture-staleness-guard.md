@@ -1,6 +1,6 @@
 # Phase 278 — Resolver-level fixture staleness guard
 
-Status: **In progress — 2026-07-06** · Implements issue #147 · Informs issues
+Status: **Complete — 2026-07-06** · Implements issue #147 · Informs issues
 #146, #140, #129, #132 (the recurring stale-fixture failure class).
 
 > **Goal.** A test that consumes a prebuilt fixture fails LOUD ("… is stale, run
@@ -94,13 +94,13 @@ toward silently-stale (identical to cargo's own fingerprint behavior).
   would have caught the repeated stale-image reruns in phase-276.)
 
 ### W4 — Docs + preflight reconciliation
-- [ ] W4.a Update the stale justfile:1029 comment (the `.nros-fixture.inputsig`
+- [x] W4.a Update the stale justfile:1029 comment (the `.nros-fixture.inputsig`
   mechanism it names no longer exists) and note the resolver now guards plain
   fixtures independently of `_check-fixtures-stale`.
-- [ ] W4.b `docs/development/` or AGENTS.md one-liner: bare `cargo nextest` now
+- [x] W4.b `docs/development/` or AGENTS.md one-liner: bare `cargo nextest` now
   fails loud on stale fixtures; the fix is `just build-test-fixtures`, not
   `NROS_SKIP_FIXTURE_CHECK`.
-- [ ] W4.c Resolve #147; note non-cargo/embedded (qemu/west/idf) left on
+- [x] W4.c Resolve #147; note non-cargo/embedded (qemu/west/idf) left on
   existence + `.compile-ok` as accepted (they rebuild wholesale per lane).
 
 ## Non-goals

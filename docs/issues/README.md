@@ -44,12 +44,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#147** — [Fixture staleness is enforced only under `just test-all`, not at the
-  resolver](0147-plain-example-fixtures-no-staleness-detection.md): plain-example staleness lives
-  in a WARN+self-heal preflight (`check-fixtures-stale.sh`), so a bare `cargo nextest` (the
-  dev/debug loop, how #146 surfaced) skips it and silently runs stale binaries;
-  `require_prebuilt_binary` is a pure existence check. Zephyr-workspace + non-cargo fixtures have
-  no guard at all. Fix = resolver-level content signatures (workspace template), phased.
+
 - **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
@@ -89,7 +84,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#146** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#147** —
+[Fixture staleness enforced only under `just test-all`, not at the
+resolver](archived/0147-plain-example-fixtures-no-staleness-detection.md): the fixture resolvers
+now carry a detect-only dep-info probe (cargo `<binary>.d` / `ninja -t deps` / the west staticlib
+`.d`), so a bare `cargo nextest` hard-fails "… is STALE" naming the newer source instead of
+silently running a stale binary — the recurring hazard behind #146/#129/#140. Reads the toolchain's
+recorded dep graph + stat, never rebuilds (phase-278). **#146** —
 [ROS 2 → nano native interop delivers
 nothing](archived/0146-ros2-to-nano-native-interop-delivers-nothing.md): a TEST defect, not a
 product bug — `topic_pub` hardcoded `--qos-reliability best_effort`, incompatible with the reliable
