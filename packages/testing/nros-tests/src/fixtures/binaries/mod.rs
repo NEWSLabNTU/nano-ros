@@ -411,6 +411,94 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     )))
 }
 
+/// Split a cargo dep-info dependency list (`DEP DEP …`) into paths, honouring
+/// make-style backslash escapes (`\ ` for a space in a path, `\\` for a
+/// literal backslash). Cargo emits every dependency on the single rule line
+/// after `TARGET: `.
+fn split_dep_info_line(deps: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = deps.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(&next) = chars.peek() {
+                    cur.push(next);
+                    chars.next();
+                }
+            }
+            c if c.is_whitespace() => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Detect-only staleness probe (issue #147 / phase-278). Reads cargo's
+/// `<binary>.d` dep-info file — the make-style `TARGET: DEP DEP …` list of
+/// every source input (incl. shared crates + generated msg crates) cargo
+/// records for its own incrementality — and returns the first source whose
+/// mtime is newer than the binary. This reads the toolchain's recorded
+/// dependency graph and `stat()`s files; it never invokes the compiler, so it
+/// cannot trigger a rebuild.
+///
+/// Returns `None` (treated as fresh) when the `.d` is absent (non-cargo
+/// binary / older cargo) or unreadable — no regression for callers that only
+/// need the existence contract. A dep listed in the `.d` that no longer exists
+/// on disk is ignored (conservative: a GC'd registry/intermediate path must
+/// not flag a false-stale; an edited source is present with a newer mtime and
+/// is caught).
+fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
+    let dep_file = binary_path.with_extension("d");
+    let content = fs::read_to_string(&dep_file).ok()?;
+    let bin_mtime = fs::metadata(binary_path).ok()?.modified().ok()?;
+    for line in content.lines() {
+        let Some((_target, deps)) = line.split_once(": ") else {
+            continue;
+        };
+        for dep in split_dep_info_line(deps) {
+            let dep_path = PathBuf::from(&dep);
+            if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
+                && dep_mtime > bin_mtime
+            {
+                return Some(dep_path);
+            }
+        }
+    }
+    None
+}
+
+/// Existence contract PLUS a detect-only staleness check (issue #147 /
+/// phase-278): a fixture whose source is newer than its built binary
+/// hard-fails "… is STALE" instead of silently running the old binary. Works
+/// under ANY launcher (incl. a bare `cargo nextest run`), unlike the
+/// `just test-all` preflight. Bypassable with `NROS_SKIP_FIXTURE_CHECK=1`
+/// (same knob the preflight honours) for the "built them another way" case.
+pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<PathBuf> {
+    let resolved = require_prebuilt_binary(binary_path)?;
+    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
+        return Ok(resolved);
+    }
+    if let Some(newer) = dep_info_newer_source(binary_path) {
+        return Err(TestError::BuildFailed(format!(
+            "Test fixture is STALE — a source is newer than the built binary:\n  \
+             binary: {}\n  newer:  {}\n\
+             Run `just build-test-fixtures` first \
+             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
+            binary_path.display(),
+            newer.display()
+        )));
+    }
+    Ok(resolved)
+}
+
 fn cargo_profile_name() -> String {
     env::var("NROS_CARGO_PROFILE").unwrap_or_else(|_| "nros-fast-release".to_string())
 }
@@ -458,7 +546,9 @@ pub fn build_example(
         example_dir.join(format!("target/{}/{}", profile_dir, binary_name))
     };
 
-    require_prebuilt_binary(&binary_path)
+    // phase-278 W1 — native rust single-node fixtures carry a cargo `.d`
+    // dep-info file; guard against a source-newer-than-binary stale build.
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 118 — RMW selector for the per-feature collapsed example dirs.
@@ -548,7 +638,8 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
         cargo_target_profile_dir(),
         binary_name
     ));
-    require_prebuilt_binary(&binary_path)
+    // phase-278 W1 — see build_example.
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 118 — resolve a prebuilt binary for a collapsed-shape C / C++

@@ -52,21 +52,21 @@ toward silently-stale (identical to cargo's own fingerprint behavior).
 ## Waves
 
 ### W1 — Rust dep-info probe + native single-node rollout
-- [ ] W1.a `require_prebuilt_binary_fresh(&Path)` in
+- [x] W1.a `require_prebuilt_binary_fresh(&Path)` in
   `nros-tests/src/fixtures/binaries/mod.rs`: existence check, then parse the
   sibling `<binary>.d`, `stat()` each listed source, fail
   `BuildFailed("… is stale: run just build-test-fixtures")` if any is newer
   than the binary. Missing `.d` → treat as existence-only (no regression) with
   a one-line eprintln note, so non-cargo callers that reuse
   `require_prebuilt_binary` are unaffected until migrated.
-- [ ] W1.b Route the native rust funnels `build_example` (mod.rs:438) and
+- [x] W1.b Route the native rust funnels `build_example` (mod.rs:438) and
   `build_example_rmw` (mod.rs:534) through the fresh check. This covers the
   #146 family (talker/listener/service/action/interop) + RTIC + feature
   variants (safety/tls/zero-copy/header) in one edit each.
-- [ ] W1.c Guard the `.d` parse: dep paths are absolute in these builds; handle
+- [x] W1.c Guard the `.d` parse: dep paths are absolute in these builds; handle
   the make-escaping (`\` line continuations, escaped spaces) and a binary with
   no `.d` (older cargo / non-cargo) gracefully.
-- [ ] W1.d Acceptance: with a fresh tree the migrated tests pass; `touch`-ing an
+- [x] W1.d Acceptance: with a fresh tree the migrated tests pass; `touch`-ing an
   example source then re-running WITHOUT rebuild fails "… is stale"; rebuilding
   clears it. Re-run `rmw_interop` (the #146 suite) green on fresh fixtures.
 
