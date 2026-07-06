@@ -139,12 +139,21 @@ and the bare-metal (smoltcp/serial) arms all route publishes through
   numbers remain a hardware follow-up.)
 
 ### W2 — Opt-in batch-mode flush (uniform: mechanism in the shared shim)
-- [ ] W2.a `zpico.c`: `g_tx_batching` gate + `zp_batch_start` after the session
+
+Status: W2.a / W2.b / W2.d(code) landed 2026-07-06; W2.c (per-publisher express
+via NrosRmwQos) pending — multi-layer ABI plumb, its own change. Found during
+impl: the generated generic config pinned `Z_FEATURE_BATCHING 0` (the vendored
+default 1 only applies to Zephyr's vendored-config build), and the flag gates
+transport-struct FIELDS — so the knob flips it in the SHARED generated header
+(issue-0135 every-TU rule), keeping knob-off builds byte-identical. Validated:
+knob-off + knob-on compile clean; batch-ON native pubsub smoke delivers 7/7.
+
+- [x] W2.a `zpico.c`: `g_tx_batching` gate + `zp_batch_start` after the session
   opens (`zpico_open`, when `ZPICO_TX_BATCH` is on), `zp_batch_stop` in
   `zpico_close`, and a guarded `zp_batch_flush` at the TOP of `zpico_spin_once`
   (before every platform arm — the multi-threaded arms must flush BEFORE their
   wake-primitive wait). One code path for all six platform arms.
-- [ ] W2.b Knob plumbing, one define six front-ends: `ZPICO_TX_BATCH` env knob in
+- [x] W2.b Knob plumbing, one define six front-ends: `ZPICO_TX_BATCH` env knob in
   `nros-zpico-build::shim_config_from_env` (Rust builds, per-example
   `.cargo/config.toml [env]` like `ZPICO_MAX_*`); available to C/C++ cmake lanes
   via `defines_kv`/`NROS_CMAKE_EXTRA_DEFS`; zephyr Kconfig
@@ -154,10 +163,10 @@ and the bare-metal (smoltcp/serial) arms all route publishes through
   `zpico_declare_publisher` (new arg or options struct), surfaced through
   `NrosRmwQos` (rx_buffer_hint pattern) up to the Rust/C/C++ publisher QoS so
   control-tier topics bypass the batch natively.
-- [ ] W2.d Service/query latency guard: queryable replies + `z_get` requests
+- [x] W2.d (code) Service/query latency guard — gets + replies `is_express` under the knob; the batch=ON service e2e assertion moves to W3.c. Original item:: queryable replies + `z_get` requests
   send express (or flush-after) so service RTT gains no spin-period latency
   when batching is on. Add/extend a service e2e assertion under batch=ON.
-- [ ] W2.e Document the knob next to `Z_CONFIG_SOCKET_TIMEOUT` in
+- [x] W2.e Document the knob next to `Z_CONFIG_SOCKET_TIMEOUT` in
   platform-implementation-notes (applies to every platform; biggest win on
   Zephyr where the send budget is the recv window).
 

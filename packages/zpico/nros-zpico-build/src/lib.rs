@@ -21,6 +21,12 @@ pub struct ShimConfig {
     pub max_pending_gets: usize,
     pub get_reply_buf_size: usize,
     pub get_poll_interval_ms: usize,
+    /// phase-279 (#145) — opt-in tx batching (`ZPICO_TX_BATCH=1`): puts queue in
+    /// the transport write buffer and ship as ONE socket send per
+    /// `zpico_spin_once` flush. Default OFF (adds up to one spin period of tx
+    /// latency; gets/replies/express publishers bypass). Biggest win on Zephyr,
+    /// where zsock's per-fd lock caps tx at ~1 send per socket-recv window.
+    pub tx_batch: bool,
 }
 
 impl ShimConfig {
@@ -75,6 +81,9 @@ impl ShimConfig {
             "ZPICO_GET_POLL_INTERVAL_MS",
             self.get_poll_interval_ms.to_string().as_str(),
         );
+        if self.tx_batch {
+            build.define("ZPICO_TX_BATCH", "1");
+        }
     }
 }
 
@@ -93,6 +102,7 @@ pub fn config_header(
     target: &str,
     unstable_api: bool,
     orin_spe: bool,
+    tx_batch: bool,
 ) -> String {
     let mut header = String::new();
     writeln!(header, "/**").unwrap();
@@ -242,7 +252,17 @@ pub fn config_header(
     )
     .unwrap();
     writeln!(header, "#define Z_FEATURE_SESSION_CHECK 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_BATCHING 0").unwrap();
+    // phase-279 (#145) — Z_FEATURE_BATCHING gates transport-struct FIELDS
+    // (_batch_state/_batch_count), so it must be uniform across every TU that
+    // includes this header (zenoh-pico + zpico.c — the issue-0135 ABI rule).
+    // Flipped here (the shared generated config) by the ZPICO_TX_BATCH knob;
+    // stays 0 when the knob is off = byte-identical to today's config.
+    writeln!(
+        header,
+        "#define Z_FEATURE_BATCHING {}",
+        if tx_batch { 1 } else { 0 }
+    )
+    .unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_TX_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_PEER_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_MATCHING 1").unwrap();
@@ -690,6 +710,7 @@ int32_t zpico_init(void);\n";
             max_pending_gets: 5,
             get_reply_buf_size: 6,
             get_poll_interval_ms: 7,
+            tx_batch: false,
         };
 
         let body = cfg.rust_consts();
@@ -716,7 +737,7 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, true);
+        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, true, false);
 
         assert!(header.contains("#define Z_FRAG_MAX_SIZE 4096"));
         assert!(header.contains("#define Z_CONFIG_SOCKET_TIMEOUT 5000"));
@@ -752,7 +773,7 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false);
+        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false, false);
 
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));

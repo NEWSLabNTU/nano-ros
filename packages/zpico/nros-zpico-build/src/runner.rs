@@ -34,6 +34,7 @@ fn shim_config_from_env() -> ShimConfig {
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
         get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
+        tx_batch: env_usize("ZPICO_TX_BATCH", 0) != 0,
     }
 }
 
@@ -82,6 +83,12 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
         &target,
         env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok(),
         env::var("CARGO_FEATURE_ORIN_SPE").is_ok(),
+        // rerun-if-env already emitted by shim_config_from_env's env_usize.
+        env::var("ZPICO_TX_BATCH")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0)
+            != 0,
     );
     std::fs::write(config_dir.join("zenoh_generic_config.h"), header).unwrap();
 }

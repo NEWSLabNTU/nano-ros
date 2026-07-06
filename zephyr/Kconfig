@@ -173,6 +173,18 @@ config NROS_ZENOH_SOCKET_TIMEOUT_MS
       must lower this (5 ms => ~200 tx windows/s) at the cost of more
       read-task wakeups.
 
+config NROS_ZENOH_TX_BATCH
+    bool "zenoh-pico tx batching (one send per executor spin)"
+    default n
+    help
+      phase-279 (#145) — opt-in tx batching (ZPICO_TX_BATCH). Publishes queue
+      in the transport write buffer and ship as ONE socket send per executor
+      spin (zpico_spin_once flush), so total tx throughput scales with
+      messages-per-flush instead of being capped at ~1 send per socket recv
+      window (the zsock per-fd-mutex ceiling above). Adds up to one spin
+      period of publish latency; service/query requests and replies bypass
+      the batch (express), as do publishers declared express. Off by default.
+
 config NROS_ZENOH_PUBLICATION
     bool "Publication support"
     default y

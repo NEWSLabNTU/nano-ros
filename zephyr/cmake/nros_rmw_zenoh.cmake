@@ -68,6 +68,13 @@ if(CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS)
     zephyr_compile_definitions(Z_CONFIG_SOCKET_TIMEOUT=${CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS})
 endif()
 
+# phase-279 (#145) — opt-in tx batching: one send per executor spin instead of
+# one send per put. Forwards the Kconfig to zpico.c's ZPICO_TX_BATCH gate
+# (zp_batch_start at open + zp_batch_flush at the top of zpico_spin_once).
+if(CONFIG_NROS_ZENOH_TX_BATCH)
+    zephyr_compile_definitions(ZPICO_TX_BATCH=1)
+endif()
+
 # Intra-image topic delivery (RFC-0015 Model 1): every node in the image
 # shares ONE zenoh session, and neither zenoh-pico nor the router loops a
 # publication back to the session it came from. Without local subscriber

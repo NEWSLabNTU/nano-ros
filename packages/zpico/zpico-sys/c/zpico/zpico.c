@@ -950,6 +950,17 @@ int32_t zpico_open(void) {
     }
 #endif
 
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — opt-in tx batching: puts/gets append to the transport
+     * write buffer instead of sending; one socket send per flush carries the
+     * whole batch. Flush cadence = zpico_spin_once (every executor spin) +
+     * zenoh-pico's own implicit flushes (batch-buffer overflow, any transport
+     * message — so the lease keepalive bounds batch sit-time even without
+     * spins). Express messages (query replies, gets, express publishers)
+     * bypass the batch inside zenoh-pico. Compile-time knob, default OFF. */
+    zp_batch_start(z_session_loan(&g_session));
+#endif
+
     g_session_open = true;
     return ZPICO_OK;
 }
@@ -1116,6 +1127,10 @@ void zpico_close(void) {
 
     // Close session
     if (g_session_open) {
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+        /* phase-279 (#145) — stop batching; zp_batch_stop flushes the remainder. */
+        zp_batch_stop(z_session_loan(&g_session));
+#endif
 #if Z_FEATURE_MULTI_THREAD == 1
         // Stop background tasks (only in multi-threaded mode)
         zp_stop_read_task(z_session_loan_mut(&g_session));
@@ -1546,6 +1561,15 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
+
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — ship everything queued since the last spin in ONE
+     * socket send. Sits at the TOP so every platform arm flushes BEFORE its
+     * read/wait: the multi-threaded arms below only park on a wake primitive,
+     * so without this the batch would ride on keepalives alone. Thread-safe
+     * (batch state is guarded by the transport tx mutex); no-op when empty. */
+    zp_batch_flush(z_session_loan(&g_session));
+#endif
 
 #ifdef ZPICO_SMOLTCP
     // smoltcp: poll network and read available data. Uses single_read=true
@@ -2025,6 +2049,11 @@ int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_le
     // Set up get options
     z_get_options_t opts;
     z_get_options_default(&opts);
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — service/query latency guard: gets bypass the batch
+     * (express) so request RTT gains no spin-period latency under batching. */
+    opts.is_express = true;
+#endif
     opts.target = Z_QUERY_TARGET_ALL;
     opts.timeout_ms = timeout_ms;
     // Use NONE consolidation so the reply callback fires immediately on each
@@ -2223,6 +2252,11 @@ int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payl
 
     z_get_options_t opts;
     z_get_options_default(&opts);
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — service/query latency guard: gets bypass the batch
+     * (express) so request RTT gains no spin-period latency under batching. */
+    opts.is_express = true;
+#endif
     opts.target = Z_QUERY_TARGET_ALL;
     opts.timeout_ms = (uint64_t)timeout_ms;
     // Use NONE consolidation so the reply callback fires immediately on each
@@ -2471,6 +2505,11 @@ int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const cha
     // Create reply options with attachment
     z_query_reply_options_t options;
     z_query_reply_options_default(&options);
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — replies bypass the batch (express): service RTT must
+     * not wait for the next spin flush when batching is on. */
+    options.is_express = true;
+#endif
 
     z_owned_bytes_t attachment_bytes;
     if (attachment != NULL && attachment_len > 0) {
