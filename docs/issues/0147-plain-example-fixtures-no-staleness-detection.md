@@ -62,40 +62,51 @@ Three tiers of fixtures, three different staleness stories:
 - Every debugging session that runs `cargo nextest` directly (to iterate faster
   than `just test-all`) is exposed.
 
-## Fix direction — resolver-level content signatures (phased)
+## Fix direction — resolver-level detect-only dep-info probe (phased)
 
-The robust fix is to move staleness to the RESOLVER (works under any launcher),
-using content signatures (NOT a cargo/cmake build probe — that would compile at
-test time, violating the "no compilation inside tests" rule). Generalize the
-workspace template:
+Move staleness to the RESOLVER (so it works under any launcher, incl. bare
+`cargo nextest`) with a DETECT-ONLY probe that reads the toolchain's own
+recorded dependency graph and compares mtimes — it never invokes the compiler,
+so it structurally cannot rebuild a final binary (the maintainer's constraint:
+a build PROBE is fine, building a final binary at test time is not).
 
+Preferred over both (a) a content signature over the example dir (blind to
+shared-crate deps) and (b) invoking `cargo build`/`cmake --build` as the probe
+(a no-op when fresh, but rebuilds the final binary when STALE — the forbidden
+case, and precisely when the resolver cares; there is no stable
+`cargo build --dry-run`).
+
+Mechanism:
+- **Rust** — cargo writes `<target>/<profile>/<binary>.d`, a make-style file
+  listing EVERY source input incl. shared crates (`nros-core`, `nros-macros`,
+  the generated msg crates — ~186 files for the listener). The resolver parses
+  it and flags stale if any listed source's mtime is newer than the binary.
+  Pure `stat()`, no process spawn, covers deps the content signature cannot.
+- **C/C++** — same on the per-object `.d` files gcc/clang emit under `-MD`
+  (which ninja already generates); read + stat, do NOT invoke ninja (sidesteps
+  the Corrosion always-run step that broke `ninja -n` in the existing
+  preflight).
+
+Phasing:
 - **P1 — native rust single-node (the #146 family): highest value, smallest
-  surface.** Give `[[fixture]]` records an emitted `id` (they already carry one
-  in `fixtures.toml`; `fixtures-manifest.py` must include it in the plain
-  record). `fixtures-build.sh` writes `.nros-fixture.<id>.inputsig` in the
-  fixture's target dir after building; a new `require_prebuilt_binary_checked(
-  id, path)` recomputes + hard-fails on mismatch. Migrate `build_example` /
-  `build_example_rmw` first (talker/listener/service/action + the interop set).
-- **P2 — native C/C++ + `bins/`.** Same stamp, C/C++ via
-  `build_example_cmake_rmw`.
-- **P3 — zephyr-workspace entries.** Trivial: switch the 9
-  `build_zephyr_workspace_*` to `require_prebuilt_workspace_binary` and have the
-  zephyr leaf builder (`zephyr-fixture-leaves.sh`) write the workspace inputsig
-  — closes the clearest oversight.
+  surface.** Add `require_prebuilt_binary_fresh(&path)` that parses the sibling
+  `<binary>.d` + mtime-checks; route `build_example` / `build_example_rmw`
+  through it (talker/listener/service/action + the interop set).
+- **P2 — native C/C++ (`build_example_cmake_rmw`) + `bins/`** via the object
+  `.d` files.
+- **P3 — zephyr-workspace entries.** Independent quick win: the 9
+  `build_zephyr_workspace_*` use bare `require_prebuilt_binary` where the
+  native/cmake workspace family is guarded — either switch them to the existing
+  `require_prebuilt_workspace_binary` (+ have `zephyr-fixture-leaves.sh` write
+  the inputsig) or give them the `.d` probe (the west build emits `.d` files
+  too). Closes the clearest oversight.
 - **Non-cargo/embedded (qemu/west/idf)**: lower priority; existence +
-  `.compile-ok` is tolerable since those rebuild wholesale per lane. Revisit if
-  they ever mask a bug.
+  `.compile-ok` is tolerable since those rebuild wholesale per lane.
 
-Variant note: key stamps by `fixture_id`, NOT dir — a single example dir builds
-N variant binaries in sibling `target-*` dirs (per-RMW, tls, safety,
-zero-copy), so a dir-level signature would collide or thrash. The signature
-must fold in the manifest record (features/env/target-dir), exactly as the
-workspace signature does.
-
-Scope note: like the workspace inputsig, this signs the example's OWN dir, not
-its shared-crate deps — a pure `nros-core` edit won't invalidate it (accepted;
-CI rebuilds fixtures wholesale). Target = the common "edited the example /
-prebuilt is months old" drift.
+Caveat (accepted): mtime comparison flags stale after a `git checkout` that
+resets source mtimes even when content is unchanged — but that errs toward a
+(correct) rebuild, never toward silently running a stale binary. This is
+exactly how cargo's own fingerprint behaves.
 
 Cheaper stopgap (not a substitute): wrap the common nextest entry in a `just`
 recipe that always runs `_check-fixtures-stale` first, and document that bare
