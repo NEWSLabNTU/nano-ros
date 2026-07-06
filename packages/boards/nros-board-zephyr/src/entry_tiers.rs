@@ -4,14 +4,17 @@
 //! Mirrors `nros_board_freertos::run_tiers_entry` minus the network +
 //! scheduler bring-up (Zephyr owns boot; `rust_main` — the caller — is
 //! already a running post-init thread): the caller thread opens the boot
-//! `Executor`, spawns `tiers[1..]` through the module's
-//! `nros_zephyr_tier_task_create` shim (`k_thread_create` on a static pool,
-//! RAW Zephyr priority — negatives = cooperative, exactly the
-//! `[tiers.<name>.zephyr].priority` value), and then runs the
-//! highest-priority tier itself. Each tier task opens an `Executor` over the
-//! shared session (`SessionHandle`), installs its `active_groups` filter,
-//! runs the SAME register-only setup closure (the groups gate what actually
-//! registers), and spins forever at the tier's declared period.
+//! `Executor`, runs the boot tier's setup, then CHAIN-spawns the remaining
+//! tiers (issue #144) through the module's `nros_zephyr_tier_task_create`
+//! shim (`k_thread_create` on a static pool, RAW Zephyr priority — negatives
+//! = cooperative, exactly the `[tiers.<name>.zephyr].priority` value), and
+//! then runs the highest-priority tier itself. Each spawned tier task opens
+//! an `Executor` over the shared session (`SessionHandle`), installs its
+//! `active_groups` filter, runs the SAME register-only setup closure (the
+//! groups gate what actually registers), spawns the NEXT tier once its own
+//! setup returns, and spins forever at the tier's declared period. Chaining
+//! spawns behind each setup keeps setup order total so no two entity-declare
+//! bursts race the shared session's interest handshake.
 //!
 //! The `nros::main!` `Framework::Zephyr` arm emits
 //! `ZephyrBoard::run_tiers(&config, TIERS, closure)` for multi-tier systems
@@ -46,7 +49,55 @@ unsafe extern "C" {
 struct TierTaskCtx<F> {
     session: ::nros::SessionHandle,
     tier: TierSpec<'static>,
+    /// Tiers still to spawn AFTER this one — the chained-spawn tail
+    /// (issue #144). This tier spawns `rest[0]` (carrying `rest[1..]`)
+    /// only after its OWN setup returns, so no two setups overlap.
+    rest: &'static [TierSpec<'static>],
     setup: F,
+}
+
+/// issue #144 — chained tier spawn. `remaining.split_first()` is the next
+/// tier to bring up and the tail it must carry; empty → nothing left, `Ok`.
+/// Spawns exactly ONE `k_thread` for `remaining[0]`, handing it `remaining[1..]`
+/// as its own `rest` so the spawn chain continues once its setup completes.
+/// Serializing spawns behind each setup guarantees no two `setup()` (entity
+/// declare) calls ever run concurrently on the shared zenoh-pico session — the
+/// interest-handshake race that silently closes a losing publisher's write
+/// filter under `Z_FEATURE_MULTI_THREAD=0`.
+fn spawn_next_tier<F>(
+    session: ::nros::SessionHandle,
+    remaining: &'static [TierSpec<'static>],
+    setup: F,
+) -> Result<(), RuntimeError>
+where
+    F: Fn(&mut RuntimeCtx<'_>) -> Result<(), RuntimeError> + Copy + 'static,
+{
+    let Some((tier, rest)) = remaining.split_first() else {
+        return Ok(());
+    };
+    let ctx = Box::new(TierTaskCtx::<F> {
+        session,
+        tier: *tier,
+        rest,
+        setup,
+    });
+    let prio = tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+    let rc = unsafe {
+        nros_zephyr_tier_task_create(
+            tier_task_entry::<F>,
+            Box::into_raw(ctx) as *mut c_void,
+            prio,
+            c"nros_tier".as_ptr(),
+        )
+    };
+    if rc != 0 {
+        ::log::error!(
+            "nros: failed to spawn tier `{}` (pool exhausted? NROS_ZEPHYR_MAX_TIERS)",
+            tier.name
+        );
+        return Err(RuntimeError::Spin);
+    }
+    Ok(())
 }
 
 /// Spawned tier task: open an `Executor` over the shared session, install
@@ -72,6 +123,19 @@ where
                 crate::zephyr_msleep(1000);
             }
         }
+    }
+    // issue #144 — this tier's setup is done, so it is now safe to bring up the
+    // next tier: spawn `rest[0]` (carrying `rest[1..]`). Mint a fresh handle off
+    // this tier's executor (same as the boot path — `ctx.session` was consumed
+    // opening the executor above). A failed DOWNSTREAM spawn must NOT stop this
+    // tier spinning its own work, so log + continue.
+    let next_session = crt.executor_mut().session_handle();
+    if let Err(e) = spawn_next_tier(next_session, ctx.rest, ctx.setup) {
+        ::log::error!(
+            "nros: tier `{}` failed to spawn next tier: {:?}",
+            ctx.tier.name,
+            e
+        );
     }
     let period_ms = ((ctx.tier.spin_period_us / 1000).max(1)) as u32;
     loop {
@@ -117,10 +181,14 @@ impl ZephyrBoard {
         // interest handshake (the zenoh-pico write filter opens only when the
         // router's current-subscriber reply lands), and concurrent declares
         // from two threads race that handshake — the losing publisher's
-        // filter stays closed and every put is silently dropped. Serializing
-        // boot's declares before the spawned tiers' removes the boot↔tier
-        // race; tiers[1..] still declare concurrently with the boot SPIN,
-        // which only exchanges keepalives/data, not declares.
+        // filter stays closed and every put is silently dropped. issue #144 —
+        // serializing boot's declares before ANY spawn removes the boot↔tier
+        // race, and CHAINING the remaining spawns (boot spawns tiers[1] only;
+        // each tier spawns the next after its own setup returns) removes the
+        // tier↔tier race too: setup order is total (boot, t1, t2, …), no two
+        // declares ever overlap. Spins still overlap the next tier's setup,
+        // which is SAFE — a spin exchanges keepalives/data, not declares (only
+        // declare-vs-declare races the interest handshake).
         let boot_tier = &tiers[0];
         crt.executor_mut().set_active_groups(boot_tier.groups);
         {
@@ -128,31 +196,10 @@ impl ZephyrBoard {
             setup(&mut runtime)?;
         }
 
-        // Spawn tiers[1..]; tiers[0] runs on this (boot) thread. The ctx is
-        // leaked into the spawned task, which reclaims it via `Box::from_raw`.
-        for tier in &tiers[1..] {
-            let ctx = Box::new(TierTaskCtx::<F> {
-                session: crt.executor_mut().session_handle(),
-                tier: *tier,
-                setup,
-            });
-            let prio = tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
-            let rc = unsafe {
-                nros_zephyr_tier_task_create(
-                    tier_task_entry::<F>,
-                    Box::into_raw(ctx) as *mut c_void,
-                    prio,
-                    c"nros_tier".as_ptr(),
-                )
-            };
-            if rc != 0 {
-                ::log::error!(
-                    "nros: failed to spawn tier `{}` (pool exhausted? NROS_ZEPHYR_MAX_TIERS)",
-                    tier.name
-                );
-                return Err(RuntimeError::Spin);
-            }
-        }
+        // Kick off the chain: spawn tiers[1] carrying tiers[2..] as its tail;
+        // tiers[0] runs on this (boot) thread. A boot-side spawn failure is
+        // fatal (takes the error/exit path) — unlike a downstream tier's.
+        spawn_next_tier(crt.executor_mut().session_handle(), &tiers[1..], setup)?;
 
         // The boot thread runs tiers[0] itself — adopt its declared raw
         // priority (the spawned tiers already got theirs at k_thread_create;

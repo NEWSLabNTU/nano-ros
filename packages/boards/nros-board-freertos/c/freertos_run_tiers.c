@@ -3,8 +3,9 @@
  *
  * Implements `nros_board_freertos_run_tiers`, the FreeRTOS analog of the native
  * `nros_board_native_run_tiers`: opens ONE RMW session on the calling task (the
- * startup.c `app_task`), spawns one FreeRTOS task per non-boot tier (each with a
- * borrowed executor sharing the session), then runs the boot tier on the caller.
+ * startup.c `app_task`), runs the boot tier's setup, then CHAIN-spawns the
+ * remaining tiers (each with a borrowed executor sharing the session) so their
+ * setups serialize (issue #144), and runs the boot tier on the caller.
  *
  * Called from `FreertosBoard::run_tiers` (main.hpp) via the generated
  * `nros_app_main` (RFC-0015 Model 1 embedded, RFC-0043 typed path).
@@ -100,7 +101,17 @@ typedef struct {
     uint64_t spin_period_us;
     nros_tier_setup_fn_t setup;
     void* executor_storage;
+    /* issue #144 — chained spawn tail: the tiers still to bring up AFTER this
+     * one. This task spawns rest[0] (carrying rest[1..]) only after its own
+     * setup returns, so no two setups overlap on the shared session. */
+    const nros_tier_spec_t* rest;
+    size_t n_rest;
 } nros_freertos_tier_ctx_t;
+
+/* Forward decl — freertos_tier_task and freertos_spawn_next_tier are mutually
+ * recursive (each tier's task spawns the next tier via this helper). */
+static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
+                                    const nros_tier_spec_t* remaining, size_t n_remaining);
 
 /* Minimum spin delay: 1 ms (FreeRTOS tick resolution on MPS2-AN385). */
 #define SPIN_PERIOD_FLOOR_MS 1u
@@ -143,6 +154,13 @@ static void freertos_tier_task(void* arg) {
         }
     }
 
+    /* issue #144 — this tier's setup is done, so bringing up the next tier can
+     * no longer race our declares: spawn rest[0] (carrying rest[1..]). A failed
+     * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
+     * the return (freertos_spawn_next_tier frees what it allocated on failure). */
+    (void)freertos_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
+                                   ctx->n_rest);
+
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read (issue #126 defect B): timeout 0 returns immediately and never drives
      * the zenoh-pico session's TX/handshake from the spin path, so the shared
@@ -156,6 +174,79 @@ static void freertos_tier_task(void* arg) {
         nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
         vTaskDelay(1);
     }
+}
+
+/* freertos_spawn_next_tier — issue #144 chained tier spawn.
+ *
+ * Spawns exactly ONE FreeRTOS task for remaining[0], handing it remaining[1..]
+ * as its own `rest` so the chain continues once its setup completes. Empty
+ * `remaining` (n_remaining == 0) → nothing left, return 0. Serializing spawns
+ * behind each setup guarantees no two setup() (entity declare) calls run
+ * concurrently on the shared zenoh-pico session — the interest-handshake race
+ * that silently closes a losing publisher's write filter.
+ *
+ * On any alloc/xTaskCreate failure, frees what IT allocated and returns -1. It
+ * does NOT touch boot_storage — the caller (boot) owns that. */
+static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
+                                    const nros_tier_spec_t* remaining, size_t n_remaining) {
+    if (n_remaining == 0u) {
+        return 0;
+    }
+    const nros_tier_spec_t* t = &remaining[0];
+
+    /* Allocate executor storage for this tier. */
+    void* tier_exec = nros_platform_alloc(NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
+    if (tier_exec == NULL) {
+        return -1;
+    }
+    memset(tier_exec, 0, NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
+
+    /* Allocate the tier task context (lives for firmware lifetime). */
+    nros_freertos_tier_ctx_t* ctx =
+        (nros_freertos_tier_ctx_t*)nros_platform_alloc(sizeof(nros_freertos_tier_ctx_t));
+    if (ctx == NULL) {
+        nros_platform_dealloc(tier_exec);
+        return -1;
+    }
+
+    ctx->session_handle = session_handle;
+    ctx->domain_id = (uint32_t)domain_id;
+    ctx->groups = t->groups;
+    ctx->n_groups = t->n_groups;
+    ctx->spin_period_us = t->spin_period_us;
+    ctx->setup = t->setup;
+    ctx->executor_storage = tier_exec;
+    /* Chain tail: this task will spawn remaining[1] after its own setup. */
+    ctx->rest = remaining + 1;
+    ctx->n_rest = n_remaining - 1u;
+
+    /* Stack size: use the tier spec's stack_bytes if set; else 256 KiB
+     * (issue #126 defect A — VERIFIED). A spawned tier task opens a borrowed
+     * executor and runs its spin/dispatch; that overflows 64 KiB (HardFault:
+     * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
+     * 256 KiB the firmware runs the full run_tiers path with no fault under
+     * QEMU mps2-an385. The boot tier keeps the 512 KiB app_task stack.
+     * NOTE: `[tiers.*.freertos].stack_bytes` does NOT yet propagate through
+     * emit_cpp into NativeTierSpec (t->stack_bytes is 0 today), so this
+     * default is the live value; the config-driven path needs an emitter fix. */
+    uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
+
+    /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
+     * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
+    UBaseType_t prio = (t->priority > 0)
+                           ? (UBaseType_t)(t->priority < (int64_t)(configMAX_PRIORITIES)
+                                               ? t->priority
+                                               : (int64_t)(configMAX_PRIORITIES - 1u))
+                           : (UBaseType_t)1u;
+
+    BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
+                                 stack_words, ctx, prio, NULL);
+    if (ret != pdPASS) {
+        nros_platform_dealloc(ctx);
+        nros_platform_dealloc(tier_exec);
+        return -1;
+    }
+    return 0;
 }
 
 /* nros_board_freertos_run_tiers — Phase 274.W3 (RFC-0015 Model 1 embedded).
@@ -210,73 +301,17 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
      * spin loop never returns). */
     void* session_handle = nros_cpp_executor_session_handle(boot_storage);
 
-    /* --- Spawn non-boot tier tasks (tiers[1..n_tiers)) --- */
-    size_t ti;
-    for (ti = 1; ti < n_tiers; ti++) {
-        const nros_tier_spec_t* t = &tiers[ti];
-
-        /* Allocate executor storage for this tier. */
-        void* tier_exec = nros_platform_alloc(NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
-        if (tier_exec == NULL) {
-            /* Heap exhausted; shut down the primary executor and return error.
-             * Already-spawned tier tasks will idle after open_over_session fails. */
-            nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
-            return -1; /* NROS_CPP_RET_ERROR */
-        }
-        memset(tier_exec, 0, NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
-
-        /* Allocate the tier task context (lives for firmware lifetime). */
-        nros_freertos_tier_ctx_t* ctx =
-            (nros_freertos_tier_ctx_t*)nros_platform_alloc(sizeof(nros_freertos_tier_ctx_t));
-        if (ctx == NULL) {
-            nros_platform_dealloc(tier_exec);
-            nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
-            return -1;
-        }
-
-        ctx->session_handle = session_handle;
-        ctx->domain_id = (uint32_t)domain_id;
-        ctx->groups = t->groups;
-        ctx->n_groups = t->n_groups;
-        ctx->spin_period_us = t->spin_period_us;
-        ctx->setup = t->setup;
-        ctx->executor_storage = tier_exec;
-
-        /* Stack size: use the tier spec's stack_bytes if set; else 256 KiB
-         * (issue #126 defect A — VERIFIED). A spawned tier task opens a borrowed
-         * executor and runs its spin/dispatch; that overflows 64 KiB (HardFault:
-         * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
-         * 256 KiB the firmware runs the full run_tiers path (boot init → tier
-         * spawn → boot spin) with no fault under QEMU mps2-an385. The boot tier
-         * keeps the 512 KiB app_task stack.
-         * NOTE: `[tiers.*.freertos].stack_bytes` does NOT yet propagate through
-         * emit_cpp into NativeTierSpec (t->stack_bytes is 0 today), so this
-         * default is the live value; the config-driven path needs an emitter fix. */
-        uint32_t stack_words =
-            (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
-
-        /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
-         * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
-        UBaseType_t prio = (t->priority > 0)
-                               ? (UBaseType_t)(t->priority < (int64_t)(configMAX_PRIORITIES)
-                                                   ? t->priority
-                                                   : (int64_t)(configMAX_PRIORITIES - 1u))
-                               : (UBaseType_t)1u;
-
-        BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
-                                     stack_words, ctx, prio, NULL);
-        if (ret != pdPASS) {
-            nros_platform_dealloc(ctx);
-            nros_platform_dealloc(tier_exec);
-            nros_cpp_fini(boot_storage);
-            nros_platform_dealloc(boot_storage);
-            return -1;
-        }
-    }
-
-    /* --- Run boot tier (tiers[0]) on THIS task --- */
+    /* --- Run boot tier (tiers[0]) setup on THIS task FIRST --- */
+    /* issue #144 — boot setup runs BEFORE any tier spawn (previously this
+     * spawned ALL of tiers[1..] BEFORE boot setup, so it had the boot↔tier
+     * race too). Entity declares carry an interest handshake; concurrent
+     * declares from two threads race it, and the losing publisher's write
+     * filter stays closed (every put silently dropped). Running boot's
+     * declares first, then CHAINING the remaining spawns (boot spawns tiers[1]
+     * only; each tier spawns the next after its own setup returns), makes setup
+     * order total (boot, t1, t2, …) so no two declares overlap. Spins still
+     * overlap the next tier's setup, which is SAFE — a spin exchanges
+     * keepalives/data, not declares. */
     const nros_tier_spec_t* boot = &tiers[0];
 
     /* Gate the boot executor to its tier's callback groups. */
@@ -292,6 +327,17 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
             nros_platform_dealloc(boot_storage);
             return (int32_t)rc;
         }
+    }
+
+    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
+    /* A boot-side spawn failure is fatal: tear down boot_storage (which the
+     * helper never touches) and return error. Downstream tier tasks handle
+     * their own spawn failures by logging + continuing to spin. */
+    int src = freertos_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u);
+    if (src != 0) {
+        nros_cpp_fini(boot_storage);
+        nros_platform_dealloc(boot_storage);
+        return -1;
     }
 
     /* Boot tier spin loop — runs forever on embedded firmware. Blocking-read

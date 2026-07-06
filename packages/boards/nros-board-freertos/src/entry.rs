@@ -336,12 +336,85 @@ struct AppContextTiers<F> {
 struct TierTaskCtx<F> {
     session: ::nros::SessionHandle,
     tier: TierSpec<'static>,
+    /// Tiers still to spawn AFTER this one — the chained-spawn tail
+    /// (issue #144). This tier spawns `rest[0]` (carrying `rest[1..]`) only
+    /// after its own setup returns, so no two setups overlap.
+    rest: &'static [TierSpec<'static>],
+    /// Fallback stack (words) for a spawned tier whose `stack_bytes == 0`,
+    /// threaded down the chain since the tier tasks no longer see `Config`.
+    app_stack_default_words: u32,
     setup: F,
+}
+
+/// issue #144 — chained tier spawn for FreeRTOS. `remaining.split_first()` is
+/// the next tier to bring up and the tail it carries; empty → `Ok`. Spawns
+/// exactly ONE FreeRTOS task for `remaining[0]`, handing it `remaining[1..]`
+/// as its own `rest` so the chain continues once its setup completes.
+/// Serializing spawns behind each setup guarantees no two `setup()` (entity
+/// declare) calls run concurrently on the shared zenoh-pico session — the
+/// interest-handshake race that silently closes a losing publisher's write
+/// filter. On alloc/spawn failure returns `Err(())`; the caller decides
+/// whether that is fatal (boot) or merely logged (a spawned tier).
+///
+/// `app_stack_default_words` supplies the stack for a tier whose
+/// `stack_bytes == 0` (the tier tasks no longer capture `Config`).
+fn spawn_next_tier<B, F, E>(
+    session: ::nros::SessionHandle,
+    remaining: &'static [TierSpec<'static>],
+    app_stack_default_words: u32,
+    setup: F,
+) -> core::result::Result<(), ()>
+where
+    B: BoardPrint + BoardExit,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let Some((tier, rest)) = remaining.split_first() else {
+        return Ok(());
+    };
+    let tier_ctx = TierTaskCtx::<F> {
+        session,
+        tier: *tier,
+        rest,
+        app_stack_default_words,
+        setup,
+    };
+    let size = core::mem::size_of::<TierTaskCtx<F>>();
+    let ptr = unsafe { nros_platform_alloc(size) as *mut TierTaskCtx<F> };
+    if ptr.is_null() {
+        B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
+        return Err(());
+    }
+    unsafe { core::ptr::write(ptr, tier_ctx) };
+    // Raw per-RTOS priority (the author wrote the FreeRTOS value directly).
+    let prio = tier.priority.clamp(0, u32::MAX as i64) as u32;
+    let stack_words = if tier.stack_bytes == 0 {
+        app_stack_default_words
+    } else {
+        (tier.stack_bytes / 4) as u32
+    };
+    let ret = unsafe {
+        nros_freertos_create_task(
+            tier_task_entry::<B, F, E>,
+            b"nros_tier\0".as_ptr(),
+            stack_words,
+            ptr as *mut c_void,
+            prio,
+        )
+    };
+    if ret != 0 {
+        B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
+        unsafe { nros_platform_dealloc(ptr as *mut c_void) };
+        return Err(());
+    }
+    Ok(())
 }
 
 /// Spawned tier task: open an `Executor` over the shared session, install this
 /// tier's `active_groups` filter, register (the off-tier callbacks are gated
-/// out), then spin forever at the tier's period.
+/// out), spawn the NEXT tier once its own setup returns (issue #144 chained
+/// spawn — a downstream spawn failure is logged, not fatal), then spin forever
+/// at the tier's period.
 ///
 /// # Safety
 /// `arg` is an `nros_platform_alloc`-allocated `TierTaskCtx<F>` from
@@ -370,6 +443,26 @@ where
             B::exit_failure();
         }
     }
+    // issue #144 — this tier's setup is done, so bringing up the next tier can
+    // no longer race our declares: spawn `rest[0]` (carrying `rest[1..]`). Mint
+    // a fresh handle off this tier's executor (same as the boot path —
+    // `ctx.session` was consumed opening the executor above). A failed
+    // DOWNSTREAM spawn must NOT stop this tier spinning its own work, so warn +
+    // continue (do NOT exit_failure).
+    let next_session = crt.executor_mut().session_handle();
+    if spawn_next_tier::<B, F, E>(
+        next_session,
+        ctx.rest,
+        ctx.app_stack_default_words,
+        ctx.setup,
+    )
+    .is_err()
+    {
+        B::println(format_args!(
+            "nros: tier `{}` failed to spawn next tier; continuing",
+            ctx.tier.name
+        ));
+    }
     let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
     loop {
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
@@ -386,8 +479,12 @@ where
 }
 
 /// Boot app task for the per-tier model: bring up the network, open the one
-/// session, spawn one FreeRTOS task per non-boot tier (each sharing the session
-/// via a `SessionHandle`), then run the highest-priority tier on this task.
+/// session, run the boot tier's setup, then CHAIN-spawn the remaining tiers —
+/// boot spawns tiers[1] (carrying tiers[2..]); each tier spawns the next only
+/// after its own setup returns (issue #144) — and finally run the
+/// highest-priority tier (tiers[0]) on this task. Chaining keeps setup order
+/// total so no two tiers' entity declares race the shared session's interest
+/// handshake; the boot tier's declares run before any spawn.
 ///
 /// # Safety
 /// `arg` is an `nros_platform_alloc`-allocated `AppContextTiers<F>` from
@@ -436,42 +533,16 @@ where
     };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
 
-    // Spawn tiers[1..]; tiers[0] (highest priority) runs on this boot task.
-    for tier in &ctx.tiers[1..] {
-        let tier_ctx = TierTaskCtx::<F> {
-            session: crt.executor_mut().session_handle(),
-            tier: *tier,
-            setup: ctx.setup,
-        };
-        let size = core::mem::size_of::<TierTaskCtx<F>>();
-        let ptr = unsafe { nros_platform_alloc(size) as *mut TierTaskCtx<F> };
-        if ptr.is_null() {
-            B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
-            B::exit_failure();
-        }
-        unsafe { core::ptr::write(ptr, tier_ctx) };
-        // Raw per-RTOS priority (the author wrote the FreeRTOS value directly).
-        let prio = tier.priority.clamp(0, u32::MAX as i64) as u32;
-        let stack_words = if tier.stack_bytes == 0 {
-            ctx.config.app_stack_bytes / 4
-        } else {
-            (tier.stack_bytes / 4) as u32
-        };
-        let ret = unsafe {
-            nros_freertos_create_task(
-                tier_task_entry::<B, F, E>,
-                b"nros_tier\0".as_ptr(),
-                stack_words,
-                ptr as *mut c_void,
-                prio,
-            )
-        };
-        if ret != 0 {
-            B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
-            B::exit_failure();
-        }
-    }
-
+    // issue #144 — boot-tier setup FIRST, tier spawn after (previously this
+    // spawned ALL of tiers[1..] BEFORE boot setup, so it had the boot↔tier
+    // race too). Entity declares carry an interest handshake, and concurrent
+    // declares from two threads race it — the losing publisher's write filter
+    // stays closed and every put is silently dropped. Running boot's declares
+    // before ANY spawn, then CHAINING the remaining spawns (boot spawns
+    // tiers[1] only; each tier spawns the next after its own setup returns),
+    // makes setup order total (boot, t1, t2, …) so no two declares overlap.
+    // Spins still overlap the next tier's setup, which is SAFE — a spin
+    // exchanges keepalives/data, not declares.
     let boot_tier = ctx.tiers[0];
     crt.executor_mut().set_active_groups(boot_tier.groups);
     {
@@ -484,6 +555,22 @@ where
             B::exit_failure();
         }
     }
+
+    // Kick off the chain: spawn tiers[1] carrying tiers[2..] as its tail;
+    // tiers[0] (highest priority) runs on this boot task. A boot-side spawn
+    // failure is fatal (exit_failure) — unlike a downstream tier's.
+    let app_stack_default_words = ctx.config.app_stack_bytes / 4;
+    if spawn_next_tier::<B, F, E>(
+        crt.executor_mut().session_handle(),
+        &ctx.tiers[1..],
+        app_stack_default_words,
+        ctx.setup,
+    )
+    .is_err()
+    {
+        B::exit_failure();
+    }
+
     B::println(format_args!(""));
     B::println(format_args!(
         "Multi-tier setup complete — entering boot-tier spin loop."
@@ -502,8 +589,9 @@ where
 
 /// Phase 228.E.2 — per-tier FreeRTOS entry. The `nros::main!()` macro emits
 /// `<Board>::run_tiers(TIERS, run_plan)`; the board ZST routes here. Mirrors
-/// [`run_entry`] but spawns one FreeRTOS task per priority tier over one shared
-/// session (RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `tiers` are the
+/// [`run_entry`] but runs one FreeRTOS task per priority tier over one shared
+/// session, the non-boot tiers CHAIN-spawned so their setups serialize
+/// (issue #144; RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `tiers` are the
 /// macro-baked `&'static [TierSpec]`; `setup` is the register-only `run_plan`
 /// (invoked once per tier, hence `Fn + Copy`).
 ///
