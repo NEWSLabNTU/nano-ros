@@ -423,14 +423,24 @@ fn component_or_application_classification_present() {
         };
         // Phase 212.N.6 added `[package.metadata.nros.entry]` as the
         // renamed-from-application shape for Entry pkgs (post-N.7).
-        // Node pkgs use `[...component]`; Application/Entry pkgs
-        // pick exactly one of `[...application]` / `[...entry]`.
-        let kinds = (cls.is_component as u8) + (cls.is_application as u8) + (cls.is_entry as u8);
-        match kinds {
-            0 => bad.push((rel, "declares NEITHER component nor application/entry")),
-            1 => {}
-            _ => bad.push((rel, "declares MORE than one of component/application/entry")),
+        //
+        // The SSoT is the CLI schema `PackageMetadataNros::validate`
+        // (cargo_metadata_schema.rs): it makes {component/node, application}
+        // mutually exclusive but DELIBERATELY leaves `entry` out of that
+        // mutex. A collapsed self-dispatching Entry crate (issue-0100 W1–W7
+        // Entry/Node collapse) legitimately declares BOTH
+        // `[package.metadata.nros.entry]` (its deploy board) and
+        // `[package.metadata.nros.node]` (the node it registers via
+        // `nros::node!(…)` in the same crate). Mirror the CLI rule here:
+        // `application` must stand alone; `entry` MAY coexist with a
+        // node/component; every leaf must classify as at least one shape.
+        if cls.is_application && (cls.is_component || cls.is_entry) {
+            bad.push((rel, "declares application together with node/entry"));
+        } else if !cls.is_component && !cls.is_application && !cls.is_entry {
+            bad.push((rel, "declares NEITHER component nor application/entry"));
         }
+        // else: node alone, application alone, entry alone, or the collapsed
+        // node+entry — all valid per the CLI schema.
     }
     assert!(
         bad.is_empty(),

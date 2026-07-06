@@ -49,10 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
   band-aid; real fixes = dedicated tx link, batch-flush mode, or an upstream zsock change.
-- **#142** — [stm32f4 talker dual
-  classification](0142-stm32f4-talker-dual-classification-fails-example-shape.md): the 0100.W4
-  Entry/Node collapse left BOTH `[…nros.entry]` and `[…nros.node]` on one crate —
-  `example_shape::component_or_application_classification_present` red since June 27.
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
