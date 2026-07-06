@@ -20,8 +20,10 @@ nano_ros_workspace_pkg_guard()
 # bootable ELF. The cmake side configures HOST-side (no CMAKE_TOOLCHAIN_FILE — the
 # cross-compile happens inside the cargo kernel build via cc-rs). Each node component's
 # source is cc-rs-compiled for the NuttX target with its OWN -DNROS_PKG_NAME (Option A), so
-# multi-node C works. NuttX brings up eth0 at kernel boot; the guest dials the host zenoh
-# router at the baked slirp locator. LAUNCH-only.
+# multi-node C works. The `nros-nuttx-ffi` Rust entry pushes the guest IP into eth0 via
+# SIOCSIFADDR before `app_main()` (issue #130 — mirrors the Rust BoardEntry path; the
+# defconfig-baked IP does NOT reach slirp's 10.0.2.2 on its own); the guest then dials the
+# host zenoh router at the baked slirp locator. LAUNCH-only.
 nano_ros_entry(
     NAME    nuttx_entry
     BOARD   nuttx-qemu-arm

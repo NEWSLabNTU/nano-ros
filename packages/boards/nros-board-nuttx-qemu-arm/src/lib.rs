@@ -85,3 +85,10 @@ impl nros_board_common::BoardExit for QemuArmVirt {
 }
 
 pub use node::{init_hardware, run};
+
+// Issue #130 — the shared public eth0-config entry point + slirp defaults, so
+// the C `nros-nuttx-ffi` entry can push the guest IP into `eth0` before
+// `app_main()` exactly as the Rust `BoardEntry` path does (no drift, one impl).
+#[cfg(target_os = "nuttx")]
+pub use entry_212n::configure_entry_eth0;
+pub use entry_212n::{SLIRP_DEFAULT_GATEWAY, SLIRP_DEFAULT_IP, SLIRP_DEFAULT_PREFIX};

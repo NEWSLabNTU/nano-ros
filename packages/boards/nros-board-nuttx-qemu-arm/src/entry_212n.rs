@@ -156,12 +156,34 @@ impl nros_platform::BoardEntry for QemuArmVirt {
 /// guests can differ.
 #[cfg(target_os = "nuttx")]
 fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
-    let ip = deploy.and_then(|d| d.ip).unwrap_or([10, 0, 2, 30]);
-    let gateway = deploy.and_then(|d| d.gateway).unwrap_or([10, 0, 2, 2]);
+    let ip = deploy.and_then(|d| d.ip).unwrap_or(SLIRP_DEFAULT_IP);
+    let gateway = deploy.and_then(|d| d.gateway).unwrap_or(SLIRP_DEFAULT_GATEWAY);
     let prefix = deploy
         .and_then(|d| d.netmask)
         .map(|m| u32::from_be_bytes(m).count_ones() as u8)
-        .unwrap_or(24);
+        .unwrap_or(SLIRP_DEFAULT_PREFIX);
+    configure_entry_eth0(ip, prefix, gateway);
+}
+
+/// Slirp e2e defaults — the address the known-good role fixtures push
+/// (`10.0.2.30/24` via `10.0.2.2`). Shared by both entry paths so an
+/// un-overridden entry (Rust with no `DeployOverlay`, or a C entry with no
+/// baked `NROS_IP`) still reaches the host router through QEMU slirp.
+pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 30];
+pub const SLIRP_DEFAULT_GATEWAY: [u8; 4] = [10, 0, 2, 2];
+pub const SLIRP_DEFAULT_PREFIX: u8 = 24;
+
+/// Issue #130 — the single public eth0-config entry point for BOTH NuttX Entry
+/// paths: the Rust `nros::main!` path (via [`entry_net_init`] → the `BoardEntry`
+/// wrappers above) AND the C `nano_ros_entry LAUNCH` path (via the
+/// `nros-nuttx-ffi` `main` before `app_main()`). Re-seeds `/dev/urandom` from
+/// the IP and pushes it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway) by
+/// delegating to the sole [`crate::node::init_hardware`] implementation — no
+/// second `SIOCSIFADDR` call site. Without this push the guest keeps its
+/// defconfig address, never reaches slirp's `10.0.2.2`, and every networked
+/// entry image dies in `Executor::open` with `Transport(ConnectionFailed)`.
+#[cfg(target_os = "nuttx")]
+pub fn configure_entry_eth0(ip: [u8; 4], prefix: u8, gateway: [u8; 4]) {
     let cfg = crate::config::Config {
         ip,
         prefix,
