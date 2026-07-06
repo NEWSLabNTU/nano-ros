@@ -4,7 +4,7 @@ title: "Fixture staleness is only enforced under `just test-all`, not at the res
 status: open
 type: tech-debt
 area: testing
-related: [132, 146, 129, 140]
+related: [132, 146, 129, 140, phase-278]
 ---
 
 ## Summary
