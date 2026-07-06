@@ -663,7 +663,76 @@ pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestR
     }
 
     let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
-    require_prebuilt_binary(&binary_path)
+    // phase-278 W2 — the cmake build dir (`build-<rmw>/`) is the binary's parent.
+    require_prebuilt_binary_fresh_cmake(&binary_path)
+}
+
+/// Detect-only staleness probe for a cmake/ninja cell (issue #147 /
+/// phase-278). ninja folds the compiler's `-MD` dep lists into its binary
+/// `.ninja_deps` log (no text `.d` files survive), so we read them back with
+/// `ninja -t deps` — a pure QUERY that dumps the log, never a build. Returns
+/// the first repo-local dependency whose mtime is newer than the binary.
+///
+/// `build_dir` is the binary's parent (`examples/<name>/build-<rmw>/`). Returns
+/// `None` (fresh) when there is no `.ninja_deps` / `ninja` is unavailable /
+/// the query fails — existence-only fallback, no regression. System headers
+/// (`/usr/...`, outside the repo) are ignored: they never change and pulling
+/// their mtime in would only add noise.
+fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
+    let build_dir = binary_path.parent()?;
+    if !build_dir.join(".ninja_deps").exists() {
+        return None;
+    }
+    let bin_mtime = fs::metadata(binary_path).ok()?.modified().ok()?;
+    let root = project_root();
+    let output = Command::new("ninja")
+        .arg("-C")
+        .arg(build_dir)
+        .args(["-t", "deps"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Indented lines are dependency paths; unindented lines are the per-object
+    // `<obj>: #deps …` headers.
+    for line in text.lines() {
+        let Some(dep) = line.strip_prefix("    ") else {
+            continue;
+        };
+        let dep_path = PathBuf::from(dep);
+        // Only repo-local sources — skip /usr system headers.
+        if !dep_path.starts_with(&root) {
+            continue;
+        }
+        if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
+            && dep_mtime > bin_mtime
+        {
+            return Some(dep_path);
+        }
+    }
+    None
+}
+
+/// Existence contract PLUS the cmake/ninja detect-only staleness check
+/// (issue #147 / phase-278). C/C++ analog of [`require_prebuilt_binary_fresh`].
+pub(crate) fn require_prebuilt_binary_fresh_cmake(binary_path: &Path) -> TestResult<PathBuf> {
+    let resolved = require_prebuilt_binary(binary_path)?;
+    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
+        return Ok(resolved);
+    }
+    if let Some(newer) = cmake_dep_info_newer_source(binary_path) {
+        return Err(TestError::BuildFailed(format!(
+            "Test fixture is STALE — a source is newer than the built binary:\n  \
+             binary: {}\n  newer:  {}\n\
+             Run `just build-test-fixtures` first \
+             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
+            binary_path.display(),
+            newer.display()
+        )));
+    }
+    Ok(resolved)
 }
 
 fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
@@ -1872,7 +1941,9 @@ pub fn build_test_fixture(
         crate_dir.join(format!("target/{}/{}", profile_dir, binary_name))
     };
 
-    require_prebuilt_binary(&binary_path)
+    // phase-278 W2 — `bins/` fixtures are cargo binaries and carry a `.d`
+    // dep-info file, so the same rust staleness probe applies.
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 226.D — migrated platforms whose default-config standalone Rust

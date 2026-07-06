@@ -71,13 +71,13 @@ toward silently-stale (identical to cargo's own fingerprint behavior).
   clears it. Re-run `rmw_interop` (the #146 suite) green on fresh fixtures.
 
 ### W2 — C/C++ + bins/ probe
-- [ ] W2.a Object-`.d` reader for cmake cells: enumerate the `.d` files under
+- [x] W2.a Object-`.d` reader for cmake cells: enumerate the `.d` files under
   the cell's `build-<rmw>/…CMakeFiles/…` tree, union their dep lists, mtime-
   compare against the resolved binary. Fall back to existence-only when no `.d`
   is present (unconfigured cell).
-- [ ] W2.b Route `build_example_cmake_rmw` (mod.rs:563) + the `bins/`
+- [x] W2.b Route `build_example_cmake_rmw` (mod.rs:563) + the `bins/`
   resolvers (`build_test_fixture`, mod.rs:1762) through it.
-- [ ] W2.c Acceptance: touch a C example `.c`/`.h` → stale; touch a linked
+- [x] W2.c Acceptance: touch a C example `.c`/`.h` → stale; touch a linked
   `nros-c` source → stale (dep coverage); rebuild clears.
 
 ### W3 — Zephyr-workspace entries
