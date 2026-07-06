@@ -44,11 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#147** — [Plain-example fixtures have no staleness
-  detection](0147-plain-example-fixtures-no-staleness-detection.md): `require_prebuilt_binary` is
-  a bare existence check — a source change with no `build-test-fixtures` re-run silently runs the
-  stale binary (the recurring hazard behind #146's Int32-vs-String red herring, #129, #140).
-  Workspace fixtures already guard this via inputsig; plain examples should too.
+- **#147** — [Fixture staleness is enforced only under `just test-all`, not at the
+  resolver](0147-plain-example-fixtures-no-staleness-detection.md): plain-example staleness lives
+  in a WARN+self-heal preflight (`check-fixtures-stale.sh`), so a bare `cargo nextest` (the
+  dev/debug loop, how #146 surfaced) skips it and silently runs stale binaries;
+  `require_prebuilt_binary` is a pure existence check. Zephyr-workspace + non-cargo fixtures have
+  no guard at all. Fix = resolver-level content signatures (workspace template), phased.
 - **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
