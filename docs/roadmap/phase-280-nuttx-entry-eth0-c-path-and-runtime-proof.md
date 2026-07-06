@@ -135,15 +135,17 @@ un-overridden C entry connects.
    networking is killed (exit 144). Bare no-net QEMU works, and both entry ELFs
    build, so the CODE is compile-verified on ARM; only the networked RUN is
    blocked. Re-run on a host/CI lane that permits QEMU slirp + a host router.
-2. **Pre-existing `native_showcase_entry` schema break blocks the full fixture
-   build.** `just nuttx build-examples` fails at `nros ws sync` on the RUST
-   workspace: `invalid [package.metadata.nros] in package native_showcase_entry:
-   unknown field 'max_callbacks', expected 'deploy'`
-   (`nros-cli-core/src/cmd/codegen_system.rs:111`). Unrelated to #130 (a schema
-   drift from the pull, rust ws). It does not block the C entry (built directly
-   via `workspace-fixtures-build.sh nuttx c`), but it does block the Rust
-   workspace-entry fixtures and should be filed/fixed separately before the full
-   nuttx lane is green.
+2. **~~Pre-existing schema break~~ → stale installed `nros` (RESOLVED, not a
+   repo bug).** `just nuttx build-examples` failed at `nros ws sync` on the rust
+   workspace: `unknown field 'max_callbacks', expected 'deploy'` in
+   `native_showcase_entry`. Root cause: `max_callbacks` is a REAL phase-271
+   (#110) field — per-entry callback-table sizing threaded into
+   `Executor::open_sized` by `nros::main!` — and the CLI source schema accepts it
+   (`cargo_metadata_schema.rs:243`, `#[serde(default)]`). The installed `nros`
+   binary was simply STALE (Jul 1, pre-phase-271). `just setup-cli` rebuilt it
+   and `nros sync examples/workspaces/rust` then succeeded (RC=0). Environment
+   staleness, not a code defect — nothing to file. (Recurring: `setup-cli`
+   rebuild exposes a stale template/schema.)
 
 ## Non-goals
 
