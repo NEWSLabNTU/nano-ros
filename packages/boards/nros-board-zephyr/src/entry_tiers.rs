@@ -82,15 +82,22 @@ where
         setup,
     });
     let prio = tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+    // Hold the raw pointer so a failed create can reclaim it — the task never
+    // runs, so `tier_task_entry`'s `Box::from_raw` never fires; without this
+    // the `TierTaskCtx` heap block leaks for the firmware lifetime.
+    let raw = Box::into_raw(ctx);
     let rc = unsafe {
         nros_zephyr_tier_task_create(
             tier_task_entry::<F>,
-            Box::into_raw(ctx) as *mut c_void,
+            raw as *mut c_void,
             prio,
             c"nros_tier".as_ptr(),
         )
     };
     if rc != 0 {
+        // SAFETY: the create failed, so ownership of `raw` was not transferred
+        // to a task; reclaim + drop it here.
+        drop(unsafe { Box::from_raw(raw) });
         ::log::error!(
             "nros: failed to spawn tier `{}` (pool exhausted? NROS_ZEPHYR_MAX_TIERS)",
             tier.name
@@ -118,7 +125,18 @@ where
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
-            ::log::error!("nros: tier `{}` setup failed: {:?}", ctx.tier.name, e);
+            // The chain is serialized (issue #144): this tier spawns the next
+            // only AFTER its own setup returns Ok, so a setup failure here HALTS
+            // the chain — `ctx.rest` (this tier's downstream tiers) will not
+            // start. That is intentional (a tier whose baked config can't
+            // declare its entities means a degraded deploy anyway), but say so
+            // loudly rather than leaving the downstream tiers silently absent.
+            ::log::error!(
+                "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
+                ctx.tier.name,
+                e,
+                ctx.rest.len()
+            );
             loop {
                 crate::zephyr_msleep(1000);
             }

@@ -43,3 +43,19 @@ filter opened — impossible under the pre-fix race, which would have left the
 mid tier silent. The declare-race note in
 `docs/reference/platform-implementation-notes.md` is updated to describe the
 chained-spawn resolution.
+
+## Review follow-ups (adversarial pass on the error paths)
+
+- **Leak fixed**: the Zephyr `spawn_next_tier` dropped its `TierTaskCtx` box on
+  a failed `nros_zephyr_tier_task_create` (pool exhausted) — the task never
+  runs so `Box::from_raw` never reclaimed it. Now reclaimed on the failure
+  branch (the FreeRTOS Rust + C paths already freed correctly).
+- **Fault-isolation tradeoff (intentional)**: because a tier spawns the next
+  only AFTER its own setup returns, a tier whose open/setup FAILS halts the
+  chain — its downstream tiers never start. This is inherent to serializing
+  the declares (the alternative, spawning all tiers up front, IS the race).
+  It is a change from the pre-#144 loop-spawn where tiers came up
+  independently; each path now says so loudly (Zephyr/FreeRTOS-Rust log the
+  skipped-downstream count; the C idle branches carry the rationale in
+  comments) rather than leaving downstream tiers silently absent. A tier that
+  can't declare its baked-config entities means a degraded deploy regardless.

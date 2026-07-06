@@ -131,7 +131,12 @@ static void freertos_tier_task(void* arg) {
     int rc = nros_cpp_executor_open_over_session(ctx->session_handle, "tier_node", ctx->domain_id,
                                                  ctx->executor_storage);
     if (rc != 0) {
-        /* Cannot open the borrowed executor; idle forever (boot task continues). */
+        /* Cannot open the borrowed executor; idle forever (boot task continues).
+         * NOTE (issue #144): the spawn of the next tier sits AFTER this tier's
+         * setup, so failing here HALTS the chain — ctx->rest (this tier's
+         * downstream tiers) will not start. Intentional (a tier that can't open
+         * its executor means a degraded deploy), but it is a fault-isolation
+         * change from the pre-#144 loop-spawn where tiers came up independently. */
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000u));
         }
@@ -146,7 +151,10 @@ static void freertos_tier_task(void* arg) {
     if (ctx->setup != NULL) {
         rc = ctx->setup(ctx->executor_storage);
         if (rc != 0) {
-            /* Setup failed; close the borrowed executor and idle. */
+            /* Setup failed; close the borrowed executor and idle. As with the
+             * open failure above, this HALTS the chain (issue #144): ctx->rest
+             * will not start. Intentional — degraded deploy — but a
+             * fault-isolation change from the pre-#144 independent loop-spawn. */
             nros_cpp_fini(ctx->executor_storage);
             for (;;) {
                 vTaskDelay(pdMS_TO_TICKS(1000u));

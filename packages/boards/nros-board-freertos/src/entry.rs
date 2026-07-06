@@ -436,9 +436,16 @@ where
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
+            // The chain is serialized (issue #144): this tier spawns the next
+            // only after its own setup returns Ok, so a failure here HALTS the
+            // chain — the downstream tiers (`ctx.rest`) will not start. This
+            // path then aborts the firmware (pre-#144 `exit_failure` behavior),
+            // so the halt is loud, not silent.
             B::println(format_args!(
-                "nros: tier `{}` setup failed: {:?}",
-                ctx.tier.name, e
+                "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
+                ctx.tier.name,
+                e,
+                ctx.rest.len()
             ));
             B::exit_failure();
         }
