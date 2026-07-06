@@ -144,6 +144,15 @@ for a full `SO_RCVTIMEO` window between inbound packets, and every tx (entity or
 liveliness declare, lease keepalive, publish, query reply) queues behind it.
 Consequences and rules:
 
+- **Total image tx ≈ sends-per-second on the shared socket, NOT the sum of
+  publish rates** (issue #145 / phase-279). Measured on native_sim (ws-realtime
+  ctrl 100 Hz + telem 10 Hz, 20 s window): at the 100 ms default both tiers
+  converge to ~4.3 msg/s each (~8.6 total — a 100 Hz and a 10 Hz publisher get
+  the SAME throughput under contention); at 5 ms, ~39 total (ctrl 33 / telem 5.5).
+  `Z_CONFIG_SOCKET_TIMEOUT` trades read-wake rate for tx budget but stays
+  window-bound. Real lift = batch-mode flush (coalesce N puts into one send/
+  window) — phase-279 W2. Re-measure harness:
+  `tests/w1_zephyr_tx_throughput_measure.rs` (`--ignored`).
 - **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix
   port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and
   zenohd silently drops the session — the image keeps spinning against a dead

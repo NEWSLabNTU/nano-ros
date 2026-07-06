@@ -1,7 +1,8 @@
 # Phase 279 — Zephyr tx throughput ceiling: measure, then batch-mode fix
 
-Status: **Planned — 2026-07-06** · Implements issue #145 · Related [[issue-0139]]
-(lease-death variant of the same zsock serialization).
+Status: **In progress — 2026-07-06 · W1 (measurement) done, W2/W3 pending** ·
+Implements issue #145 · Related [[issue-0139]] (lease-death variant of the same
+zsock serialization).
 
 > **Goal.** Lift the Zephyr tx ceiling of ~1 send per socket-recv window off the
 > `Z_CONFIG_SOCKET_TIMEOUT` band-aid. **Measure the ceiling first** (establish a
@@ -59,16 +60,29 @@ must be off by default and escape-hatched for control tiers:
 
 ## Waves
 
-### W1 — Measure the ceiling (baseline harness)
-- [ ] W1.a Reproducible native_sim (or QEMU) throughput fixture: a multi-tier
-  publisher (mirror the 276-W2 100 Hz + 10 Hz pair) + a sink that counts
-  received msgs/s over a fixed window. Extend `nros-bench/stress-zenoh` if it
-  fits; else a new `nros-bench` leaf.
-- [ ] W1.b Record msg/s at `Z_CONFIG_SOCKET_TIMEOUT` = 100 ms and 5 ms, single-
-  and two-tier. Confirm the ~1-send/window model (throughput ≈ windows/s) and
-  capture the numbers in this doc + platform-implementation-notes.
-- [ ] W1.c Decision gate: confirm batching is the right lever (vs the ceiling
-  being dominated by something else). If not, re-scope before W2.
+### W1 — Measure the ceiling (baseline harness) — DONE 2026-07-06
+- [x] W1.a Harness = `tests/w1_zephyr_tx_throughput_measure.rs` (`#[ignore]`,
+  run `--ignored`): boots the ws-realtime-rust native_sim (ctrl 100 Hz +
+  telem 10 Hz over ONE zenoh session), drains both `int32-sink` observers over a
+  fixed 20 s window, prints per-tier + total msg/s. Reuses the existing
+  `realtime_tiers_zephyr_entry_e2e` fixture (no new bench leaf needed).
+- [x] W1.b **Baseline (native_sim, 20 s window)**:
+
+  | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | ctrl (ideal 100/s) | telem (ideal 10/s) | TOTAL |
+  | --- | --- | --- | --- |
+  | 100 (default) | 4.2 msg/s | 4.3 msg/s | **8.6 msg/s** |
+  | 5 (ws-realtime mitigation) | 33.4 msg/s | 5.5 msg/s | **39 msg/s** |
+
+- [x] W1.c **Gate — batching confirmed as the right lever.** At 100 ms the two
+  tiers CONVERGE to ~4.3 msg/s each: a 100 Hz and a 10 Hz publisher get the SAME
+  throughput because both fight for one shared send/window budget (matches the
+  276-W2 "~5 msg/s each" observation). Total tracks the send-window rate
+  (5 ms→39, 100 ms→8.6), NOT the ideal 110/s. So the cap is sends-per-second on
+  the shared socket — exactly what coalescing N puts into one send removes.
+  **W3 target:** at 100 ms, batching should let one send/window carry both a
+  ctrl and a telem put → total approaching the ideal ~110/s (vs 8.6 today),
+  decoupled from the window. (native_sim = relative baseline; absolute board
+  numbers remain a hardware follow-up.)
 
 ### W2 — Opt-in batch-mode flush
 - [ ] W2.a `zpico.c`: `zp_batch_start(session)` after `zpico_open` when the batch
