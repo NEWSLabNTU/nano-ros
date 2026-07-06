@@ -44,12 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#146** — [ROS 2 → nano native interop delivers
-  nothing](0146-ros2-to-nano-native-interop-delivers-nothing.md): `ros2 topic pub` → native nros
-  listener receives 0 over rmw_zenoh while nano → ROS 2 works; consistent across `test_ros2_to_nano`
-  + `test_communication_matrix::case_3`. Surfaced by the #133 fail-loud conversion (was soft-passing);
-  likely a sub-side keyexpr/liveliness discovery gap (mirror of the resolved #141). Needs clean-CI
-  confirm vs env.
+- **#146** — [BEST_EFFORT rmw_zenoh_cpp pub doesn't reach an nros
+  sub](0146-ros2-to-nano-native-interop-delivers-nothing.md): root-caused — ros2→nano delivers 0
+  ONLY when the ROS 2 publisher is BEST_EFFORT; RELIABLE works (demo_nodes talker + `ros2 topic pub
+  --qos-reliability reliable` both reach the typed nros listener). `test_ros2_to_nano` fails because
+  `topic_pub` hardcodes best_effort. Surfaced by #133. Likely a zenoh↔zenoh-pico best_effort
+  transport/QoS gap on the sub side; needs router-debug keyexpr capture.
 - **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a

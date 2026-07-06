@@ -1,54 +1,69 @@
 ---
 id: 146
-title: "ROS 2 → nano native interop delivers nothing over rmw_zenoh — ros2 topic pub → native nros listener receives 0 (nano → ROS 2 works)"
+title: "A BEST_EFFORT rmw_zenoh_cpp publisher does not reach an nros subscriber (RELIABLE works) — ros2→nano interop QoS gap"
 status: open
 type: bug
 area: rmw-zenoh
-related: [133]
+related: [133, 141]
 ---
 
 ## Summary
 
-Surfaced by the #133 fail-loud hardening (2026-07-06): the **ROS 2 → nros**
-direction of the native rmw_zenoh interop suite delivers nothing. A stock
-`ros2 topic pub /chatter std_msgs/msg/String …` reaches the native nros
-listener as **0 samples**, while the reverse direction (**nano → ROS 2**, a
-native nros talker → `ros2 topic echo`) works. The asymmetry is consistent, not
-a timing flake.
+Surfaced by the #133 fail-loud conversion; root-caused 2026-07-06. The
+ros2→nano data path is NOT broadly dead — it fails **only when the ROS 2
+publisher's reliability QoS is BEST_EFFORT**. A RELIABLE `rmw_zenoh_cpp`
+publisher (which is what any default rclcpp node uses) reaches the nros
+subscriber fine.
 
-Two independent tests in `packages/testing/nros-tests/tests/rmw_interop.rs`
-reproduce it identically (~8.6 s each, well past the discovery window):
+## Isolation (all against a shared `zenohd`, same nros typed listener)
 
-- `test_ros2_to_nano` (`rmw_interop.rs:200`) — "ROS 2 → nros delivered nothing:
-  the nano listener received 0 samples from the ROS 2 publisher over rmw_zenoh."
-- `test_communication_matrix::case_3` (`Ros2ToNano`, `rmw_interop.rs:270`).
+| Publisher | QoS | → nros sub | Result |
+| --- | --- | --- | --- |
+| `demo_nodes_cpp talker` (real node) | RELIABLE (rclcpp default) | raw sub | PASS (`nros_subscriber_receives_stock_demo_nodes_cpp_talker`, 3.7 s) |
+| `demo_nodes_cpp talker` | RELIABLE | **typed** example listener | PASS (scratch, 3.5 s) |
+| `ros2 topic pub … --qos-reliability reliable` | RELIABLE | typed listener | PASS (2.7 s) |
+| `ros2 topic pub … --qos-reliability best_effort` | BEST_EFFORT | typed listener | **FAIL — 0 received** (even at 2 Hz over a 25 s window) |
 
-Both fire the `assert!` only *after* the ROS 2 publisher launches successfully
-(a launch failure `skip!`s), so the router + ROS 2 CLI are up — the message
-just never reaches the nros subscriber.
+So:
+- The nros **typed** subscription is fine (it receives from a real node).
+- The gap is **QoS-reliability-specific**: BEST_EFFORT rmw_zenoh_cpp pub → nros
+  (zenoh-pico) sub delivers nothing.
+- `test_ros2_to_nano` / `test_communication_matrix::case_3` (rmw_interop.rs) fail
+  because `Ros2Process::topic_pub` hardcodes `--qos-reliability best_effort` —
+  they hit the real gap. (Once #133 stopped soft-passing 0-received, this became
+  visible.)
 
-## Why it was invisible until now
+## Why it matters / asymmetry
 
-The tests soft-passed on 0 received (`[INFO] … may be timing issue`, no
-assert) — the #133 defect. Converting them to hard asserts (2026-07-06) exposed
-this. Because nano → ROS 2 passes, the zenoh router + the ros2↔zenoh bridge and
-keyexpr mapping work in at least one direction; the gap is specific to
-ROS 2 publisher → nros subscriber.
+nano→ros2 BEST_EFFORT works (a best_effort nano publisher reaches a `ros2 topic
+echo` — the qos_matrix delivery-expected cells pass). The gap is the OTHER
+direction: full-zenoh best_effort publisher → zenoh-pico subscriber.
 
 ## Suspected area
 
-- The nros subscriber's liveliness / keyexpr may not be discovered by the ROS 2
-  (rmw_zenoh) publisher, so the publisher never routes to it — mirror of the
-  keyexpr/liveliness work in the resolved #141 (nros pub → rmw_zenoh_cpp sub, the
-  opposite direction). Compare the declared sub keyexpr against what rmw_zenoh_cpp
-  expects on the publish side.
-- Confirm whether this reproduces in a cleanly provisioned ROS 2 + rmw_zenoh CI
-  lane vs a local dev environment quirk before treating it as a hard product bug.
+The nros subscriber declares no explicit zenoh reliability (uses zenoh-pico
+defaults). `rmw_zenoh_cpp`'s BEST_EFFORT publisher publishes with a different
+zenoh mechanism than RELIABLE — likely `CongestionControl::Drop` and/or a
+reliability/priority setting on the `z_put` that the zenoh-pico subscriber's
+default declaration does not receive over the router. Compare against the
+resolved #141 (opposite direction, keyexpr suspicion was a red herring — the
+real issue there was environmental).
 
 ## Next steps
 
-1. Capture the nros listener's declared subscription keyexpr and the ROS 2
-   publisher's target keyexpr (`z_scout` / router admin space) and diff them.
-2. Re-run `test_ros2_to_nano` where ROS 2 + rmw_zenoh are provisioned to confirm
-   product-bug vs environment.
-3. Fix the discovery/keyexpr mismatch; the two tests above become the gate.
+1. Capture `zenohd` at `RUST_LOG=zenoh=debug` for a `best_effort` vs `reliable`
+   `ros2 topic pub` on `/chatter` + the nros sub; diff the declared publisher
+   keyexpr / reliability and confirm whether the router forwards the best_effort
+   samples to the zenoh-pico session at all (routing vs sub-side drop).
+2. If it's a sub-side reliability declaration: have the nros zenoh-pico
+   subscriber declare a reliability that receives best_effort samples (or match
+   the requested QoS). If it's a zenoh↔zenoh-pico transport channel issue, file
+   upstream / pin the zenoh-pico behaviour.
+3. Regression gate: a `ros2 topic pub --qos-reliability best_effort` → nros sub
+   test that must receive (currently the implicit failing axis).
+
+## Reproduce
+
+`cargo nextest run -p nros-tests -E "test(test_ros2_to_nano)"` (needs ROS 2 +
+rmw_zenoh_cpp provisioned) — fails with 0 received; swapping the publisher to
+`--qos-reliability reliable` makes it pass.
