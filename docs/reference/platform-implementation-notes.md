@@ -177,12 +177,17 @@ Consequences and rules:
   ws-realtime zephyr entry (100 Hz ctrl tier) uses 5 ms.
 - **Concurrent entity declares race the interest write filter**: a declare
   triggers an interest handshake, and when two threads declare concurrently
-  on one session the losing publisher's zenoh-pico write filter can stay
-  closed — `z_publisher_put` succeeds while nothing reaches the wire.
-  `ZephyrBoard::run_tiers` therefore runs the boot tier's setup BEFORE
-  spawning the other tiers (issue 0128 resolution); with ≥3 tiers the
-  spawned tiers' setups still race each other — serialize them if a tier's
-  topic goes silent.
+  on one session (only on `Z_FEATURE_MULTI_THREAD=0` — embedded; native's
+  MT=1 has internal session mutexes) the losing publisher's zenoh-pico write
+  filter can stay closed — `z_publisher_put` succeeds while nothing reaches
+  the wire. All embedded `run_tiers` paths (`ZephyrBoard::run_tiers`, the
+  FreeRTOS Rust `run_tiers_entry`, and the FreeRTOS C
+  `nros_board_freertos_run_tiers`) therefore **chain-spawn** the tiers: the
+  boot tier runs its setup, then spawns exactly one task for the next tier,
+  which runs ITS setup and spawns the next — so no two `setup()` (declare)
+  bursts ever overlap, for any tier count (issue 0144; the 0128 fix only
+  closed boot↔tier for two tiers). Spins may overlap the next tier's setup —
+  safe, a spin exchanges keepalives/data, not declares.
 
 ## NuttX ↔ zenoh-pico cooperation (Phase 225.O)
 

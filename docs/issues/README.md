@@ -49,10 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
   band-aid; real fixes = dedicated tx link, batch-flush mode, or an upstream zsock change.
-- **#144** — [`run_tiers` with ≥3 tiers: spawned tiers' setups race the interest write
-  filter](0144-run-tiers-spawned-tier-declare-race.md): the 0128-W2 fix serialized boot-vs-tier
-  declares; tier-vs-tier remains (latent — demos use 2 tiers). FreeRTOS `run_tiers_entry` has
-  the boot race too and its e2e never asserts per-tier delivery.
 - **#142** — [stm32f4 talker dual
   classification](0142-stm32f4-talker-dual-classification-fails-example-shape.md): the 0100.W4
   Entry/Node collapse left BOTH `[…nros.entry]` and `[…nros.node]` on one crate —
