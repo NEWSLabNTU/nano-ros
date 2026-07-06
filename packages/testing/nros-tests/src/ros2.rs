@@ -279,8 +279,17 @@ impl Ros2Process {
         distro: &str,
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        // #146 — publish with the DEFAULT (reliable) profile: the nano
+        // subscribers under test declare a default (reliable) subscription, and
+        // a best_effort publisher is INCOMPATIBLE with a reliable subscriber by
+        // ROS 2 QoS rules — rmw_zenoh delivers nothing, which read as a
+        // "ros2→nano broken" false alarm. The nano→ros2 direction already relies
+        // on this compatibility (reliable nano pub → `ros2 topic echo`'s
+        // best_effort sensor_data sub). `timeout 45` (was 10): rmw_zenoh's
+        // publisher-side discovery of a zenoh-pico subscriber takes ~10 s, so a
+        // 10 s publisher would die right as the first sample would land.
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
+            "{env_setup} && timeout 45 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\""
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"), Some(config_dir))

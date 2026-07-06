@@ -185,7 +185,7 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
         .wait_for_output_count(
             nros_tests::output::LISTENER_LOG_PREFIX,
             1,
-            Duration::from_secs(8),
+            Duration::from_secs(25), // #146 — rmw_zenoh pub->zenoh-pico sub discovery is ~10 s
         )
         .unwrap_or_default();
     ros2_publisher.kill();
@@ -375,7 +375,7 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
         .wait_for_output_count(
             nros_tests::output::LISTENER_LOG_PREFIX,
             1,
-            Duration::from_secs(8),
+            Duration::from_secs(25), // #146 — rmw_zenoh pub->zenoh-pico sub discovery is ~10 s
         )
         .unwrap_or_default();
     ros2_publisher.kill();

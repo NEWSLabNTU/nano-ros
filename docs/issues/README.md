@@ -44,12 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#146** — [BEST_EFFORT rmw_zenoh_cpp pub doesn't reach an nros
-  sub](0146-ros2-to-nano-native-interop-delivers-nothing.md): root-caused — ros2→nano delivers 0
-  ONLY when the ROS 2 publisher is BEST_EFFORT; RELIABLE works (demo_nodes talker + `ros2 topic pub
-  --qos-reliability reliable` both reach the typed nros listener). `test_ros2_to_nano` fails because
-  `topic_pub` hardcodes best_effort. Surfaced by #133. Likely a zenoh↔zenoh-pico best_effort
-  transport/QoS gap on the sub side; needs router-debug keyexpr capture.
+- **#147** — [Plain-example fixtures have no staleness
+  detection](0147-plain-example-fixtures-no-staleness-detection.md): `require_prebuilt_binary` is
+  a bare existence check — a source change with no `build-test-fixtures` re-run silently runs the
+  stale binary (the recurring hazard behind #146's Int32-vs-String red herring, #129, #140).
+  Workspace fixtures already guard this via inputsig; plain examples should too.
 - **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
   window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
   window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
@@ -89,7 +88,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#138** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#146** —
+[ROS 2 → nano native interop delivers
+nothing](archived/0146-ros2-to-nano-native-interop-delivers-nothing.md): a TEST defect, not a
+product bug — `topic_pub` hardcoded `--qos-reliability best_effort`, incompatible with the reliable
+nano subscriber (a reliable ros2 pub delivers fine), compounded by a 10 s pub / 8 s window both
+under rmw_zenoh's ~10 s discovery. Fixed test-side (reliable pub, 45 s pub, 25 s windows);
+`test_ros2_to_nano` + matrix `case_3` green. **#138** —
 [threadx-rv64 rust examples `--allow-multiple-definition`](archived/0138-threadx-riscv64-examples-allow-multiple-definition.md):
 the single-runtime consolidation made the flag vestigial — dropped it from all 6 example CMakeLists
 (all 6 cyclone binaries relink with zero dup-symbol errors), extended `check-no-allow-multiple-def.sh`
