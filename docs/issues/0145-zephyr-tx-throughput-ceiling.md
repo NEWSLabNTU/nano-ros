@@ -4,8 +4,13 @@ title: "Zephyr tx throughput hard-capped at ~1 send per socket recv window — K
 status: open
 type: tech-debt
 area: zephyr
-related: [phase-276, issue-0139]
+related: [phase-276, phase-279, issue-0139]
 ---
+
+> **Planned in [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**
+> — measure the ceiling first (native_sim baseline), then land an opt-in
+> batch-mode flush (`zp_batch_start/flush/stop`, already compiled in) that
+> coalesces N puts into one send/window.
 
 ## Summary
 
