@@ -93,3 +93,27 @@ tracked separately.)
 
 `test_ros2_to_nano` PASSES (16.6 s); `test_communication_matrix::case_3`
 (Ros2ToNano) and `test_qos_matrix::case_3` ride the same helper and clear too.
+
+## Mechanism confirmed (2026-07-06) — correct RxO, no product bug
+
+Independent capture/isolation reached the same conclusion and pinned the exact
+mechanism (no product fix warranted):
+
+- Isolation (shared router, controlled): `demo_nodes_cpp talker` (RELIABLE
+  default) reaches BOTH the raw ros2-string-interop sub AND the typed example
+  listener; `ros2 topic pub --qos-reliability reliable` reaches the typed
+  listener (2.7 s); ONLY `--qos-reliability best_effort` gives 0 (even 2 Hz /
+  25 s). So the nros typed sub is fine — the axis is purely publisher
+  reliability.
+- Why: the nros subscriber declares a PLAIN zenoh-pico `z_declare_subscriber`
+  (keyexpr + callback, no zenoh-level reliability filter), so if best_effort
+  samples reached the router they WOULD be delivered. They don't — the block is
+  `rmw_zenoh_cpp`'s publisher-side RxO: the nros sub advertises its reliability
+  in the liveliness-token QoS segment (`keyexpr.rs`: RELIABLE=1 / BEST_EFFORT=2;
+  default RELIABLE per `nros-c/qos.rs`), and a BEST_EFFORT publisher correctly
+  does not match a RELIABLE request.
+- nros subs already support QoS: a BEST_EFFORT subscription advertises
+  BEST_EFFORT and WOULD match a best_effort publisher. The default (RELIABLE) is
+  correct; the test's best_effort publisher was the defect.
+
+Nothing to fix in the product — RxO is behaving to ROS 2 spec.
