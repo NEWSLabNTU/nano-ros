@@ -49,7 +49,6 @@ add_executable(riscv64_threadx_rust_listener_cyclonedds src/cyclonedds_app.c)
 target_link_libraries(riscv64_threadx_rust_listener_cyclonedds PRIVATE
     qemu_riscv64_threadx_listener
     std_msgs__nano_ros_c
-    NanoRos::NanoRos
-    "-Wl,--allow-multiple-definition")
+    NanoRos::NanoRos)
 nros_platform_link_app(riscv64_threadx_rust_listener_cyclonedds)
 nano_ros_link_rmw(riscv64_threadx_rust_listener_cyclonedds RMW "${NROS_RMW}")

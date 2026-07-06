@@ -25,10 +25,17 @@ allowlist="scripts/allow-multiple-def-allowlist.txt"
 pat='allow.multiple.definition'
 
 # Build-file roots. Rust/C sources + docs reference the flag in prose only.
+# #138 — also scan every in-tree CMakeLists.txt under examples/ + packages/ (the
+# original scope missed them, so the flag slipped into the 6 threadx-riscv64 rust
+# example CMakeLists unnoticed). Exclude build-output + generated trees (they hold
+# CMake-materialised copies) and vendored third-party (never scanned).
 mapfile -t files < <(
     {
         echo "CMakeLists.txt"
         find cmake scripts just -type f \( -name '*.cmake' -o -name '*.sh' -o -name '*.just' \) 2>/dev/null
+        find examples packages -type f \( -name 'CMakeLists.txt' -o -name '*.cmake' \) \
+            -not -path '*/build/*' -not -path '*/build-*/*' -not -path '*/target/*' \
+            -not -path '*/generated/*' -not -path '*/third-party/*' -not -path '*/_deps/*' 2>/dev/null
         echo "justfile"
     } | sort -u
 )

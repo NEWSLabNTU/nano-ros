@@ -1,7 +1,7 @@
 ---
 id: 138
 title: "qemu-riscv64-threadx Rust example CMakeLists pass -Wl,--allow-multiple-definition — conflicts with the repo-wide no-allow-multiple-def policy"
-status: open
+status: resolved
 type: tech-debt
 area: cmake
 related: [phase-251, phase-277]
@@ -38,3 +38,22 @@ definitions disappear and the flag can simply be dropped. Then:
    (`just threadx_riscv64 build-fixtures`).
 2. Extend `check-no-allow-multiple-def.sh` to also scan
    `examples/**/CMakeLists.txt` so the policy hole closes for good.
+
+## Resolution (2026-07-06)
+
+The single-runtime consolidation has already landed: the flag is now vestigial.
+Removed `-Wl,--allow-multiple-definition` from all 6
+`examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt` and relinked — the cyclone
+executables link cleanly with **no duplicate-symbol errors** (each links the app
+Rust staticlib + the message C bindings + `NanoRos::NanoRos` + platform/rmw, and
+only one Rust runtime copy survives). The two remaining textual references
+(`nros-c/cmake/NanoRosLink.cmake`, `nros-cpp/CMakeLists.txt`) are rationale
+comments noting the flag is gone — correctly ignored by the gate.
+
+- The fixtures recipe previously built only `rust/talker` cyclone; extended it to
+  build all 6 rust cyclone examples so the flag-free link is validated in CI (and
+  closes a fixture-coverage gap — the other 5 had no build lane).
+- Extended `scripts/check-no-allow-multiple-def.sh` to scan every in-tree
+  `examples/**` + `packages/**` `CMakeLists.txt` / `*.cmake` (excluding
+  build-output / generated / third-party). Gate now reports **zero uses —
+  invariant fully enforced**, closing the hole that let these slip in.

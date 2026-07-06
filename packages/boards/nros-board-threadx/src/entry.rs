@@ -91,7 +91,10 @@ fn install_uart_logger<B: BoardPrint>() {
     fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
         B::println(args);
     }
-    LOG_PRINT_FN.store(print_via_board::<B> as usize, Ordering::Relaxed);
+    // Cast through a fn pointer then a raw pointer — `fn_item as usize` directly
+    // trips the `fn_to_numeric_cast` lint (`-D warnings`).
+    let f: fn(core::fmt::Arguments<'_>) = print_via_board::<B>;
+    LOG_PRINT_FN.store(f as *const () as usize, Ordering::Relaxed);
     let _ = log::set_logger(&UART_LOGGER);
     log::set_max_level(log::LevelFilter::Trace);
 }

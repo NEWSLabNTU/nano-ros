@@ -255,9 +255,11 @@ build-fixture-extras:
             export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=62"
             bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
             bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
-            if [ -d examples/qemu-riscv64-threadx/rust/talker ]; then
-                build_threadx_cmake_rmw examples/qemu-riscv64-threadx/rust/talker cyclonedds build-cyclonedds
-            fi
+            for _rc in talker listener service-server service-client action-server action-client; do
+                if [ -d "examples/qemu-riscv64-threadx/rust/$_rc" ]; then
+                    build_threadx_cmake_rmw "examples/qemu-riscv64-threadx/rust/$_rc" cyclonedds build-cyclonedds
+                fi
+            done
         fi
     fi
     unset NROS_CMAKE_EXTRA_DEFS

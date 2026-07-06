@@ -62,11 +62,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   classification](0142-stm32f4-talker-dual-classification-fails-example-shape.md): the 0100.W4
   Entry/Node collapse left BOTH `[…nros.entry]` and `[…nros.node]` on one crate —
   `example_shape::component_or_application_classification_present` red since June 27.
-- **#138** — [qemu-riscv64-threadx Rust examples pass
-  `--allow-multiple-definition`](0138-threadx-riscv64-examples-allow-multiple-definition.md):
-  6 example CMakeLists mask duplicate defined symbols, conflicting with the phase-251
-  no-allow-multiple-def policy (the gate doesn't scan example CMake); removal tied to the
-  single-runtime consolidation (filed in phase-277 close-out).
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
@@ -94,7 +89,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#131** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#138** —
+[threadx-rv64 rust examples `--allow-multiple-definition`](archived/0138-threadx-riscv64-examples-allow-multiple-definition.md):
+the single-runtime consolidation made the flag vestigial — dropped it from all 6 example CMakeLists
+(all 6 cyclone binaries relink with zero dup-symbol errors), extended `check-no-allow-multiple-def.sh`
+to scan `examples/**` + `packages/**` CMake (gate now reports zero uses), and had the fixtures recipe
+build all 6 rust cyclone examples so it stays enforced. **#131** —
 [ThreadX RISC-V64 lane](archived/0131-threadx-riscv64-null-c-app-main-on-rebuild.md): the C
 `jalr->0` was a stale config-header mirror under-sizing `__nros_c_inst` (fixed by clean build +
 a fail-loud `carve` `assert!`); the Rust TX-dead was a four-part chain — no backend registered
