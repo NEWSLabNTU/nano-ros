@@ -170,21 +170,46 @@ knob-off + knob-on compile clean; batch-ON native pubsub smoke delivers 7/7.
   platform-implementation-notes (applies to every platform; biggest win on
   Zephyr where the send budget is the recv window).
 
-### W3 — Re-measure, validate, document
-- [ ] W3.a Re-run `w1_zephyr_tx_throughput_measure` (--ignored) with
-  `CONFIG_NROS_ZENOH_TX_BATCH=y` at BOTH 100 ms and 5 ms socket timeouts.
-  Target: total ≈ the ideal ~110 msg/s at 100 ms (vs 8.6 baseline), i.e. the
-  ceiling decouples from the window rate.
-- [ ] W3.b No-regression sweep with batching DEFAULT-OFF: the existing zephyr /
-  threadx / freertos / nuttx e2e lanes stay green (knob unset = today's
-  behavior, byte-identical config).
-- [ ] W3.c Batch=ON spot-checks beyond zephyr: native pubsub + one RTOS lane
-  (threadx-riscv64 rust, fixtures already green) to prove the uniform shim path
-  behaves on a second platform; service e2e under batch=ON (W2.d guard).
-- [ ] W3.d Record before/after numbers in this doc +
-  platform-implementation-notes; flip #145 resolved (residual = second-link /
-  upstream-zsock levers only if the control-tier case still wants sub-window
-  latency at high rates).
+### W3 — Re-measure, validate, document — MEASURED 2026-07-06: negative result for timer-paced workloads
+- [x] W3.a Re-measured (`w1_zephyr_tx_throughput_measure`, 100 ms window, 20 s):
+
+  | variant @100 ms | ctrl (ideal 100/s) | telem (ideal 10/s) | TOTAL |
+  | --- | --- | --- | --- |
+  | no batch (baseline) | 4.2 | 4.3 | 8.6 |
+  | batch, flush-per-spin | 3.6 | 1.1 | **4.7 (worse)** |
+  | batch + BLOCK-congestion pubs | 4.2 | 0.7 | **4.9 (worse)** |
+  | batch + 50 ms rate-limited flush | 7.1 | 2.0 | **9.2 (≈ baseline)** |
+
+  **Why batching cannot lift THIS workload class** (three mechanisms, verified
+  by the deltas above):
+  1. zenoh-pico's `zp_batch_flush` holds the transport tx mutex across the
+     ENTIRE socket send — including the up-to-one-window wait on Zephyr's
+     per-fd lock — so puts cannot append while a flush is in flight; the batch
+     only accumulates between flushes.
+  2. The flush runs on an executor/tier thread (`zpico_spin_once`), so each
+     flush stalls the very timers that generate the puts for up to a window.
+     Eager (per-spin) flushing also COMPETES with puts for send-window slots —
+     that is the 8.6 → 4.7 halving.
+  3. Timer-paced tiers (10 ms / 100 ms periods) produce ≤1 put per flush
+     interval — there is nothing to coalesce. Batching pays only when MANY puts
+     accumulate per interval (tight-loop / high-rate streaming publishers).
+
+  The landed shape (rate-limited flush, `ZPICO_TX_BATCH_FLUSH_MS`, default
+  50 ms) is the best of the three and ≈ baseline on this workload; the knob
+  stays default-OFF and is honestly labelled: a potential win for high-rate
+  streaming publishers, NOT a fix for the timer-paced tier ceiling.
+- [x] W3.b Default-off regression: canonical conf restored (5 ms, no batch),
+  realtime fixture rebuilt, `realtime_tiers_zephyr_entry_schedules_high_and_low`
+  green. Native pubsub smoke green both knob states (W2).
+- [ ] W3.c (re-scoped) A high-rate streaming benchmark (tight-loop publisher,
+  many puts per flush interval) is the workload where batching should show its
+  win — measure before promoting the knob anywhere.
+- [x] W3.d Numbers + mechanism recorded here and in
+  platform-implementation-notes. **#145 stays OPEN**: the real levers for the
+  tier ceiling remain (a) flushing/sending from a thread that is NOT a tier
+  executor (dedicated tx thread), (b) a dedicated second link so tx never
+  shares the fd with the blocking read, (c) the upstream zsock fd-lock release.
+  (a) is the cheapest next step and composes with the landed batch plumbing.
 
 ## Out of scope (future levers, if batching is insufficient)
 - Dedicated second tx socket (zenoh-pico multi-link / a second publisher

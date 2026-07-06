@@ -1191,8 +1191,22 @@ int32_t zpico_declare_publisher(const char* keyexpr) {
         return ZPICO_ERR_KEYEXPR;
     }
 
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* phase-279 (#145) — batching queues puts behind the transport tx mutex; the
+     * default DROP congestion control TRY-locks it and silently discards the put
+     * whenever a flush is mid-send (waiting on the socket) — measured WORSE than
+     * no batching (4.7 vs 8.6 msg/s). BLOCK = append-or-wait: every put lands in
+     * the batch and ships with the next flush. Declare-time option (per-put
+     * options carry no congestion control in zenoh-pico). */
+    z_publisher_options_t pub_opts;
+    z_publisher_options_default(&pub_opts);
+    pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
+    int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
+                                      z_view_keyexpr_loan(&ke), &pub_opts);
+#else
     int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), NULL);
+#endif
     if (pub_ret < 0) {
         printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         return ZPICO_ERR_GENERIC;
@@ -1563,12 +1577,30 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     }
 
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
-    /* phase-279 (#145) — ship everything queued since the last spin in ONE
-     * socket send. Sits at the TOP so every platform arm flushes BEFORE its
-     * read/wait: the multi-threaded arms below only park on a wake primitive,
-     * so without this the batch would ride on keepalives alone. Thread-safe
-     * (batch state is guarded by the transport tx mutex); no-op when empty. */
-    zp_batch_flush(z_session_loan(&g_session));
+    /* phase-279 (#145) — rate-limited batch flush. zenoh-pico's flush HOLDS the
+     * transport tx mutex across the whole socket send (fd wait included), so
+     * puts cannot append while a flush is in flight — the batch only
+     * accumulates BETWEEN flushes. Flushing on every spin (1 ms tiers) ships
+     * <=1 message per send and the flushes themselves compete with puts for
+     * the send window, which MEASURED WORSE than no batching (4.7-4.9 vs 8.6
+     * msg/s on the W1 harness). Flushing at a bounded cadence lets puts pile
+     * into the write buffer cheaply and ships them as ONE send per interval.
+     * Racy static across tier threads is benign (worst case one extra flush).
+     * zenoh-pico's implicit flushes (buffer overflow, any transport message)
+     * still bound memory + sit-time independently of this cadence. */
+#ifndef ZPICO_TX_BATCH_FLUSH_MS
+#define ZPICO_TX_BATCH_FLUSH_MS 50
+#endif
+    {
+        static z_clock_t g_last_batch_flush;
+        static bool g_batch_flush_init = false;
+        if (!g_batch_flush_init ||
+            z_clock_elapsed_ms(&g_last_batch_flush) >= ZPICO_TX_BATCH_FLUSH_MS) {
+            zp_batch_flush(z_session_loan(&g_session));
+            g_last_batch_flush = z_clock_now();
+            g_batch_flush_init = true;
+        }
+    }
 #endif
 
 #ifdef ZPICO_SMOLTCP

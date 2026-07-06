@@ -8,15 +8,17 @@ related: [phase-276, phase-279, issue-0139]
 ---
 
 > **In progress — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**.
-> W1 measured the ceiling (native_sim: 8.6 msg/s total at the 100 ms default —
-> both a 100 Hz and a 10 Hz tier converge to ~4.3 msg/s each; 39 at 5 ms), and
-> the W2 design is settled: an opt-in batch-mode flush in the SHARED zpico shim
-> (`zp_batch_start` at open + guarded `zp_batch_flush` at the top of
-> `zpico_spin_once`) — uniform across native/zephyr/freertos/nuttx/threadx/
-> bare-metal by construction — with one `ZPICO_TX_BATCH` knob (six platform
-> front-ends, default OFF) and a per-publisher `is_express` escape (native
-> zenoh-pico bypass) for control tiers. Keepalives bound batch sit-time;
-> batching state is tx-mutex-safe; overflow auto-flushes.
+> W1 measured the ceiling (native_sim @100 ms: both a 100 Hz and a 10 Hz tier
+> converge to ~4.3 msg/s each, 8.6 total; 39 at 5 ms). W2 landed uniform opt-in
+> tx batching in the shared zpico shim (`ZPICO_TX_BATCH`, default OFF, flush
+> rate-limited by `ZPICO_TX_BATCH_FLUSH_MS`). W3 measured it honestly: batching
+> is ≈ baseline for timer-paced tiers (9.2 vs 8.6; eager flushing WORSE at 4.7)
+> because zenoh-pico's flush holds the tx mutex across the fd wait, the flush
+> stalls the tier thread that generates the puts, and 10-100 ms timers give ≤1
+> put per interval to coalesce. **Issue stays open** — remaining levers:
+> dedicated tx-flush thread (cheapest, composes with the batch plumbing),
+> second tx link, upstream zsock fd-lock release. Batching may still pay for
+> high-rate tight-loop streaming (unmeasured).
 
 ## Summary
 
