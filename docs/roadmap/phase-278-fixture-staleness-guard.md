@@ -81,7 +81,7 @@ toward silently-stale (identical to cargo's own fingerprint behavior).
   `nros-c` source → stale (dep coverage); rebuild clears.
 
 ### W3 — Zephyr-workspace entries
-- [ ] W3.a The 9 `build_zephyr_workspace_*` (mod.rs:2238–2331) use bare
+- [x] W3.a The 9 `build_zephyr_workspace_*` (mod.rs:2238–2331) use bare
   `require_prebuilt_binary` where the native/cmake workspace family is guarded
   — the clearest oversight. Give them the fresh check: the west build emits
   `zephyr/zephyr.exe` + `.d` files, so the same dep-info probe applies (union
@@ -89,7 +89,7 @@ toward silently-stale (identical to cargo's own fingerprint behavior).
   `require_prebuilt_workspace_binary` and have `zephyr-fixture-leaves.sh` write
   the workspace `.inputsig`. Pick whichever the west artifact layout makes
   clean.
-- [ ] W3.b Acceptance: touch a `ws-*/src/zephyr_entry` source → the matching
+- [x] W3.b Acceptance: touch a `ws-*/src/zephyr_entry` source → the matching
   `*_zephyr_entry_e2e` fails stale without a rebuild; rebuild clears. (This
   would have caught the repeated stale-image reruns in phase-276.)
 
