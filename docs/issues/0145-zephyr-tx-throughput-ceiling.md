@@ -7,10 +7,16 @@ area: zephyr
 related: [phase-276, phase-279, issue-0139]
 ---
 
-> **Planned in [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**
-> — measure the ceiling first (native_sim baseline), then land an opt-in
-> batch-mode flush (`zp_batch_start/flush/stop`, already compiled in) that
-> coalesces N puts into one send/window.
+> **In progress — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**.
+> W1 measured the ceiling (native_sim: 8.6 msg/s total at the 100 ms default —
+> both a 100 Hz and a 10 Hz tier converge to ~4.3 msg/s each; 39 at 5 ms), and
+> the W2 design is settled: an opt-in batch-mode flush in the SHARED zpico shim
+> (`zp_batch_start` at open + guarded `zp_batch_flush` at the top of
+> `zpico_spin_once`) — uniform across native/zephyr/freertos/nuttx/threadx/
+> bare-metal by construction — with one `ZPICO_TX_BATCH` knob (six platform
+> front-ends, default OFF) and a per-publisher `is_express` escape (native
+> zenoh-pico bypass) for control tiers. Keepalives bound batch sit-time;
+> batching state is tx-mutex-safe; overflow auto-flushes.
 
 ## Summary
 

@@ -50,13 +50,67 @@ and (c) tells us whether batching is even the right lever before we spend W2.
 board-measurement follow-up, noted in the issue.)
 
 **Opt-in, latency-aware.** Batching adds up to one flush-period of latency, so it
-must be off by default and escape-hatched for control tiers:
-- A config knob (`CONFIG_NROS_ZENOH_BATCH` / a build define), default OFF → zero
-  behavior change when unset.
-- A per-publish "flush now" path so a control-tier publisher (or any latency-
-  sensitive put) still sends immediately; only telemetry tiers ride the batch.
-- Flush cadence driven by `zpico_spin_once` (one flush per spin), so the batch
-  window tracks the executor period the app already tunes.
+must be off by default and escape-hatched for control tiers (design below).
+
+## Design (explored 2026-07-06) — uniform across ALL platforms
+
+The mechanism lives entirely in the SHARED zpico shim + zenoh-pico, so the
+migration is uniform by construction — native, Zephyr, FreeRTOS, NuttX, ThreadX,
+and the bare-metal (smoltcp/serial) arms all route publishes through
+`zpico_publish → z_publisher_put` and their executors all call
+`zpico_spin_once`. Platform differences are confined to how the knob is passed.
+
+**zenoh-pico batching mechanics (verified in the vendored source):**
+
+- `zp_batch_start/flush/stop` toggle per-TRANSPORT state
+  (`transport.c::_z_transport_start_batching`); while active, each n_msg tx
+  appends to the transport `_wbuf` instead of sending
+  (`tx.c::_z_transport_tx_flush_or_incr_batch`).
+- **Thread-safe**: every append/flush takes the transport tx mutex
+  (`Z_FEATURE_BATCH_TX_MUTEX=0` default = lock per op). Puts from app/executor
+  threads, flush from the spin thread, and keepalives from the lease task all
+  serialize correctly. No new locking needed in the shim.
+- **Bounded memory**: a put that overflows the batch buffer auto-flushes first
+  (`_z_transport_tx_batch_overflow`) — worst case is the existing wbuf size.
+- **Bounded staleness**: transport messages FLUSH pending batch data before
+  sending (`_z_transport_tx_send_t_msg_inner`), so the lease keepalive (~3.3 s)
+  is a hard upper bound on batch sit-time even if an app stops spinning.
+- **Native per-message bypass**: an "express" n_msg is sent immediately even
+  while batching (`_z_transport_tx_get_express_status` → flush+send).
+  `z_publisher_options_t.is_express` / `z_publisher_put_options_t.is_express`
+  exist in the vendored zenoh-pico — a per-PUBLISHER escape is already in the
+  protocol; we only need to surface the flag.
+
+**Architecture:**
+
+1. **Mechanism (zpico shim, shared)** — `zp_batch_start` after `z_open` when
+   batching is enabled; a guarded `zp_batch_flush` at the TOP of
+   `zpico_spin_once` (all six platform arms pass through the function entry;
+   the multi-threaded arms only wait afterwards, so the flush lands before the
+   sleep); `zp_batch_stop` in `zpico_close`. Flush cadence = the executor spin
+   period the app already tunes. Zero-cost when the knob is off (one bool test).
+2. **Opt-in knob (per-image, compile-time, default OFF)** — `ZPICO_TX_BATCH`,
+   following the exact plumbing every other `ZPICO_*` knob uses:
+   - Rust builds: `ZPICO_TX_BATCH` env → `nros-zpico-build` `shim_config_from_env`
+     → `-D` on zpico.c (per-example `.cargo/config.toml [env]`, same as
+     `ZPICO_MAX_*`).
+   - C/C++ cmake builds (threadx/freertos/nuttx): `defines_kv` /
+     `NROS_CMAKE_EXTRA_DEFS` → same `-D`.
+   - Zephyr: `CONFIG_NROS_ZENOH_TX_BATCH` Kconfig forwarded by
+     `zephyr/cmake/nros_rmw_zenoh.cmake` (mirrors
+     `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` → `Z_CONFIG_SOCKET_TIMEOUT`).
+   One knob name, one semantic, six platform front-ends onto the same define.
+   (A runtime session-property switch stays a possible follow-up; compile-time
+   matches the precedent that embedded latency/RAM budgets are build decisions.)
+3. **Control-tier escape (per-publisher, uniform)** — surface
+   `is_express` through `NrosRmwQos` (the Phase 231 `rx_buffer_hint` pattern) →
+   `zpico_declare_publisher` declares the zenoh publisher with
+   `is_express = true` → its puts bypass batching natively. Control-tier topics
+   opt out per-publisher; no custom flush plumbing.
+4. **Service/query latency guard** — queryable REPLIES and `z_get` requests
+   must not gain spin-period latency: declare/send them express by default (or
+   flush immediately after) so service RTT is unchanged; only plain pubs ride
+   the batch.
 
 ## Waves
 
@@ -84,27 +138,44 @@ must be off by default and escape-hatched for control tiers:
   decoupled from the window. (native_sim = relative baseline; absolute board
   numbers remain a hardware follow-up.)
 
-### W2 — Opt-in batch-mode flush
-- [ ] W2.a `zpico.c`: `zp_batch_start(session)` after `zpico_open` when the batch
-  config is on; `zp_batch_stop` in `zpico_close`.
-- [ ] W2.b `zpico_batch_flush()` → `zp_batch_flush(session)`, called once per
-  `zpico_spin_once` (multi-threaded read-drive path). Gate on the config.
-- [ ] W2.c Immediate-send escape: a `zpico_publish_now` (or a flag on publish)
-  that flushes right after the put, for control-tier / latency-sensitive topics.
-  Surface through the Rust/C publisher API (QoS or a per-publisher option).
-- [ ] W2.d Config knob (`CONFIG_NROS_ZENOH_BATCH`, default OFF) threaded through
-  the zephyr build + the zenoh_platforms.toml define set; documented next to
-  `Z_CONFIG_SOCKET_TIMEOUT`.
+### W2 — Opt-in batch-mode flush (uniform: mechanism in the shared shim)
+- [ ] W2.a `zpico.c`: `g_tx_batching` gate + `zp_batch_start` after the session
+  opens (`zpico_open`, when `ZPICO_TX_BATCH` is on), `zp_batch_stop` in
+  `zpico_close`, and a guarded `zp_batch_flush` at the TOP of `zpico_spin_once`
+  (before every platform arm — the multi-threaded arms must flush BEFORE their
+  wake-primitive wait). One code path for all six platform arms.
+- [ ] W2.b Knob plumbing, one define six front-ends: `ZPICO_TX_BATCH` env knob in
+  `nros-zpico-build::shim_config_from_env` (Rust builds, per-example
+  `.cargo/config.toml [env]` like `ZPICO_MAX_*`); available to C/C++ cmake lanes
+  via `defines_kv`/`NROS_CMAKE_EXTRA_DEFS`; zephyr Kconfig
+  `CONFIG_NROS_ZENOH_TX_BATCH` forwarded in `zephyr/cmake/nros_rmw_zenoh.cmake`
+  (mirror of the SOCKET_TIMEOUT forward). Default OFF everywhere.
+- [ ] W2.c Per-publisher express escape: `is_express` on
+  `zpico_declare_publisher` (new arg or options struct), surfaced through
+  `NrosRmwQos` (rx_buffer_hint pattern) up to the Rust/C/C++ publisher QoS so
+  control-tier topics bypass the batch natively.
+- [ ] W2.d Service/query latency guard: queryable replies + `z_get` requests
+  send express (or flush-after) so service RTT gains no spin-period latency
+  when batching is on. Add/extend a service e2e assertion under batch=ON.
+- [ ] W2.e Document the knob next to `Z_CONFIG_SOCKET_TIMEOUT` in
+  platform-implementation-notes (applies to every platform; biggest win on
+  Zephyr where the send budget is the recv window).
 
 ### W3 — Re-measure, validate, document
-- [ ] W3.a Re-run the W1 harness with batch mode ON; confirm throughput scales
-  with puts-per-flush (target: ≫ the W1 baseline at the same socket timeout).
-- [ ] W3.b Assert the immediate-send escape keeps control-tier latency bounded
-  (no regression vs batch-off).
-- [ ] W3.c Update platform-implementation-notes "Zephyr zsock per-fd
-  serialization" with the batch-mode knob + the before/after numbers; flip #145
-  to resolved (or note residual = the second-link / upstream-zsock levers as
-  future work if batching doesn't cover the control-tier case).
+- [ ] W3.a Re-run `w1_zephyr_tx_throughput_measure` (--ignored) with
+  `CONFIG_NROS_ZENOH_TX_BATCH=y` at BOTH 100 ms and 5 ms socket timeouts.
+  Target: total ≈ the ideal ~110 msg/s at 100 ms (vs 8.6 baseline), i.e. the
+  ceiling decouples from the window rate.
+- [ ] W3.b No-regression sweep with batching DEFAULT-OFF: the existing zephyr /
+  threadx / freertos / nuttx e2e lanes stay green (knob unset = today's
+  behavior, byte-identical config).
+- [ ] W3.c Batch=ON spot-checks beyond zephyr: native pubsub + one RTOS lane
+  (threadx-riscv64 rust, fixtures already green) to prove the uniform shim path
+  behaves on a second platform; service e2e under batch=ON (W2.d guard).
+- [ ] W3.d Record before/after numbers in this doc +
+  platform-implementation-notes; flip #145 resolved (residual = second-link /
+  upstream-zsock levers only if the control-tier case still wants sub-window
+  latency at high rates).
 
 ## Out of scope (future levers, if batching is insufficient)
 - Dedicated second tx socket (zenoh-pico multi-link / a second publisher
