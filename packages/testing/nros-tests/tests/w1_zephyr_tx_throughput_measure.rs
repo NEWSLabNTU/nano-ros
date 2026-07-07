@@ -1,8 +1,8 @@
 //! phase-279 W1 — MEASUREMENT SCRATCH (not a CI gate). Quantifies the Zephyr tx
 //! throughput ceiling (#145): boots the ws-realtime-rust native_sim (ctrl 100 Hz
-//! + telem 10 Hz over ONE zenoh session), runs a FIXED window, and prints the
-//! per-tier + total received msg/s. Compare across `CONFIG_NROS_ZENOH_SOCKET_
-//! TIMEOUT_MS` values (rebuild the entry between runs).
+//! and telem 10 Hz over ONE zenoh session), runs a FIXED window, and prints the
+//! per-tier and total received msg/s. Compare the numbers across
+//! `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` values (rebuild the entry between runs).
 //!
 //! Run: `cargo nextest run -p nros-tests --test w1_zephyr_tx_throughput_measure --no-capture`
 

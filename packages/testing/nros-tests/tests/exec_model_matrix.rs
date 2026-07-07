@@ -81,7 +81,8 @@ fn tests_dir() -> PathBuf {
 /// DEFERRED — no cell forgotten, no cell double-classified.
 #[test]
 fn every_matrix_cell_is_covered_or_explicitly_deferred() {
-    let mut classified: std::collections::HashMap<(&str, &str), &str> = std::collections::HashMap::new();
+    let mut classified: std::collections::HashMap<(&str, &str), &str> =
+        std::collections::HashMap::new();
     for (lang, plat, _) in COVERED {
         assert!(
             classified.insert((lang, plat), "covered").is_none(),
