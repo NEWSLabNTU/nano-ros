@@ -84,15 +84,35 @@ BLOCK-congestion puts stall their (tier) thread for the duration.
 
 ### W2 — Zephyr streaming benchmark (the promotion-relevant number)
 
-- [ ] W2.a A minimal Zephyr bench leaf: tight-loop Int32/byte publisher
-  (`stress-zenoh` talker semantics) as a west app in the zephyr-fixture-leaves
-  driver, plus the native `stress-zenoh` listener as the sink. One leaf, no
-  per-language variants needed (the tx path under test is the shared shim).
-- [ ] W2.b Record msgs/s + tx-side elapsed: knob off / batch+thread /
-  batch+thread+split(W1), at 100 ms and 5 ms socket timeouts. This is the
-  number that decides whether the batch knob is promoted into any default
-  config or example (`prj-zenoh.conf`) — per phase-279's "measure before
-  promoting".
+- [x] W2.a LANDED 2026-07-07: `packages/testing/nros-bench/stress-zenoh-zephyr`
+  — a west app publishing a tight loop over zpico DIRECTLY (bypasses the
+  executor: the number isolates the shared transport tx path), payload/summary
+  format identical to the native `stress-zenoh` talker so the native listener
+  is the counting + integrity sink. Build/measure procedure in its README
+  (manual west invocations; leaves-driver integration deferred until the knob
+  is promotion-ready).
+- [x] W2.b MEASURED (100 ms socket timeout, ~33 s window, 64 B):
+
+  | variant | delivered | msgs/s | vs off |
+  | --- | --- | --- | --- |
+  | knob off | 298/298 valid | ~8.9 | 1× (window-bound: each put pays a full recv window) |
+  | batch+thread | 752/752 valid | ~22.5 | 2.5× |
+  | batch+thread+split | 756/756 valid | ~22.6 | 2.5× |
+
+  Integrity clean in all variants. **Finding — the next tx lever:** streaming
+  caps at 2.5× because the wbuf OVERFLOW flush runs on the PUBLISHER's thread
+  (`_z_transport_tx_batch_overflow` sends under the caller's tx mutex); the W1
+  split-lock steal covers only the flush-thread cadence path
+  (`_z_transport_tx_send_n_batch`). A tight-loop publisher fills the batch
+  between flush cycles and pays the recv-window wait itself on every overflow.
+  → New W1 extension item below. Promotion verdict: NOT yet — the knob helps
+  (2.5× streaming, 4-5× tiers) but the overflow-path steal should land first.
+- [ ] W2.c (new, from the W2.b finding) Extend the split-lock steal to the
+  overflow path: in `_z_transport_tx_batch_overflow`, under
+  `Z_FEATURE_TX_SPLIT_LOCK`, steal/swap the full wbuf and send it outside the
+  tx mutex (same link-mutex-before-tx-release ordering), then encode the
+  overflowing message into the fresh buffer. Re-measure the streaming bench —
+  expected to lift the 2.5× cap substantially.
 
 ### W3 — Language-uniform QoS surface for `tx_express`
 
