@@ -111,6 +111,21 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t dom
                                                 const nros_native_tier_spec_t* tiers,
                                                 size_t n_tiers);
 
+/* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
+ * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
+ * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —
+ * SCHED_FIFO at the tier's raw priority, per-tier stack; each with a borrowed
+ * executor sharing the session), and run the boot tier on the caller. NuttX
+ * owns boot + networking (the board FFI main brings up eth0 before app_main,
+ * phase-280), so there is no network bring-up. `locator` is the connect
+ * endpoint; `domain_id` is the ROS domain id; `session_name` names the primary
+ * session. Defined in nros-board-nuttx-qemu-arm (compiled by the board's
+ * build.rs via `nuttx_platform_build::compile_run_tiers_seam`). */
+NROS_PUBLIC int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id,
+                                               const char* session_name,
+                                               const nros_native_tier_spec_t* tiers,
+                                               size_t n_tiers);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -165,6 +165,18 @@ pub(crate) fn board_is_freertos_embedded(board: &str) -> bool {
     board_cpp_path(board) == "::nros::board::FreertosBoard"
 }
 
+/// phase-281 W3 (nuttx) — NuttX embedded boards support `run_tiers` (one pthread
+/// per tier over one shared session). Like `FreertosBoard`, `NuttxBoard` has a C
+/// `nros_board_nuttx_run_tiers` implementation (nros-board-nuttx-qemu-arm) that
+/// mirrors the Rust `run_tiers_entry`; NuttX being POSIX, each non-boot tier is a
+/// `pthread` (SCHED_FIFO at the tier's raw priority). The generated entry uses
+/// the `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID` shape (the NuttX startup
+/// path calls `app_main`, like FreeRTOS — NOT Zephyr's `main(void)`), calling
+/// `NuttxBoard::run_tiers` (RFC-0015 §5).
+pub(crate) fn board_is_nuttx(board: &str) -> bool {
+    board_cpp_path(board) == "::nros::board::NuttxBoard"
+}
+
 /// Phase 240.2 (RFC-0043) — **typed** entry emitter. Routes each launch node to
 /// the REAL executor via its component object, instead of the legacy type-erased
 /// `__nros_component_<pkg>_register` call into the synthesizing
@@ -353,12 +365,15 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     // Phase 274.W2 — multi-tier native → per-tier threads (run_tiers).
     // Phase 274.W3 — FreeRTOS embedded also uses run_tiers (per-RTOS tasks).
     // phase-281 W3a — Zephyr embedded also uses run_tiers (one k_thread per tier
-    // over one shared session, via `nros_board_zephyr_run_tiers`). The remaining
-    // embedded boards (NuttX, ThreadX) keep the single-executor sched-context path.
+    // over one shared session, via `nros_board_zephyr_run_tiers`).
+    // phase-281 W3 (nuttx) — NuttX embedded also uses run_tiers (one pthread per
+    // tier over one shared session, via `nros_board_nuttx_run_tiers`). The
+    // remaining embedded board (ThreadX) keeps the single-executor sched-context path.
     let use_run_tiers = use_tiers
         && (!board_is_embedded(&plan.board)
             || board_is_freertos_embedded(&plan.board)
-            || board_is_zephyr(&plan.board));
+            || board_is_zephyr(&plan.board)
+            || board_is_nuttx(&plan.board));
 
     if use_run_tiers {
         // ----------------------------------------------------------------
@@ -560,10 +575,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         emit_boot_config_static(&mut out, plan)?;
         out.push('\n');
 
-        // Phase 274.W2/W3 / phase-281 W3a — entry point: Zephyr → plain
-        // `int main(void)` (the kernel calls main directly); FreeRTOS embedded →
-        // nros_app_main + NROS_APP_MAIN_REGISTER_VOID (startup.c calls app_main);
-        // native → int main(argc, argv).
+        // Phase 274.W2/W3 / phase-281 W3a / W3(nuttx) — entry point: Zephyr →
+        // plain `int main(void)` (the kernel calls main directly); FreeRTOS +
+        // NuttX embedded → nros_app_main + NROS_APP_MAIN_REGISTER_VOID (startup
+        // path calls app_main); native → int main(argc, argv).
         let board = board_cpp_path(&plan.board);
         if board_is_zephyr(&plan.board) {
             // phase-281 W3a — Zephyr per-tier embedded entry. The Zephyr kernel
@@ -577,8 +592,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u));"
             );
             out.push_str("}\n");
-        } else if board_is_freertos_embedded(&plan.board) {
-            // Phase 274.W3 — FreeRTOS per-tier embedded entry.
+        } else if board_is_freertos_embedded(&plan.board) || board_is_nuttx(&plan.board) {
+            // Phase 274.W3 (FreeRTOS) / phase-281 W3 (NuttX) — per-tier embedded
+            // entry via the app_main startup shape. `{board}` resolves to
+            // FreertosBoard::run_tiers or NuttxBoard::run_tiers accordingly.
             out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
             let _ = writeln!(
                 out,
@@ -1534,10 +1551,11 @@ mod tests {
 
     #[test]
     fn typed_emit_tiers_embedded_uses_sched_context_path() {
-        // Phase 272/273 (W2) — a sched-context embedded board (NuttX/ThreadX) + multi-tier
+        // Phase 272/273 (W2) — a sched-context embedded board (ThreadX) + multi-tier
         // still uses sched-context wiring (bind_node_name_sched + bind_group_sched) because
-        // run_tiers is limited to native + FreeRTOS + Zephyr (phase-281 W3a). NuttX/ThreadX
-        // keep board_is_embedded=true && !run_tiers → the single-executor sched-context path.
+        // run_tiers is limited to native + FreeRTOS + Zephyr + NuttX (phase-281 W3/W3a).
+        // ThreadX keeps board_is_embedded=true && !run_tiers → the single-executor
+        // sched-context path.
         use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
         let high_tier = ResolvedTier {
             name: "high".into(),
@@ -1585,8 +1603,8 @@ mod tests {
                 "telem_pkg/Telem.hpp",
             ),
         ]);
-        // Sched-context embedded board (NuttX) → sched-context path (NOT run_tiers).
-        plan.board = "nuttx".into();
+        // Sched-context embedded board (ThreadX) → sched-context path (NOT run_tiers).
+        plan.board = "threadx".into();
         plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
         plan.nodes[0].sched_context = Some(0);
         plan.nodes[1].callback_groups = vec!["telem_grp".into()];
@@ -1745,6 +1763,62 @@ mod tests {
     }
 
     #[test]
+    fn typed_emit_tiers_nuttx_embedded_uses_run_tiers_path() {
+        // phase-281 W3 (nuttx) — NuttX embedded board + multi-tier emits per-tier
+        // setup functions + NuttxBoard::run_tiers via nros_app_main +
+        // NROS_APP_MAIN_REGISTER_VOID (the NuttX startup path calls app_main, like
+        // FreeRTOS — NOT Zephyr's int main(void), NOT the sched-context path).
+        let mut plan = fixture_plan_with_tiers();
+        plan.board = "nuttx".into(); // NuttxBoard
+
+        let src = emit_typed(&plan).expect("typed cpp nuttx tier emit ok");
+
+        // Per-tier setup functions emitted.
+        assert!(
+            src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+            "expected tier-0 setup fn; got:\n{src}"
+        );
+        assert!(
+            src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+            "expected tier-1 setup fn; got:\n{src}"
+        );
+        // NativeTierSpec array emitted.
+        assert!(
+            src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+            "expected 2-element NativeTierSpec array; src:\n{src}"
+        );
+        // NuttxBoard::run_tiers called (not NativeBoard / FreertosBoard / ZephyrBoard).
+        assert!(
+            src.contains("::nros::board::NuttxBoard::run_tiers("),
+            "nros_app_main must call NuttxBoard::run_tiers; src:\n{src}"
+        );
+        // NuttX embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID
+        // (the app_main startup shape, shared with FreeRTOS).
+        assert!(
+            src.contains("extern \"C\" int nros_app_main("),
+            "NuttX run_tiers must emit nros_app_main; src:\n{src}"
+        );
+        assert!(
+            src.contains("NROS_APP_MAIN_REGISTER_VOID()"),
+            "NuttX run_tiers must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
+        );
+        // NOT int main (that's native) and NOT the Zephyr int main(void).
+        assert!(
+            !src.contains("int main("),
+            "NuttX run_tiers must NOT emit int main; src:\n{src}"
+        );
+        // Old sched-context wiring must NOT appear (this is the run_tiers path).
+        assert!(
+            !src.contains("__nros_sc_ids"),
+            "NuttX run_tiers path must not emit sc_ids; src:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_create_sched_context"),
+            "NuttX run_tiers path must not emit create_sched_context; src:\n{src}"
+        );
+    }
+
+    #[test]
     fn typed_emit_tiers_rclcpp_embedded_node_is_seeded() {
         // Phase 272 (W2) — rclcpp-shape tiered node on an embedded board IS seeded
         // via bind_node_name_sched (the #124 dissolve). Native boards use run_tiers
@@ -1772,10 +1846,10 @@ mod tests {
             "ctrl_pkg::Ctrl",
             "ctrl_pkg/Ctrl.hpp",
         )]);
-        // NuttX — a sched-context embedded board (phase-281 W3a moved Zephyr onto the
-        // run_tiers path, so this seeding proof now uses a board that still schedules
-        // via the single-executor sched-context wiring).
-        plan.board = "nuttx".into();
+        // ThreadX — a sched-context embedded board (phase-281 W3a moved Zephyr and
+        // W3(nuttx) moved NuttX onto the run_tiers path, so this seeding proof now
+        // uses a board that still schedules via the single-executor sched-context wiring).
+        plan.board = "threadx".into();
         plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
         plan.nodes[0].sched_context = Some(0);
         plan.resolved_tiers = Some(ResolvedTierTable {

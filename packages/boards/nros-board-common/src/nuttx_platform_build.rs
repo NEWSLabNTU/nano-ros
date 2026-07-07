@@ -89,3 +89,75 @@ pub fn run_platform() {
     println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
 }
+
+/// phase-281 W3 (nuttx) — compile the board's `nros_board_nuttx_run_tiers` C
+/// seam (`c/nuttx_run_tiers.c`) into `libnros_nuttx_run_tiers.a` and emit the
+/// propagating `-bundle,+whole-archive` link directive. The NuttX analog of the
+/// FreeRTOS glue (`nros-board-freertos/build.rs` compiling `c/freertos_run_tiers.c`):
+/// the generated C++ entry's `NuttxBoard::run_tiers` references
+/// `nros_board_nuttx_run_tiers`, so this seam must be whole-archived into the
+/// final NuttX kernel image.
+///
+/// `seam_src` is the calling board crate's run-tiers C file (kept in the board
+/// crate's `c/`, next to the board that owns the entry). The seam
+/// forward-declares every FFI symbol it uses (`nros_cpp_*`, `nros_platform_*`)
+/// so it needs only the NuttX headers (`pthread.h` / `sched.h`) on the include
+/// path — the same arch cflags + include set the platform port compiles with.
+///
+/// Env (all optional, arm defaults — identical to [`run_platform`]):
+/// - `NUTTX_CROSS` — cross C compiler (default `arm-none-eabi-gcc`).
+/// - `NUTTX_PLATFORM_CFLAGS` — arch flags (default cortex-a7 hardfloat neon).
+/// - `NUTTX_ARCH_INCLUDES` — arch include dirs relative to `NUTTX_DIR`.
+///
+/// Gated on the NuttX tree being provisioned (`$NUTTX_DIR/include` present); a
+/// bare host `cargo check` (no NuttX export) skips the cross-compile.
+pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
+    let nuttx_dir = nros_build_paths::nuttx_dir();
+    if !nuttx_dir.join("include").exists() {
+        return;
+    }
+
+    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    let cflags: Vec<String> = env::var("NUTTX_PLATFORM_CFLAGS")
+        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+    let arch_includes: Vec<String> = env::var("NUTTX_ARCH_INCLUDES")
+        .unwrap_or_else(|_| {
+            "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string()
+        })
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+
+    let mut seam = cc::Build::new();
+    // Same rationale as `run_platform`: emit the link directives by hand
+    // (`-bundle,+whole-archive`) rather than cc's default `+bundle`, so the seam
+    // object lands as a standalone `lib*.a` pulled whole at the FINAL image link
+    // — after every rlib, so the C++ entry's `nros_board_nuttx_run_tiers`
+    // reference resolves regardless of archive order (issue-0048 / RFC-0042 D3).
+    seam.cargo_metadata(false);
+    seam.compiler(&nuttx_cross);
+    for f in &cflags {
+        seam.flag(f);
+    }
+    seam.flag("-std=c11");
+    seam.define("__NuttX__", None);
+    seam.include(nuttx_dir.join("include"));
+    for inc in &arch_includes {
+        seam.include(nuttx_dir.join(inc));
+    }
+    seam.include(nuttx_dir.join("sched"));
+    seam.file(seam_src);
+    seam.compile("nros_nuttx_run_tiers");
+
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
+    println!("cargo:rustc-link-search=native={out_dir}");
+    println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_tiers");
+    println!("cargo:rerun-if-changed={}", seam_src.display());
+    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
+    println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
+    println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
+}

@@ -21,6 +21,13 @@ use std::path::Path;
 
 fn main() {
     nros_board_common::nuttx_platform_build::run_platform();
+    // phase-281 W3 (nuttx) — compile the C++ multi-tier entry seam
+    // (`c/nuttx_run_tiers.c`, `nros_board_nuttx_run_tiers`) into a
+    // whole-archived static lib the generated entry's `NuttxBoard::run_tiers`
+    // links against (RFC-0015 Model 1: one pthread per tier over one shared
+    // session). NuttX analog of the FreeRTOS `c/freertos_run_tiers.c` glue.
+    let run_tiers = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_run_tiers.c");
+    nros_board_common::nuttx_platform_build::compile_run_tiers_seam(&run_tiers);
     // Empty-builtins stub lives in this board crate's `c/` (see its header
     // for why libapps' `builtin_list.o` must be preempted).
     let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_builtins_stub.c");
