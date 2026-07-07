@@ -1474,6 +1474,13 @@ typedef struct nros_qos_t {
    * If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
    */
   uint8_t avoid_ros_namespace_conventions;
+  /**
+   * Phase 282 (#145) — publisher-side "express" hint: if non-zero, this
+   * publisher's samples bypass transport tx batching (sent immediately
+   * even when the batching knob is on). A transport hint, not a DDS
+   * policy; ignored on subscriptions and by backends without batching.
+   */
+  uint8_t tx_express;
 } nros_qos_t;
 
 /**

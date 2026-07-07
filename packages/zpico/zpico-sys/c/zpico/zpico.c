@@ -354,7 +354,7 @@ static inline void _zpico_notify_spin(void) {}
 // ThreadX deliberately runs no background tasks (read-task starvation — see
 // zpico_open), so it keeps the spin-driven flush. Single-threaded platforms
 // have no tasks at all.
-#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && Z_FEATURE_MULTI_THREAD == 1 && \
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && Z_FEATURE_MULTI_THREAD == 1 &&               \
     !defined(ZENOH_THREADX)
 #define ZPICO_TX_BATCH_THREAD 1
 #else
@@ -367,6 +367,12 @@ static inline void _zpico_notify_spin(void) {}
 #if ZPICO_TX_BATCH_THREAD == 1
 static _z_task_t g_tx_flush_task;
 static volatile bool g_tx_flush_run = false;
+/* phase-282 W4 (#145) — optional attributes for the flush task, set via
+ * zpico_set_flush_task_config() before zpico_open(). Same platform matrix as
+ * the read/lease task attrs: FreeRTOS + POSIX-like honour them, others
+ * ignore the attr. */
+static bool g_flush_task_configured = false;
+static z_task_attr_t g_flush_task_attr;
 static void* _zpico_tx_flush_task_fn(void* arg) {
     (void)arg;
     while (g_tx_flush_run) {
@@ -922,6 +928,35 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
 #endif
 }
 
+void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
+#if ZPICO_TX_BATCH_THREAD == 1
+    memset(&g_flush_task_attr, 0, sizeof(g_flush_task_attr));
+#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+    g_flush_task_attr.name = "zpico_flush";
+    g_flush_task_attr.priority = (UBaseType_t)priority;
+    g_flush_task_attr.stack_depth = stack_bytes / sizeof(StackType_t);
+    g_flush_task_configured = true;
+#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
+       defined(ZENOH_ZEPHYR)) &&                                                                   \
+    !defined(ZENOH_THREADX)
+    /* POSIX: stack size via pthread_attr; priority needs SCHED_FIFO (root),
+     * so only the stack size is applied — mirrors zpico_set_task_config. */
+    pthread_attr_init(&g_flush_task_attr);
+    pthread_attr_setstacksize(&g_flush_task_attr, (size_t)stack_bytes);
+    g_flush_task_configured = true;
+    (void)priority;
+#else
+    (void)priority;
+    (void)stack_bytes;
+#endif
+#else
+    /* No flush thread in this build (batching off / single-threaded /
+     * ThreadX): nothing to configure. */
+    (void)priority;
+    (void)stack_bytes;
+#endif
+}
+
 int32_t zpico_open(void) {
     if (!g_initialized) {
         return ZPICO_ERR_GENERIC;
@@ -992,7 +1027,8 @@ int32_t zpico_open(void) {
     zp_batch_start(z_session_loan(&g_session));
 #if ZPICO_TX_BATCH_THREAD == 1
     g_tx_flush_run = true;
-    if (_z_task_init(&g_tx_flush_task, NULL, _zpico_tx_flush_task_fn, NULL) != 0) {
+    if (_z_task_init(&g_tx_flush_task, g_flush_task_configured ? &g_flush_task_attr : NULL,
+                     _zpico_tx_flush_task_fn, NULL) != 0) {
         /* No thread → flushes ride only on implicit sends (keepalives bound
          * sit-time to the lease interval). Loud, not fatal. */
         g_tx_flush_run = false;

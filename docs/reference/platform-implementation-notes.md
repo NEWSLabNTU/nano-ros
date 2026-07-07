@@ -157,14 +157,27 @@ Consequences and rules:
   the 100 ms default (34.1 vs 8.6 msg/s) and 1.35× at 5 ms (52.5 vs 39)**, with
   the 10 Hz tier reaching ≈ ideal. Flushing from the tier threads themselves
   measured WORSE-or-equal (4.7-9.2) — the flush must live on its own thread.
-  Residual (#145 open): puts still block on the tx mutex while a flush-send is
-  in flight (zenoh-pico holds it across the whole socket write) — full fix =
-  fork surgery (release tx mutex during the link write) / second link /
-  upstream zsock. Gets + query replies go express under the knob; keepalives
-  bound batch sit-time. NOTE: the knob flips `Z_FEATURE_BATCHING` in the SHARED
-  generated zenoh config (gates transport-struct fields — the issue-0135
-  every-TU rule); rebuild fixtures after changing it. Harness:
-  `tests/w1_zephyr_tx_throughput_measure.rs` (`--ignored`).
+  Phase-282 closed the residual: `ZPICO_TX_SPLIT_LOCK=1` /
+  `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y` (requires TX_BATCH) makes the flush
+  STEAL the batch (buffer swap) and write the socket under a separate link
+  mutex, and a batch overflow PARKS the buffer instead of blocking the
+  publisher — tiers 43.2 total (+27%), streaming **~181 msg/s vs ~9 baseline
+  (20×)** with a tight-loop publisher completing instead of stalling. Wire
+  order stays == SN order. Per-publisher escape: `tx_express` in the QoS
+  profile (Rust `.tx_express(true)` / C `nros_qos_t.tx_express` / C++
+  `nros::QoS().tx_express(true)`) bypasses the batch for latency-critical
+  low-rate topics (on Zephyr an express put pays the socket window itself —
+  never use it for streams). Flush-thread attrs:
+  `zpico_set_flush_task_config()`. Gets + query replies go express under the
+  knob; keepalives bound batch sit-time. NOTE: TX_BATCH flips
+  `Z_FEATURE_BATCHING` and TX_SPLIT_LOCK flips `Z_FEATURE_TX_SPLIT_LOCK` in
+  the SHARED generated zenoh config (both gate transport-struct fields — the
+  issue-0135 every-TU rule); rebuild fixtures after changing them. Harnesses:
+  `tests/w1_zephyr_tx_throughput_measure.rs` (`--ignored`, tiers) +
+  `packages/testing/nros-bench/stress-zenoh-zephyr` (streaming; bench
+  listeners MUST build with `ZPICO_SUBSCRIBER_RING_DEPTH=1024` — the default
+  4-slot ring drop-newests batched callback bursts). User-facing decision
+  tree: book "TX Throughput & Latency Tuning" page.
 - **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix
   port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and
   zenohd silently drops the session — the image keeps spinning against a dead

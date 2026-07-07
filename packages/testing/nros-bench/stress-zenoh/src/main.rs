@@ -83,11 +83,17 @@ fn run_talker() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
 
+    // Phase 282 W3 (#145) — TX_EXPRESS=1 marks the publisher express: its
+    // samples bypass tx batching (wire EXPRESS flag) in a batching image.
+    let tx_express = std::env::var("TX_EXPRESS")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
     let actual_size = payload_size.max(16);
 
     eprintln!(
-        "Stress Talker: size={} count={} interval={}ms",
-        actual_size, publish_count, interval_ms
+        "Stress Talker: size={} count={} interval={}ms express={}",
+        actual_size, publish_count, interval_ms, tx_express
     );
 
     let config = ExecutorConfig::from_env().node_name("stress_talker");
@@ -106,7 +112,7 @@ fn run_talker() {
     let publisher = node
         .create_publisher_with_qos::<std_msgs::msg::Int32>(
             "/stress_test",
-            nros::QosSettings::RELIABLE,
+            nros::QosSettings::RELIABLE.tx_express(tx_express),
         )
         .expect("Failed to create publisher");
 
@@ -186,10 +192,31 @@ fn run_listener() {
     let mut received: usize = 0;
     let mut valid: usize = 0;
     let mut invalid: usize = 0;
+    // Phase 282 W3 (#145) — arrival-gap accounting: a batched publisher
+    // delivers in flush-cadence bursts (many inter-arrival gaps ≈ the flush
+    // period), an express publisher delivers continuously (no such gaps).
+    // GAP_THRESHOLD_MS (default 25 = half the default 50 ms flush cadence)
+    // sets the "quantized" cutoff.
+    let gap_threshold_ms: u128 = std::env::var("GAP_THRESHOLD_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(25);
+    let mut last_arrival: Option<Instant> = None;
+    let mut gaps_over: usize = 0;
+    let mut max_gap_ms: u128 = 0;
 
     while received < expected_count && start.elapsed() < timeout {
         match subscription.try_recv_raw() {
             Ok(Some(len)) => {
+                let now = Instant::now();
+                if let Some(prev) = last_arrival {
+                    let gap = now.duration_since(prev).as_millis();
+                    max_gap_ms = max_gap_ms.max(gap);
+                    if gap > gap_threshold_ms {
+                        gaps_over += 1;
+                    }
+                }
+                last_arrival = Some(now);
                 let (seq, is_valid) = validate_payload(&subscription.buffer()[..len], actual_size);
                 received += 1;
                 if is_valid {
@@ -212,12 +239,16 @@ fn run_listener() {
     let elapsed = start.elapsed();
     let overflow_drops = nros_rmw_zenoh::overflow_drops_total();
     println!(
-        "RECV_DONE: received={} valid={} invalid={} overflow_drops={} elapsed_ms={}",
+        "RECV_DONE: received={} valid={} invalid={} overflow_drops={} elapsed_ms={} \
+         gaps_over_{}ms={} max_gap_ms={}",
         received,
         valid,
         invalid,
         overflow_drops,
-        elapsed.as_millis()
+        elapsed.as_millis(),
+        gap_threshold_ms,
+        gaps_over,
+        max_gap_ms
     );
 }
 

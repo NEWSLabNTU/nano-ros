@@ -426,7 +426,7 @@ impl From<QosSettings> for NrosRmwQos {
             // ROS queue depths are typically 1–100; oversize values
             // are saturated at 65 535 rather than wrapped.
             depth: qos.depth.min(u16::MAX as u32) as u16,
-            tx_express: 0,
+            tx_express: qos.tx_express as u8,
             _reserved0: 0,
             deadline_ms: qos.deadline_ms,
             lifespan_ms: qos.lifespan_ms,
@@ -1701,9 +1701,11 @@ impl Session for CffiSession {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
         let mut qos_struct = NrosRmwQos::from(qos);
-        // phase-279 (#145) — carry the express hint across the C ABI so a
+        // phase-279/282 (#145) — carry the express hint across the C ABI so a
         // batching backend can declare this publisher express (bypass batch).
-        qos_struct.tx_express = topic.tx_express as u8;
+        // Either surface wins: the QoS profile field (language APIs) or the
+        // lower-level `TopicInfo::with_tx_express` (direct RMW users).
+        qos_struct.tx_express = (topic.tx_express || qos.tx_express) as u8;
 
         let mut pub_state = CffiPublisher {
             vtable: self.vtable,

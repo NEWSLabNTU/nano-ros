@@ -56,6 +56,7 @@ inline nros_cpp_qos_t component_qos_to_ffi(const QoS& qos) {
     f.lifespan_ms = qos.lifespan_ms();
     f.liveliness_lease_ms = qos.liveliness_lease_ms();
     f.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    f.tx_express = qos.tx_express() ? 1 : 0;
     return f;
 }
 } // namespace detail

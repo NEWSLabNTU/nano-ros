@@ -31,6 +31,12 @@
 #ifndef STRESS_SIZE
 #define STRESS_SIZE 64
 #endif
+#ifndef STRESS_EXPRESS
+#define STRESS_EXPRESS 0
+#endif
+#ifndef STRESS_INTERVAL_MS
+#define STRESS_INTERVAL_MS 0
+#endif
 
 #define STRESS_KEYEXPR "0/stress_test/std_msgs::msg::dds_::Int32_/TypeHashNotSupported"
 
@@ -77,7 +83,10 @@ int main(void) {
     }
     printk("session open\n");
 
-    int32_t handle = zpico_declare_publisher(STRESS_KEYEXPR);
+    /* Phase 282 W3 (#145) — STRESS_EXPRESS=1 declares the publisher express:
+     * its samples bypass tx batching (wire EXPRESS flag) even in a batching
+     * image, so per-message latency is not flush-cadence-quantized. */
+    int32_t handle = zpico_declare_publisher_ex(STRESS_KEYEXPR, STRESS_EXPRESS);
     if (handle < 0) {
         printk("STRESS_FAIL: declare rc=%d\n", handle);
         return 1;
@@ -91,6 +100,9 @@ int main(void) {
     for (uint32_t seq = 0; seq < STRESS_COUNT; seq++) {
         build_payload(seq);
         (void)zpico_publish(handle, g_payload, STRESS_SIZE);
+#if STRESS_INTERVAL_MS > 0
+        k_sleep(K_MSEC(STRESS_INTERVAL_MS));
+#endif
     }
     int64_t elapsed = k_uptime_get() - t0;
     printk("PUBLISH_DONE: sent=%d elapsed_ms=%lld\n", STRESS_COUNT, elapsed);

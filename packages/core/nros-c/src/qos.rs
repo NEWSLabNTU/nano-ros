@@ -77,6 +77,11 @@ pub struct nros_qos_t {
     pub liveliness_lease_ms: u32,
     /// If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
     pub avoid_ros_namespace_conventions: u8,
+    /// Phase 282 (#145) — publisher-side "express" hint: if non-zero, this
+    /// publisher's samples bypass transport tx batching (sent immediately
+    /// even when the batching knob is on). A transport hint, not a DDS
+    /// policy; ignored on subscriptions and by backends without batching.
+    pub tx_express: u8,
 }
 
 impl Default for nros_qos_t {
@@ -91,6 +96,7 @@ impl Default for nros_qos_t {
             lifespan_ms: 0,
             liveliness_lease_ms: 0,
             avoid_ros_namespace_conventions: 0,
+            tx_express: 0,
         }
     }
 }
@@ -107,6 +113,7 @@ pub static NROS_QOS_DEFAULT: nros_qos_t = nros_qos_t {
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
+    tx_express: 0,
 };
 
 /// Sensor data QoS profile (best effort, small depth).
@@ -121,6 +128,7 @@ pub static NROS_QOS_SENSOR_DATA: nros_qos_t = nros_qos_t {
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
+    tx_express: 0,
 };
 
 /// Services QoS profile (reliable).
@@ -135,6 +143,7 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
+    tx_express: 0,
 };
 
 impl nros_qos_t {
@@ -184,6 +193,7 @@ impl nros_qos_t {
             lifespan_ms: self.lifespan_ms,
             liveliness_lease_ms: self.liveliness_lease_ms,
             avoid_ros_namespace_conventions: self.avoid_ros_namespace_conventions != 0,
+            tx_express: self.tx_express != 0,
         }
     }
 }

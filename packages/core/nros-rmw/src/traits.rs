@@ -456,6 +456,13 @@ pub struct QosSettings {
     pub liveliness_lease_ms: u32,
     /// If `true`, topic-name encoding skips the `/rt/` ROS prefix.
     pub avoid_ros_namespace_conventions: bool,
+    /// Phase 282 (#145) — publisher-side "express" hint: this publisher's
+    /// samples bypass transport tx batching (zenoh: the wire EXPRESS flag; a
+    /// batching zenoh-pico session sends them immediately instead of queueing
+    /// them for the next flush). A transport hint, not a DDS policy — no RxO
+    /// matching, no backend-compat validation; ignored by subscriptions and by
+    /// backends without a batching concept.
+    pub tx_express: bool,
 }
 
 impl Default for QosSettings {
@@ -513,6 +520,7 @@ impl QosSettings {
             lifespan_ms: 0,
             liveliness_lease_ms: 0,
             avoid_ros_namespace_conventions: false,
+            tx_express: false,
         }
     }
 
@@ -726,6 +734,15 @@ impl QosSettings {
     /// Set history depth explicitly
     pub const fn depth(mut self, depth: u32) -> Self {
         self.depth = depth;
+        self
+    }
+
+    /// Phase 282 (#145) — mark this publisher's samples "express": they
+    /// bypass transport tx batching (sent immediately even when the batching
+    /// knob is on). A transport hint for control-tier / latency-sensitive
+    /// topics; ignored on subscriptions and by backends without batching.
+    pub const fn tx_express(mut self, express: bool) -> Self {
+        self.tx_express = express;
         self
     }
 

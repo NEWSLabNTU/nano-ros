@@ -196,6 +196,18 @@ config NROS_ZENOH_TX_SPLIT_LOCK
       one recv-window) send is in flight. Wire order still equals SN order.
       Requires TX_BATCH. Off by default until promoted.
 
+config NROS_ZENOH_TX_BATCH_FLUSH_MS
+    int "zenoh-pico tx batch flush cadence (ms)"
+    default 50
+    depends on NROS_ZENOH_TX_BATCH
+    help
+      phase-282 (#145) — period of the dedicated tx-flush thread (and the
+      rate limit of the spin-driven fallback flush) when TX_BATCH is on.
+      Bounds the extra publish latency batching adds: a batched sample waits
+      at most this long before it ships (express publishers bypass the batch
+      entirely). Lower = less added latency, more (smaller) socket sends.
+      Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
+
 config NROS_ZENOH_PUBLICATION
     bool "Publication support"
     default y

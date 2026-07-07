@@ -27,6 +27,11 @@ pub struct ShimConfig {
     /// latency; gets/replies/express publishers bypass). Biggest win on Zephyr,
     /// where zsock's per-fd lock caps tx at ~1 send per socket-recv window.
     pub tx_batch: bool,
+    /// phase-282 (#145) — flush cadence, ms (`ZPICO_TX_BATCH_FLUSH_MS`,
+    /// default 50): period of the dedicated tx-flush thread and rate limit of
+    /// the spin-driven fallback flush. Bounds the extra publish latency the
+    /// batch adds. Only meaningful with `tx_batch`.
+    pub tx_batch_flush_ms: usize,
 }
 
 impl ShimConfig {
@@ -83,6 +88,10 @@ impl ShimConfig {
         );
         if self.tx_batch {
             build.define("ZPICO_TX_BATCH", "1");
+            build.define(
+                "ZPICO_TX_BATCH_FLUSH_MS",
+                self.tx_batch_flush_ms.to_string().as_str(),
+            );
         }
     }
 }
@@ -720,6 +729,7 @@ int32_t zpico_init(void);\n";
             get_reply_buf_size: 6,
             get_poll_interval_ms: 7,
             tx_batch: false,
+            tx_batch_flush_ms: 50,
         };
 
         let body = cfg.rust_consts();

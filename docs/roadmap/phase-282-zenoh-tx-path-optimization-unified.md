@@ -1,6 +1,6 @@
 # Phase 282 — Zenoh tx-path optimization: the remaining levers, unified across platforms and languages
 
-Status: **Planned — 2026-07-07** · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
+Status: **W1–W4 done — 2026-07-07** (remaining: promotion decision + parked items) · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
 (measure → batch → flush thread, 4× landed) · Implements the residual of issue
 #145 · Related [[issue-0135]] (shared-generated-config ABI rule), [[issue-0139]].
 
@@ -130,33 +130,81 @@ BLOCK-congestion puts stall their (tier) thread for the duration.
 The plumbing exists end-to-end (RMW → C shim → wire); expose it identically in
 all three language APIs:
 
-- [ ] W3.a Rust: the publication/publisher builder gains `.tx_express(bool)`
-  (forwards to `TopicInfo::with_tx_express`); declarative `nros::node!` QoS
-  metadata accepts `tx_express` where reliability/depth already live.
-- [ ] W3.b C: `nros_qos_t` gains a `tx_express` field (nros-c `qos.rs` →
-  `NrosRmwQos.tx_express`), default 0; ABI-append or reserved-byte carve like
-  the cffi struct.
-- [ ] W3.c C++: `nros::Qos` mirrors the C field (cbindgen FFI header is
-  canonical — no hand-written redeclaration drift).
-- [ ] W3.d One cross-language e2e: an express publisher and a batched publisher
-  in the same batching image; assert the express topic's latency is not
-  flush-cadence-quantized while the batched topic still coalesces. Run on
-  native + one RTOS lane.
+- [x] W3.a LANDED 2026-07-07 — Rust: `QosSettings` gains a `tx_express: bool`
+  field + const `.tx_express(bool)` setter (the profile is the uniform
+  carrier, like reliability/depth), and all three publisher builders
+  (`PublisherBuilder` / `TypedPublisherBuilder` / `GenericPublisherBuilder`)
+  gain a `.tx_express(bool)` convenience. The cffi boundary ORs the two
+  surfaces: `NrosRmwQos.tx_express = topic.tx_express || qos.tx_express`
+  (direct-RMW users keep `TopicInfo::with_tx_express`). It is a transport
+  hint, not a DDS policy — excluded from RxO/backend-compat validation.
+  NOTE: declarative plan-level `qos_overrides` do NOT carry it yet — that
+  needs the CLI schema + both run-plan emitters to move in lockstep
+  (macro-vs-CLI sync rule); deferred until a deploy lane needs it.
+- [x] W3.b LANDED — C: `nros_qos_t` gains `tx_express: u8` (ABI append, all
+  profile statics 0), mapped in `to_qos_settings`; `nros_generated.h`
+  regenerated.
+- [x] W3.c LANDED — C++: `nros_cpp_qos_t` gains `tx_express` (cbindgen
+  `nros_cpp_ffi.h` regenerated + the qos.hpp fallback mirror), `nros::QoS`
+  gains constexpr `.tx_express(bool)` / `.tx_express()`, and EVERY
+  `ffi_qos` fill site (13 across publisher/subscription/service/client/
+  action/component headers) sets the field — they're stack structs, an
+  unset field is garbage.
+- [x] W3.d MEASURED — express-vs-batched in the same batching image
+  (batch+split, 200 msgs @5 ms pacing, listener counts inter-arrival gaps;
+  `TX_EXPRESS=1` env on the native talker, `-DSTRESS_EXPRESS=1` on the
+  Zephyr bench app):
+
+  | lane | batched | express |
+  | --- | --- | --- |
+  | native | 200/200, **21 gaps >25 ms, max 50 ms** (flush-cadence bursts) | 200/200, **0 gaps >25 ms, max 5 ms** (continuous) |
+  | Zephyr | 200/200, 36 gaps (coalesced; talker 4 s) | window-paced ~8/s (each put pays the socket window itself) |
+
+  The Zephyr express row is the expected trade: express = immediate send =
+  back on the zsock per-window budget. Express is for LOW-RATE latency-
+  critical topics (documented in the book page + QoS docs).
 
 ### W4 — Knob completeness + tuning docs
 
-- [ ] W4.a `ZPICO_TX_BATCH_FLUSH_MS` front-ends: Kconfig
-  (`CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS`) on Zephyr; documented env/defines_kv
-  for the other lanes (the define already exists in the shim).
-- [ ] W4.b Flush-thread stack/priority attrs where a platform needs them (the
-  zenoh-pico `z_task_attr_t` slot — mirrors `zpico_set_task_config` for
-  read/lease tasks); ThreadX stays spin-driven (documented exception, same
-  reason its read/lease tasks are disabled).
-- [ ] W4.c Book page: "tx throughput & latency tuning" — the socket-timeout /
-  batch / flush-cadence / express decision tree, with the measured tables from
-  phase-279 + this phase; cross-linked from platform-implementation-notes.
-- [ ] W4.d Default-off regression sweep across ALL platform e2e lanes (knob
-  unset = byte-identical config) before closing.
+- [x] W4.a LANDED — `ZPICO_TX_BATCH_FLUSH_MS` front-ends: Kconfig
+  `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` (int, default 50, depends on
+  TX_BATCH) forwarded by `nros_rmw_zenoh.cmake`; cargo lanes read the env in
+  `nros-zpico-build` (`ShimConfig.tx_batch_flush_ms` → `-D` on the shim,
+  only when batching); C/C++ cmake lanes pass `-DZPICO_TX_BATCH_FLUSH_MS`
+  via `NROS_CMAKE_EXTRA_DEFS` (documented in the book page).
+- [x] W4.b LANDED — `zpico_set_flush_task_config(priority, stack_bytes)`
+  (call before open; FreeRTOS applies name/priority/stack, POSIX-like stack
+  size only — mirrors `zpico_set_task_config`); the flush `_z_task_init` now
+  takes the attr when configured. ThreadX/single-threaded builds have no
+  flush thread and the call is a documented no-op.
+- [x] W4.c LANDED — book page `user-guide/tx-tuning.md` ("TX Throughput &
+  Latency Tuning"): decision tree, measured tables (streaming 9→136→181,
+  tiers 8.6→34→43, express gap table), knob matrix across all three build
+  lanes, pitfalls (deep-ring listeners, express-on-Zephyr, never flush from
+  tier threads). Cross-linked from platform-implementation-notes (which also
+  gained the phase-282 split-lock/express summary).
+- [x] W4.d Default-off regression sweep — PARTIAL, honestly scoped. Green:
+  `just check` (full clippy matrix incl. every touched crate), full fixture
+  rebuild across all lanes (native/qemu/freertos/threadx/nuttx/zephyr, after
+  the tx_express struct change invalidated every input signature), targeted
+  default-off runs (native paced 500/500; zephyr knob-off streaming ≈8.9
+  unchanged), and 1122/1259 of `just test-all`. NOT green: ~115 `test-all`
+  failures that PRE-EXIST this phase's diff — verified by stash-baseline
+  (e.g. `realtime_subnode_cpp_e2e` fails identically with the W3/W4 changes
+  stashed and the fixture rebuilt from the pre-diff tree). They are machine
+  env debt + latent breaks exposed by the first full fixture re-configure in
+  months: missing `build/cyclonedds/bin/idlc` install (bridge/descriptor
+  lanes), missing zenoh-pico-arm + idf-fixtures builds (emulator/esp lanes),
+  a CLI/test flag mismatch (`--nros-toml` rejected — the phase-280 "stale
+  nros install" blocker, still reproducing after `just setup-cli`), ROS 2
+  interop lanes, and a deterministic `realtime_subnode_cpp` tier-ratio
+  failure (ctrl=6 telem=5 — predates this diff; possibly phase-281's
+  ws-realtime-cpp change or older). Needs its own env-resync/housekeeping
+  pass — follow-up work, not silently absorbed here. Also fixed in this
+  phase (found by the sweep): 5 stale `target_link_libraries` component
+  names in freertos/threadx C++ example CMakeLists — phase-277 W5.B renamed
+  the register NAMEs but missed these link lines; never caught because
+  incremental fixture builds skip re-configure.
 
 ### Out of scope (parked unless W1 misses its target)
 

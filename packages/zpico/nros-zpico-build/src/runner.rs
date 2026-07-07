@@ -35,6 +35,7 @@ fn shim_config_from_env() -> ShimConfig {
         get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
         get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
         tx_batch: env_usize("ZPICO_TX_BATCH", 0) != 0,
+        tx_batch_flush_ms: env_usize("ZPICO_TX_BATCH_FLUSH_MS", 50),
     }
 }
 

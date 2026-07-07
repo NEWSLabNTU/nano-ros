@@ -522,6 +522,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
     nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                       ffi_qos, out.storage_);
     if (ret == 0) {
@@ -590,6 +591,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
 
     // Store the user handler (compile error if F isn't convertible to the
     // plain-fn-ptr handler type).
@@ -631,6 +633,7 @@ Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>&
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
 
     out.user_fn_ = typename Subscription<M>::TypedSubscriptionFn(callback);
     out.user_fn_ctx_ = nullptr;
@@ -670,6 +673,7 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
 
     out.user_fn_info_ = typename Subscription<M>::TypedSubscriptionInfoFn(callback);
     out.user_fn_ = nullptr;
@@ -722,6 +726,7 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
 
     out.user_fn_safety_ = typename Subscription<M>::TypedSubscriptionSafetyFn(callback);
     out.user_fn_ = nullptr;

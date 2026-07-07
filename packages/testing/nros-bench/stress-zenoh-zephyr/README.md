@@ -22,6 +22,13 @@ west build -b native_sim/native/64 -d build-stress-zenoh-batch -p always $APP --
 west build -b native_sim/native/64 -d build-stress-zenoh-split -p always $APP -- -DCONF_FILE="$CONF" $LOC -DCONFIG_NROS_ZENOH_TX_BATCH=y -DCONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y
 ```
 
+Extra shape knobs (phase-282 W3): `-DSTRESS_EXPRESS=1` declares the publisher
+express (bypasses batching — for the express-vs-batched latency check),
+`-DSTRESS_INTERVAL_MS=<n>` paces the loop, `-DSTRESS_COUNT` / `-DSTRESS_SIZE`
+set volume. The native listener prints inter-arrival gap stats
+(`gaps_over_<t>ms` / `max_gap_ms`, threshold via `GAP_THRESHOLD_MS`): a
+batched publisher shows flush-cadence bursts, an express one doesn't.
+
 ## Measure
 
 ```bash

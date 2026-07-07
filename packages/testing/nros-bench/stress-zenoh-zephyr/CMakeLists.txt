@@ -15,8 +15,12 @@ project(stress_zenoh_zephyr)
 # Benchmark shape knobs (cache vars so `west build -- -DSTRESS_*` works).
 set(STRESS_COUNT 5000 CACHE STRING "number of publishes")
 set(STRESS_SIZE 64 CACHE STRING "payload bytes (>=16)")
+set(STRESS_EXPRESS 0 CACHE STRING "1 = declare the publisher express (bypass batching)")
+set(STRESS_INTERVAL_MS 0 CACHE STRING "per-publish pacing, ms (0 = tight loop)")
 
 target_sources(app PRIVATE src/main.c)
 target_compile_definitions(app PRIVATE
     STRESS_COUNT=${STRESS_COUNT}
-    STRESS_SIZE=${STRESS_SIZE})
+    STRESS_SIZE=${STRESS_SIZE}
+    STRESS_EXPRESS=${STRESS_EXPRESS}
+    STRESS_INTERVAL_MS=${STRESS_INTERVAL_MS})

@@ -249,6 +249,7 @@ Result Node::create_client(Client<S>& out, const char* service_name, const QoS& 
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
     nros_cpp_ret_t ret = nros_cpp_service_client_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
@@ -275,6 +276,7 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
 
     out.user_fn_ = typename Client<S>::TypedResponseFn(callback);
     out.user_fn_ctx_ = nullptr;

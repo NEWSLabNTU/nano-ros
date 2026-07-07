@@ -73,6 +73,12 @@ endif()
 # (zp_batch_start at open + zp_batch_flush at the top of zpico_spin_once).
 if(CONFIG_NROS_ZENOH_TX_BATCH)
     zephyr_compile_definitions(ZPICO_TX_BATCH=1)
+    # phase-282 (#145) — flush cadence: period of the dedicated tx-flush
+    # thread / rate limit of the spin-driven fallback flush.
+    if(CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS)
+        zephyr_compile_definitions(
+            ZPICO_TX_BATCH_FLUSH_MS=${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS})
+    endif()
 endif()
 
 # phase-282 (#145) — split tx locking (steal batch under tx mutex, send under a

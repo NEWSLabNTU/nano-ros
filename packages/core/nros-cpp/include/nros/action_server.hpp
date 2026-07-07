@@ -360,6 +360,7 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     ffi_qos.lifespan_ms = qos.lifespan_ms();
     ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
     ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
     nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
                                                        A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret != 0) return Result(ret);

@@ -239,6 +239,7 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
             QosHistoryPolicy::KeepAll
         },
         depth: q.depth as u32,
+        tx_express: q.tx_express != 0,
         deadline_ms: q.deadline_ms,
         lifespan_ms: q.lifespan_ms,
         liveliness_kind: match q.liveliness_kind {

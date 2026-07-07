@@ -48,6 +48,7 @@ struct nros_cpp_qos_t {
     uint32_t lifespan_ms;
     uint32_t liveliness_lease_ms;
     uint8_t avoid_ros_namespace_conventions;
+    uint8_t tx_express;
 };
 }
 #endif // NROS_CPP_FFI_H
@@ -79,7 +80,7 @@ class QoS {
     constexpr QoS()
         : reliability_(Reliable), durability_(Volatile), history_(KeepLast),
           liveliness_(LivelinessAutomatic), depth_(10), deadline_ms_(0), lifespan_ms_(0),
-          liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0) {}
+          liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0), tx_express_(0) {}
 
     // -- Chainable setters (match rclcpp fluent API) --
 
@@ -154,6 +155,15 @@ class QoS {
         return *this;
     }
 
+    /// Phase 282 (#145) — mark this publisher "express": its samples bypass
+    /// transport tx batching (sent immediately even when the batching knob
+    /// is on). A transport hint for control-tier / latency-sensitive topics;
+    /// ignored on subscriptions and by backends without batching.
+    constexpr QoS& tx_express(bool on) {
+        tx_express_ = on ? 1 : 0;
+        return *this;
+    }
+
     // -- Predefined profiles (match rclcpp named constructors) --
 
     /// Default profile: `RELIABLE` + `VOLATILE` + `KEEP_LAST(10)`.
@@ -187,6 +197,8 @@ class QoS {
     constexpr bool avoid_ros_namespace_conventions() const {
         return avoid_ros_namespace_conventions_ != 0;
     }
+    /// Whether this publisher's samples bypass transport tx batching.
+    constexpr bool tx_express() const { return tx_express_ != 0; }
 
   private:
     enum Reliability { Reliable = 0, BestEffort = 1 } reliability_;
@@ -198,6 +210,7 @@ class QoS {
     uint32_t lifespan_ms_;
     uint32_t liveliness_lease_ms_;
     uint8_t avoid_ros_namespace_conventions_;
+    uint8_t tx_express_;
 };
 
 } // namespace nros

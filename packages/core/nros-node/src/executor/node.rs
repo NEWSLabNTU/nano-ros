@@ -1166,6 +1166,14 @@ impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
         self
     }
 
+    /// Phase 282 (#145) — mark this publisher "express": its samples bypass
+    /// transport tx batching (sent immediately even when the batching knob is
+    /// on). For control-tier / latency-sensitive topics.
+    pub fn tx_express(mut self, express: bool) -> Self {
+        self.qos.tx_express = express;
+        self
+    }
+
     /// Typed publisher for a ROS message `M` (mirrors rclcpp/rclrs).
     pub fn typed<M: MessageForRmw>(self) -> TypedPublisherBuilder<'n, 'a, 't, M> {
         TypedPublisherBuilder {
@@ -1207,6 +1215,12 @@ impl<'n, 'a, 't, M: MessageForRmw> TypedPublisherBuilder<'n, 'a, 't, M> {
         self
     }
 
+    /// Phase 282 (#145) — see [`PublisherBuilder::tx_express`].
+    pub fn tx_express(mut self, express: bool) -> Self {
+        self.qos.tx_express = express;
+        self
+    }
+
     pub fn build(self) -> Result<EmbeddedPublisher<M>, NodeError> {
         self.node
             .create_publisher_with_qos::<M>(self.topic, self.qos)
@@ -1225,6 +1239,12 @@ pub struct GenericPublisherBuilder<'n, 'a, 't> {
 impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
+        self
+    }
+
+    /// Phase 282 (#145) — see [`PublisherBuilder::tx_express`].
+    pub fn tx_express(mut self, express: bool) -> Self {
+        self.qos.tx_express = express;
         self
     }
 

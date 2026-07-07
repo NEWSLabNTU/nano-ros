@@ -408,6 +408,7 @@ pub mod qos {
         lifespan_ms: 0,
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: false,
+        tx_express: false,
     };
 
     /// `rmw_qos_profile_sensor_data`-equivalent: best-effort +

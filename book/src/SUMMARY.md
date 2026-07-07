@@ -53,6 +53,7 @@
 - [Choosing an RMW Backend](./user-guide/rmw-backends.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
+- [TX Throughput & Latency Tuning](./user-guide/tx-tuning.md)
 - [Serial Transport](./user-guide/serial-transport.md)
 - [RTIC Integration](./user-guide/rtic-integration.md)
 - [Embassy Integration](./user-guide/embassy-integration.md)
