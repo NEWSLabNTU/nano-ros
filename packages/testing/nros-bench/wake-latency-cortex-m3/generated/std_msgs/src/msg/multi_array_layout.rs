@@ -43,3 +43,30 @@ impl RosMessage for MultiArrayLayout {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::MultiArrayLayout_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+#[allow(non_upper_case_globals)]
+pub const NESTED_DIM: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
+    type_name: <crate::msg::MultiArrayDimension as ::nros_serdes::Message>::TYPE_NAME,
+    fields: <crate::msg::MultiArrayDimension as ::nros_serdes::Message>::FIELDS,
+};
+#[allow(non_upper_case_globals)]
+pub const FT_DIM_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Nested(&NESTED_DIM);
+impl ::nros_serdes::Message for MultiArrayLayout {
+    const TYPE_NAME: &'static str = "std_msgs/msg/MultiArrayLayout";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "dim",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_DIM_ELEM),
+            offset: ::core::mem::offset_of!(MultiArrayLayout, dim),
+        },
+        ::nros_serdes::Field {
+            name: "data_offset",
+            ty: ::nros_serdes::FieldType::Uint32,
+            offset: ::core::mem::offset_of!(MultiArrayLayout, data_offset),
+        },
+];
+}

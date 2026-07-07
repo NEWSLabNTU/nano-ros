@@ -33,3 +33,18 @@ impl RosMessage for String {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::String_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+impl ::nros_serdes::Message for String {
+    const TYPE_NAME: &'static str = "std_msgs/msg/String";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "data",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(String, data),
+        },
+];
+}

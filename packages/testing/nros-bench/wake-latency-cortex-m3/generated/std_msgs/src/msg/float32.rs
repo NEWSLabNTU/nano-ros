@@ -30,3 +30,18 @@ impl RosMessage for Float32 {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Float32_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+impl ::nros_serdes::Message for Float32 {
+    const TYPE_NAME: &'static str = "std_msgs/msg/Float32";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "data",
+            ty: ::nros_serdes::FieldType::Float32,
+            offset: ::core::mem::offset_of!(Float32, data),
+        },
+];
+}

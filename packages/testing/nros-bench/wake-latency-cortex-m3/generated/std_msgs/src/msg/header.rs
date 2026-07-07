@@ -36,3 +36,28 @@ impl RosMessage for Header {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Header_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+#[allow(non_upper_case_globals)]
+pub const NESTED_STAMP: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
+    type_name: <builtin_interfaces::msg::Time as ::nros_serdes::Message>::TYPE_NAME,
+    fields: <builtin_interfaces::msg::Time as ::nros_serdes::Message>::FIELDS,
+};
+impl ::nros_serdes::Message for Header {
+    const TYPE_NAME: &'static str = "std_msgs/msg/Header";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "stamp",
+            ty: ::nros_serdes::FieldType::Nested(&NESTED_STAMP),
+            offset: ::core::mem::offset_of!(Header, stamp),
+        },
+        ::nros_serdes::Field {
+            name: "frame_id",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(Header, frame_id),
+        },
+];
+}

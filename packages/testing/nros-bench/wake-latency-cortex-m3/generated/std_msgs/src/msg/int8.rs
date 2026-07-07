@@ -30,3 +30,18 @@ impl RosMessage for Int8 {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int8_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+impl ::nros_serdes::Message for Int8 {
+    const TYPE_NAME: &'static str = "std_msgs/msg/Int8";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "data",
+            ty: ::nros_serdes::FieldType::Int8,
+            offset: ::core::mem::offset_of!(Int8, data),
+        },
+];
+}

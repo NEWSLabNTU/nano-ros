@@ -30,3 +30,18 @@ impl RosMessage for UInt64 {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::UInt64_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+impl ::nros_serdes::Message for UInt64 {
+    const TYPE_NAME: &'static str = "std_msgs/msg/UInt64";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "data",
+            ty: ::nros_serdes::FieldType::Uint64,
+            offset: ::core::mem::offset_of!(UInt64, data),
+        },
+];
+}

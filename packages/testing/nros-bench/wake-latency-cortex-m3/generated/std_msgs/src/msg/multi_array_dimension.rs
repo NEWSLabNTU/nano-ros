@@ -39,3 +39,28 @@ impl RosMessage for MultiArrayDimension {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::MultiArrayDimension_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+impl ::nros_serdes::Message for MultiArrayDimension {
+    const TYPE_NAME: &'static str = "std_msgs/msg/MultiArrayDimension";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "label",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(MultiArrayDimension, label),
+        },
+        ::nros_serdes::Field {
+            name: "size",
+            ty: ::nros_serdes::FieldType::Uint32,
+            offset: ::core::mem::offset_of!(MultiArrayDimension, size),
+        },
+        ::nros_serdes::Field {
+            name: "stride",
+            ty: ::nros_serdes::FieldType::Uint32,
+            offset: ::core::mem::offset_of!(MultiArrayDimension, stride),
+        },
+];
+}
