@@ -208,9 +208,24 @@ knob-off + knob-on compile clean; batch-ON native pubsub smoke delivers 7/7.
 - [x] W3.b Default-off regression: canonical conf restored (5 ms, no batch),
   realtime fixture rebuilt, `realtime_tiers_zephyr_entry_schedules_high_and_low`
   green. Native pubsub smoke green both knob states (W2).
-- [ ] W3.c (re-scoped) A high-rate streaming benchmark (tight-loop publisher,
-  many puts per flush interval) is the workload where batching should show its
-  win — measure before promoting the knob anywhere.
+- [x] W3.c Streaming benchmark (native) — MEASURED 2026-07-07 with the existing
+  `nros-bench/stress-zenoh` tight-loop talker (5000 × 64 B puts,
+  `PUBLISH_INTERVAL_MS=0`, shared zenohd):
+
+  | | tx-side elapsed (5000 puts) | integrity |
+  | --- | --- | --- |
+  | knob off | 13 ms | — |
+  | `ZPICO_TX_BATCH=1` | **3 ms (4.3×)** | 269/269 received valid |
+
+  Streaming mechanics validated: appends replace per-put sends (4.3× faster
+  put path), payload integrity holds across batch-overflow auto-flush
+  boundaries (5000 × 76 B through a ~64 KB wbuf = many overflows), no
+  corruption, bounded memory. The rx-side cap (~300 of 5000 received in both
+  variants) is the subscriber-side best-effort blast limit — a separate,
+  pre-existing axis, not #145. Residual: the promotion-relevant ZEPHYR
+  streaming benchmark (a tight-loop publisher on the zsock-ceiling platform)
+  needs a new zephyr bench leaf — future work alongside the fork-surgery
+  lever.
 - [x] W3.d Numbers + mechanism recorded here and in
   platform-implementation-notes.
 
