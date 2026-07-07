@@ -1,6 +1,7 @@
 # Phase 281 — Complete the Model-1 execution-model convergence (all language × platform)
 
-Status: **Planned (2026-07-07)** · Implements the RFC-0015 Model 1 convergence to
+Status: **In progress (2026-07-07)** — W1 ✓, W2 ✓, W5 ✓ landed; W3 (Zephyr C/C++
+seam) remaining · Implements the RFC-0015 Model 1 convergence to
 its full lang×platform matrix · Finishes what phases 272–274 started · Cross-links
 issues #128 (Zephyr macro parity lineage) and #130 (nuttx runtime, owned by
 phase-280) · Informs phase-263 (broad feature-workspace completion) and phase-275
@@ -22,9 +23,9 @@ proven by the named end-to-end test.
 
 | lang \ platform | native | freertos | zephyr | nuttx |
 | --- | --- | --- | --- | --- |
-| **Rust** | ✓ `realtime_tiers_e2e` | ◐ `orchestration_tiers_freertos` (run_tiers boots+runs; connected-delivery test-infra debt) | ✓ `realtime_tiers_zephyr_entry` | gated → phase-280 |
+| **Rust** | ✓ `realtime_tiers_e2e` | ✓ `orchestration_tiers_freertos` (both tests green after W1) | ✓ `realtime_tiers_zephyr_entry` | gated → phase-280 |
 | **C++**  | ✓ `realtime_tiers_cpp` (+rclcpp, +subnode) | ✓ `realtime_tiers_cpp_freertos` (3-tier, #144) | **GAP — W3** | **GAP — W3** |
-| **C**    | ✓ `realtime_tiers_c_e2e` | **GAP — W2** (C impl shared, no C-node test) | **GAP — W3** | gated → phase-280 |
+| **C**    | ✓ `realtime_tiers_c_e2e` | ✓ `realtime_tiers_c_freertos_e2e` (W2, landed) | **GAP — W3** | gated → phase-280 |
 
 Legend: ✓ proven e2e · GAP = no tier path/example/test built · gated = model runs,
 runtime plumbing open (tracked elsewhere).
@@ -60,24 +61,24 @@ one tier plan deploys unchanged anywhere — is not yet true end to end.
 ### W1 — Harden the proven-but-fragile cell (Rust × freertos)
 The boot+`run_tiers` test is already green; this wave makes the connected cross-process
 delivery assertable within budget.
-- [ ] W1.a Move `orchestration_tiers_freertos`'s connected test off its run-time
+- [x] W1.a Move `orchestration_tiers_freertos`'s connected test off its run-time
   `cargo build --release` (`firmware_release()`) onto a **build-stage Release fixture**
   (mirror `realtime_tiers_cpp_freertos_e2e` + the `CMAKE_BUILD_TYPE=Release` /
   `--release` compile-check row), so a -O0 zenoh-pico no longer starves the handshake and
   the test asserts `[ctrl]`/`[telem]`-style per-tier delivery in ≤ the nextest budget.
   This also removes a "no compilation inside tests" violation.
-- [ ] W1.b Guard the stale-copy recurrence: the pre-fix `build/compile-check/` copy
+- [x] W1.b Guard the stale-copy recurrence: the pre-fix `build/compile-check/` copy
   (with `platform-freertos` on `nros`) gave a false *build* failure until cleaned — the
   same staleness class phase-278 (#147) addressed at run stage. Ensure the compile-check
   builder rebuilds on source change / the resolver flags a stale `.compile-ok`; file a
   follow-up if the compile-check lane isn't covered by #147's dep-info probe.
 
 ### W2 — C-node multi-tier on FreeRTOS (close C × freertos)
-- [ ] W2.a Add `examples/workspaces/ws-realtime-c-mps2` — the C sibling of
+- [x] W2.a Add `examples/workspaces/ws-realtime-c-mps2` — the C sibling of
   `ws-realtime-cpp-mps2`: a C `ctrl` node + C `telem` node on two tiers over one shared
   session via `nano_ros_entry(BOARD mps2-an385-freertos …)`, each printing `[<tier>] tick=`
   on a successful publish.
-- [ ] W2.b Fixture row + `realtime_tiers_c_freertos_e2e` asserting both tiers publish
+- [x] W2.b Fixture row + `realtime_tiers_c_freertos_e2e` asserting both tiers publish
   cross-process under QEMU (mirror `realtime_tiers_cpp_freertos_e2e`). This proves the
   shared `nros_board_freertos_run_tiers` C impl drives a C *node*, not only a C++ one.
 
@@ -97,7 +98,7 @@ delivery assertable within budget.
   eth0 plumbing.
 
 ### W5 — Matrix gate (no silent caps)
-- [ ] W5.a A test or check that enumerates the lang×platform tier matrix and asserts each
+- [x] W5.a A test or check that enumerates the lang×platform tier matrix and asserts each
   cell is either (a) covered by a named e2e or (b) listed in an explicit deferral set with a
   reason — so a regression that drops a cell to unproven fails CI, and the matrix in this
   doc / the artifact stays honest. Mirror the `examples_fixture_coverage.rs` "no silent
