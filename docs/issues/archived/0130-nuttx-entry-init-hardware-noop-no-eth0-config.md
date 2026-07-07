@@ -7,7 +7,7 @@ area: boards
 related: [issue-0127, phase-275, phase-280, rfc-0032]
 ---
 
-## Resolution (phase-280, 2026-07-07)
+## Resolution (phase-280, 2026-07-08)
 
 Both NuttX Entry paths now push the guest IP into `eth0` before opening the
 executor, from ONE shared helper —
@@ -22,15 +22,19 @@ executor, from ONE shared helper —
   `option_env!("NROS_IP"/…)` overrides) BEFORE `app_main()`, covering both the C
   and C++ `nano_ros_entry LAUNCH` entries.
 
-**Runtime proof (phase-280 W3):** the prebuilt `nuttx_rs_talker_entry` ELF, booted
-under `qemu-system-arm -M virt` + slirp with a host `zenohd`, applies
-`eth0 = 10.0.2.30` (pcap: `ARP who-has 10.0.2.2 tell 10.0.2.30`, `SYN →
-10.0.2.2:7452`, full zenoh session) and **delivered 39 cross-process `/chatter`
-Int32 messages** to a separate native listener — the `Transport(ConnectionFailed)`
-symptom is gone. The C entry ELF builds through the identical helper + transport.
-(The old `rust_nuttx_entry_e2e` also had a wrong grep prefix — `"I heard:"` vs the
-Int32 `"Received:"` — fixed in phase-280; delivery worked all along, the test
-just never matched.) See `docs/roadmap/archived/phase-280-*` for the nextest
+**Runtime proof (phase-280 W3/W4): BOTH e2e GREEN in nextest** —
+`rust_nuttx_entry_delivers_cross_process` (PASS) and
+`c_nuttx_workspace_entry_delivers_cross_process` (PASS). The prebuilt
+`nuttx_rs_talker_entry` ELF, booted under `qemu-system-arm -M virt` + slirp with a
+host `zenohd`, applies `eth0 = 10.0.2.30` (pcap: `ARP who-has 10.0.2.2 tell
+10.0.2.30`, `SYN → 10.0.2.2:7452`, full zenoh session) and delivers cross-process
+— the `Transport(ConnectionFailed)` symptom is gone. (Getting the Rust e2e green
+required reverting a wrong grep prefix: the Rust talker + `build_native_listener`
+are both `std_msgs/String` (`"I heard:"`), not Int32 — an earlier edit had
+switched it to `INT32_LISTENER_LOG_PREFIX`; delivery worked all along, the test
+just never matched. The C entry's `demo_bringup` talker really is Int32, so
+`c_nuttx_entry_e2e` correctly keeps `"Received:"`.) See
+`docs/roadmap/archived/phase-280-*` for the nextest
 CI-lane caveat.
 ---
 
