@@ -41,7 +41,7 @@ nano_ros_node_register(
     SOURCES  src/ServiceClient.cpp
     DEPLOY   threadx-linux)
 
-target_link_libraries(threadx_linux_cpp_service_client_service_client_component
+target_link_libraries(threadx_linux_cpp_service_client_add_two_ints_client_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(TARGET threadx-linux RMW ${NROS_RMW} DOMAIN_ID 0)

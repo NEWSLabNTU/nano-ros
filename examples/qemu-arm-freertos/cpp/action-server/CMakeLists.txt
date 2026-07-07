@@ -44,7 +44,7 @@ nano_ros_node_register(
     SOURCES  src/FibonacciServer.cpp
     DEPLOY   freertos)
 
-target_link_libraries(freertos_cpp_action_server_action_server_component
+target_link_libraries(freertos_cpp_action_server_fibonacci_action_server_component
     PUBLIC example_interfaces__nano_ros_cpp)
 
 nano_ros_deploy(
