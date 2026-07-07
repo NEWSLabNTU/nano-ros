@@ -33,6 +33,12 @@ pub struct TopicInfo<'a> {
     /// `0` = unset (backend picks its default). Ignored by backends that don't
     /// size-class their receive storage.
     pub rx_buffer_hint: usize,
+    /// phase-279 (#145) — publisher-side "express" hint: this topic's samples
+    /// bypass transport tx batching (zenoh: the wire EXPRESS flag; a batching
+    /// zenoh-pico session sends them immediately instead of queueing them for
+    /// the next flush). For control-tier / latency-sensitive topics. Ignored by
+    /// subscriptions and by backends without a batching concept.
+    pub tx_express: bool,
 }
 
 impl<'a> TopicInfo<'a> {
@@ -46,6 +52,7 @@ impl<'a> TopicInfo<'a> {
             node_name: None,
             namespace: "/",
             rx_buffer_hint: 0,
+            tx_express: false,
         }
     }
 
@@ -60,6 +67,14 @@ impl<'a> TopicInfo<'a> {
     /// buffer to the small or large class.
     pub const fn with_rx_buffer_hint(mut self, hint: usize) -> Self {
         self.rx_buffer_hint = hint;
+        self
+    }
+
+    /// phase-279 (#145) — mark this publisher's samples express: they bypass
+    /// transport tx batching (sent immediately even when `ZPICO_TX_BATCH` is
+    /// on). For control-tier / latency-sensitive topics.
+    pub const fn with_tx_express(mut self, express: bool) -> Self {
+        self.tx_express = express;
         self
     }
 

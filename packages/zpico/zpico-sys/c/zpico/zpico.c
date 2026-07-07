@@ -1215,6 +1215,10 @@ void zpico_close(void) {
 // ============================================================================
 
 int32_t zpico_declare_publisher(const char* keyexpr) {
+    return zpico_declare_publisher_ex(keyexpr, 0);
+}
+
+int32_t zpico_declare_publisher_ex(const char* keyexpr, int32_t is_express) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1237,22 +1241,23 @@ int32_t zpico_declare_publisher(const char* keyexpr) {
         return ZPICO_ERR_KEYEXPR;
     }
 
-#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
-    /* phase-279 (#145) — batching queues puts behind the transport tx mutex; the
-     * default DROP congestion control TRY-locks it and silently discards the put
-     * whenever a flush is mid-send (waiting on the socket) — measured WORSE than
-     * no batching (4.7 vs 8.6 msg/s). BLOCK = append-or-wait: every put lands in
-     * the batch and ships with the next flush. Declare-time option (per-put
-     * options carry no congestion control in zenoh-pico). */
     z_publisher_options_t pub_opts;
     z_publisher_options_default(&pub_opts);
+    /* phase-279 (#145) — express publishers bypass tx batching inside zenoh-pico
+     * (sent immediately, wire EXPRESS flag). Surfaced from TopicInfo::tx_express
+     * through NrosRmwQos; harmless without batching. */
+    pub_opts.is_express = (is_express != 0);
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    /* Batching queues puts behind the transport tx mutex; the default DROP
+     * congestion control TRY-locks it and silently discards the put whenever a
+     * flush is mid-send (waiting on the socket) — measured WORSE than no
+     * batching (4.7 vs 8.6 msg/s). BLOCK = append-or-wait: every put lands in
+     * the batch and ships with the next flush. Declare-time option (per-put
+     * options carry no congestion control in zenoh-pico). */
     pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
+#endif
     int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), &pub_opts);
-#else
-    int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
-                                      z_view_keyexpr_loan(&ke), NULL);
-#endif
     if (pub_ret < 0) {
         printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         return ZPICO_ERR_GENERIC;

@@ -1,8 +1,8 @@
 # Phase 279 — Zephyr tx throughput ceiling: measure, then batch-mode fix
 
-Status: **In progress — 2026-07-07 · W1-W4 done (batch + dedicated flush thread
-landed, 4× @100 ms); residual = W2.c per-publisher express + W3.c streaming
-bench + the fork-surgery lever** ·
+Status: **In progress — 2026-07-07 · W1-W4 + W2.c done (batch + dedicated flush
+thread, 4× @100 ms; per-publisher express escape plumbed end-to-end); residual =
+W3.c streaming bench + the fork-surgery lever for the last 2-4×** ·
 Implements issue #145 · Related [[issue-0139]] (lease-death variant of the same
 zsock serialization).
 
@@ -161,10 +161,15 @@ knob-off + knob-on compile clean; batch-ON native pubsub smoke delivers 7/7.
   via `defines_kv`/`NROS_CMAKE_EXTRA_DEFS`; zephyr Kconfig
   `CONFIG_NROS_ZENOH_TX_BATCH` forwarded in `zephyr/cmake/nros_rmw_zenoh.cmake`
   (mirror of the SOCKET_TIMEOUT forward). Default OFF everywhere.
-- [ ] W2.c Per-publisher express escape: `is_express` on
-  `zpico_declare_publisher` (new arg or options struct), surfaced through
-  `NrosRmwQos` (rx_buffer_hint pattern) up to the Rust/C/C++ publisher QoS so
-  control-tier topics bypass the batch natively.
+- [x] W2.c Per-publisher express escape — LANDED 2026-07-07: `TopicInfo::
+  tx_express` (+ `with_tx_express` builder) → `NrosRmwQos.tx_express` (u8 carved
+  from `_reserved0`, layout-identical ABI) → cffi `create_publisher` fill + the
+  rust-adapter TopicInfo rebuild → `zpico_declare_publisher_ex(keyexpr,
+  is_express)` (old fn = `_ex(key, 0)`) → `z_publisher_options_t.is_express`.
+  Express puts bypass batching inside zenoh-pico (wire EXPRESS flag; harmless
+  without batching). Follows the Phase 231 rx_buffer_hint pattern exactly.
+  Remaining surface: expose on the nros-node publication builder / C-C++ QoS
+  structs when a consumer needs it (TopicInfo is the RMW-level contract).
 - [x] W2.d (code) Service/query latency guard — gets + replies `is_express` under the knob; the batch=ON service e2e assertion moves to W3.c. Original item:: queryable replies + `z_get` requests
   send express (or flush-after) so service RTT gains no spin-period latency
   when batching is on. Add/extend a service e2e assertion under batch=ON.

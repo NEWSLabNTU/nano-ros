@@ -159,6 +159,7 @@ unsafe extern "C" {
 
     // Publishers
     pub fn zpico_declare_publisher(keyexpr: *const core::ffi::c_char) -> i32;
+    pub fn zpico_declare_publisher_ex(keyexpr: *const core::ffi::c_char, is_express: i32) -> i32;
     pub fn zpico_publish(handle: i32, data: *const u8, len: usize) -> i32;
     /// Phase 124.E.3 — streamed publish via zenoh-pico's
     /// `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with

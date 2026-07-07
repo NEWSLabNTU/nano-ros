@@ -38,7 +38,7 @@ pub use zpico_sys::{
 
 // Import FFI functions from sys crate
 use zpico_sys::{
-    zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
+    zpico_close, zpico_declare_liveliness, zpico_declare_publisher_ex, zpico_declare_queryable,
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
@@ -418,8 +418,10 @@ impl Context {
     ///
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
-    pub fn declare_publisher(&self, keyexpr: &[u8]) -> Result<Publisher<'_>> {
-        let handle = ffi_guard(|| unsafe { zpico_declare_publisher(keyexpr.as_ptr().cast()) });
+    pub fn declare_publisher(&self, keyexpr: &[u8], tx_express: bool) -> Result<Publisher<'_>> {
+        let handle = ffi_guard(|| unsafe {
+            zpico_declare_publisher_ex(keyexpr.as_ptr().cast(), tx_express as i32)
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }

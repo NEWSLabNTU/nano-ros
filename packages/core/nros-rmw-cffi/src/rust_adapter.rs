@@ -446,6 +446,8 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
         // Phase 231 (RFC-0038): the rx_buffer_hint does not yet traverse the
         // CFFI create_subscriber surface; 0 = unset until that ABI plumbing lands.
         rx_buffer_hint: 0,
+        // phase-279 (#145) — express hint from the C ABI qos byte.
+        tx_express: unsafe { (*qos).tx_express } != 0,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
@@ -515,6 +517,8 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
         // Phase 231 (RFC-0038) — recover the receive-buffer size hint the
         // executor stashed in the qos struct, so the backend can size-class.
         rx_buffer_hint: unsafe { (*qos).rx_buffer_hint } as usize,
+        // Subscription side — express is a publisher-only hint.
+        tx_express: false,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscriber(s, &topic, qos_settings) {

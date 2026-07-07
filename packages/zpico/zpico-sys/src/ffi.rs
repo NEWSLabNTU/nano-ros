@@ -287,6 +287,13 @@ mod cbindgen_stubs {
         0
     }
 
+    /// Declare a publisher with options (stub). `_is_express` mirrors the real
+    /// shim's phase-279 express hint.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_declare_publisher_ex(_keyexpr: *const c_char, _is_express: i32) -> i32 {
+        0
+    }
+
     /// Publish data using publisher handle.
     ///
     /// # Parameters

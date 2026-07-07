@@ -345,6 +345,12 @@ void zpico_set_task_config(uint32_t _read_priority,
 int32_t zpico_declare_publisher(const char *_keyexpr);
 
 /**
+ * Declare a publisher with options (stub). `_is_express` mirrors the real
+ * shim's phase-279 express hint.
+ */
+int32_t zpico_declare_publisher_ex(const char *_keyexpr, int32_t _is_express);
+
+/**
  * Publish data using publisher handle.
  *
  * # Parameters
