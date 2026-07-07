@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-281 W2 (ws-realtime-c-mps2) — 2-node, 2-tier C entry on FreeRTOS/mps2.
+     CRITICAL (#144 lesson): the FreeRTOS entry codegen resolves its node list
+     from THIS launch xml, NOT from system.toml alone — it MUST list BOTH
+     ctrl_node and telem_node or the entry silently prunes a tier. Node `name`s
+     must match system.toml [[component]].name (RFC-0032 §7 instance identity). -->
+<launch>
+    <node pkg="ctrl_pkg" exec="ctrl" name="ctrl_node"/>
+    <node pkg="telem_pkg" exec="telem" name="telem_node"/>
+</launch>

@@ -1027,6 +1027,28 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
 # fixture builds release for the same reason.
 
+# phase-281 W2 (RFC-0015 Model 1 embedded) — 2-tier C realtime workspace on
+# FreeRTOS/mps2-an385 (QEMU), the C sibling of workspace-cpp-freertos-realtime.
+# The codegen routes embedded-C through the C++ emitter, so the same
+# board_is_freertos_embedded gate emits per-tier setup fns + NativeTierSpec array +
+# nros_app_main calling FreertosBoard::run_tiers → nros_board_freertos_run_tiers
+# (the shared C glue), driving C *nodes*: ctrl (high tier, prio=5, 10 ms) + telem
+# (low tier, prio=2, 100 ms). This closes the C × freertos matrix cell.
+# Consumed by tests/realtime_tiers_c_freertos_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-c-freertos-realtime"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-c-mps2"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-freertos"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17871", CMAKE_BUILD_TYPE = "Release" }
+# CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
+# too slow to finish the session handshake in the e2e budget; the C++ tiers
+# fixture builds release for the same reason.
+
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board

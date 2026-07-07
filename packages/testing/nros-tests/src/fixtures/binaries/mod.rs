@@ -306,6 +306,10 @@ static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// (`ws-realtime-cpp-mps2`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-281 W2 — cached path to the 2-tier C realtime FreeRTOS entry
+/// (`ws-realtime-c-mps2`), run by `realtime_tiers_c_freertos_e2e.rs`.
+static FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-263 C2c — cached path to the MIXED (C + C++ + Rust) threadx-linux embedded entry.
 static THREADX_LINUX_WORKSPACE_MIXED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1693,6 +1697,24 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-realtime",
                 "ws-realtime-cpp-mps2",
+                "build-workspace-fixtures-freertos",
+                "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-281 W2 — the 2-tier **C** realtime FreeRTOS/mps2 entry
+/// (`ws-realtime-c-mps2`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
+/// over one shared session via `FreertosBoard::run_tiers` → the shared C
+/// `nros_board_freertos_run_tiers` glue (RFC-0015 Model 1). Proves that shared
+/// C run_tiers impl drives a C *node*, not only a C++ one.
+pub fn build_freertos_workspace_c_realtime_entry() -> TestResult<&'static Path> {
+    FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-freertos-realtime",
+                "ws-realtime-c-mps2",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )

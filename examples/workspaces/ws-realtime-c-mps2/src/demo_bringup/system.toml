@@ -1,0 +1,46 @@
+[system]
+name = "realtime_c_mps2_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-281 W2 (RFC-0015 Model 1 embedded) — 2-tier C realtime demo on
+# FreeRTOS/mps2-an385 (QEMU). The C sibling of ws-realtime-cpp-mps2. Two callback
+# groups (ctrl / telem) on separate RTOS tasks over ONE shared session.
+# system.toml [tiers.*.freertos] carries the raw FreeRTOS numeric priority (0–7 for
+# configMAX_PRIORITIES=8 on MPS2). Both [posix] and [freertos] entries allow the
+# same bringup to deploy to native or embedded FreeRTOS by changing the BOARD cmake
+# variable.
+#
+# CALLBACK_GROUPS in each node's cmake declares the group IDs; group_tiers here
+# assigns them to the named tiers. The FreeRTOS embedded gate emits
+# FreertosBoard::run_tiers → nros_board_freertos_run_tiers (the shared C glue),
+# spawning one RTOS task per tier.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+group_tiers = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tiers = { telem = "low" }
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+[tiers.high.freertos]
+priority = 5
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+[tiers.low.freertos]
+priority = 2
+
+[deploy.freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"
