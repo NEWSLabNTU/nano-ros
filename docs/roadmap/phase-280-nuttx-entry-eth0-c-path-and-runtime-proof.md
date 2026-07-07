@@ -129,12 +129,39 @@ un-overridden C entry connects.
 
 ## Blockers encountered (2026-07-06)
 
-1. **Runtime e2e is environment-gated.** The networked cross-process e2e (W3
-   `rust_nuttx_entry_e2e`, W4 `c_nuttx_entry_e2e`) cannot run in this workspace:
-   any command that binds a host `zenohd` port or boots QEMU with slirp
-   networking is killed (exit 144). Bare no-net QEMU works, and both entry ELFs
-   build, so the CODE is compile-verified on ARM; only the networked RUN is
-   blocked. Re-run on a host/CI lane that permits QEMU slirp + a host router.
+1. **Runtime e2e is environment-gated — a sandbox guard on `zenohd`'s listening
+   socket, NOT a defect.** The networked cross-process e2e (W3
+   `rust_nuttx_entry_e2e`, W4 `c_nuttx_entry_e2e`) cannot run in the agent's
+   sandboxed shell because the `ZenohRouter` fixture's `zenohd --listen …` spawn
+   is killed with exit 144 (signal 16 / SIGSTKFLT) and the whole command's
+   filesystem effects are discarded. Diagnosed by elimination (all with the
+   sandbox flag OFF):
+
+   | Process | Exit | |
+   |---|---|---|
+   | `zenohd --version` (no net) | 0 | runs — binary is fine |
+   | `echo "zenohd --listen tcp/…"` (string) | 0 | not static matching |
+   | python `http.server` TCP listen on 127.0.0.1 | 124 | plain TCP-listen OK |
+   | QEMU + slirp networking | 124 | networking OK (slirp is fine) |
+   | native nros listener (zenoh **client**, dials out) | 134 | zenoh client stack OK |
+   | `zenohd --listen` (multicast+gossip off, loopback) | **144** | killed + discarded |
+
+   So it is **not** the binary, string matching, scouting/gossip/multicast, plain
+   TCP-loopback listen, networking in general, or the zenoh stack per se — it
+   fires **specifically when zenohd opens its LISTENING socket** (something zenoh's
+   TCP listener does beyond a plain `bind()/listen()` — likely `SO_REUSEPORT`, a
+   dual-stack `[::]` bind, or a second bound socket the sandbox's network policy
+   forbids). The exact syscall can't be captured: every zenohd-listen command is
+   rolled back wholesale (even a pre-spawn `touch … ; sync` to the persistent
+   scratchpad vanishes), so no strace/core/log survives the 144. `dangerously-
+   DisableSandbox` does not lift it — the guard sits below that flag.
+   `nros setup` re-provisions the same (killed) binary and cannot help.
+
+   Both entry ELFs build and are ARM-compile-verified; only the networked RUN is
+   blocked. Re-run where zenohd may bind a server socket (a normal dev shell /
+   the CI nuttx lane):
+   `cargo nextest run -p nros-tests --test rust_nuttx_entry_e2e` and
+   `--test c_nuttx_entry_e2e`.
 2. **~~Pre-existing schema break~~ → stale installed `nros` (RESOLVED, not a
    repo bug).** `just nuttx build-examples` failed at `nros ws sync` on the rust
    workspace: `unknown field 'max_callbacks', expected 'deploy'` in
