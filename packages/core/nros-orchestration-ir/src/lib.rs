@@ -239,6 +239,28 @@ impl ResolvedTierTable {
     pub fn is_single_tier(&self) -> bool {
         self.tiers.len() == 1 && self.tiers[0].name == DEFAULT_TIER
     }
+
+    /// True when at least one node has callback groups on MORE THAN ONE tier
+    /// (the RFC-0047 sub-node capability: `group_tiers = { ctrl = "high",
+    /// telem = "low" }`). Such a node cannot be expressed by the run_tiers
+    /// shape (per-tier executors construct whole nodes), so entry codegen must
+    /// keep the single-executor sched-context path (`bind_group_sched`) for
+    /// the plan.
+    pub fn has_group_split_node(&self) -> bool {
+        let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+        for (ti, tier) in self.tiers.iter().enumerate() {
+            for (node, _group) in &tier.members {
+                match seen.get(node.as_str()) {
+                    Some(&first_ti) if first_ti != ti => return true,
+                    Some(_) => {}
+                    None => {
+                        seen.insert(node.as_str(), ti);
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
