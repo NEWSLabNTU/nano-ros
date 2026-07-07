@@ -1,8 +1,9 @@
 # Phase 279 — Zephyr tx throughput ceiling: measure, then batch-mode fix
 
-Status: **In progress — 2026-07-07 · W1-W4 + W2.c done (batch + dedicated flush
-thread, 4× @100 ms; per-publisher express escape plumbed end-to-end); residual =
-W3.c streaming bench + the fork-surgery lever for the last 2-4×** ·
+Status: **Done — 2026-07-07 · W1-W4 + W2.c + W3.c(native) landed (batch +
+dedicated flush thread, 4× @100 ms; express escape plumbed; native streaming
+4.3× tx-side). Residual levers continue in
+[phase-282](phase-282-zenoh-tx-path-optimization-unified.md)** ·
 Implements issue #145 · Related [[issue-0139]] (lease-death variant of the same
 zsock serialization).
 

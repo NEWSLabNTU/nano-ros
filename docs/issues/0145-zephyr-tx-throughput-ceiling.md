@@ -4,7 +4,7 @@ title: "Zephyr tx throughput hard-capped at ~1 send per socket recv window — K
 status: open
 type: tech-debt
 area: zephyr
-related: [phase-276, phase-279, issue-0139]
+related: [phase-276, phase-279, phase-282, issue-0139]
 ---
 
 > **Mitigated — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**
@@ -19,6 +19,10 @@ related: [phase-276, phase-279, issue-0139]
 > that mutex across the entire socket write. Remaining levers: fork surgery
 > (release the tx mutex during the link write via a wbuf swap + link-write
 > mutex), a second tx link, or the upstream zsock fd-lock release.
+> **The residual work is planned in
+> [phase-282](../roadmap/phase-282-zenoh-tx-path-optimization-unified.md)** —
+> fork split-lock (W1), Zephyr streaming bench (W2), language-uniform
+> `tx_express` QoS surface (W3), knob completeness + tuning docs (W4).
 
 ## Summary
 
