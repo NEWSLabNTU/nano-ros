@@ -1,10 +1,10 @@
 ---
 id: 145
 title: "Zephyr tx throughput hard-capped at ~1 send per socket recv window — Kconfig timeout is a band-aid, not a fix"
-status: open
+status: resolved
 type: tech-debt
 area: zephyr
-related: [phase-276, phase-279, phase-282, issue-0139]
+related: [phase-276, phase-279, phase-282, issue-0139, issue-0148]
 ---
 
 > **Mitigated — [phase-279](../roadmap/archived/phase-279-zephyr-tx-throughput-ceiling.md)**
@@ -19,10 +19,24 @@ related: [phase-276, phase-279, phase-282, issue-0139]
 > that mutex across the entire socket write. Remaining levers: fork surgery
 > (release the tx mutex during the link write via a wbuf swap + link-write
 > mutex), a second tx link, or the upstream zsock fd-lock release.
-> **The residual work is planned in
-> [phase-282](../roadmap/phase-282-zenoh-tx-path-optimization-unified.md)** —
-> fork split-lock (W1), Zephyr streaming bench (W2), language-uniform
-> `tx_express` QoS surface (W3), knob completeness + tuning docs (W4).
+> **RESOLVED — [phase-282](../roadmap/phase-282-zenoh-tx-path-optimization-unified.md)
+> (W1-W4, 2026-07-08).** Fork split-lock + overflow steal
+> (`Z_FEATURE_TX_SPLIT_LOCK`, zenoh-pico fork ef065b9c): the flush STEALS the
+> batch (wbuf swap) and writes the socket under a separate link mutex; an
+> overflow PARKS the batch instead of blocking the publisher. Zephyr
+> streaming measured **off 8.9 → batch ~136 → batch+split ~181 msg/s (20×)**
+> with a tight-loop publisher completing 5000/5000 valid; tiers 43.2 total
+> (5× baseline, telem ≈ ideal). Per-publisher `tx_express` QoS escape is
+> uniform across Rust/C/C++; tuning decision tree in the book
+> (user-guide/tx-tuning.md). Exit criteria met: streaming target far
+> exceeded; the tier-target miss is EXPLAINED and re-scoped — the 100 Hz
+> tier caps at ~40/s in every tx configuration, i.e. the residual is
+> GENERATION-side (executor timer / native_sim scheduling), a different
+> mechanism than this issue's zsock serialization → successor issue
+> [[0148]]. Knobs stay default-OFF pending the promotion decision
+> (options table in the phase doc §Promotion options); parked levers
+> (second tx link, upstream zsock fd-lock release, hardware numbers) stay
+> parked unless hardware demands them.
 
 ## Summary
 
