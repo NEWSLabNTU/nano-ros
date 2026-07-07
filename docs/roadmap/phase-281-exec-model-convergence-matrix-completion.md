@@ -1,7 +1,11 @@
 # Phase 281 — Complete the Model-1 execution-model convergence (all language × platform)
 
-Status: **W3 complete (2026-07-07)** — W1 ✓, W2 ✓, W3 ✓ (Zephyr C/C++ tiers proven on
-native_sim), W5 ✓ landed; only the nuttx cells remain (W4), gated on phase-280 ·
+Status: **COMPLETE — all 12 cells proven (2026-07-08)** — W1 ✓, W2 ✓, W3 ✓
+(Zephyr C/C++ tiers on native_sim), W4 ✓ (nuttx C/C++/Rust tiers on QEMU arm-virt
+— rust×nuttx closed here via `<QemuArmVirt>::run_tiers`), W5 ✓ · the DEFERRED set
+is empty. (Sandbox caveat: the nuttx e2e stamps intermittently 144s on the
+`zenohd --listen` sandbox guard — proven manually, ELF-boot + backgrounded
+router + int32-sinks, like the C/C++ nuttx cells.) ·
 Implements the RFC-0015 Model 1 convergence to
 its full lang×platform matrix · Finishes what phases 272–274 started · Cross-links
 issues #128 (Zephyr macro parity lineage) and #130 (nuttx runtime, owned by
@@ -24,9 +28,12 @@ proven by the named end-to-end test.
 
 | lang \ platform | native | freertos | zephyr | nuttx |
 | --- | --- | --- | --- | --- |
-| **Rust** | ✓ `realtime_tiers_e2e` | ✓ `orchestration_tiers_freertos` (both tests green after W1) | ✓ `realtime_tiers_zephyr_entry` | gated → phase-280 |
-| **C++**  | ✓ `realtime_tiers_cpp` (+rclcpp, +subnode) | ✓ `realtime_tiers_cpp_freertos` (3-tier, #144) | ✓ `realtime_tiers_cpp_zephyr_e2e` (W3b) | gated → phase-280 |
-| **C**    | ✓ `realtime_tiers_c_e2e` | ✓ `realtime_tiers_c_freertos_e2e` (W2, landed) | ✓ `realtime_tiers_c_zephyr_e2e` (W3c) | gated → phase-280 |
+| **Rust** | ✓ `realtime_tiers_e2e` | ✓ `orchestration_tiers_freertos` (both tests green after W1) | ✓ `realtime_tiers_zephyr_entry` | ✓ `realtime_tiers_rust_nuttx_e2e` (W3-nuttx) |
+| **C++**  | ✓ `realtime_tiers_cpp` (+rclcpp, +subnode) | ✓ `realtime_tiers_cpp_freertos` (3-tier, #144) | ✓ `realtime_tiers_cpp_zephyr_e2e` (W3b) | ✓ `realtime_tiers_cpp_nuttx_e2e` (W3-nuttx) |
+| **C**    | ✓ `realtime_tiers_c_e2e` | ✓ `realtime_tiers_c_freertos_e2e` (W2, landed) | ✓ `realtime_tiers_c_zephyr_e2e` (W3c) | ✓ `realtime_tiers_c_nuttx_e2e` (W3-nuttx) |
+
+**All 12 lang×platform Model-1 cells are proven** — the `exec_model_matrix.rs`
+`DEFERRED` set is now **empty**.
 
 Legend: ✓ proven e2e · GAP = no tier path/example/test built · gated = model runs,
 runtime plumbing open (tracked elsewhere).
@@ -101,9 +108,17 @@ delivery assertable within budget.
   cells remain (W4, gated on phase-280).
 
 ### W4 — nuttx cells (dependency, not duplication)
-- [ ] W4.a Track phase-280 (nuttx entry eth0 + runtime proof). When it lands, add the
-  nuttx tier cells (Rust + C) to the matrix gate. This phase does NOT re-implement the
-  eth0 plumbing.
+- [x] W4.a Track phase-280 (nuttx entry eth0 + runtime proof). Landed: the C/C++
+  nuttx tier cells (`NuttxBoard::run_tiers` seam) + the **Rust** nuttx cell close
+  the matrix. The Rust path adds a `run_tiers` to `nros-board-nuttx` (a
+  `std::thread` per tier over one shared session — NuttX ships `std` and its
+  zenoh-pico build sets `Z_FEATURE_MULTI_THREAD = 1`, so it mirrors the native
+  posix path rather than the Zephyr k_thread shim) and `<QemuArmVirt>::run_tiers`,
+  which the macro's generic OwnedSpin multi-tier arm already targets — no macro
+  change was needed (NuttX rides `Framework::OwnedSpin`). Example:
+  `ws-realtime-rust/src/nuttx_entry` + `[tiers.*.nuttx]`; e2e:
+  `realtime_tiers_rust_nuttx_e2e`. This phase did NOT re-implement the eth0
+  plumbing — it reuses `entry_net_init` (#130).
 
 ### W5 — Matrix gate (no silent caps)
 - [x] W5.a A test or check that enumerates the lang×platform tier matrix and asserts each

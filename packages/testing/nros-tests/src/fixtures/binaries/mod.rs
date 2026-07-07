@@ -303,6 +303,9 @@ static NUTTX_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::
 /// phase-281 W3-nuttx — cached path to the 2-tier C realtime NuttX entry
 /// (`ws-realtime-c` nuttx_entry), run by `realtime_tiers_c_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-281 W3-nuttx — cached path to the 2-tier **Rust** realtime NuttX entry
+/// (`ws-realtime-rust` nuttx_entry), run by `realtime_tiers_rust_nuttx_e2e.rs`.
+static NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached paths to the C++ embedded workspace entries (threadx-linux host
 /// sim + FreeRTOS QEMU), the C++ siblings of the C2a/C2b C entries.
@@ -1705,6 +1708,33 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
                 "ws-realtime-c",
                 "build-workspace-fixtures-nuttx",
                 "nuttx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-281 W3-nuttx — the 2-tier **Rust** realtime NuttX (QEMU arm-virt) entry
+/// (`ws-realtime-rust/src/nuttx_entry`): ctrl (high tier, 10 ms) + telem (low
+/// tier, 100 ms) Rust nodes over ONE shared session via `<QemuArmVirt>::run_tiers`
+/// (RFC-0015 Model 1, one `std::thread` per tier — NuttX is `std` + zenoh-pico
+/// `Z_FEATURE_MULTI_THREAD = 1`). Closes the LAST cell (rust×nuttx) of the
+/// convergence matrix. Unlike the C/C++ nuttx entries (kernel-linked via CMake),
+/// this is a pure-cargo cross build (`--target armv7a-nuttx-eabihf`, build-std),
+/// so it resolves the prebuilt binary directly from the row's `target_dir`
+/// (`target-fixtures/nuttx/armv7a-nuttx-eabihf/release/nuttx_entry`) at the
+/// `release` profile — the 177.8.c CGU-miscompile dodge the NuttX cargo lane forces.
+/// Built by `just nuttx build-examples` (→ `workspace-fixtures-build.sh nuttx rust`).
+pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
+    NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            let fixture_id = "workspace-rust-nuttx-realtime";
+            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let target_dir = example_dir.join("target-fixtures/nuttx");
+            let binary_path = target_dir.join("armv7a-nuttx-eabihf/release/nuttx_entry");
+            require_prebuilt_workspace_binary(
+                fixture_id,
+                &binary_path,
+                &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
             )
         })
         .map(|p| p.as_path())
