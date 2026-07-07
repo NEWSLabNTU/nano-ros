@@ -1,7 +1,8 @@
 # Phase 281 — Complete the Model-1 execution-model convergence (all language × platform)
 
-Status: **In progress (2026-07-07)** — W1 ✓, W2 ✓, W5 ✓ landed; W3 (Zephyr C/C++
-seam) remaining · Implements the RFC-0015 Model 1 convergence to
+Status: **W3 complete (2026-07-07)** — W1 ✓, W2 ✓, W3 ✓ (Zephyr C/C++ tiers proven on
+native_sim), W5 ✓ landed; only the nuttx cells remain (W4), gated on phase-280 ·
+Implements the RFC-0015 Model 1 convergence to
 its full lang×platform matrix · Finishes what phases 272–274 started · Cross-links
 issues #128 (Zephyr macro parity lineage) and #130 (nuttx runtime, owned by
 phase-280) · Informs phase-263 (broad feature-workspace completion) and phase-275
@@ -24,8 +25,8 @@ proven by the named end-to-end test.
 | lang \ platform | native | freertos | zephyr | nuttx |
 | --- | --- | --- | --- | --- |
 | **Rust** | ✓ `realtime_tiers_e2e` | ✓ `orchestration_tiers_freertos` (both tests green after W1) | ✓ `realtime_tiers_zephyr_entry` | gated → phase-280 |
-| **C++**  | ✓ `realtime_tiers_cpp` (+rclcpp, +subnode) | ✓ `realtime_tiers_cpp_freertos` (3-tier, #144) | **GAP — W3** | **GAP — W3** |
-| **C**    | ✓ `realtime_tiers_c_e2e` | ✓ `realtime_tiers_c_freertos_e2e` (W2, landed) | **GAP — W3** | gated → phase-280 |
+| **C++**  | ✓ `realtime_tiers_cpp` (+rclcpp, +subnode) | ✓ `realtime_tiers_cpp_freertos` (3-tier, #144) | ✓ `realtime_tiers_cpp_zephyr_e2e` (W3b) | gated → phase-280 |
+| **C**    | ✓ `realtime_tiers_c_e2e` | ✓ `realtime_tiers_c_freertos_e2e` (W2, landed) | ✓ `realtime_tiers_c_zephyr_e2e` (W3c) | gated → phase-280 |
 
 Legend: ✓ proven e2e · GAP = no tier path/example/test built · gated = model runs,
 runtime plumbing open (tracked elsewhere).
@@ -83,14 +84,21 @@ delivery assertable within budget.
   shared `nros_board_freertos_run_tiers` C impl drives a C *node*, not only a C++ one.
 
 ### W3 — Zephyr C/C++ tiers (close C×zephyr + C++×zephyr)
-- [ ] W3.a Macro/codegen parity: the Zephyr C/C++ entry emit currently wires only
+- [x] W3.a Macro/codegen parity: the Zephyr C/C++ entry emit currently wires only
   register+spin (the #128 lineage — the Rust Zephyr arm has the tier path, C/C++ do not).
   Extend the Zephyr C/C++ entry codegen to emit the `run_tiers` shape (needs a
   `ZephyrBoard` C/C++ `run_tiers` seam, mirroring the FreeRTOS C `nros_board_freertos_run_tiers`).
-- [ ] W3.b Add a Zephyr C and a Zephyr C++ realtime-tiers example (extend `examples/zephyr/
-  {c,cpp}` or a `ws-realtime-{c,cpp}-zephyr` workspace).
-- [ ] W3.c Fixture + e2e (FVP/native_sim harness the existing zephyr rust tiers test uses)
-  asserting per-tier delivery for the C and C++ Zephyr paths.
+  Landed as the W3a `ZephyrBoard::run_tiers` seam + codegen (commit e65bc58bb).
+- [x] W3.b Add a Zephyr C++ realtime-tiers example
+  (`examples/workspaces/ws-realtime-cpp/src/zephyr_entry`) + `realtime_tiers_cpp_zephyr_e2e`
+  (native_sim, both tiers deliver). First full west link + runtime proof of the W3a seam
+  (cpp/zephyr COVERED).
+- [x] W3.c Add the Zephyr C sibling
+  (`examples/workspaces/ws-realtime-c/src/zephyr_entry`, `[tiers.*.zephyr]` priorities +
+  `[deploy.zephyr]`, `wscrt_*` west lane, `build_zephyr_workspace_c_realtime_entry()`) +
+  `realtime_tiers_c_zephyr_e2e` (native_sim, both tiers deliver). Closes c/zephyr — the
+  ZephyrBoard::run_tiers seam is now proven for a C node too. W3 complete; only the nuttx
+  cells remain (W4, gated on phase-280).
 
 ### W4 — nuttx cells (dependency, not duplication)
 - [ ] W4.a Track phase-280 (nuttx entry eth0 + runtime proof). When it lands, add the

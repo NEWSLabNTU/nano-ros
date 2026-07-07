@@ -1,0 +1,18 @@
+# phase-281 W3c — nano-ros RT-tiers C workspace Entry as a Zephyr sample
+# (Twister-discoverable). Boots the ctrl (10 ms, high tier) + telem (100 ms, low
+# tier) pair via ZephyrBoard::run_tiers (the W3a run_tiers seam for a C node).
+sample:
+  name: nano-ros C RT-Tiers Workspace Entry
+  description: nano-ros RT-tiers (run_tiers) C workspace Entry on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+tests:
+  sample.nano-ros.c.ws-realtime-entry.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64

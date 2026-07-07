@@ -37,19 +37,13 @@ const COVERED: &[(&str, &str, &str)] = &[
     ("cpp", "native", "realtime_tiers_cpp_e2e"),
     ("cpp", "freertos", "realtime_tiers_cpp_freertos_e2e"),
     ("cpp", "zephyr", "realtime_tiers_cpp_zephyr_e2e"),
+    ("c", "zephyr", "realtime_tiers_c_zephyr_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.
 /// A deferred cell must NOT also be COVERED (checked below).
 const DEFERRED: &[(&str, &str, &str)] = &[
     // (lang, platform, reason)
-    (
-        "c",
-        "zephyr",
-        "phase-281 W3c — Zephyr C-node run_tiers example + e2e not built yet; the \
-         ZephyrBoard::run_tiers seam is proven for a C++ node (W3b, cpp/zephyr COVERED), \
-         a C-node ws-realtime-c-zephyr example/e2e closes this cell",
-    ),
     (
         "rust",
         "nuttx",
