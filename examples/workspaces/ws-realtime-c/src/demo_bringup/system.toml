@@ -32,6 +32,11 @@ priority = 80
 # ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
 [tiers.high.zephyr]
 priority = 5
+# phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
+# priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
+# C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+[tiers.high.nuttx]
+priority = 110
 
 [tiers.low]
 spin_period_us = 100000
@@ -39,6 +44,8 @@ spin_period_us = 100000
 priority = 10
 [tiers.low.zephyr]
 priority = 10
+[tiers.low.nuttx]
+priority = 100
 
 [deploy.native]
 kind = "self"
@@ -50,3 +57,10 @@ target = "x86_64-unknown-linux-gnu"
 [deploy.zephyr]
 kind = "embedded"
 board = "native_sim/native/64"
+
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
+# `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
+# or embedded NuttX by changing the BOARD cmake variable.
+[deploy.nuttx]
+kind = "embedded"
+board = "nuttx-qemu-arm"
