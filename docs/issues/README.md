@@ -60,9 +60,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `SIOCSIFADDR` eth0 IP push, so the guest can't reach slirp's 10.0.2.2. Blocks networked
   nuttx-entry e2e; the #127 build-asserts are unaffected. Found by the #127 spike (the control
   fixture fails identically).
-- **#125** — [Rust `nros::main!` multi-tier path does not seed `bind_group_sched` from
-  `group_tiers`](0125-rust-entry-macro-group-seed-bind-group-sched.md): the Rust seed deferred from
-  phase-273 W4 (portability e2e lifted `NodeSpansTiers`).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
