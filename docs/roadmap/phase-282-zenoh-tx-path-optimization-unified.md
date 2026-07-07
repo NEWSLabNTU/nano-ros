@@ -1,6 +1,6 @@
 # Phase 282 — Zenoh tx-path optimization: the remaining levers, unified across platforms and languages
 
-Status: **W1–W4 done — 2026-07-07** (remaining: promotion decision + parked items) · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
+Status: **W1–W4 done — 2026-07-08; #145 RESOLVED** (remaining: promotion decision — options below, deliberately not decided; successor axis = issue 0148) · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
 (measure → batch → flush thread, 4× landed) · Implements the residual of issue
 #145 · Related [[issue-0135]] (shared-generated-config ABI rule), [[issue-0139]].
 
@@ -205,6 +205,26 @@ all three language APIs:
   names in freertos/threadx C++ example CMakeLists — phase-277 W5.B renamed
   the register NAMEs but missed these link lines; never caught because
   incremental fixture builds skip re-configure.
+
+### Promotion options (documented for the maintainer decision — knobs stay default-OFF until decided)
+
+All combinations keep knob-off builds byte-identical to pre-279 behavior;
+"promote" = flip a default in one front-end layer, no mechanism change.
+
+| option | what flips | wins | costs / risks | fit |
+| --- | --- | --- | --- | --- |
+| **A. status quo** (all off, docs only) | nothing | zero risk; tuning page carries the knowledge | every high-rate user must find the page; zephyr demos stay window-bound (~9 msg/s) | conservative default |
+| **B. zephyr-only batch** (`CONFIG_NROS_ZENOH_TX_BATCH` default y) | one Kconfig default | 15× streaming, 4× tiers on the ONLY platform with the per-fd ceiling; other platforms untouched | +≤50 ms publish latency on non-express topics (FLUSH_MS-bounded); flush thread = 1 extra task + stack | targeted; the measured-pain platform |
+| **C. zephyr batch+split** (B + `TX_SPLIT_LOCK` default y) | two Kconfig defaults | 20× streaming AND publisher never blocks on the socket (the only variant where a tight loop completes) | fork-only feature (`Z_FEATURE_TX_SPLIT_LOCK` upstream-divergence grows); spare wbuf doubles tx buffer RAM per session | best perf/latency if fork divergence is acceptable |
+| **D. everywhere-on** (env defaults flip in nros-zpico-build too) | all lanes | uniform behavior story | native/POSIX gain little (no fd ceiling — 4.3× only in tight-loop blasts); latency cost paid platform-wide; ThreadX has no flush thread (spin-driven only) | not recommended — benefit is zephyr-shaped |
+
+Notes for the decision: (1) `tx_express` per-publisher escape is uniform in
+all three languages, so control-tier latency has an out under any option;
+(2) timer-paced LOW-rate systems measurably LOSE under batching (phase-279
+W3 negative result) — options B/C rely on such systems tolerating the
++FLUSH_MS latency or setting express, worth an explicit release-note line;
+(3) RAM: split lock allocates a second wbuf (Z_BATCH_UNICAST_SIZE, zephyr
+default 2 KB) per session.
 
 ### Out of scope (parked unless W1 misses its target)
 
