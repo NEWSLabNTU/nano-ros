@@ -36,50 +36,22 @@ fn firmware() -> nros_tests::TestResult<PathBuf> {
         .join("target/thumbv7m-none-eabi/debug/demo_entry"))
 }
 
-/// Build + resolve the **release** firmware in the already-staged fixture tree.
+/// Resolve the prebuilt **release** firmware ELF from the staged fixture tree.
 ///
 /// The connected run opens a real zenoh-pico session over slirp on the emulated
 /// Cortex-M3; a debug-profile zenoh-pico is far too slow to finish the session
 /// handshake within the test budget (boots to `Network ready.` but never
-/// connects). The build stage produces only the debug ELF, so build release here
-/// in the same staged tree (the firmware C glue env mirrors
-/// `compile-check-fixtures.sh`).
+/// connects). The build stage (`compile-check-fixtures.sh`, the
+/// `orch_tiers_freertos` cross-build with `debug,release` profiles) now emits
+/// BOTH the debug and the release ELF in the same staged tree — mirroring the
+/// C++ `CMAKE_BUILD_TYPE=Release` path — so this just resolves the prebuilt
+/// release binary. No cargo at run time (issue 0034 / 0041, phase-281 W1).
 fn firmware_release() -> nros_tests::TestResult<PathBuf> {
     let stamp = nros_tests::fixtures::require_compile_check("orch_tiers_freertos")?;
-    let staged = stamp.parent().expect("fixture dir").to_path_buf();
-    let root = nros_tests::project_root();
-    let out = Command::new("cargo")
-        .args([
-            "build",
-            "--release",
-            "--target",
-            "thumbv7m-none-eabi",
-            "-p",
-            "demo_entry",
-        ])
-        .current_dir(&staged)
-        .env(
-            "NROS_PLATFORM_FREERTOS_SRC",
-            root.join("packages/core/nros-platform-freertos/src"),
-        )
-        .env(
-            // phase-241 B.2 — canonical platform headers live in nros-platform-api.
-            "NROS_PLATFORM_CFFI_INCLUDE",
-            root.join("packages/core/nros-platform-api/include"),
-        )
-        .output()
-        .map_err(|e| {
-            nros_tests::TestError::BuildFailed(format!("spawn cargo build --release: {e}"))
-        })?;
-    if !out.status.success() {
-        return Err(nros_tests::TestError::BuildFailed(format!(
-            "release cross build failed in {}.\nstdout:\n{}\nstderr:\n{}",
-            staged.display(),
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr),
-        )));
-    }
-    Ok(staged.join("target/thumbv7m-none-eabi/release/demo_entry"))
+    Ok(stamp
+        .parent()
+        .expect("fixture dir")
+        .join("target/thumbv7m-none-eabi/release/demo_entry"))
 }
 
 #[test]

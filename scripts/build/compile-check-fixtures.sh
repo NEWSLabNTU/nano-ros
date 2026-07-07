@@ -212,34 +212,50 @@ build_cmake_fixture() {
     echo "   built $bld"
 }
 
-# Cross-target build fixtures (id : src : subdir : pkg : target). Stage the
-# template, then `cargo build --target <target> -p <pkg>` from <staged>/<subdir>
+# Cross-target build fixtures (id : src : subdir : pkg : target [: profiles]). Stage
+# the template, then `cargo build --target <target> -p <pkg>` from <staged>/<subdir>
 # — for firmware Entry-pkg fixtures whose codegen artifact (run_plan.rs) the test
 # inspects. Gated on the rust target being installed; absent → no stamp → skip.
+# The optional 6th field is a comma-separated profile list (default `debug`): a
+# fixture that names `debug,release` stages ONCE and builds both profiles into the
+# same tree, so a test can boot the -O0 debug ELF (fast link) OR the -O3 release
+# ELF (needed when a -O0 zenoh-pico is too slow to finish a session handshake in
+# budget — phase-281 W1 / the connected orch_tiers_freertos test).
 CROSS_BUILD_FIXTURES=(
     "freertos_firmware:packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos:firmware:firmware:thumbv7m-none-eabi"
     # multi-tier freertos firmware (228.G run_tiers): built from the staged root.
-    "orch_tiers_freertos:packages/testing/nros-tests/fixtures/orchestration_tiers_freertos:.:demo_entry:thumbv7m-none-eabi"
+    # BOTH profiles: the boot test reads target/.../debug/demo_entry; the connected
+    # slirp test reads target/.../release/demo_entry (phase-281 W1 — a debug
+    # zenoh-pico on the emulated M3 starves the handshake past the nextest budget).
+    "orch_tiers_freertos:packages/testing/nros-tests/fixtures/orchestration_tiers_freertos:.:demo_entry:thumbv7m-none-eabi:debug,release"
 )
 
 stage_and_cross_build() {
-    local id="$1" src="$2" subdir="$3" pkg="$4" target="$5"
+    local id="$1" src="$2" subdir="$3" pkg="$4" target="$5" profiles="${6:-debug}"
     local staged="$out_root/$id"
     if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
         echo "cross-build: target $target not installed — skipping $id" >&2
         return 0
     fi
-    echo "== cross-build: $id ($pkg @ $target) =="
+    echo "== cross-build: $id ($pkg @ $target, profiles: $profiles) =="
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
     # firmware fixtures read the freertos platform sources + cffi headers from
-    # the repo via env (the build.rs codegen + cc compile).
-    ( cd "$staged/$subdir" \
-        && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/core/nros-platform-freertos/src" \
-           NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/core/nros-platform-api/include" \
-           cargo build --target "$target" -p "$pkg" )
+    # the repo via env (the build.rs codegen + cc compile). Build every requested
+    # profile into the one staged tree (debug → target/<t>/debug, release →
+    # target/<t>/release).
+    local profile
+    for profile in ${profiles//,/ }; do
+        local profile_flag=()
+        [ "$profile" = "release" ] && profile_flag=(--release)
+        echo "   -- profile: $profile"
+        ( cd "$staged/$subdir" \
+            && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/core/nros-platform-freertos/src" \
+               NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/core/nros-platform-api/include" \
+               cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" )
+    done
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
-    echo "   built $staged/$subdir (target/$target)"
+    echo "   built $staged/$subdir (target/$target; profiles: $profiles)"
 }
 
 for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
@@ -250,8 +266,8 @@ for entry in "${BUILD_FIXTURES[@]}"; do
     stage_and_build "$bf_id" "$bf_src" "${bf_mdir:-.}" "${bf_pkg:-demo_entry}"
 done
 for entry in "${CROSS_BUILD_FIXTURES[@]}"; do
-    IFS=':' read -r cb_id cb_src cb_sub cb_pkg cb_tgt <<< "$entry"
-    stage_and_cross_build "$cb_id" "$cb_src" "$cb_sub" "$cb_pkg" "$cb_tgt"
+    IFS=':' read -r cb_id cb_src cb_sub cb_pkg cb_tgt cb_profiles <<< "$entry"
+    stage_and_cross_build "$cb_id" "$cb_src" "$cb_sub" "$cb_pkg" "$cb_tgt" "${cb_profiles:-debug}"
 done
 # C++ syntax-only compile-checks (id : snippet.cpp under
 # packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
