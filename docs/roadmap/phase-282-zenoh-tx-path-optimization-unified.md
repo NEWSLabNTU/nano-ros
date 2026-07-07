@@ -1,6 +1,6 @@
 # Phase 282 — Zenoh tx-path optimization: the remaining levers, unified across platforms and languages
 
-Status: **Planned — 2026-07-07** · Continues [phase-279](phase-279-zephyr-tx-throughput-ceiling.md)
+Status: **Planned — 2026-07-07** · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
 (measure → batch → flush thread, 4× landed) · Implements the residual of issue
 #145 · Related [[issue-0135]] (shared-generated-config ABI rule), [[issue-0139]].
 

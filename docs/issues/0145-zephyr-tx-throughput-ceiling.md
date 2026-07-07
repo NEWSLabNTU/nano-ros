@@ -7,7 +7,7 @@ area: zephyr
 related: [phase-276, phase-279, phase-282, issue-0139]
 ---
 
-> **Mitigated — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**
+> **Mitigated — [phase-279](../roadmap/archived/phase-279-zephyr-tx-throughput-ceiling.md)**
 > (W1-W4). Opt-in `ZPICO_TX_BATCH` (env / Kconfig `CONFIG_NROS_ZENOH_TX_BATCH=y`)
 > = tx batching + a dedicated flush thread (multi-threaded platforms except
 > ThreadX; cadence `ZPICO_TX_BATCH_FLUSH_MS`, default 50 ms): **4× total
