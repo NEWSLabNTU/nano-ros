@@ -76,6 +76,15 @@ impl Language {
         }
     }
 
+    /// Substring proving the TALKER started and is publishing. Phase-277
+    /// W5.C1 slimmed `native/c/talker` to match the official ROS 2 demo,
+    /// which dropped the `"Support initialized"` print — the publish line
+    /// (identical wording in both languages, demo parity) is the reliable
+    /// started-marker for talkers; it also proves the timer fired.
+    fn talker_ready_marker(&self) -> &'static str {
+        "Publishing: '"
+    }
+
     fn talker_binary(&self) -> PathBuf {
         match self {
             Language::C => build_c_talker(),
@@ -195,12 +204,12 @@ fn test_native_talker_starts(
     // a fixed sleep. `wait_for_output_pattern` times out at 10s but
     // normally returns in <1s once `nros::init` completes.
     let output = talker
-        .wait_for_output_pattern(lang.init_marker(), Duration::from_secs(30))
+        .wait_for_output_pattern(lang.talker_ready_marker(), Duration::from_secs(30))
         .unwrap_or_default();
 
     eprintln!("{} talker output:\n{}", lang.label(), output);
     assert!(
-        output.contains(lang.init_marker()),
+        output.contains(lang.talker_ready_marker()),
         "{} talker failed to initialize.\nOutput:\n{}",
         lang.label(),
         output

@@ -60,14 +60,17 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     let mut talker =
         ManagedProcess::spawn_command(cmd, "c-xrce-talker").expect("Failed to start c-xrce-talker");
 
+    // Phase-277 W5.C1 slimmed native/c/talker to the official-demo shape,
+    // which dropped the "Support initialized" print — the publish line is
+    // the talker's started-marker now (also proves the timer fired).
     let output = talker
-        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .wait_for_output_count("Publishing: '", 1, Duration::from_secs(5))
         .expect("C XRCE talker did not initialize");
 
     eprintln!("C XRCE talker output:\n{}", output);
 
     assert!(
-        output.contains("Support initialized"),
+        output.contains("Publishing: '"),
         "C XRCE talker failed to initialize.\nOutput:\n{}",
         output
     );
