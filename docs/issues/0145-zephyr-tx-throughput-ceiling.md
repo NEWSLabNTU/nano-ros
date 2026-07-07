@@ -7,18 +7,18 @@ area: zephyr
 related: [phase-276, phase-279, issue-0139]
 ---
 
-> **In progress — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**.
-> W1 measured the ceiling (native_sim @100 ms: both a 100 Hz and a 10 Hz tier
-> converge to ~4.3 msg/s each, 8.6 total; 39 at 5 ms). W2 landed uniform opt-in
-> tx batching in the shared zpico shim (`ZPICO_TX_BATCH`, default OFF, flush
-> rate-limited by `ZPICO_TX_BATCH_FLUSH_MS`). W3 measured it honestly: batching
-> is ≈ baseline for timer-paced tiers (9.2 vs 8.6; eager flushing WORSE at 4.7)
-> because zenoh-pico's flush holds the tx mutex across the fd wait, the flush
-> stalls the tier thread that generates the puts, and 10-100 ms timers give ≤1
-> put per interval to coalesce. **Issue stays open** — remaining levers:
-> dedicated tx-flush thread (cheapest, composes with the batch plumbing),
-> second tx link, upstream zsock fd-lock release. Batching may still pay for
-> high-rate tight-loop streaming (unmeasured).
+> **Mitigated — [phase-279](../roadmap/phase-279-zephyr-tx-throughput-ceiling.md)**
+> (W1-W4). Opt-in `ZPICO_TX_BATCH` (env / Kconfig `CONFIG_NROS_ZENOH_TX_BATCH=y`)
+> = tx batching + a dedicated flush thread (multi-threaded platforms except
+> ThreadX; cadence `ZPICO_TX_BATCH_FLUSH_MS`, default 50 ms): **4× total
+> throughput at the 100 ms default (34.1 vs 8.6 msg/s), 1.35× at 5 ms (52.5 vs
+> 39), 10 Hz tier ≈ ideal at both.** Measured en route: flushing from the tier
+> threads themselves is WORSE-or-equal (4.7-9.2) — the flush must own its own
+> thread. Residual gap (100 Hz tier at 25-44 of 100): puts still block on the
+> transport tx mutex while a flush-send is in flight, because zenoh-pico holds
+> that mutex across the entire socket write. Remaining levers: fork surgery
+> (release the tx mutex during the link write via a wbuf swap + link-write
+> mutex), a second tx link, or the upstream zsock fd-lock release.
 
 ## Summary
 

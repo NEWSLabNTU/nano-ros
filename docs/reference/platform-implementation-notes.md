@@ -150,16 +150,17 @@ Consequences and rules:
   converge to ~4.3 msg/s each (~8.6 total — a 100 Hz and a 10 Hz publisher get
   the SAME throughput under contention); at 5 ms, ~39 total (ctrl 33 / telem 5.5).
   `Z_CONFIG_SOCKET_TIMEOUT` trades read-wake rate for tx budget but stays
-  window-bound. Opt-in tx batching exists (phase-279 W2: `ZPICO_TX_BATCH=1`
-  env / Kconfig `CONFIG_NROS_ZENOH_TX_BATCH=y`; flush rate-limited by
-  `ZPICO_TX_BATCH_FLUSH_MS`, default 50) but MEASURED ≈ baseline for
-  timer-paced tiers (9.2 vs 8.6 msg/s; eager flushing measured WORSE, 4.7):
-  zenoh-pico's flush holds the tx mutex across the whole fd wait (no appends
-  during a send) and runs on the tier thread (stalls the put-generating
-  timers), and 10-100 ms timers yield ≤1 put per flush interval — nothing to
-  coalesce. It may pay for high-rate tight-loop streaming; it does NOT fix the
-  tier ceiling (#145 open — real levers: dedicated tx thread / second link /
-  upstream zsock). Gets + query replies go express under the knob; keepalives
+  window-bound. Mitigation (phase-279, opt-in): `ZPICO_TX_BATCH=1` env /
+  Kconfig `CONFIG_NROS_ZENOH_TX_BATCH=y` enables tx batching PLUS a dedicated
+  flush thread (multi-threaded platforms except ThreadX; flush cadence
+  `ZPICO_TX_BATCH_FLUSH_MS`, default 50 ms) — measured **4× total throughput at
+  the 100 ms default (34.1 vs 8.6 msg/s) and 1.35× at 5 ms (52.5 vs 39)**, with
+  the 10 Hz tier reaching ≈ ideal. Flushing from the tier threads themselves
+  measured WORSE-or-equal (4.7-9.2) — the flush must live on its own thread.
+  Residual (#145 open): puts still block on the tx mutex while a flush-send is
+  in flight (zenoh-pico holds it across the whole socket write) — full fix =
+  fork surgery (release tx mutex during the link write) / second link /
+  upstream zsock. Gets + query replies go express under the knob; keepalives
   bound batch sit-time. NOTE: the knob flips `Z_FEATURE_BATCHING` in the SHARED
   generated zenoh config (gates transport-struct fields — the issue-0135
   every-TU rule); rebuild fixtures after changing it. Harness:

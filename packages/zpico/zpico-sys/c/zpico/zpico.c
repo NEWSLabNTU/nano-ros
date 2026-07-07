@@ -346,6 +346,37 @@ static inline void _zpico_notify_spin(void) {}
 #endif
 
 // ============================================================================
+// phase-279 (#145) — dedicated tx-flush thread. Flushing from the executor/
+// tier threads measured WORSE-or-equal vs no batching: the flush blocks its
+// caller on the socket for up to a recv window, stalling the very timers that
+// generate the puts. On multi-threaded platforms a dedicated low-duty thread
+// absorbs those waits instead; tier threads only ever append to the batch.
+// ThreadX deliberately runs no background tasks (read-task starvation — see
+// zpico_open), so it keeps the spin-driven flush. Single-threaded platforms
+// have no tasks at all.
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && Z_FEATURE_MULTI_THREAD == 1 && \
+    !defined(ZENOH_THREADX)
+#define ZPICO_TX_BATCH_THREAD 1
+#else
+#define ZPICO_TX_BATCH_THREAD 0
+#endif
+#ifndef ZPICO_TX_BATCH_FLUSH_MS
+#define ZPICO_TX_BATCH_FLUSH_MS 50
+#endif
+
+#if ZPICO_TX_BATCH_THREAD == 1
+static _z_task_t g_tx_flush_task;
+static volatile bool g_tx_flush_run = false;
+static void* _zpico_tx_flush_task_fn(void* arg) {
+    (void)arg;
+    while (g_tx_flush_run) {
+        zp_batch_flush(z_session_loan(&g_session));
+        z_sleep_ms(ZPICO_TX_BATCH_FLUSH_MS);
+    }
+    return NULL;
+}
+#endif
+
 // Task Configuration (set before zpico_open)
 // ============================================================================
 
@@ -959,6 +990,15 @@ int32_t zpico_open(void) {
      * spins). Express messages (query replies, gets, express publishers)
      * bypass the batch inside zenoh-pico. Compile-time knob, default OFF. */
     zp_batch_start(z_session_loan(&g_session));
+#if ZPICO_TX_BATCH_THREAD == 1
+    g_tx_flush_run = true;
+    if (_z_task_init(&g_tx_flush_task, NULL, _zpico_tx_flush_task_fn, NULL) != 0) {
+        /* No thread → flushes ride only on implicit sends (keepalives bound
+         * sit-time to the lease interval). Loud, not fatal. */
+        g_tx_flush_run = false;
+        printk("zpico: tx-flush task init FAILED — batched puts flush on keepalives only\n");
+    }
+#endif
 #endif
 
     g_session_open = true;
@@ -1128,6 +1168,12 @@ void zpico_close(void) {
     // Close session
     if (g_session_open) {
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+#if ZPICO_TX_BATCH_THREAD == 1
+        if (g_tx_flush_run) {
+            g_tx_flush_run = false;
+            _z_task_join(&g_tx_flush_task);
+        }
+#endif
         /* phase-279 (#145) — stop batching; zp_batch_stop flushes the remainder. */
         zp_batch_stop(z_session_loan(&g_session));
 #endif
@@ -1576,8 +1622,9 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
         return ZPICO_ERR_SESSION;
     }
 
-#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
-    /* phase-279 (#145) — rate-limited batch flush. zenoh-pico's flush HOLDS the
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
+    /* phase-279 (#145) — rate-limited batch flush (platforms WITHOUT the
+     * dedicated tx-flush thread: ThreadX + single-threaded). zenoh-pico's flush HOLDS the
      * transport tx mutex across the whole socket send (fd wait included), so
      * puts cannot append while a flush is in flight — the batch only
      * accumulates BETWEEN flushes. Flushing on every spin (1 ms tiers) ships
@@ -1588,9 +1635,6 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
      * Racy static across tier threads is benign (worst case one extra flush).
      * zenoh-pico's implicit flushes (buffer overflow, any transport message)
      * still bound memory + sit-time independently of this cadence. */
-#ifndef ZPICO_TX_BATCH_FLUSH_MS
-#define ZPICO_TX_BATCH_FLUSH_MS 50
-#endif
     {
         static z_clock_t g_last_batch_flush;
         static bool g_batch_flush_init = false;

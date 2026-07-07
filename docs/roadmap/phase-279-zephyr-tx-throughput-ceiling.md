@@ -1,6 +1,8 @@
 # Phase 279 — Zephyr tx throughput ceiling: measure, then batch-mode fix
 
-Status: **In progress — 2026-07-06 · W1 (measurement) done, W2/W3 pending** ·
+Status: **In progress — 2026-07-07 · W1-W4 done (batch + dedicated flush thread
+landed, 4× @100 ms); residual = W2.c per-publisher express + W3.c streaming
+bench + the fork-surgery lever** ·
 Implements issue #145 · Related [[issue-0139]] (lease-death variant of the same
 zsock serialization).
 
@@ -205,11 +207,35 @@ knob-off + knob-on compile clean; batch-ON native pubsub smoke delivers 7/7.
   many puts per flush interval) is the workload where batching should show its
   win — measure before promoting the knob anywhere.
 - [x] W3.d Numbers + mechanism recorded here and in
-  platform-implementation-notes. **#145 stays OPEN**: the real levers for the
-  tier ceiling remain (a) flushing/sending from a thread that is NOT a tier
-  executor (dedicated tx thread), (b) a dedicated second link so tx never
-  shares the fd with the blocking read, (c) the upstream zsock fd-lock release.
-  (a) is the cheapest next step and composes with the landed batch plumbing.
+  platform-implementation-notes.
+
+### W4 — Dedicated tx-flush thread (lever (a)) — LANDED 2026-07-07, 4× lift
+
+Moved the batch flush OFF the executor/tier threads: under `ZPICO_TX_BATCH` on
+multi-threaded platforms (except ThreadX, which deliberately runs no background
+tasks), `zpico_open` spawns a zenoh-pico `_z_task` that loops
+`zp_batch_flush` + `z_sleep_ms(ZPICO_TX_BATCH_FLUSH_MS)`. The flush thread
+absorbs the fd-window waits; tier threads only ever append to the batch. The
+spin-entry flush remains only for the arms WITHOUT the thread (ThreadX +
+single-threaded).
+
+Re-measured (same W1 harness):
+
+  | config | @100 ms | @5 ms |
+  | --- | --- | --- |
+  | no batch (baseline) | 8.6 | 39 |
+  | batch, flush on tier threads (best variant) | 9.2 | — |
+  | **batch + dedicated flush thread** | **34.1 (ctrl 25.8, telem 8.4)** | **52.5 (ctrl 43.6, telem 8.9)** |
+
+  The 10 Hz telem tier reaches ≈ ideal at BOTH timeouts; total is 4× baseline
+  at the 100 ms default. Residual gap (ctrl 25-44 of 100): puts still BLOCK on
+  the transport tx mutex whenever the flush thread is mid-send (zenoh-pico
+  holds the tx mutex across the whole socket write). Closing that needs fork
+  surgery — release the tx mutex during the link write (swap/steal the wbuf
+  under the mutex, send outside it, with a link-write mutex against concurrent
+  t_msg/express writers) — or the second-link / upstream-zsock levers. #145
+  stays open for that residual, with the opt-in batch+thread mitigation landed
+  and documented.
 
 ## Out of scope (future levers, if batching is insufficient)
 - Dedicated second tx socket (zenoh-pico multi-link / a second publisher
