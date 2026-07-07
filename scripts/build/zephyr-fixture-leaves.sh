@@ -723,6 +723,57 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$wst_sig" "$wst_sig_file" 0 "$pristine"
     fi
 
+    # phase-281 W3b — the RT-TIERS C++ workspace Entry
+    # (examples/workspaces/ws-realtime-cpp/src/zephyr_entry): the FIRST full west
+    # link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++ sibling
+    # of the rust realtime entry above; demo_bringup/system.toml declares two
+    # [tiers.*] with [tiers.*.zephyr] priorities, so the C++ codegen emits a plain
+    # int main(void) calling ZephyrBoard::run_tiers (nros_board_zephyr_run_tiers) —
+    # one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
+    # high) publishes /ctrl, telem (100 ms, low) publishes /telem. CONFIG_NROS_CPP_API
+    # (prj.conf) compiles the W3a seam. Distinct zenohd port (17857). Consumed by
+    # tests/realtime_tiers_cpp_zephyr_e2e.rs.
+    wscpprt_board="native_sim/native/64"
+    wscpprt_lang="cpp"
+    wscpprt_lang_tag="cpp"
+    wscpprt_role="entry"
+    wscpprt_rmw="zenoh"
+    wscpprt_build_name="build-ws-cpp-realtime-entry-zenoh"
+    wscpprt_build_dir="$build_root/$wscpprt_build_name"
+    wscpprt_src="workspaces/ws-realtime-cpp/src/zephyr_entry"
+    wscpprt_src_dir="$nros_root/examples/$wscpprt_src"
+    wscpprt_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wscpprt_zenoh_locator="tcp/127.0.0.1:17857"
+    wscpprt_id="zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
+    wscpprt_target="fixture/zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
+    wscpprt_filter_haystack="$wscpprt_board $wscpprt_build_name $wscpprt_src $wscpprt_conf_files $wscpprt_id"
+    if [ -d "$wscpprt_src_dir" ] && { [ -z "$fixture_filter" ] || [[ "$wscpprt_filter_haystack" =~ $fixture_filter ]]; }; then
+        selected=$((selected + 1))
+        wscpprt_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wscpprt_extra_cmake_defs="$wscpprt_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wscpprt_zenoh_locator\""
+        wscpprt_extra_cmake_defs="$wscpprt_extra_cmake_defs -DCONF_FILE=$wscpprt_conf_files"
+        wscpprt_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wscpprt_sccache_launcher=1
+            wscpprt_extra_cmake_defs="$wscpprt_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wscpprt_sig_file="$wscpprt_build_dir/.nros-zephyr-fixture.sig"
+        wscpprt_sig="$(printf '%s\n' \
+            "board=$wscpprt_board" \
+            "src=$wscpprt_src" \
+            "xrce_port=" \
+            "conf_files=$wscpprt_conf_files" \
+            "zenoh_locator=$wscpprt_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wscpprt_sccache_launcher")"
+        emit_record fixture "$wscpprt_id" "$wscpprt_target" "$wscpprt_board" "$wscpprt_lang" "$wscpprt_lang_tag" "$wscpprt_role" "$wscpprt_rmw" \
+            "$wscpprt_src" "$wscpprt_src_dir" "$wscpprt_build_name" "$wscpprt_build_dir" "$log_dir/${wscpprt_build_name}.log" "" \
+            "$wscpprt_zenoh_locator" "" "$wscpprt_conf_files" "$wscpprt_extra_cmake_defs" \
+            "$wscpprt_sig" "$wscpprt_sig_file" 0 "$pristine"
+    fi
+
     # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS west path as
     # the Rust workspace entry above, but the Zephyr application dir is
     # examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) + nano_ros_entry(BOARD

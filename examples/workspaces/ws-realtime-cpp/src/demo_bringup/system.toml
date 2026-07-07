@@ -27,12 +27,26 @@ group_tiers = { telem = "low" }
 spin_period_us = 10000
 [tiers.high.posix]
 priority = 80
+# phase-281 W3b — RAW Zephyr priority (preemptive; lower number = higher priority).
+# Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the codegen onto
+# ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
+[tiers.high.zephyr]
+priority = 5
 
 [tiers.low]
 spin_period_us = 100000
 [tiers.low.posix]
 priority = 10
+[tiers.low.zephyr]
+priority = 10
 
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
+
+# phase-281 W3b — the Zephyr (native_sim) embedded deploy target. Both [posix] and
+# [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded
+# Zephyr (this wave) by changing the BOARD cmake variable.
+[deploy.zephyr]
+kind = "embedded"
+board = "native_sim/native/64"

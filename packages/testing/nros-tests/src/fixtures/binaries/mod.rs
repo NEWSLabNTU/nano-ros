@@ -2575,6 +2575,21 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
     require_prebuilt_binary_fresh_zephyr(&binary_path)
 }
 
+/// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
+/// (`ws-realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
+/// the W3a `ZephyrBoard::run_tiers` seam. `demo_bringup/system.toml` declares two
+/// `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the C++ codegen emits a plain
+/// `int main(void)` calling `ZephyrBoard::run_tiers` (`nros_board_zephyr_run_tiers`) —
+/// one k_thread per tier over ONE shared session; ctrl (10 ms, high) publishes `/ctrl`,
+/// telem (100 ms, low) publishes `/telem`. Built by the west lane into
+/// `<zephyr-build-root>/build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe`; consumed by
+/// `tests/realtime_tiers_cpp_zephyr_e2e.rs`.
+pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,
