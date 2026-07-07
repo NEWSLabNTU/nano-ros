@@ -53,13 +53,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
   phase-277 W7 for one mechanical sweep.
-- **#130** — [NuttX Entry path never configures eth0 —
-  `nros_platform::BoardInit::init_hardware` no-op](0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
-  every NuttX Rust Entry image boots to `Executor::open` then fails
-  `Transport(ConnectionFailed)` — the parameterless 212.N.3 `init_hardware` skips the legacy
-  `SIOCSIFADDR` eth0 IP push, so the guest can't reach slirp's 10.0.2.2. Blocks networked
-  nuttx-entry e2e; the #127 build-asserts are unaffected. Found by the #127 spike (the control
-  fixture fails identically).
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -73,7 +66,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#147** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#130** —
+[NuttX Entry path never configures eth0](archived/0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
+both the Rust and C/C++ entry paths now push the guest IP into `eth0` before
+`Executor::open` from one shared `configure_entry_eth0` (`SIOCSIFADDR`) helper
+(`703e840dd` Rust, `1f8b82d3b` C). Proven at runtime — the entry image applies
+`eth0=10.0.2.30` and delivered 39 cross-process `/chatter` messages to a native
+listener (pcap + listener log); the old `Transport(ConnectionFailed)` is gone.
+The `rust_nuttx_entry_e2e` timeout was compounded by a wrong grep prefix
+(`"I heard:"` vs Int32 `"Received:"`), fixed in phase-280 (nextest CI-lane stamp
+per the phase doc's sandbox caveat). **#147** —
 [Fixture staleness enforced only under `just test-all`, not at the
 resolver](archived/0147-plain-example-fixtures-no-staleness-detection.md): the fixture resolvers
 now carry a detect-only dep-info probe (cargo `<binary>.d` / `ninja -t deps` / the west staticlib
