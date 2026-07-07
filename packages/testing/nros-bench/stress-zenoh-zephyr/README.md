@@ -25,6 +25,14 @@ west build -b native_sim/native/64 -d build-stress-zenoh-split -p always $APP --
 ## Measure
 
 ```bash
+# IMPORTANT: build the LISTENER with a deep rx ring. The per-subscriber
+# SPSC ring depth is compile-time (ZPICO_SUBSCRIBER_RING_DEPTH, default 4);
+# a batched publisher delivers a whole wire batch as one callback burst and
+# a 4-slot ring silently drops the tail (drop-newest), undercounting the
+# measurement by >10x.
+(cd packages/testing/nros-bench/stress-zenoh && \
+  ZPICO_SUBSCRIBER_RING_DEPTH=1024 cargo build --release)
+
 ./build/zenohd/zenohd -l tcp/0.0.0.0:17866 --no-multicast-scouting &
 MODE=listener PAYLOAD_SIZE=64 EXPECTED_COUNT=5000 TIMEOUT_SECS=40 \
   NROS_LOCATOR=tcp/127.0.0.1:17866 \
@@ -37,21 +45,22 @@ The talker prints `PUBLISH_DONE: sent=N elapsed_ms=T` if the loop completes
 inside the window; when the tx path is window-bound it will not (that IS the
 measurement — use the listener count over the fixed window instead).
 
-## Results (2026-07-07, native_sim, 100 ms socket timeout, ~33 s publish window)
+## Results (2026-07-07, native_sim, 100 ms socket timeout, deep-ring listener)
 
-| variant | delivered (valid/valid) | msgs/s | vs off |
-| --- | --- | --- | --- |
-| knob off | 298/298 | ~8.9 | 1× (≈ the recv-window rate — each put pays a full window) |
-| `TX_BATCH` (+flush thread) | 752/752 | ~22.5 | 2.5× |
-| `TX_BATCH` + `TX_SPLIT_LOCK` | 756/756 | ~22.6 | 2.5× |
+| variant | talker (5000 msgs) | delivered | msgs/s | vs off |
+| --- | --- | --- | --- | --- |
+| knob off | did not finish in ~33 s | 298/298 valid | ~8.9 | 1× (each put pays a full recv window) |
+| `TX_BATCH` (+flush thread) | did not finish in ~33 s | 4499/4499 valid | ~136 | ~15× |
+| `TX_BATCH` + `TX_SPLIT_LOCK` | **finished in 27.7 s** | **5000/5000 valid** | **~181** | **~20×** |
 
 Integrity clean in all variants (zero invalid payloads through batching,
-overflow flushes, and the split-lock steal path).
+overflow parking, and the split-lock steal path); the split variant is the
+only one that both completes the 5000-message publish and delivers 100%.
 
-**Finding:** streaming caps at ~2.5× because the write-buffer OVERFLOW flush
-runs on the publisher's own thread — `_z_transport_tx_batch_overflow` sends
-under the caller's tx mutex, so a tight-loop publisher that fills the batch
-between flush-thread cycles pays the recv-window wait itself on every overflow.
-The phase-282 W1 split-lock steal covers only the flush-thread cadence path
-(`_z_transport_tx_send_n_batch`). Next lever: extend the steal to the
-overflow path (swap-and-send-outside-tx there too).
+**W2.c (overflow steal):** the batch-only cap came from the write-buffer
+OVERFLOW flush running on the publisher's own thread under the tx mutex —
+a tight-loop publisher filling the batch between flush-thread cycles paid
+the recv-window wait itself on every overflow. With `TX_SPLIT_LOCK` the
+overflow now parks the finalized batch in the spare buffer (at most one
+parked; a second overflow drains it first = natural backpressure) and the
+next flush ships it, so the publisher never blocks on the socket.

@@ -91,28 +91,39 @@ BLOCK-congestion puts stall their (tier) thread for the duration.
   is the counting + integrity sink. Build/measure procedure in its README
   (manual west invocations; leaves-driver integration deferred until the knob
   is promotion-ready).
-- [x] W2.b MEASURED (100 ms socket timeout, ~33 s window, 64 B):
+- [x] W2.b MEASURED, then RE-MEASURED after two artifacts were found and
+  fixed (see W2.c). Final honest numbers (100 ms socket timeout, deep-ring
+  listener, 64 B):
 
-  | variant | delivered | msgs/s | vs off |
-  | --- | --- | --- | --- |
-  | knob off | 298/298 valid | ~8.9 | 1× (window-bound: each put pays a full recv window) |
-  | batch+thread | 752/752 valid | ~22.5 | 2.5× |
-  | batch+thread+split | 756/756 valid | ~22.6 | 2.5× |
+  | variant | talker (5000 msgs) | delivered | msgs/s | vs off |
+  | --- | --- | --- | --- | --- |
+  | knob off | not in ~33 s | 298/298 valid | ~8.9 | 1× (each put pays a full recv window) |
+  | batch+thread | not in ~33 s | 4499/4499 valid | ~136 | ~15× |
+  | batch+thread+split | finished, 27.7 s | 5000/5000 valid | ~181 | ~20× |
 
-  Integrity clean in all variants. **Finding — the next tx lever:** streaming
-  caps at 2.5× because the wbuf OVERFLOW flush runs on the PUBLISHER's thread
-  (`_z_transport_tx_batch_overflow` sends under the caller's tx mutex); the W1
-  split-lock steal covers only the flush-thread cadence path
-  (`_z_transport_tx_send_n_batch`). A tight-loop publisher fills the batch
-  between flush cycles and pays the recv-window wait itself on every overflow.
-  → New W1 extension item below. Promotion verdict: NOT yet — the knob helps
-  (2.5× streaming, 4-5× tiers) but the overflow-path steal should land first.
-- [ ] W2.c (new, from the W2.b finding) Extend the split-lock steal to the
-  overflow path: in `_z_transport_tx_batch_overflow`, under
-  `Z_FEATURE_TX_SPLIT_LOCK`, steal/swap the full wbuf and send it outside the
-  tx mutex (same link-mutex-before-tx-release ordering), then encode the
-  overflowing message into the fresh buffer. Re-measure the streaming bench —
-  expected to lift the 2.5× cap substantially.
+  The original W2.b run reported batch/split at ~22.5/s — that number was a
+  MEASUREMENT ARTIFACT: the native listener's per-subscriber SPSC ring depth
+  is compile-time (`ZPICO_SUBSCRIBER_RING_DEPTH`, default 4) and a batched
+  publisher delivers a whole wire batch as one callback burst, so the 4-slot
+  ring dropped the burst tail (drop-newest by design) and kept ~4 per batch.
+  Bench listeners MUST build with `ZPICO_SUBSCRIBER_RING_DEPTH=1024` (README
+  updated). The real finding under the artifact still held: the overflow
+  flush on the publisher's thread was the cap → W2.c.
+- [x] W2.c LANDED 2026-07-07 (fork ef065b9c): overflow steal. Under
+  `Z_FEATURE_TX_SPLIT_LOCK`, `_z_transport_tx_batch_overflow` no longer sends
+  inline under the caller's tx mutex — it PARKS the finalized batch in the
+  spare wbuf (`_spare_pending`) and returns; every flush path (flush thread /
+  t_msg / express / cadence) drains the parked spare first (older SNs first,
+  wire order == SN order). At most one batch parks: a second overflow drains
+  the pending one inline — natural backpressure. Locking rule that makes it
+  sound: EVERY spare access happens under `_mutex_link_tx` (lock order
+  strictly tx → link, link taken before tx released). First cut had a race —
+  the flush-thread steal sent the spare after releasing tx while a concurrent
+  overflow swapped into that same spare mid-send, corrupting the stream
+  (symptom: 8/5000 delivered, session death) — fixed by the every-spare-
+  access-under-link rule. Validation: native paced 2000/2000 valid, native
+  default-off 500/500, Zephyr table above (only variant that completes AND
+  delivers 100%).
 
 ### W3 — Language-uniform QoS surface for `tx_express`
 
