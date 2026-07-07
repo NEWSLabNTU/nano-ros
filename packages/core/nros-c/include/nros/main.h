@@ -97,6 +97,20 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
                                                   const nros_native_tier_spec_t* tiers,
                                                   size_t n_tiers);
 
+/* phase-281 W3a (RFC-0015 Model 1) — run a multi-tier embedded C/C++ entry on
+ * Zephyr: open ONE RMW session on the caller's thread (the Zephyr `main()`
+ * thread), spawn one `k_thread` per non-boot tier via the
+ * `nros_zephyr_tier_task_create` shim (each with a borrowed executor sharing
+ * the session), and run the boot tier on the caller. Zephyr owns boot +
+ * networking (CONFIG_NET_CONFIG_AUTO_INIT), so there is no lwIP bring-up.
+ * `locator` is the connect endpoint; `domain_id` is the ROS domain id;
+ * `session_name` names the primary session. Defined in nros-board-zephyr
+ * (compiled into the Zephyr `app` library by zephyr/CMakeLists.txt). */
+NROS_PUBLIC int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
+                                                const char* session_name,
+                                                const nros_native_tier_spec_t* tiers,
+                                                size_t n_tiers);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

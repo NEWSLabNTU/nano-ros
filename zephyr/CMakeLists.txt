@@ -58,6 +58,21 @@ zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net_wait.c
 )
 
+# phase-281 W3a — C/C++ multi-tier Zephyr entry seam
+# (`nros_board_zephyr_run_tiers`, packages/boards/nros-board-zephyr/c/). A
+# generated Zephyr C/C++ tiers entry emits `ZephyrBoard::run_tiers(...)` which
+# calls this C seam; it opens ONE RMW session and spawns one `k_thread` per
+# non-boot tier via the `nros_zephyr_tier_task_create` shim above (RFC-0015
+# Model 1). It references nros_cpp_* (the typed runtime in nros-c / nros-cpp),
+# so compile it only when the C or C++ API is present; it is inert (its symbol
+# unreferenced) for single-tier / run_components entries. Added once here — the
+# C++ API path always co-builds nros-c, so a single gate avoids adding the same
+# source twice.
+if(CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API)
+    zephyr_library_sources(
+        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c)
+endif()
+
 # =============================================================================
 # Backend-specific C sources
 # =============================================================================
