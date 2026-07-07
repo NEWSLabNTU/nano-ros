@@ -54,6 +54,8 @@ fn run_plan() -> serde_json::Value {
         .arg("demo_se_bringup/launch/system.launch.xml")
         .arg("--workspace")
         .arg(&fixture)
+        .arg("--nros-toml")
+        .arg(fixture.join("demo_se_bringup/system.toml"))
         .arg("--record")
         .arg(&record)
         .arg("--metadata")

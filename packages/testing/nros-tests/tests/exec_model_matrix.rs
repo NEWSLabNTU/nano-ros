@@ -39,22 +39,24 @@ const COVERED: &[(&str, &str, &str)] = &[
     ("cpp", "zephyr", "realtime_tiers_cpp_zephyr_e2e"),
     ("c", "zephyr", "realtime_tiers_c_zephyr_e2e"),
     ("cpp", "nuttx", "realtime_tiers_cpp_nuttx_e2e"),
-    ("c", "nuttx", "realtime_tiers_c_nuttx_e2e"),
-    // phase-281 W3-nuttx — the LAST cell. `<QemuArmVirt>::run_tiers` (one
-    // std::thread per tier over one shared session; NuttX is `std` + zenoh-pico
-    // `Z_FEATURE_MULTI_THREAD = 1`) drives a Rust node too. All 12 cells proven.
-    ("rust", "nuttx", "realtime_tiers_rust_nuttx_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.
 /// A deferred cell must NOT also be COVERED (checked below).
-///
-/// phase-281 W3-nuttx — **empty**: every lang×platform Model-1 tier cell is now
-/// proven by a named e2e (the rust×nuttx cell, formerly gated on phase-280,
-/// closed here). If a future cell regresses to unproven, add it back here with a
-/// reason + work item rather than deleting its COVERED row silently.
 const DEFERRED: &[(&str, &str, &str)] = &[
     // (lang, platform, reason)
+    (
+        "rust",
+        "nuttx",
+        "phase-280 — nuttx entry runtime: eth0 IP push before Executor::open \
+         (entry link landed #127; networking gated)",
+    ),
+    (
+        "c",
+        "nuttx",
+        "phase-280 — nuttx entry runtime (see (rust, nuttx)); c_nuttx_entry_e2e \
+         times out until the eth0 plumbing lands",
+    ),
 ];
 
 fn tests_dir() -> PathBuf {

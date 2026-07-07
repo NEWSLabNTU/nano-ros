@@ -142,35 +142,6 @@ impl nros_platform::BoardEntry for QemuArmVirt {
     }
 }
 
-/// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
-/// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
-/// emits `<QemuArmVirt>::run_tiers(&deploy, TIERS, closure)` (exactly as it does
-/// `PosixBoard::run_tiers` for native); this pushes the guest IP into `eth0`
-/// (issue #130 — same [`entry_net_init`] the single-tier `run{,_with_deploy}`
-/// paths use) and then delegates to the NuttX family driver's
-/// [`nros_board_nuttx::run_tiers`], which opens the ONE session and runs one
-/// executor per tier over it (a `std::thread` per tier — NuttX is `std` +
-/// zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
-///
-/// Gated `target_os = "nuttx"` for the same reason as the [`nros_platform::BoardEntry`]
-/// impl below: `entry_net_init` + `nros_board_nuttx::run_tiers` are NuttX-only,
-/// and the multi-tier entry is reachable only in a real NuttX build.
-#[cfg(target_os = "nuttx")]
-impl QemuArmVirt {
-    pub fn run_tiers<F, E>(
-        deploy: &nros_platform::DeployOverlay,
-        tiers: &[nros_platform::TierSpec<'_>],
-        setup: F,
-    ) -> Result<(), E>
-    where
-        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Sync,
-        E: core::fmt::Debug,
-    {
-        entry_net_init(Some(deploy));
-        nros_board_nuttx::run_tiers::<Self, F, E>(deploy.boot_config, tiers, setup)
-    }
-}
-
 /// Issue #130 — the Entry-path twin of the legacy role path's
 /// [`crate::node::init_hardware`]: re-seed `/dev/urandom` from the guest IP and
 /// push it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway). Without the push

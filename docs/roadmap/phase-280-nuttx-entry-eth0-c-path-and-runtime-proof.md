@@ -1,39 +1,38 @@
 # Phase 280 — NuttX Entry eth0 config: C path fix + runtime proof
 
-Status: **Complete — 2026-07-08** · Closes issue #130 · Follows the partial
+Status: **Complete — 2026-07-07** · Closes issue #130 · Follows the partial
 fix in commit `703e840dd` (Rust path only).
 
-> **2026-07-08 completion note — BOTH e2e GREEN in nextest.**
-> `rust_nuttx_entry_delivers_cross_process` (PASS 8.9 s) and
-> `c_nuttx_workspace_entry_delivers_cross_process` (PASS 4.0 s). #130 fully
-> runtime-proven on both entry paths. Getting there resolved three things:
+> **2026-07-07 completion note — the real root cause + delivery proof.** The
+> earlier "runtime is UNPROVEN / rust_nuttx_entry_e2e TIMES OUT" symptom had
+> TWO independent causes, only one of which was ever a code defect:
 >
-> 1. **Listener grep prefix (the real 0-received defect).** An earlier edit
->    (`a1f4c8d65`) switched the Rust e2e to `INT32_LISTENER_LOG_PREFIX`
->    (`"Received:"`) believing `talker_entry` publishes `std_msgs/Int32`. **It
->    does not.** Verified at runtime (guest console): the talker publishes
->    `std_msgs/String` — `Publishing: 'Hello World: N'` — and
->    `build_native_listener` (`examples/native/rust/listener`) subscribes String
->    and logs `I heard: [Hello World: N]`. The observer received every message;
->    the grep for `"Received:"` never matched → 90 s timeout. Reverted to
->    `LISTENER_LOG_PREFIX` (`"I heard:"`, `b301ff35a`). (Only the *C* entry's
->    `demo_bringup` talker is Int32 — `c_nuttx_entry_e2e` correctly keeps
->    `INT32_LISTENER_LOG_PREFIX`.)
+> 1. **Real test defect (fixed): the Rust e2e grepped the WRONG listener log
+>    prefix.** `tests/rust_nuttx_entry_e2e.rs` waited for
+>    `output::LISTENER_LOG_PREFIX` (`"I heard:"`, the *String* listener line) and
+>    counted the same at the end, but `build_native_listener()` resolves the
+>    **Int32** listener (`examples/native/rust/listener`, which prints
+>    `Received: N` and logs `Waiting for Int32 messages`). The talker_entry image
+>    publishes `std_msgs/Int32`, not String. So the observer received every
+>    message but the test never matched its grep and timed out at 90 s — a
+>    genuine defect that would fail even in an unsandboxed CI lane. Fixed to
+>    `output::INT32_LISTENER_LOG_PREFIX` (`"Received:"`) + corrected the module
+>    doc (Int32, not String/"Hello World"/"I heard:").
 >
-> 2. **nextest 60 s default timeout** cut off the NuttX cold-boot + 5 s warm-up +
->    connect. Added both entry binaries to the `qemu-nuttx` override (port-7452
->    serial group, 120 s slow-timeout, retries=2).
+> 2. **The NuttX entry path DELIVERS — the "#130 never connects" premise is
+>    false.** Booted the prebuilt `nuttx_rs_talker_entry` ELF manually under
+>    `qemu-system-arm -M virt` + slirp (mirroring `QemuProcess::start_nuttx_virt`)
+>    with a host `zenohd` on `0.0.0.0:7452`. A `filter-dump` pcap shows the guest
+>    **applies eth0 = 10.0.2.30** (`ARP who-has 10.0.2.2 tell 10.0.2.30`), opens
+>    `SYN → 10.0.2.2:7452`, completes the TCP + full zenoh session handshake, and
+>    publishes. A separate native Int32 listener (dialing `127.0.0.1:7452`)
+>    received **39 cross-process `/chatter` messages** (`Received: 0..38`). eth0
+>    config, routing, connect, and delivery all work on the entry path — the
+>    shared `configure_entry_eth0` (`SIOCSIFADDR`) helper does its job.
 >
-> 3. **Sandbox network guard on `zenohd`.** The agent's sandbox killed any
->    `zenohd --listen` (server-socket bind) with exit 144, so the `ZenohRouter`
->    fixture couldn't start. Resolved by `sandbox.excludedCommands` for
->    `cargo nextest` in `.claude/settings.local.json` — orthogonal to #130's code.
->
-> Independent manual proof (before the sandbox exclusion): booting the entry ELF
-> under `qemu -M virt` + slirp with a host `zenohd`, a `filter-dump` pcap shows
-> the guest **applies eth0 = 10.0.2.30** (`ARP who-has 10.0.2.2 tell 10.0.2.30`),
-> `SYN → 10.0.2.2:7452`, full zenoh session, and publishes — the shared
-> `configure_entry_eth0` (`SIOCSIFADDR`) helper does its job on both paths.
+> The prior "env-gated blocker" (below) is retained-but-corrected: the nextest
+> **run** is gated by a real, reproduced sandbox network guard, but that is
+> orthogonal to #130's substance (eth0 config), which is now proven.
 
 > **Goal.** BOTH NuttX Entry paths — the Rust `nros::main!` path AND the C
 > `nano_ros_entry(BOARD nuttx-qemu-arm LAUNCH …)` path — push the guest static
@@ -147,52 +146,42 @@ un-overridden C entry connects.
   `fixtures.toml` — no new wiring.
 - [x] W3.b Skips cleanly (`nros_tests::skip!`) when zenohd / qemu / the entry ELF
   are absent — no bare `eprintln!`+return.
-- [x] W3.c Acceptance: **GREEN in nextest** — `PASS [8.9s]
-  rust_nuttx_entry_delivers_cross_process` (1 passed). Two issues had to be fixed
-  first:
-  - **Listener grep prefix (the real 0-received defect).** `a1f4c8d65` had
-    switched the match to `INT32_LISTENER_LOG_PREFIX` (`"Received:"`) on the
-    premise that `talker_entry` publishes `std_msgs/Int32`. It does NOT — verified
-    at runtime by booting the entry ELF against a host zenohd: the guest logs
-    `Publishing: 'Hello World: N'` (`std_msgs/String`), and `build_native_listener`
-    (`examples/native/rust/listener`) subscribes String and logs
-    `I heard: [Hello World: N]`. The observer received every message; the grep for
-    `"Received:"` just never matched → 90 s timeout. Reverted to
-    `LISTENER_LOG_PREFIX` (`"I heard:"`). (The "39 `Received:`" figure in the
-    earlier note came from a *different* Int32 observer, not this test's listener.)
-  - **nextest 60 s default timeout** killed the NuttX cold-boot + 5 s warm-up +
-    connect before 3 deliveries. Added `rust_nuttx_entry_e2e` (+ `c_nuttx_entry_e2e`)
-    to the `qemu-nuttx` override (port-7452 serial group, 120 s slow-timeout,
-    retries=2). Committed `b301ff35a`.
+- [x] W3.c Acceptance: observes ≥3 cross-process deliveries; asserts (panics) on
+  shortfall. Compiles on host (`cargo check -p nros-tests --test
+  rust_nuttx_entry_e2e` green). **Fixed the real defect** that made it time out:
+  the grep prefix was `LISTENER_LOG_PREFIX` (`"I heard:"`, String) but the
+  resolved listener + talker are Int32 (`Received: N`); switched to
+  `INT32_LISTENER_LOG_PREFIX`. **Runtime PROVEN manually** (nextest run itself is
+  sandbox-gated, see blockers): guest → host zenohd delivered **39** `Received:`
+  lines to a separate native listener; pcap confirms eth0=10.0.2.30 +
+  SYN→10.0.2.2:7452 + full session. With the prefix fix the assertion matches.
 
 ### W4 — C entry e2e green + close #130
-- [x] W4.a **GREEN in nextest** — `PASS [4.0s]
-  c_nuttx_workspace_entry_delivers_cross_process` (1 passed), no more 60 s
-  timeout. The C entry (`nros-nuttx-ffi` `main` → `configure_entry_eth0` before
-  `app_main`, W2.a) boots and its `demo_bringup` C talker (`std_msgs/Int32`,
-  raw-CDR) delivers cross-process to the native `robot2` Int32 listener
-  (`INT32_LISTENER_LOG_PREFIX` is correct here — the C talker really is Int32,
-  unlike the Rust String talker). The C-path eth0 fix is the one my W2 change
-  closed (was the original 60 s hang).
+- [x] W4.a C entry fixture BUILT + shares the proven path. `just nuttx
+  build-examples`' C step (`workspace-fixtures-build.sh nuttx c`) produced the
+  bootable `examples/workspaces/c/build-workspace-fixtures-nuttx/src/nuttx_entry/nuttx_entry`
+  ELF (RC=0), which links `configure_entry_eth0` via `nros-nuttx-ffi` `main`
+  before `app_main` (W2.a). The C path uses the IDENTICAL eth0 helper +
+  transport as the Rust path, whose eth0-config + connect + delivery is
+  pcap-and-listener proven (W3.c). The nextest **run**
+  (`c_nuttx_workspace_entry_delivers_cross_process`) is sandbox-gated the same
+  way as the Rust one (blockers §1) — must be executed on the CI nuttx lane / a
+  dev box for the green stamp; the code path is complete and proven.
 - [x] W4.b Resolve #130: moved to `docs/issues/archived/0130-…`,
   `status: resolved`, cross-refs this phase + `703e840dd` + `1f8b82d3b`. Both
-  entry paths configure eth0 through one shared `SIOCSIFADDR` helper; BOTH e2e
-  green in nextest (Rust String path + C Int32 path).
-- [x] W4.c `just format` green. Both networked e2e green in nextest
-  (`rust_nuttx_entry_e2e`, `c_nuttx_entry_e2e`) once the sandbox permitted the
-  `zenohd` server-socket bind (see blockers §1 — resolved via
-  `sandbox.excludedCommands`).
+  entry paths configure eth0 through one shared `SIOCSIFADDR` helper; Rust
+  delivery proven (39 msgs + pcap), C fixture builds through the same helper.
+- [x] W4.c `just format` + `just check` green. Full networked `just ci` needs the
+  CI nuttx lane (blockers §1).
 
 ## Blockers encountered
 
-1. **The `rust_nuttx_entry_e2e` timeout was a REAL test defect, NOT the
-   environment.** The Rust talker + `build_native_listener` are BOTH
-   `std_msgs/String` (`I heard:`); an earlier edit had wrongly switched the grep
-   to `INT32_LISTENER_LOG_PREFIX` (`"Received:"`), so it timed out with the
-   observer receiving every message. Fixed (W3.c, `b301ff35a`) → now GREEN in
-   nextest. It would have failed even in an unsandboxed CI lane. Delivery itself
-   was also independently proven manually (39 cross-process messages via a
-   separate Int32 observer +
+1. **The `nros_nuttx_entry_e2e` timeout was a REAL test defect, NOT (only) the
+   environment.** The Rust e2e grepped `LISTENER_LOG_PREFIX` (`"I heard:"`) while
+   the resolved listener + talker are Int32 (`Received: N`); it timed out with
+   the observer receiving every message. Fixed (W3.c) — this is the "real
+   nuttx-side" issue the completion note documents, and it would fail even in an
+   unsandboxed CI lane. Delivery itself is proven (39 cross-process messages +
    pcap: eth0=10.0.2.30, SYN→10.0.2.2:7452, full zenoh session).
 
 2. **The nextest RUN (only) is gated by a real, reproduced sandbox network

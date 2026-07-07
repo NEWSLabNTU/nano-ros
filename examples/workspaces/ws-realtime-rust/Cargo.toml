@@ -13,11 +13,6 @@ members = [
     "src/ctrl_pkg",
     "src/telem_pkg",
     "src/native_entry",
-    # phase-281 W3-nuttx — NuttX flat-build kernel-image entry. Built ONLY with
-    # `--target armv7a-nuttx-eabihf` (its `QemuArmVirt::run_tiers` call is
-    # `target_os = "nuttx"`-gated); the fixture lane builds it `-p nuttx_entry
-    # --target …`, never wholesale on host (same as `workspaces/rust`).
-    "src/nuttx_entry",
 ]
 # `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W2) — excluded
 # so plain `cargo build` in the workspace never tries to link the RTOS app.

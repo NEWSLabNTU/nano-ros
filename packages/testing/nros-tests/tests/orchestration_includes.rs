@@ -56,6 +56,8 @@ fn plan(record_name: &str, launch_name: &str) -> (std::process::Output, Option<s
         .arg(format!("demo_inc_bringup/launch/{launch_name}"))
         .arg("--workspace")
         .arg(&fixture)
+        .arg("--nros-toml")
+        .arg(fixture.join("demo_inc_bringup/system.toml"))
         .arg("--record")
         .arg(&record_path)
         .arg("--metadata")
@@ -185,6 +187,8 @@ fn run_plan_live(
         .arg(format!("src/demo_inc/launch/{launch_subpath}"))
         .arg("--workspace")
         .arg(workspace)
+        .arg("--nros-toml")
+        .arg(workspace.join("demo_inc_bringup/system.toml"))
         .arg("--out-dir")
         .arg(out.path());
     for (k, v) in env {

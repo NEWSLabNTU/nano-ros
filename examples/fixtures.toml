@@ -397,31 +397,6 @@ target = "armv7a-nuttx-eabihf"
 skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
 
-# phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
-# arm-virt) Entry (`ws-realtime-rust/src/nuttx_entry`): `system.toml` declares two
-# `[tiers.*]` with `[tiers.*.nuttx]` priorities, so the macro's generic OwnedSpin
-# arm emits `<QemuArmVirt>::run_tiers` — one `std::thread` per tier over ONE shared
-# session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
-# high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
-# cargo lane at the `release` profile (177.8.c CGU-miscompile dodge); the connect
-# locator (`tcp/10.0.2.2:17866`, dialed through the QEMU slirp gateway) is baked via
-# the per-row `NROS_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
-# nightly + build-std + NUTTX_DIR recipe env. Consumed by
-# tests/realtime_tiers_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
-[[workspace_fixture]]
-id = "workspace-rust-nuttx-realtime"
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-rust"
-bringup = "src/demo_bringup"
-entry = "nuttx_entry"
-codegen_out = "build-fixtures/demo_bringup"
-target_dir = "target-fixtures/nuttx"
-target = "armv7a-nuttx-eabihf"
-skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:17866", NROS_DOMAIN_ID = "0" }
-
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "native"
@@ -742,24 +717,6 @@ bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17863" }
-
-# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
-# (`ws-realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
-# shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The C
-# sibling of workspace-cpp-nuttx-realtime and of the pure-C workspace-c-nuttx. Kernel-linked
-# via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the
-# baked port. Own build_subdir (one board per CMake configure). Consumed by
-# tests/realtime_tiers_c_nuttx_e2e.rs (port 17864).
-[[workspace_fixture]]
-id = "workspace-c-nuttx-realtime"
-platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/workspaces/ws-realtime-c"
-bringup = "src/demo_bringup"
-entry = "nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17864" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"

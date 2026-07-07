@@ -13,12 +13,10 @@
 //! actually fixes.
 //!
 //! Delivery is observed CROSS-PROCESS: the QEMU guest runs the `talker_entry`
-//! image (`nuttx_rs_talker`, publishes `std_msgs/String` "Hello World: N" on
-//! `/chatter`, baked `NROS_LOCATOR = tcp/10.0.2.2:7452`, domain 0), and a
-//! SEPARATE native Rust listener (`examples/native/rust/listener`, subscribes
-//! `/chatter` String, logs `I heard: [Hello World: N]`) receives it through a
-//! host zenohd. Verified: booting the entry image against a host zenohd, the
-//! guest connects and the listener logs `I heard:` per delivery.
+//! image (`nuttx_rs_talker`, publishes `std_msgs/Int32` on `/chatter`, baked
+//! `NROS_LOCATOR = tcp/10.0.2.2:7452`, domain 0), and a SEPARATE native Rust
+//! listener (`examples/native/rust/listener`, subscribes `/chatter` Int32, logs
+//! `Received: N`) receives it through a host zenohd.
 //! The guest dials the router via the slirp gateway (10.0.2.2 → host); the
 //! observer dials 127.0.0.1. No TAP / bridge / root.
 //!
@@ -84,14 +82,14 @@ fn rust_nuttx_entry_delivers_cross_process() {
     let mut qemu = QemuProcess::start_nuttx_virt(&entry, true)
         .unwrap_or_else(|e| panic!("boot NuttX QEMU: {e}"));
 
-    // The observer prints `I heard: [Hello World: N]` per delivered String
-    // message — ≥3 confirms the guest's entry-path talker reached a separate
-    // process through the router, i.e. `entry_net_init` configured eth0 and the
-    // connect succeeded. NuttX cold boot + 5 s net warm-up + zenoh connect is
-    // slow, so allow a generous window.
+    // The observer prints `Received: N` per delivered Int32 message — ≥3
+    // confirms the guest's entry-path talker reached a separate process through
+    // the router, i.e. `entry_net_init` configured eth0 and the connect
+    // succeeded. NuttX cold boot + 5 s net warm-up + zenoh connect is slow, so
+    // allow a generous window.
     let out = obs
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             3,
             Duration::from_secs(90),
         )
@@ -108,6 +106,6 @@ fn rust_nuttx_entry_delivers_cross_process() {
     qemu.kill();
     obs.kill();
 
-    let n = nros_tests::count_pattern(&out, nros_tests::output::LISTENER_LOG_PREFIX);
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(n >= 3, "expected ≥3 cross-process deliveries, got {n}");
 }

@@ -53,6 +53,8 @@ fn orchestration_plan_emits_expected_entities() {
         .arg("demo_pkg_bringup/launch/system.launch.xml")
         .arg("--workspace")
         .arg(&fixture)
+        .arg("--nros-toml")
+        .arg(&system_toml)
         .arg("--record")
         .arg(&record)
         .arg("--metadata")

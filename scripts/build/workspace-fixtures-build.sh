@@ -191,17 +191,6 @@ build_workspace() {
             built_path="$(find "$build_subdir" -type f -name "$entry" -perm -111 | sort | head -n 1 || true)"
             if [ -n "$built_path" ]; then
                 echo "     built: $dir/$built_path"
-            elif [ "$platform" = "nuttx" ]; then
-                # "No silent caps": on NuttX the real artifact is the kernel ELF that
-                # `${entry}_build`'s cargo cross-link emits and its POST_BUILD step copies
-                # to a `$entry`-named executable under $build_subdir (nros-nuttx.cmake).
-                # That link can fail WITHOUT `cmake --build` returning non-zero (the failure
-                # is not always propagated out of the custom-command/kernel-make layer), so an
-                # empty find here means the link silently failed — fail loudly instead of
-                # writing an inputsig stamp for a fixture with no bootable image.
-                echo "  !! $id: NuttX build produced no '$entry' kernel ELF under $dir/$build_subdir" >&2
-                echo "     — the cross-link failed silently (cmake --build returned 0 with no artifact)." >&2
-                return 2
             else
                 echo "     built target: $entry under $dir/$build_subdir"
             fi

@@ -4,8 +4,12 @@ title: "Example naming drift — Talker vs TalkerNode, C++ namespace word order,
 status: open
 type: tech-debt
 area: examples
-related: [phase-277, phase-275, phase-242]
+related: [phase-277, phase-275, phase-242, phase-283]
 ---
+
+> **Planned in [phase-283](../roadmap/phase-283-example-naming-drift-sweep.md)**
+> — the mechanical sweep of items 1–3 (check→fix per wave). Item 4 (`_entry`
+> rename) stays with phase-275; item 5 (duplicate ids) already resolved.
 
 ## Summary
 

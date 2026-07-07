@@ -1,37 +1,10 @@
 ---
 id: 130
 title: "NuttX Entry path never configures eth0 — `nros_platform::BoardInit::init_hardware` no-op → guaranteed Transport(ConnectionFailed) for networked entry e2e"
-status: resolved
+status: open
 type: tech-debt
 area: boards
-related: [issue-0127, phase-275, phase-280, rfc-0032]
----
-
-## Resolution (phase-280, 2026-07-07)
-
-Both NuttX Entry paths now push the guest IP into `eth0` before opening the
-executor, from ONE shared helper —
-`nros_board_nuttx_qemu_arm::configure_entry_eth0(ip, prefix, gateway)`
-(`SIOCSIFADDR` + `/dev/urandom` reseed, delegating to the sole
-`node::init_hardware` body, no second `SIOCSIFADDR` site):
-
-- **Rust path** (`703e840dd`): `entry_net_init` → `configure_entry_eth0`, called
-  from the `BoardEntry::run` / `run_with_deploy` wrappers.
-- **C / C++ path** (`1f8b82d3b`): `nros-nuttx-ffi` `main` calls
-  `configure_entry_eth0` (slirp defaults `10.0.2.30/24` via `10.0.2.2`, per-entry
-  `option_env!("NROS_IP"/…)` overrides) BEFORE `app_main()`, covering both the C
-  and C++ `nano_ros_entry LAUNCH` entries.
-
-**Runtime proof (phase-280 W3):** the prebuilt `nuttx_rs_talker_entry` ELF, booted
-under `qemu-system-arm -M virt` + slirp with a host `zenohd`, applies
-`eth0 = 10.0.2.30` (pcap: `ARP who-has 10.0.2.2 tell 10.0.2.30`, `SYN →
-10.0.2.2:7452`, full zenoh session) and **delivered 39 cross-process `/chatter`
-Int32 messages** to a separate native listener — the `Transport(ConnectionFailed)`
-symptom is gone. The C entry ELF builds through the identical helper + transport.
-(The old `rust_nuttx_entry_e2e` also had a wrong grep prefix — `"I heard:"` vs the
-Int32 `"Received:"` — fixed in phase-280; delivery worked all along, the test
-just never matched.) See `docs/roadmap/archived/phase-280-*` for the nextest
-CI-lane caveat.
+related: [issue-0127, phase-275, rfc-0032]
 ---
 
 ## Summary

@@ -31,12 +31,6 @@ priority = 80
 # number = higher priority). Consumed by the zephyr_entry projection.
 [tiers.high.zephyr]
 priority = 5
-# phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
-# priority). `[tiers.*.nuttx]` flips the macro's generic OwnedSpin arm onto
-# `<QemuArmVirt>::run_tiers` (RFC-0015 Model 1), one std::thread (NuttX pthread)
-# per tier over one shared session.
-[tiers.high.nuttx]
-priority = 110
 
 [tiers.low]
 spin_period_us = 10000
@@ -44,5 +38,3 @@ spin_period_us = 10000
 priority = 10
 [tiers.low.zephyr]
 priority = 10
-[tiers.low.nuttx]
-priority = 100

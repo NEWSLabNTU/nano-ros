@@ -92,7 +92,7 @@ function(nros_nuttx_build_example)
     cmake_parse_arguments(_NNBE
         ""
         "NAME;MAIN_SOURCE;FFI_CRATE_DIR;TARGET_TRIPLE"
-        "INCLUDE_DIRS;SOURCES;SOURCE_PKGS;INTERFACE_SOURCES;COMPILE_DEFS;LINK_INTERFACES"
+        "INCLUDE_DIRS;SOURCES;SOURCE_PKGS;COMPILE_DEFS;LINK_INTERFACES"
         ${ARGN})
 
     foreach(_req NAME MAIN_SOURCE FFI_CRATE_DIR TARGET_TRIPLE)
@@ -185,13 +185,6 @@ function(nros_nuttx_build_example)
     # cc-rs build compiles each component source with its OWN `-DNROS_PKG_NAME`.
     string(JOIN ";" _source_pkgs_str ${_NNBE_SOURCE_PKGS})
 
-    # phase-281 W3-nuttx (C lane) — generated C interface serdes TUs → APP_INTERFACE_SOURCES,
-    # which the FFI build.rs compiles into a TRAILING `app_iface` archive linked AFTER the
-    # per-node `app_pkg_*` archives (the node TUs REFERENCE these serdes, so their defining
-    # archive must come later on the single-pass link line). See the board overlay's
-    # `nros_board_link_app` for why the C serdes can't ride the C++ `_ffi_lib` path.
-    string(JOIN ";" _iface_sources_str ${_NNBE_INTERFACE_SOURCES})
-
     set(_compile_defs "")
     foreach(_def ${_NNBE_COMPILE_DEFS})
         list(APPEND _compile_defs "${_def}")
@@ -257,14 +250,13 @@ function(nros_nuttx_build_example)
             "APP_FFI_LIBS_FILE=${_ffi_libs_file}"
             "APP_EXTRA_SOURCES=${_extra_sources_str}"
             "APP_EXTRA_SOURCE_PKGS=${_source_pkgs_str}"
-            "APP_INTERFACE_SOURCES=${_iface_sources_str}"
             "APP_COMPILE_DEFS=${_compile_defs_str}"
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             cargo build --release
         WORKING_DIRECTORY "${_NNBE_FFI_CRATE_DIR}"
-        DEPENDS "${_NNBE_MAIN_SOURCE}" ${_NNBE_SOURCES} ${_NNBE_INTERFACE_SOURCES}
+        DEPENDS "${_NNBE_MAIN_SOURCE}" ${_NNBE_SOURCES}
                 "${_includes_file}" "${_ffi_libs_file}"
                 "${_NNBE_FFI_CRATE_DIR}/build.rs"
                 "${_NNBE_FFI_CRATE_DIR}/Cargo.toml"
