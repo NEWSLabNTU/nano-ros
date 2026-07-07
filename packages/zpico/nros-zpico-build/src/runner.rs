@@ -89,6 +89,14 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(0)
             != 0,
+        {
+            println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
+            env::var("ZPICO_TX_SPLIT_LOCK")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0)
+                != 0
+        },
     );
     std::fs::write(config_dir.join("zenoh_generic_config.h"), header).unwrap();
 }

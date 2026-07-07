@@ -103,6 +103,7 @@ pub fn config_header(
     unstable_api: bool,
     orin_spe: bool,
     tx_batch: bool,
+    tx_split_lock: bool,
 ) -> String {
     let mut header = String::new();
     writeln!(header, "/**").unwrap();
@@ -261,6 +262,14 @@ pub fn config_header(
         header,
         "#define Z_FEATURE_BATCHING {}",
         if tx_batch { 1 } else { 0 }
+    )
+    .unwrap();
+    // phase-282 (#145) — Z_FEATURE_TX_SPLIT_LOCK also gates struct fields
+    // (_wbuf_spare/_mutex_link_tx): same #135 every-TU rule as BATCHING.
+    writeln!(
+        header,
+        "#define Z_FEATURE_TX_SPLIT_LOCK {}",
+        if tx_split_lock && tx_batch { 1 } else { 0 }
     )
     .unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_TX_MUTEX 0").unwrap();
@@ -737,7 +746,7 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, true, false);
+        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, true, false, false);
 
         assert!(header.contains("#define Z_FRAG_MAX_SIZE 4096"));
         assert!(header.contains("#define Z_CONFIG_SOCKET_TIMEOUT 5000"));
@@ -773,7 +782,15 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
         };
 
-        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false, false);
+        let header = config_header(
+            &link,
+            &buf,
+            "x86_64-unknown-linux-gnu",
+            false,
+            false,
+            false,
+            false,
+        );
 
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));

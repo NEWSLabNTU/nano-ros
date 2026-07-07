@@ -75,6 +75,12 @@ if(CONFIG_NROS_ZENOH_TX_BATCH)
     zephyr_compile_definitions(ZPICO_TX_BATCH=1)
 endif()
 
+# phase-282 (#145) — split tx locking (steal batch under tx mutex, send under a
+# link-write mutex). Gates transport-struct fields: applied to ALL zephyr TUs.
+if(CONFIG_NROS_ZENOH_TX_SPLIT_LOCK)
+    zephyr_compile_definitions(Z_FEATURE_TX_SPLIT_LOCK=1)
+endif()
+
 # Intra-image topic delivery (RFC-0015 Model 1): every node in the image
 # shares ONE zenoh session, and neither zenoh-pico nor the router loops a
 # publication back to the session it came from. Without local subscriber

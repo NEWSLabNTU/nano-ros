@@ -51,7 +51,7 @@ send) performs the socket write while HOLDING the transport tx mutex, so
 publishers cannot append to the batch during the up-to-one-window fd wait, and
 BLOCK-congestion puts stall their (tier) thread for the duration.
 
-- [ ] W1.a In the vendored zenoh-pico fork: split locking into the existing tx
+- [x] W1.a LANDED 2026-07-07. In the vendored zenoh-pico fork: split locking into the existing tx
   mutex (guards wbuf/batch state — held only to STEAL the pending batch:
   swap `ztc->_wbuf` with a pre-allocated spare, reset `_batch_count`) and a new
   **link-write mutex** (guards the actual `_z_link_send_wbuf` call). ALL wire
@@ -59,17 +59,28 @@ BLOCK-congestion puts stall their (tier) thread for the duration.
   sends, fragments — take the link-write mutex for the socket write, so
   concurrent whole-frame writes cannot interleave. Publishers append under the
   tx mutex while a send is in flight on the link mutex.
-- [ ] W1.b Gate the split behind a fork-local `Z_FEATURE_TX_SPLIT_LOCK` (struct
+- [x] W1.b Gate landed: fork-local `Z_FEATURE_TX_SPLIT_LOCK` (struct
   fields for the spare wbuf are gated → flips in the SHARED generated config
   per the #135 rule; Zephyr gets it via `zephyr_compile_definitions`). Default
   OFF until W3 validates.
-- [ ] W1.c Correctness pass: frame-header/SN handling on the stolen buffer
+- [x] W1.c Correctness validated: native pubsub 5/5 under batch+split; streaming 5000 tight-loop puts in 4 ms with 718/718 received VALID (zero frame corruption through the steal path — notably MORE delivered than batch-only's 269). Original checklist: frame-header/SN handling on the stolen buffer
   (a stolen batch is a complete frame; the fresh wbuf re-prepares on next
   append), fragmentation path, `Z_FEATURE_BATCH_TX_MUTEX=1` interaction,
   single-threaded platforms compile the split out.
-- [ ] W1.d Target: ctrl (100 Hz) ≥ ~90 msg/s at the 100 ms socket timeout with
-  batch+thread+split on (vs 25.8 today); telem stays ≈ ideal. Re-measure both
-  timeouts on the W1 harness.
+- [x] W1.d MEASURED — target missed, and the miss is diagnostic. @100 ms with
+  batch+thread+split: **43.2 total (ctrl 34.4, telem 8.9 ≈ ideal)** — +27% over
+  batch+thread (34.1), 5× baseline (8.6), but ctrl ≪ the ~90 target. The
+  decisive cross-check: ctrl NEVER exceeds ~44/s in ANY configuration — 33.4 at
+  5 ms no-batch (200 windows/s), 43.6 at 5 ms batch+thread, 34.4 at 100 ms
+  batch+split — i.e. a ~40/s ctrl-tier ceiling INDEPENDENT of socket timing.
+  With the tx path unblocked (appends never wait on a send now), the residual
+  bottleneck has MOVED OFF the tx path: the 100 Hz tier is generation-limited
+  (executor timer fire-once-late semantics under stall/jitter + native_sim
+  scheduling of the 1 ms-spin tier thread are the suspects). Follow-up
+  discriminators: instrument published-count at the talker side vs delivered;
+  measure on hardware; investigate executor timer catch-up. This is a NEW,
+  separate axis from #145's zsock serialization — the tx levers (batch + flush
+  thread + split lock) now deliver telem at ideal and total at 5× baseline.
 
 ### W2 — Zephyr streaming benchmark (the promotion-relevant number)
 

@@ -185,6 +185,17 @@ config NROS_ZENOH_TX_BATCH
       period of publish latency; service/query requests and replies bypass
       the batch (express), as do publishers declared express. Off by default.
 
+config NROS_ZENOH_TX_SPLIT_LOCK
+    bool "zenoh-pico split tx locking (append while sending)"
+    default n
+    depends on NROS_ZENOH_TX_BATCH
+    help
+      phase-282 (#145) — the batch flush steals the pending write buffer under
+      the tx mutex and performs the socket write under a separate link-write
+      mutex, so publishers keep appending to the fresh batch while the (up to
+      one recv-window) send is in flight. Wire order still equals SN order.
+      Requires TX_BATCH. Off by default until promoted.
+
 config NROS_ZENOH_PUBLICATION
     bool "Publication support"
     default y
