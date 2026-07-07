@@ -369,7 +369,19 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     // phase-281 W3 (nuttx) — NuttX embedded also uses run_tiers (one pthread per
     // tier over one shared session, via `nros_board_nuttx_run_tiers`). The
     // remaining embedded board (ThreadX) keeps the single-executor sched-context path.
+    // Phase 282 follow-up (RFC-0047) — a node whose callback groups map to
+    // MORE THAN ONE tier (`group_tiers = { ctrl = "high", telem = "low" }`)
+    // cannot be expressed by run_tiers: its per-tier setup fns construct whole
+    // NODES, so a group-split node silently landed on whichever tier iterated
+    // last and BOTH its timers ran at that tier's cadence. Such plans keep the
+    // single-executor sched-context path (`bind_group_sched` seeds each group
+    // to its tier's sched context), which expresses the split correctly.
+    let has_group_split = plan
+        .resolved_tiers
+        .as_ref()
+        .is_some_and(|t| t.has_group_split_node());
     let use_run_tiers = use_tiers
+        && !has_group_split
         && (!board_is_embedded(&plan.board)
             || board_is_freertos_embedded(&plan.board)
             || board_is_zephyr(&plan.board)
@@ -1487,6 +1499,77 @@ mod tests {
             tiers: vec![high_tier, low_tier],
         });
         plan
+    }
+
+    #[test]
+    fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
+        // Phase 282 follow-up (RFC-0047) — ONE node with callback groups on TWO
+        // tiers (`group_tiers = { ctrl = "high", telem = "low" }`) cannot use
+        // run_tiers: per-tier setup fns construct whole nodes, so the node
+        // landed on the last tier and both timers ran at that cadence
+        // (regression caught by realtime_subnode_cpp_e2e: ctrl=6 telem=5).
+        // Such plans must keep the single-executor sched-context path.
+        use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+        let high_tier = ResolvedTier {
+            name: "high".into(),
+            priority: 80,
+            stack_bytes: None,
+            spin_period_us: Some(10_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("sub_node".into(), "ctrl".into())],
+        };
+        let low_tier = ResolvedTier {
+            name: "low".into(),
+            priority: 10,
+            stack_bytes: None,
+            spin_period_us: Some(100_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![("sub_node".into(), "telem".into())],
+        };
+        let mut plan = fixture_plan_typed(&[(
+            "subnode_pkg",
+            "sub_node",
+            "sub_node",
+            "subnode_pkg::SubNode",
+            "subnode_pkg/SubNode.hpp",
+        )]);
+        plan.nodes[0].callback_groups = vec!["ctrl".into(), "telem".into()];
+        plan.resolved_tiers = Some(ResolvedTierTable {
+            tiers: vec![high_tier, low_tier],
+        });
+        let src = emit_typed(&plan).expect("typed cpp group-split emit ok");
+
+        // Sched-context path: per-group seeding present, run_tiers absent.
+        assert!(
+            src.contains("nros_cpp_bind_group_sched"),
+            "group-split node must seed bind_group_sched; src:\n{src}"
+        );
+        assert!(
+            src.contains("\"ctrl\"") && src.contains("\"telem\""),
+            "both groups must be seeded; src:\n{src}"
+        );
+        assert!(
+            !src.contains("__nros_entry_setup_tier_0"),
+            "group-split plan must NOT use the run_tiers path; src:\n{src}"
+        );
+        assert!(
+            !src.contains("run_tiers("),
+            "group-split plan must NOT call run_tiers; src:\n{src}"
+        );
     }
 
     #[test]

@@ -101,7 +101,15 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         .is_some_and(|t| !t.is_single_tier());
     // Phase 274.W2 — native multi-tier → per-tier threads (run_tiers).
     // C entries are always native (the C emitter is native-only per its header).
-    let use_run_tiers = use_tiers;
+    // Phase 282 follow-up (RFC-0047) — a group-split node (callback groups on
+    // more than one tier) cannot be expressed by run_tiers (per-tier setup fns
+    // construct whole nodes); keep the sched-context path for such plans. See
+    // emit_cpp.rs for the full rationale.
+    let has_group_split = plan
+        .resolved_tiers
+        .as_ref()
+        .is_some_and(|t| t.has_group_split_node());
+    let use_run_tiers = use_tiers && !has_group_split;
 
     if use_run_tiers {
         // ----------------------------------------------------------------
