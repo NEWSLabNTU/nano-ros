@@ -247,25 +247,6 @@ function(nros_board_link_app target)
                     if(_comp_inc)
                         list(APPEND _incs ${_comp_inc})
                     endif()
-                    # phase-281 W3-nuttx — a TYPED C++ (or C) node component links its
-                    # generated interface lib (`<pkg>__nano_ros_cpp` / `<pkg>__nano_ros_c`)
-                    # PUBLIC, which carries the generated `std_msgs.hpp` include dir AND the
-                    # codegen `_gen` target that PRODUCES it. The component's `.a` is skipped
-                    # (wrong arch), so we must forward those interface libs to LINK_INTERFACES
-                    # ourselves: `nros_nuttx_build_example` ferries each lib's transitive
-                    # INTERFACE_INCLUDE_DIRECTORIES into the cc-rs compile AND
-                    # `add_dependencies(<name>_build <lib>)` so the codegen runs BEFORE the
-                    # node sources are cross-compiled. Without this the cc-rs pass hits
-                    # `fatal error: std_msgs.hpp: No such file or directory` (the pure-C
-                    # nuttx entry never tripped this — its nodes include no generated header).
-                    get_target_property(_comp_link_libs ${_lib} LINK_LIBRARIES)
-                    if(_comp_link_libs)
-                        foreach(_cll ${_comp_link_libs})
-                            if(_cll MATCHES "__nano_ros_(c|cpp)$" AND TARGET ${_cll})
-                                list(APPEND _link_ifaces "${_cll}")
-                            endif()
-                        endforeach()
-                    endif()
                     if(_comp_srcs)
                         foreach(_cs ${_comp_srcs})
                             if(NOT IS_ABSOLUTE "${_cs}")
@@ -280,11 +261,6 @@ function(nros_board_link_app target)
             endif()
             list(APPEND _link_ifaces "${_lib}")
         endforeach()
-    endif()
-    # Multiple typed nodes link the SAME generated interface lib (ctrl + telem both
-    # link `std_msgs__nano_ros_cpp`); dedup so it's ferried / depended-on once.
-    if(_link_ifaces)
-        list(REMOVE_DUPLICATES _link_ifaces)
     endif()
 
     # Phase 238 — ferry the carrier's COMPILE_DEFINITIONS into the cargo

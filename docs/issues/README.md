@@ -66,7 +66,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#130** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#144** —
+[`run_tiers` ≥3-tier setup declare
+race](archived/0144-run-tiers-spawned-tier-declare-race.md): the chained-spawn fix
+(`spawn_next_tier`) landed on BOTH the Zephyr and FreeRTOS `run_tiers` — each tier spawns the next
+only after its own `setup()` returns, so no two entity-declare calls overlap on the shared
+zenoh-pico session (covers any tier count by construction; FreeRTOS's old boot↔tier race closed
+too). Verified by `realtime_tiers_zephyr_entry_e2e`. **#142** —
+[stm32f4 talker dual
+classification](archived/0142-stm32f4-talker-dual-classification-fails-example-shape.md): the
+0100.W4 collapse is intentional (a self-dispatching Entry that is its own node); `example_shape`
+now mirrors the CLI schema (`entry` MAY coexist with a node, `application` must stand alone) and
+passes. **#130** —
 [NuttX Entry path never configures eth0](archived/0130-nuttx-entry-init-hardware-noop-no-eth0-config.md):
 both the Rust and C/C++ entry paths now push the guest IP into `eth0` before
 `Executor::open` from one shared `configure_entry_eth0` (`SIOCSIFADDR`) helper

@@ -94,11 +94,6 @@ build-examples:
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/c_nuttx_entry_e2e.rs (cross-process /chatter delivery, baked slirp locator 17861).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
-    # phase-281 W3-nuttx — the C++ RT-TIERS workspace Entry (ctrl + telem C++ nodes linked into
-    # the NuttX kernel; NuttxBoard::run_tiers, one pthread per tier over one shared session).
-    # Same release profile (lto=true). First full nuttx link of the run_tiers seam (37cfaf728).
-    # Consumed by tests/realtime_tiers_cpp_nuttx_e2e.rs (baked slirp locator 17863).
-    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
