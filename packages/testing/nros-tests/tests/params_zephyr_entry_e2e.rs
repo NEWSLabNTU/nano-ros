@@ -23,7 +23,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test params_zephyr_entry_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess, build_native_listener,
+    ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess, build_int32_sink,
     build_zephyr_workspace_rust_params_entry, require_zenohd,
 };
 use std::{process::Command, time::Duration};
@@ -41,9 +41,14 @@ fn params_zephyr_entry_publishes_baked_initial() {
     let entry = build_zephyr_workspace_rust_params_entry().unwrap_or_else(|e| {
         nros_tests::skip!("zephyr params workspace entry not built (west): {e}")
     });
-    let listener = build_native_listener()
+    // #147/#278: the param_talker publishes std_msgs/Int32 on /chatter, so the
+    // observer must be the typed Int32 sink (prints `Received: N`). The old
+    // std_msgs/String `native_listener` only matched while its fixture was a
+    // STALE pre-W4 Int32 build — a fresh (String) listener never emits
+    // `Received: 250`. int32-sink defaults to /chatter.
+    let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
 
     // Router on the exact port the fixture's CONFIG_NROS_ZENOH_LOCATOR was baked with.
     let router = ZenohRouter::start_on("127.0.0.1", PARAMS_ZEPHYR_ENTRY_PORT).unwrap_or_else(|e| {
@@ -56,14 +61,15 @@ fn params_zephyr_entry_publishes_baked_initial() {
         let mut cmd = Command::new(&listener);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &observer_locator)
-            .env("NROS_SESSION_MODE", "client");
-        ManagedProcess::spawn_command(cmd, "native-listener")
+            .env("NROS_SESSION_MODE", "client")
+            .env("NROS_SUB_TOPIC", "/chatter");
+        ManagedProcess::spawn_command(cmd, "int32-sink")
             .unwrap_or_else(|e| panic!("spawn listener: {e}"))
     };
-    obs.wait_for_output_pattern("Listener", Duration::from_secs(10))
+    obs.wait_for_output_pattern("Waiting for Int32", Duration::from_secs(10))
         .unwrap_or_else(|_| {
             obs.kill();
-            panic!("native listener never became ready")
+            panic!("int32-sink never became ready")
         });
 
     // Boot the Zephyr native_sim image (runs until killed).
