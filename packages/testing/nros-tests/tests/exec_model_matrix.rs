@@ -38,6 +38,7 @@ const COVERED: &[(&str, &str, &str)] = &[
     ("cpp", "freertos", "realtime_tiers_cpp_freertos_e2e"),
     ("cpp", "zephyr", "realtime_tiers_cpp_zephyr_e2e"),
     ("c", "zephyr", "realtime_tiers_c_zephyr_e2e"),
+    ("cpp", "nuttx", "realtime_tiers_cpp_nuttx_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.
@@ -55,12 +56,6 @@ const DEFERRED: &[(&str, &str, &str)] = &[
         "nuttx",
         "phase-280 — nuttx entry runtime (see (rust, nuttx)); c_nuttx_entry_e2e \
          times out until the eth0 plumbing lands",
-    ),
-    (
-        "cpp",
-        "nuttx",
-        "phase-281 W3 / phase-280 — no C++ nuttx tiers example; nuttx runtime \
-         gated on phase-280 regardless",
     ),
 ];
 

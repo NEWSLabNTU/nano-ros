@@ -445,7 +445,26 @@ function(nros_generate_interfaces target)
         # toolchain.toml + cmake/toolchain/armv7a-nuttx-eabi.cmake's
         # Rust_TOOLCHAIN). Generic `+nightly` resolves to an UNinstalled
         # `nightly-x86_64-unknown-linux-gnu` → rustlib src/Cargo.lock missing.
-        set(_ffi_cargo_prefix "+${Rust_TOOLCHAIN}")
+        #
+        # phase-281 W3-nuttx — the tier-3 `armv7a-nuttx-eabihf` build-std above
+        # requires that pinned NIGHTLY (with rust-src). A STANDALONE nuttx example
+        # configure sets `Rust_TOOLCHAIN` to it via the nuttx toolchain file, but a
+        # WORKSPACE build configures HOST-side, so `Rust_TOOLCHAIN` resolves to host
+        # STABLE — under which `[unstable] build-std` is silently ignored →
+        # `E0463: can't find crate for core`. Resolve the nightly explicitly: prefer
+        # a nightly `Rust_TOOLCHAIN`, else read the canonical pin from
+        # `tools/rust-toolchain.toml` (the SSoT the kernel `nros-nuttx-ffi` tracks).
+        set(_ffi_nuttx_toolchain "${Rust_TOOLCHAIN}")
+        if(NOT _ffi_nuttx_toolchain MATCHES "nightly")
+          set(_ffi_nuttx_pin "${_NANO_ROS_PREFIX}/tools/rust-toolchain.toml")
+          if(EXISTS "${_ffi_nuttx_pin}")
+            file(READ "${_ffi_nuttx_pin}" _ffi_nuttx_pin_txt)
+            if(_ffi_nuttx_pin_txt MATCHES "channel = \"([^\"]+)\"")
+              set(_ffi_nuttx_toolchain "${CMAKE_MATCH_1}")
+            endif()
+          endif()
+        endif()
+        set(_ffi_cargo_prefix "+${_ffi_nuttx_toolchain}")
         # With .cargo/config.toml, --target is set there; don't pass it again.
         set(_ffi_rust_target "")
       endif()
@@ -480,8 +499,16 @@ function(nros_generate_interfaces target)
       endforeach()
       add_dependencies(${_lib_target} ${_lib_target}_ffi)
 
-      # Import the built staticlib
-      add_library(${_lib_target}_ffi_lib STATIC IMPORTED)
+      # Import the built staticlib. GLOBAL (phase-281 W3-nuttx): an IMPORTED target is
+      # directory-scoped by default, so when a NODE pkg subdir (e.g. `ctrl_pkg`) generates
+      # the interface, a SIBLING entry subdir (the NuttX `nuttx_entry`) can't see
+      # `<pkg>__nano_ros_cpp_ffi_lib`. The NuttX kernel link doesn't do a normal cmake link
+      # of the INTERFACE lib (which is globally visible) — `nros_nuttx_build_example` manually
+      # extracts `$<TARGET_FILE:<lib>_ffi_lib>` under an `if(TARGET …)` guard that fails
+      # cross-scope → the FFI `.a` is dropped → `undefined reference to
+      # nros_cpp_publish_std_msgs_msg_int32`. GLOBAL makes the IMPORTED target visible in the
+      # entry scope; it does not change the normal same-scope link on other platforms.
+      add_library(${_lib_target}_ffi_lib STATIC IMPORTED GLOBAL)
       set_target_properties(${_lib_target}_ffi_lib PROPERTIES
         IMPORTED_LOCATION "${_ffi_lib}"
       )

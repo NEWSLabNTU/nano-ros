@@ -699,6 +699,25 @@ entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17861" }
 
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
+# (`ws-realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
+# shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The FIRST
+# full nuttx link + runtime proof of the W3(nuttx) run_tiers seam (commit 37cfaf728) — the C++
+# sibling of both workspace-c-nuttx and the Zephyr workspace-realtime-entry-cpp. Kernel-linked
+# via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the baked
+# port. Own build_subdir (one board per CMake configure). Consumed by
+# tests/realtime_tiers_cpp_nuttx_e2e.rs (port 17863).
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-realtime"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp"
+bringup = "src/demo_bringup"
+entry = "nuttx_entry"
+build_subdir = "build-workspace-fixtures-nuttx"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17863" }
+
 [[workspace_fixture]]
 id = "workspace-cpp-native"
 platform = "native"
