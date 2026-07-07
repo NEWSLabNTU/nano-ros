@@ -422,9 +422,12 @@ test-group = "qemu-freertos"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# NuttX QEMU — port 7452.
+# NuttX QEMU — port 7452. Includes the entry-image e2e binaries
+# (rust_nuttx_entry_e2e / c_nuttx_entry_e2e, issue #130): they boot a NuttX
+# QEMU guest that dials the shared nuttx zenohd on 7452, so they need the same
+# serial test-group + the longer QEMU cold-boot timeout as the rtos_e2e slice.
 [[profile.default.overrides]]
-filter = "binary(nuttx_qemu) or (binary(rtos_e2e) and test(Platform__Nuttx))"
+filter = "binary(nuttx_qemu) or binary(rust_nuttx_entry_e2e) or binary(c_nuttx_entry_e2e) or (binary(rtos_e2e) and test(Platform__Nuttx))"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
