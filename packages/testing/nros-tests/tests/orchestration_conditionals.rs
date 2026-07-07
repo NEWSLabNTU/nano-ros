@@ -50,8 +50,6 @@ fn plan_with_record(record: &str) -> serde_json::Value {
         .arg("demo_cond_bringup/launch/system.launch.xml")
         .arg("--workspace")
         .arg(&fixture)
-        .arg("--nros-toml")
-        .arg(fixture.join("demo_cond_bringup/system.toml"))
         .arg("--record")
         .arg(&record_path)
         .arg("--metadata")

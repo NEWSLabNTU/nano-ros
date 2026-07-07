@@ -54,8 +54,6 @@ fn composable_container_plan_shape() {
         .arg("demo_container_bringup/launch/system.launch.xml")
         .arg("--workspace")
         .arg(&fixture)
-        .arg("--nros-toml")
-        .arg(fixture.join("demo_container_bringup/system.toml"))
         .arg("--record")
         .arg(&record)
         .arg("--metadata")

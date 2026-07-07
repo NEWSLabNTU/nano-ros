@@ -23,8 +23,18 @@ use std::{fs, path::PathBuf, process::Command};
 /// `idlc` — no stub fallback (the existing K.2 build.rs already gates
 /// on the same path, so any setup that runs K.2 also has it).
 fn idlc_path() -> Option<PathBuf> {
+    // Legacy host-install location (pre-186.6 `just cyclonedds setup`).
     let candidate = nros_tests::project_root().join("build/cyclonedds/bin/idlc");
-    candidate.is_file().then_some(candidate)
+    if candidate.is_file() {
+        return Some(candidate);
+    }
+    // Phase 186.6 dropped the build/cyclonedds install — idlc resolves from
+    // PATH (a ROS 2 install or the source build), same as the backend's
+    // NrosRmwCycloneddsTypeSupport.cmake `find_program(IDLC_EXECUTABLE idlc)`.
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join("idlc"))
+        .find(|p| p.is_file())
 }
 
 /// Skip-or-proceed: every K.4 test needs both the `nros` CLI and `idlc`.
