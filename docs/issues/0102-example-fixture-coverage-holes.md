@@ -4,7 +4,7 @@ title: "Example fixture coverage holes — capability-on-embedded, native varian
 status: open
 type: tech-debt
 area: testing
-related: [rfc-0026, phase-263, phase-267, phase-275, phase-276]
+related: [rfc-0026, phase-263, phase-267, phase-275, phase-276, phase-284]
 ---
 
 ## Status — re-audited 2026-07-01 (P0 largely resolved)
