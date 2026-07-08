@@ -1,10 +1,11 @@
 ---
 id: 156
 title: "logging-smoke-nuttx-qemu-arm image boots QEMU and prints nothing (45 s, no networking involved)"
-status: open
+status: resolved
 type: bug
 area: nuttx
 related: [issue-0152]
+resolved_in: (this commit)
 ---
 
 ## Summary
@@ -36,3 +37,22 @@ Notes:
 scripts/build/fixtures-build.sh nuttx rust   # unfiltered — builds the bin
 cargo nextest run -p nros-tests --test logging_smoke logging_smoke_nuttx_qemu_arm_emits_every_severity
 ```
+
+## Resolution (2026-07-08)
+
+NOT runtime silence — a fixture-resolver PROFILE mismatch. `build_test_fixture`
+(the `bins/` resolver) used the env-default profile dir (`nros-fast-release`),
+but every NuttX Rust fixture is built at the `release` profile: `nros-fast-release`
+(lto=off) hits the non-deterministic armv7a-nuttx-eabihf cross-CGU miscompile
+(reboot before `main` = the exact "boots silent" symptom), so
+`fixtures-build.sh nuttx rust` forces `NROS_CARGO_PROFILE=release` and the nuttx
+entry resolvers already hardcode `release`. So the resolver looked in
+`target/armv7a-nuttx-eabihf/nros-fast-release/` for a binary the build wrote to
+`release/` — resolving a stale/absent (or miscompiled) image while a fresh,
+working one existed one dir over.
+
+Fix: `build_test_fixture` forces `release` for `target == "armv7a-nuttx-eabihf"`.
+Verified: both the `release` and `nros-fast-release` ELFs boot in QEMU and print
+all six severities incl. `[FATAL] smoke: fatal payload` (so the image was never
+the problem); after the fix + a `release` rebuild,
+`logging_smoke_nuttx_qemu_arm_emits_every_severity` passes.

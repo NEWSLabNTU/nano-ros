@@ -2101,7 +2101,18 @@ pub fn build_test_fixture(
         )));
     }
 
-    let profile_dir = cargo_target_profile_dir();
+    // #156 — NuttX Rust fixtures are ALWAYS built at the `release` profile, not
+    // the default `nros-fast-release`: `nros-fast-release` (lto=off) hits a
+    // non-deterministic armv7a-nuttx-eabihf cross-CGU miscompile (reboot before
+    // `main`), so `fixtures-build.sh nuttx rust` forces `NROS_CARGO_PROFILE=release`
+    // (the nuttx entry resolvers hardcode `release` for the same reason). This
+    // generic resolver used the env-default profile dir and so looked in
+    // `nros-fast-release/` for a binary the build wrote to `release/` — the fixture
+    // read as stale/absent even though a fresh, working image existed.
+    let profile_dir = match target {
+        Some("armv7a-nuttx-eabihf") => "release".to_string(),
+        _ => cargo_target_profile_dir(),
+    };
     let binary_path = if let Some(target) = target {
         crate_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
     } else {
