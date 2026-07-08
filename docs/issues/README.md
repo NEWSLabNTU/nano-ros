@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#166** — [Zephyr zenoh e2e serialize on build-time-baked router
+  ports](0166-zephyr-e2e-serial-baked-port-parallelism-ceiling.md): the port scheme already gives
+  unique per-(variant,lang) ports (xrce=7 / dds=4 parallel), but six
+  `qemu-zephyr-{pubsub,service,action}-{rust,cpp}` groups stay `max-threads=1` because multiple
+  tests reuse one fixture image whose port is baked (`CONFIG_NROS_ZENOH_LOCATOR`). A native_sim
+  **runtime** `NROS_LOCATOR` override → ephemeral per-test ports → drop all six serial groups.
+  ~292 s family run; the serial DDS-zenoh lanes are the tail.
 - **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
