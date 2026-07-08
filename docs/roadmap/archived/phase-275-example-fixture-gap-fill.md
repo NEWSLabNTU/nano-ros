@@ -1,13 +1,21 @@
 # Phase 275 — Example fixture gap-fill (mechanical coverage holes)
 
-Status: **In progress (2026-07-02)** · Implements issue #102 (H2–H6) · Informs RFC-0026 (examples).
+Status: **Complete (2026-07-08)** · Implements issue #102 (H2–H6) · Informs RFC-0026 (examples).
 
-**Progress (2026-07-02, verified on a known-good machine):** W2 (native all-lang variants) ✓ ·
+**All waves landed + verified:** W1 (`*_entry` coverage) ✓ · W2 (native all-lang variants) ✓ ·
 W3 (zephyr non-role leaves — no real gap, FVP-covered) ✓ · W4 (threadx-riscv64 cyclone svc/action —
 de-scoped) ✓ · W5 (stm32 listener-embassy) ✓ · W6 (silent-gap gate `examples_fixture_coverage.rs`) ✓.
-W1 partial: freertos entries already run-plan-covered, threadx-linux entries **landed** (fixture rows +
-`threadx_linux_entry_build.rs`); **nuttx entries blocked** on a standalone-`[[bin]]` NuttX-libc link
-gap (issue #127). Working detail → `phase-275-276-branch-notes.md`.
+W1 closed 2026-07-08: freertos entries run-plan-covered (`TEST_DRIVEN_BUILDERS`), threadx-linux via
+`[[fixture]]` rows + `threadx_linux_entry_build.rs`, and **nuttx entries now landed** — the
+standalone-`[[bin]]` NuttX-libc link gap (#127) was **resolved** by the board-centric image link
+(RFC-0032 "third leg"): 6 `[[fixture]]` rows + `tests/nuttx_entry_build.rs`, and the 6 nuttx entries
+left the `examples_fixture_coverage.rs` ALLOWLIST (empty for entries). The W6 gate passes; its only
+tracked exceptions are the 3 `px4/rust/xrce/*` examples (need `px4_msgs` codegen from the
+PX4-Autopilot submodule — no fixture lane yet, tracked under #102). Working detail →
+`phase-275-276-branch-notes.md`.
+
+This phase closing removes RFC-0026's interim `_entry` underscore exception → the `_entry` → `-entry`
+directory rename (#136 item 4) is now unblocked.
 
 > **Goal.** Close the *mechanical* example-coverage holes from the 2026-07-01 re-audit of
 > issue #102: examples that exist in-tree (and are claimed in the RFC-0026 matrix) but are
@@ -42,6 +50,10 @@ service-client,action-server,action-client}_entry` — but only freertos `talker
 - **Acceptance:** each of the 18 `*_entry` dirs is built by a fixture; freertos entry demos run
   (not just build) via the run-plan harness; nuttx/threadx entry demos build-assert at minimum.
   Any that can't be supported yet are `skip_build`/`skip_probe` with a tracked reason, not silent.
+- **Done (2026-07-08):** all 18 covered — freertos ×6 via the run-plan harness
+  (`TEST_DRIVEN_BUILDERS`), threadx-linux ×6 via `[[fixture]]` rows + `threadx_linux_entry_build.rs`,
+  nuttx ×6 via `[[fixture]]` rows + `tests/nuttx_entry_build.rs` (unblocked by #127's RFC-0032
+  board-centric image link). Coverage gate green; entry ALLOWLIST empty.
 
 ### W2 — native variant examples (#102 H3)
 0-fixture native examples: `native/c/{custom-msg,custom-platform,custom-transport-loopback,logging}`,

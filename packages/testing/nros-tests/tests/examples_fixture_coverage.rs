@@ -87,7 +87,26 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// tests/threadx_linux_entry_build.rs, and nuttx via `[[fixture]]` rows +
 /// tests/nuttx_entry_build.rs (issue #127 resolved by the board-centric
 /// image link, RFC-0032 "third leg").
-const ALLOWLIST: &[(&str, &str)] = &[];
+const ALLOWLIST: &[(&str, &str)] = &[
+    // px4 xrce Rust examples depend on `px4_msgs`, generated from the
+    // PX4-Autopilot message set (the `third-party/px4/PX4-Autopilot`
+    // submodule, not vendored in-tree). No fixture wires that codegen +
+    // px4 SITL yet, so a plain `nros sync` cannot resolve the dependency.
+    // Tracked under #102 (example fixture coverage holes) — remove once a
+    // px4 fixture lane lands.
+    (
+        "px4/rust/xrce/offboard-companion",
+        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
+    ),
+    (
+        "px4/rust/xrce/px4-probe",
+        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
+    ),
+    (
+        "px4/rust/xrce/px4-stub",
+        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
+    ),
+];
 
 /// Recursive walk collecting dirs that contain `package.xml`.
 fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {
