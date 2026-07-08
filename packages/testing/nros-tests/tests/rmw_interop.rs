@@ -16,10 +16,10 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
-        action_server_binary, action_server_concurrent_binary, is_rmw_zenoh_available,
-        is_ros2_available, listener_binary, ros2_node_list, ros2_service_list, ros2_topic_hz,
-        ros2_topic_info, ros2_topic_list, service_client_binary, service_server_binary,
-        talker_binary, zenohd_unique,
+        action_server_binary, action_server_concurrent_binary, build_qos_override_pubsub,
+        is_rmw_zenoh_available, is_ros2_available, listener_binary, ros2_node_list,
+        ros2_service_list, ros2_topic_hz, ros2_topic_info, ros2_topic_list, service_client_binary,
+        service_server_binary, talker_binary, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -27,6 +27,24 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
+
+/// #151 — is a specific ROS 2 package installed (e.g. `action_tutorials_py`, the
+/// demo that provides the Fibonacci action server)? `require_ros2` only proves
+/// the ROS 2 CLI + `rmw_zenoh_cpp`; a lane that shells out to `ros2 run <pkg> …`
+/// must ALSO gate on the pkg, else the server starts-then-dies and the test
+/// panics on the downstream delivery assert instead of skipping cleanly.
+fn ros2_pkg_available(pkg: &str) -> bool {
+    std::process::Command::new("bash")
+        .args([
+            "-c",
+            &format!("source /opt/ros/humble/setup.bash && ros2 pkg list | grep -qx {pkg}"),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
 
 /// Skip test if ROS 2 prerequisites are not met
 fn require_ros2() -> bool {
@@ -629,6 +647,16 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
     if !require_ros2() {
         nros_tests::skip!("ROS 2 not found");
     }
+    // #151 — the Fibonacci server is `ros2 run action_tutorials_py …`. Without that
+    // demo pkg the server starts then exits, delivering nothing, and the old code
+    // panicked on the downstream "delivered nothing" assert. Gate on it at the top
+    // so an absent demo pkg is a clean skip, not a spurious failure.
+    if !ros2_pkg_available("action_tutorials_py") {
+        nros_tests::skip!(
+            "ROS 2 `action_tutorials_py` demo pkg not installed (provides the Fibonacci \
+             action server) — install ros-humble-action-tutorials-py to run this lane"
+        );
+    }
 
     let locator = zenohd_unique.locator();
 
@@ -1164,7 +1192,7 @@ fn test_service_ros2_server_nano_client(
 // =============================================================================
 
 /// Test QoS compatibility matrix
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum QosReliability {
     Reliable,
     BestEffort,
@@ -1192,7 +1220,6 @@ impl std::fmt::Display for QosReliability {
 #[case(QosReliability::BestEffort, QosReliability::Reliable, false)]
 fn test_qos_matrix(
     zenohd_unique: ZenohRouter,
-    talker_binary: PathBuf,
     #[case] pub_qos: QosReliability,
     #[case] sub_qos: QosReliability,
     #[case] should_work: bool,
@@ -1203,19 +1230,28 @@ fn test_qos_matrix(
         nros_tests::skip!("ROS 2 not found");
     }
 
+    // #151 — the nano PUBLISHER's reliability is now really set per case, via the
+    // `qos-override-pubsub` fixture (`NROS_QOS_OVERRIDE`), instead of assumed. The
+    // old matrix used the plain talker (fixed default) and `skip!`ped every
+    // Reliable-publisher cell with a stale "nros talker doesn't support RELIABLE
+    // yet" string — wrong since #146 (nano pubs/subs default RELIABLE and advertise
+    // it in the liveliness-token QoS). All four cells now RUN.
+    let talker = build_qos_override_pubsub()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|e| nros_tests::skip!("qos-override-pubsub fixture not built: {e}"));
+
     let locator = zenohd_unique.locator();
 
     eprintln!(
-        "Testing QoS: publisher={}, subscriber={} (expected: {})",
-        pub_qos,
-        sub_qos,
+        "Testing QoS: publisher={pub_qos}, subscriber={sub_qos} (expected: {})",
         if should_work { "works" } else { "fails" }
     );
 
-    // Start ROS 2 subscriber with specified QoS
+    // ROS 2 subscriber with the case's reliability. Int32 to match the qos fixture
+    // (raw Int32 on /chatter).
     let mut ros2_subscriber = match Ros2Process::topic_echo_with_qos(
         "/chatter",
-        "std_msgs/msg/String",
+        "std_msgs/msg/Int32",
         sub_qos.as_str(),
         &locator,
         DEFAULT_ROS_DISTRO,
@@ -1229,56 +1265,44 @@ fn test_qos_matrix(
         }
     };
 
-    // Start nros talker (currently only supports BEST_EFFORT)
-    // Note: For full QoS testing, we'd need to modify the talker to support different QoS
-    let mut talker_cmd = Command::new(&talker_binary);
+    // nano talker with the case's PUBLISHER reliability really applied: default is
+    // Reliable; the override folds in BestEffort.
+    let mut talker_cmd = Command::new(&talker);
     talker_cmd
         .env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", &locator);
-    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
-        .expect("Failed to start talker");
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_QOS_ROLE", "talker");
+    if pub_qos == QosReliability::BestEffort {
+        talker_cmd.env("NROS_QOS_OVERRIDE", "reliability=best_effort");
+    }
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "qos-talker")
+        .expect("Failed to start qos talker");
 
     let output = ros2_subscriber
-        .wait_for_output(Duration::from_secs(8))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
     talker.kill();
 
     let received = count_pattern(&output, "data:") > 0;
 
-    // Note: nros talker uses BEST_EFFORT, so this tests BEST_EFFORT publisher
-    match pub_qos {
-        QosReliability::BestEffort => {
-            // #133 — fail loud only when delivery was EXPECTED but the subscriber
-            // got nothing (the 0-received soft-pass this issue targets). We do NOT
-            // assert the `should_work == false` cells as hard failures: those encode
-            // DDS request-vs-offered incompatibility, but the zenoh transport's
-            // reliability model is looser (a BEST_EFFORT publisher can still reach a
-            // RELIABLE subscriber), so over-delivery there is expected, not a bug.
-            if should_work {
-                assert!(
-                    received,
-                    "QoS {pub_qos}→{sub_qos}: expected delivery but the ROS 2 \
-                     subscriber received 0 samples from the BEST_EFFORT nano talker."
-                );
-                eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: received as expected");
-            } else if received {
-                eprintln!(
-                    "[INFO] QoS {pub_qos}→{sub_qos}: delivered despite DDS-incompatible \
-                     QoS — zenoh reliability is looser than DDS RxO (not a failure)"
-                );
-            } else {
-                eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: no delivery, as expected");
-            }
-        }
-        QosReliability::Reliable => {
-            // nros talker only supports BEST_EFFORT — a genuine capability gap, so
-            // skip! (fail-loud contract) rather than a bare log-and-pass.
-            nros_tests::skip!(
-                "QoS {}→{}: nros talker doesn't support RELIABLE yet",
-                pub_qos,
-                sub_qos
-            );
-        }
+    // #133 — fail loud only when delivery was EXPECTED but the subscriber got
+    // nothing. The `should_work == false` cell (BE pub → RELIABLE sub) is
+    // DDS-incompatible by RxO, but zenoh's reliability model is looser than DDS, so
+    // over-delivery there is expected, not a bug — logged, not asserted.
+    if should_work {
+        assert!(
+            received,
+            "QoS {pub_qos}→{sub_qos}: expected delivery but the ROS 2 subscriber \
+             received 0 samples from the nano {pub_qos} talker."
+        );
+        eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: received as expected");
+    } else if received {
+        eprintln!(
+            "[INFO] QoS {pub_qos}→{sub_qos}: delivered despite DDS-incompatible QoS \
+             — zenoh reliability is looser than DDS RxO (not a failure)"
+        );
+    } else {
+        eprintln!("[PASS] QoS {pub_qos}→{sub_qos}: no delivery, as expected");
     }
 }
 
@@ -1326,17 +1350,20 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Wait for first message
-    let mut first_message_time = None;
-    for _ in 0..50 {
-        std::thread::sleep(Duration::from_millis(100));
-        if let Ok(output) = ros2_subscriber.wait_for_output(Duration::from_millis(10))
-            && output.contains("data:")
-        {
-            first_message_time = Some(start.elapsed());
-            break;
-        }
-    }
+    // Wait for the first message. #151 — two fixes over the old 5 s / 100×10 ms
+    // hand-rolled poll:
+    //   1. 25 s window (was 5 s): rmw_zenoh's discovery of a zenoh-pico publisher
+    //      takes ~10 s (#146; the other interop lanes already use 25 s), so 5 s
+    //      spuriously panicked "delivery broken" on a working machine.
+    //   2. Robust wait: the old loop drained the pipe in 10 ms slices and could
+    //      miss the `data:` line straddling two reads — the same direction's
+    //      `test_nano_to_ros2` passes with a single blocking wait. Use
+    //      `wait_for_output` once; the elapsed time to the first `data:` IS the
+    //      startup+discovery latency figure.
+    let output = ros2_subscriber
+        .wait_for_output(Duration::from_secs(25))
+        .unwrap_or_default();
+    let first_message_time = output.contains("data:").then(|| start.elapsed());
 
     talker.kill();
 
@@ -1344,7 +1371,7 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     // not an informational note (the latency figure is a benchmark on top of delivery).
     let elapsed = first_message_time.expect(
         "nros → ROS 2 latency benchmark: no 'data:' message reached the ROS 2 \
-         subscriber within the 5 s window — delivery is broken.",
+         subscriber within the 25 s window — delivery is broken.",
     );
     eprintln!("[BENCHMARK] First message latency: {elapsed:?} (includes startup)");
     eprintln!("  Note: This measures time from talker start to first message received");
