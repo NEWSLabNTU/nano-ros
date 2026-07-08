@@ -799,14 +799,12 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
 /// The first two were already gated by `test_discovery_topic_visible` +
 /// `test_nano_to_ros2`; this test closes the rate-observation gap.
 ///
-/// **Why echo-based, not `ros2 topic hz`-based.** Under `rmw_zenoh_cpp`,
-/// `ros2 topic hz` fails with
-/// `failed to initialize wait set: the given context is not valid …` —
-/// the rclpy wait-set is polled after the rmw_zenoh context shutdown handler
-/// runs, before any "average rate" line is emitted. The brittle hz path
-/// lives behind `#[ignore]` below (`test_ros2_topic_hz_interop`) so it can
-/// be re-enabled once the upstream interaction is fixed; the rate-via-echo
-/// path is the robust regression gate today.
+/// **Echo-based cross-check.** A redundant rate gate alongside
+/// `test_ros2_topic_hz_interop` (now un-ignored — the `ros2_topic_hz` helper's
+/// `--spin-time`/`--wall-time`/`stdbuf -oL` hardening made it emit real
+/// `average rate:` lines before the harmless rmw_zenoh shutdown error). This
+/// echo path counts `data:` samples directly, so it does not depend on
+/// `ros2 topic hz`'s rclpy spin/teardown behavior at all.
 ///
 /// Methodology: drive `ros2 topic echo /chatter` for an 8 s window against
 /// the native talker (publishes at 1 Hz, see
@@ -874,16 +872,20 @@ fn test_ros2_topic_rate_via_echo_interop(zenohd_unique: ZenohRouter, talker_bina
     );
 }
 
-/// Phase 211.C follow-up — `ros2 topic hz` against rmw_zenoh emits
-/// `failed to initialize wait set: the given context is not valid …` and
-/// never prints an "average rate" line. The
-/// `nros_tests::fixtures::ros2_topic_hz` helper is committed for future use
-/// but the assertion is gated behind `#[ignore]` until either rmw_zenoh's
-/// shutdown order or ros2cli's `topic hz` spin path is fixed upstream.
-/// See `test_ros2_topic_rate_via_echo_interop` for the working rate-check
-/// path that gates the same spirit of the bullet today.
+/// Phase 211.C follow-up — `ros2 topic hz` rate observation against a nano-ros
+/// publisher over rmw_zenoh. Previously `#[ignore]`d: `ros2 topic hz` printed no
+/// "average rate" line before rmw_zenoh's shutdown handler invalidated the rcl
+/// context. The `ros2_topic_hz` helper was since hardened (`--spin-time` extends
+/// the discovery window past the rmw_zenoh match, `--wall-time` avoids a /clock
+/// subscription, `stdbuf -oL` line-buffers so each averaged line reaches the
+/// capture before `timeout` SIGTERMs) and it now emits `average rate: ~0.999`
+/// (1 Hz talker) BEFORE the shutdown. The residual
+/// `failed to initialize wait set: the given context is not valid …` still
+/// prints at teardown, but AFTER the rate lines, so it is cosmetic — the
+/// assertion filters for `average rate:` lines and ignores it. Un-ignored; the
+/// sibling `test_ros2_topic_rate_via_echo_interop` stays as the redundant
+/// echo-based cross-check.
 #[rstest]
-#[ignore = "ros2 topic hz + rmw_zenoh: rcl context invalid before any rate line emits"]
 fn test_ros2_topic_hz_interop(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     use std::process::Command;
 
