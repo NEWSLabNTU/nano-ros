@@ -40,6 +40,7 @@ static void on_tick(void* ctx) {
 }
 
 static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(),
                                            std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),

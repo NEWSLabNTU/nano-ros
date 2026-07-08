@@ -66,6 +66,7 @@ static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, b
 
 static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
                                      safety_listener_t* self) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
     (void)executor;
     self->received = 0;
     self->integrity_faults = 0;

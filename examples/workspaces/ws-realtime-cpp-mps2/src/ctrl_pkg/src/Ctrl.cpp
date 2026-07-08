@@ -21,6 +21,8 @@ void Ctrl::on_tick() {
 }
 
 ::nros::Result Ctrl::configure(::nros::Node& node) {
+    // Line-buffer stdout so each tick flushes immediately when piped.
+    ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::nros::Result r = node.create_publisher(pub_, "/ctrl");
     if (!r.ok()) return r;
     return ::nros::bind_timer<Ctrl, &Ctrl::on_tick>(node, timer_, 10, this);

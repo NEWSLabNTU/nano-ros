@@ -21,6 +21,8 @@ void Telem::on_tick() {
 }
 
 ::nros::Result Telem::configure(::nros::Node& node) {
+    // Line-buffer stdout so each tick flushes immediately when piped.
+    ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::nros::Result r = node.create_publisher(pub_, "/telem");
     if (!r.ok()) return r;
     return ::nros::bind_timer<Telem, &Telem::on_tick>(node, timer_, 100, this);
