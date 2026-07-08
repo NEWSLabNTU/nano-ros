@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace nros_zephyr_action_server_cpp {
+namespace zephyr_cpp_action_server {
 
 static int32_t read_i32_le(const uint8_t* p) {
     return static_cast<int32_t>(static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
@@ -105,4 +105,4 @@ void FibonacciServer::on_tick() {
     return r;
 }
 
-} // namespace nros_zephyr_action_server_cpp
+} // namespace zephyr_cpp_action_server

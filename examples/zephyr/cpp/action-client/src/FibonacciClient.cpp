@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace nros_zephyr_action_client_cpp {
+namespace zephyr_cpp_action_client {
 
 static uint32_t read_u32_le(const uint8_t* p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
@@ -79,4 +79,4 @@ void FibonacciClient::on_result(const uint8_t* /*goal_id*/, int32_t /*status*/, 
     return ::nros::Result();
 }
 
-} // namespace nros_zephyr_action_client_cpp
+} // namespace zephyr_cpp_action_client

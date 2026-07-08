@@ -8,7 +8,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(nros_zephyr_talker_cpp LANGUAGES CXX)
+project(zephyr_cpp_talker LANGUAGES CXX)
 
 # nros zephyr module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) auto-loaded
 # via `find_package(Zephyr)`; provides zenoh shim, platform support, and
@@ -46,7 +46,7 @@ include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
     NAME      talker
-    CLASS     nros_zephyr_talker_cpp::Talker
+    CLASS     zephyr_cpp_talker::Talker
     LANGUAGE  CPP
     HEADER    Talker.hpp
     TYPED

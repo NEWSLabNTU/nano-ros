@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(nros_zephyr_service_server_cpp LANGUAGES CXX)
+project(zephyr_cpp_service_server LANGUAGES CXX)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
@@ -43,7 +43,7 @@ include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
     NAME      add_two_ints_server
-    CLASS     nros_zephyr_service_server_cpp::AddTwoIntsServer
+    CLASS     zephyr_cpp_service_server::AddTwoIntsServer
     LANGUAGE  CPP
     HEADER    AddTwoIntsServer.hpp
     TYPED

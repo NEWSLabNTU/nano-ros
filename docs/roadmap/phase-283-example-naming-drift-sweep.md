@@ -56,18 +56,22 @@ Same-role C++ examples spell the namespace three ways; the majority
 (freertos/nuttx/threadx-linux/riscv64-threadx) is `<plat>_cpp_<case>`. The
 Zephyr C++ set is the outlier (`nros_zephyr_<case>_cpp`); native C++ uses an
 anonymous namespace. Converge the Zephyr set on `zephyr_cpp_<case>`; leave
-native anonymous (documented majority for native).
+native anonymous (documented majority for native). The
+`cyclonedds/talker-aemv8r` namespace (`nros_zephyr_aemv8r_cyclonedds_talker`) is a
+distinct scheme that would COLLIDE with the plain talker's target — skipped, needs a
+considered name (out of this mechanical sweep). The `nros_zephyr_add_cyclonedds_action_descriptors`
+CMake helper is infrastructure, not a namespace — untouched.
 
-- [ ] **W2.check** — `grep -rln 'namespace nros_zephyr' examples/zephyr/cpp
+- [x] **W2.check** — `grep -rln 'namespace nros_zephyr' examples/zephyr/cpp
   --include='*.cpp' --include='*.hpp'`. Baseline: 14 files across
   talker/listener/service-{client,server}/action-{client,server} +
   cyclonedds/talker-aemv8r.
-- [ ] **W2.fix** — rename each `namespace nros_zephyr_<case>_cpp` →
+- [x] **W2.fix** — rename each `namespace nros_zephyr_<case>_cpp` →
   `zephyr_cpp_<case>` in both the `.hpp` and `.cpp` (declaration + any
   qualified uses); keep the per-role `<case>` token. Do NOT touch
   `examples/zephyr/cpp/cyclonedds/talker-aemv8r` if it is a user-owned untracked
   file (respect worktree changes).
-- [ ] **W2.verify** — check job empty; a zephyr C++ example builds (west lane
+- [x] **W2.verify** — check job empty; a zephyr C++ example builds (west lane
   where provisioned).
 
 ### W3 — `setvbuf` uniformity per platform

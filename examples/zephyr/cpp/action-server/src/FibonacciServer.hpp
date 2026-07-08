@@ -13,7 +13,7 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
-namespace nros_zephyr_action_server_cpp {
+namespace zephyr_cpp_action_server {
 
 class FibonacciServer {
     ::nros::ActionServerStorage storage_; // executor-arena-held action server
@@ -36,6 +36,6 @@ class FibonacciServer {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_action_server_cpp
+} // namespace zephyr_cpp_action_server
 
 #endif

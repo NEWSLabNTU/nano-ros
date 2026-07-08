@@ -14,7 +14,7 @@
 
 #include "std_msgs.hpp"
 
-namespace nros_zephyr_listener_cpp {
+namespace zephyr_cpp_listener {
 
 class Listener {
     int recv_ = 0;
@@ -25,6 +25,6 @@ class Listener {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_listener_cpp
+} // namespace zephyr_cpp_listener
 
 #endif // NROS_ZEPHYR_LISTENER_CPP_LISTENER_HPP

@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(nros_zephyr_action_client_cpp LANGUAGES CXX C)
+project(zephyr_cpp_action_client LANGUAGES CXX C)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
@@ -31,7 +31,7 @@ include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
     NAME      fibonacci_action_client
-    CLASS     nros_zephyr_action_client_cpp::FibonacciClient
+    CLASS     zephyr_cpp_action_client::FibonacciClient
     LANGUAGE  CPP
     HEADER    FibonacciClient.hpp
     TYPED

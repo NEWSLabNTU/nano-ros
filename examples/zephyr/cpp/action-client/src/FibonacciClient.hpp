@@ -13,7 +13,7 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
-namespace nros_zephyr_action_client_cpp {
+namespace zephyr_cpp_action_client {
 
 class FibonacciClient {
     ::nros::ActionClientStorage client_;
@@ -29,6 +29,6 @@ class FibonacciClient {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_action_client_cpp
+} // namespace zephyr_cpp_action_client
 
 #endif

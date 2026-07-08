@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace nros_zephyr_service_server_cpp {
+namespace zephyr_cpp_service_server {
 
 static int64_t read_i64_le(const uint8_t* p) {
     uint64_t v = 0;
@@ -54,4 +54,4 @@ bool AddTwoIntsServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* r
     return r;
 }
 
-} // namespace nros_zephyr_service_server_cpp
+} // namespace zephyr_cpp_service_server

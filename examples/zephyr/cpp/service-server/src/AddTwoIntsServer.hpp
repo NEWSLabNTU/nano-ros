@@ -12,7 +12,7 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
-namespace nros_zephyr_service_server_cpp {
+namespace zephyr_cpp_service_server {
 
 class AddTwoIntsServer {
     // Real handler bound by identity: fills `resp` from `req`, returns true to
@@ -24,6 +24,6 @@ class AddTwoIntsServer {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_service_server_cpp
+} // namespace zephyr_cpp_service_server
 
 #endif

@@ -13,7 +13,7 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
-namespace nros_zephyr_service_client_cpp {
+namespace zephyr_cpp_service_client {
 
 class AddTwoIntsClient {
     ::nros::ServiceClientStorage client_;
@@ -29,6 +29,6 @@ class AddTwoIntsClient {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_service_client_cpp
+} // namespace zephyr_cpp_service_client
 
 #endif // NROS_ZEPHYR_SERVICE_CLIENT_CPP_ADDTWOINTSCLIENT_HPP

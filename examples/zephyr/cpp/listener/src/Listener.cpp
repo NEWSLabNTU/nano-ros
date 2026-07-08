@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace nros_zephyr_listener_cpp {
+namespace zephyr_cpp_listener {
 
 void Listener::on_raw(const uint8_t* data, size_t len) {
     // Decode via the generated typed deserializer (phase-277 W4; was
@@ -29,4 +29,4 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
     return r;
 }
 
-} // namespace nros_zephyr_listener_cpp
+} // namespace zephyr_cpp_listener

@@ -11,7 +11,7 @@
 
 #include "std_msgs.hpp"
 
-namespace nros_zephyr_talker_cpp {
+namespace zephyr_cpp_talker {
 
 class Talker {
     ::nros::Publisher<std_msgs::msg::String> pub_;
@@ -24,6 +24,6 @@ class Talker {
     ::nros::Result configure(::nros::Node& node);
 };
 
-} // namespace nros_zephyr_talker_cpp
+} // namespace zephyr_cpp_talker
 
 #endif // NROS_ZEPHYR_TALKER_CPP_TALKER_HPP

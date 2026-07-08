@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace nros_zephyr_talker_cpp {
+namespace zephyr_cpp_talker {
 
 void Talker::on_tick() {
     // Pre-increment so the first payload is "Hello World: 1", matching the
@@ -26,4 +26,4 @@ void Talker::on_tick() {
     return ::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this);
 }
 
-} // namespace nros_zephyr_talker_cpp
+} // namespace zephyr_cpp_talker

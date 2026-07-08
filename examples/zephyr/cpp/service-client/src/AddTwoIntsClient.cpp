@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace nros_zephyr_service_client_cpp {
+namespace zephyr_cpp_service_client {
 
 static int64_t read_i64_le(const uint8_t* p) {
     uint64_t v = 0;
@@ -61,4 +61,4 @@ void AddTwoIntsClient::on_tick() {
     return r;
 }
 
-} // namespace nros_zephyr_service_client_cpp
+} // namespace zephyr_cpp_service_client
