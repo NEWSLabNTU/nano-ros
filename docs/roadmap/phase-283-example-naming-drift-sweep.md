@@ -35,17 +35,17 @@ The board-driven bare-metal + stm32 talkers name the struct `TalkerNode`; every
 other platform and all workspace node pkgs use plain `Talker` (matches the C++
 class name). Converge on `Talker`.
 
-- [ ] **W1.check** — `grep -rln 'TalkerNode' examples/qemu-arm-baremetal/rust
+- [x] **W1.check** — `grep -rln 'TalkerNode' examples/qemu-arm-baremetal/rust
   examples/stm32f4/rust --include='*.rs' --include='*.toml'`. Baseline: 6
   examples (`qemu-arm-baremetal/rust/{talker,serial-talker,talker-rtic,
   talker-rtic-mixed,talker-xrce}`, `stm32f4/rust/talker`), each with 4 `lib.rs`
   refs (`struct`, `impl Node`, `impl ExecutableNode`, `nros::node!(…)`) + the
   `[package.metadata.nros.node] class = "<crate>::TalkerNode"` in Cargo.toml.
-- [ ] **W1.fix** — rename `TalkerNode` → `Talker` in each `lib.rs` (all 4 refs)
+- [x] **W1.fix** — rename `TalkerNode` → `Talker` in each `lib.rs` (all 4 refs)
   AND the Cargo.toml `class` string. Both MUST stay in sync — the
   `example_shape::component_class_strings_match_package_name` lint checks the
   class ↔ crate/struct relationship, and `nros::node!` registers by class.
-- [ ] **W1.verify** — `example_shape` green (classification + class-string
+- [x] **W1.verify** — `example_shape` green (classification + class-string
   tests); the check job returns empty; at least one affected example compiles
   (bare-metal cross-build where the toolchain is provisioned, else the
   shape/lint tests are the gate — flag any un-cross-built example, "no silent

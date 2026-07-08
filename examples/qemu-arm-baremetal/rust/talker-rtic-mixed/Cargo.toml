@@ -22,7 +22,7 @@ deploy = "rtic-mps2-an385"
 node_pkgs = ["qemu-rtic-mixed-talker"]
 
 [package.metadata.nros.node]
-class = "qemu_rtic_mixed_talker::TalkerNode"
+class = "qemu_rtic_mixed_talker::Talker"
 name = "talker"
 default_namespace = "/"
 dispatch = "deferred"

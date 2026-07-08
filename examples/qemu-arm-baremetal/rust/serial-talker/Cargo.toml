@@ -12,7 +12,7 @@ test = false
 bench = false
 
 # Self-contained standalone example (issue 0100): `lib.rs` IS the node
-# (`nros::node!(SerialTalkerNode)` emits `register`); `main.rs` is the
+# (`nros::node!(SerialTalker)` emits `register`); `main.rs` is the
 # `nros::main!()` Form-1 Entry dispatching to this same crate's `register`.
 [lib]
 crate-type = ["rlib"]
@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 deploy = "qemu-mps2-an385"
 
 [package.metadata.nros.node]
-class = "qemu_serial_talker::SerialTalkerNode"
+class = "qemu_serial_talker::SerialTalker"
 name = "serial_talker"
 default_namespace = "/"
 dispatch = "deferred"

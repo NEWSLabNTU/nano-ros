@@ -18,9 +18,9 @@ use std_msgs::msg::String as StringMsg;
 
 static LOGGER: Logger = Logger::new("serial_talker");
 
-pub struct SerialTalkerNode;
+pub struct SerialTalker;
 
-impl Node for SerialTalkerNode {
+impl Node for SerialTalker {
     const NAME: &'static str = "serial_talker";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
@@ -33,7 +33,7 @@ impl Node for SerialTalkerNode {
     }
 }
 
-impl ExecutableNode for SerialTalkerNode {
+impl ExecutableNode for SerialTalker {
     type State = i32;
 
     fn init() -> Self::State {
@@ -57,4 +57,4 @@ impl ExecutableNode for SerialTalkerNode {
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
-nros::node!(SerialTalkerNode);
+nros::node!(SerialTalker);

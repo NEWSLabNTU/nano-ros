@@ -18,9 +18,9 @@ use std_msgs::msg::String as StringMsg;
 
 static LOGGER: Logger = Logger::new("talker_xrce");
 
-pub struct XrceTalkerNode;
+pub struct XrceTalker;
 
-impl Node for XrceTalkerNode {
+impl Node for XrceTalker {
     const NAME: &'static str = "talker_xrce";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
@@ -33,7 +33,7 @@ impl Node for XrceTalkerNode {
     }
 }
 
-impl ExecutableNode for XrceTalkerNode {
+impl ExecutableNode for XrceTalker {
     type State = i32;
 
     fn init() -> Self::State {
@@ -57,4 +57,4 @@ impl ExecutableNode for XrceTalkerNode {
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
-nros::node!(XrceTalkerNode);
+nros::node!(XrceTalker);

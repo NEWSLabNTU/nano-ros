@@ -26,9 +26,9 @@ use std_msgs::msg::String as StringMsg;
 
 static LOGGER: Logger = Logger::new("talker");
 
-pub struct TalkerNode;
+pub struct Talker;
 
-impl Node for TalkerNode {
+impl Node for Talker {
     const NAME: &'static str = "talker";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
@@ -41,7 +41,7 @@ impl Node for TalkerNode {
     }
 }
 
-impl ExecutableNode for TalkerNode {
+impl ExecutableNode for Talker {
     type State = i32;
 
     fn init() -> Self::State {
@@ -65,4 +65,4 @@ impl ExecutableNode for TalkerNode {
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
-nros::node!(TalkerNode);
+nros::node!(Talker);

@@ -11,7 +11,7 @@ test = false
 bench = false
 
 # Self-contained standalone example (issue 0100): `lib.rs` IS the node
-# (`nros::node!(TalkerNode)` emits `register`); `main.rs` is the `nros::main!()`
+# (`nros::node!(Talker)` emits `register`); `main.rs` is the `nros::main!()`
 # Form-1 Entry dispatching to this same crate's `register`.
 [lib]
 crate-type = ["rlib"]
@@ -20,7 +20,7 @@ crate-type = ["rlib"]
 deploy = "stm32f4"
 
 [package.metadata.nros.node]
-class = "stm32f4_bsp_talker::TalkerNode"
+class = "stm32f4_bsp_talker::Talker"
 name = "talker"
 default_namespace = "/"
 dispatch = "deferred"

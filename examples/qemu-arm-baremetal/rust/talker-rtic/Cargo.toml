@@ -12,7 +12,7 @@ test = false
 bench = false
 
 # Self-contained standalone example (issue 0100): the node logic lives in this
-# crate's `lib.rs` (`nros::node!(TalkerNode)` → `register_dispatch`); `node_pkgs`
+# crate's `lib.rs` (`nros::node!(Talker)` → `register_dispatch`); `node_pkgs`
 # self-references this crate. `main.rs` is the `nros::main!()` RTIC Entry.
 [lib]
 crate-type = ["rlib"]
@@ -22,7 +22,7 @@ deploy = "rtic-mps2-an385"
 node_pkgs = ["qemu-rtic-talker"]
 
 [package.metadata.nros.node]
-class = "qemu_rtic_talker::TalkerNode"
+class = "qemu_rtic_talker::Talker"
 name = "talker"
 default_namespace = "/"
 dispatch = "deferred"
