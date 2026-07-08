@@ -5,6 +5,7 @@ status: resolved
 type: tech-debt
 area: zephyr
 related: [phase-276, phase-279, phase-282, issue-0139, issue-0148]
+resolved_in: phase-282 (fork ef065b9c, gitlink 798328d78)
 ---
 
 > **Mitigated — [phase-279](../roadmap/archived/phase-279-zephyr-tx-throughput-ceiling.md)**

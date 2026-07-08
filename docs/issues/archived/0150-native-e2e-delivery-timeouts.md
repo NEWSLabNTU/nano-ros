@@ -4,7 +4,8 @@ title: "Native e2e delivery timeouts on the dev machine — XRCE cross-process, 
 status: resolved
 type: bug
 area: testing
-related: [issue-0053, issue-0135]
+related: [issue-0053, issue-0135, issue-0153]
+resolved_in: 44c0740cb + fec63c429
 ---
 
 ## Summary

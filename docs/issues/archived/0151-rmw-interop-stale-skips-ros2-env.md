@@ -1,10 +1,11 @@
 ---
 id: 151
 title: "rmw_interop: stale 'nros talker doesn't support RELIABLE yet' skip-strings (wrong since #146) + ROS 2 action/latency lanes need env"
-status: open
+status: resolved
 type: tech-debt
 area: testing
-related: [issue-0146]
+related: [issue-0146, issue-0153]
+resolved_in: 3e280622e
 ---
 
 ## Summary

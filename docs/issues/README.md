@@ -45,14 +45,27 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 
-- **#145** — [Zephyr tx throughput hard-capped at ~1 send per socket recv
-  window](0145-zephyr-tx-throughput-ceiling.md): zsock's per-fd mutex makes the read task's recv
-  window the tx pacing clock (~10 msg/s at the 100 ms default). The Kconfig timeout is a
-  band-aid; real fixes = dedicated tx link, batch-flush mode, or an upstream zsock change.
+- **#153** — [ros2-server → nano-client service/action lanes time
+  out](0153-ros2-server-to-nano-client-timeout.md): the one remaining rmw_interop direction —
+  a ROS 2 service/action SERVER with a nano-ros CLIENT times out on response/goal delivery
+  (`Transport(Timeout)`); nano→ros2 and pub/sub both ways are green. Suspects: response-publisher
+  RxO, zpico query/reply matcher, discovery-time vs call-timeout budget.
+- **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): esp32/nuttx QEMU logging
+  images, PX4 SITL, zephyr-cyclone fixture arm, assorted zephyr/mixed lanes need their lane's
+  setup verb (or a recipe home); re-triage after a quiet-window rebuild.
+- **#149** — [nuttx-realtime typed-C fixtures fail from fresh
+  configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
+  (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
+  the phase-283 fixture rework + a cpp-lane build-std toolchain error; `just nuttx
+  build-fixtures` still doesn't cover workspace lanes.
+- **#148** — [100 Hz ctrl tier generates only ~40 msg/s regardless of tx
+  config](0148-ctrl-tier-generation-side-cap.md): phase-282 unblocked the tx path; the residual
+  cap is generation-side (executor timer fire-once-late / native_sim sched). Discriminators
+  listed in the issue.
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
-  (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); collected in
-  phase-277 W7 for one mechanical sweep.
+  (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); phase-283
+  drafts the mechanical sweep.
 - **#110** — [No per-entry way to size the executor callback table
   (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
   `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
@@ -66,6 +79,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
   transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
   stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
+- **#80** — [Parameter persistence disabled /
+  incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
+
+Recently resolved (see [`archived/`](archived/) for the full list): **#145** — zephyr tx
+throughput ceiling (phase-282: batch + flush thread + split lock = 20× streaming, uniform
+`tx_express` QoS escape; successor axis = #148). **#150** — native e2e delivery timeouts
+(XRCE session-key collision pid-salted; bridge bins' Int32→String flip; safety resolver
+drift; qos-mixed stale-object rebuild; 12/12 green). **#151** — rmw_interop stale skips +
+latency window + action-pkg gate (residual direction = #153).
+
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#144** —
 [`run_tiers` ≥3-tier setup declare
 race](archived/0144-run-tiers-spawned-tier-declare-race.md): the chained-spawn fix
