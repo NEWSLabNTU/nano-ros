@@ -57,6 +57,7 @@ static bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t
 
 static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
                                    add_server_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     (void)executor; /* node-scoped service; executor unused */
     size_t handle;
     int32_t rc =

@@ -100,11 +100,13 @@ under greenlight):**
   service-{client,client-callback,server}). Excludes phase-242 pocs
   (component-poc, component-node-poc, transform-poc). Verified: `cpp_talker`
   builds clean and its banner flushes when piped. Shipped `353d2a334`.
-- [ ] **W3b — zephyr C/C++** (`_IONBF`/`*_configure`). LACKS: c/{listener,
-  service-client,service-server,action-server}, cpp/{talker,listener,
-  service-client,service-server,action-server}. Excludes `cpp/cyclonedds/
-  talker-aemv8r` (user-owned untracked; W2 flagged its distinct namespace).
-  Verify = west/native_sim lane (slow).
+- [x] **W3b — zephyr C/C++** (`_IONBF`/`*_configure`). Added to c/{listener,
+  service-client,service-server,action-server} (bare `setvbuf`) + cpp/{talker,
+  listener,service-client,service-server,action-server} (`::setvbuf` global,
+  4-line comment — Zephyr's minimal libcpp declares it only in `::`). Excludes
+  `cpp/cyclonedds/talker-aemv8r` (user-owned untracked; W2 flagged its distinct
+  namespace). Verified: `just zephyr build-one cpp/talker` and `c/listener`
+  both build native_sim zephyr.elf clean.
 - [ ] **W3c — freertos + nuttx C/C++** (`_IONBF`/`*_configure`). LACKS: the
   listener/service-*/action-server roles under `qemu-arm-freertos`,
   `qemu-arm-nuttx`, `qemu-riscv-nuttx`. Verify = QEMU lanes (slow).

@@ -18,6 +18,11 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
 }
 
 ::nros::Result Listener::configure(::nros::Node& node) {
+    // Unbuffered stdout — a full-buffered console can swallow the final
+    // line(s) when the harness kills the QEMU before a flush.
+    // `::setvbuf` (global) not `std::setvbuf` — Zephyr's minimal libcpp/picolibc
+    // `<cstdio>` declares it in the global namespace only.
+    ::setvbuf(stdout, nullptr, _IONBF, 0);
     // Raw (zero-copy) subscription bound to the member by identity; type name is
     // the DDS-mangled form to match the sibling typed talker's Publisher<String>.
     ::nros::Result r = ::nros::bind_subscription_raw<Listener, &Listener::on_raw>(
