@@ -1,6 +1,6 @@
 //! #127 (Phase 275 W1 tail) — NuttX per-role Entry-pkg demos build-assert.
 //!
-//! The six `examples/qemu-arm-nuttx/rust/{role}_entry` demos (each a
+//! The six `examples/qemu-arm-nuttx/rust/{role}-entry` demos (each a
 //! standalone `nros::main!` Entry pkg that bakes board + zenoh RMW through
 //! the `nros-board-nuttx-qemu-arm` shim) were the last uncovered Phase 275
 //! W1 slice: their standalone `[[bin]]` link used to fail on unresolved

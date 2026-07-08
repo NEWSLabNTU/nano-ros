@@ -6,7 +6,7 @@
 //! `Executor::open` with `Transport(ConnectionFailed)`.
 //!
 //! Before `703e840dd` this could not be proven at runtime: the six
-//! `examples/qemu-arm-nuttx/rust/{role}_entry` demos were only BUILD-asserted
+//! `examples/qemu-arm-nuttx/rust/{role}-entry` demos were only BUILD-asserted
 //! (`nuttx_entry_build.rs`), and the resolver-level staleness a bare
 //! `cargo nextest` would need was absent. This is the C-entry sibling of
 //! `c_nuttx_entry_e2e.rs`, but on the Rust entry path — the one `entry_net_init`

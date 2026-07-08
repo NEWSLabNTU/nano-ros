@@ -115,7 +115,7 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 /// (`"service-server"`); `bin` is the `[[bin]]` name
 /// (`"threadx_linux_rs_service_server_entry"`).
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}_entry"));
+    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}-entry"));
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "ThreadX Linux entry example not found: {}",

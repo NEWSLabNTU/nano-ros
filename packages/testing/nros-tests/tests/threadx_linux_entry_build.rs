@@ -1,6 +1,6 @@
 //! Phase 275 W1 (#102 H2) — ThreadX-Linux per-role Entry-pkg demos build-assert.
 //!
-//! The six `examples/threadx-linux/rust/{role}_entry` demos (each a standalone
+//! The six `examples/threadx-linux/rust/{role}-entry` demos (each a standalone
 //! `nros::main!` Entry pkg that bakes board + zenoh RMW through the
 //! `nros-board-threadx-linux` shim) shipped with no fixture — built by nothing,
 //! tested by nothing. This asserts each is a real, linkable host binary.

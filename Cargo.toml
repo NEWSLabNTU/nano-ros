@@ -184,12 +184,12 @@ exclude = [
     "examples/threadx-linux/rust/action-server",
     "examples/threadx-linux/rust/action-client",
     # Phase 212.N.7 step-2 — Entry pkg siblings (board = ThreadxLinux).
-    "examples/threadx-linux/rust/talker_entry",
-    "examples/threadx-linux/rust/listener_entry",
-    "examples/threadx-linux/rust/service-server_entry",
-    "examples/threadx-linux/rust/service-client_entry",
-    "examples/threadx-linux/rust/action-server_entry",
-    "examples/threadx-linux/rust/action-client_entry",
+    "examples/threadx-linux/rust/talker-entry",
+    "examples/threadx-linux/rust/listener-entry",
+    "examples/threadx-linux/rust/service-server-entry",
+    "examples/threadx-linux/rust/service-client-entry",
+    "examples/threadx-linux/rust/action-server-entry",
+    "examples/threadx-linux/rust/action-client-entry",
     "examples/native/rust/logging",
     "examples/native/rust/custom-transport-talker",
     "examples/native/rust/custom-transport-listener",
@@ -238,12 +238,12 @@ exclude = [
     # Phase 212.N.7 step-2 — Entry pkg siblings (per board target =
     # Mps2An385). Each shadows a Component pkg above; runs the new
     # `<Mps2An385 as BoardEntry>::run(|ctx| run_plan(ctx))` lifecycle.
-    "examples/qemu-arm-freertos/rust/talker_entry",
-    "examples/qemu-arm-freertos/rust/listener_entry",
-    "examples/qemu-arm-freertos/rust/service-server_entry",
-    "examples/qemu-arm-freertos/rust/service-client_entry",
-    "examples/qemu-arm-freertos/rust/action-server_entry",
-    "examples/qemu-arm-freertos/rust/action-client_entry",
+    "examples/qemu-arm-freertos/rust/talker-entry",
+    "examples/qemu-arm-freertos/rust/listener-entry",
+    "examples/qemu-arm-freertos/rust/service-server-entry",
+    "examples/qemu-arm-freertos/rust/service-client-entry",
+    "examples/qemu-arm-freertos/rust/action-server-entry",
+    "examples/qemu-arm-freertos/rust/action-client-entry",
     # Phase 169.2 — qemu-arm-freertos rust/dds deleted.
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-arm-nuttx/rust/talker",
@@ -253,12 +253,12 @@ exclude = [
     "examples/qemu-arm-nuttx/rust/action-server",
     "examples/qemu-arm-nuttx/rust/action-client",
     # Phase 212.N.7 step-2 — Entry pkg siblings (board = QemuArmVirt).
-    "examples/qemu-arm-nuttx/rust/talker_entry",
-    "examples/qemu-arm-nuttx/rust/listener_entry",
-    "examples/qemu-arm-nuttx/rust/service-server_entry",
-    "examples/qemu-arm-nuttx/rust/service-client_entry",
-    "examples/qemu-arm-nuttx/rust/action-server_entry",
-    "examples/qemu-arm-nuttx/rust/action-client_entry",
+    "examples/qemu-arm-nuttx/rust/talker-entry",
+    "examples/qemu-arm-nuttx/rust/listener-entry",
+    "examples/qemu-arm-nuttx/rust/service-server-entry",
+    "examples/qemu-arm-nuttx/rust/service-client-entry",
+    "examples/qemu-arm-nuttx/rust/action-server-entry",
+    "examples/qemu-arm-nuttx/rust/action-client-entry",
     # Phase 169.2 — qemu-arm-nuttx rust/dds deleted.
     # STM32F4 examples
     "examples/stm32f4/rust/talker",

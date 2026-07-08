@@ -66,12 +66,12 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     // NB: that harness still `cargo build`s at test time — a compile-in-test
     // antipattern Phase 275 W1 will convert to a prebuilt fixture — but the
     // dirs are exercised, so they are not a silent gap.
-    "qemu-arm-freertos/rust/talker_entry",
-    "qemu-arm-freertos/rust/listener_entry",
-    "qemu-arm-freertos/rust/service-server_entry",
-    "qemu-arm-freertos/rust/service-client_entry",
-    "qemu-arm-freertos/rust/action-server_entry",
-    "qemu-arm-freertos/rust/action-client_entry",
+    "qemu-arm-freertos/rust/talker-entry",
+    "qemu-arm-freertos/rust/listener-entry",
+    "qemu-arm-freertos/rust/service-server-entry",
+    "qemu-arm-freertos/rust/service-client-entry",
+    "qemu-arm-freertos/rust/action-server-entry",
+    "qemu-arm-freertos/rust/action-client-entry",
     // Cyclone-on-Zephyr aemv8r reference — built by the FVP recipe
     // `just zephyr build-fvp-aemv8r-cyclonedds-rust` and run by
     // `fvp_runtime_rust.rs` (the cpp sibling has no package.xml, so it is

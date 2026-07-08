@@ -78,11 +78,13 @@ committed copies only go stale. Per-example `.gitignore` files keep their own
 Variant naming uses a **suffix** form so variants sort with their peers:
 `talker-rtic`, `service-client-async`, `talker-rtic-mixed`.
 
-**Interim exception (blessed until phase-275 closes):** the Entry-pkg sibling
-dirs use a snake_case `_entry` suffix (`talker_entry`, `listener_entry`, … on
-`qemu-arm-freertos`, `qemu-arm-nuttx`, `threadx-linux`). The kebab-case
-`-entry` rename waits on phase-275, which owns the fixture-manifest/lane
-renames; tracked in issue #136.
+**Entry-pkg sibling dirs** use the kebab-case `-entry` suffix (`talker-entry`,
+`listener-entry`, … on `qemu-arm-freertos`, `qemu-arm-nuttx`, `threadx-linux`),
+consistent with every other example dir. (The former snake_case `_entry` interim
+exception was blessed only while phase-275 owned the fixture-manifest/lane
+renames; phase-275 closed 2026-07-08 and the rename landed — #136 item 4.)
+The Rust *package* names inside keep their `<plat>_rs_<role>_entry` scheme —
+that is a crate identifier, not a directory name.
 
 ## README tiers
 
@@ -131,8 +133,9 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
   copy-out contract (W6) recorded; `examples/**/Cargo.lock` gitignore policy;
   README tier policy + lint; rust `cyclonedds/talker-aemv8r` carve-out added;
   `qemu-riscv-nuttx` partial platform noted; `_entry` naming exception blessed
-  pending phase-275 (issue #132); fixture-bin extraction convention
-  (test-only variants → `nros-tests/bins/`).
+  pending phase-275 (issue #132) — **resolved 2026-07-08**: phase-275 closed and
+  the `_entry` → `-entry` rename landed (#136 item 4); fixture-bin extraction
+  convention (test-only variants → `nros-tests/bins/`).
 - 2026-06 — Revised to the collapsed `<plat>/<lang>/<example>/` shape (RMW is a
   build-time choice). Added bridges/templates/workspaces siblings + carve-outs.
 - 2026-02 — Original proposal: depth-4 `platform/language/rmw/use-case` hierarchy

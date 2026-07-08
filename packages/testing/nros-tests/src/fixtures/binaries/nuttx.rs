@@ -187,7 +187,7 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// (`"nuttx_rs_service_server_entry"`). Mirrors [`build_rust_example`]'s
 /// release-first profile resolution.
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir = project_root().join(format!("examples/qemu-arm-nuttx/rust/{role}_entry"));
+    let dir = project_root().join(format!("examples/qemu-arm-nuttx/rust/{role}-entry"));
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "NuttX entry example not found: {}",

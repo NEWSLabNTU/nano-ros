@@ -10,7 +10,7 @@
 //!
 //! ## Fixture
 //!
-//! `examples/qemu-arm-freertos/rust/talker_entry/` — the M-F.15-shipped
+//! `examples/qemu-arm-freertos/rust/talker-entry/` — the M-F.15-shipped
 //! FreeRTOS Entry pkg (Phase 212.N.7 step-2 / 213.C.1). Shape:
 //!
 //! - `src/main.rs` is one line: `nros::main!();` (Form 1 self-bringup).
@@ -298,30 +298,30 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
 
 #[test]
 fn freertos_board_run_executes_run_plan() {
-    boot_and_connect("talker_entry", "freertos_rs_talker_entry");
+    boot_and_connect("talker-entry", "freertos_rs_talker_entry");
 }
 
 #[test]
 fn freertos_listener_entry_boots_and_connects() {
-    boot_and_connect("listener_entry", "freertos_rs_listener_entry");
+    boot_and_connect("listener-entry", "freertos_rs_listener_entry");
 }
 
 #[test]
 fn freertos_service_server_entry_boots_and_connects() {
-    boot_and_connect("service-server_entry", "freertos_rs_service_server_entry");
+    boot_and_connect("service-server-entry", "freertos_rs_service_server_entry");
 }
 
 #[test]
 fn freertos_service_client_entry_boots_and_connects() {
-    boot_and_connect("service-client_entry", "freertos_rs_service_client_entry");
+    boot_and_connect("service-client-entry", "freertos_rs_service_client_entry");
 }
 
 #[test]
 fn freertos_action_server_entry_boots_and_connects() {
-    boot_and_connect("action-server_entry", "freertos_rs_action_server_entry");
+    boot_and_connect("action-server-entry", "freertos_rs_action_server_entry");
 }
 
 #[test]
 fn freertos_action_client_entry_boots_and_connects() {
-    boot_and_connect("action-client_entry", "freertos_rs_action_client_entry");
+    boot_and_connect("action-client-entry", "freertos_rs_action_client_entry");
 }
