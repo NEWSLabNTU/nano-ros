@@ -100,16 +100,21 @@ fn realtime_tiers_cpp_nuttx_entry_schedules_high_and_low() {
                  entry — the low-tier pthread did not run (281 W3-nuttx / NuttxBoard::run_tiers)"
             )
         });
-    // Grab whatever the high tier has accumulated by now (it already has many).
+    // The high tier (10 ms) is 10× the low (100 ms), so by the time telem hit its
+    // 5-sample anchor (~0.5 s) ctrl has produced roughly 50. Wait for ctrl to reach
+    // a count with a CLEAR margin over the anchor (15 ≈ 3×) — NOT just 1 sample.
+    // Stopping at 1 captured `ctrl_out` too early (only ~1 match buffered), which
+    // could tie or fall below telem's 5 and flake the `ctrl_n > telem_n` assertion.
     let ctrl_out = ctrl
-        .wait_for_output_count("Received:", 1, Duration::from_secs(5))
+        .wait_for_output_count("Received:", 15, Duration::from_secs(15))
         .unwrap_or_else(|_| {
             qemu.kill();
             ctrl.kill();
             telem.kill();
             panic!(
-                "ctrl (high tier, 10 ms) produced nothing — the boot tier was not \
-                 scheduled (281 W3-nuttx / NuttxBoard::run_tiers)"
+                "ctrl (high tier, 10 ms) did not reach 15 samples while telem (100 ms) \
+                 held at its 5-sample anchor — the boot tier was not scheduled or is not \
+                 outrunning the low tier (281 W3-nuttx / NuttxBoard::run_tiers)"
             )
         });
 
