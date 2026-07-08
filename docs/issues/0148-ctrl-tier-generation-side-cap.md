@@ -1,13 +1,38 @@
 ---
 id: 148
-title: "100 Hz control tier generates only ~40 msg/s regardless of tx configuration — executor-timer / scheduling axis, not transport"
+title: "100 Hz control tier: ~20% residual tx drop on the split-lock path (generation is at line rate — NOT generation-limited; premise corrected 2026-07-08)"
 status: open
 type: tech-debt
 area: executor
 related: [issue-0145, phase-279, phase-282]
 ---
 
-## Summary
+## 2026-07-08 — discriminator RUN; premise DISPROVEN (not generation-limited)
+
+The #1 discriminator below ("published-count vs delivered") was run —
+`tests/w1d_native_tier_generation_probe.rs` (`#[ignore]`, commit `33b3ba574`).
+The ctrl node publishes a monotonic counter, so delivered Int32 *values* encode
+the published sequence: `max_value/window` = publish rate, `count/window` =
+deliver rate. Native ws-realtime-rust, batch+split, fork `ef065b9c`, 15 s, 3
+runs, rock stable:
+
+| | publish rate | deliver rate | delivered/published |
+| --- | --- | --- | --- |
+| /ctrl (100 Hz) | **99.5/s** | **79.2/s** | **80%** |
+
+**The tier is NOT generation-limited** — the timer fires at ~99.5/s, i.e. line
+rate. The `~40 msg/s` table below is **pre-`ef065b9c`**: the W2.c overflow-steal
+fork fix (which landed AFTER phase-282 W1.d's measurement) roughly doubled ctrl
+delivery (34→79). The real residual is a **~20% tx drop** on the split-lock
+path, NOT a missing generation axis. This issue's framing (executor timer
+under-fire / native_sim scheduling) is superseded: recommend **retitle to the
+~20% split-lock tx-drop residual** (candidates: batch/flush-cadence coalescing
+vs the 10 ms tier, spare-drain backpressure at sustained 100 Hz) OR resolve if
+80% at line-rate generation is acceptable for the promotion decision. The
+"no-transport timer-fire-only" discriminator is now unnecessary — publish rate
+is already proven at line rate WITH transport.
+
+## Summary (original — premise now corrected above)
 
 With the phase-282 tx levers landed (batch + flush thread + split lock — the
 transport no longer blocks publishers), the ws-realtime 100 Hz `ctrl` tier
