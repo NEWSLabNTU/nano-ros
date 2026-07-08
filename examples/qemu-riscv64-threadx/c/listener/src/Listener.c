@@ -31,6 +31,7 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
 
 static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
                                      listener_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     (void)executor; /* node-scoped sub; executor unused */
     size_t handle;
     int32_t rc =

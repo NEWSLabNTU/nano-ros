@@ -86,6 +86,7 @@ void ActionServer::on_tick() {
 }
 
 ::nros::Result ActionServer::configure(::nros::Node& node) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     executor_ = node.executor_handle();
     ::nros::Result r = ::nros::bind_action_server_raw<ActionServer, &ActionServer::on_goal,
                                                       &ActionServer::on_cancel>(

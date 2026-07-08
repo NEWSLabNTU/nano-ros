@@ -68,6 +68,7 @@ static void on_tick(void* ctx) {
 
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    add_client_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     self->executor = executor;
     self->a = 2;
     self->b = 3;
