@@ -1,13 +1,40 @@
 ---
 id: 148
 title: "100 Hz control tier: ~20% residual tx drop on the split-lock path (generation is at line rate — NOT generation-limited; premise corrected 2026-07-08)"
-status: open
+status: resolved
 type: tech-debt
 area: executor
 related: [issue-0145, phase-279, phase-282]
 ---
 
-## 2026-07-08 — discriminator RUN; premise DISPROVEN (not generation-limited)
+## RESOLVED (2026-07-08, afternoon) — not reproducible on cleanly built fixtures; zero loss at line rate
+
+Re-ran the same probe (`w1d_native_tier_generation_probe`, same fork
+`ef065b9c`, same 15 s window) after a full clean rebuild of the realtime
+workspace fixture + int32-sink: **published 1497 (99.8/s), delivered 1498
+(99.9/s) — ZERO loss** (counter starts at 0, so values `0..=1497` = 1498
+messages; delivered == published exactly; the probe's `count/max` percentage
+under-states the denominator by one). Deterministic across **10 valid runs**
+(identical 1497/1498 every time). One additional run delivered 0 — a
+discovery/startup race in the probe harness (sink never matched), a separate
+robustness nit, not the drop signature.
+
+**Why the morning's 79.2/s (80%) measured differently:** timeline. Phase-282
+W3 appended `tx_express` to the QoS structs at 01:05; the probe measurement ran
+at 08:12 on **incrementally built objects straddling the struct append** — the
+same stale-object-mixing build state that SEGV'd the qos-mixed talker later
+that day (issue 0150: "core struct change ⇒ WIPE workspace build dirs"). The
+garbage-`tx_express` mechanism specifically was tested and REFUTED: forcing
+`tx_express = true` on the ctrl publisher (clean rebuild) still delivers 100%
+on native — so the drop was a generic stale-mixed-object artifact, not an
+express-path cost. No product defect at HEAD; nothing to fix.
+
+Residual observations (not this issue): (a) the probe harness can hit a
+startup race → 0 delivered (~1 in 11 runs) — it's `#[ignore]` measurement
+scratch, tolerable; (b) the probe's percentage denominator is off by one
+(cosmetic).
+
+## 2026-07-08 morning — discriminator RUN; premise DISPROVEN (not generation-limited)
 
 The #1 discriminator below ("published-count vs delivered") was run —
 `tests/w1d_native_tier_generation_probe.rs` (`#[ignore]`, commit `33b3ba574`).

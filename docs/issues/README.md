@@ -54,12 +54,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
   extreme scheduler jitter could flake it. Direction: a deterministic per-tier sequence-number
   proof. Low priority (no flake since the margin bump).
-- **#148** — [100 Hz ctrl tier: ~20% residual tx drop on the split-lock
-  path](0148-ctrl-tier-generation-side-cap.md): the "generation-limited" premise was DISPROVEN
-  by the published-vs-delivered probe (`w1d_native_tier_generation_probe`, commit 13dbc4d88):
-  /ctrl publishes at 99.5/s (line rate — generation is fine) and delivers 79.2/s (80%) on fork
-  ef065b9c. The residual is a ~20% split-lock tx drop; the W2.c overflow-steal fix ~2.3×'d
-  delivery vs the old 34/s table.
+- **#149** — [nuttx-realtime typed-C fixtures fail from fresh
+  configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
+  (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
+  the phase-283 fixture rework + a cpp-lane build-std toolchain error; `just nuttx
+  build-fixtures` still doesn't cover workspace lanes.
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); phase-283
@@ -80,7 +79,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#157** —
+Recently resolved (see [`archived/`](archived/) for the full list): **#148** — the 100 Hz
+ctrl tier's "~20% tx drop" does not reproduce on cleanly built fixtures: zero loss at line
+rate (1498/1498, deterministic across 10 runs, same fork); the morning's 80% was measured on
+incremental objects straddling the W3 `tx_express` struct append (the #150 stale-mixing build
+state), and the garbage-`tx_express` mechanism was explicitly refuted (forced express still
+delivers 100% on native). **#157** —
 zephyr-cyclone C/C++ services: delivery worked once the descriptor registry accepted ROS-form
 type names (`ros_form_to_dds`); the residual "never delivers" was two stale test markers
 (`Result:` / `[OK]` — neither client prints them; both → `SERVICE_RESULT_PREFIX`), plus the
