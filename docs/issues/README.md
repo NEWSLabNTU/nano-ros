@@ -47,9 +47,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#163** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0163-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
-  has no riscv twin. Not a matrix axis (nuttx cells are arm-only by design) and unprovable — no
-  `qemu-system-riscv` NuttX runtime/fixture exists. Tracked, not silent; deferred until a
-  riscv-nuttx runtime lands.
+  has no riscv twin. The board + one C `talker` are **link-checked** in nightly CI
+  (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
+  arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
+  (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 - **#162** — [w1d tier probe: startup race → 0-delivery INCONCLUSIVE pass + off-by-one
   denominator](0162-w1d-probe-startup-race-and-denominator.md): ~1-in-11 runs the sink misses
   the whole window (gossip gap after the readiness banner) yet the run passes; and
