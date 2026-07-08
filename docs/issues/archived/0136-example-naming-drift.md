@@ -1,10 +1,11 @@
 ---
 id: 136
 title: "Example naming drift — Talker vs TalkerNode, C++ namespace word order, setvbuf presence, _entry underscores, duplicate issue ids"
-status: open
+status: resolved
 type: tech-debt
 area: examples
 related: [phase-277, phase-275, phase-242, phase-283]
+resolved_in: phase-283
 ---
 
 > **Planned in [phase-283](../roadmap/phase-283-example-naming-drift-sweep.md)**
@@ -69,3 +70,19 @@ as one mechanical sweep instead of ad-hoc edits.
 - Item 4 waits on phase-275; item 5 is a maintainer decision.
 - `component-poc` / `component-node-poc` / `transform-poc` dir moves are
   NOT in this issue — owned by in-flight phase-242.
+
+## Resolution (2026-07-08, phase-283)
+
+The mechanical sweep (items 1–3) landed + verified in
+[phase-283](../roadmap/archived/phase-283-example-naming-drift-sweep.md) (Complete):
+- **Item 1** — `TalkerNode` → `Talker` across the bare-metal/stm32 examples (0
+  `TalkerNode` left).
+- **Item 2** — Zephyr C++ namespaces converged on `<plat>_cpp_<case>`; the only
+  remaining `nros_zephyr_*` is `cyclonedds/talker-aemv8r`, **intentionally
+  excluded** (user-owned untracked, W2-flagged).
+- **Item 3** — `setvbuf` made uniform per platform (two items deferred as tracked
+  scaffolds — see phase-283 W3 "Deferred").
+
+Out of this issue's scope, tracked elsewhere: **item 4** (`_entry` → `-entry`
+directory rename) is owned by **phase-275** (RFC-0026 blesses the underscore
+until then); **item 5** (duplicate 0125/0126 ids) was already resolved. Resolved.
