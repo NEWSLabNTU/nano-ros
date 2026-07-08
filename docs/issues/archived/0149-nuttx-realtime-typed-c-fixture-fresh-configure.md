@@ -1,10 +1,11 @@
 ---
 id: 149
 title: "phase-281 nuttx-realtime workspace fixtures fail from a fresh configure — generated C interface headers never materialize before the cargo kernel build"
-status: open
+status: resolved
 type: bug
 area: nuttx
 related: [phase-281, issue-0136]
+resolved_in: "phase-281-nuttx-restore-c-rust (f28ebc379, 2026-07-08)"
 ---
 
 ## Summary
@@ -137,3 +138,22 @@ restored on top of the `23b7a55e1` surfacing — the surfacing gets the include 
 + dep edge, but a C interface still has no ARM-compiled serdes without it. Left
 open for the nuttx-realtime owner to reconcile (two independent fixes collided
 here; not re-forced unilaterally).
+
+## Resolved (2026-07-08)
+
+The C-serdes-recompile mechanism was restored on top of the `23b7a55e1` surfacing
+(the surfacing feeds `_link_ifaces`; the re-added block collects each C interface
+lib's serdes `.c` into `INTERFACE_SOURCES` → `nros-nuttx.cmake`
+`APP_INTERFACE_SOURCES` → the `nuttx_ffi_build.rs` trailing `app_iface` archive),
+and the reverted c/rust nuttx examples/fixtures/tests + the Rust `run_tiers` path
+were recovered (`f28ebc379`). **Both lanes now build from a FRESH configure** —
+verified by wiping `build-workspace-fixtures-nuttx` and rebuilding: C → kernel ELF
+with `std_msgs_msg_int32_init/serialize` defined, `realtime_tiers_c_nuttx_e2e`
+green; Rust → kernel ELF, `realtime_tiers_rust_nuttx_e2e` green + a manual delivery
+proof (ctrl 10 ms = 51 receives, telem 100 ms = 8, cross-process over slirp). The
+`exec_model_matrix` DEFERRED set is empty — all 12 lang×platform Model-1 cells
+COVERED. `just check` green.
+
+Residual (separate, minor): `just nuttx build-fixtures` still doesn't build the
+workspace lanes (they live in `build-examples`) — a fixture-verb wiring follow-up,
+not a build correctness issue.
