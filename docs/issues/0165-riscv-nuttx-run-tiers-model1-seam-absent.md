@@ -4,7 +4,7 @@ title: "riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1) seam — unwired
 status: open
 type: enhancement
 area: nuttx
-related: [rfc-0015, phase-281]
+related: [rfc-0015, phase-281, phase-285]
 ---
 
 ## Problem
