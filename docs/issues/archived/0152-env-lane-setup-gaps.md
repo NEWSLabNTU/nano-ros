@@ -33,6 +33,11 @@ lane rebuild. Core-struct changes ⇒ wipe workspace build dirs.
 - issue 0155 — zephyr+cyclonedds images boot then go silent (all 8
   phase_118 tests, fresh images; needs stash-baseline debug).
 
+**Post-archive addendum:** the logging-smoke-nuttx image stays SILENT even
+freshly rebuilt on the post-#130 tree — split to issue 0156 (real bin bug,
+no networking involved). `rust_nuttx_entry_e2e` greens with #130 per the
+phase-281 stream; local reruns only fail on the mtime treadmill.
+
 **Still open in this issue (final state, 2026-07-08 second pass):**
 - `bins/logging-smoke-nuttx-qemu-arm` — BUILD SOLVED: the row has no `rmw`
   field, so any rmw-filtered lane invocation (`fixtures-build.sh nuttx rust

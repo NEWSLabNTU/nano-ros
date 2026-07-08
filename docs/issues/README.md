@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#156** — [nuttx logging-smoke image boots silent](0156-nuttx-logging-smoke-image-silent.md):
+  the kernel-linked logging bin (no networking, prints-at-boot) emits nothing in 45 s on a
+  fresh image — distinct from the #130-fixed entry-path silence; suspect board `run()`/UART
+  writer or an image-link drop (0149 class).
+
 
 - **#155** — [Zephyr+CycloneDDS images boot then go
   silent](0155-zephyr-cyclonedds-silent-after-net-ready.md): all 8 phase_118 tests on FRESH
