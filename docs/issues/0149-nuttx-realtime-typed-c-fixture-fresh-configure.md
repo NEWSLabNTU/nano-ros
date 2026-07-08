@@ -84,3 +84,56 @@ just nuttx build-examples   # fails: std_msgs.h not found in Ctrl.c
 Also note: `just nuttx build-fixtures` does NOT build the workspace lanes at
 all (they live in `build-examples`) — the fixtures.toml entries have no
 recipe home in the fixture verb.
+
+## Root-cause analysis + resolution status (2026-07-08)
+
+The fresh-configure failure was **three distinct bugs** stacked on the same
+lane. Only the C++ lane is fully fixed so far; the C lane is deferred (below).
+
+1. **Interface libs never surfaced onto the entry carrier.** A typed node links
+   its generated interface lib (`<pkg>__nano_ros_c(pp)`) on the NODE, not on the
+   entry carrier, so `nros_board_link_app`'s `LINK_LIBRARIES` walk came up empty
+   → no dependency edge onto `<pkg>__nano_ros_c*_gen` (so `std_msgs.h`/`.hpp`
+   didn't exist at cargo-build time), no include dir, no serdes. **Fixed** by
+   `23b7a55e1` (descend into the node's `LINK_LIBRARIES`, surface the interface
+   libs into `LINK_INTERFACES`).
+2. **C++ FFI glue built under host STABLE.** The C++ interface serdes is a
+   separate `nano_ros_cpp_ffi_<msg>` cargo staticlib cross-built with
+   `+${Rust_TOOLCHAIN}`. In a WORKSPACE configure the standalone NuttX toolchain
+   file (which pins `Rust_TOOLCHAIN` to the NuttX nightly) is not loaded, so it
+   ran under host stable → `E0463: can't find crate for core` for the tier-3
+   `armv7a-nuttx-eabihf` build-std. **Fixed** (`cd072b608`): the board overlay
+   pins `Rust_TOOLCHAIN` to the NuttX nightly from the
+   `examples/qemu-arm-nuttx/rust-toolchain.toml` SSoT.
+3. **`_ffi_lib` invisible across subdirectories.** `<lib>_ffi_lib` (IMPORTED)
+   was created in the node package's subdirectory scope; the entry package's
+   `nros_board_link_app` runs in the ENTRY scope, where a non-GLOBAL IMPORTED
+   target is invisible → `if(TARGET <lib>_ffi_lib)` false → the C++ serdes `.a`
+   never reached the kernel link → `undefined reference to nros_cpp_publish_<msg>`.
+   **Fixed** (`cd072b608`): `IMPORTED GLOBAL`.
+
+With (1)+(2)+(3) the **`workspace-cpp-nuttx-realtime`** lane builds from a FRESH
+configure (verified: wipe `build-workspace-fixtures-nuttx` → kernel ELF). The
+`(cpp, nuttx)` matrix cell is COVERED.
+
+### C lane — still deferred (the open coordination item)
+
+The C typed-serdes lane needs its generated serdes `.c` (`std_msgs_msg_int32.c`,
+defining `std_msgs_msg_int32_init/serialize`) **recompiled for `armv7a-nuttx`**
+— the interface lib's own `.a` is host-arch (`file format not recognized`), and
+there is no `<lib>_ffi_lib` for a C interface. The original c/nuttx work
+(`cc9ee0811`) did this via a dedicated `INTERFACE_SOURCES` channel (board cmake)
++ an `APP_INTERFACE_SOURCES` receiving end (`nros-nuttx.cmake`) that compiled the
+serdes into a trailing `app_iface` archive. The `23b7a55e1` rework **removed that
+entire mechanism** (both ends now absent) and reverted the `workspace-c-nuttx-realtime`
++ `workspace-rust-nuttx-realtime` fixtures/examples/tests, moving `(c, nuttx)` and
+`(rust, nuttx)` back to **DEFERRED** in the matrix gate. So on current main:
+
+- `(cpp, nuttx)` — COVERED, builds fresh.
+- `(c, nuttx)`, `(rust, nuttx)` — DEFERRED; no fresh-buildable example/fixture.
+
+To re-COVER the C lane, the serdes-recompile mechanism (or an equivalent) must be
+restored on top of the `23b7a55e1` surfacing — the surfacing gets the include dir
++ dep edge, but a C interface still has no ARM-compiled serdes without it. Left
+open for the nuttx-realtime owner to reconcile (two independent fixes collided
+here; not re-forced unilaterally).
