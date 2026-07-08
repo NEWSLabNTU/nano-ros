@@ -53,11 +53,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   it](0154-phase258-retired-system-main-zephyr-shim-drift.md): `nros_system_generate.cmake` +
   `west-fixtures.sh` + `zephyr_self_pkg`/`self_bringup` tests all assert the retired C-baker
   output — migrate to the entry-codegen output or retire the shim path (design decision).
-- **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): triaged 2026-07-08 —
-  esp32-logging/px4/zephyr-cyclone images built (verbs recorded), all five mixed lanes were
-  stale-object mixing (wipe rule). Remaining here: the `logging-smoke-nuttx-qemu-arm` bin has
-  no working build lane and `migrate_workspace` is a designed release-pin skip.
-  (`rust_nuttx_entry_e2e` is resolved — #130 landed both nuttx entry-path e2e green.)
 - **#149** — [nuttx-realtime typed-C fixtures fail from fresh
   configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
   (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
@@ -89,7 +84,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#153** — ros2-server→
+Recently resolved (see [`archived/`](archived/) for the full list): **#152** — per-lane env
+gaps (all lanes green, split to #154/#155, or handed to the phase-281 stream — whose #130
+fix landed both nuttx entry e2e green; build verbs + the rmw-filter manifest gotcha recorded
+in the archived issue). **#153** — ros2-server→
 nano-client timeouts (missing rmw attachment on queries + liveliness-vs-queryable gossip gap +
 action-test type mismatch; rmw_interop fully green). **#145** — zephyr tx
 throughput ceiling (phase-282: batch + flush thread + split lock = 20× streaming, uniform

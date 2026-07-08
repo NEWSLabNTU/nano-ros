@@ -1,10 +1,11 @@
 ---
 id: 152
 title: "Per-lane env setup gaps surfaced by the 2026-07 resync — qemu logging, px4, zephyr-cyclone fixtures, zephyr_self_pkg, integration lanes"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [issue-0149, issue-0150, issue-0151, issue-0154, issue-0155]
+resolved_in: 3fda3d0d6 + 609d2255b
 ---
 
 ## Triage result (2026-07-08) — most lanes were buildable or stale, three real trackers remain
