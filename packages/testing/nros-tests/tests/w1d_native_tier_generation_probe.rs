@@ -9,9 +9,9 @@
 //! This probe discriminates the two cheaply, with no talker instrumentation: the
 //! ctrl node publishes a MONOTONIC counter as the payload, so the delivered Int32
 //! *values* encode the published sequence.
-//!   - `max_value / window`  ≈ PUBLISHED rate (the highest counter that was ever
-//!     minted and reached the sink).
-//!   - `count / window`      ≈ DELIVERED rate.
+//!   - `(max_value + 1) / window`  ≈ PUBLISHED rate (the counter is 0-indexed, so
+//!     the highest value seen means `max + 1` were minted).
+//!   - `count / window`            ≈ DELIVERED rate.
 //! Verdict:
 //!   - `max ≈ count` (both ~40/s)  → GENERATION-limited: the timer only fired
 //!     ~40×/s; tx is not the bottleneck (W1.d confirmed).
@@ -80,50 +80,78 @@ fn w1d_ctrl_tier_generation_vs_tx(zenohd_unique: ZenohRouter) {
         p
     };
 
-    // Boot the entry for the full window (ctrl tier = 10 ms period → ideal 100/s).
-    let mut proc = {
-        let mut cmd = Command::new(entry);
+    // #162 — GATE the measurement on a first delivery before opening the window.
+    // The sink's "Listener" banner precedes zenoh route establishment, so an entry
+    // can boot + publish into the gossip gap and never match (~1/11 runs → a 0
+    // window). Boot the entry, wait (bounded) for the sink's FIRST `Received:`; on
+    // the startup race retry the boot ONCE, then fail loud. Each entry spins long
+    // enough to cover the first-delivery wait + the measurement window.
+    let spin_ms = ((WINDOW_SECS + 14) * 1000).to_string();
+    let boot_entry = || {
+        let mut cmd = Command::new(&entry);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client")
-            .env("NROS_ENTRY_SPIN_MS", (WINDOW_SECS * 1000).to_string())
+            .env("NROS_ENTRY_SPIN_MS", &spin_ms)
             .env("NROS_ENTRY_SPIN_STEP_MS", "5");
         ManagedProcess::spawn_command(cmd, "realtime").expect("spawn realtime entry")
     };
 
-    // Collect the sink's output for the full window (kills the sink at the end),
-    // then stop the entry.
-    let out = ctrl
+    let mut proc = boot_entry();
+    let mut first = match ctrl.wait_for_output_count("Received:", 1, Duration::from_secs(12)) {
+        Ok(out) => out,
+        Err(_) => {
+            // Startup race: entry published into the gossip gap. Retry ONE boot.
+            eprintln!("W1.d probe: no first delivery in 12 s — startup race, retrying boot once");
+            proc.kill();
+            proc = boot_entry();
+            ctrl.wait_for_output_count("Received:", 1, Duration::from_secs(12))
+                .unwrap_or_else(|_| {
+                    proc.kill();
+                    ctrl.kill();
+                    panic!(
+                        "no /ctrl delivery after two boots — realtime entry or router broken \
+                         (not a transient startup race)"
+                    )
+                })
+        }
+    };
+
+    // First delivery seen → open the measurement window and drain the rest.
+    let rest = ctrl
         .wait_for_all_output(Duration::from_secs(WINDOW_SECS))
         .unwrap_or_default();
-
     proc.kill();
+    first.push_str(&rest);
+    let out = first;
 
     let (max, count) = max_and_count(&out);
-    let pub_rate = max as f64 / WINDOW_SECS as f64;
+    // #162 — the ctrl counter starts at 0, so the published count is `max + 1`.
+    let published = max + 1;
+    let pub_rate = published as f64 / WINDOW_SECS as f64;
     let del_rate = count as f64 / WINDOW_SECS as f64;
     eprintln!(
-        "W1.d probe [{WINDOW_SECS}s]: /ctrl published≈{max} ({pub_rate:.1}/s), \
+        "W1.d probe [{WINDOW_SECS}s]: /ctrl published≈{published} ({pub_rate:.1}/s), \
          delivered={count} ({del_rate:.1}/s), delivered/published={:.0}%",
-        if max > 0 {
-            count as f64 / max as f64 * 100.0
-        } else {
-            0.0
-        }
+        count as f64 / published as f64 * 100.0
     );
-    let verdict = if max > 0 && (count as f64) >= 0.8 * (max as f64) {
-        "GENERATION-limited (max≈count: the timer under-fires; tx is NOT the cap)"
-    } else if max > 0 {
-        "TX-limited (max≫count: timer fires fast, tx drops)"
+    // Gated above → count is always ≥1 here; the verdict is the finding. The ctrl
+    // tier is 10 ms → 100/s ideal. (Post-#148: on cleanly-built fixtures this reads
+    // IDEAL — 100/s published, ~100 % delivered — refuting the original
+    // "generation-limited" hypothesis; the 80 % once seen was a stale-object build.)
+    const IDEAL_RATE: f64 = 100.0; // 10 ms period
+    let verdict = if pub_rate < 0.9 * IDEAL_RATE {
+        "GENERATION-limited (published ≪ 100/s: the timer under-fires; not a tx cap)"
+    } else if (count as f64) < 0.8 * (published as f64) {
+        "TX-limited (published at line rate but a large fraction dropped)"
     } else {
-        "INCONCLUSIVE (no /ctrl values received)"
+        "IDEAL (published ~100/s AND ~100% delivered — no generation or tx cap)"
     };
     eprintln!("W1.d verdict: {verdict}");
 
-    // Precondition, not the finding: SOMETHING must have been delivered, else the
-    // run is broken (fail loud per CLAUDE.md — never silently PASS on 0).
     assert!(
         count > 0,
-        "no /ctrl messages delivered — realtime entry or router broken, probe inconclusive"
+        "no /ctrl messages delivered after the first-delivery gate — impossible unless \
+         the sink died mid-window"
     );
 }

@@ -62,12 +62,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `rs-*-zenoh` images were a hard LINK error under #155's strong stub (now weak-guarded:
   links, fails loud at open). Decision needed: real backend deps (nros-c parity) vs module
   TUs (xrce only) vs de-scope the cells.
-- **#162** — [w1d tier probe: startup race → 0-delivery INCONCLUSIVE pass + off-by-one
-  denominator](0162-w1d-probe-startup-race-and-denominator.md): ~1-in-11 runs the sink misses
-  the whole window (gossip gap after the readiness banner) yet the run passes; and
-  `delivered/published` uses `count/max` with a counter that starts at 0 (>100 % possible).
-  Gate on first delivery + use `max+1`. Low priority (measurement scratch, but #145/#148 were
-  judged on its output).
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
@@ -76,7 +70,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#102** — example
+Recently resolved (see [`archived/`](archived/) for the full list): **#162** — w1d tier
+probe: gated the measurement on a first delivery (retry the boot once on the gossip-gap race,
+then fail loud) + `max+1` denominator + an IDEAL verdict case (clean fixtures read 1500/1500 =
+100 %, corroborating #148). **#102** — example
 fixture coverage: phase-284 reconciled the stale 07-01 inventory and drove it to resolved —
 covered (H1 phase-276; H2 entry build-asserts + nuttx/freertos runtime; H3 custom-msg + logging
 + rust async e2e) or de-scoped-with-reason (cpp POCs proven by the cpp workspace entry e2e;

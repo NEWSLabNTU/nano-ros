@@ -1,10 +1,11 @@
 ---
 id: 162
 title: "w1d tier probe: ~1-in-11 startup race delivers 0 (INCONCLUSIVE), and the delivered/published denominator is off by one"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0148, phase-282]
+resolved_in: (this commit)
 ---
 
 ## Summary
@@ -35,3 +36,18 @@ scratch, but it decides perf questions — #145/#148 were judged on its output):
 
 `packages/testing/nros-tests/tests/w1d_native_tier_generation_probe.rs`,
 archived issue 0148 ("Residual observations").
+
+## Resolution (2026-07-09)
+
+`w1d_native_tier_generation_probe`:
+1. **Startup race** — the measurement now GATES on a first delivery:
+   `wait_for_output_count("Received:", 1, 12s)` before opening the 15 s window;
+   on a timeout (the gossip-gap race) it retries the boot ONCE, then panics (fail
+   loud). A 0-window can no longer slip through — it either recovers on the retry
+   or fails.
+2. **Off-by-one denominator** — `published = max + 1` (0-indexed counter);
+   `delivered/published` can no longer exceed 100 %.
+3. **Verdict** (bonus, same output the perf calls read): added an IDEAL case.
+   On cleanly-built fixtures the probe now reports 1500/1500 = 100 % @ 100/s
+   ("IDEAL — no generation or tx cap"), corroborating the #148 resolution that
+   the earlier 80 % was a stale-object build, not a real cap. Verified 4/4 green.
