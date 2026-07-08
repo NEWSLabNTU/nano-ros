@@ -63,15 +63,28 @@ tiers) + phase-130/#130 (nuttx entry eth0).
   (RC=0); `just nuttx build-riscv-c` builds the rv-virt kernel + C talker green
   after an arm build in the same tree.
 
-### W2 — rv-virt NuttX boot harness
-- [ ] W2.a Add `QemuProcess::start_nuttx_riscv(binary, networking)` +
-  `is_qemu_riscv32_available()` to `nros-tests/qemu.rs`, mirroring
-  `start_nuttx_virt` but `qemu-system-riscv32 -M virt -bios none` + the virtio-net
-  MMIO device. (esp32's riscv32 uses the Espressif machine, not rv-virt; threadx
-  is riscv64 — neither is reusable.)
-- [ ] W2.b Prove the harness on the EXISTING `examples/qemu-riscv-nuttx/c/talker`:
-  boot it + a native `/chatter` observer + a host zenohd; assert cross-process
-  delivery. This is riscv-nuttx's FIRST runtime (today it is link-only).
+### W2 — rv-virt NuttX boot harness — HARNESS DONE; W2.b BLOCKED 2026-07-09
+- [x] W2.a Added `QemuProcess::start_nuttx_riscv(binary, networking)` to
+  `nros-tests/qemu.rs` (`qemu-system-riscv32 -M virt -bios none -nographic -icount
+  shift=auto` + the virtio-net MMIO device, matching `build-nuttx.sh`'s rv-virt
+  export). Reuses the existing `esp32::is_qemu_riscv32_available`. Compiles; the
+  harness boots the image and captures the console.
+- [ ] W2.b **BLOCKED — riscv-nuttx image PANICS at boot** (a real runtime defect
+  the harness just exposed — riscv-nuttx had never been booted, only link-checked).
+  Booting `examples/qemu-riscv-nuttx/c/talker/build-zenoh/nuttx_riscv_c_talker`:
+  ```
+  riscv_exception: EXCEPTION: Instruction access fault. EPC: 00000004, RA: 00000004
+  PANIC!!!  task: hpwork
+  ```
+  `EPC = RA = 0x00000004` is a null-function-pointer call (`(*null)()`), in the
+  `hpwork` high-prio work-queue thread, BEFORE the C talker runs. Candidates: a
+  work-queue callback / RMW-backend register / ctor-init not wired on riscv (cf.
+  the arm "no POSIX ctor sections — wire backend init explicitly" pitfall; #48
+  freertos "backend must be LINKED + registered"). Needs focused riscv-nuttx
+  debugging (symbolize `0x8006…` frames against the ELF; check the nros-nuttx-ffi
+  `main` → backend-register → `app_main` path on riscv). Deliverable at the stop:
+  the harness works and turned an "e2e-unprovable" gap into a concrete, reproduced
+  boot crash. **This crash gates W2.b → W3–W6.**
 
 ### W3 — eth0 on the riscv entry path (#130 shape)
 - [ ] W3.a Add `configure_entry_eth0` / `entry_net_init` to the riscv board

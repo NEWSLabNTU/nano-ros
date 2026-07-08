@@ -730,6 +730,54 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// #165 — boot a riscv32 rv-virt NuttX kernel image (the riscv sibling of
+    /// [`Self::start_nuttx_virt`]). Command mirrors the canonical rv-virt export
+    /// `scripts/nuttx/build-nuttx.sh` emits: `qemu-system-riscv32 -M virt -bios
+    /// none` + a virtio-net-device on the MMIO transport (NuttX's rv-virt
+    /// defconfig enables `CONFIG_DRIVERS_VIRTIO_MMIO`, so — as on arm-virt — the
+    /// NIC must be `-device virtio-net-device`, not the PCI default `-nic user`).
+    /// `-icount shift=auto` syncs the virtual clock to wall-clock so `sleep()` /
+    /// timeouts run at real rates, matching `start_nuttx_virt`.
+    pub fn start_nuttx_riscv(binary: &Path, networking: bool) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-riscv32");
+        cmd.args([
+            "-M",
+            "virt",
+            "-bios",
+            "none",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-kernel",
+        ])
+        .arg(binary);
+
+        if networking {
+            cmd.args([
+                "-netdev",
+                "user,id=net0",
+                "-device",
+                "virtio-net-device,netdev=net0",
+            ]);
+        } else {
+            cmd.args(["-nic", "none"]);
+        }
+
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     /// Start QEMU with RISC-V 64-bit virt machine + virtio-net slirp networking
     ///
     /// Used for ThreadX QEMU RISC-V tests. The virt machine provides a virtio-net
