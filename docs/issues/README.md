@@ -44,6 +44,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#162** — [w1d tier probe: startup race → 0-delivery INCONCLUSIVE pass + off-by-one
+  denominator](0162-w1d-probe-startup-race-and-denominator.md): ~1-in-11 runs the sink misses
+  the whole window (gossip gap after the readiness banner) yet the run passes; and
+  `delivered/published` uses `count/max` with a counter that starts at 0 (>100 % possible).
+  Gate on first delivery + use `max+1`. Low priority (measurement scratch, but #145/#148 were
+  judged on its output).
+- **#161** — [zephyr-native-cyclonedds nextest group serialized
+  (max-threads 1)](0161-zephyr-cyclonedds-nextest-group-serialized.md): all zephyr-cyclone
+  images bake domain 0 → parallel pairs share one SPDP port (NSOS: no `SO_REUSEADDR`) →
+  group-load flakes; serialized in #157. Restore the 177.37 per-role-set domain bake, then
+  `max-threads = 4`. Wall-clock only (~23 s vs ~8 s).
+- **#160** — [QoS struct hand-mirrors drift on every
+  append](0160-qos-struct-hand-mirrors-drift-on-append.md): three instances (phase-273
+  `callback_group` prototype, phase-282 `tx_express` missing init AND missing mirror field —
+  by-value ABI mismatch, the #131 class). No compile-time parity guard exists; direction:
+  `static_assert` parity in the `check-c` umbrella TU, generate the mirror, or share one
+  header.
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —

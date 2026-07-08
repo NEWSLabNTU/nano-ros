@@ -133,6 +133,12 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   is separate. → [docs/reference/cyclonedds-known-limitations.md](docs/reference/cyclonedds-known-limitations.md).
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
   → platform-implementation-notes.md.
+- **Never clang-format `cmake/templates/*`** — reflow splits `@VAR@` configure_file tokens
+  (`@SYM @_create`) → generated TU fails "stray '@'". `.clang-format-ignore` guards; format
+  recipes already exclude them. → issue 0159 (archived).
+- **Hand-mirrored FFI structs drift on append** (QoS `tx_express`, `callback_group` — 3×):
+  mirror-only TU passes a SHORTER struct by value → tail field garbage. Parity guard wanted
+  → issue 0160.
 - **zpico shim + zenoh-pico library MUST share the generated zenoh config** — flag-gated struct
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
