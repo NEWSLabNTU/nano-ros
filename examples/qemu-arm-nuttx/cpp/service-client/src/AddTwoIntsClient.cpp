@@ -52,6 +52,7 @@ void AddTwoIntsClient::on_tick() {
 }
 
 ::nros::Result AddTwoIntsClient::configure(::nros::Node& node) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     ::nros::Result r = ::nros::create_service_client_raw(node, client_.bytes, "/add_two_ints",
                                                          "example_interfaces/srv/AddTwoInts");
     if (!r.ok()) return r;

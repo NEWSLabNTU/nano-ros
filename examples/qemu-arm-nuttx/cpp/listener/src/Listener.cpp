@@ -18,6 +18,7 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
 }
 
 ::nros::Result Listener::configure(::nros::Node& node) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     // Raw (zero-copy) subscription bound to the member by identity. The type
     // name is passed verbatim to the wire keyexpr — kept as the ROS slash form
     // to match the sibling `nuttx_cpp_talker` (still declarative). RFC-0043's

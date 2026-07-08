@@ -93,6 +93,7 @@ static void on_tick(void* ctx) {
 
 static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
                                    fib_server_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     self->executor = executor;
     nros_cpp_qos_t qos = nros_c_qos_default();
     int32_t rc = nros_cpp_action_server_create(
