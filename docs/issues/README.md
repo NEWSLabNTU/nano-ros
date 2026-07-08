@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#156** — [nuttx logging-smoke image boots silent](0156-nuttx-logging-smoke-image-silent.md):
-  the kernel-linked logging bin (no networking, prints-at-boot) emits nothing in 45 s on a
-  fresh image — distinct from the #130-fixed entry-path silence; suspect board `run()`/UART
-  writer or an image-link drop (0149 class).
-
-
 - **#157** — [Zephyr+CycloneDDS C/C++ service e2e never delivers a
   reply](0157-zephyr-cyclonedds-service-no-reply.md): residual of #155 — pubsub green, boots
   green, but the C/C++ service clients never print `Result:`; the Rust service flakes under
@@ -85,7 +79,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#155** — zephyr-cyclone
+Recently resolved (see [`archived/`](archived/) for the full list): **#156** — nuttx
+logging-smoke "boots silent": a `bins/` resolver profile mismatch — `build_test_fixture` looked
+in `nros-fast-release/` while the NuttX build writes `release/` (lto=on, to dodge the
+`nros-fast-release` cross-CGU miscompile that IS the silent boot); forced `release` for the nuttx
+target (the image itself prints all six severities). **#155** — zephyr-cyclone
 silence: west-update-reverted zephyr-tree patches + pure-Rust images never registering a
 backend since 248/249 + silent-return masking + phase-271 heap sizing; boots/pubsub green,
 service residual = #157. **#154** — the Zephyr
