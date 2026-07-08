@@ -83,6 +83,16 @@ The mechanical sweep (items 1–3) landed + verified in
 - **Item 3** — `setvbuf` made uniform per platform (two items deferred as tracked
   scaffolds — see phase-283 W3 "Deferred").
 
-Out of this issue's scope, tracked elsewhere: **item 4** (`_entry` → `-entry`
-directory rename) is owned by **phase-275** (RFC-0026 blesses the underscore
-until then); **item 5** (duplicate 0125/0126 ids) was already resolved. Resolved.
+- **Item 4** — `_entry` → `-entry` directory rename. Was owned by **phase-275**
+  (RFC-0026 blessed the underscore only until that phase closed). Phase-275
+  **closed 2026-07-08** (W1 `*_entry` coverage completed once #127 unblocked the
+  nuttx entries), so the rename landed the same day: the 18 standalone
+  `examples/{qemu-arm-freertos,qemu-arm-nuttx,threadx-linux}/rust/<role>_entry`
+  dirs are now `<role>-entry` (dir-only — the `<plat>_rs_<role>_entry` crate
+  names are unchanged). All path references (root `Cargo.toml` exclude,
+  `fixtures.toml`, coverage gate, run-plan + entry-build tests, launch xml,
+  RFC-0026) updated; threadx-linux + nuttx entry fixtures rebuild green, the
+  coverage gate passes.
+- **Item 5** — duplicate 0125/0126 ids: already resolved.
+
+All five items resolved.
