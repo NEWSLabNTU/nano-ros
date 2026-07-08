@@ -1,7 +1,11 @@
 # Phase 283 — Example naming-drift sweep
 
-Status: **In progress — 2026-07-08** · Implements issue #136 · Informs RFC-0026
-(examples layout/naming).
+Status: **Complete — 2026-07-08** · Implements issue #136 · Informs RFC-0026
+(examples layout/naming). All three waves (W1 struct rename, W2 zephyr C++
+namespace, W3 setvbuf uniformity across native + every embedded platform)
+landed and verified. Two W3 items are explicitly deferred as tracked
+follow-up (workspace generated-`main` runtime-entry buffering; template
+scaffolds) — see the W3 "Deferred" note.
 
 > **Goal.** Remove the small, non-functional naming/style drifts phase-277 left
 > across the examples tree so cross-platform diffs are clean and a reviewer
@@ -113,10 +117,11 @@ under greenlight):**
   (full libstdc++ on these ports). `qemu-riscv-nuttx` ships only talker (already
   HAS) — nothing to do. Verified: `fixtures-build.sh {freertos,nuttx} {c,cpp}
   zenoh` all rc=0.
-- [ ] **W3d — threadx C/C++** (`_IONBF`/entry). LACKS: listener/service-*/
-  action-server under `qemu-riscv64-threadx` + `threadx-linux`. NB: the
-  `cyclonedds_app.c` helper TUs are NOT entries — do not add setvbuf there.
-  Verify = QEMU (riscv64) + native (threadx-linux) lanes.
+- [x] **W3d — threadx C/C++** (`_IONBF`/`*_configure`). Added to
+  listener/service-*/action-server under `qemu-riscv64-threadx` +
+  `threadx-linux` (5 each). C uses bare `setvbuf`; C++ uses `std::setvbuf`.
+  The `cyclonedds_app.c` helper TUs are NOT entries — left untouched. Verified:
+  `fixtures-build.sh {threadx-linux,threadx-riscv64} {c,cpp} zenoh` all rc=0.
 
 **Deferred (needs a decision, not a mechanical edit):** workspace `native_entry`
 generates its `int main()` from `nros/main.hpp`, so there is no literal `main`
