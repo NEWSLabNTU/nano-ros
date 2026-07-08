@@ -107,9 +107,12 @@ under greenlight):**
   `cpp/cyclonedds/talker-aemv8r` (user-owned untracked; W2 flagged its distinct
   namespace). Verified: `just zephyr build-one cpp/talker` and `c/listener`
   both build native_sim zephyr.elf clean.
-- [ ] **W3c — freertos + nuttx C/C++** (`_IONBF`/`*_configure`). LACKS: the
-  listener/service-*/action-server roles under `qemu-arm-freertos`,
-  `qemu-arm-nuttx`, `qemu-riscv-nuttx`. Verify = QEMU lanes (slow).
+- [x] **W3c — freertos + nuttx C/C++** (`_IONBF`/`*_configure`). Added to the
+  listener/service-*/action-server roles under `qemu-arm-freertos` +
+  `qemu-arm-nuttx` (8 each). C uses bare `setvbuf`; C++ uses `std::setvbuf`
+  (full libstdc++ on these ports). `qemu-riscv-nuttx` ships only talker (already
+  HAS) — nothing to do. Verified: `fixtures-build.sh {freertos,nuttx} {c,cpp}
+  zenoh` all rc=0.
 - [ ] **W3d — threadx C/C++** (`_IONBF`/entry). LACKS: listener/service-*/
   action-server under `qemu-riscv64-threadx` + `threadx-linux`. NB: the
   `cyclonedds_app.c` helper TUs are NOT entries — do not add setvbuf there.
