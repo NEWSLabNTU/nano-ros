@@ -3287,6 +3287,43 @@ pub fn build_native_service_server() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+static NATIVE_RS_ASYNC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// #102 H3 — build the `native/rust/service-client-async` example (cached). The
+/// async/tokio service-client variant (`spin_async` + `.await` on the response
+/// Promise); paired with `build_native_service_server` in the roundtrip e2e.
+pub fn build_native_async_service_client() -> TestResult<&'static Path> {
+    NATIVE_RS_ASYNC_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/service-client-async",
+                "native-rs-async-service-client",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+static NATIVE_RS_ASYNC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// #102 H3 — build the `native/rust/action-client-async` example (cached). The
+/// async/tokio action-client variant (background `spin_async` + `.await` on the
+/// goal/result Promises + `StreamExt` feedback); paired with
+/// `build_native_action_server` in the roundtrip e2e.
+pub fn build_native_async_action_client() -> TestResult<&'static Path> {
+    NATIVE_RS_ASYNC_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/action-client-async",
+                "native-rs-async-action-client",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build native-rs-service-client (cached)
 pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
