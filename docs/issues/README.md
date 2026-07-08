@@ -54,21 +54,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
   extreme scheduler jitter could flake it. Direction: a deterministic per-tier sequence-number
   proof. Low priority (no flake since the margin bump).
-- **#149** — [nuttx-realtime typed-C fixtures fail from fresh
-  configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
-  (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
-  the phase-283 fixture rework + a cpp-lane build-std toolchain error; `just nuttx
-  build-fixtures` still doesn't cover workspace lanes.
-- **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
-  structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
-  (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); phase-283
-  drafts the mechanical sweep.
-- **#110** — [No per-entry way to size the executor callback table
-  (`NROS_EXECUTOR_MAX_CBS`) to a declared topology](0110-executor-max-cbs-per-entry-sizing-knob.md):
-  `MAX_CBS`/`ARENA_SIZE` is a build-time const baked into `nros-node`; workspace-global cargo
-  `[env]` is the only lever to raise it, so raising it for a fat native entry also bloats lean
-  RAM-bound embedded entries in the same workspace. Wants a topology-derived const-generic
-  `Executor` or a per-entry build knob. Split from #95 (diagnostic half resolved).
 - **#102** — [example fixture coverage holes — capability-on-embedded, native variants, `_entry`
   demos](0102-example-fixture-coverage-holes.md): re-audited 2026-07-01 — the original "~60 untested
   / zephyr 22 / C/C++ 24" P0 is **now resolved** (Zephyr built by the `zephyr-fixture-leaves` driver;
@@ -79,7 +64,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#148** — the 100 Hz
+Recently resolved (see [`archived/`](archived/) for the full list): **#136** — example
+naming drift: the mechanical sweep (items 1–3 — `TalkerNode`→`Talker`, Zephyr C++ namespaces
+→ `<plat>_cpp_<case>`, per-platform `setvbuf` uniformity) landed + verified in phase-283
+(Complete); item 4 (`_entry` rename) → phase-275, item 5 (dup ids) already resolved. **#110** —
+per-entry executor callback-table sizing: resolved by phase-271 (`Executor<'s>` borrows
+caller-owned storage; codegen derives size from `CALLBACK_COUNT`, `nros::main!` reads per-entry
+`max_callbacks` → `open_sized`). **#149** — nuttx-realtime typed-C fixtures (archived).
+**#148** — the 100 Hz
 ctrl tier's "~20% tx drop" does not reproduce on cleanly built fixtures: zero loss at line
 rate (1498/1498, deterministic across 10 runs, same fork); the morning's 80% was measured on
 incremental objects straddling the W3 `tx_express` struct append (the #150 stale-mixing build
