@@ -1,7 +1,7 @@
 ---
 id: 150
 title: "Native e2e delivery timeouts on the dev machine — XRCE cross-process, zenoh→cyclone bridge, safety-integrity, mixed-QoS lanes"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0053, issue-0135]
@@ -59,17 +59,28 @@ looked in the default `build-workspace-fixtures` dir while the fixtures.toml
 rows build into `build-workspace-fixtures-safety-{talker,listener}`. Fixed
 to use `build_workspace_cmake_entry_in`. 2/2 green.
 
-**Remaining (real, fixtures fresh):**
-- both bridges' ZENOH INGRESS receives 0 samples — `bridge_zenoh_to_
-  cyclonedds` panics "bridge forwarded 0 sample(s)" (the bridge's own
-  counter) and `bridge_mixed_rmw` "xrce listener received 0 bridged
-  sample(s)". Common factor is the bridge binary's zenoh ingress
-  subscription; next probes: run the bridge manually with RUST_LOG against
-  a live talker, check ingress QoS/RxO vs the talker, and the #53 egress
-  domain lesson.
-- `mixed_qos_workspace_e2e` 60 s timeout — unsampled beyond the timeout.
-- `bins/bridge-zenoh-to-xrce-fwd` is not in `examples/fixtures.toml` — no
-  recipe builds it (built manually this pass); add a manifest row.
+**Bridge lanes RESOLVED.** The bridges' zenoh ingress subscribed
+`std_msgs::msg::dds_::Int32_` while the talker publishes String — phase-277
+W4.h flipped the TESTS and demo talkers to the official String chatter but
+not the two bridge BINS, so the ingress keyexpr never matched and both
+bridges forwarded 0 (broken since Jul 3). Flipped both bins to String (type
+name, cyclone descriptor schema, docs). `bridge_zenoh_to_cyclonedds` 3/3 +
+`bridge_mixed_rmw` 1/1 green.
+
+**mixed_qos lane RESOLVED.** The ws-qos-mixed talker SEGV'd on a garbage
+function pointer — stale-object mixing in the incremental workspace build
+after the tx_express QoS struct append (pre/post-append objects linked
+together). A wiped, fresh configure builds a working binary; 1/1 green.
+Same remedy class as the mtime treadmill: core struct changes ⇒ wipe +
+rebuild workspace fixture dirs, don't trust incremental.
+
+**Manifest gap RESOLVED.** `bins/bridge-zenoh-to-xrce-fwd` had no
+`examples/fixtures.toml` row (nothing prebuilt it); row added next to its
+cyclonedds sibling.
+
+**Final state: all 12 tests across the four families green**
+(c_xrce_api 5, cpp_c_safety_integrity_e2e 2, bridge_zenoh_to_cyclonedds 3,
+bridge_mixed_rmw 1, mixed_qos_workspace_e2e 1).
 
 ## Repro
 

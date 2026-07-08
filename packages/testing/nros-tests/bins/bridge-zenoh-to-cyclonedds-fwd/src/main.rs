@@ -3,11 +3,11 @@
 //! Forwards bytes from a zenoh raw subscription on `/chatter` to a raw
 //! publisher on the same topic, on a Cyclone DDS egress session (DDS
 //! discovery on `ROS_DOMAIN_ID`). The stock-cyclonedds sibling of
-//! `bridge-zenoh-to-xrce-fwd`; same Int32 type as the `native-rs-talker` /
+//! `bridge-zenoh-to-xrce-fwd`; same String type as the `native-rs-talker` /
 //! `native-rs-listener` fixtures, no TT scheduling.
 //!
 //! **The one cyclonedds-specific step:** Cyclone rejects a raw publisher whose
-//! topic type has no registered `dds_topic_descriptor_t`, so the Int32 schema
+//! topic type has no registered `dds_topic_descriptor_t`, so the String schema
 //! is staged via [`nros_rmw::register_type_descriptor`] (NUL-terminated key —
 //! it is handed straight to Cyclone's C descriptor table) before the egress
 //! publisher is created. The Cyclone backend installs the registrar during
@@ -23,22 +23,22 @@ use nros::{Executor, ExecutorConfig};
 use nros_serdes::schema::{Field, FieldType};
 
 // DDS-mangled type name — matches the zenoh keyexpr the `native-rs-talker`
-// (typed `Int32`) publishes under AND the Cyclone descriptor's `m_typename`.
-const TYPE_NAME: &str = "std_msgs::msg::dds_::Int32_";
+// (typed `String`) publishes under AND the Cyclone descriptor's `m_typename`.
+const TYPE_NAME: &str = "std_msgs::msg::dds_::String_";
 const TYPE_HASH: &str = "TypeHashNotSupported";
 
 // Schema for the Cyclone descriptor (ROS form + NUL-terminated key/field — the
-// registry hands the pointer straight to C). Mirrors std_msgs/msg/Int32.
-const REG_TYPE_NAME: &str = "std_msgs/msg/Int32\0";
-static INT32_FIELDS: &[Field] = &[Field {
+// registry hands the pointer straight to C). Mirrors std_msgs/msg/String (phase-277 flipped the demo talker to the official String chatter).
+const REG_TYPE_NAME: &str = "std_msgs/msg/String\0";
+static STRING_FIELDS: &[Field] = &[Field {
     name: "data\0",
-    ty: FieldType::Int32,
+    ty: FieldType::String,
     offset: 0,
 }];
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    info!("=== Issue #53 bridge: zenoh → Cyclone DDS (Int32) ===");
+    info!("=== Issue #53 bridge: zenoh → Cyclone DDS (String) ===");
 
     nros_rmw_zenoh::register().expect("register zenoh backend");
     nros_rmw_cyclonedds_sys::register().expect("register cyclonedds backend");
@@ -74,9 +74,9 @@ fn main() {
         .expect("egress Node (cyclonedds session open)");
     info!("Nodes built: ingress (zenoh), egress (cyclonedds @ domain {domain_id})");
 
-    // Stage the Int32 descriptor BEFORE the raw publisher (the cyclonedds crux).
-    nros_rmw::register_type_descriptor(REG_TYPE_NAME, INT32_FIELDS)
-        .expect("register std_msgs/Int32 descriptor with cyclonedds");
+    // Stage the String descriptor BEFORE the raw publisher (the cyclonedds crux).
+    nros_rmw::register_type_descriptor(REG_TYPE_NAME, STRING_FIELDS)
+        .expect("register std_msgs/String descriptor with cyclonedds");
 
     let pub_out = exec
         .with_node_try(node_out, |n| {

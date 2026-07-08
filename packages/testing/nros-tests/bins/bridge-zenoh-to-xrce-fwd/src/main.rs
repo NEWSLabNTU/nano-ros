@@ -6,12 +6,11 @@
 //!
 //! Differs from the Phase 110.G `tt-zenoh-to-xrce` example in two ways:
 //!
-//! 1. **Type name + hash match `std_msgs::msg::Int32`**, the type the
-//!    `native-rs-talker` + `native-rs-listener` fixtures use. The tt
-//!    example uses `std_msgs/msg/String` because it's a TT-scheduling
-//!    demo, not an interop fixture; we'd carry the type mismatch from
-//!    the publisher's `RawSubscription` keyexpr into the XRCE side and
-//!    nothing on the listener would match.
+//! 1. **Type name + hash match `std_msgs::msg::String`**, the type the
+//!    `native-rs-talker` + `native-rs-listener` fixtures use (phase-277
+//!    flipped the demos to the official String chatter). A type mismatch
+//!    here carries from the publisher's `RawSubscription` keyexpr into
+//!    the XRCE side and nothing on the listener matches.
 //! 2. **No TT scheduling** — a single zenoh-side callback republishes
 //!    directly. The TT gate is irrelevant for the 211.I assertion
 //!    (that a sample crosses the RMW boundary) and adds variance to
@@ -28,12 +27,12 @@
 use log::{info, warn};
 use nros::{Executor, ExecutorConfig};
 
-const TYPE_NAME: &str = "std_msgs::msg::dds_::Int32_";
+const TYPE_NAME: &str = "std_msgs::msg::dds_::String_";
 const TYPE_HASH: &str = "TypeHashNotSupported";
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    info!("=== Phase 211.I bridge: zenoh → XRCE (Int32) ===");
+    info!("=== Phase 211.I bridge: zenoh → XRCE (String) ===");
 
     // Both backends must `register()` so their CGUs link in — Phase
     // 128/129 `linkme` discovery alone isn't enough when the rlib has

@@ -1329,15 +1329,25 @@ dir = "packages/testing/nros-tests/bins/ros2-string-interop"
 
 # Issue #53 — mixed-RMW gateway bridge (stock-cyclonedds variant). Links
 # nros-rmw-zenoh + nros-rmw-cyclonedds-sys (the sanctioned multi-RMW binary),
-# forwards zenoh /chatter Int32 onto a Cyclone DDS egress (descriptor staged via
-# register_type_descriptor → raw publish). No package.xml (no codegen), so the
-# loop cargo-builds it directly. Consumed by tests/bridge_zenoh_to_cyclonedds.rs
+# forwards zenoh /chatter String onto a Cyclone DDS egress (descriptor staged via
+# register_type_descriptor → raw publish; phase-277 flipped the chatter demos to
+# String). No package.xml (no codegen), so the loop cargo-builds it directly.
+# Consumed by tests/bridge_zenoh_to_cyclonedds.rs
 # (base forward-log check + path A in-tree cyclone listener + path B ros2 echo).
 [[fixture]]
 platform = "native"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd"
+
+# Phase 211.I — zenoh → XRCE gateway bridge sibling (issue 0150: was missing
+# from the manifest, so nothing prebuilt it and tests/bridge_mixed_rmw.rs
+# skip-failed). Same shape: no package.xml, cargo-built directly.
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd"
 
 [[fixture]]
 platform = "native"
