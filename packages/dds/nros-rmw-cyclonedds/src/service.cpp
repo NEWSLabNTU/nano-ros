@@ -125,16 +125,18 @@ constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
 // even where they share the value 4 — conflating the CDR encapsulation
 // header with a CDR length prefix or the GetResult status field is the
 // exact off-by-N class this section (192.2) exists to kill.
-constexpr std::size_t kEncapLen = sizeof(kCdrLeHeader); // 4-byte CDR encapsulation header
-constexpr std::size_t kGuidBytes = 8;                   // request_header GUID (LE u64)
-constexpr std::size_t kSeqBytes = 8;                    // request_header sequence (LE u64)
+constexpr std::size_t kEncapLen = sizeof(kCdrLeHeader);      // 4-byte CDR encapsulation header
+constexpr std::size_t kGuidBytes = 8;                        // request_header GUID (LE u64)
+constexpr std::size_t kSeqBytes = 8;                         // request_header sequence (LE u64)
 constexpr std::size_t kHeaderBytes = kGuidBytes + kSeqBytes; // 16-byte inlined request_header
 constexpr std::size_t kCdrLenPrefix = sizeof(uint32_t); // 4-byte CDR sequence/array length field
 constexpr std::size_t kStatusFieldLen = 4;              // GetResult status int8 + 3 pad
 constexpr std::size_t kGoalUuidLen = 16;                // action goal_id UUID (uuid[16])
 
 // Round @p pos up to the 4-byte CDR member alignment.
-inline std::size_t cdr_align4(std::size_t pos) { return (pos + 3u) & ~std::size_t{3u}; }
+inline std::size_t cdr_align4(std::size_t pos) {
+    return (pos + 3u) & ~std::size_t{3u};
+}
 // Per-call scratch ceiling. Tunable via env if a future user needs
 // it; 64 KiB covers ROS 2's default service payload size budget.
 constexpr std::size_t kWireScratch = 65536;
@@ -463,7 +465,7 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
     // goal arrived with a spurious `10 00 00 00` before the UUID → `order` read 4 bytes
     // early → "Goal was rejected" (order garbage). The wire payload already matches the
     // bare-array form after the request-header strip above; pass it through unchanged.
-    (void) payload_desc;
+    (void)payload_desc;
     return static_cast<int32_t>(user_len);
 }
 
@@ -493,8 +495,8 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
         }
     }
     if (type_ends_with(desc, "_SendGoal_Request_")) {
-        if (strip_nested_cdr_at(read_cdr, read_len, kEncapLen + kHeaderBytes + kGoalUuidLen, adjusted,
-                                sizeof(adjusted), &adjusted_len)) {
+        if (strip_nested_cdr_at(read_cdr, read_len, kEncapLen + kHeaderBytes + kGoalUuidLen,
+                                adjusted, sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
@@ -648,11 +650,53 @@ bool action_effective_base(const char* service_name, const char* type_name, char
     return true;
 }
 
+// Issue 0157 — accept the ROS user-level form `<pkg>/srv/<Svc>` (what a
+// hand-written C/C++ component naturally passes to `nros_cpp_service_*_
+// register`) alongside the DDS-mangled `<pkg>::srv::dds_::<Svc>_` the
+// descriptor registry stores. zenoh tolerates the slash form because both
+// peers derive the SAME keyexpr from it (symmetric); Cyclone's registry
+// lookup is exact-match, so the slash form resolved nothing and every
+// service create failed with UNSUPPORTED (the zephyr C/C++ cyclone service
+// e2e's silent no-reply). Converts `a/b/C` → `a::b::dds_::C_`; DDS-form
+// (or any slash-less) input passes through untouched.
+bool ros_form_to_dds(const char* type_name, char* out, std::size_t out_cap) {
+    if (std::strchr(type_name, '/') == nullptr) {
+        std::size_t len = std::strlen(type_name);
+        if (len + 1 > out_cap) return false;
+        std::memcpy(out, type_name, len + 1);
+        return true;
+    }
+    const char* last_slash = std::strrchr(type_name, '/');
+    std::size_t out_len = 0;
+    for (const char* p = type_name; *p != '\0'; ++p) {
+        if (*p == '/') {
+            const char* insert = (p == last_slash) ? "::dds_::" : "::";
+            std::size_t ilen = std::strlen(insert);
+            if (out_len + ilen >= out_cap) return false;
+            std::memcpy(out + out_len, insert, ilen);
+            out_len += ilen;
+        } else {
+            if (out_len + 1 >= out_cap) return false;
+            out[out_len++] = *p;
+        }
+    }
+    // Trailing `_` to match the registered `<Svc>_` convention (the later
+    // `service_type_name` strips exactly one before adding `_Request_`).
+    if (out_len + 2 > out_cap) return false;
+    out[out_len++] = '_';
+    out[out_len] = '\0';
+    return true;
+}
+
 bool descriptors_for_service(const char* service_name, const char* type_name,
                              const dds_topic_descriptor_t** out_req,
                              const dds_topic_descriptor_t** out_rep) {
+    char dds_type[kMaxTopicName];
+    if (!ros_form_to_dds(type_name, dds_type, sizeof(dds_type))) {
+        return false;
+    }
     char base[kMaxTopicName];
-    if (!action_effective_base(service_name, type_name, base, sizeof(base))) {
+    if (!action_effective_base(service_name, dds_type, base, sizeof(base))) {
         return false;
     }
     char req_type[kMaxTopicName];
