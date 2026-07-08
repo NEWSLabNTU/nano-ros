@@ -56,15 +56,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
-- **#158** — [NuttX realtime tier e2e prove high>low by a timing
-  heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
-  (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
-  extreme scheduler jitter could flake it. Direction: a deterministic per-tier sequence-number
-  proof. Low priority (no flake since the margin bump).
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#163** — pure-Rust
+Recently resolved (see [`archived/`](archived/) for the full list): **#158** — the NuttX/native
+realtime tier e2e now prove tier ordering deterministically: each tier publishes a monotonic
+counter and the assertion compares highest-delivered VALUES (`ctrl_max >= 3 * telem_max`) —
+timer-fire progress, immune to delivery batching/drops — replacing the count heuristic and the
+jitter-prone `wait_for_output_count` gate. **#163** — pure-Rust
 Zephyr images carry the zenoh/xrce backend again (real optional deps + a force-link register
 call in `zephyr_component_main!` past staticlib DCE + the picolibc malloc-arena bump + an
 XRCE `host:port` locator bake); rust zenoh AND xrce pubsub/service/action all green — the
