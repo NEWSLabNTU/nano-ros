@@ -56,17 +56,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): triaged 2026-07-08 —
   esp32-logging/px4/zephyr-cyclone images built (verbs recorded), all five mixed lanes were
   stale-object mixing (wipe rule). Remaining here: the `logging-smoke-nuttx-qemu-arm` bin has
-  no working build lane, `rust_nuttx_entry_e2e` timeout untriaged, `migrate_workspace` is a
-  designed release-pin skip.
+  no working build lane and `migrate_workspace` is a designed release-pin skip.
+  (`rust_nuttx_entry_e2e` is resolved — #130 landed both nuttx entry-path e2e green.)
 - **#149** — [nuttx-realtime typed-C fixtures fail from fresh
   configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
   (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
   the phase-283 fixture rework + a cpp-lane build-std toolchain error; `just nuttx
   build-fixtures` still doesn't cover workspace lanes.
-- **#148** — [100 Hz ctrl tier generates only ~40 msg/s regardless of tx
-  config](0148-ctrl-tier-generation-side-cap.md): phase-282 unblocked the tx path; the residual
-  cap is generation-side (executor timer fire-once-late / native_sim sched). Discriminators
-  listed in the issue.
+- **#148** — [100 Hz ctrl tier: ~20% residual tx drop on the split-lock
+  path](0148-ctrl-tier-generation-side-cap.md): the "generation-limited" premise was DISPROVEN
+  by the published-vs-delivered probe (`w1d_native_tier_generation_probe`, commit 13dbc4d88):
+  /ctrl publishes at 99.5/s (line rate — generation is fine) and delivers 79.2/s (80%) on fork
+  ef065b9c. The residual is a ~20% split-lock tx drop; the W2.c overflow-steal fix ~2.3×'d
+  delivery vs the old 34/s table.
 - **#136** — [Example naming drift](0136-example-naming-drift.md): `Talker` vs `TalkerNode`
   structs, C++ namespace word-order per platform, inconsistent `setvbuf`, `_entry` underscores
   (waits on phase-275), and the duplicate 0125/0126 issue ids (maintainer note); phase-283
