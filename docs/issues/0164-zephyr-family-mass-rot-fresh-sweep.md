@@ -74,8 +74,47 @@ built zephyr fixture host):
   `test_zephyr_xrce_cpp_{talker,listener}_boots`, and the stale-banner else-arm in
   `test_zephyr_cpp_talker_to_listener_e2e`.
 
-**Step 2** (re-run family) and **(c)** triage still need a built zephyr host.
-**(b)** remains blocked on #163.
+**Step 2 (re-run + re-categorize) — DONE 2026-07-09.** Provisioned the host
+(`just zephyr setup`, doctor OK), built all 66 fixtures, and ran the full
+`--test zephyr` family TWICE — once before and once after #163's fix landed
+upstream (the pre-#163 run's 15 `Executor::open ConnectionFailed` on the rust
+lanes is obsolete; #163 is now resolved). Post-#163 result: **21 passed / 24
+failed / 1 skipped**.
+
+Marker sweep **validated**: 7 flips fail→pass (six C++ `_boots` now on
+`"Booting Zephyr OS"`; `c_service_server_to_client_e2e` on `SERVICE_RESULT_PREFIX`).
+
+Re-categorized the 24 remaining fails:
+
+- **#163 (resolved) — rust `xrce` lanes now PASS** (gone from the fail list):
+  `xrce_rust_{talker_listener,service,action}` green (the XRCE `host:port`
+  locator bake + force-link register).
+- **Staleness-guard false-positive (#147 class) — the rust `zenoh` lanes +
+  workspace-entry**: `test_zephyr_{talker,listener,service_*}_smoke`,
+  `rust_service_e2e`, `talker_to_listener_e2e`, `to_native`, the native↔zephyr
+  crosses, and `workspace_entry_native_sim_e2e` all fail with `Zephyr fixture
+  binary is stale: …/build-rs-*-zenoh/zephyr/zephyr.exe`. The images EXIST and
+  are functional — the incremental rebuild relinked only #163's xrce images, so
+  the untouched zenoh images predate a bumped source and the source-mtime-vs-image
+  heuristic false-rejects them. A `--force` (clean) rebuild clears it; clean CI
+  never hits it. Not an RMW failure — a resolver-heuristic fragility.
+- **(c-XRCE C/C++) — real 0-delivery**: `xrce_{c,cpp}_{talker_listener,service,
+  action}` (`client OK=0, server requests=0` / `got no reply`). The agent starts;
+  the `libnros_c` XRCE path does not deliver on native_sim. Untouched by #163
+  (that fix was the pure-Rust images). **Actionable residual.**
+- **(c-cyclone completion) — `dds_{c,cpp,rs}_action` + `cpp_service_server_to_client`**:
+  action = `server_received_goal=true, client_completed=false`; cpp service =
+  `client OK=1` of 3 expected. Cyclone native_sim server RECEIVES but the
+  result/completion round-trip is lossy. phase_118 covers only pub/sub, so no LKG.
+  **Actionable residual.**
+- **Residual (a) folded in**: the cpp service tests' server-side
+  `count_pattern(server_output, "Request")` was itself a stale marker (the server
+  prints `"Incoming request"` = `SERVICE_INCOMING_REQUEST_MARKER`); fixed here so
+  the cyclone-completion diagnostic reads true instead of "server requests=0".
+
+**Net:** (a) done + validated; (b) resolved via #163 (rust lanes green, modulo
+the local staleness artifact); the live residuals are **XRCE-C/C++ delivery** and
+**cyclone action/service completion** — both cyclone/xrce-C runtime, own follow-ups.
 
 ## References
 

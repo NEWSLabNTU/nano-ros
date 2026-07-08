@@ -2038,7 +2038,10 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     eprintln!("=== cpp/xrce service client output ===\n{}", client_output);
 
     let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    let request_count = count_pattern(&server_output, "Request");
+    let request_count = count_pattern(
+        &server_output,
+        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+    );
     if ok_count >= 1 {
         eprintln!(
             "SUCCESS: cpp/xrce service got {} responses, {} requests handled",
@@ -2565,7 +2568,10 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
     );
 
     let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    let request_count = count_pattern(&server_output, "Request");
+    let request_count = count_pattern(
+        &server_output,
+        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+    );
 
     if ok_count >= 3 {
         eprintln!(
