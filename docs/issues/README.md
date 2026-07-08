@@ -61,12 +61,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   images bake domain 0 → parallel pairs share one SPDP port (NSOS: no `SO_REUSEADDR`) →
   group-load flakes; serialized in #157. Restore the 177.37 per-role-set domain bake, then
   `max-threads = 4`. Wall-clock only (~23 s vs ~8 s).
-- **#160** — [QoS struct hand-mirrors drift on every
-  append](0160-qos-struct-hand-mirrors-drift-on-append.md): three instances (phase-273
-  `callback_group` prototype, phase-282 `tx_express` missing init AND missing mirror field —
-  by-value ABI mismatch, the #131 class). No compile-time parity guard exists; direction:
-  `static_assert` parity in the `check-c` umbrella TU, generate the mirror, or share one
-  header.
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
@@ -82,7 +76,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#159** — the missing
+Recently resolved (see [`archived/`](archived/) for the full list): **#160** — hand-mirrored
+FFI structs now have two drift gates: buildless field parity
+(`check-ffi-struct-mirrors`, push lane) + a cross-include TU in `check-c` that lets the
+compiler flag prototype/typedef divergence ("conflicting types"); both verified against
+seeded drift. **#159** — the missing
 NuttX-ELF backstop turned out to be clobber-reverted (`f344492e4`) — restored, together with
 the last other clobber loss (rust_nuttx_entry_e2e String prefix, `791677222`); the custom
 command now also verifies the kernel ELF itself (two layers); fallout fixed en route: a

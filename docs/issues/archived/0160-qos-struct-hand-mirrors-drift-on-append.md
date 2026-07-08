@@ -1,11 +1,37 @@
 ---
 id: 160
 title: "QoS struct hand-mirrors drift on every append — no compile-time parity guard (three instances: callback_group, tx_express ×2)"
-status: open
+status: resolved
 type: tech-debt
 area: api
 related: [issue-0131, issue-0155, issue-0157, issue-0159, phase-273, phase-282]
 ---
+
+## RESOLVED (2026-07-08) — two drift gates landed, both halves of the class covered
+
+1. **Struct-field parity** (instances 2+3): `scripts/check-ffi-struct-mirrors.sh`
+   extracts each mirrored struct body from `component.h` and cbindgen's
+   `nros_cpp_ffi.h`, normalizes comments/whitespace and the `nros_c_qos_` →
+   `nros_cpp_qos_` enum prefix, and fails on any field difference (with a
+   marked field-by-field diff). Buildless → hooked into `just check-fast`
+   (the per-push CI gate). Verified: removing `tx_express` from the mirror
+   fails the gate; in-sync passes.
+2. **Prototype/typedef compatibility** (instance 1, the phase-273
+   `callback_group` arity drift): `just check-c` now compiles a TU that
+   includes `nros_cpp_ffi.h` FIRST and then `component.h` (mirrors guarded
+   out), so the compiler itself flags any re-declared prototype or typedef
+   divergence as "conflicting types". Verified: dropping an argument from
+   `nros_cpp_publish_raw`'s component.h prototype fails the TU.
+
+Note discovered while wiring: the include order is one-way — `component.h`
+BEFORE `nros_cpp_ffi.h` in the same TU is a tag-redefinition error (the
+mirror's guard keys on `NROS_CPP_FFI_H`, which isn't set yet in that order).
+The existing header comment already prescribes ffi.h-first; the cross-include
+gate compiles exactly the supported order.
+
+The heavier options (generating the mirror / sharing one header) stay listed
+below as future refactors, but the drift class this issue tracks can no
+longer land silently.
 
 ## Summary
 

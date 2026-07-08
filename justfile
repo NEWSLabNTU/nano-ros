@@ -342,7 +342,8 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
-    check-c-fmt check-cpp-fmt check-python
+    check-c-fmt check-cpp-fmt check-python \
+    check-ffi-struct-mirrors
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -468,6 +469,12 @@ check-platform-abi-mirror:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# Issue 0160 — hand-mirrored FFI structs (component.h vs cbindgen's
+# nros_cpp_ffi.h) must not drift on append (the #131 stale-mirror ABI class).
+[private]
+check-ffi-struct-mirrors:
+    @bash scripts/check-ffi-struct-mirrors.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
 # `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar
@@ -1652,6 +1659,23 @@ check-c: check-c-fmt
         -Itarget/nros-c-generated \
         -Ipackages/core/nros-c/include \
         -include packages/core/nros-c/include/nros/nros.h \
+        -x c /dev/null
+    echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
+    # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
+    # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the
+    # phase-273 callback_group arity drift class). Including BOTH headers in
+    # one TU (ffi.h first, so component.h's hand mirrors are guarded out) makes
+    # the compiler the drift gate: any divergence is a "conflicting types"
+    # error. Field-level struct-mirror parity is the buildless
+    # check-ffi-struct-mirrors gate (push lane).
+    cargo build -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet 2>/dev/null || true
+    cc -fsyntax-only \
+        -Itarget/nros-c-generated \
+        -Itarget/nros-cpp-generated \
+        -Ipackages/core/nros-c/include \
+        -Ipackages/core/nros-cpp/include \
+        -include packages/core/nros-cpp/include/nros/nros_cpp_ffi.h \
+        -include packages/core/nros-c/include/nros/component.h \
         -x c /dev/null
     echo "All C checks passed!"
 
