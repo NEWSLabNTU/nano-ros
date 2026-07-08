@@ -43,7 +43,51 @@ The remaining holes are planned across two roadmap phases:
   lifecycle / parameters / safety / QoS / multihost on embedded targets. **DONE 2026-07-04** —
   all six waves (incl. RT-tiers) proven on Zephyr native_sim e2e; H1 is closed.
 
-## Remaining holes (2026-07-01, priority order)
+## Remaining holes — RECONCILED 2026-07-09 (phase-284 W1)
+
+The 2026-07-01 inventory below (kept in "## Original 2026-07-01 holes") was stale:
+phase-276 closed H1, phase-275 did the H2–H6 mechanical sweep + the `_entry`→
+`-entry` rename, and phase-284 W2 landed the first native-variant runtime e2e.
+Re-audited against the current tree, tracked in **phase-284**:
+
+**H1 — embedded capabilities: CLOSED by [phase-276](../roadmap/archived/phase-276-capability-coverage-on-embedded.md).**
+lifecycle / parameters / safety-CRC / QoS-overrides / multihost are all proven on
+Zephyr native_sim e2e. *Residual:* whether the OTHER embedded platforms
+(freertos/nuttx/threadx) each need the same — phase-284 W3 decides (RFC-0026's
+matrix intends one embedded proof per capability, already met by Zephyr → likely
+de-scope-with-reason, not a gap).
+
+**H2 — per-example entry demos: CLOSED by phase-275 + phase-281 + #130.** The dirs
+were renamed `_entry`→`-entry` (tracked) and are build-asserted by
+`nuttx_entry_build.rs` / `threadx_linux_entry_build.rs`; runtime proven for the
+nuttx talker (`rust_nuttx_entry_e2e`) and the freertos entry
+(`freertos_run_plan_runtime.rs`). Per-role runtime beyond that is build-assert
+tier BY DESIGN (embedded entry images; a per-role QEMU+router boot is
+disproportionate). *Residual:* **18 untracked `examples/*/rust/*_entry/` leftover
+dirs** (build junk — `generated/`+`target/` the rename left behind) to delete —
+phase-284 W5.
+
+**H3 — native variants: mostly covered.** DONE: `native/c/custom-msg`
+(`custom_msg.rs`), `native/{c,cpp}/logging` (workspace e2e), `native/rust/logging`
+(threshold e2e, `a43af7bdd`). *Residual — fixture row builds it but no runtime
+e2e:* `native/cpp/{component-poc, component-node-poc, transform-poc}`,
+`native/rust/{action-client-async, service-client-async}` — phase-284 W2 (cover or
+de-scope-with-reason).
+
+**H4 — Zephyr non-role leaves:** `zephyr/cpp/talker-typed` is GONE; *residual* =
+`zephyr/{cpp,rust}/cyclonedds` leaves — phase-284 W2/W4 (RMW-scoped; cover under
+the west lane or de-scope).
+
+**H5 — threadx-riscv64 cyclonedds = talker+listener only** (svc/action built under
+zenoh; the cyclone RMW variant lacks them). RMW-scoped, not example-scoped —
+phase-284 W4.
+
+**H6 — stale examples:** `examples/px4/rust/uorb` is GONE (done). *Residual:*
+`examples/zephyr/rust/service-client-async` (matrix-dropped orphan) +
+`examples/stm32f4/rust/{talker,listener}-embassy` (`talker-embassy` compile-checked
+but `skip_build=true`; `listener-embassy` uncovered) — phase-284 W5.
+
+## Original 2026-07-01 holes (superseded by the reconcile above)
 
 **H1 — capabilities exercised on `native` only** (the truest remaining core). No embedded fixture
 exercises **lifecycle, parameters, safety/CRC, QoS-overrides, or multihost**. Each has exactly one
@@ -59,9 +103,7 @@ built/run (by `freertos_run_plan_runtime.rs`). The other 17 have no dedicated fi
 **H3 — native variant examples, 0 fixtures:**
 - native/c: `custom-msg`, `custom-platform`, `custom-transport-loopback`, `logging`
 - native/cpp: `component-poc`, `component-node-poc`, `transform-poc`, `logging`
-- native/rust: `action-client-async`, `service-client-async` (`logging` now has a runtime
-  e2e — `native_rust_logging_example_threshold_raise_filters_round_two`, proves the runtime
-  `set_level` filter the smoke bins don't cover)
+- native/rust: `action-client-async`, `service-client-async`, `logging`
 
 **H4 — Zephyr non-role leaves, 0 fixtures:** `zephyr/cpp/{cyclonedds,talker-typed}`,
 `zephyr/rust/{cyclonedds,service-client-async}`.

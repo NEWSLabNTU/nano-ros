@@ -35,13 +35,23 @@ the e2e passes) or (de-scoped: the reason is recorded — never a silent cap).
 
 ## Waves
 
-### W1 — Reconcile the inventory (audit; do first)
-- [ ] W1.a Re-derive the TRUE residual: for each 2026-07-01 hole H1–H6, check the
-  current tree + name the phase that closed it (H1→276, H2–H6→275) or the exact
-  examples still uncovered. Produce a fresh, dated hole table.
-- [ ] W1.b Rewrite #102's "Remaining holes" section to the reconciled state
-  (crossing off what 275/276/283/284 closed), so the issue reflects reality.
-- [ ] W1.c Output: the concrete residual work-list W2–W5 execute against.
+### W1 — Reconcile the inventory (audit; do first) — DONE 2026-07-09
+- [x] W1.a Re-derived vs the current tree. H1→phase-276 (closed). H2→phase-275
+  (`_entry`→`-entry` rename) + build-asserts + nuttx/freertos runtime; the 18
+  `_entry` dirs are untracked build-junk leftovers. H3 mostly covered (custom-msg,
+  c/cpp/rust logging); H4 `talker-typed` gone; H6 `px4/uorb` gone.
+- [x] W1.b Rewrote #102's "Remaining holes" as a reconciled 2026-07-09 section
+  (old 07-01 list kept as "Original … superseded").
+- [x] W1.c Residual work-list for W2–W5:
+  - **W2 (H3):** runtime e2e (or de-scope) for `native/cpp/{component-poc,
+    component-node-poc, transform-poc}`, `native/rust/{action-client-async,
+    service-client-async}`.
+  - **W3 (H1):** de-scope-with-reason the non-Zephyr embedded capability cells
+    (RFC-0026 = one embedded proof; Zephyr met it) OR file specific gaps.
+  - **W4 (H4/H5):** `zephyr/{cpp,rust}/cyclonedds` leaves + threadx-riscv64
+    cyclone svc/action (RMW-scoped).
+  - **W5 (H6 + H2 junk):** delete the 18 untracked `_entry` leftover dirs;
+    fix-or-delete `zephyr/rust/service-client-async` + stm32f4 embassy pair.
 
 ### W2 — H3 residual: native-variant runtime e2e
 Native example variants with a fixture row but no runtime e2e (they only
