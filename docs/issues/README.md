@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
+  seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
+  single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
+  has no riscv twin. The board + one C `talker` are **link-checked** in nightly CI
+  (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
+  arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
+  (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 - **#164** — [tests/zephyr.rs: 29/45 fail on freshly built
   images](0164-zephyr-family-mass-rot-fresh-sweep.md): first full fixture sweep in a long time
   exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
@@ -55,13 +62,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `rs-*-zenoh` images were a hard LINK error under #155's strong stub (now weak-guarded:
   links, fails loud at open). Decision needed: real backend deps (nros-c parity) vs module
   TUs (xrce only) vs de-scope the cells.
-- **#163** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
-  seam](0163-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
-  single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
-  has no riscv twin. The board + one C `talker` are **link-checked** in nightly CI
-  (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
-  arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
-  (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 - **#162** — [w1d tier probe: startup race → 0-delivery INCONCLUSIVE pass + off-by-one
   denominator](0162-w1d-probe-startup-race-and-denominator.md): ~1-in-11 runs the sink misses
   the whole window (gossip gap after the readiness banner) yet the run passes; and

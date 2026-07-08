@@ -1,5 +1,5 @@
 ---
-id: 163
+id: 165
 title: "riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1) seam — unwired and unprovable (no qemu-riscv-nuttx runtime)"
 status: open
 type: enhancement
