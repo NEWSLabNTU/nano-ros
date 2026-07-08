@@ -50,6 +50,29 @@ Until fixed, `just build-test-fixtures`' staleness gate hard-fails on the two
 missing fixtures on any machine that hasn't built them; `realtime_tiers_
 {c,cpp}_nuttx_e2e` cannot run.
 
+## Root cause + fix landed (2026-07-08)
+
+The 219.J auto-link sidecar of a LAUNCH-only workspace entry links only the
+`<pkg>_<exec>_component` libs; the generated interface libs
+(`std_msgs__nano_ros_c`, …) hang off the COMPONENT via the 220.G.2
+auto-link. `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` walked only the
+ENTRY's direct `LINK_LIBRARIES`, so for workspace entries the iface libs were
+invisible — codegen DAG dependency, generated include dirs, and the C serdes
+TUs (`APP_INTERFACE_SOURCES`) all dropped out. Standalone examples never hit
+it because they link the iface lib on the carrier manually.
+
+Fix: the board glue's component branch now descends one level and pulls the
+component's `__nano_ros_{c,cpp}` links up into `LINK_INTERFACES` (deduped).
+With the fix the C lane builds past `std_msgs.h`.
+
+Still open pending the phase-283 example/fixture rework settling: the
+manifest entries for the rust + C nuttx-realtime fixtures were removed
+mid-rework and the remaining cpp lane currently fails earlier with a
+build-std toolchain error (`can't find crate for core`) — end-to-end
+verification of `realtime_tiers_{c,cpp}_nuttx_e2e` blocks on that. The
+`just nuttx build-fixtures` recipe gap (workspace lanes only in
+`build-examples`) also remains.
+
 ## Repro
 
 ```

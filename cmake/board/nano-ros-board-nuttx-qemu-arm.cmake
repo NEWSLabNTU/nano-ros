@@ -256,11 +256,32 @@ function(nros_board_link_app target)
                             list(APPEND _source_pkgs "${_cs}=${_comp_pkg}")
                         endforeach()
                     endif()
+                    # Issue 0149 — a LAUNCH-only workspace entry links only the
+                    # component libs (the 219.J sidecar); the generated interface
+                    # libs (`<pkg>__nano_ros_{c,cpp}`) hang off the COMPONENT
+                    # (the 220.G.2 auto-link), so walking only the entry's direct
+                    # LINK_LIBRARIES never sees them: the codegen DAG dependency,
+                    # the generated include dirs, and the C serdes TUs all drop
+                    # out and the cc-rs cross-compile dies on `std_msgs.h`.
+                    # Standalone examples never hit this because they link the
+                    # iface lib on the carrier manually. Descend one level: pull
+                    # the component's interface-lib links up into LINK_INTERFACES.
+                    get_target_property(_comp_links ${_lib} LINK_LIBRARIES)
+                    if(_comp_links)
+                        foreach(_cl ${_comp_links})
+                            if(_cl MATCHES "__nano_ros_(c|cpp)$" AND TARGET ${_cl})
+                                list(APPEND _link_ifaces "${_cl}")
+                            endif()
+                        endforeach()
+                    endif()
                     continue()
                 endif()
             endif()
             list(APPEND _link_ifaces "${_lib}")
         endforeach()
+    endif()
+    if(_link_ifaces)
+        list(REMOVE_DUPLICATES _link_ifaces)
     endif()
 
     # Phase 238 — ferry the carrier's COMPILE_DEFINITIONS into the cargo
