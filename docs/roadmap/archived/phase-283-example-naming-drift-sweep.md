@@ -1,11 +1,13 @@
 # Phase 283 — Example naming-drift sweep
 
 Status: **Complete — 2026-07-08** · Implements issue #136 · Informs RFC-0026
-(examples layout/naming). All three waves (W1 struct rename, W2 zephyr C++
-namespace, W3 setvbuf uniformity across native + every embedded platform)
-landed and verified. Two W3 items are explicitly deferred as tracked
-follow-up (workspace generated-`main` runtime-entry buffering; template
-scaffolds) — see the W3 "Deferred" note.
+(examples layout/naming). All three waves landed and verified: W1 struct
+rename, W2 zephyr C++ namespace, W3 setvbuf uniformity across native + every
+embedded platform (W3a–d) + the workspace component packages (W3e, a category
+the first check missed). Setvbuf drift across the examples tree is now empty
+(phase-242 pocs excepted). Two items stay deferred as tracked follow-up
+(workspace generated-`main` runtime-entry buffering; template scaffolds) —
+see the W3 "Deferred" note.
 
 > **Goal.** Remove the small, non-functional naming/style drifts phase-277 left
 > across the examples tree so cross-platform diffs are clean and a reviewer
@@ -122,6 +124,17 @@ under greenlight):**
   `threadx-linux` (5 each). C uses bare `setvbuf`; C++ uses `std::setvbuf`.
   The `cyclonedds_app.c` helper TUs are NOT entries — left untouched. Verified:
   `fixtures-build.sh {threadx-linux,threadx-riscv64} {c,cpp} zenoh` all rc=0.
+- [x] **W3e — workspace component packages** (found after W3a–d; the first check
+  scoped to per-platform *standalone* examples and missed workspace *component*
+  pkgs, a distinct category). 9 of ~49 lacked the `setvbuf` their siblings carry:
+  `{c,mixed}/c_talker_pkg`, `ws-{lifecycle,params}-c` talker, `ws-safety-c`
+  talker+listener (6 C, bare `setvbuf(_IOLBF)`) and `ws-realtime-cpp-mps2`
+  aux/ctrl/telem (3 C++, `::setvbuf(_IOLBF)` — portable global, mode per the
+  realtime family). Workspace C standardized on `_IOLBF` even on mps2; C++ uses
+  the portable `::setvbuf` (picolibc omits `std::setvbuf`). Verified:
+  `workspace-fixtures-build.sh native` + `… freertos cpp` both rc=0. NB: the
+  `native_entry` generated-`main` case below is still deferred — it has no
+  component `configure` body, so it is not one of these 9.
 
 **Deferred (needs a decision, not a mechanical edit):** workspace `native_entry`
 generates its `int main()` from `nros/main.hpp`, so there is no literal `main`
