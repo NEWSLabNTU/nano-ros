@@ -347,6 +347,28 @@ pub fn count_pattern(output: &str, pattern: &str) -> usize {
     output.matches(pattern).count()
 }
 
+/// Highest integer that appears immediately after `pattern` across all lines
+/// (e.g. `pattern = "Received:"` over `int32-sink` output → the largest counter
+/// value delivered). Returns `None` if no line matches with a parseable integer.
+///
+/// Used for tier e2e proofs (#158): a publisher that emits a MONOTONIC counter
+/// encodes its own timer progress in the payload, so the max delivered value
+/// tracks how many times that tier's timer fired — independent of how many
+/// individual samples were counted (which zenoh delivery batching / drops
+/// distort). Comparing two tiers' max values is a deterministic period-ratio
+/// proof where a sample-count heuristic only approximates it.
+pub fn max_int_after(output: &str, pattern: &str) -> Option<i64> {
+    output
+        .lines()
+        .filter_map(|line| {
+            line.split(pattern)
+                .nth(1)
+                .and_then(|rest| rest.trim().split_whitespace().next())
+                .and_then(|tok| tok.parse::<i64>().ok())
+        })
+        .max()
+}
+
 /// Get the project root directory
 pub fn project_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

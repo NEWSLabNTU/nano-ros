@@ -104,41 +104,41 @@ fn realtime_tiers_rust_nuttx_entry_schedules_high_and_low() {
                  entry — the low-tier thread did not run (281 W3-nuttx / QemuArmVirt::run_tiers)"
             )
         });
-    // The high tier (10 ms) is 10× the low (100 ms), so by the time telem hit its
-    // 5-sample anchor (~0.5 s) ctrl has produced roughly 50. Wait for ctrl to reach
-    // a count with a CLEAR margin over the anchor (15 ≈ 3×) — NOT just 1 sample.
-    // Stopping at 1 captured `ctrl_out` too early (only ~1 match buffered), which
-    // could tie or fall below telem's 5 and flake the `ctrl_n > telem_n` assertion.
-    // Reaching 15 while telem is at 5 proves the high tier is scheduled AND faster.
-    let ctrl_out = ctrl
-        .wait_for_output_count("Received:", 15, Duration::from_secs(15))
-        .unwrap_or_else(|_| {
-            qemu.kill();
-            ctrl.kill();
-            telem.kill();
-            panic!(
-                "ctrl (high tier, 10 ms) did not reach 15 samples while telem (100 ms) \
-                 held at its 5-sample anchor — the boot tier was not scheduled or is not \
-                 outrunning the low tier (281 W3-nuttx / QemuArmVirt::run_tiers)"
-            )
-        });
-
+    // telem hitting its 5-sample anchor means ~0.5 s+ of BOTH tiers running; stop
+    // the guest and drain everything each observer received. (#158 — no longer gate
+    // ctrl on a sample COUNT: under scheduler/QEMU jitter a delivery-count target
+    // could time out spuriously. The deterministic proof below reads the payload
+    // counter, not the number of delivered samples.)
     qemu.kill();
+    let ctrl_all = ctrl
+        .wait_for_all_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    let telem_all = format!(
+        "{telem_out}{}",
+        telem
+            .wait_for_all_output(Duration::from_secs(3))
+            .unwrap_or_default()
+    );
     ctrl.kill();
     telem.kill();
 
-    let telem_n = nros_tests::count_pattern(&telem_out, "Received:");
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, "Received:");
+    // Deterministic per-tier proof (#158): each tier publishes a MONOTONIC counter,
+    // so its highest delivered value = how many times ITS OWN timer fired — robust
+    // to zenoh delivery batching/drops that distort raw sample counts. The 10 ms
+    // ctrl tier must outrun the 100 ms telem tier (~10×; assert a ≥3× margin).
+    let telem_max = nros_tests::max_int_after(&telem_all, "Received:").unwrap_or(0);
+    let ctrl_max = nros_tests::max_int_after(&ctrl_all, "Received:").unwrap_or(0);
+    // Anchor already proved 5 low-tier samples; guard only against a parse-fail
+    // (0-indexed counter ⇒ 5 samples = max value 4 — assert advancement, not a count).
     assert!(
-        telem_n >= 5,
-        "expected ≥5 low-tier /telem samples, got {telem_n}"
+        telem_max > 0,
+        "low-tier /telem counter never advanced (max {telem_max}) — the low tier did not run \
+         (281 W3-nuttx / QemuArmVirt::run_tiers)"
     );
-    // 10 ms vs 100 ms ⇒ ~10×; require a clear margin over the anchor count so the
-    // assertion proves the high tier actually runs FASTER, while staying robust to
-    // zenoh delivery batching.
     assert!(
-        ctrl_n > telem_n,
-        "ctrl (10 ms tier) delivered {ctrl_n} ≤ telem's {telem_n} — the high tier is \
-         not outrunning the low tier (281 W3-nuttx / QemuArmVirt::run_tiers)"
+        ctrl_max >= 3 * telem_max,
+        "high-tier /ctrl counter {ctrl_max} is not ≥3× the low-tier /telem counter \
+         {telem_max} — the 10 ms tier is not outrunning the 100 ms tier \
+         (281 W3-nuttx / QemuArmVirt::run_tiers)"
     );
 }

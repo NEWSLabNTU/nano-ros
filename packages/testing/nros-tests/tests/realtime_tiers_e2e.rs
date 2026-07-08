@@ -78,38 +78,39 @@ fn realtime_tiers_schedule_high_and_low(zenohd_unique: ZenohRouter) {
             telem.kill();
             panic!("low-tier /telem never reached 5 publishes — the low tier was not scheduled")
         });
-    // Grab whatever the high tier has accumulated by now (it already has many).
-    let ctrl_out = ctrl
-        .wait_for_output_count(
-            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
-            1,
-            Duration::from_secs(2),
-        )
-        .unwrap_or_else(|_| {
-            proc.kill();
-            ctrl.kill();
-            telem.kill();
-            panic!("high-tier /ctrl produced nothing — the high tier was not scheduled")
-        });
-
+    // Stop the entry and drain everything each observer received (#158 — no longer
+    // gate ctrl on a sample count; the deterministic proof below reads the payload
+    // counter, not the number of delivered samples).
     proc.kill();
+    let ctrl_all = ctrl
+        .wait_for_all_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    let telem_all = format!(
+        "{telem_out}{}",
+        telem
+            .wait_for_all_output(Duration::from_secs(3))
+            .unwrap_or_default()
+    );
     ctrl.kill();
     telem.kill();
 
-    let telem_n =
-        nros_tests::count_pattern(&telem_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
-    let ctrl_n =
-        nros_tests::count_pattern(&ctrl_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
-
+    // Deterministic per-tier proof (#158): each tier publishes a MONOTONIC counter,
+    // so its highest delivered value = how many times ITS OWN timer fired — robust
+    // to zenoh delivery batching/drops that distort raw sample counts. 10 ms vs
+    // 100 ms ⇒ ~10×; assert a ≥3× margin.
+    let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+    let telem_max = nros_tests::max_int_after(&telem_all, prefix).unwrap_or(0);
+    let ctrl_max = nros_tests::max_int_after(&ctrl_all, prefix).unwrap_or(0);
+    // The anchor above already proved the low tier delivered 5 samples; this just
+    // guards against a parse failure making the ratio below vacuous. (The counter
+    // is 0-indexed, so 5 samples ⇒ max value 4 — assert advancement, not a count.)
     assert!(
-        telem_n >= 5,
-        "expected ≥5 low-tier /telem publishes, got {telem_n}"
+        telem_max > 0,
+        "low-tier /telem counter never advanced (max {telem_max}) — the low tier was not scheduled"
     );
-    // 10 ms vs 100 ms ⇒ ~10×; assert a clear ≥3× margin to stay robust against
-    // native timer jitter and zenoh delivery batching.
     assert!(
-        ctrl_n >= telem_n * 3,
-        "expected the high tier (/ctrl, 10 ms) to publish ≥3× the low tier (/telem, 100 ms): \
-         ctrl={ctrl_n} telem={telem_n}"
+        ctrl_max >= 3 * telem_max,
+        "high-tier /ctrl counter {ctrl_max} is not ≥3× the low-tier /telem counter {telem_max} \
+         — the 10 ms tier is not outrunning the 100 ms tier"
     );
 }
