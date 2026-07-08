@@ -1589,10 +1589,10 @@ fn test_zephyr_xrce_cpp_talker_boots() {
     let bin = get_zephyr_xrce_cpp_talker_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce talker");
-    let out = p.wait_for_pattern("nros Zephyr C++ Talker", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Talker") {
-        panic!("cpp/xrce talker didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/xrce talker didn't boot:\n{}", out);
     }
 }
 
@@ -1604,10 +1604,10 @@ fn test_zephyr_xrce_cpp_listener_boots() {
     let bin = get_zephyr_xrce_cpp_listener_native_sim();
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce listener");
-    let out = p.wait_for_pattern("nros Zephyr C++ Listener", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Listener") {
-        panic!("cpp/xrce listener didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/xrce listener didn't boot:\n{}", out);
     }
 }
 
@@ -1624,10 +1624,10 @@ fn test_zephyr_dds_cpp_talker_boots() {
         .expect("Failed to get zephyr-dds-cpp-talker binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds talker");
-    let out = p.wait_for_pattern("nros Zephyr C++ Talker", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Talker") {
-        panic!("cpp/dds talker didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/dds talker didn't boot:\n{}", out);
     }
 }
 
@@ -1640,10 +1640,10 @@ fn test_zephyr_dds_cpp_listener_boots() {
         .expect("Failed to get zephyr-dds-cpp-listener binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds listener");
-    let out = p.wait_for_pattern("nros Zephyr C++ Listener", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Listener") {
-        panic!("cpp/dds listener didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/dds listener didn't boot:\n{}", out);
     }
 }
 
@@ -1657,10 +1657,10 @@ fn test_zephyr_dds_cpp_service_server_boots() {
             .expect("Failed to get zephyr-dds-cpp-service-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service server");
-    let out = p.wait_for_pattern("nros Zephyr C++ Service Server", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Service Server") {
-        panic!("cpp/dds service server didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/dds service server didn't boot:\n{}", out);
     }
 }
 
@@ -1674,10 +1674,10 @@ fn test_zephyr_dds_cpp_service_client_boots() {
             .expect("Failed to get zephyr-dds-cpp-service-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service client");
-    let out = p.wait_for_pattern("nros Zephyr C++ Service Client", Duration::from_secs(10));
+    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
     p.kill();
-    if !out.contains("nros Zephyr C++ Service Client") {
-        panic!("cpp/dds service client didn't print boot banner:\n{}", out);
+    if !out.contains("Booting Zephyr OS") {
+        panic!("cpp/dds service client didn't boot:\n{}", out);
     }
 }
 
@@ -2037,9 +2037,9 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     eprintln!("=== cpp/xrce service server output ===\n{}", server_output);
     eprintln!("=== cpp/xrce service client output ===\n{}", client_output);
 
-    let ok_count = count_pattern(&client_output, "[OK]");
+    let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
     let request_count = count_pattern(&server_output, "Request");
-    if ok_count >= 1 || client_output.contains("sum=") {
+    if ok_count >= 1 {
         eprintln!(
             "SUCCESS: cpp/xrce service got {} responses, {} requests handled",
             ok_count, request_count
@@ -2317,7 +2317,7 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
             "Listener received only {} messages (expected >= 3)",
             listener_received
         );
-    } else if !talker_output.contains("nros Zephyr C++ Talker") {
+    } else if !talker_output.contains("Booting Zephyr OS") {
         panic!("Zephyr C++ talker failed to start");
     } else if !talker_published {
         panic!("Talker started but didn't publish — zenoh-pico session issue");
@@ -2564,7 +2564,7 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         client_output
     );
 
-    let ok_count = count_pattern(&client_output, "[OK]");
+    let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
     let request_count = count_pattern(&server_output, "Request");
 
     if ok_count >= 3 {
@@ -2758,12 +2758,15 @@ fn test_zephyr_c_service_server_to_client_e2e() {
     let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let client_out = client.wait_for_pattern("Result:", Duration::from_secs(30));
+    let client_out = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(30),
+    );
     client.kill();
     server.kill();
     eprintln!("=== zephyr C zenoh service client ===\n{client_out}");
     assert!(
-        client_out.contains("Result:"),
+        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "zephyr C zenoh service client got no reply:\n{client_out}"
     );
 }
@@ -2834,12 +2837,15 @@ fn test_zephyr_xrce_c_service_e2e() {
     let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
 
-    let client_out = client.wait_for_pattern("Result:", Duration::from_secs(30));
+    let client_out = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(30),
+    );
     client.kill();
     server.kill();
     eprintln!("=== zephyr C xrce service client ===\n{client_out}");
     assert!(
-        client_out.contains("Result:"),
+        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "zephyr C xrce service client got no reply:\n{client_out}"
     );
 }

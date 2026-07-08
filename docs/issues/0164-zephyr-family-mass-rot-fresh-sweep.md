@@ -55,6 +55,28 @@ at `Executor::open`. Blocked on 0163's decision; not separately debuggable.
 2. Re-run family; re-categorize (c) with markers fixed.
 3. (b) resolves with #163.
 
+## Progress
+
+**Step 1 (marker sweep) — DONE.** All stale markers in `zephyr.rs` fixed against
+ground-truth example sources (compile-verified; runtime re-run still owed on a
+built zephyr fixture host):
+
+- **`"Result:"` → `SERVICE_RESULT_PREFIX`** ("Result of add_two_ints:", what
+  `AddTwoIntsClient.cpp` actually prints): `test_zephyr_c_service_server_to_client_e2e`
+  (zenoh) + `test_zephyr_xrce_c_service_e2e`.
+- **`"[OK]"` / `"sum="` → `SERVICE_RESULT_PREFIX`**:
+  `test_zephyr_xrce_cpp_service_e2e` + `test_zephyr_cpp_service_server_to_client_e2e`
+  (the bogus `sum=` fallback dropped — no example prints it).
+- **pre-277 `"nros Zephyr C++ <Role>"` boot banner → `"Booting Zephyr OS"`**
+  (the kernel banner, the marker the passing `dds_c` `_boots` tests already use;
+  phase-277 W5 removed the C++ banner — no source prints it anymore): all four
+  `test_zephyr_dds_cpp_{talker,listener,service_server,service_client}_boots`, both
+  `test_zephyr_xrce_cpp_{talker,listener}_boots`, and the stale-banner else-arm in
+  `test_zephyr_cpp_talker_to_listener_e2e`.
+
+**Step 2** (re-run family) and **(c)** triage still need a built zephyr host.
+**(b)** remains blocked on #163.
+
 ## References
 
 `packages/testing/nros-tests/tests/zephyr.rs`, archived issue 0157 (the
