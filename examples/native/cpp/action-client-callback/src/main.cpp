@@ -81,6 +81,9 @@ void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, s
 // ----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     std::printf("nros C++ Action Client (Fibonacci, callback)\n");
     std::printf("=============================================\n");
 

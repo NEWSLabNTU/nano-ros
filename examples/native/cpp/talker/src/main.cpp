@@ -62,6 +62,9 @@ static void timer_callback(void* context) {
 // ----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     (void)argc;
     (void)argv;
 

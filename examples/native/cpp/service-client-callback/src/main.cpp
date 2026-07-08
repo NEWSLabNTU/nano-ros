@@ -37,6 +37,9 @@ void on_response(const example_interfaces::srv::AddTwoInts::Response& resp) {
 // ----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     std::printf("nros C++ Service Client (AddTwoInts, callback)\n");
     std::printf("===============================================\n");
 

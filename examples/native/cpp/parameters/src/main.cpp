@@ -118,5 +118,8 @@ int run() {
 } // namespace
 
 int main() {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     return run();
 }

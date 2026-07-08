@@ -18,6 +18,9 @@
 #include <nros/log.hpp>
 
 int main(int argc, char** argv) {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     (void)argc;
     (void)argv;
 
@@ -47,8 +50,8 @@ int main(int argc, char** argv) {
     /* Default per-Logger threshold = Info — TRACE/DEBUG drop here. */
     NROS_LOG_TRACE(logger, "round 1: trace=%d (dropped at default Info)", 1);
     NROS_LOG_DEBUG(logger, "round 1: debug=%d (dropped at default Info)", 1);
-    NROS_LOG_INFO(logger,  "round 1: info=%d", 1);
-    NROS_LOG_WARN(logger,  "round 1: warn=%d", 1);
+    NROS_LOG_INFO(logger, "round 1: info=%d", 1);
+    NROS_LOG_WARN(logger, "round 1: warn=%d", 1);
     NROS_LOG_ERROR(logger, "round 1: error=%d", 1);
     NROS_LOG_FATAL(logger, "round 1: fatal=%d", 1);
 
