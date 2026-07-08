@@ -1227,9 +1227,10 @@ pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
+            build_workspace_cmake_entry_in(
                 "workspace-c-native-safety-talker",
                 "ws-safety-c",
+                "build-workspace-fixtures-safety-talker",
                 "native_safety_talker_entry",
             )
         })
@@ -1242,9 +1243,10 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
 pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
+            build_workspace_cmake_entry_in(
                 "workspace-c-native-safety-listener",
                 "ws-safety-c",
+                "build-workspace-fixtures-safety-listener",
                 "native_safety_listener_entry",
             )
         })
@@ -1840,9 +1842,10 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
 pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
+            build_workspace_cmake_entry_in(
                 "workspace-cpp-native-safety-talker",
                 "ws-safety-cpp",
+                "build-workspace-fixtures-safety-talker",
                 "native_safety_talker_entry",
             )
         })
@@ -1855,9 +1858,10 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
 pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
+            build_workspace_cmake_entry_in(
                 "workspace-cpp-native-safety-listener",
                 "ws-safety-cpp",
+                "build-workspace-fixtures-safety-listener",
                 "native_safety_listener_entry",
             )
         })

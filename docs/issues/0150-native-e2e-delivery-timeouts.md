@@ -39,6 +39,38 @@ discriminate, per lane:
   defaulting to domain 0), then whether the runner env leaks
   `ROS_DOMAIN_ID`/`NROS_DOMAIN_ID` between the resync's parallel runs.
 
+## Progress (2026-07-08 debug pass)
+
+**XRCE lane RESOLVED.** Root cause: phase-266 W5b unified the compiled
+default node name to `"node"` (replacing the unique `nros_{pid}` fallback),
+and the XRCE backend derives its session key as `djb2(node_name)` — both C
+demo processes hashed to the same key (`djb2("node") = 0x7C9B46AB`, observed
+verbatim in the agent log), so the second client's CREATE_CLIENT rebound the
+agent session and orphaned the first: the listener's topic callback never
+fired (confirmed by instrumentation — no DATA submessage ever reached the
+client). NOT a version skew: reproduced identically against agent v2.4.3
+(pinned dist) and a source-built v3.0.1. Fix: `hash_session_key` now salts
+the djb2 with `getpid()` on POSIX (embedded keeps the plain hash — one
+client per device). `c_xrce_api` 5/5 green against the pinned agent.
+
+**Safety-integrity lane RESOLVED.** Resolver/manifest drift: the four
+`build_native_workspace_{c,cpp}_safety_{talker,listener}_entry` resolvers
+looked in the default `build-workspace-fixtures` dir while the fixtures.toml
+rows build into `build-workspace-fixtures-safety-{talker,listener}`. Fixed
+to use `build_workspace_cmake_entry_in`. 2/2 green.
+
+**Remaining (real, fixtures fresh):**
+- both bridges' ZENOH INGRESS receives 0 samples — `bridge_zenoh_to_
+  cyclonedds` panics "bridge forwarded 0 sample(s)" (the bridge's own
+  counter) and `bridge_mixed_rmw` "xrce listener received 0 bridged
+  sample(s)". Common factor is the bridge binary's zenoh ingress
+  subscription; next probes: run the bridge manually with RUST_LOG against
+  a live talker, check ingress QoS/RxO vs the talker, and the #53 egress
+  domain lesson.
+- `mixed_qos_workspace_e2e` 60 s timeout — unsampled beyond the timeout.
+- `bins/bridge-zenoh-to-xrce-fwd` is not in `examples/fixtures.toml` — no
+  recipe builds it (built manually this pass); add a manifest row.
+
 ## Repro
 
 ```
