@@ -75,20 +75,51 @@ CMake helper is infrastructure, not a namespace — untouched.
   where provisioned).
 
 ### W3 — `setvbuf` uniformity per platform
-41 C/C++ example sources call `setvbuf(stdout, NULL, _IONBF/_IOLBF, …)` for
-unbuffered logging (test harnesses read line-buffered output); some same-role
-siblings omit it (e.g. `examples/zephyr/cpp/talker` and the native C++ set lack
-it while `examples/zephyr/c/talker/src/Talker.c` has it).
+C/C++ example sources call `setvbuf(stdout, NULL, …)` so the harness reading
+their output never loses the last line to a half-full buffer; same-role siblings
+omit it. The 2026-07-08 check found the drift is broader than the phase-277
+inventory implied, and split into **two distinct conventions** (not one):
 
-- [ ] **W3.check** — per platform, list which hosted C/C++ examples have vs lack
-  a `setvbuf` call; decide the per-platform rule (a hosted platform whose
-  harness reads stdout needs it on EVERY example, or none does — with the
-  reason).
-- [ ] **W3.fix** — add (or remove) the `setvbuf` call to make each platform
-  uniform, with a one-line comment stating why (harness line-buffering vs
-  embedded no-op).
-- [ ] **W3.verify** — check job shows uniformity per platform; affected e2es
-  still observe output (no regression in a spot-checked hosted lane).
+- **Hosted-glibc entries** (`native/{c,cpp}`, and any workspace `native_entry`) —
+  `setvbuf(stdout, NULL, _IOLBF, 0)` as the first line of `main()`. glibc
+  full-buffers a non-tty stdout, so a pipe to the test harness must flush per
+  newline. `_IOLBF` (line-buffered) is the right mode for a line-oriented harness.
+- **Embedded RTOS nodes** (`zephyr`, `qemu-arm-freertos`, `qemu-arm-nuttx`,
+  `qemu-riscv-nuttx`, `qemu-riscv64-threadx`, `threadx-linux`) —
+  `setvbuf(stdout, NULL, _IONBF, 0)` inside the node's `*_configure()` callback
+  (there is no per-example `main()`; the entry carrier owns it). Embedded consoles
+  are read char-at-a-time over semihosting/UART, so these use `_IONBF` (fully
+  unbuffered) — the existing HAS examples all do.
+
+**Sub-waves (each its own check→fix→verify; embedded ones are slow-verify — do
+under greenlight):**
+
+- [x] **W3a — native C/C++** (hosted, `_IOLBF`/`main`). native C already uniform;
+  added the line to the 10 native C++ examples that lacked it
+  (talker, listener, action-{client,client-callback,server}, logging, parameters,
+  service-{client,client-callback,server}). Excludes phase-242 pocs
+  (component-poc, component-node-poc, transform-poc). Verified: `cpp_talker`
+  builds clean and its banner flushes when piped. Shipped `353d2a334`.
+- [ ] **W3b — zephyr C/C++** (`_IONBF`/`*_configure`). LACKS: c/{listener,
+  service-client,service-server,action-server}, cpp/{talker,listener,
+  service-client,service-server,action-server}. Excludes `cpp/cyclonedds/
+  talker-aemv8r` (user-owned untracked; W2 flagged its distinct namespace).
+  Verify = west/native_sim lane (slow).
+- [ ] **W3c — freertos + nuttx C/C++** (`_IONBF`/`*_configure`). LACKS: the
+  listener/service-*/action-server roles under `qemu-arm-freertos`,
+  `qemu-arm-nuttx`, `qemu-riscv-nuttx`. Verify = QEMU lanes (slow).
+- [ ] **W3d — threadx C/C++** (`_IONBF`/entry). LACKS: listener/service-*/
+  action-server under `qemu-riscv64-threadx` + `threadx-linux`. NB: the
+  `cyclonedds_app.c` helper TUs are NOT entries — do not add setvbuf there.
+  Verify = QEMU (riscv64) + native (threadx-linux) lanes.
+
+**Deferred (needs a decision, not a mechanical edit):** workspace `native_entry`
+generates its `int main()` from `nros/main.hpp`, so there is no literal `main`
+body to edit and node output comes from separate component packages. Uniform
+buffering there is really a *runtime-entry* question (setvbuf once in the nros
+generated-main / runtime), tracked separately rather than papered over per
+example. Templates (`examples/templates/*`) inherit whichever convention their
+port targets and are scaffolds, not harness-run — left to the port author.
 
 ## Non-goals
 
