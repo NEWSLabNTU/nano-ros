@@ -122,6 +122,27 @@ if(NOT DEFINED CACHE{Rust_CARGO_TARGET})
         "Rust cargo target triple (Phase 156 F3 — set by NuttX board overlay)")
 endif()
 
+# issue #149 — in a WORKSPACE (host-side) configure the standalone NuttX toolchain
+# file (`cmake/toolchain/armv7a-nuttx-eabi.cmake`, which pins Rust_TOOLCHAIN to the
+# NuttX nightly) is NOT loaded — cargo drives the cross via build.rs and CMake stays
+# host-mode. So a tier-3 build-std cross-build spawned during the workspace configure
+# (notably the C++ interface FFI glue `nano_ros_cpp_ffi_<msg>`, built with
+# `+${Rust_TOOLCHAIN}` in NanoRosGenerateInterfaces.cmake) would run under host STABLE
+# → `E0463: can't find crate for core`. Pin the same nightly here (the overlay already
+# runs before per-package codegen, as it sets Rust_CARGO_TARGET above), read from the
+# NuttX rust-toolchain.toml SSoT so it never drifts from the toolchain files.
+if(NOT Rust_TOOLCHAIN MATCHES "nightly")
+    set(_nros_nuttx_tc_ssot "${_NROS_BOARD_ROOT}/examples/qemu-arm-nuttx/rust-toolchain.toml")
+    if(EXISTS "${_nros_nuttx_tc_ssot}")
+        file(READ "${_nros_nuttx_tc_ssot}" _nros_nuttx_tc_content)
+        string(REGEX MATCH "channel[ \t]*=[ \t]*\"([^\"]+)\"" _nros_tc_m "${_nros_nuttx_tc_content}")
+        if(CMAKE_MATCH_1)
+            set(Rust_TOOLCHAIN "${CMAKE_MATCH_1}" CACHE STRING
+                "Rust toolchain (issue #149 — NuttX nightly pinned for workspace configure)" FORCE)
+        endif()
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # nros_board_link_app(<target>)
 #

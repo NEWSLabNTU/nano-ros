@@ -480,8 +480,15 @@ function(nros_generate_interfaces target)
       endforeach()
       add_dependencies(${_lib_target} ${_lib_target}_ffi)
 
-      # Import the built staticlib
-      add_library(${_lib_target}_ffi_lib STATIC IMPORTED)
+      # Import the built staticlib. IMPORTED GLOBAL (issue #149): in a multi-package
+      # WORKSPACE the interface lib is codegen'd in the NODE package's subdirectory
+      # scope, but the entry package's `nros_board_link_app` (which walks LINK_INTERFACES
+      # → `$<TARGET_FILE:<lib>_ffi_lib>` for the NuttX kernel link) runs in the ENTRY
+      # subdirectory scope, where a non-GLOBAL IMPORTED target is invisible — so
+      # `if(TARGET <lib>_ffi_lib)` was false and the C++ serdes `.a` never reached the
+      # link line → `undefined reference to nros_cpp_publish_<msg>`. GLOBAL makes it
+      # visible everywhere (standalone single-scope builds are unaffected).
+      add_library(${_lib_target}_ffi_lib STATIC IMPORTED GLOBAL)
       set_target_properties(${_lib_target}_ffi_lib PROPERTIES
         IMPORTED_LOCATION "${_ffi_lib}"
       )
