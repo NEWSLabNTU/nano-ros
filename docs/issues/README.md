@@ -44,6 +44,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#164** — [tests/zephyr.rs: 29/45 fail on freshly built
+  images](0164-zephyr-family-mass-rot-fresh-sweep.md): first full fixture sweep in a long time
+  exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
+  (delivery/boot proven working), the #163 backend gap (rust zenoh/xrce lanes), and untriaged
+  xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
+- **#163** — [pure-Rust Zephyr images carry no zenoh/xrce
+  backend](0163-pure-rust-zephyr-images-no-zenoh-xrce-backend.md): the app crates' `rmw-*`
+  features are inert markers (#60 T5) and only cyclonedds has a module-side register symbol —
+  `rs-*-zenoh` images were a hard LINK error under #155's strong stub (now weak-guarded:
+  links, fails loud at open). Decision needed: real backend deps (nros-c parity) vs module
+  TUs (xrce only) vs de-scope the cells.
 - **#163** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0163-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
