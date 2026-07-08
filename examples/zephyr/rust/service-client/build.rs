@@ -17,6 +17,23 @@ fn main() {
     // Kconfig value is the single source of truth for BOTH languages.
     bake_kconfig_str("CONFIG_NROS_ZENOH_LOCATOR", "NROS_LOCATOR");
     bake_kconfig_int("CONFIG_NROS_DOMAIN_ID", "NROS_DOMAIN_ID");
+
+    // Issue 0163 — the XRCE path has no CONFIG_NROS_ZENOH_LOCATOR; its agent
+    // endpoint lives in CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}. Synthesize the
+    // `host:port` locator the xrce session parser expects and bake it into
+    // the SAME `NROS_LOCATOR` env the macro reads (mutually exclusive with
+    // the zenoh bake above — an image selects exactly one RMW).
+    if kconfig_line("CONFIG_NROS_RMW_XRCE").is_some_and(|l| l.ends_with("=y")) {
+        let addr = kconfig_line("CONFIG_NROS_XRCE_AGENT_ADDR")
+            .and_then(|l| l.split_once('=').map(|(_, v)| v.trim().trim_matches('"').to_string()))
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = kconfig_line("CONFIG_NROS_XRCE_AGENT_PORT")
+            .and_then(|l| l.split_once('=').map(|(_, v)| v.trim().to_string()))
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "2018".to_string());
+        println!("cargo:rustc-env=NROS_LOCATOR={addr}:{port}");
+    }
 }
 
 /// Read a quoted string Kconfig (`CONFIG_X="value"`) from the generated

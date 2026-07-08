@@ -337,6 +337,26 @@ macro_rules! zephyr_component_main {
                 fn nros_app_register_backends();
             }
             unsafe { nros_app_register_backends() };
+            // Issue 0163 — a pure-Rust image has no `libnros_c.a`, so the
+            // zenoh/xrce backend must ride in THIS staticlib and be referenced
+            // from the app crate or rustc's staticlib DCE drops the whole
+            // backend closure (the `#[no_mangle]` C export included — the same
+            // hazard nros-c's FORCE_LINK anchor documents). These cfg's are
+            // evaluated against the EXPANDING app crate's features (`rmw-zenoh`
+            // / `rmw-xrce` forward to the real backend deps); the direct call
+            // is both the force-link reference and the registration, and is
+            // idempotent with the `nros_app_register_backends` hook above
+            // (duplicate named registration is an in-place overwrite).
+            // cyclonedds needs nothing here: its register entry lives in the
+            // Zephyr module's C++ lib and the hook above calls it.
+            #[cfg(feature = "rmw-zenoh")]
+            {
+                let _ = ::nros_rmw_zenoh::register();
+            }
+            #[cfg(feature = "rmw-xrce")]
+            {
+                let _ = ::nros_rmw_xrce_cffi::register();
+            }
             // Locator: `default_const()` = EMPTY locator → zenoh-pico
             // multicast scouting, which native_sim NSOS can't satisfy.
             // Bake `NROS_LOCATOR` at compile time (the example `build.rs`

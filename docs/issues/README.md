@@ -54,14 +54,30 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#164** — [tests/zephyr.rs: 29/45 fail on freshly built
   images](0164-zephyr-family-mass-rot-fresh-sweep.md): first full fixture sweep in a long time
   exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
-  (delivery/boot proven working), the #163 backend gap (rust zenoh/xrce lanes), and untriaged
+  (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
+<<<<<<< HEAD
 - **#163** — [pure-Rust Zephyr images carry no zenoh/xrce
   backend](0163-pure-rust-zephyr-images-no-zenoh-xrce-backend.md): the app crates' `rmw-*`
   features are inert markers (#60 T5) and only cyclonedds has a module-side register symbol —
   `rs-*-zenoh` images were a hard LINK error under #155's strong stub (now weak-guarded:
   links, fails loud at open). Decision needed: real backend deps (nros-c parity) vs module
   TUs (xrce only) vs de-scope the cells.
+=======
+- **#163** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
+  seam](0163-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
+  single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
+  has no riscv twin. The board + one C `talker` are **link-checked** in nightly CI
+  (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
+  arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
+  (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
+- **#162** — [w1d tier probe: startup race → 0-delivery INCONCLUSIVE pass + off-by-one
+  denominator](0162-w1d-probe-startup-race-and-denominator.md): ~1-in-11 runs the sink misses
+  the whole window (gossip gap after the readiness banner) yet the run passes; and
+  `delivered/published` uses `count/max` with a counter that starts at 0 (>100 % possible).
+  Gate on first delivery + use `max+1`. Low priority (measurement scratch, but #145/#148 were
+  judged on its output).
+>>>>>>> 5a34a6cae (fix(#163): pure-Rust Zephyr images carry the zenoh/xrce backend again)
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
@@ -70,6 +86,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
+<<<<<<< HEAD
 Recently resolved (see [`archived/`](archived/) for the full list): **#162** — w1d tier
 probe: gated the measurement on a first delivery (retry the boot once on the gossip-gap race,
 then fail loud) + `max+1` denominator + an IDEAL verdict case (clean fixtures read 1500/1500 =
@@ -79,6 +96,13 @@ covered (H1 phase-276; H2 entry build-asserts + nuttx/freertos runtime; H3 custo
 + rust async e2e) or de-scoped-with-reason (cpp POCs proven by the cpp workspace entry e2e;
 non-Zephyr embedded matrix fill; cyclone-RMW svc/action as secondary-transport matrix; embassy
 listener redundant demo). No silent caps. **#161** — the 177.37
+=======
+Recently resolved (see [`archived/`](archived/) for the full list): **#163** — pure-Rust
+Zephyr images carry the zenoh/xrce backend again (real optional deps + a force-link register
+call in `zephyr_component_main!` past staticlib DCE + the picolibc malloc-arena bump + an
+XRCE `host:port` locator bake); rust zenoh AND xrce pubsub/service/action all green — the
+zenoh lane's first pass since the phase-248/249 registration rework. **#161** — the 177.37
+>>>>>>> 5a34a6cae (fix(#163): pure-Rust Zephyr images carry the zenoh/xrce backend again)
 domain bake was defeated by two later regressions: phase-180's separate
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` knob pinned 0 everywhere (now defaults to `NROS_DOMAIN_ID`,
 20 pins dropped) and the phase-277 macro rework dropped the Rust-side `NROS_DOMAIN_ID`

@@ -1,11 +1,43 @@
 ---
 id: 163
 title: "Pure-Rust Zephyr images carry NO zenoh/xrce backend — `nros_rmw_{zenoh,xrce}_register` undefined (only cyclonedds works)"
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0155, issue-0161, phase-248, phase-249]
 ---
+
+## RESOLVED (2026-07-09) — option 1 landed; full pure-Rust Zephyr matrix green
+
+Landed the nros-c-parity shape plus three stacked fixes the lane needed once
+the backend actually rode in the image:
+
+1. **Real backend deps** (6 example apps): `rmw-zenoh = ["dep:nros-rmw-zenoh"]`
+   (features `platform-zephyr` → `zpico-sys/zephyr`; the module still compiles
+   `zpico.c` itself — the same split `libnros_c.a` uses) and
+   `rmw-xrce = ["dep:nros-rmw-xrce-cffi"]`; `.cargo/config.toml` patch rows
+   added. cyclonedds stays inert (module C++ lib provides the symbol).
+2. **Force-link in the macro**: rustc's staticlib DCE drops an unreferenced
+   dep's `#[no_mangle]` export (nm: symbol in the rlib, absent from
+   `librustapp.a` — exactly what nros-c's `FORCE_LINK` anchor documents).
+   `nros::zephyr_component_main!` now makes cfg-gated direct
+   `nros_rmw_{zenoh,xrce_cffi}::register()` calls — the reference IS the
+   force-link, idempotent with the `nros_app_register_backends` hook.
+3. **Right allocator knob**: the Zephyr Rust global allocator is picolibc
+   malloc, so phase-271's ~75 KB executor backing OOM'd the DEFAULT 16 KB
+   `COMMON_LIBC_MALLOC_ARENA_SIZE` — `CONFIG_HEAP_MEM_POOL_SIZE` (which #155
+   bumped) was the wrong knob for this path. prj-{zenoh,xrce}.conf now set a
+   1 MB arena (mirrors prj-cyclonedds.conf's).
+4. **XRCE locator bake**: nothing consumed `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}`
+   on the Rust path; the example build.rs now synthesizes `host:port` into the
+   same `NROS_LOCATOR` env the macro reads when `CONFIG_NROS_RMW_XRCE=y`.
+
+Proof: rust zenoh pubsub/service/action/to-native/native-client + rust xrce
+talker-listener/service/action ALL PASS (the zenoh lane's first green since
+the phase-248/249 rework); phase_118 stays 8/8 ×3 parallel. The weak-guarded
+stub stays (an image with a misconfigured backend still fails loudly at open
+rather than at link). Remaining zephyr.rs failures are #164's other
+categories (stale markers, C/C++ xrce, cyclone action row, workspace entry).
 
 ## Summary
 

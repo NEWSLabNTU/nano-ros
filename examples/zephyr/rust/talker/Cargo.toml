@@ -26,9 +26,13 @@ default = ["rmw-zenoh"]
 # Rust `nros rmw-*` dep. These rows are now inert build-target markers, kept so
 # the Zephyr `CMakeLists.txt` EXTRA_CARGO_ARGS `--features rmw-<x>` still
 # resolves; they no longer forward `nros rmw-*`. (#60 T5)
-rmw-zenoh = []
+# Issue 0163 — zenoh/xrce forward to REAL backend deps again: a pure-Rust
+# image has no libnros_c.a, so the register symbol must ride in librustapp.a
+# (mirrors nros-c's `rmw-zenoh = [..., "dep:nros-rmw-zenoh"]`). cyclonedds
+# stays inert — its register entry comes from the Zephyr module's C++ lib.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds = []
-rmw-xrce = []
+rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
 zephyr = "0.1.0"
@@ -38,6 +42,12 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
 # for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
 nros-platform = { version = "*", default-features = false, features = ["platform-zephyr"] }
+# Issue 0163 — concrete backends for the pure-Rust image (optional; selected
+# by the `rmw-*` features above). `platform-zephyr` → `zpico-sys/zephyr`
+# compiles the platform-alias TU into this staticlib while the Zephyr module
+# compiles `zpico.c` itself — the same split `libnros_c.a` uses (Phase 202).
+nros-rmw-zenoh = { version = "*", optional = true, default-features = false, features = ["platform-zephyr"] }
+nros-rmw-xrce-cffi = { version = "*", optional = true, default-features = false }
 
 std_msgs = { version = "*", default-features = false }
 
