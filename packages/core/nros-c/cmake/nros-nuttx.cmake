@@ -263,6 +263,11 @@ function(nros_nuttx_build_example)
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             cargo build --release
+        # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
+        # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't
+        # propagated) must fail HERE, not only in the outer fixture script's
+        # artifact check (workspace-fixtures-build.sh backstop).
+        COMMAND bash -c "test -f '${_output_binary}' || { echo 'nros: NuttX cross-link produced no kernel ELF: ${_output_binary}' >&2; exit 1; }"
         WORKING_DIRECTORY "${_NNBE_FFI_CRATE_DIR}"
         DEPENDS "${_NNBE_MAIN_SOURCE}" ${_NNBE_SOURCES} ${_NNBE_INTERFACE_SOURCES}
                 "${_includes_file}" "${_ffi_libs_file}"

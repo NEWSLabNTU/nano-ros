@@ -126,6 +126,10 @@ typedef struct nros_cpp_qos_t {
     uint32_t lifespan_ms;
     uint32_t liveliness_lease_ms;
     uint8_t avoid_ros_namespace_conventions;
+    /* phase-282 W3 appended this on the C++ side (nros_cpp_ffi.h) but this
+     * mirror was missed — a mirror-only TU then had a SHORTER struct than the
+     * FFI consumer (by-value ABI mismatch, the #131 stale-mirror class). */
+    uint8_t tx_express;
 } nros_cpp_qos_t;
 #endif /* NROS_CPP_FFI_H */
 

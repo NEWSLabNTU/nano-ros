@@ -1,0 +1,5 @@
+# clang-format must never touch configure_file() templates: reflow inserts
+# spaces inside @VAR@ placeholder tokens (e.g. `@NROS_ENTRY_PKG_SYM @`), which
+# breaks substitution and generates un-compilable TUs (issue 0159 fallout,
+# 701ae4b6a corrupted zephyr_entry_main_c_typed.cpp.in this way).
+cmake/templates/*

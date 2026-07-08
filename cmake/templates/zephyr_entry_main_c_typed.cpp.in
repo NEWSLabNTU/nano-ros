@@ -25,9 +25,8 @@
 // C component factory + configure seam (emitted by NROS_C_COMPONENT in the C
 // source, compiled with -DNROS_PKG_NAME=@NROS_ENTRY_PKG_SYM@).
 extern "C" {
-void* __nros_c_component_ @NROS_ENTRY_PKG_SYM @_create(void);
-int32_t __nros_c_component_ @NROS_ENTRY_PKG_SYM
-    @_configure(const ::nros_cpp_node_t* node, void* executor, void* self);
+void* __nros_c_component_@NROS_ENTRY_PKG_SYM@_create(void);
+int32_t __nros_c_component_@NROS_ENTRY_PKG_SYM@_configure(const ::nros_cpp_node_t* node, void* executor, void* self);
 }
 
 static ::nros::Node __nros_node;
@@ -37,9 +36,8 @@ static int32_t __nros_entry_setup() {
     if (!r.ok()) {
         return static_cast<int32_t>(r.raw());
     }
-    void* self = __nros_c_component_ @NROS_ENTRY_PKG_SYM @_create();
-    return __nros_c_component_ @NROS_ENTRY_PKG_SYM
-        @_configure(__nros_node.ffi_handle(), __nros_node.executor_handle(), self);
+    void* self = __nros_c_component_@NROS_ENTRY_PKG_SYM@_create();
+    return __nros_c_component_@NROS_ENTRY_PKG_SYM@_configure(__nros_node.ffi_handle(), __nros_node.executor_handle(), self);
 }
 
 int main(void) {

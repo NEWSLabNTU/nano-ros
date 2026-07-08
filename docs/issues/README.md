@@ -44,11 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#159** — [NuttX fixture build can report success with no kernel
-  ELF](0159-nuttx-fixture-build-cmake-returns-zero-on-link-failure.md): `cmake --build
-  <entry>_build` returns 0 on some link failures. Backstop landed (`7ad8cc884` — the
-  workspace-fixtures builder fails loud on a missing ELF); the deeper cmake-propagation root
-  (up-to-date skip / a non-propagating sub-step) is untracked. Low priority (backstop covers it).
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
@@ -64,7 +59,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#136** — example
+Recently resolved (see [`archived/`](archived/) for the full list): **#159** — the missing
+NuttX-ELF backstop turned out to be clobber-reverted (`f344492e4`) — restored, together with
+the last other clobber loss (rust_nuttx_entry_e2e String prefix, `791677222`); the custom
+command now also verifies the kernel ELF itself (two layers); fallout fixed en route: a
+clang-format-corrupted `@NROS_ENTRY_PKG_SYM@` entry template (+ `.clang-format-ignore`) and
+the `component.h` QoS mirror missing `tx_express` (by-value ABI mismatch, #131 class). **#136** — example
 naming drift: the mechanical sweep (items 1–3 — `TalkerNode`→`Talker`, Zephyr C++ namespaces
 → `<plat>_cpp_<case>`, per-platform `setvbuf` uniformity) landed + verified in phase-283
 (Complete); item 4 (`_entry` rename) → phase-275, item 5 (dup ids) already resolved. **#110** —
