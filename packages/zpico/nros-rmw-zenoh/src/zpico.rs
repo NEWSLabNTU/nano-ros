@@ -757,17 +757,37 @@ impl Context {
     ///
     /// Returns a slot handle on success that can be polled with [`get_check()`](Self::get_check).
     pub fn get_start(&self, keyexpr: &[u8], payload: &[u8], timeout_ms: u32) -> Result<i32> {
+        self.get_start_with_attachment(keyexpr, payload, &[], timeout_ms)
+    }
+
+    /// Issue 0153 — query start carrying an rmw attachment (sequence_number +
+    /// source_timestamp + gid). rmw_zenoh_cpp service servers REQUIRE it on
+    /// the query; an empty `attachment` omits it (nano↔nano tolerates both).
+    pub fn get_start_with_attachment(
+        &self,
+        keyexpr: &[u8],
+        payload: &[u8],
+        attachment: &[u8],
+        timeout_ms: u32,
+    ) -> Result<i32> {
         let (payload_ptr, payload_len) = if payload.is_empty() {
             (core::ptr::null(), 0)
         } else {
             (payload.as_ptr(), payload.len())
         };
+        let (att_ptr, att_len) = if attachment.is_empty() {
+            (core::ptr::null(), 0)
+        } else {
+            (attachment.as_ptr(), attachment.len())
+        };
 
         let ret = ffi_guard(|| unsafe {
-            zpico_sys::zpico_get_start(
+            zpico_sys::zpico_get_start_with_attachment(
                 keyexpr.as_ptr().cast(),
                 payload_ptr,
                 payload_len,
+                att_ptr,
+                att_len,
                 timeout_ms,
             )
         });

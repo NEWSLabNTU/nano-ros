@@ -10,8 +10,8 @@ use nros_rmw::{
 };
 
 use super::{
-    AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, SERVICE_BUFFER_SIZE,
-    SeqScalar,
+    AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, RMW_ATTACHMENT_SIZE,
+    RMW_GID_SIZE, RmwAttachment, SERVICE_BUFFER_SIZE, SeqScalar,
 };
 use crate::{
     keyexpr::ServiceKeyExpr,
@@ -517,8 +517,28 @@ pub struct ZenohServiceClient {
     /// Capacity matches the C-side slot pool so we can never lose a
     /// handle the C allocator successfully returned.
     pending_handles: heapless::Vec<i32, ZPICO_MAX_PENDING_GETS>,
+    /// Issue 0153 — client GID for the rmw request attachment. rmw_zenoh_cpp
+    /// service servers REQUIRE the (sequence_number, source_timestamp, gid)
+    /// attachment on the query — `service_take_request` errors without it and
+    /// the ROS 2 server never replies (nano↔nano tolerates its absence,
+    /// which kept this invisible in-tree).
+    rmw_gid: [u8; RMW_GID_SIZE],
+    /// Issue 0153 — per-client request sequence counter for the attachment.
+    request_seq: AtomicSeqCounter,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
+}
+
+/// Issue 0153 — platform clock in ms → attachment source_timestamp.
+/// Mirrors `publisher.rs`'s `now_ms` (canonical `nros_platform_*` C symbol);
+/// falls back to the sequence number when no real clock exists, preserving
+/// monotonicity like the publisher path.
+fn current_timestamp_ms(fallback_seq: i64) -> i64 {
+    unsafe extern "C" {
+        fn nros_platform_time_now_ms() -> u64;
+    }
+    let ms = unsafe { nros_platform_time_now_ms() };
+    if ms == 0 { fallback_seq } else { ms as i64 }
 }
 
 impl ZenohServiceClient {
@@ -566,6 +586,8 @@ impl ZenohServiceClient {
             context: context as *const Context,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handles: heapless::Vec::new(),
+            rmw_gid: RmwAttachment::generate_gid(),
+            request_seq: AtomicSeqCounter::new(0),
             _phantom: PhantomData,
         })
     }
@@ -656,6 +678,19 @@ impl ServiceClientTrait for ZenohServiceClient {
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
         let context = unsafe { &*self.context };
 
+        // Issue 0153 — rmw request attachment, same 33-byte layout as the
+        // publisher path ([seq le][ts le][gid len][gid]). Built once; the
+        // retry loop below re-sends the SAME logical request, so it keeps
+        // one sequence number.
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
+        let seq: i64 = (self.request_seq.fetch_add(1, Ordering::Relaxed) + 1).into();
+        let ts = current_timestamp_ms(seq);
+        let mut attachment = [0u8; RMW_ATTACHMENT_SIZE];
+        attachment[0..8].copy_from_slice(&seq.to_le_bytes());
+        attachment[8..16].copy_from_slice(&ts.to_le_bytes());
+        attachment[16] = RMW_GID_SIZE as u8;
+        attachment[17..33].copy_from_slice(&self.rmw_gid);
+
         // Phase 89.12 #14 + Phase 89.13 flake fix: retry `zpico_get_start`
         // with a bounded wall-clock budget to cover two distinct race
         // classes on multi-threaded zpico backends (POSIX / Zephyr /
@@ -703,9 +738,10 @@ impl ServiceClientTrait for ZenohServiceClient {
         {
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(800);
             loop {
-                match context.get_start(
+                match context.get_start_with_attachment(
                     &self.keyexpr[..=self.keyexpr_len],
                     request,
+                    &attachment,
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {
@@ -736,9 +772,10 @@ impl ServiceClientTrait for ZenohServiceClient {
             const MAX_ATTEMPTS: u32 = 80;
             const SLEEP_MS: usize = 5;
             for attempt in 0..MAX_ATTEMPTS {
-                match context.get_start(
+                match context.get_start_with_attachment(
                     &self.keyexpr[..=self.keyexpr_len],
                     request,
+                    &attachment,
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {

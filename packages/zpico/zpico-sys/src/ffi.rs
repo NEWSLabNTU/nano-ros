@@ -642,6 +642,19 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Issue 0153 — attachment-carrying query start (rmw_zenoh service interop).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_get_start_with_attachment(
+        _keyexpr: *const c_char,
+        _payload: *const u8,
+        _payload_len: usize,
+        _attachment: *const u8,
+        _attachment_len: usize,
+        _timeout_ms: u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Check for a reply to a pending non-blocking query.
     ///
     /// Returns positive byte count on reply, 0 if still pending, negative on error/timeout.

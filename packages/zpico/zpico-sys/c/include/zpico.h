@@ -85,14 +85,14 @@
  * A key-value property for transport configuration (C-compatible)
  */
 typedef struct zpico_property_t {
-  /**
-   * Property key (null-terminated C string)
-   */
-  const char *key;
-  /**
-   * Property value (null-terminated C string)
-   */
-  const char *value;
+    /**
+     * Property key (null-terminated C string)
+     */
+    const char* key;
+    /**
+     * Property value (null-terminated C string)
+     */
+    const char* value;
 } zpico_property_t;
 
 /**
@@ -103,7 +103,7 @@ typedef struct zpico_property_t {
  * * `len` - Length of data in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoCallback)(const uint8_t *data, uintptr_t len, void *ctx);
+typedef void (*ZpicoCallback)(const uint8_t* data, uintptr_t len, void* ctx);
 
 /**
  * Callback function type for receiving samples with attachment (RMW compatible).
@@ -115,11 +115,9 @@ typedef void (*ZpicoCallback)(const uint8_t *data, uintptr_t len, void *ctx);
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoCallbackWithAttachment)(const uint8_t *data,
-                                            uintptr_t len,
-                                            const uint8_t *attachment,
-                                            uintptr_t attachment_len,
-                                            void *ctx);
+typedef void (*ZpicoCallbackWithAttachment)(const uint8_t* data, uintptr_t len,
+                                            const uint8_t* attachment, uintptr_t attachment_len,
+                                            void* ctx);
 
 /**
  * Notify callback for direct-write subscribers.
@@ -133,10 +131,8 @@ typedef void (*ZpicoCallbackWithAttachment)(const uint8_t *data,
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoNotifyCallback)(uintptr_t len,
-                                    const uint8_t *attachment,
-                                    uintptr_t attachment_len,
-                                    void *ctx);
+typedef void (*ZpicoNotifyCallback)(uintptr_t len, const uint8_t* attachment,
+                                    uintptr_t attachment_len, void* ctx);
 
 /**
  * Phase 124.D.3.c — SPSC ring descriptor mirroring
@@ -149,42 +145,42 @@ typedef void (*ZpicoNotifyCallback)(uintptr_t len,
  * both sides — the slot index is `counter % slot_count`.
  */
 typedef struct zpico_ring_desc_t {
-  /**
-   * `slot_count * payload_stride` bytes of payload storage.
-   */
-  uint8_t *payload_base;
-  /**
-   * Bytes between payload slot starts.
-   */
-  uintptr_t payload_stride;
-  /**
-   * `slot_count * att_stride` bytes of attachment storage.
-   */
-  uint8_t *att_base;
-  /**
-   * Bytes between attachment slot starts.
-   */
-  uintptr_t att_stride;
-  /**
-   * Number of ring slots N.
-   */
-  uintptr_t slot_count;
-  /**
-   * `slot_count` entries — per-slot payload length.
-   */
-  uintptr_t *payload_len;
-  /**
-   * `slot_count` entries — per-slot attachment length.
-   */
-  uintptr_t *att_len;
-  /**
-   * Consumer counter — written only by the Rust shim.
-   */
-  uintptr_t *head;
-  /**
-   * Producer counter — written only by the C shim.
-   */
-  uintptr_t *tail;
+    /**
+     * `slot_count * payload_stride` bytes of payload storage.
+     */
+    uint8_t* payload_base;
+    /**
+     * Bytes between payload slot starts.
+     */
+    uintptr_t payload_stride;
+    /**
+     * `slot_count * att_stride` bytes of attachment storage.
+     */
+    uint8_t* att_base;
+    /**
+     * Bytes between attachment slot starts.
+     */
+    uintptr_t att_stride;
+    /**
+     * Number of ring slots N.
+     */
+    uintptr_t slot_count;
+    /**
+     * `slot_count` entries — per-slot payload length.
+     */
+    uintptr_t* payload_len;
+    /**
+     * `slot_count` entries — per-slot attachment length.
+     */
+    uintptr_t* att_len;
+    /**
+     * Consumer counter — written only by the Rust shim.
+     */
+    uintptr_t* head;
+    /**
+     * Producer counter — written only by the C shim.
+     */
+    uintptr_t* tail;
 } zpico_ring_desc_t;
 
 /**
@@ -198,11 +194,8 @@ typedef struct zpico_ring_desc_t {
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoZeroCopyCallback)(const uint8_t *data,
-                                      uintptr_t len,
-                                      const uint8_t *attachment,
-                                      uintptr_t attachment_len,
-                                      void *ctx);
+typedef void (*ZpicoZeroCopyCallback)(const uint8_t* data, uintptr_t len, const uint8_t* attachment,
+                                      uintptr_t attachment_len, void* ctx);
 
 /**
  * Callback function type for receiving queries (service requests).
@@ -214,11 +207,8 @@ typedef void (*ZpicoZeroCopyCallback)(const uint8_t *data,
  * * `payload_len` - Length of payload in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ZpicoQueryCallback)(const char *keyexpr,
-                                   uintptr_t keyexpr_len,
-                                   const uint8_t *payload,
-                                   uintptr_t payload_len,
-                                   void *ctx);
+typedef void (*ZpicoQueryCallback)(const char* keyexpr, uintptr_t keyexpr_len,
+                                   const uint8_t* payload, uintptr_t payload_len, void* ctx);
 
 /**
  * Phase 124.F.2 — wire-level connectivity probe. Returns 0
@@ -254,7 +244,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_init(const char *_locator);
+int32_t zpico_init(const char* _locator);
 
 /**
  * Initialize zenoh configuration with mode, locator, and properties.
@@ -269,9 +259,8 @@ int32_t zpico_init(const char *_locator);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_init_with_config(const char *_locator,
-                               const char *_mode,
-                               const struct zpico_property_t *_properties,
+int32_t zpico_init_with_config(const char* _locator, const char* _mode,
+                               const struct zpico_property_t* _properties,
                                uintptr_t _num_properties);
 
 /**
@@ -305,14 +294,10 @@ int32_t zpico_send_keep_alive(void);
  *
  * Returns 0 on success, `ZPICO_ERR_*` on failure.
  */
-int32_t zpico_publish_streamed(int32_t _handle,
-                               uintptr_t _total_len,
-                               void (*_chunk_cb)(uint8_t *out_buf,
-                                                 uintptr_t cap,
-                                                 uintptr_t *out_written,
-                                                 void *user_ctx),
-                               void *_user_ctx,
-                               const uint8_t *_attachment,
+int32_t zpico_publish_streamed(int32_t _handle, uintptr_t _total_len,
+                               void (*_chunk_cb)(uint8_t* out_buf, uintptr_t cap,
+                                                 uintptr_t* out_written, void* user_ctx),
+                               void* _user_ctx, const uint8_t* _attachment,
                                uintptr_t _attachment_len);
 
 /**
@@ -328,10 +313,8 @@ void zpico_close(void);
  *
  * Priority and stack values are platform-specific (already mapped by the caller).
  */
-void zpico_set_task_config(uint32_t _read_priority,
-                           uint32_t _read_stack_bytes,
-                           uint32_t _lease_priority,
-                           uint32_t _lease_stack_bytes);
+void zpico_set_task_config(uint32_t _read_priority, uint32_t _read_stack_bytes,
+                           uint32_t _lease_priority, uint32_t _lease_stack_bytes);
 
 /**
  * Declare a publisher for the given key expression.
@@ -342,13 +325,13 @@ void zpico_set_task_config(uint32_t _read_priority,
  * # Returns
  * Publisher handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_publisher(const char *_keyexpr);
+int32_t zpico_declare_publisher(const char* _keyexpr);
 
 /**
  * Declare a publisher with options (stub). `_is_express` mirrors the real
  * shim's phase-279 express hint.
  */
-int32_t zpico_declare_publisher_ex(const char *_keyexpr, int32_t _is_express);
+int32_t zpico_declare_publisher_ex(const char* _keyexpr, int32_t _is_express);
 
 /**
  * Publish data using publisher handle.
@@ -361,7 +344,7 @@ int32_t zpico_declare_publisher_ex(const char *_keyexpr, int32_t _is_express);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_publish(int32_t _handle, const uint8_t *_data, uintptr_t _len);
+int32_t zpico_publish(int32_t _handle, const uint8_t* _data, uintptr_t _len);
 
 /**
  * Undeclare a publisher.
@@ -385,7 +368,7 @@ int32_t zpico_undeclare_publisher(int32_t _handle);
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_subscriber(const char *_keyexpr, ZpicoCallback _callback, void *_ctx);
+int32_t zpico_declare_subscriber(const char* _keyexpr, ZpicoCallback _callback, void* _ctx);
 
 /**
  * Declare a subscriber with attachment support for RMW compatibility.
@@ -398,9 +381,8 @@ int32_t zpico_declare_subscriber(const char *_keyexpr, ZpicoCallback _callback, 
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_subscriber_with_attachment(const char *_keyexpr,
-                                                 ZpicoCallbackWithAttachment _callback,
-                                                 void *_ctx);
+int32_t zpico_declare_subscriber_with_attachment(const char* _keyexpr,
+                                                 ZpicoCallbackWithAttachment _callback, void* _ctx);
 
 /**
  * Declare a subscriber with direct-write to a Rust buffer.
@@ -421,12 +403,9 @@ int32_t zpico_declare_subscriber_with_attachment(const char *_keyexpr,
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_subscriber_direct_write(const char *_keyexpr,
-                                              uint8_t *_buf_ptr,
-                                              uintptr_t _buf_capacity,
-                                              const bool *_locked_ptr,
-                                              ZpicoNotifyCallback _callback,
-                                              void *_ctx);
+int32_t zpico_declare_subscriber_direct_write(const char* _keyexpr, uint8_t* _buf_ptr,
+                                              uintptr_t _buf_capacity, const bool* _locked_ptr,
+                                              ZpicoNotifyCallback _callback, void* _ctx);
 
 /**
  * Phase 124.D.3.c — declare a burst-tolerant direct-write
@@ -445,10 +424,8 @@ int32_t zpico_declare_subscriber_direct_write(const char *_keyexpr,
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_subscriber_ring(const char *_keyexpr,
-                                      struct zpico_ring_desc_t *_desc,
-                                      ZpicoNotifyCallback _callback,
-                                      void *_ctx);
+int32_t zpico_declare_subscriber_ring(const char* _keyexpr, struct zpico_ring_desc_t* _desc,
+                                      ZpicoNotifyCallback _callback, void* _ctx);
 
 /**
  * Declare a zero-copy subscriber for the given key expression.
@@ -465,9 +442,8 @@ int32_t zpico_declare_subscriber_ring(const char *_keyexpr,
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_subscribe_zero_copy(const char *_keyexpr,
-                                  ZpicoZeroCopyCallback _callback,
-                                  void *_ctx);
+int32_t zpico_subscribe_zero_copy(const char* _keyexpr, ZpicoZeroCopyCallback _callback,
+                                  void* _ctx);
 
 /**
  * Undeclare a subscriber.
@@ -512,7 +488,7 @@ bool zpico_uses_polling(void);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_get_zid(uint8_t *_zid_out);
+int32_t zpico_get_zid(uint8_t* _zid_out);
 
 /**
  * Declare a liveliness token for ROS 2 discovery.
@@ -523,7 +499,7 @@ int32_t zpico_get_zid(uint8_t *_zid_out);
  * # Returns
  * Liveliness handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_liveliness(const char *_keyexpr);
+int32_t zpico_declare_liveliness(const char* _keyexpr);
 
 /**
  * Undeclare a liveliness token.
@@ -549,11 +525,8 @@ int32_t zpico_undeclare_liveliness(int32_t _handle);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_publish_with_attachment(int32_t _handle,
-                                      const uint8_t *_data,
-                                      uintptr_t _len,
-                                      const uint8_t *_attachment,
-                                      uintptr_t _attachment_len);
+int32_t zpico_publish_with_attachment(int32_t _handle, const uint8_t* _data, uintptr_t _len,
+                                      const uint8_t* _attachment, uintptr_t _attachment_len);
 
 /**
  * Declare a queryable for receiving service requests.
@@ -566,7 +539,7 @@ int32_t zpico_publish_with_attachment(int32_t _handle,
  * # Returns
  * Queryable handle (>= 0) on success, negative error code on failure.
  */
-int32_t zpico_declare_queryable(const char *_keyexpr, ZpicoQueryCallback _callback, void *_ctx);
+int32_t zpico_declare_queryable(const char* _keyexpr, ZpicoQueryCallback _callback, void* _ctx);
 
 /**
  * Undeclare a queryable.
@@ -592,12 +565,8 @@ int32_t zpico_undeclare_queryable(int32_t _handle);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zpico_query_reply(int32_t _queryable_handle,
-                          int64_t _reply_seq,
-                          const char *_keyexpr,
-                          const uint8_t *_data,
-                          uintptr_t _len,
-                          const uint8_t *_attachment,
+int32_t zpico_query_reply(int32_t _queryable_handle, int64_t _reply_seq, const char* _keyexpr,
+                          const uint8_t* _data, uintptr_t _len, const uint8_t* _attachment,
                           uintptr_t _attachment_len);
 
 /**
@@ -621,34 +590,35 @@ int64_t zpico_queryable_take_reply_seq(int32_t _queryable_handle);
  * # Returns
  * Number of bytes in reply on success, negative error code on failure.
  */
-int32_t zpico_get(const char *_keyexpr,
-                  const uint8_t *_payload,
-                  uintptr_t _payload_len,
-                  uint8_t *_reply_buf,
-                  uintptr_t _reply_buf_size,
-                  uint32_t _timeout_ms);
+int32_t zpico_get(const char* _keyexpr, const uint8_t* _payload, uintptr_t _payload_len,
+                  uint8_t* _reply_buf, uintptr_t _reply_buf_size, uint32_t _timeout_ms);
 
 /**
  * Start a non-blocking query (for async service client).
  *
  * Returns a non-negative slot handle on success, negative error code on failure.
  */
-int32_t zpico_get_start(const char *_keyexpr,
-                        const uint8_t *_payload,
-                        uintptr_t _payload_len,
+int32_t zpico_get_start(const char* _keyexpr, const uint8_t* _payload, uintptr_t _payload_len,
                         uint32_t _timeout_ms);
+
+/**
+ * Issue 0153 — attachment-carrying query start (rmw_zenoh service interop).
+ */
+int32_t zpico_get_start_with_attachment(const char* _keyexpr, const uint8_t* _payload,
+                                        uintptr_t _payload_len, const uint8_t* _attachment,
+                                        uintptr_t _attachment_len, uint32_t _timeout_ms);
 
 /**
  * Check for a reply to a pending non-blocking query.
  *
  * Returns positive byte count on reply, 0 if still pending, negative on error/timeout.
  */
-int32_t zpico_get_check(int32_t _handle, uint8_t *_reply_buf, uintptr_t _reply_buf_size);
+int32_t zpico_get_check(int32_t _handle, uint8_t* _reply_buf, uintptr_t _reply_buf_size);
 
 /**
  * Start a non-blocking liveliness query (for wait_for_service).
  */
-int32_t zpico_liveliness_get_start(const char *_keyexpr, uint32_t _timeout_ms);
+int32_t zpico_liveliness_get_start(const char* _keyexpr, uint32_t _timeout_ms);
 
 /**
  * Poll a pending liveliness query.
@@ -674,11 +644,11 @@ void zpico_set_reply_waker(void (*_func)(int32_t));
  * Capture the current clock into an opaque 16-byte buffer.
  * Used by FFI reentrancy guard timeout decomposition.
  */
-void zpico_clock_start(uint8_t *_clock_buf);
+void zpico_clock_start(uint8_t* _clock_buf);
 
 /**
  * Return elapsed milliseconds since a clock captured by `zpico_clock_start`.
  */
-unsigned long zpico_clock_elapsed_ms_since(uint8_t *_clock_buf);
+unsigned long zpico_clock_elapsed_ms_since(uint8_t* _clock_buf);
 
-#endif  /* ZPICO_H */
+#endif /* ZPICO_H */

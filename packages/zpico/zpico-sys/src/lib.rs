@@ -272,6 +272,14 @@ unsafe extern "C" {
         payload_len: usize,
         timeout_ms: u32,
     ) -> i32;
+    pub fn zpico_get_start_with_attachment(
+        keyexpr: *const core::ffi::c_char,
+        payload: *const u8,
+        payload_len: usize,
+        attachment: *const u8,
+        attachment_len: usize,
+        timeout_ms: u32,
+    ) -> i32;
     pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
 
     // Non-blocking liveliness query (for wait_for_service / wait_for_action_server).

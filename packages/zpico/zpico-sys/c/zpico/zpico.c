@@ -2333,6 +2333,20 @@ void zpico_get_diag_counters(uint32_t out[18]) {
 
 int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payload_len,
                         uint32_t timeout_ms) {
+    return zpico_get_start_with_attachment(keyexpr, payload, payload_len, NULL, 0, timeout_ms);
+}
+
+/* Issue 0153 — attachment-carrying variant. rmw_zenoh_cpp's service server
+ * REQUIRES the rmw attachment (sequence_number + source_timestamp + gid) on
+ * the query: `rmw_service_server_is_available`'s take path
+ * (service_take_request) deserializes it and errors the whole take when it
+ * is absent, so a nano-ros client request without one reaches the ROS 2
+ * server and then dies inside rcl ("service failed to take request") — the
+ * client only ever sees Transport(Timeout). nano<->nano services tolerate a
+ * missing attachment, which is why this stayed invisible in-tree. */
+int32_t zpico_get_start_with_attachment(const char* keyexpr, const uint8_t* payload,
+                                        size_t payload_len, const uint8_t* attachment,
+                                        size_t attachment_len, uint32_t timeout_ms) {
     g_diag_get_start_calls++;
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -2388,6 +2402,12 @@ int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payl
     if (payload != NULL && payload_len > 0) {
         z_bytes_copy_from_buf(&payload_bytes, payload, payload_len);
         opts.payload = z_move(payload_bytes);
+    }
+    // Same lifetime rule for the rmw attachment (issue 0153).
+    z_owned_bytes_t attachment_bytes;
+    if (attachment != NULL && attachment_len > 0) {
+        z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len);
+        opts.attachment = z_move(attachment_bytes);
     }
 
     z_owned_closure_reply_t callback;

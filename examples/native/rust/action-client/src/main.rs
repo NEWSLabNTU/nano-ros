@@ -60,26 +60,47 @@ fn run() -> i32 {
     }
 
     let goal = FibonacciGoal { order: 10 };
-    info!("Sending goal");
-    let (goal_id, mut promise) = match client.send_goal(&goal) {
-        Ok(pair) => pair,
-        Err(e) => {
-            error!("Failed to send goal: {:?}", e);
-            return 1;
+    // Issue 0153 — retry the goal handshake with a 1 s backoff. On rmw_zenoh
+    // the server's liveliness token (what `wait_for_action_server` observes)
+    // gossips ahead of its queryable route; a send_goal fired in that window
+    // matches no queryable and times out instantly. Same fix shape as the
+    // service-client demo.
+    let mut accepted_goal = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(core::time::Duration::from_secs(1));
         }
-    };
-
-    let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
-        Ok(accepted) => accepted,
-        Err(e) => {
-            error!("Goal acceptance failed: {:?}", e);
-            return 1;
+        info!("Sending goal");
+        let (goal_id, mut promise) = match client.send_goal(&goal) {
+            Ok(pair) => pair,
+            Err(e) => {
+                error!("Failed to send goal: {:?}", e);
+                return 1;
+            }
+        };
+        match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+            Ok(true) => {
+                accepted_goal = Some(goal_id);
+                break;
+            }
+            Ok(false) => {
+                warn!("Goal was rejected by the server");
+                return 1;
+            }
+            Err(e) => {
+                error!("Goal acceptance failed (attempt {}): {:?}", attempt + 1, e);
+                // A timed-out acceptance promise leaves the send-goal
+                // in-flight flag set; clear it or the retry dies on
+                // RequestInFlight (same contract as the service client's
+                // reset_in_flight).
+                client.reset_send_goal_in_flight();
+            }
         }
-    };
-    if !accepted {
-        warn!("Goal was rejected by the server");
-        return 1;
     }
+    let Some(goal_id) = accepted_goal else {
+        error!("Goal was never accepted");
+        return 1;
+    };
     info!("Goal accepted by server, waiting for result");
 
     // Stream feedback until the sequence is complete (the server publishes

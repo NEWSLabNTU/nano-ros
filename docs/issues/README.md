@@ -45,11 +45,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 
-- **#153** — [ros2-server → nano-client service/action lanes time
-  out](0153-ros2-server-to-nano-client-timeout.md): the one remaining rmw_interop direction —
-  a ROS 2 service/action SERVER with a nano-ros CLIENT times out on response/goal delivery
-  (`Transport(Timeout)`); nano→ros2 and pub/sub both ways are green. Suspects: response-publisher
-  RxO, zpico query/reply matcher, discovery-time vs call-timeout budget.
 - **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): esp32/nuttx QEMU logging
   images, PX4 SITL, zephyr-cyclone fixture arm, assorted zephyr/mixed lanes need their lane's
   setup verb (or a recipe home); re-triage after a quiet-window rebuild.
@@ -82,7 +77,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#145** — zephyr tx
+Recently resolved (see [`archived/`](archived/) for the full list): **#153** — ros2-server→
+nano-client timeouts (missing rmw attachment on queries + liveliness-vs-queryable gossip gap +
+action-test type mismatch; rmw_interop fully green). **#145** — zephyr tx
 throughput ceiling (phase-282: batch + flush thread + split lock = 20× streaming, uniform
 `tx_express` QoS escape; successor axis = #148). **#150** — native e2e delivery timeouts
 (XRCE session-key collision pid-salted; bridge bins' Int32→String flip; safety resolver

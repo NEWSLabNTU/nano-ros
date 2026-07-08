@@ -45,8 +45,18 @@ fn run() -> i32 {
     // of times: on Cyclone DDS the first request can race the request-writer
     // ↔ server endpoint match and get dropped, and a timed-out `Promise`
     // leaves the in-flight flag set (cleared via `reset_in_flight`).
+    //
+    // Issue 0153 — back off between attempts. On rmw_zenoh the server's
+    // LIVELINESS token (what `wait_for_service` observes) gossips ahead of
+    // its queryable ROUTE: a `z_get` fired in that window matches no
+    // queryable and completes instantly with no reply, so three tight
+    // retries all burn out inside the same gossip gap. A 1 s pause between
+    // attempts spans it (~1-3 s on a fresh router).
     let request = AddTwoIntsRequest { a, b };
     for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(core::time::Duration::from_secs(1));
+        }
         let mut promise = match client.call(&request) {
             Ok(promise) => promise,
             Err(e) => {

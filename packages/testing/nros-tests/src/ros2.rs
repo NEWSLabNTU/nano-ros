@@ -240,13 +240,48 @@ impl Ros2Process {
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn action_server_fibonacci(locator: &str, distro: &str) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
-        // Use ros2 run to start the action server from example_interfaces
-        // Note: The standard action server example is in rclpy_action_server or similar
-        // For testing, we use a simple Python one-liner that creates a Fibonacci server
-        let cmd = format!(
-            "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
-        );
+        // Issue 0153 — inline rclpy server pinned to `example_interfaces`
+        // (the type+name the nano-ros action client uses). The stock
+        // `action_tutorials_py fibonacci_action_server` serves
+        // `action_tutorials_interfaces/action/Fibonacci`, a DIFFERENT type,
+        // so the client's send_goal queryable never matched and every goal
+        // timed out. Same fix the DDS variant
+        // (`action_server_fibonacci_with_domain`) already carries (233.6).
+        let python_script = r#"
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionServer
+from example_interfaces.action import Fibonacci
 
+class Server(Node):
+    def __init__(self):
+        super().__init__('fibonacci_action_server')
+        self._srv = ActionServer(self, Fibonacci, '/fibonacci', self.execute)
+        print('SERVER READY', flush=True)
+    def execute(self, goal_handle):
+        order = goal_handle.request.order
+        print(f'SERVER GOAL order={order}', flush=True)
+        seq = [0, 1]
+        for i in range(1, order):
+            seq.append(seq[i] + seq[i - 1])
+            fb = Fibonacci.Feedback()
+            fb.sequence = seq
+            goal_handle.publish_feedback(fb)
+        goal_handle.succeed()
+        result = Fibonacci.Result()
+        result.sequence = seq
+        print(f'SERVER DONE {seq}', flush=True)
+        return result
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+        let cmd = format!(
+            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'
+{python_script}
+NROS_PYEOF"
+        );
         Self::spawn_bash(&cmd, "ros2 fibonacci_action_server", Some(config_dir))
     }
 
