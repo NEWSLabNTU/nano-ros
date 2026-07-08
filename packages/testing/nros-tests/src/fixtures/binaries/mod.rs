@@ -2792,6 +2792,19 @@ pub fn build_native_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+static NATIVE_RS_LOGGING_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// #102 H3 — build the `native/rust/logging` example (cached). Distinct from the
+/// `logging-smoke-*` bins: after firing every severity once it RAISES the runtime
+/// threshold to `Warn` and fires them again, so the consuming e2e can assert the
+/// runtime level filter (round-2 trace/debug/info suppressed) that the smoke bins
+/// never exercise.
+pub fn build_native_logging() -> TestResult<&'static Path> {
+    NATIVE_RS_LOGGING_BINARY
+        .get_or_try_init(|| build_example("native/rust/logging", "logging", None, None))
+        .map(|p| p.as_path())
+}
+
 /// Phase 115.F — build the custom-transport talker example (cached).
 pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY

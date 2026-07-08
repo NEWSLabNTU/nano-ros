@@ -26,8 +26,8 @@ use nros_tests::{
         build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
         build_logging_smoke_nuttx_qemu_arm, build_logging_smoke_threadx_linux,
         build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
-        is_arm_toolchain_available, is_qemu_available, is_qemu_riscv64_available, nuttx,
-        threadx_linux,
+        build_native_logging, is_arm_toolchain_available, is_qemu_available,
+        is_qemu_riscv64_available, nuttx, threadx_linux,
     },
 };
 
@@ -285,4 +285,56 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
             "fatal payload",
         ],
     );
+}
+
+/// #102 H3 — the `native/rust/logging` EXAMPLE (host process), covering behavior
+/// the `logging-smoke-*` bins do not: a runtime threshold RAISE. It fires every
+/// severity in round 1, raises the logger level to `Warn`, then fires them again
+/// in round 2 — so trace/debug/info must appear for round 1 but be SUPPRESSED for
+/// round 2 while warn/error/fatal survive. Proves `Logger::set_level` filters at
+/// dispatch time, end-to-end through the real cffi PlatformSink → stderr chain.
+#[test]
+fn native_rust_logging_example_threshold_raise_filters_round_two() {
+    let binary = build_native_logging()
+        .expect("native/rust/logging fixture not built — run `just build-test-fixtures`");
+
+    let mut proc = ManagedProcess::spawn(binary, &[], "native-rs-logging")
+        .expect("failed to spawn native/rust/logging example");
+    let output = proc
+        .wait_for_all_output(Duration::from_secs(15))
+        .expect("native/rust/logging timed out waiting for output");
+
+    // Round 1 — every severity fires (level = Trace).
+    assert_output_contains(
+        &output,
+        &[
+            "[TRACE] demo: round 1",
+            "[DEBUG] demo: round 1",
+            "[INFO] demo: round 1",
+            "[WARN] demo: round 1",
+            "[ERROR] demo: round 1",
+            "[FATAL] demo: round 1",
+            "-- threshold raised to Warn --",
+        ],
+    );
+    // Round 2 — level = Warn: warn/error/fatal survive.
+    assert_output_contains(
+        &output,
+        &[
+            "[WARN] demo: round 2",
+            "[ERROR] demo: round 2",
+            "[FATAL] demo: round 2",
+        ],
+    );
+    // Round 2 — trace/debug/info MUST be filtered out (the point of the demo).
+    for suppressed in [
+        "[TRACE] demo: round 2",
+        "[DEBUG] demo: round 2",
+        "[INFO] demo: round 2",
+    ] {
+        assert!(
+            !output.contains(suppressed),
+            "round-2 threshold raise to Warn failed to suppress `{suppressed}`:\n{output}"
+        );
+    }
 }

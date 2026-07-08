@@ -59,7 +59,9 @@ built/run (by `freertos_run_plan_runtime.rs`). The other 17 have no dedicated fi
 **H3 — native variant examples, 0 fixtures:**
 - native/c: `custom-msg`, `custom-platform`, `custom-transport-loopback`, `logging`
 - native/cpp: `component-poc`, `component-node-poc`, `transform-poc`, `logging`
-- native/rust: `action-client-async`, `service-client-async`, `logging`
+- native/rust: `action-client-async`, `service-client-async` (`logging` now has a runtime
+  e2e — `native_rust_logging_example_threshold_raise_filters_round_two`, proves the runtime
+  `set_level` filter the smoke bins don't cover)
 
 **H4 — Zephyr non-role leaves, 0 fixtures:** `zephyr/cpp/{cyclonedds,talker-typed}`,
 `zephyr/rust/{cyclonedds,service-client-async}`.
