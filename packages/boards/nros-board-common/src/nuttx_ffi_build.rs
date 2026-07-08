@@ -321,6 +321,48 @@ pub fn run_nuttx() {
         build.compile(&format!("app_pkg_{idx}"));
     }
 
+    // phase-281 W3-nuttx (C lane) — generated C interface serdes TUs
+    // (`std_msgs_msg_int32.c` defining `std_msgs_msg_int32_init/serialize`, etc.),
+    // compiled into a SINGLE `app_iface` archive emitted LAST so its `-l` flag lands
+    // AFTER every `app_pkg_*` on the link line. The node TUs (in `app_pkg_*`) REFERENCE
+    // these serdes, and a static archive's objects are pulled only to satisfy references
+    // seen EARLIER on the line — so the archive DEFINING the serdes must come after the
+    // ones referencing them. (The C++ lane's serdes ride the trailing Rust `_ffi_lib` via
+    // APP_FFI_LIBS, which is already emitted last; the pure-C serdes have no such lib.)
+    // These TUs carry no `NROS_C_COMPONENT`, so no `-DNROS_PKG_NAME` is needed. Skipped
+    // cleanly when empty (the pure-C pub/sub nuttx entry, whose nodes use no generated
+    // serdes, passes nothing here).
+    if let Ok(iface_sources) = env::var("APP_INTERFACE_SOURCES") {
+        let mut iface_cpp: Vec<&str> = Vec::new();
+        let mut iface_c: Vec<&str> = Vec::new();
+        for src in iface_sources.split(';') {
+            if src.is_empty() {
+                continue;
+            }
+            if is_cxx_ext(src) {
+                iface_cpp.push(src);
+            } else {
+                iface_c.push(src);
+            }
+        }
+        if !iface_c.is_empty() {
+            let mut build = cc::Build::new();
+            configure(&mut build, false);
+            for f in &iface_c {
+                build.file(f);
+            }
+            build.compile("app_iface_c");
+        }
+        if !iface_cpp.is_empty() {
+            let mut build = cc::Build::new();
+            configure(&mut build, true);
+            for f in &iface_cpp {
+                build.file(f);
+            }
+            build.compile("app_iface_cpp");
+        }
+    }
+
     // ---- NuttX kernel link args ----
     // The binary IS the NuttX kernel. Link against all NuttX staging libraries,
     // linker script, and startup objects.
@@ -470,5 +512,6 @@ pub fn run_nuttx() {
         }
     }
     println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCES");
+    println!("cargo:rerun-if-env-changed=APP_INTERFACE_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
 }

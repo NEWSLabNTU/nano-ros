@@ -305,6 +305,46 @@ function(nros_board_link_app target)
         list(REMOVE_DUPLICATES _link_ifaces)
     endif()
 
+    # phase-281 W3-nuttx (C lane) — a TYPED **C** node links its generated interface
+    # lib `<pkg>__nano_ros_c`, a STATIC lib of generated serdes `.c` TUs (e.g.
+    # `std_msgs_msg_int32.c` defining `std_msgs_msg_int32_init/serialize`). Unlike the
+    # C++ lane — whose serdes is a cargo-CROSS-COMPILED Rust FFI `.a` picked up via
+    # `$<TARGET_FILE:<lib>_ffi_lib>` — the C interface lib is a plain HOST-arch static
+    # lib (`armv7a-nuttx-eabihf` → "file format not recognized"), so its `.a` is never
+    # linked and there is no `<lib>_ffi_lib`. Hand its generated `.c` SOURCES to the
+    # cc-rs cross-compile so they are recompiled for the ARM target; the include dirs +
+    # codegen order already flow through LINK_INTERFACES. The serdes TUs carry no
+    # `NROS_C_COMPONENT`, so they need no `-DNROS_PKG_NAME`. They go through the DEDICATED
+    # `INTERFACE_SOURCES` channel (not `SOURCES`), so `nros_nuttx_build_example` compiles
+    # them into a TRAILING `app_iface` archive linked AFTER the per-node `app_pkg_*`
+    # archives: the node TUs REFERENCE the serdes, so the defining archive must come later
+    # on the link line (a shared `app_c` first-archive placement leaves them unresolved —
+    # the cyclic entry→node-seam / node→serdes dependency). C++ libs (`…__nano_ros_cpp`)
+    # are excluded by the `_c$` anchor and keep the Rust FFI-lib path.
+    # (The 0149 surfacing block above populates `_link_ifaces` for workspace entries, so
+    # this walk works unchanged on top of it.)
+    set(_iface_srcs "")
+    foreach(_iface ${_link_ifaces})
+        if(_iface MATCHES "__nano_ros_c$" AND TARGET ${_iface})
+            get_target_property(_iface_type ${_iface} TYPE)
+            if(_iface_type STREQUAL "STATIC_LIBRARY")
+                get_target_property(_iface_lib_srcs ${_iface} SOURCES)
+                get_target_property(_iface_sdir ${_iface} SOURCE_DIR)
+                if(_iface_lib_srcs)
+                    foreach(_is ${_iface_lib_srcs})
+                        if(NOT IS_ABSOLUTE "${_is}")
+                            set(_is "${_iface_sdir}/${_is}")
+                        endif()
+                        list(APPEND _iface_srcs "${_is}")
+                    endforeach()
+                endif()
+            endif()
+        endif()
+    endforeach()
+    if(_iface_srcs)
+        list(REMOVE_DUPLICATES _iface_srcs)
+    endif()
+
     # Phase 238 — ferry the carrier's COMPILE_DEFINITIONS into the cargo
     # cc-rs build so EXTRA_SOURCES (e.g. a declarative Component class
     # `Talker.cpp`) see `NROS_PKG_NAME` — required by the
@@ -324,6 +364,7 @@ function(nros_board_link_app target)
         INCLUDE_DIRS    ${_incs}
         SOURCES         ${_extra_srcs}
         SOURCE_PKGS     ${_source_pkgs}
+        INTERFACE_SOURCES ${_iface_srcs}
         COMPILE_DEFS    ${_compile_defs}
         LINK_INTERFACES ${_link_ifaces})
 
