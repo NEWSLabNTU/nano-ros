@@ -49,14 +49,19 @@ tiers) + phase-130/#130 (nuttx entry eth0).
 
 ## Waves
 
-### W1 — Unblock the riscv-nuttx build (arch-aware external staging)
-- [ ] W1.a `stage-external-apps.sh` (or the `build-riscv-c` path): stage the
-  `examples/qemu-riscv-nuttx/{c,…}` examples for a riscv build instead of reusing
-  the arm staging; reset `nuttx-apps/external/` on an arch switch so
-  `olddefconfig` never sources a stale-arch app `Kconfig`.
-- [ ] W1.b Acceptance: `just nuttx build-riscv-c` succeeds **after** an arm
-  nuttx build in the same tree (the 2026-07-09 failure), from a clean tree, and
-  back-to-back arm↔riscv without a manual wipe.
+### W1 — Unblock the riscv-nuttx build (stale external staging) — DONE 2026-07-09
+- [x] W1.a Root cause was narrower than "arm-hardcoded staging": the kernel
+  `distclean` on reconfigure does NOT touch the apps tree, so a STALE
+  `nuttx-apps/external/Kconfig` (a pre-212.M-F.12 per-example staging that
+  `source`s per-example Kconfigs no longer present) survives arch-switches and
+  makes `make olddefconfig` hard-fail. Fix: `build-nuttx.sh` now regenerates a
+  valid `external/` via `stage-external-apps.sh` (current minimal
+  integration-shell Kconfig) BEFORE `olddefconfig`, inside the reconfigure block.
+- [x] W1.b Acceptance: reproduced the failure (dangling
+  `nano-ros-BOGUS-stale/Kconfig` source + forced reconfigure) → build-nuttx.sh
+  regenerated the Kconfig clean (BOGUS dropped) and `olddefconfig`/export passed
+  (RC=0); `just nuttx build-riscv-c` builds the rv-virt kernel + C talker green
+  after an arm build in the same tree.
 
 ### W2 — rv-virt NuttX boot harness
 - [ ] W2.a Add `QemuProcess::start_nuttx_riscv(binary, networking)` +

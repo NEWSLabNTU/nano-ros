@@ -173,6 +173,17 @@ if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     rm -f .config Make.defs
     ln -sf "$BOARD_MAKEDEFS" Make.defs
     cp "$DEFCONFIG" .config
+    # #165 — regenerate a VALID apps/external staging before olddefconfig. The
+    # kernel distclean above does NOT touch the apps tree, so a STALE
+    # external/Kconfig survives across reconfigures/arch-switches — e.g. an old
+    # per-example staging (pre-212.M-F.12) that `source`s per-example Kconfigs
+    # which no longer exist, or apps for the other arch. `make olddefconfig` then
+    # hard-fails sourcing a missing Kconfig (observed 2026-07-09 on the arm→riscv
+    # switch). stage-external-apps writes the current minimal integration-shell
+    # Kconfig, so the staging always matches this script's version. Best-effort
+    # (a NuttX tree that is not a nano-ros apps tree just keeps its own external/).
+    bash "$PROJECT_ROOT/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR" \
+        >/dev/null 2>&1 || true
     make olddefconfig
     echo "$CURRENT_KEY" > "$MARKER"
 fi
