@@ -102,7 +102,9 @@ for entry in "${SELF_PKG_FIXTURES[@]}"; do
     [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && sp_tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host)
     env "${sp_tc_env[@]}" west build -b native_sim/native/64 -d "$bld" "$repo_root/$src/$subdir" \
         -- -DCONF_FILE=prj.conf || true
-    if [ -f "$bld/nros-system/system_main.c" ] && [ -f "$bld/nros-system/system_config.h" ]; then
+    # Issue 0154 — post-258 bake contract: config header + config cmake
+    # (system_main.c retired with the install seam).
+    if [ -f "$bld/nros-system/system_config.h" ] && [ -f "$bld/nros-system/system_config.cmake" ]; then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"
         echo "   baked $bld/nros-system (link out-of-scope)"
         sp_n=$((sp_n + 1))

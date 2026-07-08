@@ -28,18 +28,20 @@
 
 use std::path::Path;
 
-/// The M-F.3 shim bake landed: both `system_config.h` (config bake) and
-/// `system_main.c` (per-component dispatch) under `<build>/nros-system/`.
+/// The M-F.3 shim bake landed: `system_config.h` (config bake) and
+/// `system_config.cmake` (cmake mirror) under `<build>/nros-system/`.
+/// (`system_main.c` retired in phase-258 — components register through the
+/// install seam, no generated TU; issue 0154.)
 fn assert_bake(build_dir: &Path) {
     let baked = build_dir.join("nros-system");
     let config_h = baked.join("system_config.h");
-    let main_c = baked.join("system_main.c");
+    let config_cmake = baked.join("system_config.cmake");
     assert!(
-        config_h.is_file() && main_c.is_file(),
-        "M-F.3 shim bake missing under {} (config_h={}, main_c={}) — shim regressed?",
+        config_h.is_file() && config_cmake.is_file(),
+        "M-F.3 shim bake missing under {} (config_h={}, config_cmake={}) — shim regressed?",
         baked.display(),
         config_h.is_file(),
-        main_c.is_file(),
+        config_cmake.is_file(),
     );
 }
 
@@ -48,11 +50,11 @@ fn assert_bake(build_dir: &Path) {
 ///    the system; assert the bake landed.
 #[test]
 fn zephyr_self_pkg_rust_builds_via_shim() -> nros_tests::TestResult<()> {
-    let main_c = nros_tests::fixtures::require_west_fixture(
+    let config_h = nros_tests::fixtures::require_west_fixture(
         "zephyr_self_pkg_rust",
-        "nros-system/system_main.c",
+        "nros-system/system_config.h",
     )?;
-    let build_dir = main_c
+    let build_dir = config_h
         .parent()
         .and_then(|p| p.parent())
         .expect("self-pkg build dir");
@@ -66,11 +68,11 @@ fn zephyr_self_pkg_rust_builds_via_shim() -> nros_tests::TestResult<()> {
 ///    baked the system from the sibling `alpha_pkg`; assert the bake landed.
 #[test]
 fn zephyr_self_pkg_resolve_bringup_handles_relative_path() -> nros_tests::TestResult<()> {
-    let main_c = nros_tests::fixtures::require_west_fixture(
+    let config_h = nros_tests::fixtures::require_west_fixture(
         "zephyr_self_pkg_sibling",
-        "nros-system/system_main.c",
+        "nros-system/system_config.h",
     )?;
-    let build_dir = main_c
+    let build_dir = config_h
         .parent()
         .and_then(|p| p.parent())
         .expect("sibling build dir");

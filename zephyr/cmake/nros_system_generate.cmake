@@ -8,7 +8,8 @@
 # tree under `${CMAKE_BINARY_DIR}/nros-system/`:
 #
 #   system_config.h    — baked compile-time C config (domain, rmw, ...)
-#   system_main.c      — multi-component registration glue
+#   system_config.cmake — baked cmake-side config mirror
+#   (system_main.c retired in phase-258 — install-seam registration)
 #   Cargo.toml         — workspace stub (if any Rust components)
 #   nros-plan.json     — resolved plan (debug + tests inspect this)
 #
@@ -113,7 +114,7 @@ function(nros_system_generate bringup_pkg)
     _nros_system_resolve_bringup("${bringup_pkg}" _bringup_dir)
     # codegen-system's --out is the PARENT of the bake tree (`nros-system/`
     # subdir is created inside). The downstream cmake target reads
-    # ${CMAKE_BINARY_DIR}/nros-system/{system_main.c,system_config.h}, so
+    # ${CMAKE_BINARY_DIR}/nros-system/{system_config.h,system_config.cmake}, so
     # pass CMAKE_BINARY_DIR (not CMAKE_BINARY_DIR/nros-system) to the CLI.
     set(_out_parent "${CMAKE_BINARY_DIR}")
     set(_out_dir    "${_out_parent}/nros-system")
@@ -180,21 +181,26 @@ function(nros_system_generate bringup_pkg)
             "nros codegen-system failed (rc=${_rc}):\n${_stdout}\n${_stderr}")
     endif()
 
-    set(_main_c   "${_out_dir}/system_main.c")
-    set(_config_h "${_out_dir}/system_config.h")
-    if(NOT EXISTS "${_main_c}" OR NOT EXISTS "${_config_h}")
+    # Issue 0154 — phase-258 retired the `system_main.c` C-baker (its
+    # `nros_component_*_register` externs died with the post-257 install
+    # seam), so the bake contract is now the config header + config cmake
+    # (+ Cargo.toml / nros-plan.json). No generated TU is attached to `app`
+    # any more; components register through `__nros_component_<pkg>_install`.
+    set(_config_h     "${_out_dir}/system_config.h")
+    set(_config_cmake "${_out_dir}/system_config.cmake")
+    if(NOT EXISTS "${_config_h}" OR NOT EXISTS "${_config_cmake}")
         message(FATAL_ERROR
-            "nros codegen-system produced no system_main.c / system_config.h "
-            "in ${_out_dir} (verb may be unimplemented in this CLI build).")
+            "nros codegen-system produced no system_config.h / "
+            "system_config.cmake in ${_out_dir} (verb may be unimplemented "
+            "in this CLI build).")
     endif()
 
     if(TARGET app)
-        target_sources(app PRIVATE "${_main_c}")
         target_include_directories(app PRIVATE "${_out_dir}")
     else()
         message(WARNING
             "nros_system_generate called before find_package(Zephyr); "
-            "deferring source attach. Call after project().")
+            "deferring include attach. Call after project().")
     endif()
     zephyr_include_directories("${_out_dir}")
 

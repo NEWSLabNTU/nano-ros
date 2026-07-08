@@ -1,10 +1,11 @@
 ---
 id: 154
 title: "phase-258 retired the codegen-system system_main.c emit but the Zephyr shim path + its fixtures/tests still require it"
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0152]
+resolved_in: (this commit)
 ---
 
 ## Summary
@@ -30,7 +31,29 @@ demo_bringup --target zephyr-zenoh --out <dir>` bakes
 `system_config.h/system_config.cmake/Cargo.toml/nros-plan.json` — no
 `system_main.c`.
 
-## Direction (needs a design decision, not a local patch)
+## Resolution (2026-07-08)
+
+Phase-258 had already made the design decision (install-seam registration;
+the retired `system_main.c` declared `nros_component_*_register` symbols
+nothing defines post-257 — it was dead even when emitted). The consumers
+just never migrated to the new bake contract. Aligned all four:
+
+- `nros_system_generate.cmake`: requires `system_config.h` +
+  `system_config.cmake` (the post-258 bake set), attaches the include dir
+  only — no generated TU.
+- `west-fixtures.sh`: bake-success check → the same two files; self-pkg
+  fixtures bake 2/2 again.
+- `zephyr_app` fixture: gained a stub `src/main.c` that compiles against
+  the baked header and prints the baked values at boot (Zephyr requires
+  `app` to own a source; pre-258 the retired TU filled that role). The
+  boot e2e now asserts the baked-config boot line instead of bare stdout.
+- Tests: `self_bringup` asserts the baker does NOT emit `system_main.c`
+  (matching the CLI's own tests) + checks the cmake mirror;
+  `zephyr_self_pkg` asserts header+mirror; `cli_bringup_zephyr` asserts
+  header+mirror+boot line. All 6 tests green; `west-fixtures.sh` bakes
+  3/3 (bringup ELF builds + boots).
+
+## Original direction notes (superseded)
 
 Post-258 the entry main comes from `nros codegen entry` / `nano_ros_entry`
 (run_tiers / sched-context emitters), not the retired C-baker. The Zephyr

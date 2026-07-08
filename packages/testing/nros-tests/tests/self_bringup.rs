@@ -8,9 +8,10 @@
 //!    is treated as its own 1-component bringup. `nros plan` resolves the
 //!    launch via the L.6 synth path and writes `record.json`
 //!    (sufficient proof: planner consumed the synth XML).
-//! 2. `nros_codegen_system_self_bringup_bakes_system_main` — `nros
+//! 2. `nros_codegen_system_self_bringup_bakes_system_config` — `nros
 //!    codegen-system --bringup <pkg-dir>` produces `system_config.h`
-//!    + `system_main.c` populated from the pkg's deploy block + class.
+//!    with the config header + cmake mirror populated from the pkg's deploy
+//!    block + class (`system_main.c` retired in phase-258 — issue 0154).
 //! 3. `nros_plan_self_bringup_uses_launch_synth_when_absent` — confirm
 //!    L.6 synth fires for an L.7 self-bringup pkg w/ no `launch/` dir.
 
@@ -144,9 +145,9 @@ fn nros_plan_self_bringup_emits_plan_json() {
 }
 
 /// `nros codegen-system --bringup <pkg-dir>` bakes a 1-component
-/// `system_main.c` + `system_config.h` from the pkg's L.7 metadata.
+/// `system_config.h` + `system_config.cmake` from the pkg's L.7 metadata.
 #[test]
-fn nros_codegen_system_self_bringup_bakes_system_main() {
+fn nros_codegen_system_self_bringup_bakes_system_config() {
     require_nros_cli_only();
     let td = tempfile::tempdir().expect("tempdir");
     stage_self_bringup_component_pkg(td.path());
@@ -200,10 +201,17 @@ fn nros_codegen_system_self_bringup_bakes_system_main() {
         "header missing component class:\n{header}"
     );
 
-    let main_c = fs::read_to_string(bake.join("system_main.c")).expect("system_main.c");
+    // Issue 0154 — `system_main.c` retired in phase-258 (install-seam
+    // registration); the bake contract is header + cmake mirror + plan.
     assert!(
-        main_c.contains("nros_component_alpha_register"),
-        "system_main.c missing component register call:\n{main_c}"
+        !bake.join("system_main.c").exists(),
+        "system_main.c is retired (phase-258) — the baker should not emit it"
+    );
+    let config_cmake =
+        fs::read_to_string(bake.join("system_config.cmake")).expect("system_config.cmake");
+    assert!(
+        config_cmake.contains("NANO_ROS_FEATURES"),
+        "system_config.cmake missing the NANO_ROS_FEATURES bake:\n{config_cmake}"
     );
 
     let plan = fs::read_to_string(bake.join("nros-plan.json")).expect("nros-plan.json");

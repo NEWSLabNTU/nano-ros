@@ -19,3 +19,7 @@ project(nros_phase212_h1_fixture)
 # (sibling to zephyr_app/). The shim resolves "demo_bringup" against
 # ${CMAKE_CURRENT_SOURCE_DIR}/.. automatically.
 nros_system_generate(demo_bringup)
+
+# Issue 0154 — post-258 the shim bakes config only (no generated TU); Zephyr
+# requires `app` to own a source, and this stub main consumes the baked header.
+target_sources(app PRIVATE src/main.c)
