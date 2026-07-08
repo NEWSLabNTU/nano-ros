@@ -1,10 +1,11 @@
 ---
 id: 157
 title: "Zephyr+CycloneDDS C/C++ service e2e: client never receives a reply (boots + participant fine); Rust service flakes under group load"
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0155]
+resolved_in: (this commit)
 ---
 
 ## Progress (2026-07-08 debug pass) — two fixes landed, one narrowed remainder
@@ -42,6 +43,34 @@ vs the C++ client's and the server reader's — an RxO-incompatible field
 cyclone tracing is unavailable on zephyr (ddsrt getenv stubbed) — consider
 a config-header trace enable, or replicate the pair natively (host cyclone)
 to use CYCLONEDDS_URI tracing.
+
+## RESOLVED (2026-07-08, second pass) — the "SEDP mystery" dissolved into three more defects
+
+4. **Invalid manual repro** (lesson, not a defect): unseeded native_sim
+   processes share the test entropy source → BOTH processes generate
+   IDENTICAL "random" numbers → identical GUIDs/ephemeral ports → cyclone
+   discovery treats the peer as self and never matches. Every cross-pair
+   "failure" in the first pass was this. Seeded (`--seed=N`, distinct), the
+   C pair delivered immediately. ALWAYS pass distinct `--seed` to manual
+   native_sim pairs (the test harness does this automatically).
+5. **Stale C test marker**: the test waited for `"Result:"`; both clients
+   print the canonical `Result of add_two_ints: 5` — no match possible even
+   with delivery working. → `SERVICE_RESULT_PREFIX`.
+6. **Stale C++ test marker**: same class, `"[OK]"` — nothing prints it.
+   → `SERVICE_RESULT_PREFIX`.
+7. **Parallel-group SPDP collisions**: 177.37's per-role-set Cyclone-domain
+   bake is NOT in the current fixture images (all bake domain 0), so the
+   `zephyr-native-cyclonedds` group's max-threads=4 ran up to 8 native_sim
+   processes on ONE SPDP multicast port (NSOS forwards no SO_REUSEADDR) —
+   the rust pubsub/service "group-load flakes". Group serialized
+   (max-threads=1) until the domain bake is restored in the fixture rows.
+
+Also fixed en route: `nros_c_qos_default()` (component.h) left the
+phase-282-appended `tx_express` field as stack garbage — the third
+hand-mirror of the QoS struct, exactly the latent class the phase-273
+callback_group note in the same header documents.
+
+**Final: phase_118_collapse 8/8 green, three consecutive full-family runs.**
 
 ## Summary
 

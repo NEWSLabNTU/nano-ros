@@ -314,7 +314,13 @@ fn test_zephyr_cpp_cyclonedds_service_e2e() {
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp service-client (cyclonedds)");
 
-    let output = client.wait_for_pattern("[OK]", Duration::from_secs(20));
+    // Issue 0157 — the C++ client prints the canonical
+    // `SERVICE_RESULT_PREFIX`; the old "[OK]" literal matches nothing the
+    // client emits (same stale-marker class as the C variant's "Result:").
+    let output = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
 
     client.kill();
     server.kill();
@@ -325,9 +331,9 @@ fn test_zephyr_cpp_cyclonedds_service_e2e() {
     );
 
     assert!(
-        output.contains("[OK]"),
+        output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "cyclonedds cpp service client did not get a successful reply \
-         (expected a `[OK]` line)"
+         (expected a `Result of add_two_ints:` line)"
     );
 }
 
@@ -363,7 +369,14 @@ fn test_zephyr_c_cyclonedds_service_e2e() {
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c service-client (cyclonedds)");
 
-    let output = client.wait_for_pattern("Result:", Duration::from_secs(20));
+    // Issue 0157 — the C client prints the canonical
+    // `SERVICE_RESULT_PREFIX` ("Result of add_two_ints:"); the old literal
+    // "Result:" is a substring of NEITHER client's output, so this test
+    // could never pass even with delivery working (the 277-marker class).
+    let output = client.wait_for_pattern(
+        nros_tests::output::SERVICE_RESULT_PREFIX,
+        Duration::from_secs(20),
+    );
 
     client.kill();
     server.kill();
@@ -371,8 +384,8 @@ fn test_zephyr_c_cyclonedds_service_e2e() {
     eprintln!("zephyr c cyclonedds service e2e client output:\n{}", output);
 
     assert!(
-        output.contains("Result:"),
+        output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "cyclonedds c service client did not receive a reply (expected a \
-         `Result:` line)"
+         `Result of add_two_ints:` line)"
     );
 }

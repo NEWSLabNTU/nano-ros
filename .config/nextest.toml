@@ -216,7 +216,13 @@ max-threads = 4
 # set via -DCONFIG_NROS_DOMAIN_ID (pairs share, sets differ → distinct ports),
 # so they run in parallel. Capped at 4 to bound host load (177.37).
 [test-groups.zephyr-native-cyclonedds]
-max-threads = 4
+# Issue 0157 — was 4 (177.37 baked per-role-set Cyclone domains to make the
+# pairs parallel-safe), but the current fixture images all bake DOMAIN 0, so
+# concurrent pairs share one SPDP multicast port (NSOS forwards no
+# SO_REUSEADDR) and flake nondeterministically; all 8 tests pass solo.
+# Serialize until the per-role-set domain bake is restored in the fixture
+# rows.
+max-threads = 1
 
 # Phase 217.C.2 — FVP runtime smoke. The ARM `FVP_BaseR_AEMv8R` license is
 # commonly node-locked + the UART telnet ports the FVP opens collide on

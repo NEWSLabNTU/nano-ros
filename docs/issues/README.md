@@ -44,10 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#157** — [Zephyr+CycloneDDS C/C++ service e2e never delivers a
-  reply](0157-zephyr-cyclonedds-service-no-reply.md): residual of #155 — pubsub green, boots
-  green, but the C/C++ service clients never print `Result:`; the Rust service flakes under
-  group load (177.39 budget may need another look).
 - **#149** — [nuttx-realtime typed-C fixtures fail from fresh
   configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
   (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
@@ -79,7 +75,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#156** — nuttx
+Recently resolved (see [`archived/`](archived/) for the full list): **#157** —
+zephyr-cyclone C/C++ services: delivery worked once the descriptor registry accepted ROS-form
+type names (`ros_form_to_dds`); the residual "never delivers" was two stale test markers
+(`Result:` / `[OK]` — neither client prints them; both → `SERVICE_RESULT_PREFIX`), plus the
+`zephyr-native-cyclonedds` nextest group serialized (all images bake domain 0 → SPDP collisions
+until the per-role-set domain bake returns) and a `nros_c_qos_default()` `tx_express` garbage
+init; phase_118 8/8 across three consecutive runs. **#156** — nuttx
 logging-smoke "boots silent": a `bins/` resolver profile mismatch — `build_test_fixture` looked
 in `nros-fast-release/` while the NuttX build writes `release/` (lto=on, to dodge the
 `nros-fast-release` cross-CGU miscompile that IS the silent boot); forced `release` for the nuttx

@@ -142,6 +142,11 @@ static inline nros_cpp_qos_t nros_c_qos_default(void) {
     q.lifespan_ms = 0;
     q.liveliness_lease_ms = 0;
     q.avoid_ros_namespace_conventions = 0;
+    /* Issue 0157/0155 — phase-282 appended `tx_express`; without this init
+     * the field is stack garbage (the same latent class as the phase-273
+     * callback_group note below: a hand-mirror of the struct missed an
+     * append). */
+    q.tx_express = 0;
     return q;
 }
 
