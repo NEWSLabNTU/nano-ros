@@ -50,10 +50,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   writer or an image-link drop (0149 class).
 
 
-- **#155** — [Zephyr+CycloneDDS images boot then go
-  silent](0155-zephyr-cyclonedds-silent-after-net-ready.md): all 8 phase_118 tests on FRESH
-  images — net ready, then no publish/no error. Stash-baseline debug first (only cyclone
-  consumer not re-validated after the tx_express append), then embedded heap/RTPS config.
+- **#157** — [Zephyr+CycloneDDS C/C++ service e2e never delivers a
+  reply](0157-zephyr-cyclonedds-service-no-reply.md): residual of #155 — pubsub green, boots
+  green, but the C/C++ service clients never print `Result:`; the Rust service flakes under
+  group load (177.39 budget may need another look).
 - **#149** — [nuttx-realtime typed-C fixtures fail from fresh
   configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
   (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
@@ -85,7 +85,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#154** — the Zephyr
+Recently resolved (see [`archived/`](archived/) for the full list): **#155** — zephyr-cyclone
+silence: west-update-reverted zephyr-tree patches + pure-Rust images never registering a
+backend since 248/249 + silent-return masking + phase-271 heap sizing; boots/pubsub green,
+service residual = #157. **#154** — the Zephyr
 shim path migrated to the post-258 bake contract (config header + cmake mirror; stub main in
 the fixture app; 6/6 tests + 3/3 west bakes green). **#152** — per-lane env
 gaps (all lanes green, split to #154/#155, or handed to the phase-281 stream — whose #130

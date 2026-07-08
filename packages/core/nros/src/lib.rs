@@ -324,10 +324,19 @@ macro_rules! zephyr_component_main {
             // Phase 248 C7 step 1 — relocated helper (was `$crate::platform::zephyr`).
             let _ = ::nros_platform::zephyr::wait_network(2000);
             // Phase 249 P1 — RMW register is board/platform-owned (Phase 248 C5a);
-            // the backend-agnostic `nros` crate cannot register (no backend dep), so
-            // the former no-op `$crate::__register_linked_rmw()` emit is removed. The
-            // Zephyr entry's explicit backend register lands via the board/platform
-            // boot path (verify under the phase-249 Zephyr e2e gate).
+            // the backend-agnostic `nros` crate cannot register (no backend dep).
+            // Issue 0155 — the "board/platform boot path" that was supposed to
+            // register never fired for pure-Rust Zephyr images: the zephyr
+            // module emits a STRONG `nros_app_register_backends` stub for the
+            // Kconfig-selected RMW (zephyr/CMakeLists.txt Phase 160.A), but
+            // only the C/C++ `nros_cpp_init` path ever CALLED it — a Rust-only
+            // image reached `Executor::open` with no backend registered and
+            // died with Transport(ConnectionFailed) (silently, pre-0155).
+            // Call the hook explicitly, exactly like the C++ init path.
+            unsafe extern "C" {
+                fn nros_app_register_backends();
+            }
+            unsafe { nros_app_register_backends() };
             // Locator: `default_const()` = EMPTY locator → zenoh-pico
             // multicast scouting, which native_sim NSOS can't satisfy.
             // Bake `NROS_LOCATOR` at compile time (the example `build.rs`
@@ -342,13 +351,19 @@ macro_rules! zephyr_component_main {
                     $crate::ExecutorConfig::default_const().node_name(<$node as $crate::Node>::NAME)
                 }
             };
+            // Issue 0155 — fail LOUD (repo rule: panic, not silent
+            // early-return). A silent `return` here idles the image with zero
+            // output; the zephyr-cyclonedds rust lane was undiagnosable until
+            // this printed the real error.
             let executor = match $crate::Executor::open(&config) {
                 Ok(executor) => executor,
-                Err(_) => return,
+                Err(e) => {
+                    panic!("nros zephyr entry: Executor::open failed: {e:?}");
+                }
             };
             let mut runtime = $crate::ExecutorNodeRuntime::from_executor(executor);
-            if runtime.register_node::<$node>().is_err() {
-                return;
+            if let Err(e) = runtime.register_node::<$node>() {
+                panic!("nros zephyr entry: register_node failed: {e:?}");
             }
             // Readiness marker. The C/C++ Zephyr listeners print
             // "Waiting for messages..." from their `main()` before the spin
