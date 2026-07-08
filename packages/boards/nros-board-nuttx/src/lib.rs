@@ -299,7 +299,7 @@ where
     install_stdout_logger();
 
     // #132 — stable boot-readiness marker. A subscriber-only entry
-    // (`listener_entry`) prints nothing until it receives, so the rtos_e2e
+    // (`listener-entry`) prints nothing until it receives, so the rtos_e2e
     // harness had no line to gate "session up, node registered" on (the C
     // examples' "Waiting for messages" is C-only). Emit one after the session
     // opens and before spin — greppable. The pattern is a test contract.

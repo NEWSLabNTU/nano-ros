@@ -1,6 +1,14 @@
 [build]
 target = "thumbv7m-none-eabi"
 
+# nros-board-freertos/build.rs needs these to locate the FreeRTOS + CFFI platform
+# glue. Previously only the `just freertos` overlay / the run-plan test injected
+# them, forcing a compile-in-test fallback; carrying them here (relative to this
+# example dir) lets the Entry build standalone → prebuilt as a fixture instead.
+[env]
+NROS_PLATFORM_FREERTOS_SRC = { value = "../../../../packages/core/nros-platform-freertos/src", relative = true }
+NROS_PLATFORM_CFFI_INCLUDE = { value = "../../../../packages/core/nros-platform-api/include", relative = true }
+
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 # Issue #45 — link against the board's own `mps2_an385.ld` (emitted to OUT_DIR by

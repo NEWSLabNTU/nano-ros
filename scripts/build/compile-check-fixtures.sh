@@ -380,4 +380,42 @@ for entry in "${CARGO_CHECK_EXAMPLES[@]}"; do
     fi
 done
 
-echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n)."
+# px4 xrce companion examples (#102 / #136 debt). Compile-check only: the
+# runtime needs PX4 SITL + a Micro-XRCE-DDS agent, but the generated CDR
+# bindings must at least type-check. `px4_msgs` is generated from the vendored
+# PX4-Autopilot `.msg` tree by `nros generate-px4-msgs` (no ament/pip dep, just
+# the submodule) into each example's gitignored `generated/`. Gated on that
+# submodule being checked out; absent → no stamp → the coverage gate keeps
+# these as tracked leaves rather than a silent gap.
+PX4_XRCE_EXAMPLES=(
+    "px4_probe:examples/px4/rust/xrce/px4-probe"
+    "px4_stub:examples/px4/rust/xrce/px4-stub"
+    "px4_offboard_companion:examples/px4/rust/xrce/offboard-companion"
+)
+px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
+px4_n=0
+if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
+    for entry in "${PX4_XRCE_EXAMPLES[@]}"; do
+        id="${entry%%:*}"; dir="${entry#*:}"
+        [ -d "$repo_root/$dir" ] || { echo "px4: example missing: $dir" >&2; continue; }
+        echo "== px4-compile-check: $id =="
+        if ! nros generate-px4-msgs --px4 "$px4_autopilot_dir" \
+                --output "$repo_root/$dir/generated"; then
+            echo "   px4_msgs codegen FAILED for $id (no stamp)" >&2
+            continue
+        fi
+        mkdir -p "$out_root/$id"
+        rm -f "$out_root/$id/.compile-ok"
+        if ( cd "$repo_root/$dir" && cargo check ); then
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+            echo "   stamped $out_root/$id/.compile-ok"
+            px4_n=$((px4_n + 1))
+        else
+            echo "   cargo-check FAILED for $id (no stamp)" >&2
+        fi
+    done
+else
+    echo "px4: PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot) — skipping px4 compile-check" >&2
+fi
+
+echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n)."

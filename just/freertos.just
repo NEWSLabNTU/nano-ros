@@ -84,14 +84,24 @@ build-examples:
     # msg crates for the Phase 212.O.1 boot+connected gates to build the firmware.
     for example in \
         talker listener service-server service-client action-server action-client \
-        talker_entry listener_entry service-server_entry service-client_entry \
-        action-server_entry action-client_entry; do
+        talker-entry listener-entry service-server-entry service-client-entry \
+        action-server-entry action-client-entry; do
         dir="examples/qemu-arm-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh freertos rust zenoh
+    # 275-W1/#136 debt: prebuild the 6 standalone Entry demos at --release so
+    # `freertos_run_plan_runtime.rs` LOCATES them instead of compiling in-test
+    # (CLAUDE.md "no compilation inside tests"). Each Entry's `.cargo/config.toml`
+    # now carries the `NROS_PLATFORM_*` env the board build.rs needs, so they
+    # build standalone; --release (built-in profile) is what the run-plan reads
+    # (a debug zenoh-pico is too slow to handshake on the emulated Cortex-M3).
+    for entry in talker-entry listener-entry service-server-entry \
+        service-client-entry action-server-entry action-client-entry; do
+        ( cd "examples/qemu-arm-freertos/rust/$entry" && cargo build --release --quiet )
+    done
     bash scripts/build/workspace-fixtures-build.sh freertos rust
     # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
     # tests/c_freertos_entry_e2e.rs. Own build-subdir (one board per CMake configure).

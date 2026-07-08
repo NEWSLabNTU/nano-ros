@@ -15,7 +15,7 @@ members = ["entry", "src/ctrl_pkg", "src/telem_pkg"]
 exclude = ["src/demo_bringup"]
 
 # Cross-build hygiene: keep the host `std` default from cascading into the
-# no_std thumbv7m build (mirrors the talker_entry example's patch set; the
+# no_std thumbv7m build (mirrors the talker-entry example's patch set; the
 # generated message-crate patches are omitted — the timer-only nodes use no
 # messages).
 [patch.crates-io]

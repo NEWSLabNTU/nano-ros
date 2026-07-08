@@ -61,11 +61,12 @@ const ZEPHYR_ROLES: &[&str] = &[
 /// Dirs built directly by a test harness (no `fixtures.toml` row). Keep the
 /// harness path in the comment so the pairing is auditable.
 const TEST_DRIVEN_BUILDERS: &[&str] = &[
-    // All 6 freertos `*_entry` demos are booted (hence built) by
-    // `freertos_run_plan_runtime.rs` (`boot_and_connect(...)` per role).
-    // NB: that harness still `cargo build`s at test time — a compile-in-test
-    // antipattern Phase 275 W1 will convert to a prebuilt fixture — but the
-    // dirs are exercised, so they are not a silent gap.
+    // All 6 freertos `*_entry` demos are prebuilt at `--release` by
+    // `just freertos build-examples` (each Entry carries the `NROS_PLATFORM_*`
+    // env in its `.cargo/config.toml`, so it builds standalone) and then
+    // booted by `freertos_run_plan_runtime.rs` (`boot_and_connect(...)` per
+    // role), which now only LOCATES the prebuilt binary — the former
+    // compile-in-test build is gone (CLAUDE.md "no compilation inside tests").
     "qemu-arm-freertos/rust/talker-entry",
     "qemu-arm-freertos/rust/listener-entry",
     "qemu-arm-freertos/rust/service-server-entry",
@@ -87,26 +88,11 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
 /// tests/threadx_linux_entry_build.rs, and nuttx via `[[fixture]]` rows +
 /// tests/nuttx_entry_build.rs (issue #127 resolved by the board-centric
 /// image link, RFC-0032 "third leg").
-const ALLOWLIST: &[(&str, &str)] = &[
-    // px4 xrce Rust examples depend on `px4_msgs`, generated from the
-    // PX4-Autopilot message set (the `third-party/px4/PX4-Autopilot`
-    // submodule, not vendored in-tree). No fixture wires that codegen +
-    // px4 SITL yet, so a plain `nros sync` cannot resolve the dependency.
-    // Tracked under #102 (example fixture coverage holes) — remove once a
-    // px4 fixture lane lands.
-    (
-        "px4/rust/xrce/offboard-companion",
-        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
-    ),
-    (
-        "px4/rust/xrce/px4-probe",
-        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
-    ),
-    (
-        "px4/rust/xrce/px4-stub",
-        "needs px4_msgs codegen (PX4-Autopilot submodule) — no fixture lane yet (#102)",
-    ),
-];
+///
+/// Empty: the px4 xrce examples that once sat here now compile-check via
+/// `scripts/build/compile-check-fixtures.sh` (its px4 leg generates `px4_msgs`
+/// from the vendored PX4-Autopilot `.msg` tree, gated on the submodule).
+const ALLOWLIST: &[(&str, &str)] = &[];
 
 /// Recursive walk collecting dirs that contain `package.xml`.
 fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {

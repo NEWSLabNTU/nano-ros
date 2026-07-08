@@ -25,7 +25,7 @@ at the end for history.
   × {zenoh,xrce,+cyclonedds}, consumed by `zephyr.rs` / `phase_118_collapse.rs`. (This is why the
   "Zephyr 0 fixtures" claim was wrong — the coverage just isn't in `fixtures.toml`.)
 - `scripts/build/compile-check-fixtures.sh` — `orch_tiers_freertos`, `stm32f4/rust/talker-embassy`.
-- Test-driven builders — `freertos_run_plan_runtime.rs` (freertos `talker_entry`),
+- Test-driven builders — `freertos_run_plan_runtime.rs` (freertos `talker-entry`),
   `phase_118_collapse.rs`, the phase-263 `*_entry_e2e.rs` / workspace `*_e2e.rs`.
 
 ### P0 — DONE
@@ -53,7 +53,7 @@ nuttx/threadx (phase-263 C2x). But the five capabilities above remain native-onl
 
 **H2 — per-example `*_entry` demos unexercised (new; not in the original snapshot).** 18 dirs —
 `examples/{qemu-arm-freertos,qemu-arm-nuttx,threadx-linux}/rust/{talker,listener,service-server,
-service-client,action-server,action-client}_entry` — exist but only freertos `talker_entry` is
+service-client,action-server,action-client}-entry` — exist but only freertos `talker-entry` is
 built/run (by `freertos_run_plan_runtime.rs`). The other 17 have no dedicated fixture or test.
 
 **H3 — native variant examples, 0 fixtures:**

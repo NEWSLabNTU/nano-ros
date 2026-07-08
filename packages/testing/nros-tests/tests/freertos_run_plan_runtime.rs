@@ -143,52 +143,17 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
 /// The build is gated to debug-profile + the pinned `thumbv7m-none-eabi`
 /// triple from `.cargo/config.toml`. If the binary already exists at
 /// the expected path we trust it; otherwise we drive a `cargo build`.
-fn build_or_locate_entry_binary(dir: &Path, bin_name: &str) -> Result<PathBuf, String> {
-    // Release, not debug: the connected run opens a real zenoh-pico session over
-    // slirp on the emulated Cortex-M3, and a debug-profile zenoh-pico is far too
-    // slow to complete the session handshake within the test's wait budget (it
-    // boots to `Network ready.` but never reaches `Executor::open` success in
-    // 90s). The release fixture connects in a few seconds (#48).
+/// Locate the prebuilt `--release` Entry binary. It is compiled in the build
+/// stage by `just freertos build-examples` (each Entry now carries the
+/// `NROS_PLATFORM_{FREERTOS_SRC,CFFI_INCLUDE}` env in its `.cargo/config.toml`,
+/// so it builds standalone) — this test only LOCATES it, never compiles
+/// (CLAUDE.md "no compilation inside tests"; the former in-test cargo build is
+/// gone). Release, not debug: a debug-profile zenoh-pico is far too slow to
+/// complete the session handshake on the emulated Cortex-M3 within the wait
+/// budget — the release fixture connects in a few seconds (#48).
+fn locate_entry_binary(dir: &Path, bin_name: &str) -> Option<PathBuf> {
     let bin = dir.join(format!("target/thumbv7m-none-eabi/release/{bin_name}"));
-    if bin.is_file() {
-        return Ok(bin);
-    }
-
-    // `nros-board-freertos/build.rs` compiles the FreeRTOS + CFFI
-    // platform glue and needs these paths — normally injected by the
-    // `just freertos` overlay's `.cargo/config.toml [env]`. This
-    // standalone example carries no such overlay, so supply them here
-    // (mirrors the board_agnostic_run_plan freertos leg).
-    let root = project_root();
-    let out = Command::new("cargo")
-        .args(["build", "--release", "--bin", bin_name])
-        .current_dir(dir)
-        .env(
-            "NROS_PLATFORM_FREERTOS_SRC",
-            root.join("packages/core/nros-platform-freertos/src"),
-        )
-        .env(
-            // phase-241 B.2 — canonical platform headers moved to nros-platform-api.
-            "NROS_PLATFORM_CFFI_INCLUDE",
-            root.join("packages/core/nros-platform-api/include"),
-        )
-        .output()
-        .map_err(|e| format!("spawn cargo build: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "cargo build failed in {}.\nstdout:\n{}\nstderr:\n{}",
-            dir.display(),
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr),
-        ));
-    }
-    if !bin.is_file() {
-        return Err(format!(
-            "cargo build claimed success but binary missing at {}",
-            bin.display()
-        ));
-    }
-    Ok(bin)
+    bin.is_file().then_some(bin)
 }
 
 /// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
@@ -220,9 +185,12 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
         );
     }
 
-    let bin = match build_or_locate_entry_binary(&dir, bin_name) {
-        Ok(b) => b,
-        Err(why) => panic!("{why}"),
+    let bin = match locate_entry_binary(&dir, bin_name) {
+        Some(b) => b,
+        None => nros_tests::skip!(
+            "FreeRTOS Entry `{bin_name}` not prebuilt (target/thumbv7m-none-eabi/release) \
+             — run `just freertos build-examples` first"
+        ),
     };
 
     // Host router on 0.0.0.0:7451 — the deploy overlay points the firmware at
