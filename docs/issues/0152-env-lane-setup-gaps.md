@@ -32,19 +32,31 @@ lane rebuild. Core-struct changes ⇒ wipe workspace build dirs.
 - issue 0155 — zephyr+cyclonedds images boot then go silent (all 8
   phase_118 tests, fresh images; needs stash-baseline debug).
 
-**Still open in this issue:**
-- `bins/logging-smoke-nuttx-qemu-arm` — its fixtures.toml row exists
-  (platform=nuttx lang=rust) but NEITHER `just nuttx build-fixtures` NOR
-  `scripts/build/fixtures-build.sh nuttx rust zenoh` produces the binary —
-  recipe/loop gap (same family as 0149's build-fixtures note).
-- `rust_nuttx_entry_e2e` 60 s timeout — untriaged (QEMU arm-virt + slirp
-  lane; sample after the nuttx fixture story settles).
+**Still open in this issue (final state, 2026-07-08 second pass):**
+- `bins/logging-smoke-nuttx-qemu-arm` — BUILD SOLVED: the row has no `rmw`
+  field, so any rmw-filtered lane invocation (`fixtures-build.sh nuttx rust
+  zenoh`, which `just nuttx build-fixtures` effectively is) filters it out;
+  the UNFILTERED `scripts/build/fixtures-build.sh nuttx rust` builds it
+  (also: `--id` only matches workspace rows — plain rows carry no id).
+  Recipe follow-up: drop the rmw arg in the recipe or add `rmw = "zenoh"`
+  to the row. The TEST still fails: QEMU nuttx-virt boots the image and
+  emits NOTHING in 45 s — same silent-image signature as
+  `rust_nuttx_entry_e2e` below.
+- `rust_nuttx_entry_e2e` — nextest override LANDED (joined the `qemu-nuttx`
+  group: it hardcodes the group's port 7452, and the default 60 s kill is
+  shorter than a NuttX QEMU boot; now 120 s ×3). Past the timeout the test
+  fails for real: "native observer never received /chatter — entry-path
+  eth0". Phase-281's own session proved this lane green hours earlier
+  (a2e11459d), and both this and the logging image go SILENT after my
+  resync rebuilds — the nuttx board/image plumbing is mid-rework in that
+  stream (see also issue 0149). COORDINATE with phase-281 rather than
+  debugging its moving lane; re-verify both after it settles.
 - `migrate_workspace` — DESIGNED skip: the released nros-cli pin lags the
   post-212.I emitter spec (Phase 214.N drift gate); clears on the next CLI
   release, nothing to do locally.
 - integration_zephyr / integration_platformio / qos_zephyr_ros2 /
-  params_zephyr / safety_zephyr: GREEN in the triage run (were mtime
-  treadmill).
+  params_zephyr / safety_zephyr / px4 ×2: GREEN (treadmill / built
+  fixtures).
 
 ## Summary
 

@@ -423,8 +423,12 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 # NuttX QEMU — port 7452.
+# rust_nuttx_entry_e2e (issue 0152): the workspace Rust Entry e2e boots a
+# NuttX arm-virt image and dials the SAME slirp port 7452 as this group —
+# it must serialize with it, and the default 60 s kill is shorter than a
+# NuttX QEMU boot + zenoh discovery.
 [[profile.default.overrides]]
-filter = "binary(nuttx_qemu) or (binary(rtos_e2e) and test(Platform__Nuttx))"
+filter = "binary(nuttx_qemu) or binary(rust_nuttx_entry_e2e) or (binary(rtos_e2e) and test(Platform__Nuttx))"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
