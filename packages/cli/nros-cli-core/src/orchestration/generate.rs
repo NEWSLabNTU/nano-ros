@@ -930,7 +930,6 @@ fn zephyr_rmw_fragment(build: &PlanBuildOptions) -> String {
         "cyclonedds" | "rmw-cyclonedds" => {
             "CONFIG_NROS_RMW_CYCLONEDDS=y\n\
              CONFIG_CPP=y\n\
-             CONFIG_NROS_CYCLONE_DOMAIN_ID=0\n\
              CONFIG_NET_IPV4_IGMP=y\n\
              CONFIG_POSIX_API=y\n\
              CONFIG_MAX_PTHREAD_MUTEX_COUNT=256\n\

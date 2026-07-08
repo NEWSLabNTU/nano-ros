@@ -123,11 +123,15 @@ if NROS_RMW_CYCLONEDDS
 
 config NROS_CYCLONE_DOMAIN_ID
     int "DDS domain ID"
-    default 0
+    default NROS_DOMAIN_ID
     range 0 232
     help
       DDS domain ID passed to dds_create_domain_with_rawconfig at init.
-      Must match the ROS 2 peer's ROS_DOMAIN_ID for discovery.
+      Must match the ROS 2 peer's ROS_DOMAIN_ID for discovery. Defaults to
+      NROS_DOMAIN_ID so the two knobs cannot split-brain (issue 0161: the
+      phase-180 split silently pinned Cyclone to 0 while the 177.37 fixture
+      driver baked per-role-set NROS_DOMAIN_ID values); set it explicitly
+      only when the DDS domain must intentionally differ from the ROS one.
 
 config NROS_CYCLONE_CONFIG_XML
     string "Cyclone raw config XML (empty = default)"

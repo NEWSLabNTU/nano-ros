@@ -343,6 +343,22 @@ macro_rules! zephyr_component_main {
             // re-exports `CONFIG_NROS_ZENOH_LOCATOR` from Kconfig into that
             // env). No baked value → falls back to the empty locator.
             const BAKED_LOCATOR: ::core::option::Option<&str> = ::core::option_env!("NROS_LOCATOR");
+            // Domain: the example `build.rs` bakes `CONFIG_NROS_DOMAIN_ID`
+            // into `NROS_DOMAIN_ID` the same way (its comment has promised
+            // this consumption since phase-225; the phase-277 macro rework
+            // dropped it — issue 0161: every Rust cyclonedds image silently
+            // ran domain 0 regardless of the Kconfig bake).
+            const BAKED_DOMAIN: ::core::option::Option<&str> =
+                ::core::option_env!("NROS_DOMAIN_ID");
+            let domain_id: u32 = match BAKED_DOMAIN {
+                ::core::option::Option::Some(d) => match d.parse() {
+                    ::core::result::Result::Ok(v) => v,
+                    ::core::result::Result::Err(_) => {
+                        panic!("nros zephyr entry: NROS_DOMAIN_ID baked non-numeric: {d:?}")
+                    }
+                },
+                ::core::option::Option::None => 0,
+            };
             let config = match BAKED_LOCATOR {
                 ::core::option::Option::Some(loc) if !loc.is_empty() => {
                     $crate::ExecutorConfig::new(loc).node_name(<$node as $crate::Node>::NAME)
@@ -350,7 +366,8 @@ macro_rules! zephyr_component_main {
                 _ => {
                     $crate::ExecutorConfig::default_const().node_name(<$node as $crate::Node>::NAME)
                 }
-            };
+            }
+            .domain_id(domain_id);
             // Issue 0155 — fail LOUD (repo rule: panic, not silent
             // early-return). A silent `return` here idles the image with zero
             // output; the zephyr-cyclonedds rust lane was undiagnosable until

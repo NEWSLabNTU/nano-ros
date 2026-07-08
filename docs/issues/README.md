@@ -57,11 +57,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `delivered/published` uses `count/max` with a counter that starts at 0 (>100 % possible).
   Gate on first delivery + use `max+1`. Low priority (measurement scratch, but #145/#148 were
   judged on its output).
-- **#161** — [zephyr-native-cyclonedds nextest group serialized
-  (max-threads 1)](0161-zephyr-cyclonedds-nextest-group-serialized.md): all zephyr-cyclone
-  images bake domain 0 → parallel pairs share one SPDP port (NSOS: no `SO_REUSEADDR`) →
-  group-load flakes; serialized in #157. Restore the 177.37 per-role-set domain bake, then
-  `max-threads = 4`. Wall-clock only (~23 s vs ~8 s).
 - **#158** — [NuttX realtime tier e2e prove high>low by a timing
   heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
@@ -77,7 +72,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#160** — hand-mirrored
+Recently resolved (see [`archived/`](archived/) for the full list): **#161** — the 177.37
+domain bake was defeated by two later regressions: phase-180's separate
+`CONFIG_NROS_CYCLONE_DOMAIN_ID` knob pinned 0 everywhere (now defaults to `NROS_DOMAIN_ID`,
+20 pins dropped) and the phase-277 macro rework dropped the Rust-side `NROS_DOMAIN_ID`
+consumption its build.rs comment promised (restored); images bake domains 50–58 again,
+group back to `max-threads 4`, phase_118 8/8 ×3 parallel in ~6 s (was ~23 s). **#160** — hand-mirrored
 FFI structs now have two drift gates: buildless field parity
 (`check-ffi-struct-mirrors`, push lane) + a cross-include TU in `check-c` that lets the
 compiler flag prototype/typedef divergence ("conflicting types"); both verified against
