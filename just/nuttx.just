@@ -94,6 +94,10 @@ build-examples:
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/c_nuttx_entry_e2e.rs (cross-process /chatter delivery, baked slirp locator 17861).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
+    # phase-281 W3-nuttx — the C++ realtime tiers workspace (ws-realtime-cpp nuttx entry),
+    # consumed by realtime_tiers_cpp_nuttx_e2e. Was previously built by no verb (only its
+    # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -183,6 +187,17 @@ build-fixtures:
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
+    # issue #149 residual — the workspace nuttx-realtime lanes (ws-realtime-{rust,c,cpp}
+    # nuttx entries) are consumed as PREBUILT fixtures by realtime_tiers_{rust,c,cpp}_nuttx_e2e
+    # (`require_prebuilt_workspace_binary`), but were only built by `build-examples`, so a clean
+    # `build-test-fixtures` (which calls THIS recipe per-platform) never produced them → the e2e
+    # skipped for lack of a fixture. Build them here too (idempotent via the inputsig stamp; a
+    # matching build is a fast no-op). Own NUTTX_APPS_DIR + release profile (the cross-CGU LTO note).
+    export NUTTX_DIR="$nuttx_dir"
+    export NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$nuttx_dir")/nuttx-apps}"
+    NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
 
 # Phase 212.M-F.16 — the legacy Phase 157.C `build-fixtures-make`
 # recipe (native external-app make path that produced the
