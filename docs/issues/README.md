@@ -45,9 +45,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 
-- **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): esp32/nuttx QEMU logging
-  images, PX4 SITL, zephyr-cyclone fixture arm, assorted zephyr/mixed lanes need their lane's
-  setup verb (or a recipe home); re-triage after a quiet-window rebuild.
+- **#155** — [Zephyr+CycloneDDS images boot then go
+  silent](0155-zephyr-cyclonedds-silent-after-net-ready.md): all 8 phase_118 tests on FRESH
+  images — net ready, then no publish/no error. Stash-baseline debug first (only cyclone
+  consumer not re-validated after the tx_express append), then embedded heap/RTPS config.
+- **#154** — [phase-258 retired `system_main.c`, Zephyr shim path still requires
+  it](0154-phase258-retired-system-main-zephyr-shim-drift.md): `nros_system_generate.cmake` +
+  `west-fixtures.sh` + `zephyr_self_pkg`/`self_bringup` tests all assert the retired C-baker
+  output — migrate to the entry-codegen output or retire the shim path (design decision).
+- **#152** — [Per-lane env setup gaps](0152-env-lane-setup-gaps.md): triaged 2026-07-08 —
+  esp32-logging/px4/zephyr-cyclone images built (verbs recorded), all five mixed lanes were
+  stale-object mixing (wipe rule). Remaining here: the `logging-smoke-nuttx-qemu-arm` bin has
+  no working build lane, `rust_nuttx_entry_e2e` timeout untriaged, `migrate_workspace` is a
+  designed release-pin skip.
 - **#149** — [nuttx-realtime typed-C fixtures fail from fresh
   configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
   (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on

@@ -4,8 +4,47 @@ title: "Per-lane env setup gaps surfaced by the 2026-07 resync — qemu logging,
 status: open
 type: tech-debt
 area: testing
-related: [issue-0149, issue-0150, issue-0151]
+related: [issue-0149, issue-0150, issue-0151, issue-0154, issue-0155]
 ---
+
+## Triage result (2026-07-08) — most lanes were buildable or stale, three real trackers remain
+
+**RESOLVED by building (verbs recorded):**
+- esp32 logging image → `just esp32 build-logging-smoke`; `logging_smoke_esp32_qemu` green.
+- px4 fixtures (`px4-stub`, `offboard-companion`) → plain cargo builds in
+  `examples/px4/rust/xrce/*` (`--profile nros-fast-release --target-dir
+  target-xrce --no-default-features --features rmw-xrce`); PX4 checkout was
+  present all along.
+- zephyr-cyclone images → `NROS_ZEPHYR_FIXTURE_FILTER=cyclonedds just zephyr
+  build-fixtures` (build succeeds; the TESTS still fail → issue 0155).
+
+**RESOLVED as stale-object mixing (wipe + fresh configure, the mixed_qos
+rule):** all five remaining mixed lanes — mixed_logging, mixed_service_
+roundtrip, mixed_custom_msg, mixed_multihost, mixed_freertos — went green
+after `rm -rf examples/workspaces/{mixed,ws-custom-msg-mixed}/build-*` +
+lane rebuild. Core-struct changes ⇒ wipe workspace build dirs.
+
+**Split to their own issues:**
+- issue 0154 — phase-258 retired the `system_main.c` emit; `nros_system_
+  generate.cmake` + `west-fixtures.sh` + `zephyr_self_pkg`/`self_bringup`
+  tests still require it (design-level migration, covers the
+  `zephyr_self_pkg` + `self_bringup` + west-bringup rows here).
+- issue 0155 — zephyr+cyclonedds images boot then go silent (all 8
+  phase_118 tests, fresh images; needs stash-baseline debug).
+
+**Still open in this issue:**
+- `bins/logging-smoke-nuttx-qemu-arm` — its fixtures.toml row exists
+  (platform=nuttx lang=rust) but NEITHER `just nuttx build-fixtures` NOR
+  `scripts/build/fixtures-build.sh nuttx rust zenoh` produces the binary —
+  recipe/loop gap (same family as 0149's build-fixtures note).
+- `rust_nuttx_entry_e2e` 60 s timeout — untriaged (QEMU arm-virt + slirp
+  lane; sample after the nuttx fixture story settles).
+- `migrate_workspace` — DESIGNED skip: the released nros-cli pin lags the
+  post-212.I emitter spec (Phase 214.N drift gate); clears on the next CLI
+  release, nothing to do locally.
+- integration_zephyr / integration_platformio / qos_zephyr_ros2 /
+  params_zephyr / safety_zephyr: GREEN in the triage run (were mtime
+  treadmill).
 
 ## Summary
 
