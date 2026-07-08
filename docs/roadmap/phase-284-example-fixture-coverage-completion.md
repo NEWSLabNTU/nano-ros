@@ -1,6 +1,6 @@
 # Phase 284 — Example fixture coverage completion (resolve #102)
 
-Status: **In progress — 2026-07-09** · Resolves issue #102 · Follows
+Status: **Complete — 2026-07-09** · Resolves issue #102 · Follows
 [phase-275](archived/phase-275-example-fixture-gap-fill.md) (H2–H6 mechanical
 gap-fill, Complete) + [phase-276](archived/phase-276-capability-coverage-on-embedded.md)
 (H1 embedded capabilities, Complete) · Informs RFC-0026 (examples).
@@ -62,37 +62,68 @@ session), `native/rust/{action-client-async,service-client-async}`,
 - [x] W2.a `native/rust/logging` — runtime e2e (`native_rust_logging_example_
   threshold_raise_filters_round_two`) proves the runtime `set_level` filter the
   logging-smoke bins don't cover. Landed `a43af7bdd`.
-- [ ] W2.b Add a runtime e2e (or a justified compile-only de-scope) for each
-  remaining native variant W1 confirms uncovered. Prefer asserting the variant's
-  DISTINGUISHING behavior (async completion, component wiring, custom-msg
-  round-trip), not a bare severity dump.
+- [x] W2.b COVERED the rust async clients: `native_async_roundtrip_e2e`
+  (`b3f645f7a`) pairs `native/rust/{service,action}-client-async` with the sync
+  native servers over a private zenohd and asserts the awaited Promise resolves
+  (tokio `spin_async` + `.await` — the distinguishing behavior). 2/2 green.
+  DE-SCOPED (compile-check row is sufficient; no silent cap — reason recorded):
+  - `native/cpp/{component-poc, component-node-poc}` — the C++ component
+    registration + spin model is runtime-proven by the cpp workspace-entry e2e
+    (`cpp_multi_node_entry` + the component roundtrips); these standalone POCs
+    duplicate that path.
+  - `native/cpp/transform-poc` — a tf-style POC with no runtime transform-
+    assertion harness; compile-check is the proportionate tier.
 
-### W3 — H1 residual: embedded-capability spot-checks
+### W3 — H1 residual: embedded-capability spot-checks — DE-SCOPED 2026-07-09
 Phase-276 proved lifecycle/params/safety/QoS/multihost on Zephyr native_sim.
-- [ ] W3.a Check whether any of the five capabilities remains native-only on the
-  OTHER embedded platforms (freertos/nuttx/threadx) after 276. If the RFC-0026
-  matrix intends one embedded proof per capability (already met by Zephyr),
-  de-scope the rest with that reason; else file the specific missing cells.
+- [x] W3.a De-scoped with reason (no silent cap). RFC-0026's coverage matrix
+  intends ONE embedded proof per capability — to show the capability works off
+  native, not to re-run all five on every RTOS. Zephyr native_sim (phase-276)
+  satisfies that for all five; RT-tiers additionally reaches FreeRTOS/NuttX
+  (`orchestration_tiers_freertos`, `realtime_tiers_{c,cpp,rust}_nuttx_e2e`). A
+  freertos/nuttx/threadx re-proof of lifecycle/params/safety/QoS/multihost is
+  redundant matrix fill, not a coverage gap; deferred unless a specific
+  platform-specific capability defect motivates it.
 
-### W4 — H5: threadx-riscv64 cyclonedds svc/action
-- [ ] W4.a The cyclone RMW variant is talker+listener only (svc/action exist
-  under zenoh). Add the cyclone svc/action fixture rows, or de-scope as an
-  RMW-coverage (not example) gap with the reason.
+### W4 — H4/H5: cyclone-RMW svc/action + zephyr cyclone leaves — DE-SCOPED 2026-07-09
+- [x] W4.a De-scoped with reason (no silent cap). These are RMW-transport-matrix
+  cells, not example gaps: the service + action EXAMPLES themselves are runtime-
+  proven under the PRIMARY zenoh RMW (`*_service_roundtrip_*`,
+  `*_action_roundtrip_*`, threadx-riscv64 zenoh svc/action), and cyclone
+  talker+listener proves the cyclone transport delivers. Adding cyclone svc/action
+  + `zephyr/{cpp,rust}/cyclonedds` leaf fixtures is second-RMW coverage that needs
+  the heavy embedded cyclone build lanes; deferred as lower-priority transport-
+  matrix fill (tracked here), not an example-coverage gap that blocks #102.
 
-### W5 — H6: stale examples, fix-or-delete
-- [ ] W5.a `examples/px4/rust/uorb` — README placeholder (Rust crate deleted
-  Phase 115.K.4; C++ canonical): delete the dir or convert to a real pointer.
-- [ ] W5.b `examples/zephyr/rust/service-client-async` — dropped from the matrix,
-  dir never removed (shape-tested only): delete or re-add to the matrix.
-- [ ] W5.c `examples/stm32f4/rust/{talker,listener}-embassy` — `talker-embassy`
-  compile-checked but `skip_build=true`; `listener-embassy` uncovered. Decide:
-  cover, un-skip, or de-scope with reason.
+### W5 — H6 + H2 junk: stale examples — RESOLVED 2026-07-09
+- [x] W5.a `examples/px4/rust/uorb` — already GONE (deleted before this phase).
+- [x] W5.b `examples/zephyr/rust/service-client-async` — NOT tracked by git
+  (0 tracked files); it is an untracked build-artifact leftover, not a tracked
+  example. Same class as the 18 `examples/*/rust/*_entry/` dirs the phase-275
+  `_entry`→`-entry` rename left behind (`generated/`+`target/` only). These are
+  `.gitignore`d and removed by `just clean` — a local-workspace concern, not a
+  repo change or a coverage gap. No commit needed.
+- [x] W5.c stm32f4 embassy — DE-SCOPED with reason (no silent cap):
+  `talker-embassy` is compile-checked (the `embassy_main!` macro path via
+  `stm32f4_embassy_main_macro.rs`; `skip_build=true` because the embassy build
+  needs a pinned toolchain the fixture matrix doesn't carry). `listener-embassy`
+  is a redundant SECOND demo of the same compile-proven macro path — no distinct
+  runtime/compile surface, so compile-check parity (not a runtime e2e) is the
+  proportionate tier; left as-is rather than adding a duplicate.
 
-### W6 — Close #102
-- [ ] W6.a Every hole is covered or de-scoped-with-reason; the per-wave check
-  jobs return empty (or list only the recorded de-scopes).
-- [ ] W6.b `status: resolved`, `resolved_in:` this phase (+ 275/276), move #102 to
-  `docs/issues/archived/`; refresh the issues README index.
+### W6 — Close #102 — DONE 2026-07-09
+- [x] W6.a Every EXAMPLE is covered or de-scoped-with-reason (no silent caps):
+  COVERED — H1 (phase-276), H2 build-asserts + nuttx/freertos runtime (phase-275/
+  281/130), H3 custom-msg + c/cpp/rust logging + rust async (W2). DE-SCOPED with
+  recorded reasons — H3 cpp POCs (proven by cpp workspace entry e2e), H1 non-Zephyr
+  matrix fill (RFC-0026 = one embedded proof), H4/H5 cyclone svc/action + zephyr
+  cyclone leaves (secondary-RMW transport-matrix, examples proven under zenoh),
+  H6 embassy listener (redundant compile demo). The untracked `_entry` / zephyr
+  async leftover dirs are `.gitignore`d build junk (`just clean`), not gaps.
+- [x] W6.b #102 `status: resolved`, `resolved_in: phase-284` (+ 275/276), moved to
+  `docs/issues/archived/`; issues README index refreshed.
+
+## Status: Complete — 2026-07-09.
 
 ## Non-goals
 

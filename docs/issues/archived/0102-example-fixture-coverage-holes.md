@@ -1,11 +1,38 @@
 ---
 id: 102
 title: "Example fixture coverage holes — capability-on-embedded, native variants, and per-example `_entry` demos still untested"
-status: open
+status: resolved
+resolved_in: phase-284 (+ phase-275, phase-276)
 type: tech-debt
 area: testing
 related: [rfc-0026, phase-263, phase-267, phase-275, phase-276, phase-284]
 ---
+
+## Resolution (2026-07-09, phase-284)
+
+Every EXAMPLE is now covered by a fixture/e2e OR de-scoped with a recorded reason
+("no silent caps"). Phases 275/276 landed the bulk; phase-284 reconciled the
+stale inventory (W1) and closed the residual:
+
+- **Covered:** H1 embedded capabilities (phase-276, Zephyr native_sim); H2 entry
+  demos (phase-275 `-entry` rename + `nuttx_entry_build`/`threadx_linux_entry_build`
+  build-asserts + `rust_nuttx_entry_e2e` / `freertos_run_plan_runtime` runtime);
+  H3 native variants `custom-msg`, `native/{c,cpp,rust}/logging`, and the rust
+  async clients (`native_async_roundtrip_e2e`, phase-284 W2).
+- **De-scoped with reason (proportionate compile-check or matrix-design):** H3 cpp
+  POCs (`component-poc`/`component-node-poc`/`transform-poc` — the component model
+  is runtime-proven by the cpp workspace-entry e2e); H1 non-Zephyr embedded matrix
+  fill (RFC-0026 = one embedded proof per capability); H4/H5 cyclone-RMW svc/action
+  + `zephyr/{cpp,rust}/cyclonedds` leaves (secondary-RMW transport-matrix — the
+  svc/action examples are proven under the primary zenoh RMW); H6 stm32f4
+  `listener-embassy` (redundant demo of the compile-proven `talker-embassy` macro
+  path).
+- **Not gaps:** `px4/rust/uorb` already deleted; the `zephyr/rust/service-client-async`
+  + 18 `examples/*/rust/*_entry/` leftover dirs are untracked `.gitignore`d build
+  junk (`just clean`), not tracked examples.
+
+The de-scoped items are documented decisions, not silent caps — a maintainer can
+re-open any specific cell. See [phase-284](../roadmap/phase-284-example-fixture-coverage-completion.md).
 
 ## Status — re-audited 2026-07-01 (P0 largely resolved)
 

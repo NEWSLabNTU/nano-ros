@@ -73,17 +73,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
   extreme scheduler jitter could flake it. Direction: a deterministic per-tier sequence-number
   proof. Low priority (no flake since the margin bump).
-- **#102** — [example fixture coverage holes — capability-on-embedded, native variants, `_entry`
-  demos](0102-example-fixture-coverage-holes.md): re-audited 2026-07-01 — the original "~60 untested
-  / zephyr 22 / C/C++ 24" P0 is **now resolved** (Zephyr built by the `zephyr-fixture-leaves` driver;
-  FreeRTOS/NuttX C/C++ have cmake rows). Remaining: lifecycle/params/safety/QoS/multihost still
-  native-only; 17 of 18 per-example `*_entry` demos unexercised; native variant examples (custom-msg,
-  transform-poc, async, logging…) + a few zephyr leaves have no fixtures; threadx cyclone svc/action;
-  stale dirs to fix-or-delete. Add fixtures or de-scope the matrix cell ("no silent caps").
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#161** — the 177.37
+Recently resolved (see [`archived/`](archived/) for the full list): **#102** — example
+fixture coverage: phase-284 reconciled the stale 07-01 inventory and drove it to resolved —
+covered (H1 phase-276; H2 entry build-asserts + nuttx/freertos runtime; H3 custom-msg + logging
++ rust async e2e) or de-scoped-with-reason (cpp POCs proven by the cpp workspace entry e2e;
+non-Zephyr embedded matrix fill; cyclone-RMW svc/action as secondary-transport matrix; embassy
+listener redundant demo). No silent caps. **#161** — the 177.37
 domain bake was defeated by two later regressions: phase-180's separate
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` knob pinned 0 everywhere (now defaults to `NROS_DOMAIN_ID`,
 20 pins dropped) and the phase-277 macro rework dropped the Rust-side `NROS_DOMAIN_ID`
