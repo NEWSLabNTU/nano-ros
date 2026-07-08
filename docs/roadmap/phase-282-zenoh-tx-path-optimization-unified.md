@@ -81,6 +81,32 @@ BLOCK-congestion puts stall their (tier) thread for the duration.
   measure on hardware; investigate executor timer catch-up. This is a NEW,
   separate axis from #145's zsock serialization — the tx levers (batch + flush
   thread + split lock) now deliver telem at ideal and total at 5× baseline.
+- [x] **W1.d follow-up (2026-07-08) — the "generation-limited" hypothesis is
+  WRONG; it is still (mild) TX drop, and W2.c roughly doubled ctrl.** Ran the
+  published-vs-delivered discriminator the W1.d note asked for
+  (`tests/w1d_native_tier_generation_probe.rs`, `#[ignore]`): the ctrl node
+  publishes a monotonic counter, so the delivered Int32 *values* encode the
+  published sequence — `max_value/window` = publish rate, `count/window` =
+  deliver rate. Native ws-realtime-rust, batch+split, 15 s window, 3 runs, rock
+  stable:
+
+  | | publish rate | deliver rate | delivered/published |
+  | --- | --- | --- | --- |
+  | /ctrl (100 Hz tier) | **99.5/s** | **79.2/s** | **80%** |
+
+  Two corrections to the W1.d text above:
+  1. **The ctrl timer fires at ~99.5/s** — the tier is NOT generation-limited.
+     The "executor timer under-fires / native_sim scheduling" suspects are ruled
+     out: generation is at line rate.
+  2. **Delivered is ~79/s, ~2.3× the 34.4/s W1.d recorded.** The gain lines up
+     with the **W2.c overflow-steal fix (fork `ef065b9c`)**, which landed AFTER
+     the W1.d measurement — the old cap was the overflow flush sending inline
+     under the caller's mutex; parking the finalized batch in the spare wbuf
+     removed it. So there is no separate "generation" axis to chase; the residual
+     is a ~20% tx drop on the split-lock path (candidate: batch/flush-cadence
+     coalescing vs the 10 ms tier, or spare-drain backpressure under sustained
+     100 Hz). Re-measuring the W1.d tier table with the ef065b9c fork is the
+     honest next step before any promotion decision.
 
 ### W2 — Zephyr streaming benchmark (the promotion-relevant number)
 
