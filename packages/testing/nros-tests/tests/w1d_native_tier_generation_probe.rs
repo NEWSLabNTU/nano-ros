@@ -36,7 +36,13 @@ fn max_and_count(out: &str) -> (i64, usize) {
     let mut count = 0usize;
     for line in out.lines() {
         if let Some(rest) = line.split("Received:").nth(1) {
-            if let Ok(v) = rest.trim().split_whitespace().next().unwrap_or("").parse::<i64>() {
+            if let Ok(v) = rest
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .parse::<i64>()
+            {
                 max = max.max(v);
                 count += 1;
             }
@@ -99,7 +105,11 @@ fn w1d_ctrl_tier_generation_vs_tx(zenohd_unique: ZenohRouter) {
     eprintln!(
         "W1.d probe [{WINDOW_SECS}s]: /ctrl published≈{max} ({pub_rate:.1}/s), \
          delivered={count} ({del_rate:.1}/s), delivered/published={:.0}%",
-        if max > 0 { count as f64 / max as f64 * 100.0 } else { 0.0 }
+        if max > 0 {
+            count as f64 / max as f64 * 100.0
+        } else {
+            0.0
+        }
     );
     let verdict = if max > 0 && (count as f64) >= 0.8 * (max as f64) {
         "GENERATION-limited (max≈count: the timer under-fires; tx is NOT the cap)"
