@@ -44,11 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#149** — [nuttx-realtime typed-C fixtures fail from fresh
-  configure](0149-nuttx-realtime-typed-c-fixture-fresh-configure.md): board-glue fix landed
-  (component-lib interface links now lifted into LINK_INTERFACES); e2e verification blocks on
-  the phase-283 fixture rework + a cpp-lane build-std toolchain error; `just nuttx
-  build-fixtures` still doesn't cover workspace lanes.
+- **#159** — [NuttX fixture build can report success with no kernel
+  ELF](0159-nuttx-fixture-build-cmake-returns-zero-on-link-failure.md): `cmake --build
+  <entry>_build` returns 0 on some link failures. Backstop landed (`7ad8cc884` — the
+  workspace-fixtures builder fails loud on a missing ELF); the deeper cmake-propagation root
+  (up-to-date skip / a non-propagating sub-step) is untracked. Low priority (backstop covers it).
+- **#158** — [NuttX realtime tier e2e prove high>low by a timing
+  heuristic](0158-nuttx-realtime-tier-e2e-timing-heuristic.md): the count-based margin
+  (`00d8b8719`) fixed the observed `5≤5` flake, but the assertion is still wall-clock-based —
+  extreme scheduler jitter could flake it. Direction: a deterministic per-tier sequence-number
+  proof. Low priority (no flake since the margin bump).
 - **#148** — [100 Hz ctrl tier: ~20% residual tx drop on the split-lock
   path](0148-ctrl-tier-generation-side-cap.md): the "generation-limited" premise was DISPROVEN
   by the published-vs-delivered probe (`w1d_native_tier_generation_probe`, commit 13dbc4d88):
