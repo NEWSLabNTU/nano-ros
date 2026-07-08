@@ -4,7 +4,7 @@ title: "Zephyr zenoh e2e tests serialize on build-time-baked router ports — a 
 status: open
 type: enhancement
 area: testing
-related: [phase-89, issue-0141]
+related: [phase-89, issue-0141, phase-286]
 ---
 
 ## Problem

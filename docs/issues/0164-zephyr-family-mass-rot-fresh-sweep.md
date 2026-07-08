@@ -4,7 +4,7 @@ title: "tests/zephyr.rs family: 29/45 fail on freshly built images — stale mar
 status: open
 type: bug
 area: testing
-related: [issue-0157, issue-0163, phase-277]
+related: [issue-0157, issue-0163, phase-277, phase-286]
 ---
 
 ## Summary
