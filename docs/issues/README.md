@@ -44,6 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#167** — [riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside
+  `ZenohRmw::open`](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults with
+  an instruction-access fault (`EPC=RA=0x4`) at boot, exposed by phase-285 W2's `start_nuttx_riscv`
+  harness (riscv-nuttx's first-ever boot). gdb traced the chain `nros_cpp_init → CffiRmw::open →
+  open_with_vtable → open_trampoline<ZenohRmw> → ZenohRmw::open`: the C-FFI vtable is intact; the
+  bad pointer (a non-null `~0x4` that slips past `beqz` guards) is read inside the zenoh-pico
+  session bring-up. Leading cause: zpico/zenoh-pico config ABI mismatch (#135) or an unwired
+  transport init on riscv. Gates phase-285 W2.b → #165.
 - **#166** — [Zephyr zenoh e2e serialize on build-time-baked router
   ports](0166-zephyr-e2e-serial-baked-port-parallelism-ceiling.md): the port scheme already gives
   unique per-(variant,lang) ports (xrce=7 / dds=4 parallel), but six

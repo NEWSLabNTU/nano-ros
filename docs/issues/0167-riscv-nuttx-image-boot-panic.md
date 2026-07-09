@@ -1,10 +1,10 @@
 ---
 id: 167
-title: "riscv-nuttx image panics at boot — null fn-ptr call (EPC=0x4) in hpwork, before the app runs"
+title: "riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside ZenohRmw::open on the nros_cpp_init backend path"
 status: open
 type: bug
 area: nuttx
-related: [issue-0165, phase-285]
+related: [issue-0165, issue-0135, phase-285]
 ---
 
 ## Summary
@@ -19,15 +19,12 @@ the crash was latent.
 ```
 riscv_exception: EXCEPTION: Instruction access fault. MCAUSE: 00000001, EPC: 00000004, MTVAL: 00000004
 riscv_exception: PANIC!!! Exception = 00000001
-dump_assert_info: ... task: hpwork process: Kernel 0x80065bd2
 up_dump_register: EPC: 00000004 ... RA: 00000004
-dump_tasks: ... hpwork (Running), nsh_main (Ready), telnetd (Ready)
 ```
 
-`EPC = RA = 0x00000004` is a **null function-pointer call** (`(*null)()` — a call
-through a null struct/vtable pointer at field offset 4), taken in the **`hpwork`**
-high-priority work-queue kernel thread. The panic fires during boot, before
-`nsh_main` / the C talker's `app_main` produce any output.
+`EPC = RA = 0x00000004` is a **jump/return through a garbage function pointer**
+(a small non-null value, ~`0x4`) — not a plain null, so it slips past `beqz`
+null-guards.
 
 ## Reproduce
 
@@ -36,32 +33,66 @@ just nuttx build-riscv-c   # builds the rv-virt kernel + the C talker image
 qemu-system-riscv32 -M virt -bios none -nographic -icount shift=auto \
     -kernel examples/qemu-riscv-nuttx/c/talker/build-zenoh/nuttx_riscv_c_talker \
     -netdev user,id=net0 -device virtio-net-device,netdev=net0
-# → riscv_exception PANIC in hpwork within the first tick
+# → riscv_exception PANIC within the first tick
 ```
 
 (Or via the test harness: `QemuProcess::start_nuttx_riscv(binary, true)`.)
 
-## Candidates
+## Diagnosis (gdb on rv-virt, 2026-07-09) — root cause located
 
-A null callback dispatched on the `hpwork` queue at boot — something that on arm
-is wired but on riscv is not:
+Ran `qemu-system-riscv32 … -gdb tcp::1234 -S` + `riscv-none-elf-gdb`. Caught the
+fault at `riscv_exception` (mcause=1, instruction access fault) and a
+hardware-breakpoint at `*0x4`, then walked the call chain by breaking at each
+layer and confirming which frame is entered but never returns. The crash is **NOT
+in the kernel work-queue / netdev / virtio path** (those run fine — the virtio-net
+MMIO `metal_io` regions have valid ops, notify works). It is on the **nano-ros
+backend-open path**, fully symbolized:
 
-- **Backend register / ctor-init not wired on riscv.** The arm path wires the RMW
-  backend explicitly (no POSIX ctor sections on embedded — CLAUDE.md pitfall; #48
-  freertos: "backend must be LINKED + registered"). If a `work_queue()`-scheduled
-  init callback is registered null (or a `.init_array`/ctor the riscv link drops),
-  the first `hpwork` dispatch jumps to ~null.
-- **nros-nuttx-ffi `main` → app_main path.** Trace whether the riscv
-  `nros-nuttx-ffi` main registers the backend + reaches `app_main` before the
-  crash, or whether the crash precedes it (kernel work-queue bring-up).
-- **Linker: a weak/undefined symbol resolved to 0x0** then called (EPC 0x4 = null
-  + a small field offset).
+```
+nros_app_main
+  → nros_cpp_init(config, "node", storage)          # s0 held the "node" name string at the fault
+      → nros_app_register_backends → nros_rmw_zenoh_register   [OK — CffiRmw registered into REGISTRY @0x8009da40]
+      → getenv / config parse                          [OK]
+      → REGISTRY scan → matches CffiRmw
+      → <CffiRmw as Rmw>::open                          [0x80012ed6]
+          → CffiSession::open_with_vtable              [0x80011846]
+              → vtable dispatch  lw a5,0(s8); jalr a5  [0x80011934]  (vtable @0x80089314 — all 16 entries VALID)
+                  → vtable[0] = nros_rmw_cffi::rust_adapter::open_trampoline::<ZenohRmw>  [0x80013078]
+                      → ZenohRmw::open → zenoh-pico session open
+                          → jump/ret through a GARBAGE fn-ptr (~0x4) → instruction-access fault
+```
+
+Every layer down to `open_trampoline<ZenohRmw>` is entered and never returns; the
+C-FFI vtable itself is intact. The bad pointer materializes **inside
+`ZenohRmw::open` / the zenoh-pico session bring-up**. At the fault: `EPC=RA=0x4`,
+`a0=a5=0`, `a4=0xe0`, `s0`→rodata `"node"`, a shallow near-leaf stack — i.e. a
+function-pointer read from an uninitialized / wrong-offset struct field, then
+tail-jumped.
+
+## Leading hypotheses (fix direction)
+
+The garbage-but-non-null pointer read from a struct field points at one of two
+known nano-ros failure modes, both riscv-specific because the board was only ever
+link-checked:
+
+1. **zpico shim ↔ zenoh-pico config ABI mismatch (issue [0135]).** Flag-gated
+   struct fields (`Z_FEATURE_LOCAL_QUERYABLE`, …) shift offsets between mismatched
+   TUs, so a function pointer gets read from the wrong offset → garbage. If the
+   riscv-nuttx build doesn't inject the shared generated zenoh config into both
+   the shim and the library, this is exactly the observed symptom. **Rebuild the
+   riscv fixture after any zpico config change.**
+2. **Backend/transport init not wired on riscv (no ctor sections — CLAUDE.md
+   pitfall; #48).** A zenoh-pico transport/link callback or a ctor-initialized
+   global that stays uninitialized (garbage) on nuttx-riscv, then dispatched.
 
 ## Next steps
 
-Symbolize the crash against the ELF (`riscv-none-elf-addr2line`/`gdb` on
-`nuttx_riscv_c_talker`: the frames `0x80065bd2`, `0x8006716e`, `0x800893f4`,
-`0x80036f1e`), identify the null callback + who was supposed to set it, and
-compare the arm vs riscv board init/register wiring. Tracked under
+Trace into `open_trampoline<ZenohRmw>` → `ZenohRmw::open` → the zenoh-pico
+`_z_open`/transport bring-up on rv-virt (single-step past the network-send waits)
+to name the exact struct field / config flag whose pointer reads `~0x4`; compare
+the arm-nuttx build's zenoh config injection + generated-config sharing against
+riscv. Tracked under
 [phase-285](../roadmap/phase-285-riscv-nuttx-run-tiers-boot-harness.md) W2.b — it
 gates the riscv-nuttx runtime (and thus #165's `run_tiers` proof).
+
+[0135]: archived/0135-native-zenoh-service-query-path-broken.md

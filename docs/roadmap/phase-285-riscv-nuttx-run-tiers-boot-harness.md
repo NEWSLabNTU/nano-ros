@@ -69,22 +69,29 @@ tiers) + phase-130/#130 (nuttx entry eth0).
   shift=auto` + the virtio-net MMIO device, matching `build-nuttx.sh`'s rv-virt
   export). Reuses the existing `esp32::is_qemu_riscv32_available`. Compiles; the
   harness boots the image and captures the console.
-- [ ] W2.b **BLOCKED — riscv-nuttx image PANICS at boot** (a real runtime defect
+- [x] W2.b.1 **BLOCKED — riscv-nuttx image PANICS at boot** (a real runtime defect
   the harness just exposed — riscv-nuttx had never been booted, only link-checked).
-  Booting `examples/qemu-riscv-nuttx/c/talker/build-zenoh/nuttx_riscv_c_talker`:
+  Filed as **issue #167** and **root-caused with gdb** (`-gdb tcp::1234 -S` +
+  `riscv-none-elf-gdb`, 2026-07-09). `EPC=RA=0x4` is a jump through a garbage
+  (non-null `~0x4`, slips past `beqz` guards) function pointer. NOT the kernel
+  work-queue / netdev / virtio path (those run fine — `metal_io` ops valid, notify
+  works). It is the **nano-ros backend-open path**:
   ```
-  riscv_exception: EXCEPTION: Instruction access fault. EPC: 00000004, RA: 00000004
-  PANIC!!!  task: hpwork
+  nros_app_main → nros_cpp_init(config,"node",storage)
+    → nros_app_register_backends → nros_rmw_zenoh_register   [OK, CffiRmw in REGISTRY]
+    → REGISTRY scan → <CffiRmw as Rmw>::open → CffiSession::open_with_vtable
+      → vtable[0] = open_trampoline<ZenohRmw>  (C-FFI vtable @0x80089314 intact)
+        → ZenohRmw::open → zenoh-pico session bring-up → garbage fn-ptr → fault
   ```
-  `EPC = RA = 0x00000004` is a null-function-pointer call (`(*null)()`), in the
-  `hpwork` high-prio work-queue thread, BEFORE the C talker runs. Candidates: a
-  work-queue callback / RMW-backend register / ctor-init not wired on riscv (cf.
-  the arm "no POSIX ctor sections — wire backend init explicitly" pitfall; #48
-  freertos "backend must be LINKED + registered"). Needs focused riscv-nuttx
-  debugging (symbolize `0x8006…` frames against the ELF; check the nros-nuttx-ffi
-  `main` → backend-register → `app_main` path on riscv). Deliverable at the stop:
-  the harness works and turned an "e2e-unprovable" gap into a concrete, reproduced
-  boot crash. **This crash gates W2.b → W3–W6.**
+  Every layer down to `open_trampoline<ZenohRmw>` enters and never returns; the bad
+  pointer is read **inside `ZenohRmw::open` / zenoh-pico open**. Leading cause:
+  zpico↔zenoh-pico config ABI mismatch (issue #135 pattern — flag-gated struct
+  fields shift a fn-ptr offset) or an unwired transport init on riscv. Full chain
+  + hypotheses in issue #167.
+- [ ] W2.b.2 **Fix #167** — trace `ZenohRmw::open` → zenoh-pico `_z_open` on rv-virt
+  to the exact struct field/config flag whose pointer reads `~0x4`; compare arm-nuttx
+  zenoh-config injection + generated-config sharing vs riscv; rebuild the riscv
+  fixture after any zpico config change. **This crash gates W2.b → W3–W6.**
 
 ### W3 — eth0 on the riscv entry path (#130 shape)
 - [ ] W3.a Add `configure_entry_eth0` / `entry_net_init` to the riscv board
