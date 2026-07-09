@@ -80,10 +80,11 @@ command-line option**, not `getenv`.
    `max-threads = 1` groups (fall through to the parallel `qemu-zephyr` group).
 
 **Scope / edges.** native_sim only — the baked value stays the default so QEMU/hw
-are untouched (they have no host arg channel and no host zenohd). XRCE must be
-covered too: either accept a `host:port` form on `--nros-locator` or add a sibling
-`--nros-agent`, since the XRCE endpoint is a distinct bake. Two read sites (Rust
-macro + C shim) both need the hook — miss one and that lane silently keeps the
+are untouched (they have no host arg channel and no host zenohd). **XRCE: a single
+`--nros-locator` carries both** (decided 2026-07-09) — `tcp/host:port` for zenoh, a
+bare `host:port` for xrce, exactly as the example `build.rs` already unifies the two
+RMW shapes into `NROS_LOCATOR`. One option, one static, one hook. Two read sites
+(Rust macro + C shim) both need the hook — miss one and that lane silently keeps the
 baked port. The existing `--seed` already de-conflicts client *source* ports; this
 override de-conflicts the *router* port, orthogonal and complementary.
 
@@ -91,6 +92,30 @@ override de-conflicts the *router* port, orthogonal and complementary.
 `Option<&str>` hook wired into two read sites + the harness port-alloc/zenohd
 plumbing + the nextest group deletion. No fixture rebuild contract change (the bake
 remains the default).
+
+**Mechanism confirmed (host-env ruled out).** `nsi_host_trampolines.h` (Zephyr
+3.7 native-simulator) exposes only `nsi_host_{malloc,free,calloc,realloc,open,close,
+read,write,random,srandom,strdup,getcwd,isatty}` — **no `nsi_host_getenv`**. So a
+host-env read is impossible from the native_sim image; the **native command-line
+option is the sole channel**, registered exactly like `--seed`:
+`native_add_command_line_opts(&opts)` (decl in `boards/native/native_sim/cmdline.h`,
+`struct args_struct_t` with `.type = 's'` for a string `.dest`) under a
+`NATIVE_TASK(fn, PRE_BOOT_1, 10)` hook, all guarded `#if defined(CONFIG_ARCH_POSIX)`
+so real embedded builds compile it out.
+
+**Implementation plan (vertical slices).**
+1. **Infra + Rust slice (first, provable alone):** add the `--nros-locator` option
+   + `static` + `const char *nros_runtime_locator_override(void)` to a native_sim
+   TU under `nros-platform-zephyr` (guarded); FFI-bind it in `nros`; have
+   `zephyr_component_main!` prefer it over `BAKED_LOCATOR`. Harness: allocate an
+   ephemeral port, start a per-test zenohd, pass `--nros-locator`. Prove on the
+   rust pubsub lane, then flip `qemu-zephyr-pubsub-rust` off `max-threads = 1`.
+2. **C/C++ read sites:** honor the override where `app_config.h` sets
+   `.locator = CONFIG_NROS_ZENOH_LOCATOR` (C) and `main.hpp`'s `NROS_ENTRY_LOCATOR`
+   (C++) — a runtime `if (override) use it` at entry, not the header const.
+3. **Extend to service/action + xrce** (unified `host:port` form) and delete the
+   remaining five serial groups.
+4. **Rebuild + re-run** the family; confirm wall-clock drop and no #141 collisions.
 
 ### W2 — staleness-guard false-positive (#147 class)
 
