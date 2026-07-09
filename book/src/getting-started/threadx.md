@@ -54,16 +54,16 @@ Each example is a standalone Cargo or CMake project under
 ```text
 examples/threadx-linux/
 ├── rust/talker/                 # Cargo, target = x86_64-unknown-linux-gnu
-│   ├── Cargo.toml
+│   ├── Cargo.toml                # deps + [package.metadata.nros.deploy.threadx-linux]
 │   ├── package.xml
 │   ├── generated/                # codegen output — build.rs runs
 │   │                             #   `nros generate-rust` on first
 │   │                             #   `cargo build`; gitignored.
-│   └── src/main.rs
+│   └── src/lib.rs                # the component class; nros::main! generates the entry
 └── c/talker/                    # CMake, add_subdirectory
-    ├── CMakeLists.txt
+    ├── CMakeLists.txt            # targets + nano_ros_deploy(...)
     ├── package.xml
-    └── src/main.c
+    └── src/Talker.c
 
 examples/qemu-riscv64-threadx/
 ├── rust/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
@@ -79,45 +79,30 @@ uses the `nx_bsd_*` BSD socket shim layered on the host TCP stack
 
 ## Configure
 
-Each talker carries a per-flavour `nros.toml`. Both files are reproduced
-verbatim below.
+Deploy config is declared per flavour in the build manifest and baked at
+compile time. Both shipped shapes, verbatim:
 
 threadx-linux —
-[`examples/threadx-linux/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/threadx-linux/rust/talker/nros.toml):
+[`examples/threadx-linux/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/threadx-linux/rust/talker/Cargo.toml):
 
 ```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
+[package.metadata.nros.deploy.threadx-linux]
+board     = "threadx-linux"
+rmw       = "zenoh"
 domain_id = 0
-
-[[transport]]
-kind    = "ethernet"
-ip      = "192.0.3.10/24"
-mac     = "02:00:00:00:00:00"
-gateway = "192.0.3.1"
-interface = "tap-tx0"
-locator = "tcp/127.0.0.1:7455"
+# locator/ip default to the board's loopback shape (dial 127.0.0.1)
 ```
 
 threadx-riscv64 —
-[`examples/qemu-riscv64-threadx/c/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-riscv64-threadx/c/talker/nros.toml):
+[`examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt):
 
-```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
-domain_id = 0
-
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.40/24"
-mac     = "52:54:00:12:34:56"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7553"
+```cmake
+nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
 ```
+
+Network shape (guest IP, gateway, router locator) beyond these fields
+comes from the board crate's defaults — see the
+[Configuration Guide](../user-guide/configuration.md).
 
 ThreadX-Linux normally uses a veth pair (`tap-tx0`) for an isolated
 host link, but `nros setup threadx-linux` does **not** create the
@@ -181,7 +166,7 @@ cache**; a cold first run rebuilds the Rust example (~80 s on a
 fresh checkout) before the first publish lands. threadx-riscv64
 (QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:
 
-1. Confirm `zenohd` reachable on the locator from `nros.toml`
+1. Confirm `zenohd` reachable on the deploy locator
    (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).
 2. threadx-linux: confirm the veth bridge came up via
    `nros setup threadx-linux`.

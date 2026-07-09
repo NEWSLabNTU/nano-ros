@@ -61,12 +61,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   leaves) carry zero instructions when copied out, contradicting RFC-0026;
   `examples/README.md` also still mixes Phase-140-era consumption text with the current
   `-DNANO_ROS_ROOT` contract.
-- **#169** — [Book config migration never propagated](0169-book-config-migration-never-propagated.md):
-  15 book pages (several phase-277-fresh) still document per-example `nros.toml`/`config.toml` —
-  zero such files exist; the real shapes are `[package.metadata.nros.deploy.*]` +
-  `nano_ros_deploy()` + `system.toml`. Multiple 404 GitHub links;
-  `user-guide/configuration.md` needs a full rewrite; `message-generation.md` contradicts the
-  `nros sync` model.
 - **#167** — [riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside
   `ZenohRmw::open`](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults with
   an instruction-access fault (`EPC=RA=0x4`) at boot, exposed by phase-285 W2's `start_nuttx_riscv`
@@ -97,7 +91,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#168** — zenohd
+Recently resolved (see [`archived/`](archived/) for the full list): **#169** — book config
+sweep: 15 pages still taught the retired per-example `nros.toml`/old-`config.toml` model with
+404 links; `configuration.md` rewritten around RFC-0004's live model (`deploy` metadata /
+`nano_ros_deploy` + `system.toml` + the kept direct-mode `config.toml` for no-codegen `no_std`
+apps), every embedded starter + first-node page re-grounded on the shipped manifests, and the
+fixture-port vs copy-out-port split documented. **#168** — zenohd
 split-brain: nine `just` recipes invoked bare `zenohd` that no setup route puts on PATH; a
 shared resolver (`scripts/dev/zenohd.sh`, build/zenohd → SDK store → PATH) now backs every
 `just <plat> zenohd` recipe, and README/examples docs converge on that one launch line.

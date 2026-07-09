@@ -319,8 +319,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 ```bash
 # 1. Start zenohd on the host. The in-tree just recipe runs the
 #    pinned in-tree zenohd on the zephyr fixture port (7456) — the
-#    same port the example apps' `nros.toml` / Kconfig defaults pick
-#    up:
+#    same port the example apps' Kconfig defaults pick up:
 just zephyr zenohd &
 #    Or directly:
 #    zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting

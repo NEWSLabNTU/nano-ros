@@ -62,8 +62,9 @@ examples/native/rust/talker/
 
 POSIX talkers read the locator / domain from environment variables
 (`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and `ROS_DOMAIN_ID`)
-— no `nros.toml` is needed. The `nros.toml` shape used by embedded
-targets shows up under the Embedded Starters section.
+— no config file is needed. Embedded targets bake their config from
+`[package.metadata.nros.deploy.<target>]` instead — the shape shows up
+under the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
 package. Every example is its own standalone Cargo root (an empty
@@ -124,8 +125,7 @@ documents the path-dep workspace layout.
 
 ## Configure
 
-Three runtime knobs, each overridable at three layers (defaults →
-`config.toml` → env vars):
+Three runtime knobs, each an env override on a built-in default:
 
 | Knob | Default | Env override |
 |---|---|---|
@@ -133,13 +133,9 @@ Three runtime knobs, each overridable at three layers (defaults →
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
 
-`config.toml` (optional, alongside `Cargo.toml`):
-
-```toml
-[zenoh]
-locator   = "tcp/127.0.0.1:7447"
-domain_id = 0
-```
+No config file on native. Embedded targets bake these from
+`[package.metadata.nros.deploy.<target>]` instead — see the
+[Configuration Guide](../user-guide/configuration.md).
 
 ## Build
 

@@ -131,11 +131,12 @@ tracked under Phase 210 (ROS-convention codegen).
   lands, replace `LifecycleNode` with `Node` + manual configure/activate
   bookkeeping.
 - **Yaml-loaded parameters.** `declare_parameter<T>("name", default)` reads
-  from a launch yaml in stock ROS 2. nano-ros embedded has no yaml loader;
-  Phase 209.F bakes the original yaml + the source into a constexpr
-  parameter table (`nros bake-params`). Until that ships, expose parameters
-  as compile-time constants (or via `nano_ros_read_config(... "nros.toml")`
-  + `nano_ros_generate_config_header(...)`).
+  from a launch yaml in stock ROS 2. nano-ros has no runtime yaml loader —
+  parameter *initials* are compile-baked from the launch XML's
+  `<param name="…" value="…"/>` entries (RFC-0004 §10), then live in a
+  volatile store the standard parameter services can update until the next
+  boot. Move yaml values into the launch file (or expose them as
+  compile-time constants).
 - **`tf2`, `image_transport`, `pluginlib`** — out of nano-ros scope. Project-
   specific helpers (autoware `universe_utils`, PX4 uORB shims) are not
   nano-ros's to ship; the porting user vendors them or replaces the call

@@ -121,7 +121,6 @@ examples/<plat>/<lang>/<example>/
 ├── package.xml                    # ROS-style manifest for the example
 ├── Cargo.toml | CMakeLists.txt    # Rust or C/C++ build entry
 ├── .cargo/config.toml             # Rust only — target + .cargo patches
-├── config.toml                    # network + zenoh settings (embedded)
 ├── src/                           # main.rs / main.c / main.cpp
 ├── generated/                     # codegen output for any custom msgs
 └── README.md                      # usage instructions

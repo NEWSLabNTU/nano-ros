@@ -95,43 +95,34 @@ Networking Kconfig requirements live under
 `CONFIG_NET_IPv4`. For QEMU `nsh_smp` configurations the defaults
 already include these.
 
-Runtime config (locator / domain id) is read from the companion
-`nros.toml` next to the example source. Verbatim from the in-tree
-[`examples/qemu-arm-nuttx/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/rust/talker/nros.toml)
-(this is the file `just nuttx talker` consumes — port `7452` matches
-`just nuttx zenohd`):
+Deploy config (RMW / domain id, plus an optional `locator` override) is
+declared in the build manifest and baked at compile time. Verbatim from
+the in-tree
+[`examples/qemu-arm-nuttx/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/rust/talker/Cargo.toml):
 
 ```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
+[package.metadata.nros.deploy.nuttx]
+board     = "qemu-armv7a-nsh"
+target    = "armv7a-nuttx-eabihf"
+rmw       = "zenoh"
 domain_id = 0
-
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.30/24"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7452"
 ```
 
-The C + C++ variants ship analogous files with **distinct** ports
-(`7552` and `7652`) so parallel test runs don't collide on one
-router; `just nuttx zenohd` binds `7452` (Rust). When you boot a C
-or C++ talker directly, either edit the locator line of its
-`nros.toml` —
+The C / C++ variants declare the same in their `CMakeLists.txt`:
 
-```toml
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.30/24"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7452"   # was 7552 / 7652 — match `just nuttx zenohd`
+```cmake
+nano_ros_deploy(
+    TARGET     nuttx
+    RMW        ${NROS_RMW}
+    DOMAIN_ID  0)
 ```
 
-— or start a sibling zenohd on the matching port
-(`zenohd --listen tcp/127.0.0.1:7552 --no-multicast-scouting` for C,
-`…:7652` for C++).
+The guest network shape (eth0 `10.0.2.30`, Slirp gateway `10.0.2.2`)
+comes from the board crate; add a `locator = "tcp/10.0.2.2:<port>"`
+field to dial a non-default router port. The prebuilt *test fixtures*
+bake distinct per-language ports (Rust `7452`, C `7552`, C++ `7652`) so
+parallel suites don't collide on one router; `just nuttx zenohd` binds
+`7452` to match the Rust fixture.
 
 ## Build
 
@@ -205,9 +196,9 @@ count at 1, matching the official ROS 2 demo talker. If no
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.
    With the virtio-net + Slirp wiring above, `eth0` comes up at
-   `10.0.2.30` (matches `examples/qemu-arm-nuttx/*/talker/nros.toml`).
-3. Confirm `zenohd` reachable; the locator in `nros.toml` /
-   `nros_init` arguments must match.
+   `10.0.2.30` (the board crate's default for the qemu-arm-nuttx examples).
+3. Confirm `zenohd` reachable; the deploy locator (or the
+   `nros_init` arguments) must match the router's listen port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ### Auto-configure glue (NSH built-in registration)

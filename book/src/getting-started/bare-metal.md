@@ -36,15 +36,14 @@ nros setup qemu-arm-baremetal --rmw zenoh
 
 ```text
 examples/qemu-arm-baremetal/rust/talker/
-├── Cargo.toml
+├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-mps2-an385]
 ├── .cargo/config.toml         # target = thumbv7m-none-eabi
 │                              # runner = qemu-system-arm ... -kernel
-├── nros.toml                  # network + zenoh
 ├── package.xml
 ├── generated/                 # codegen output — build.rs runs
 │                              #   `nros generate-rust` on first
 │                              #   `cargo build`; gitignored.
-└── src/main.rs                # #[entry] fn main() -> !
+└── src/                       # lib.rs component class + main.rs entry
 ```
 
 The board crate is `nros-board-mps2-an385` (note: no `-freertos`
@@ -56,31 +55,23 @@ suffix — this is the bare-metal variant) which provides:
 
 ## Configure
 
-Verbatim from the in-tree
-[`examples/qemu-arm-baremetal/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/nros.toml):
+Deploy config lives in the app's `Cargo.toml` and is baked at compile
+time — `nros::main!()` folds it into a `DeployOverlay` the board's boot
+`Config` applies. Verbatim from the in-tree
+[`examples/qemu-arm-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/Cargo.toml):
 
 ```toml
-# nano-ros config — QEMU ARM bare-metal talker (direct mode).
-# Read by the nros-board-mps2-an385 board crate via Config::from_toml.
-
-[node]
-domain_id = 0
-
-# Single ethernet transport running a zenoh session. `ip` is CIDR
-# (address/prefix); the locator rides the transport.
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.10/24"
-mac     = "02:00:00:00:00:00"
-gateway = "10.0.2.2"
-rmw     = "zenoh"
+[package.metadata.nros.deploy.qemu-mps2-an385]
 locator = "tcp/10.0.2.2:7450"
+ip      = "10.0.2.10"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
 ```
 
 QEMU Slirp networking — no host TAP / bridge / sudo. The
 `zenohd` default port is 7447; this example expects **7450** so
-start the router with `zenohd --listen tcp/127.0.0.1:7450`
-(or edit `nros.toml` to match `zenohd`'s 7447 default).
+start the router on that port (`just qemu zenohd` does) or edit the
+`locator` above to match `zenohd`'s 7447 default.
 
 ## Build
 
@@ -96,13 +87,10 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 
 ```bash
 # 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7450 → host
-#    127.0.0.1:7450). The bare-metal test-fixture port is 7450, NOT
-#    zenohd's default 7447 — edit `nros.toml` if you want 7447 instead.
-#    The just recipe runs the in-tree zenohd installed by
-#    `nros setup ... --rmw zenoh` on that port:
+#    127.0.0.1:7450). The bare-metal port is 7450, NOT zenohd's default
+#    7447 — edit the deploy `locator` in Cargo.toml if you want 7447.
+#    The just recipe resolves the provisioned zenohd and listens there:
 just qemu zenohd &
-#    Or directly:
-#    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
 
 # 2. Boot the talker in QEMU. The `just qemu talker` recipe wraps
 #    qemu-system-arm with the LAN9118 networking wiring the example

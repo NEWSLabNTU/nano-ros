@@ -29,9 +29,8 @@ side-by-side under a shared `src/`:
 │   ├── nano-ros/                  # this repo
 │   └── my_robot_node/
 │       ├── package.xml
-│       ├── Cargo.toml             # Rust, if using Rust API
-│       ├── CMakeLists.txt         # C/C++, if using CMake
-│       ├── config.toml            # embedded targets
+│       ├── Cargo.toml             # Rust — deps + [package.metadata.nros.*]
+│       ├── CMakeLists.txt         # C/C++ — targets + nano_ros_deploy(...)
 │       └── src/
 └── build/ install/ log/           # if you use colcon
 ```
@@ -86,10 +85,10 @@ Supported pairs: `posix / freertos / nuttx / threadx / zephyr / esp32 /
 baremetal` × `zenoh / xrce / dds / cyclonedds`. Not every cell is
 implemented — see the [Coverage Matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix).
 
-Runtime configuration (`ROS_DOMAIN_ID`, `ZENOH_LOCATOR`, …) works on
-POSIX. Embedded targets resolve config via CMake cache vars, Kconfig
-(Zephyr), Cargo features, or `config.toml`. See
-[Configuration](configuration.md).
+Runtime configuration (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, …) works on
+POSIX. Embedded targets bake config from
+`[package.metadata.nros.deploy.<t>]` / `nano_ros_deploy(...)`, plus
+Kconfig on Zephyr. See [Configuration](configuration.md).
 
 ## 5. Build, Test, Deploy
 

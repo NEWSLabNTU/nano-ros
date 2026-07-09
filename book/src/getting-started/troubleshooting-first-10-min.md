@@ -213,8 +213,8 @@ Same root cause as B1/B2 — zenohd not reachable.
 
 ### B4. Override the locator at runtime
 
-When the talker can't reach the daemon and you don't want to edit
-`nros.toml`, override the locator with the canonical env var:
+When a native talker can't reach the daemon, override the locator with
+the canonical env var:
 
 ```bash
 NROS_LOCATOR=tcp/192.168.1.50:7447 ./build/c_talker
@@ -222,9 +222,11 @@ NROS_LOCATOR=tcp/192.168.1.50:7447 ./build/c_talker
 ROS_DOMAIN_ID=7 ./build/c_talker         # also overridable
 ```
 
-The Rust / C / C++ talkers all read `NROS_LOCATOR` first, fall back
-to `ZENOH_LOCATOR`, then to `nros.toml`, then to the build-time
-default.
+The native Rust / C / C++ talkers all read `NROS_LOCATOR` first, fall
+back to `ZENOH_LOCATOR`, then to the build-time default. Embedded
+targets have no runtime env — their locator is compile-baked from the
+deploy config (`[package.metadata.nros.deploy.<t>]` /
+`nano_ros_deploy`), so a rebuild is the override.
 
 ### B5. Binary exits immediately, no error printed
 

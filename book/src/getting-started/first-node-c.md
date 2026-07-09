@@ -58,10 +58,10 @@ examples/native/c/talker/
     └── main.c          # ~100-line talker
 ```
 
-An optional `nros.toml` sidecar can override the runtime locator /
-domain id (canonical schema described in
-[Configuration](../user-guide/configuration.md)). The shipped native
-C talker doesn't carry one — locator + domain default to env vars.
+On native, locator + domain come from env vars (`NROS_LOCATOR`,
+`ROS_DOMAIN_ID`) with built-in defaults; embedded targets bake them at
+build time via `nano_ros_deploy(...)` in `CMakeLists.txt` (see
+[Configuration](../user-guide/configuration.md)).
 
 The CMake preamble matches the canonical example shape in
 [`examples/native/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/c/talker/CMakeLists.txt) —
@@ -135,11 +135,10 @@ Three runtime knobs:
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Node name | `talker` | hard-coded in source |
 
-`nros.toml` (optional) accepts the same `[node]` + `[[transport]]`
-schema as every other nano-ros tutorial (see
-[Configuration](../user-guide/configuration.md)); the C runtime reads
-it only when wired explicitly via `nros_config_load()` (see the
-example source).
+On an embedded target the same knobs are compile-baked from the
+`nano_ros_deploy(TARGET <t> RMW <rmw> DOMAIN_ID <n> LOCATOR <loc>)`
+call in `CMakeLists.txt` (see
+[Configuration](../user-guide/configuration.md)).
 
 ## Build
 

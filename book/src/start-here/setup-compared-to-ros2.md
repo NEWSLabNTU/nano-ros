@@ -133,9 +133,9 @@ Multi-RMW bridges (one binary, two or more backends) use
   an installed ROS message library.
 - **Configuration is build-time on embedded.** Runtime env vars
   (`ROS_DOMAIN_ID`, `NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR`,
-  …) work on POSIX; embedded targets resolve config via CMake cache,
-  Kconfig (Zephyr), Cargo features, or a sidecar `nros.toml`
-  (`[node]` + `[[transport]]`).
+  …) work on POSIX; embedded targets bake config from
+  `[package.metadata.nros.deploy.<t>]` (Rust) / `nano_ros_deploy(...)`
+  (CMake), plus Kconfig on Zephyr.
 
 ## Next Step
 

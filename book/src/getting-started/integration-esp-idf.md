@@ -40,8 +40,7 @@ my_idf_app/
 ├── main/
 │   ├── CMakeLists.txt             # `idf_component_register(REQUIRES nano-ros …)`
 │   ├── idf_component.yml          # declares nano-ros as a managed dependency
-│   ├── app_main.c | app_main.cpp
-│   └── nros.toml                  # (optional) runtime locator + domain
+│   └── app_main.c | app_main.cpp
 └── components/                    # (optional) local components override
 ```
 
@@ -117,7 +116,7 @@ patched QEMU.
 official ROS 2 demo talker. If no `Publishing:` line:
 
 1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
-   must carry SSID + password OR your `nros.toml` must.
+   must carry SSID + password.
 2. Wrong locator — confirm host running `zenohd` is on the same
    Wi-Fi subnet (or routable to it). NAT will block discovery.
 3. `idf.py menuconfig` shows the `Component config → nano-ros` submenu

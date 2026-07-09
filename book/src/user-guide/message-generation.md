@@ -64,7 +64,7 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_project
-nros generate-rust
+nros sync
 ```
 
 This will:
@@ -72,6 +72,11 @@ This will:
 2. Resolve transitive dependencies (ament index + bundled interfaces)
 3. Filter to interface packages (those with msg/srv/action)
 4. Generate bindings to `generated/` directory
+5. Write the `[patch.crates-io]` entries into `.cargo/config.toml`
+
+(`nros generate-rust` is the codegen-only primitive — same steps 1–4
+with no patch side-effects; add `--generate-config` to also write the
+patches.)
 
 **Step 3: Add dependencies to Cargo.toml**
 
@@ -129,7 +134,7 @@ std_msgs = { version = "*", default-features = false }
 **Step 3:** Generate bindings with git patches:
 ```bash
 source /opt/ros/humble/setup.bash
-nros generate-rust --config --nano-ros-git
+nros generate-rust --generate-config --nano-ros-git
 ```
 
 This generates `.cargo/config.toml` with git-based patches:
@@ -158,7 +163,8 @@ nros generate-rust [OPTIONS]
 Options:
       --manifest <PATH>       Path to package.xml [default: package.xml]
   -o, --output <DIR>          Output directory [default: generated]
-      --config                Generate .cargo/config.toml with [patch.crates-io] entries
+      --generate-config       Generate .cargo/config.toml with [patch.crates-io] entries
+                              (alias: --config)
       --nano-ros-path <PATH>  Path to nros crates (for config patches, local dev)
       --nano-ros-git          Use nros git repo for config patches (external users)
       --force                 Overwrite existing bindings

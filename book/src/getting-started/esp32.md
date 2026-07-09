@@ -53,35 +53,30 @@ Each example is a standalone Cargo package targeting
 
 ```text
 examples/qemu-esp32-baremetal/rust/talker/
-├── Cargo.toml
+├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-esp32-baremetal]
 ├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
-├── nros.toml                  # ethernet transport + zenoh locator
 ├── package.xml
 ├── generated/                 # codegen output — build.rs runs
 │                              #   `nros generate-rust` on first
 │                              #   `cargo build`; gitignored.
-└── src/main.rs                # esp-hal init → nros_app_main
+└── src/                       # lib.rs component class + main.rs entry
 ```
 
 ## Configure
 
-`nros.toml` carries the transport stack. The QEMU ESP32 board uses an
-ethernet transport via `nros-board-esp32-qemu`. Verbatim from
-[`examples/qemu-esp32-baremetal/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-esp32-baremetal/rust/talker/nros.toml):
+Deploy config lives in the app's `Cargo.toml` (baked at compile time;
+the board's default `Config` supplies the remaining smoltcp knobs like
+the MAC). The QEMU ESP32 board uses OpenETH ethernet via
+`nros-board-esp32-qemu`. Verbatim from
+[`examples/qemu-esp32-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-esp32-baremetal/rust/talker/Cargo.toml):
 
 ```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
+[package.metadata.nros.deploy.qemu-esp32-baremetal]
+rmw       = "zenoh"
 domain_id = 0
-
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.50/24"
-mac     = "02:00:00:00:00:01"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7454"
+ip        = "10.0.2.50"
+gateway   = "10.0.2.2"
+locator   = "tcp/10.0.2.2:7454"
 ```
 
 ## Build

@@ -41,24 +41,21 @@ standalone Cargo (Rust) or CMake (C / C++) project under
 ```text
 examples/qemu-arm-freertos/
 ├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
-│   ├── Cargo.toml
+│   ├── Cargo.toml                  # deps + [package.metadata.nros.deploy.freertos]
 │   ├── .cargo/config.toml          # target + QEMU runner
-│   ├── nros.toml                   # network + zenoh locator + scheduling
 │   ├── package.xml
 │   ├── generated/                  # codegen output — build.rs runs
 │   │                               #   `nros generate-rust` on first
 │   │                               #   `cargo build`; gitignored.
-│   └── src/main.rs
+│   └── src/lib.rs                  # the component class; nros::main! generates the entry
 ├── c/talker/                 # CMake project, add_subdirectory consumption
-│   ├── CMakeLists.txt
-│   ├── nros.toml
+│   ├── CMakeLists.txt              # targets + nano_ros_deploy(...)
 │   ├── package.xml
-│   └── src/main.c
+│   └── src/Talker.c
 └── cpp/talker/               # CMake C++14 project
     ├── CMakeLists.txt
-    ├── nros.toml
     ├── package.xml
-    └── src/main.cpp
+    └── src/Talker.cpp
 ```
 
 The Rust `Cargo.toml` pulls the FreeRTOS board crate
@@ -70,42 +67,40 @@ nano_ros_link_rmw(<target> RMW zenoh)` pattern with
 
 ## Configure
 
-Network + Zenoh + scheduling live in `nros.toml` (parsed by the
-board crate at boot). Verbatim from the in-tree
-[`examples/qemu-arm-freertos/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-freertos/rust/talker/nros.toml):
+Deploy config (router locator, domain, RMW) is declared in the build
+manifest and **baked at compile time** — there is no config file on the
+device. Verbatim from the in-tree
+[`examples/qemu-arm-freertos/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-freertos/rust/talker/Cargo.toml):
 
 ```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
+[package.metadata.nros.deploy.freertos]
+board     = "qemu-mps2-an385"
+rmw       = "zenoh"
 domain_id = 0
-
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.20/24"
-mac     = "02:00:00:00:00:00"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7451"
-
-[node.rt]
-app_priority = 12
-app_stack_bytes = 262144
-zenoh_read_priority = 16
-zenoh_read_stack_bytes = 5120
-zenoh_lease_priority = 16
-zenoh_lease_stack_bytes = 5120
-poll_priority = 16
-poll_interval_ms = 5
+locator   = "tcp/10.0.2.2:7447"
 ```
+
+The C / C++ trees declare the same in their `CMakeLists.txt`:
+
+```cmake
+nano_ros_deploy(
+    TARGET     freertos
+    RMW        ${NROS_RMW}
+    DOMAIN_ID  0
+    LOCATOR    "tcp/10.0.2.2:7447")
+```
+
+Task stacks / priorities come from the board crate's defaults (Cargo
+features), not a config file — see the
+[Configuration Guide](../user-guide/configuration.md).
 
 The `10.0.2.0/24` subnet is QEMU Slirp's default; `10.0.2.2` is the
 Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
-Per-language test-fixture ports: Rust → 7451, C → 7551, C++ → 7651.
-The talker / listener under each `<lang>/` uses the matching port;
-start `zenohd` on the one you intend to test against. The C / C++
-example trees ship their own `nros.toml` with the matching port.
+Ports: the shipped examples dial host port **7447**. The prebuilt
+*test fixtures* bake per-language ports instead (Rust → 7451, C → 7551,
+C++ → 7651) so suites run in parallel; `just freertos talker` boots the
+fixture, so pair it with `just freertos zenohd` (listens on 7451).
 
 ## Build
 
@@ -132,20 +127,18 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 ## Run
 
 ```bash
-# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451).
-#    The just recipe wraps `zenohd --listen tcp/127.0.0.1:7451
-#    --no-multicast-scouting` (the D.2 PATH shim resolves zenohd from
-#    `~/.nros/sdk/zenohd/<v>/bin/zenohd`):
+# 1. Start zenohd on the host. The recipe resolves the provisioned
+#    binary (build/zenohd/ or ~/.nros/sdk) and listens on the fixture
+#    port 7451 (Slirp forwards guest 10.0.2.2:<p> → host:<p>):
 just freertos zenohd &
-# Equivalent, if the recipe isn't available or you want the literal
-# invocation (works as long as `zenohd` is on PATH):
-zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting &
 
-# 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
-#    with the LAN9118 + Slirp wiring the example expects; works for
-#    Rust as well (it builds + boots the in-tree binary):
+# 2. Boot the talker fixture in QEMU. The just recipe wraps
+#    qemu-system-arm with the LAN9118 + Slirp wiring the example expects:
 just freertos talker
-# Or, single-language, in the Rust example dir:
+
+# Or run the copy-out example by hand — it dials host port 7447
+# (its deploy locator above), so start the router there instead:
+just native zenohd &   # listens on 7447
 cd examples/qemu-arm-freertos/rust/talker
 cargo run --release
 
