@@ -351,6 +351,15 @@ doctor:
         echo "  [MISSING] kconfig-frontends-nox (run: just workspace apt-packages)"
         fail=1
     fi
+    # genromfs — builds the `etc/` ROMFS image for the riscv rv-virt board
+    # (`just nuttx build-riscv-c`). Arm's config skips ROMFS, so this only
+    # bites the riscv lane (`Board.mk … genromfs: command not found`).
+    if command -v genromfs &>/dev/null; then
+        echo "  [OK] genromfs (riscv rv-virt ROMFS)"
+    else
+        echo "  [MISSING] genromfs — needed by 'just nuttx build-riscv-c' (run: just workspace apt-packages)"
+        fail=1
+    fi
     # Phase 127.B.5 — NuttX DDS RTPS multi-instance tests rely on
     # mcast-style cross-process delivery between two QEMU processes.
     # QEMU 6.2's `socket,mcast=` cannot do this reliably; the

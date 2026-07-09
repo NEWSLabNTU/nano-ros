@@ -520,6 +520,11 @@ apt-packages:
     check_apt cmake                          cmake
     check_apt socat                          socat
     check_apt gcc-riscv64-unknown-elf        riscv64-unknown-elf-gcc
+    # genromfs: builds the `etc/` ROMFS image for the riscv rv-virt NuttX board
+    # (`just nuttx build-riscv-c`); the arm board's config doesn't use ROMFS, so
+    # this only surfaces on the riscv lane. Without it the build dies at
+    # `Board.mk … etctmp.c … genromfs: command not found`.
+    check_apt genromfs                       genromfs
     if [ -f /usr/include/mbedtls/ssl.h ]; then
         printf "  %-40s %s\n" "libmbedtls-dev" "[already installed]"
     else

@@ -63,7 +63,7 @@ fi
 if [ "${OSTYPE:-}" = linux* ] || command -v dpkg >/dev/null 2>&1; then
     declare -A APT_FOR_PLATFORM=(
         [freertos]="gcc-arm-none-eabi"
-        [nuttx]="gcc-arm-none-eabi kconfig-frontends"
+        [nuttx]="gcc-arm-none-eabi kconfig-frontends genromfs"
         [threadx]="gcc-arm-none-eabi"
         [bare-metal]="gcc-arm-none-eabi"
     )
