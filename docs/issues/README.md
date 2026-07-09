@@ -44,6 +44,33 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#172** — [Onboarding doc-drift batch](0172-onboarding-doc-drift-batch.md): 13 string-level
+  fixes from the 2026-07-09 UX audit — AGENTS.md still cites the phase-222-removed `nros
+  build`/`deploy` verbs, `examples/threadx-riscv64/` path wrong in 4 pages, `cli.md` missing
+  `generate-px4-msgs`/`codegen`/`generate-rust` entries + a false "no `nros release` verb" claim,
+  README understates ROS 2/cmake prerequisites + omits the ros-launch-manifest submodule init,
+  three unreconciled bootstrap routes, `nros setup --list` on stderr.
+- **#171** — [No external distribution path](0171-no-external-distribution-path.md): every
+  integrate-into-my-project surface (Zephyr module, CMake, ESP-IDF, PIO, Rust crates, the `nros`
+  CLI itself) roots at a full monorepo clone — CLI + crates `publish = false`,
+  `find_package(NanoRos)` removed in Phase 140, registry publishes docs-only. Plus false
+  availability claims to truth-fix now: `cargo install nros-cli` READMEs, Arduino in
+  `library.json`, phantom PIO manifest paths in `registry-publishing.md`.
+- **#170** — [Leaf examples ship no README](0170-leaf-examples-no-copyout-readme.md): the
+  canonical copy-out leaves (`native/rust/{talker,listener}`, nearly all C/C++/QEMU/Zephyr
+  leaves) carry zero instructions when copied out, contradicting RFC-0026;
+  `examples/README.md` also still mixes Phase-140-era consumption text with the current
+  `-DNANO_ROS_ROOT` contract.
+- **#169** — [Book config migration never propagated](0169-book-config-migration-never-propagated.md):
+  15 book pages (several phase-277-fresh) still document per-example `nros.toml`/`config.toml` —
+  zero such files exist; the real shapes are `[package.metadata.nros.deploy.*]` +
+  `nano_ros_deploy()` + `system.toml`. Multiple 404 GitHub links;
+  `user-guide/configuration.md` needs a full rewrite; `message-generation.md` contradicts the
+  `nros sync` model.
+- **#168** — [zenohd install split-brain](0168-zenohd-install-split-brain-broken-just-native-zenohd.md):
+  contributor route installs `build/zenohd/zenohd`, user route `~/.nros/sdk/zenohd/*/bin`; the
+  three run docs each assume a different launch command and `just native zenohd` calls bare
+  `zenohd` that nothing puts on PATH — the README-verbatim first run fails at "start the router".
 - **#167** — [riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside
   `ZenohRmw::open`](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults with
   an instruction-access fault (`EPC=RA=0x4`) at boot, exposed by phase-285 W2's `start_nuttx_riscv`
