@@ -261,6 +261,12 @@ class NativeBoard {
 #endif
 #endif
 
+// #166 / phase-286 W1 — runtime locator override (see nros/platform.h). Declared
+// here (not via a platform-header include) to keep main.hpp's include surface
+// minimal; the symbol is a C-ABI export of the linked platform impl. Returns a
+// per-test locator on native_sim (from `-testargs --nros-locator`), else NULL.
+extern "C" const char* nros_runtime_locator_override(void);
+
 class ZephyrBoard {
   public:
     /// Compile-time domain id (CLAUDE.md embedded rule — NOT a runtime
@@ -286,7 +292,15 @@ class ZephyrBoard {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
+        // #166 / phase-286 W1 — native_sim test parallelism: a per-test
+        // `-testargs --nros-locator=<loc>` overrides the build-time-baked locator
+        // so each test dials its own ephemeral router. `nros_runtime_locator_override`
+        // is non-NULL only on native_sim (nros-platform-zephyr, which every
+        // ZephyrBoard image links); real embedded returns NULL and `locator` stands.
+        const char* override_loc = nros_runtime_locator_override();
+        const char* effective_loc =
+            (override_loc != nullptr && override_loc[0] != '\0') ? override_loc : locator;
+        nros::Result r = nros::init(effective_loc, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {

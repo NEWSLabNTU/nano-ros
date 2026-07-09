@@ -2234,11 +2234,14 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
-    )
-    .expect("Failed to start zenohd");
+    // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override
+    // (the C++ `ZephyrBoard::run_components` reads `nros_runtime_locator_override`
+    // fed by `-testargs --nros-locator`), so this test drops its fixed baked port
+    // and runs parallel with its siblings.
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
     let talker_binary = get_zephyr_cpp_talker_native_sim();
     let listener_binary = get_zephyr_cpp_listener_native_sim();
 
@@ -2249,7 +2252,9 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     // Probe for the listener's output readiness marker so we don't
     // race the publisher against a still-cold_booting native_sim
     // under full-suite parallel load (Phase 89.12 flake).
-    let listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim).unwrap();
+    let listener =
+        ZephyrProcess::start_with_locator(&listener_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
     let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
     if !listener_ready.contains("Waiting for messages") {
         panic!(
@@ -2260,7 +2265,9 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     let mut listener = listener;
 
     // Start talker
-    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim).unwrap();
+    let mut talker =
+        ZephyrProcess::start_with_locator(&talker_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
 
     // Probe for the 3rd publish + 3rd Received, early-exiting
     // instead of a fixed 8 s wait that couldn't keep up with
