@@ -113,8 +113,9 @@ Re-categorized the 24 remaining fails:
   the cyclone-completion diagnostic reads true instead of "server requests=0".
 
 **Net:** (a) done + validated; (b) resolved via #163 (rust lanes green, modulo
-the local staleness artifact); the live residuals are **XRCE-C/C++ delivery** and
-**cyclone action/service completion** — both cyclone/xrce-C runtime, own follow-ups.
+the local staleness artifact); the live residuals are now their own issues —
+**XRCE-C/C++ delivery → #174** and **cyclone action/service completion → #175**
+(and the zephyr-pub→native-sub delivery bug below → **#173**).
 
 **Update (phase-286 W1 slice 3, 2026-07-09) — zephyr-pub → native-sub delivery.**
 Converting the rust pubsub cross tests to per-test ephemeral routers (for

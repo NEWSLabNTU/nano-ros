@@ -44,6 +44,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#175** — [Zephyr Cyclone action/service completion](0175-zephyr-cyclone-action-service-completion.md):
+  native_sim Cyclone server RECEIVES the goal/request but the client never completes
+  (`dds_{c,cpp,rs}_action` = goal-received/client-not-completed; cpp service = 1/3 replies). Pub/sub
+  works on the same fixture — specific to the request-response reply path. From the #164 re-triage.
+- **#174** — [Zephyr XRCE C/C++ 0-delivery](0174-zephyr-xrce-c-cpp-no-delivery.md): the native_sim
+  XRCE **C/C++** lanes deliver nothing though the agent starts; #163 fixed only the pure-Rust XRCE
+  images (now green), the `libnros_c` XRCE path is untouched. From the #164 re-triage.
+- **#173** — [Zephyr pub → native sub no delivery](0173-zephyr-pub-to-native-sub-no-delivery.md): a
+  Zephyr native_sim zenoh-pico **publisher** delivers nothing to a **native** subscriber through a
+  shared router (fails serially; `bidirectional` shows Native→Zephyr=41 / Zephyr→Native=0 in one
+  router). Zephyr↔Zephyr + Native→Zephyr work. Un-masked by phase-286 W1 slice 3.
 - **#171** — [No external distribution path](0171-no-external-distribution-path.md): every
   integrate-into-my-project surface (Zephyr module, CMake, ESP-IDF, PIO, Rust crates, the `nros`
   CLI itself) roots at a full monorepo clone — CLI + crates `publish = false`,
