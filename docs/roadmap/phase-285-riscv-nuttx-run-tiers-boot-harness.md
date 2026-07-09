@@ -83,15 +83,21 @@ tiers) + phase-130/#130 (nuttx entry eth0).
       → vtable[0] = open_trampoline<ZenohRmw>  (C-FFI vtable @0x80089314 intact)
         → ZenohRmw::open → zenoh-pico session bring-up → garbage fn-ptr → fault
   ```
-  Every layer down to `open_trampoline<ZenohRmw>` enters and never returns; the bad
-  pointer is read **inside `ZenohRmw::open` / zenoh-pico open**. Leading cause:
-  zpico↔zenoh-pico config ABI mismatch (issue #135 pattern — flag-gated struct
-  fields shift a fn-ptr offset) or an unwired transport init on riscv. Full chain
-  + hypotheses in issue #167.
-- [ ] W2.b.2 **Fix #167** — trace `ZenohRmw::open` → zenoh-pico `_z_open` on rv-virt
-  to the exact struct field/config flag whose pointer reads `~0x4`; compare arm-nuttx
-  zenoh-config injection + generated-config sharing vs riscv; rebuild the riscv
-  fixture after any zpico config change. **This crash gates W2.b → W3–W6.**
+  The chain is symbolized down to `ZenohRmw::open` / zenoh-pico session bring-up.
+- [x] W2.b.2 **Root cause CONFIRMED (2026-07-09, qemu re-enabled): timing-dependent
+  virtio-net IRQ re-entrancy RACE — NOT config.** A `-d exec` trace of the same image
+  runs clean to idle (no `riscv_exception`); every gdb run crashes — QEMU slirp
+  packet timing is host-timed, not `-icount`-controlled. zenoh's TCP connect runs the
+  full TX poll synchronously with the virtio-net IRQ live (`netdev_upper_txavail →
+  devif_poll → virtio_net_send → virtqueue_kick`, mutating the TX vring); a virtio
+  IRQ mid-poll re-enters the vring → corrupt descriptor/ra → `jr` to `~0x4`. **arm
+  boots the same image bare without panicking.** Ruled out by build+boot (4 config
+  fixes failed): stack sizes, IOB config, full arm net-config mirror. The earlier
+  "garbage vtable/ABI-mismatch" leads were transient heap reuse. Details in #167.
+- [ ] W2.b.3 **Fix #167 — DEFERRED (documented known limitation, 2026-07-09).** Needs
+  a vendored NuttX virtio-net/netdev IRQ-protection change (fork-branch workflow) OR a
+  boot/connect-sequencing redesign — a maintainer decision, not a defconfig edit.
+  **This crash gates W2.b → W3–W6; riscv-nuttx stays off-matrix (#165) until fixed.**
 
 ### W3 — eth0 on the riscv entry path (#130 shape)
 - [ ] W3.a Add `configure_entry_eth0` / `entry_net_init` to the riscv board

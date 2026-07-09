@@ -108,7 +108,14 @@ riscv code path that is wrong per se.
 - `CONFIG_NETDEV_WORK_THREAD` is **not a real Kconfig symbol** in this NuttX;
   olddefconfig drops it. virtio-net leaves `rxtype` = 0 (`NETDEV_RX_WORK`).
 
-## Fix direction (needs a decision — vendored, or design)
+## Decision (2026-07-09)
+
+**Documented known limitation; riscv-nuttx stays off-matrix (per #165).** The fix
+is a vendored-NuttX concurrency change (fork-branch workflow) or a boot/connect
+sequencing redesign — deferred to when a maintainer can take it. Issue stays
+`open`; the root cause and repro below are the handoff.
+
+## Fix direction (when picked up — vendored, or design)
 
 A defconfig change will **not** fix this; the exposure is in the vendored NuttX
 netdev/virtio-net TX path. Candidates:
