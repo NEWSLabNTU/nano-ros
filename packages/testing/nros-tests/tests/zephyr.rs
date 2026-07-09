@@ -88,15 +88,14 @@ fn test_zephyr_talker_to_listener_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!(
-        "zenohd started on port {}",
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
-    );
+    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override. The
+    // image reads `-testargs --nros-locator=<loc>` and dials THIS router instead
+    // of its build-time-baked port, so this test no longer needs the fixed
+    // per-(variant,lang) port and no longer has to serialize against its siblings.
+    eprintln!("Starting per-test zenohd router (ephemeral port)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd started on {locator}");
 
     // Resolve prebuilt examples (to separate directories)
     let talker_binary = get_zephyr_talker_native_sim();
@@ -107,8 +106,9 @@ fn test_zephyr_talker_to_listener_e2e() {
 
     // Start listener first (so it creates its subscriber before talker publishes)
     eprintln!("Starting Zephyr listener...");
-    let listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr listener");
+    let listener =
+        ZephyrProcess::start_with_locator(&listener_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr listener");
 
     // Wait for listener to reach subscriber readiness before starting
     // talker. Under parallel load the native_sim cold-boot +
@@ -126,8 +126,9 @@ fn test_zephyr_talker_to_listener_e2e() {
 
     // Start talker
     eprintln!("Starting Zephyr talker...");
-    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr talker");
+    let mut talker =
+        ZephyrProcess::start_with_locator(&talker_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr talker");
 
     // Wait for communication
     eprintln!("Waiting for Zephyr talker → listener communication...");

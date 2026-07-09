@@ -1,6 +1,6 @@
 # Phase 286 — Zephyr test-suite health & parallelism (#166 speedup + #164 residuals)
 
-Status: **Draft — 2026-07-09** · Drives issue #166 (test parallelism) +
+Status: **In progress (W1 slice 1) — 2026-07-09** · Drives issue #166 (test parallelism) +
 the live residuals from issue #164 (zephyr family re-triage) to resolution ·
 Follows #163 (resolved — pure-Rust backend restored).
 
@@ -104,12 +104,20 @@ option is the sole channel**, registered exactly like `--seed`:
 so real embedded builds compile it out.
 
 **Implementation plan (vertical slices).**
-1. **Infra + Rust slice (first, provable alone):** add the `--nros-locator` option
-   + `static` + `const char *nros_runtime_locator_override(void)` to a native_sim
-   TU under `nros-platform-zephyr` (guarded); FFI-bind it in `nros`; have
-   `zephyr_component_main!` prefer it over `BAKED_LOCATOR`. Harness: allocate an
-   ephemeral port, start a per-test zenohd, pass `--nros-locator`. Prove on the
-   rust pubsub lane, then flip `qemu-zephyr-pubsub-rust` off `max-threads = 1`.
+1. **Infra + Rust slice (first, provable alone) — DONE 2026-07-09.** Added
+   `nros_runtime_locator_override()` to `nros-platform-zephyr/src/platform.c`
+   (`CONFIG_ARCH_POSIX`-guarded; reads `-testargs --nros-locator=<loc>` via
+   `nsi_get_test_cmd_line_args`) + its decl in `nros/platform.h`;
+   `zephyr_component_main!` (`nros/src/lib.rs`) prefers it over `BAKED_LOCATOR`;
+   harness `ZephyrProcess::start_with_locator` passes `-testargs …`, and
+   `test_zephyr_talker_to_listener_e2e` now spins its own `ZenohRouter::start_unique()`
+   (ephemeral) + override. **Proven:** the test passes over ephemeral port 42391
+   with NO router on the baked port 7456 (delivery is impossible unless the images
+   dialed the override). `nros` still compiles for non-zephyr (macro is
+   `rmw-cffi`-gated). Group-flip deferred to slice 3 — `qemu-zephyr-pubsub-rust`
+   has 4 other members (`zephyr_to_native_e2e`, `native_to_zephyr_e2e`,
+   `bidirectional_native_zephyr_e2e`, `workspace_entry_native_sim_e2e`) still on
+   fixed ports; flipping before they convert would collide.
 2. **C/C++ read sites:** honor the override where `app_config.h` sets
    `.locator = CONFIG_NROS_ZENOH_LOCATOR` (C) and `main.hpp`'s `NROS_ENTRY_LOCATOR`
    (C++) — a runtime `if (override) use it` at entry, not the header const.

@@ -416,6 +416,22 @@ void nros_platform_register_log_writer(
     nros_platform_log_writer_fn_t writer,
     nros_platform_log_flush_fn_t  flusher);
 
+/*
+ * Runtime locator override (nano-ros #166 / phase-286 W1).
+ *
+ * Returns a middleware locator to use INSTEAD of the build-time-baked default
+ * (`CONFIG_NROS_ZENOH_LOCATOR` / `option_env!("NROS_LOCATOR")`), or NULL to keep
+ * the bake. Only the native_sim/native_posix platform impl returns non-NULL
+ * (from `-testargs --nros-locator=<loc>`); every real-embedded impl returns
+ * NULL. Entry points (Rust `zephyr_component_main!`, the C/C++ entries) prefer
+ * this when non-NULL so native_sim tests can each dial a distinct per-test
+ * zenohd, retiring the shared-baked-port serialization.
+ *
+ * The returned pointer is owned by the platform (argv-backed) and valid for the
+ * process lifetime; the caller must not free it.
+ */
+const char* nros_runtime_locator_override(void);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

@@ -141,6 +141,31 @@ impl ZephyrProcess {
     /// # Returns
     /// A managed Zephyr process
     pub fn start(binary: &Path, platform: ZephyrPlatform) -> TestResult<Self> {
+        Self::start_inner(binary, platform, &[])
+    }
+
+    /// #166 / phase-286 W1 — start a native_sim image with a per-test router
+    /// locator override, passed as `-testargs --nros-locator=<locator>`. The
+    /// image's `nros_runtime_locator_override()` reads it (via
+    /// `nsi_get_test_cmd_line_args`) and dials THIS locator instead of the
+    /// build-time-baked port, so each test can run its own ephemeral zenohd and
+    /// the zenoh e2e lanes need not serialize on a shared baked port.
+    ///
+    /// native_sim only: `-testargs` is a native-simulator feature; QEMU /
+    /// hardware images ignore the override and keep their baked locator.
+    pub fn start_with_locator(
+        binary: &Path,
+        platform: ZephyrPlatform,
+        locator: &str,
+    ) -> TestResult<Self> {
+        Self::start_inner(binary, platform, &[format!("--nros-locator={locator}")])
+    }
+
+    fn start_inner(
+        binary: &Path,
+        platform: ZephyrPlatform,
+        testargs: &[String],
+    ) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
                 "Zephyr binary not found: {}",
@@ -166,6 +191,13 @@ impl ZephyrProcess {
                 cmd.arg(format!("--seed={}", seed))
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
+                // #166 — everything after `-testargs` goes to the native-sim
+                // "test args" argv (bypassing native_sim's own option parser,
+                // which would abort on an unregistered `--nros-locator`).
+                if !testargs.is_empty() {
+                    cmd.arg("-testargs");
+                    cmd.args(testargs);
+                }
                 #[cfg(unix)]
                 set_new_process_group(&mut cmd);
                 cmd.spawn()?

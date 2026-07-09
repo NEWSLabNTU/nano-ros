@@ -540,3 +540,55 @@ void nros_platform_log_flush(void) {
     k_yield();
 #endif
 }
+
+/* ============================================================
+ * Runtime locator override — nano-ros #166 / phase-286 W1.
+ *
+ * native_sim test parallelism: the test harness starts a per-test zenohd on an
+ * ephemeral port and launches the image with `-testargs --nros-locator=<loc>`.
+ * Reading that here (preferred over the build-time-baked
+ * `CONFIG_NROS_ZENOH_LOCATOR`) gives every test a distinct router port, so the
+ * zenoh e2e lanes stop serializing on one shared baked port.
+ *
+ * Why `-testargs`: native_sim's own option parser ABORTS on an unregistered
+ * option ("Incorrect option '--nros-locator=…'"). Everything after `-testargs`
+ * is instead collected into the native-simulator "test args" argv, bypassing
+ * that parser; the app reads it via the native-simulator public API
+ * `nsi_get_test_cmd_line_args`. No NSI_TASK / option-struct registration needed.
+ *
+ * native_sim / native_posix only (`CONFIG_ARCH_POSIX`): on real embedded there
+ * is no host argv channel, so the hook returns NULL and the baked locator
+ * stands. The `loc` form matches the bake — `tcp/host:port` (zenoh) or bare
+ * `host:port` (xrce), exactly as the example `build.rs` unifies `NROS_LOCATOR`.
+ * ============================================================ */
+#if defined(CONFIG_ARCH_POSIX)
+/* Provided by the native-simulator runtime (linked into every native_sim
+ * image). Prototype declared locally so this module does not couple to the
+ * board-local `<nsi_cmdline.h>` include path. */
+extern void nsi_get_test_cmd_line_args(int *argc, char ***argv);
+
+const char *nros_runtime_locator_override(void) {
+    static const char *cached;
+    static int resolved;
+    if (resolved) {
+        return cached;
+    }
+    resolved = 1;
+    cached = NULL;
+    int argc = 0;
+    char **argv = NULL;
+    nsi_get_test_cmd_line_args(&argc, &argv);
+    static const char prefix[] = "--nros-locator=";
+    const size_t plen = sizeof(prefix) - 1;
+    for (int i = 0; argv != NULL && i < argc; i++) {
+        if (argv[i] != NULL && strncmp(argv[i], prefix, plen) == 0 && argv[i][plen] != '\0') {
+            cached = argv[i] + plen;
+        }
+    }
+    return cached;
+}
+#else
+const char *nros_runtime_locator_override(void) {
+    return NULL;
+}
+#endif
