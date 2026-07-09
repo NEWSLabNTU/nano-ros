@@ -116,6 +116,18 @@ Re-categorized the 24 remaining fails:
 the local staleness artifact); the live residuals are **XRCE-C/C++ delivery** and
 **cyclone action/service completion** — both cyclone/xrce-C runtime, own follow-ups.
 
+**Update (phase-286 W1 slice 3, 2026-07-09) — zephyr-pub → native-sub delivery.**
+Converting the rust pubsub cross tests to per-test ephemeral routers (for
+parallelism) let them actually RUN past the staleness guard, and exposed a
+distinct delivery bug: a **Zephyr publisher's samples never reach a native
+subscriber** through the shared zenoh router. `zephyr_to_native_e2e` fails the
+same way SERIALLY (native listener logs 0 `Received:` from the Zephyr talker), and
+`bidirectional_native_zephyr_e2e` pins the asymmetry inside ONE router —
+Native→Zephyr delivered 41 samples while Zephyr→Native delivered 0. Zephyr↔Zephyr
+(`zephyr_talker_to_listener_e2e`) and Native→Zephyr both work, so it is
+specifically the zephyr-pico **publisher → host-zenohd → native-subscriber** path.
+Not a port/parallelism artifact (fails serial). Own follow-up.
+
 ## References
 
 `packages/testing/nros-tests/tests/zephyr.rs`, archived issue 0157 (the

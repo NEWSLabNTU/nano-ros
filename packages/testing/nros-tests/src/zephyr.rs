@@ -743,10 +743,18 @@ pub fn get_prebuilt_zephyr_example(
     };
 
     let binary = crate::fixtures::require_prebuilt_binary(&binary_path)?;
-    if is_binary_stale(&binary, example_name) {
+    // Honor the same bypass the sibling fixture guards do (native/cmake/rust
+    // paths all check this) — an mtime-heuristic false-positive (#147) shouldn't
+    // block a run the caller knows was built another way. Previously this guard
+    // omitted the check, so a content-current image with a newer-mtime source
+    // (e.g. an inert edit) wrongly aborted.
+    if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_none()
+        && is_binary_stale(&binary, example_name)
+    {
         return Err(TestError::BuildFailed(format!(
             "Zephyr fixture binary is stale: {}\n\
-             Run `just zephyr build-fixtures` before running Zephyr tests.",
+             Run `just zephyr build-fixtures` before running Zephyr tests \
+             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
             binary.display()
         )));
     }

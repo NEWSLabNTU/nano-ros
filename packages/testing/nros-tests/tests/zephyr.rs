@@ -236,13 +236,14 @@ fn test_zephyr_to_native_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    // Start zenohd router
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override (both
+    // the native listener via NROS_LOCATOR and the Zephyr talker via
+    // `-testargs --nros-locator` dial THIS router), so this test no longer needs
+    // the fixed per-(variant,lang) port and can run parallel with its siblings.
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
 
     // Build native listener
     let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
@@ -258,14 +259,7 @@ fn test_zephyr_to_native_e2e() {
     let mut listener_cmd = Command::new(listener_path);
     // Both native and Zephyr NSOS processes connect to zenohd on localhost
     listener_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -276,8 +270,9 @@ fn test_zephyr_to_native_e2e() {
 
     // Start Zephyr talker
     eprintln!("Starting Zephyr talker...");
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr talker");
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr talker");
 
     // Wait for communication
     eprintln!("Waiting for Zephyr → Native communication...");
@@ -339,13 +334,11 @@ fn test_native_to_zephyr_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    // Start zenohd router
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override.
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
 
     // Build native talker
     let talker_path = build_native_talker().expect("Failed to build native-rs-talker");
@@ -356,8 +349,9 @@ fn test_native_to_zephyr_e2e() {
 
     // Start Zephyr listener first (so it subscribes before talker publishes)
     eprintln!("Starting Zephyr listener...");
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr listener");
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr listener");
 
     let _ = zephyr.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
@@ -368,14 +362,7 @@ fn test_native_to_zephyr_e2e() {
     let mut talker_cmd = Command::new(talker_path);
     // Both connect to zenohd on localhost
     talker_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
@@ -445,13 +432,13 @@ fn test_bidirectional_native_zephyr_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    // Start zenohd router
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override (all
+    // four peers dial THIS router: natives via NROS_LOCATOR, Zephyr images via
+    // `-testargs --nros-locator`).
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
 
     // Build all binaries
     let native_talker_path = build_native_talker().expect("Failed to build native-rs-talker");
@@ -472,14 +459,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     let mut native_listener_cmd = Command::new(native_listener_path);
     native_listener_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut native_listener =
         ManagedProcess::spawn_command(native_listener_cmd, "native-rs-listener")
@@ -487,9 +467,12 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     // Note: Running multiple Zephyr processes simultaneously can cause issues
     // due to TAP interface conflicts. For this test, we use a staggered approach.
-    let mut zephyr_listener =
-        ZephyrProcess::start(&zephyr_listener_binary, ZephyrPlatform::NativeSim)
-            .expect("Failed to start Zephyr listener");
+    let mut zephyr_listener = ZephyrProcess::start_with_locator(
+        &zephyr_listener_binary,
+        ZephyrPlatform::NativeSim,
+        &locator,
+    )
+    .expect("Failed to start Zephyr listener");
 
     native_listener
         .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
@@ -501,20 +484,17 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     let mut native_talker_cmd = Command::new(native_talker_path);
     native_talker_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut native_talker = ManagedProcess::spawn_command(native_talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");
 
-    let mut zephyr_talker = ZephyrProcess::start(&zephyr_talker_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr talker");
+    let mut zephyr_talker = ZephyrProcess::start_with_locator(
+        &zephyr_talker_binary,
+        ZephyrPlatform::NativeSim,
+        &locator,
+    )
+    .expect("Failed to start Zephyr talker");
 
     eprintln!("Waiting for bidirectional communication...");
     // 45 s: both directions gate on a slow native_sim Zephyr endpoint (issue

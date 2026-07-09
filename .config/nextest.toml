@@ -173,7 +173,19 @@ max-threads = 3
 [test-groups.qemu-zephyr]
 max-threads = 6
 
+# #166 / phase-286 W1 — no longer serial. The 4 rust pubsub e2e each spin their
+# own ephemeral zenohd and pass the locator to the images via
+# `-testargs --nros-locator` (native_sim runtime override), so they no longer
+# share a fixed baked router port and run in parallel. Capped at 4 to bound host
+# load (each test boots native_sim images + a zenohd). `workspace_entry` is NOT
+# here — it uses the ws-runtime entry (not `zephyr_component_main!`), which does
+# not yet read the override, so it keeps its own serial group below.
 [test-groups.qemu-zephyr-pubsub-rust]
+max-threads = 4
+
+# workspace-entry image still baks a fixed router port (ws-runtime entry path,
+# override not yet wired — phase-286 follow-up); keep it serial.
+[test-groups.qemu-zephyr-ws-entry]
 max-threads = 1
 
 [test-groups.qemu-zephyr-pubsub-cpp]
@@ -509,8 +521,16 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 [[profile.default.overrides]]
-filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e) or test(workspace_entry_native_sim_e2e))"
+filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e))"
 test-group = "qemu-zephyr-pubsub-rust"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# #166 — workspace-entry keeps a fixed baked port (override not wired for the
+# ws-runtime entry yet); its own serial group so it can't collide.
+[[profile.default.overrides]]
+filter = "binary(zephyr) and test(workspace_entry_native_sim_e2e)"
+test-group = "qemu-zephyr-ws-entry"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 

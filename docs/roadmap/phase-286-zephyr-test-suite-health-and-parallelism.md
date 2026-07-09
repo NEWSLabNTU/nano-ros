@@ -43,6 +43,27 @@ serial groups. The baked value stays the default so real QEMU / hardware images
 run at host-core width; a full `--test zephyr` wall-clock materially below the
 current ~292 s; no router-port collisions (the #141 hazard) under parallelism.
 
+#### W1 slice 3 — pubsub-rust group parallelized (DONE 2026-07-09)
+
+Converted the 4 rust pubsub e2e (`zephyr_talker_to_listener`, `zephyr_to_native`,
+`native_to_zephyr`, `bidirectional_native_zephyr`) to `ZenohRouter::start_unique()`
++ `start_with_locator`/`NROS_LOCATOR=<ephemeral>`, and flipped
+`qemu-zephyr-pubsub-rust` from `max-threads = 1` → `4`. `workspace_entry` split to
+its own serial group `qemu-zephyr-ws-entry` (ws-runtime entry path — override not
+yet wired). Also fixed a bypass gap: `get_prebuilt_zephyr_example` now honors
+`NROS_SKIP_FIXTURE_CHECK` like the sibling guards (the #147-class mtime
+false-positive otherwise aborts a content-current image after an inert source edit).
+
+**Speedup measured (retries 0, same 4 tests):** SERIAL 152 s → PARALLEL **54 s
+= 2.8×** (wall-clock = slowest test, not the sum; no port collisions). The
+mechanism is proven: `zephyr_talker_to_listener` passes inside the parallel group.
+
+**Uncovered (pre-existing, not parallelism):** the 3 cross tests fail on a
+**zephyr-publisher → native-subscriber** delivery bug — `zephyr_to_native` fails
+identically when run SERIALLY (native listener receives 0 from the Zephyr talker),
+and `bidirectional` shows the asymmetry within ONE router (Native→Zephyr = 41 msgs
+OK, Zephyr→Native = 0). Independent of the port change. Filed as a #164 residual.
+
 #### W1 design findings (2026-07-09 exploration)
 
 **Where the locator is fixed today.** The Rust entry macro
