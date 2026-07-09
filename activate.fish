@@ -35,8 +35,9 @@ else if not set -q NROS_QUIET_ACTIVATE; and not command -v nros >/dev/null 2>&1
     # Phase 222.F.2 — first-run hint (fish mirror of activate.sh §222.F.1).
     # See activate.sh for rationale; NROS_QUIET_ACTIVATE=1 suppresses.
     echo "[nano-ros] CLI not built yet. Run one of:" >&2
-    echo "  ./scripts/bootstrap.sh base      (bare machine)" >&2
-    echo "  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros   (if you have cargo)" >&2
+    echo "  ./scripts/bootstrap.sh base      (recommended; bare machine OK)" >&2
+    echo "  git submodule update --init packages/cli/third-party/ros-launch-manifest \\" >&2
+    echo "    && cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros   (if you have cargo)" >&2
     echo "  ./scripts/install-nros-prebuilt.sh   (tagged checkout; downloads prebuilt)" >&2
     echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 end

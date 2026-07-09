@@ -43,8 +43,10 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 - Rust nightly (edition 2024)
 - `nros setup native --rmw <zenoh|xrce|cyclonedds>` provisions the RMW host
   daemon (zenohd, Micro-XRCE-DDS Agent, or Cyclone DDS) — no manual build step
-- (Optional) ROS 2 Humble with rmw_zenoh_cpp for interop
-- (Optional) cmake for C examples
+- ROS 2 Humble — required for message codegen (`nros sync`/`generate`),
+  CycloneDDS, and every ROS 2 interop path. Only the pre-generated native
+  Rust talker/listener demo runs without it.
+- cmake — required for the C/C++ examples and quick starts
 
 ## Quick Start (Rust)
 
@@ -60,8 +62,9 @@ cd nano-ros
 ./scripts/bootstrap.sh base
 ```
 
-Already have cargo?
-`cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
+Already have cargo? Init the CLI's submodule first, then build:
+`git submodule update --init packages/cli/third-party/ros-launch-manifest &&
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
 Tagged release, no Rust at all? `./scripts/install-nros-prebuilt.sh`.
 
 ### 2. Activate the workspace (every new shell)
@@ -69,6 +72,10 @@ Tagged release, no Rust at all? `./scripts/install-nros-prebuilt.sh`.
 ```bash
 source ./activate.sh          # or: direnv allow / source ./activate.fish
 ```
+
+This puts the built `nros` on PATH and exports the SDK env the builds
+rely on (e.g. `FREERTOS_PORT`) — skipping it is the most common cause
+of first-build failures.
 
 ### 3. Provision a board + RMW
 

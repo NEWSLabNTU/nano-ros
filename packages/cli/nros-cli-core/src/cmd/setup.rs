@@ -856,27 +856,29 @@ fn disposition(index: &SdkIndex, name: &str, host: &str) -> String {
     }
 }
 
+// Listings go to STDOUT (pipeable: `nros setup --list | grep …`);
+// progress/diagnostics elsewhere in this file stay on stderr.
 fn print_list(index: &SdkIndex) {
-    eprintln!("nros setup --list:");
+    println!("nros setup --list:");
     for (name, t) in &index.tool {
-        eprintln!("  [tool]   {name:<22} {}", t.version);
+        println!("  [tool]   {name:<22} {}", t.version);
     }
     for (name, s) in &index.source {
-        eprintln!("  [source] {name:<22} {}", s.version);
+        println!("  [source] {name:<22} {}", s.version);
     }
     for (name, g) in &index.gated {
-        eprintln!("  [gated]  {name:<22} {} (${})", g.version, g.env);
+        println!("  [gated]  {name:<22} {} (${})", g.version, g.env);
     }
 }
 
 fn print_licenses(index: &SdkIndex) {
     if index.gated.is_empty() {
-        eprintln!("nros setup --licenses: no license-gated packages");
+        println!("nros setup --licenses: no license-gated packages");
         return;
     }
-    eprintln!("nros setup --licenses (install these yourself; never fetched):");
+    println!("nros setup --licenses (install these yourself; never fetched):");
     for (name, g) in &index.gated {
-        eprintln!(
+        println!(
             "  {name:<16} {} — set ${}{}",
             g.version,
             g.env,

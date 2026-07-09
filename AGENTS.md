@@ -107,8 +107,10 @@ separate `NEWSLabNTU/nano-ros-sdk` repo's Releases (referenced by URL, not a sub
 
 - `nros setup <board>` / `nros setup --tool <name> [--prefix <dir>]` installs to
   `$NROS_HOME/sdk/<tool>/<version>/` (`.nros-provenance` + `nros-sdk.lock` record it).
-- **`nros` is the single SDK resolver:** `nros build`/`deploy` lazy-install a board's tools and
-  prepend the locked store `bin/` to the child PATH. **Non-`nros` scripts, the test harness, and
+- **`nros` is the single SDK resolver:** platform builds lazy-install a board's index tools on
+  first use (`setup::ensure_tools`; opt out via `NROS_NO_AUTO_SETUP`) and prepend the locked store
+  `bin/` to the child PATH. (The former `nros build`/`deploy` verbs were retired in Phase 222 —
+  `nros doctor` lints for leftovers.) **Non-`nros` scripts, the test harness, and
   CMake do NOT resolve SDK paths — they assume the SDK is given and only check + warn**
   (`nros doctor` / `just <plat> doctor`). Do not re-add store-path probing to test code.
 - `just qemu setup-qemu` / `just zenohd setup` are **thin `nros setup --tool` callers** (install

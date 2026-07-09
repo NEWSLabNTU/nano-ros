@@ -22,7 +22,7 @@ them.
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
 | RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
-| QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/threadx-riscv64/`                                       |
+| QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/qemu-riscv64-threadx/`                                  |
 | QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr / NuttX | Tested   | Zephyr `-b qemu_cortex_a9`, NuttX `qemu-armv7a`                    |
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | Cortex-A SMP   | Armv8-R    | Zephyr 3.7    | Tested (build); license-gated runtime | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r{,-cyclonedds}` + `run-fvp-aemv8r{,-cyclonedds}` |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |

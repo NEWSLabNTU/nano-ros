@@ -49,7 +49,8 @@ the Micro-XRCE-DDS agent for xrce. `nros setup … --rmw <rmw>` installs it.
 ## Project layout
 
 Each example is a standalone Cargo or CMake project under
-`examples/threadx-{linux,riscv64}/<lang>/<example>/`:
+`examples/threadx-linux/` and `examples/qemu-riscv64-threadx/`
+(`<lang>/<example>/` under each):
 
 ```text
 examples/threadx-linux/

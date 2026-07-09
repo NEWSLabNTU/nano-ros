@@ -87,7 +87,7 @@ When a project grows beyond one node, continue with
 | ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
 | Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Verified      |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
-| QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/threadx-riscv64/`                       | Verified      |
+| QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/qemu-riscv64-threadx/`                  | Verified      |
 | Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C    | `examples/threadx-linux/`                         | Verified      |
 | QEMU Cortex-A9 / virt     | Cortex-A9     | NuttX / Zephyr  | Rust C C++ | `examples/nuttx/`, Zephyr `samples/`              | Verified      |
 | Pixhawk 4 / 6X            | STM32F7 / H7  | NuttX (PX4)     | C++       | `integrations/px4/module-template/`               | Ready ⁴       |

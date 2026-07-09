@@ -10,13 +10,22 @@ directly.
 ## Install
 
 The `nros` CLI ships from the in-tree sub-workspace at `packages/cli/`
-(Phase 218). Build it per checkout, then activate the workspace to put
-it on PATH:
+(Phase 218). **Recommended** — bootstrap, then activate the workspace
+to put it on PATH:
 
 ```sh
 ./scripts/bootstrap.sh base
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 ```
+
+Alternatives (same binary, same location):
+
+- Already have cargo:
+  `git submodule update --init packages/cli/third-party/ros-launch-manifest`
+  then `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
+  (bootstrap runs both for you).
+- Tagged checkout, no Rust toolchain: `./scripts/install-nros-prebuilt.sh`
+  (downloads the prebuilt from the nano-ros-sdk Releases).
 
 The resulting binary lives at `packages/cli/target/release/nros`. One
 checkout = one CLI version = one runtime ABI; contributors with
@@ -86,6 +95,30 @@ use the CMake integration.
 | `--output` | output directory | `generated` |
 | `--ros-edition` | `humble`, `iron` | `humble` |
 | `--generate-config` | emit `.cargo/config.toml` patches (Rust only) | off |
+
+### `nros generate-rust [--manifest <path>] [--output <dir>] [--generate-config] [--nano-ros-path <p> | --nano-ros-git] [--force] [--verbose]`
+
+The Rust-only codegen **primitive**. Same binding generation as
+`nros generate rust`, but with **no side-effects** unless asked:
+`--generate-config` (alias `--config`) additionally writes the
+`[patch.crates-io]` entries, pointing at a local checkout
+(`--nano-ros-path`) or the GitHub repo (`--nano-ros-git`). Most
+in-tree workflows use `nros sync` instead, which wraps this plus the
+patch write per consumer.
+
+### `nros generate-px4-msgs`
+
+Generate CDR-serializable `px4_msgs::msg::*` bindings from a PX4
+`.msg` tree — the XRCE/PX4 interop path (see the
+[PX4 starter](../getting-started/integration-px4.md)).
+
+### `nros codegen <resolve-deps|cyclonedds-descriptors|entry> …`
+
+**Internal build-tool interface** — invoked by the CMake integration and
+`build.rs` scripts, not meant for direct use. Subcommands resolve
+message-package dependency closures, emit CycloneDDS type descriptors,
+and generate C/C++ entry glue. (`nros codegen-system` below is the
+user-facing system bake.)
 
 ### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>] [--build [--nano-ros-workspace <path>]]` — walk a colcon-style workspace under `<workspace>/src/`
 collecting component source metadata into
@@ -244,7 +277,7 @@ Emit shell completion scripts to stdout.
 | Want to … | Use |
 |---|---|
 | Scaffold a project | `nros new …` |
-| Generate Rust bindings | `nros generate-rust` |
+| Generate Rust bindings (+ `.cargo` patches) | `nros sync` (primitive: `nros generate-rust`) |
 | Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` |
 | Build / flash / run | Platform tools: `cargo`, `cmake --build`, `west`, `idf.py`, `probe-rs`, or focused `just <platform> …` recipes |
 | Orchestrate the workspace (setup, doctor, CI, multi-platform sweeps) | `just …` |
@@ -255,11 +288,13 @@ recipes (build matrices, CI orchestration) keep their current shape.
 
 ## Release pipeline status
 
-There is no `nros release` verb and no crates.io / Arduino zip /
-ESP-IDF binary / GitHub Releases tarball channel. Per the archive
-decision (2026-05-19), nano-ros is consumed by
-`git clone --branch=v<X.Y.Z>` plus the in-tree build recipes
-documented at [Installation](../getting-started/installation.md).
+There is no crates.io / Arduino zip / ESP-IDF binary / GitHub Releases
+tarball channel. Per the archive decision (2026-05-19), nano-ros is
+consumed by `git clone --branch=v<X.Y.Z>` plus the in-tree build
+recipes documented at
+[Installation](../getting-started/installation.md). (A hidden,
+maintainer-only `nros release` verb exists behind the `release` cargo
+feature; the default build does not carry it.)
 Downstream RTOS package managers (Zephyr `west`,
 ESP-IDF `idf_component_yml`, NuttX `Kconfig`) consume the same source
 tree via the integration shells under `integrations/<rtos>/`.
