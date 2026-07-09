@@ -89,6 +89,16 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
+- **Fixture mtime treadmill:** any pull/rebase refreshes source mtimes → EVERY prebuilt fixture
+  reads STALE. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
+  or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append
+  objects → garbage-pointer SEGVs). Long-unrebuilt families "pass" on museum binaries — trust
+  only a fresh full sweep, and re-measure any perf number on cleanly rebuilt fixtures before
+  filing an issue from it (→ archived issues 0148/0164).
+- **Test greps use `nros_tests::output::*` constants, never literal strings** — example
+  banners/markers get slimmed (phase-277 broke ~10 tests grepping `"Result:"`/`"[OK]"`/old
+  banners while delivery worked). If a test times out, FIRST diff the grep pattern against what
+  the fixture actually prints. → archived issues 0157/0164.
 - **Test names describe behavior, not phase numbers** (`zephyr_xrce_service_e2e`, not `phase212_n9_…`).
   Phases go stale; cross-ref a phase in a doc-comment, never the identifier. → AGENTS.md Testing.
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
@@ -105,13 +115,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   from `packages/zpico/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
-- **No POSIX-style Rust ctor sections on Zephyr/native_sim** — wire backend init explicitly
-  (`nros_cpp_init` registers the linked CFFI backend; weak `nros_app_register_backends` default).
+- **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an
+  explicit call: C/C++ via `nros_cpp_init` → strong `nros_app_register_backends`; pure-Rust via
+  `zephyr_component_main!` (calls the hook + cfg-gated direct `register()`). A pure-Rust image
+  needs the REAL backend dep (`rmw-zenoh = ["dep:nros-rmw-zenoh"]`) — and a direct reference,
+  or rustc's staticlib DCE drops the dep's `#[no_mangle]` export (symbol in the rlib, absent
+  from the `.a`; nros-c's FORCE_LINK class). → issues 0155/0163 (archived).
 - **nros-cpp headers: gate `<string>`/std includes on `NROS_CPP_STD`, not `__STDC_HOSTED__`** — a
   hosted compiler can still run `-nostdinc++` against Zephyr's minimal libcpp (no `<string>`).
   → issue 0112 (archived).
 - **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on
-  native via `nros_tests::unique_ros_domain_id()`. → platform-implementation-notes.md.
+  native via `nros_tests::unique_ros_domain_id()`. `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to
+  `NROS_DOMAIN_ID` — never pin it to a literal in confs (the phase-180 split-brain silently ran
+  every cyclone image on domain 0). Cyclone fixture pairs bake distinct domains (50–58) for
+  parallel SPDP. → issue 0161 (archived), platform-implementation-notes.md.
 - **`zpico_spin_once` on multi-threaded platforms uses `z_sleep_ms()`, not `select()`** (else
   `Promise::wait()` burns its budget in ~39 ms). → platform-implementation-notes.md.
 - **FreeRTOS:** `APP_TASK_STACK` 64 KB (inline executor arena on stack) → "Invalid mbox" otherwise;
@@ -133,6 +150,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   is separate. → [docs/reference/cyclonedds-known-limitations.md](docs/reference/cyclonedds-known-limitations.md).
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
   → platform-implementation-notes.md.
+- **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
+  (default 16 KB; executor backing alone needs ~75 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
+  → issue 0163 (archived).
+- **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share the test
+  entropy source → identical GUIDs/ports → discovery sees the peer as itself → false-negative
+  "no delivery". The test harness seeds automatically; hand-run repros must too. → issue 0157
+  (archived).
 - **Never clang-format `cmake/templates/*`** — reflow splits `@VAR@` configure_file tokens
   (`@SYM @_create`) → generated TU fails "stray '@'". `.clang-format-ignore` guards; format
   recipes already exclude them. → issue 0159 (archived).
