@@ -45,6 +45,14 @@ extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator
 One baked port per image ⇒ every test that dials that image shares one zenohd on
 one port ⇒ they must run serial or their routers collide (the #141 class).
 
+> **Design update (2026-07-09, phase-286 W1).** The "runtime `NROS_LOCATOR` (env)"
+> phrasing below resolves concretely to a **native command-line option**
+> (`--nros-locator=<loc>`), NOT `getenv`: `nsi_host_getenv` is absent from this
+> Zephyr 3.7 LTS tree and the embedded images are `no_std`, but native_sim already
+> takes CLI args (the `--seed` the harness passes, registered via
+> `native_add_command_line_opts` + `NATIVE_TASK(PRE_BOOT_1)`). Full mechanism +
+> read-site/XRCE edges → phase-286 W1 design findings.
+
 ## Opportunity — runtime locator override on native_sim
 
 The whole `zephyr` family runs on **native_sim**, which is an ordinary host

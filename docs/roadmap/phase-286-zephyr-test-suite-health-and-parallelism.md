@@ -43,6 +43,55 @@ serial groups. The baked value stays the default so real QEMU / hardware images
 run at host-core width; a full `--test zephyr` wall-clock materially below the
 current ~292 s; no router-port collisions (the #141 hazard) under parallelism.
 
+#### W1 design findings (2026-07-09 exploration)
+
+**Where the locator is fixed today.** The Rust entry macro
+`nros::zephyr_component_main!` reads `const BAKED_LOCATOR = option_env!("NROS_LOCATOR")`
+(`packages/core/nros/src/lib.rs:365`) — a compile-time const, baked by each example
+`build.rs` from `CONFIG_NROS_ZENOH_LOCATOR` (and, for XRCE, synthesized
+`host:port` from `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}`). The C/CFFI path consumes the
+same Kconfig. One image ⇒ one fixed router endpoint ⇒ shared-port serialization.
+
+**The runtime channel is argv, not host env.** native_sim `zephyr.exe` is a host
+process that already takes CLI args — `ZephyrProcess::start` passes `--seed=<n>`
+(`nros-tests/src/zephyr.rs:166`), consumed by Zephyr's fake-entropy driver, which
+registers it via `native_add_command_line_opts(...)` + `NATIVE_TASK(..., PRE_BOOT_1, 10)`
+(`drivers/entropy/fake_entropy_native_posix.c:111`). `PRE_BOOT_1` runs BEFORE the app
+`main`, so a value parsed there is available when the entry macro runs. Host env is
+**not** a viable channel: `nsi_host_getenv` is absent from this Zephyr 3.7 LTS tree,
+and the embedded images are `no_std` (the `std::env::var` reads in `nros-cpp`/
+`nros-node` are the *hosted native* fallback, not the native_sim path). So the
+original "#166 runtime env" phrasing resolves concretely to a **native
+command-line option**, not `getenv`.
+
+**Proposed mechanism.**
+1. Register an nros native option `--nros-locator=<loc>` (mirror the `--seed`
+   pattern: `native_add_command_line_opts` + `NATIVE_TASK(PRE_BOOT_1)`) in a
+   native_sim-only TU under the zephyr platform layer; stash the parsed string in a
+   `static`.
+2. Add a platform hook `nros_runtime_locator_override() -> Option<&str>` — returns
+   the stashed value on native_sim, `None` everywhere else (real QEMU/hw compile it
+   out). BOTH read sites honor it: the Rust `zephyr_component_main!` macro (prefer
+   over `BAKED_LOCATOR`) and the C CFFI shim (prefer over the Kconfig locator).
+3. Harness: a `ZephyrProcess::start_with_locator` (or extend `start`) that binds
+   `TcpListener::bind("127.0.0.1:0")` for a free port, starts a per-test zenohd on
+   it, and passes `--nros-locator=tcp/127.0.0.1:<port>` to both fixture processes.
+4. nextest: delete the six `qemu-zephyr-{pubsub,service,action}-{rust,cpp}`
+   `max-threads = 1` groups (fall through to the parallel `qemu-zephyr` group).
+
+**Scope / edges.** native_sim only — the baked value stays the default so QEMU/hw
+are untouched (they have no host arg channel and no host zenohd). XRCE must be
+covered too: either accept a `host:port` form on `--nros-locator` or add a sibling
+`--nros-agent`, since the XRCE endpoint is a distinct bake. Two read sites (Rust
+macro + C shim) both need the hook — miss one and that lane silently keeps the
+baked port. The existing `--seed` already de-conflicts client *source* ports; this
+override de-conflicts the *router* port, orthogonal and complementary.
+
+**Effort.** ~1 small native-C TU (option registration + static) + the
+`Option<&str>` hook wired into two read sites + the harness port-alloc/zenohd
+plumbing + the nextest group deletion. No fixture rebuild contract change (the bake
+remains the default).
+
 ### W2 — staleness-guard false-positive (#147 class)
 
 The rust `zenoh` lanes and `workspace_entry_native_sim_e2e` fail with `Zephyr
