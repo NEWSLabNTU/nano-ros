@@ -146,6 +146,25 @@ so real embedded builds compile it out.
    remaining five serial groups.
 4. **Rebuild + re-run** the family; confirm wall-clock drop and no #141 collisions.
 
+#### W1 slice 2 — C/C++ read-site + pubsub-cpp group (DONE 2026-07-09)
+
+One edit: `ZephyrBoard::run_components` (nros-cpp `main.hpp`) prefers
+`nros_runtime_locator_override()` over its `locator` arg. Covers BOTH C++ and C
+zephyr examples — codegen (`emit_cpp.rs`) emits `ZephyrBoard::run_components` for
+the zephyr entry regardless of node language (a C node's `configure` runs from the
+generated C++ entry). Applied to ZephyrBoard only (the override symbol is
+zephyr-platform-scoped); Nuttx/Threadx/Freertos boards untouched. Converted the 3
+cpp pubsub e2e + flipped `qemu-zephyr-pubsub-cpp` `max-threads = 1 → 3`.
+
+**Proven:** `zephyr_cpp_talker_to_listener_e2e` passes over an ephemeral port
+(baked cpp port 7656 had no router). **Speedup:** SERIAL 98 s → PARALLEL 51 s
+≈ 1.9× for the 3 cpp tests.
+
+**Uncovered:** the 2 cpp cross tests fail pre-existing (both in the #164 24-fail
+list) — and reveal the native↔Zephyr-**C++** bridge is broken in BOTH directions
+(cpp-pub→native-sub AND native-pub→cpp-sub), worse than rust (only zephyr-pub
+direction). Folded into #173.
+
 ### W2 — staleness-guard false-positive (#147 class)
 
 The rust `zenoh` lanes and `workspace_entry_native_sim_e2e` fail with `Zephyr

@@ -32,6 +32,18 @@ So the broken path is specifically **zenoh-pico publisher (Zephyr native_sim) �
 host zenohd → native (rust `nros`) subscriber**. Zephyr-as-subscriber and
 Zephyr↔Zephyr both work; only Zephyr-as-publisher-to-a-native-sub fails.
 
+**C++ is worse (phase-286 W1 slice 2, 2026-07-09).** When the C++ pubsub cross
+tests were converted to per-test ephemeral routers, BOTH directions failed for
+the C++ zephyr peer: `test_zephyr_cpp_talker_to_native_listener` (cpp-pub →
+native-sub, the same class as the rust case above) AND
+`test_native_talker_to_zephyr_cpp_listener` (native-pub → **cpp-sub**, 0 received
+though the listener reaches "Waiting for messages"). The C++ zephyr↔zephyr pair
+(`test_zephyr_cpp_talker_to_listener_e2e`) passes. So the C++ zephyr **subscriber**
+also fails to receive from a native publisher — unlike the rust zephyr subscriber,
+which DOES (rust `native_to_zephyr` delivered 41). The native↔Zephyr-C++ bridge is
+broken in both directions; native↔Zephyr-rust only in the zephyr-pub direction.
+Both were already in the #164 24-fail list (pre-existing, not the port change).
+
 ## Suspects / direction
 
 - zenoh-pico publication declaration or the sample's key-expr / encoding not

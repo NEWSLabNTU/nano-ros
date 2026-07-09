@@ -188,8 +188,12 @@ max-threads = 4
 [test-groups.qemu-zephyr-ws-entry]
 max-threads = 1
 
+# #166 / phase-286 W1 slice 2 — parallelized. The 3 cpp pubsub e2e each spin
+# their own ephemeral zenohd + pass the locator to the images via
+# `-testargs --nros-locator` (ZephyrBoard::run_components reads the override), so
+# they no longer share a fixed baked router port.
 [test-groups.qemu-zephyr-pubsub-cpp]
-max-threads = 1
+max-threads = 3
 
 [test-groups.qemu-zephyr-service-rust]
 max-threads = 1
