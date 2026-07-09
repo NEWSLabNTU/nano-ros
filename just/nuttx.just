@@ -447,10 +447,12 @@ action-server: (_run-qemu "action-server" "nuttx-rs-action-server")
 action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 
 # Start zenohd router for NuttX QEMU examples (port 7452)
-# Start zenohd router for NuttX QEMU examples (port 7452)
 # Must listen on 0.0.0.0 for virtio-net-device + slirp gateway (10.0.2.2)
 zenohd:
-    zenohd --listen tcp/0.0.0.0:7452 --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7452 --no-multicast-scouting
 
 # Phase 127.B.5 — one-time host setup for NuttX DDS cross-QEMU mcast.
 #

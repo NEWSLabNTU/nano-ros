@@ -777,4 +777,7 @@ action-client:
 
 # Start zenohd router for native examples (override bind via $ZENOH_LOCATOR)
 zenohd:
-    zenohd --listen {{ env_var_or_default("ZENOH_LOCATOR", "tcp/127.0.0.1:7447") }} --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" --no-multicast-scouting

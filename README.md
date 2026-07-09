@@ -83,9 +83,8 @@ targets (Zephyr, FreeRTOS, NuttX, ThreadX, ESP32, bare-metal).
 ### 4. Run the demo
 
 ```bash
-# Terminal 1: Zenoh router (installed by `nros setup native --rmw zenoh`)
-export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
-zenohd
+# Terminal 1: Zenoh router (resolves the install from step 3 automatically)
+just native zenohd
 
 # Terminal 2: Talker
 cd examples/native/rust/talker && RUST_LOG=info cargo run
@@ -151,8 +150,7 @@ nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
 # Terminal 1: zenohd (installed by `nros setup native --rmw zenoh`)
-export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
-zenohd
+just native zenohd
 
 # Terminal 2: nano-ros talker
 cd examples/native/rust/talker && RUST_LOG=info cargo run

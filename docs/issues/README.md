@@ -67,10 +67,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `nano_ros_deploy()` + `system.toml`. Multiple 404 GitHub links;
   `user-guide/configuration.md` needs a full rewrite; `message-generation.md` contradicts the
   `nros sync` model.
-- **#168** — [zenohd install split-brain](0168-zenohd-install-split-brain-broken-just-native-zenohd.md):
-  contributor route installs `build/zenohd/zenohd`, user route `~/.nros/sdk/zenohd/*/bin`; the
-  three run docs each assume a different launch command and `just native zenohd` calls bare
-  `zenohd` that nothing puts on PATH — the README-verbatim first run fails at "start the router".
 - **#167** — [riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside
   `ZenohRmw::open`](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults with
   an instruction-access fault (`EPC=RA=0x4`) at boot, exposed by phase-285 W2's `start_nuttx_riscv`
@@ -101,7 +97,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#158** — the NuttX/native
+Recently resolved (see [`archived/`](archived/) for the full list): **#168** — zenohd
+split-brain: nine `just` recipes invoked bare `zenohd` that no setup route puts on PATH; a
+shared resolver (`scripts/dev/zenohd.sh`, build/zenohd → SDK store → PATH) now backs every
+`just <plat> zenohd` recipe, and README/examples docs converge on that one launch line.
+**#158** — the NuttX/native
 realtime tier e2e now prove tier ordering deterministically: each tier publishes a monotonic
 counter and the assertion compares highest-delivered VALUES (`ctrl_max >= 3 * telem_max`) —
 timer-fire progress, immune to delivery batching/drops — replacing the count heuristic and the

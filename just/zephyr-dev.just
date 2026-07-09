@@ -518,4 +518,7 @@ async-service-client:
 
 # Start zenohd router for Zephyr examples (port 7456, all interfaces)
 zenohd:
-    zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7456 --no-multicast-scouting

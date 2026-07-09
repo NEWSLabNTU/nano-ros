@@ -215,7 +215,7 @@ project's build system.
 
 ## Quick start
 
-Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd/zenohd --listen tcp/127.0.0.1:7447`). C/C++ examples consume nano-ros via `add_subdirectory(<repo>)` from their own `CMakeLists.txt` (Phase 140); no install step required.
+Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` (`just native zenohd`). C/C++ examples consume nano-ros via `add_subdirectory(<repo>)` from their own `CMakeLists.txt` (Phase 140); no install step required.
 
 ### Native Rust + zenoh
 
@@ -257,7 +257,7 @@ nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 
 ```bash
 # terminal 1
-build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+just native zenohd
 
 # terminal 2
 cd examples/native/rust/talker && cargo run

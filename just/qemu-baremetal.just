@@ -197,12 +197,13 @@ test-rtic-main-e2e verbose="": build-rtic-main-e2e
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{LOG_DIR}}/latest
-    if ! command -v zenohd >/dev/null 2>&1; then
+    source scripts/dev/zenohd.sh
+    if ! zenohd_bin="$(nros_zenohd_bin)"; then
         echo "QEMU RTIC E2E skip: zenohd not found"
         exit 0
     fi
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
-    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting > "$zenoh_log" 2>&1 &
+    "$zenohd_bin" --listen tcp/127.0.0.1:7450 --no-multicast-scouting > "$zenoh_log" 2>&1 &
     zenoh_pid=$!
     trap 'kill "$zenoh_pid" 2>/dev/null || true; wait "$zenoh_pid" 2>/dev/null || true' EXIT
     sleep 0.5
@@ -499,4 +500,7 @@ rtic-action-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-client")
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:
-    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7450 --no-multicast-scouting

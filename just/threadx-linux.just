@@ -238,7 +238,10 @@ action-client: (_run "action-client")
 
 # Start zenohd router for ThreadX Linux examples (port 7455, bridge-networked)
 zenohd:
-    zenohd --listen tcp/0.0.0.0:7455 --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7455 --no-multicast-scouting
 
 # Clean ThreadX Linux build artifacts
 [group("main")]

@@ -413,4 +413,7 @@ action-client: (_run-qemu "action-client" "qemu-freertos-action-client")
 
 # Start zenohd router for FreeRTOS QEMU examples (port 7451)
 zenohd:
-    zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting
+    #!/usr/bin/env bash
+    set -e
+    source scripts/dev/zenohd.sh
+    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7451 --no-multicast-scouting
