@@ -90,10 +90,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
-- **#80** — [Parameter persistence disabled /
-  incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#170** — every
+Recently resolved (see [`archived/`](archived/) for the full list): **#80** (wontfix) —
+on-device parameter persistence is a non-goal; params are authored in launch files and the
+build system bakes them as node defaults (`orchestration/params.rs` → `declare_param` codegen).
+The dormant `ParamStore`/`FileParamStore`/persist seam is now dead code (harmless `NullParamStore`
+no-op default), flagged for optional cleanup in the archived issue. **#170** — every
 canonical example leaf (176) now ships a copy-out README, generated from facts read off the
 leaf by `scripts/docs/gen-example-readmes.py` (hand-written pages preserved; absolute GitHub
 links since a copied-out dir has no repo above it), gated by
