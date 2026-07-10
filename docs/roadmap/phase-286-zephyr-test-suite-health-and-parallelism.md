@@ -203,6 +203,29 @@ correctly-built-but-not-relinked image (compare against the build-manifest / a
 content hash, or gate on the actual inputs, not wall-clock mtime); the rust zenoh
 lanes report their TRUE runtime verdict.
 
+**DONE 2026-07-09 — content-aware staleness.** `is_binary_stale` (`nros-tests`
+`zephyr.rs`) no longer trusts wall-clock mtime alone. New
+`candidates_changed_content` records a per-binary sidecar
+`<build_dir>/.nros-srcbaseline` = the LINKED binary's own content hash + each
+watched source's `(mtime, size, content_hash)`:
+
+- **binary hash changed** (a rebuild happened, or first sight) → the image IS the
+  fresh truth → re-record baseline, report not-stale.
+- **binary unchanged** → only files whose `(mtime, size)` moved are content-hashed;
+  a moved mtime with **unchanged bytes** is an artifact (not stale, refresh the
+  recorded mtime), a **changed hash** or a newly-appearing watched file is a real
+  edit (stale).
+
+This kills the dominant #147 false-positive (rebase/checkout/pull "mtime
+treadmill", or an inert edit — the exact class that aborted the rust-zenoh lanes
+after the slice-1/3 rebuilds) while still catching genuine un-rebuilt library
+edits. Steady state is stat-only (content-hash only on touched files); the sidecar
+write is atomic (temp + rename) so parallel tests sharing a fixture never read a
+half-written baseline. Falls back to the old mtime gate if the binary can't be
+hashed. `NROS_SKIP_FIXTURE_CHECK=1` (now honored by the zephyr guard too, slice 3)
+remains the explicit escape. Unit-tested: `content_aware_staleness_ignores_mtime_only_bumps`
+covers first-sight / mtime-artifact / real-edit / rebuild.
+
 ### W3 — XRCE C/C++ delivery on native_sim (real 0-delivery)
 
 `xrce_{c,cpp}_{talker_listener,service,action}` deliver nothing

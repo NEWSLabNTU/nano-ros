@@ -909,12 +909,179 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
             candidates.push(example_dir.join(conf_file));
         }
     }
-    for p in &candidates {
-        if path_newer_than(p, binary_mtime) {
-            return true;
+    // #147 / phase-286 W2 — content-aware staleness. A pure mtime compare
+    // (`path_newer_than`) cannot tell a real edit from an mtime bump that left
+    // the bytes identical (a rebase/checkout/pull "mtime treadmill", or an edit
+    // reverted to the same content), and false-reports EVERY fixture stale after
+    // such a bump even though the image is current. `candidates_changed_content`
+    // uses the LINKED binary's own content hash as the "was rebuilt" signal and
+    // only content-hashes sources whose (mtime,size) actually moved, so an
+    // identical-content bump is not stale while a genuine edit still is. Falls
+    // back to the mtime compare if the binary can't be hashed.
+    let _ = binary_mtime;
+    match candidates_changed_content(binary_path, &candidates) {
+        Some(stale) => stale,
+        None => candidates.iter().any(|p| path_newer_than(p, binary_mtime)),
+    }
+}
+
+/// Flatten a candidate path (file or dir) into its source files, applying the
+/// same `target`/`build`/`.git` skips as [`path_newer_than`]'s dir recursion.
+fn collect_source_files(path: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(meta) = path.symlink_metadata() else {
+        return;
+    };
+    if meta.is_file() {
+        out.push(path.to_path_buf());
+        return;
+    }
+    if !meta.is_dir() {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if matches!(name.to_string_lossy().as_ref(), "target" | "build" | ".git") {
+            continue;
+        }
+        collect_source_files(&entry.path(), out);
+    }
+}
+
+/// Non-cryptographic content hash of a file (SipHash via `DefaultHasher`) — a
+/// change detector, not a security primitive. `None` if unreadable.
+fn hash_file_content(path: &Path) -> Option<u64> {
+    use std::hash::Hasher;
+    let bytes = std::fs::read(path).ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(&bytes);
+    Some(h.finish())
+}
+
+/// Content-aware staleness (#147 / phase-286 W2).
+///
+/// Returns `Some(true)` if a watched source's CONTENT differs from what the
+/// current linked binary was built with, `Some(false)` if everything matches
+/// (including the case where an mtime moved but the bytes did not), or `None`
+/// if the binary itself can't be hashed (caller falls back to the mtime gate).
+///
+/// Mechanism: a sidecar `<binary_dir>/.nros-srcbaseline` records the binary's
+/// content hash plus each watched file's `(mtime, size, content_hash)`. When the
+/// binary hash differs from the baseline (a rebuild happened, or first sight),
+/// the image IS the fresh truth — re-record the baseline and report not-stale.
+/// When the binary is unchanged, only files whose `(mtime, size)` moved are
+/// content-hashed; a moved mtime with an unchanged hash is an artifact (not
+/// stale), a changed hash or a newly-appearing file is a real edit (stale).
+fn candidates_changed_content(binary_path: &Path, candidates: &[PathBuf]) -> Option<bool> {
+    let bin_hash = hash_file_content(binary_path)?;
+
+    let mut files = Vec::new();
+    for c in candidates {
+        collect_source_files(c, &mut files);
+    }
+    files.sort();
+    files.dedup();
+
+    let baseline_path = binary_path.parent()?.join(".nros-srcbaseline");
+    let baseline = std::fs::read_to_string(&baseline_path).ok();
+
+    // Parse baseline: first line `bin <hash>`, then `<mtime_nanos> <size> <hash> <path>`.
+    let mut stored_bin: Option<u64> = None;
+    let mut stored: std::collections::HashMap<PathBuf, (u128, u64, u64)> =
+        std::collections::HashMap::new();
+    if let Some(text) = &baseline {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("bin ") {
+                stored_bin = rest.trim().parse().ok();
+                continue;
+            }
+            let mut it = line.splitn(4, ' ');
+            let (Some(m), Some(s), Some(h), Some(p)) = (it.next(), it.next(), it.next(), it.next())
+            else {
+                continue;
+            };
+            if let (Ok(m), Ok(s), Ok(h)) = (m.parse(), s.parse(), h.parse()) {
+                stored.insert(PathBuf::from(p), (m, s, h));
+            }
         }
     }
-    false
+
+    let file_meta = |p: &Path| -> Option<(u128, u64, u64)> {
+        let meta = p.metadata().ok()?;
+        let mtime = meta
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
+        Some((mtime, meta.len(), 0))
+    };
+
+    // Binary changed (rebuilt) or no baseline → the image is the fresh truth.
+    // Record a full baseline and report not-stale.
+    if stored_bin != Some(bin_hash) {
+        write_srcbaseline(&baseline_path, bin_hash, &files);
+        return Some(false);
+    }
+
+    // Binary unchanged: only content-hash files whose (mtime,size) moved.
+    let mut refreshed = false;
+    for f in &files {
+        let Some((mtime, size, _)) = file_meta(f) else {
+            // Unreadable now but tracked before → treat as a change.
+            if stored.contains_key(f) {
+                return Some(true);
+            }
+            continue;
+        };
+        match stored.get(f) {
+            Some(&(sm, ss, sh)) => {
+                if sm == mtime && ss == size {
+                    continue; // unchanged, cheap path
+                }
+                // (mtime,size) moved — disambiguate by content.
+                match hash_file_content(f) {
+                    Some(h) if h == sh => refreshed = true, // mtime artifact only
+                    Some(_) => return Some(true),           // real content change
+                    None => return Some(true),
+                }
+            }
+            // A watched file that did not exist at baseline time → real add.
+            None => return Some(true),
+        }
+    }
+    if refreshed {
+        write_srcbaseline(&baseline_path, bin_hash, &files);
+    }
+    Some(false)
+}
+
+/// Atomically (temp + rename) write the source baseline sidecar.
+fn write_srcbaseline(path: &Path, bin_hash: u64, files: &[PathBuf]) {
+    let mut out = format!("bin {bin_hash}\n");
+    for f in files {
+        let Ok(meta) = f.metadata() else { continue };
+        let Some(mtime) = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+        else {
+            continue;
+        };
+        let Some(h) = hash_file_content(f) else {
+            continue;
+        };
+        out.push_str(&format!("{mtime} {} {h} {}\n", meta.len(), f.display()));
+    }
+    // Atomic: write a pid-unique temp then rename, so parallel test processes
+    // sharing a fixture never read a half-written baseline.
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    if std::fs::write(&tmp, out.as_bytes()).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
 }
 
 fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
@@ -984,6 +1151,52 @@ mod tests {
         assert!(core_crate_is_watched("nros-c", None));
         assert!(core_crate_is_watched("nros-cpp", None));
         assert!(core_crate_is_watched("nros", None));
+    }
+
+    #[test]
+    fn content_aware_staleness_ignores_mtime_only_bumps() {
+        // #147 / phase-286 W2 — the core guarantee: a watched source whose mtime
+        // moves but whose BYTES are unchanged (rebase/checkout/inert-edit) must
+        // NOT report the fixture stale, while a real content edit must.
+        use std::{thread::sleep, time::Duration};
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("zephyr.exe");
+        let src = dir.path().join("watched.rs");
+        std::fs::write(&bin, b"BINARY-V1").unwrap();
+        std::fs::write(&src, b"fn main() {}").unwrap();
+        let candidates = vec![src.clone()];
+
+        // First sight: no baseline yet → records it, reports not-stale.
+        assert_eq!(
+            candidates_changed_content(&bin, &candidates),
+            Some(false),
+            "first sight must record a baseline and report fresh"
+        );
+
+        // mtime-only bump (identical bytes rewritten) → NOT stale.
+        sleep(Duration::from_millis(10));
+        std::fs::write(&src, b"fn main() {}").unwrap();
+        assert_eq!(
+            candidates_changed_content(&bin, &candidates),
+            Some(false),
+            "an mtime bump with identical content must not be stale"
+        );
+
+        // Real content edit (binary unchanged) → STALE.
+        std::fs::write(&src, b"fn main() { /* edited */ }").unwrap();
+        assert_eq!(
+            candidates_changed_content(&bin, &candidates),
+            Some(true),
+            "a genuine content change must report stale"
+        );
+
+        // Rebuild (binary bytes change) → the image is the fresh truth again.
+        std::fs::write(&bin, b"BINARY-V2").unwrap();
+        assert_eq!(
+            candidates_changed_content(&bin, &candidates),
+            Some(false),
+            "a rebuilt binary re-baselines and reports fresh"
+        );
     }
 
     #[test]
