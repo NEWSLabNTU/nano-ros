@@ -66,14 +66,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   leaves) carry zero instructions when copied out, contradicting RFC-0026;
   `examples/README.md` also still mixes Phase-140-era consumption text with the current
   `-DNANO_ROS_ROOT` contract.
-- **#167** — [riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside
-  `ZenohRmw::open`](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults with
-  an instruction-access fault (`EPC=RA=0x4`) at boot, exposed by phase-285 W2's `start_nuttx_riscv`
-  harness (riscv-nuttx's first-ever boot). gdb traced the chain `nros_cpp_init → CffiRmw::open →
-  open_with_vtable → open_trampoline<ZenohRmw> → ZenohRmw::open`: the C-FFI vtable is intact; the
-  bad pointer (a non-null `~0x4` that slips past `beqz` guards) is read inside the zenoh-pico
-  session bring-up. Leading cause: zpico/zenoh-pico config ABI mismatch (#135) or an unwired
-  transport init on riscv. Gates phase-285 W2.b → #165.
+- **#167** — [riscv-nuttx image panics at boot — virtio-net IRQ re-entrancy race
+  (EPC=0x4)](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults at boot
+  (`EPC=RA=0x4`), exposed by phase-285 W2's `start_nuttx_riscv` harness (riscv-nuttx's first-ever
+  boot). **Root cause CONFIRMED = timing-dependent race, NOT config**: a `-d exec` trace of the
+  same image runs clean to idle while every gdb run crashes (QEMU slirp packet timing is host-timed,
+  not `-icount`-controlled). zenoh's TCP connect runs the full TX vring poll synchronously with the
+  virtio-net IRQ live; an RX/txdone IRQ mid-poll re-enters the vring → corrupt descriptor/ra → `jr`
+  to `~0x4`. arm boots the same image bare without panicking. Four config fixes (stacks/IOB/net
+  mirror) ruled out. **Documented known limitation** — fix needs a vendored NuttX virtio-net
+  IRQ-protection change or a connect-sequencing redesign. Gates phase-285 W2.b → #165.
 - **#166** — [Zephyr zenoh e2e serialize on build-time-baked router
   ports](0166-zephyr-e2e-serial-baked-port-parallelism-ceiling.md): the port scheme already gives
   unique per-(variant,lang) ports (xrce=7 / dds=4 parallel), but six
