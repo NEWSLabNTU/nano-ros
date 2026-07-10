@@ -775,16 +775,11 @@ fn test_zephyr_action_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    // Start zenohd router
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!(
-        "zenohd started on port {}",
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust)
-    );
+    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd started on {locator}");
 
     // Resolve prebuilt examples
     let server_binary = get_zephyr_action_server_native_sim();
@@ -795,8 +790,9 @@ fn test_zephyr_action_e2e() {
 
     // Start action server first
     eprintln!("Starting Zephyr action server...");
-    let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr action server");
+    let server =
+        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr action server");
 
     // Wait for server to declare its queryables before starting the
     // client. Under parallel load this replaces a fixed sleep that
@@ -829,8 +825,9 @@ fn test_zephyr_action_e2e() {
 
     // Start action client
     eprintln!("Starting Zephyr action client...");
-    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr action client");
+    let mut client =
+        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr action client");
 
     // Wait for action communication
     eprintln!("Waiting for action communication...");
@@ -1024,12 +1021,11 @@ fn test_native_server_zephyr_client() {
     }
 
     // Start zenohd router
-    eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
+    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
 
     // Build native service server
     let server_path =
@@ -1045,14 +1041,7 @@ fn test_native_server_zephyr_client() {
 
     let mut server_cmd = Command::new(server_path);
     server_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start native service server");
@@ -1072,8 +1061,9 @@ fn test_native_server_zephyr_client() {
 
     // Start Zephyr service client
     eprintln!("Starting Zephyr service client...");
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr service client");
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr service client");
 
     // Wait for service communication
     eprintln!("Waiting for Native server ↔ Zephyr client communication...");
@@ -2112,11 +2102,10 @@ fn test_zephyr_server_native_client() {
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
-    let router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
 
     // Build native service client
     let client_path =
@@ -2128,8 +2117,9 @@ fn test_zephyr_server_native_client() {
 
     // Start Zephyr service server first
     eprintln!("Starting Zephyr service server...");
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr service server");
+    let mut zephyr =
+        ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr service server");
 
     let _ = zephyr.wait_for_pattern(
         nros_tests::output::SERVICE_SERVER_READY_MARKER,
@@ -2142,14 +2132,7 @@ fn test_zephyr_server_native_client() {
 
     let mut client_cmd = Command::new(client_path);
     client_cmd
-        .env(
-            "NROS_LOCATOR",
-            format!(
-                "tcp/127.0.0.1:{}",
-                platform::ZEPHYR
-                    .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust)
-            ),
-        )
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start native service client");
@@ -2507,11 +2490,10 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Cpp),
-    )
-    .expect("Failed to start zenohd");
+    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
     let server_binary = get_zephyr_cpp_service_server_native_sim();
     let client_binary = get_zephyr_cpp_service_client_native_sim();
 
@@ -2519,11 +2501,15 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
     eprintln!("C++ Service Client binary: {}", client_binary.display());
 
     // Start server first
-    let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim).unwrap();
+    let mut server =
+        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
     let _ = server.wait_for_pattern("Waiting for service", Duration::from_secs(30));
 
     // Start client
-    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
+    let mut client =
+        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
 
     // Wait for client to complete (4 calls × ~1s sleep + connection time)
     let client_output = client
@@ -2595,11 +2581,10 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    eprintln!("Starting zenohd router...");
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Cpp),
-    )
-    .expect("Failed to start zenohd");
+    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd locator: {locator}");
     let server_binary = get_zephyr_cpp_action_server_native_sim();
     let client_binary = get_zephyr_cpp_action_client_native_sim();
 
@@ -2607,7 +2592,9 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
     eprintln!("C++ Action Client binary: {}", client_binary.display());
 
     // Start action server first
-    let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim).unwrap();
+    let mut server =
+        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
 
     // Phase 160.C — wait for server readiness rather than fixed 3 s sleep.
     // `create_action_server` declares 3 queryables on Zephyr; each
@@ -2626,7 +2613,9 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         );
     }
     // Start action client
-    let client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
+    let client =
+        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
+            .unwrap();
 
     // Wait for client to complete. Phase 160.C — bumped 30 s → 90 s.
     // Client itself takes ~25 s to reach `send_goal` (3 service-clients

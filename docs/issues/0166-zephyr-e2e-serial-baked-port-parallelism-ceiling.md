@@ -7,7 +7,19 @@ area: testing
 related: [phase-89, issue-0141, phase-286]
 ---
 
-## Problem
+## Status — RESOLVED (phase-286 W1, 2026-07-09)
+
+All six `qemu-zephyr-{pubsub,service,action}-{rust,cpp}` groups are now parallel
+(were all `max-threads = 1`). A native_sim runtime locator override
+(`-testargs --nros-locator=<loc>`, honored by the Rust `zephyr_component_main!`
+macro and the C/C++ `ZephyrBoard::run_components` via
+`nros_runtime_locator_override()`) lets each test spin its own ephemeral zenohd.
+Per-group speedups: pubsub-rust 2.8× (152→54 s), pubsub-cpp 1.9× (98→51 s),
+service+action 2.2× (75→34 s). Only `qemu-zephyr-ws-entry` stays serial (the
+ws-runtime entry path does not read the override yet — a tracked W1 follow-up).
+Detail + slice log → phase-286.
+
+## Problem (original)
 
 The `tests/zephyr.rs` family still serializes its slowest lanes. A full run is
 ~**292 s**, and the tail is the zenoh DDS runtime e2e tests, which nextest pins

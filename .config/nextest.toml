@@ -195,17 +195,21 @@ max-threads = 1
 [test-groups.qemu-zephyr-pubsub-cpp]
 max-threads = 3
 
+# #166 / phase-286 W1 slice 4 — parallelized. The service/action e2e each spin
+# their own ephemeral zenohd + pass the locator via `-testargs --nros-locator`
+# (Rust `zephyr_component_main!` / C++ `ZephyrBoard::run_components` read the
+# override), so they no longer share a fixed baked router port.
 [test-groups.qemu-zephyr-service-rust]
-max-threads = 1
+max-threads = 2
 
 [test-groups.qemu-zephyr-service-cpp]
-max-threads = 1
+max-threads = 2
 
 [test-groups.qemu-zephyr-action-rust]
-max-threads = 1
+max-threads = 2
 
 [test-groups.qemu-zephyr-action-cpp]
-max-threads = 1
+max-threads = 2
 
 # Each XRCE test now starts its Agent on a (variant, lang)-specific
 # UDP port (see `ZEPHYR.xrce_agent_port_for` in nros-tests/platform.rs

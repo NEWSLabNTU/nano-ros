@@ -165,6 +165,31 @@ list) — and reveal the native↔Zephyr-**C++** bridge is broken in BOTH direct
 (cpp-pub→native-sub AND native-pub→cpp-sub), worse than rust (only zephyr-pub
 direction). Folded into #173.
 
+#### W1 slice 4 — service/action groups (DONE 2026-07-09) — all six serial groups now parallel
+
+Converted the 5 tests in the four remaining serial groups
+(`qemu-zephyr-{service,action}-{rust,cpp}`) to `ZenohRouter::start_unique()` +
+the locator override and raised each group `max-threads = 1 → 2`. No new code —
+reuses the slice-1 (Rust) + slice-2 (C/C++) read-sites; the slice-2 rebuild's
+service/action images already carry the override.
+
+**Speedup:** SERIAL 75 s → PARALLEL 34 s ≈ 2.2×. **3 of the 5 now PASS**
+(`native_server_zephyr_client`, `zephyr_action_e2e`, `cpp_action_server_to_client`)
+— `zephyr_action_e2e` passing over an ephemeral port proves the override on the
+hardest path (3 serialized queryable declares). 2 fail pre-existing:
+`zephyr_server_native_client` (#173 zephyr→native direction) and
+`cpp_service_server_to_client` (delivers 1 reply over the ephemeral port — override
+works — but short of the expected 3; a zenoh cpp service completion/throughput
+residual, distinct from the #175 Cyclone one).
+
+**W1 net:** all six `qemu-zephyr-{pubsub,service,action}-{rust,cpp}` groups are now
+parallel (were all `max-threads = 1`). Per-group speedups measured: pubsub-rust
+2.8× (152→54 s), pubsub-cpp 1.9× (98→51 s), service+action 2.2× (75→34 s). The
+mechanism (native_sim `-testargs --nros-locator` runtime override, honored by the
+Rust macro + the C/C++ `ZephyrBoard::run_components`) is proven green on at least
+one Zephyr↔Zephyr lane per RMW-role. Remaining serial: `qemu-zephyr-ws-entry`
+(ws-runtime entry, override not wired — a W1 follow-up).
+
 ### W2 — staleness-guard false-positive (#147 class)
 
 The rust `zenoh` lanes and `workspace_entry_native_sim_e2e` fail with `Zephyr
