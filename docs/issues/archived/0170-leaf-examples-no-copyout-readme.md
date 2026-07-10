@@ -5,6 +5,7 @@ status: resolved
 type: tech-debt
 area: docs
 related: [rfc-0026, phase-277]
+resolved_in: "c921fdc87"
 ---
 
 ## Problem

@@ -61,11 +61,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `find_package(NanoRos)` removed in Phase 140, registry publishes docs-only. Plus false
   availability claims to truth-fix now: `cargo install nros-cli` READMEs, Arduino in
   `library.json`, phantom PIO manifest paths in `registry-publishing.md`.
-- **#170** — [Leaf examples ship no README](0170-leaf-examples-no-copyout-readme.md): the
-  canonical copy-out leaves (`native/rust/{talker,listener}`, nearly all C/C++/QEMU/Zephyr
-  leaves) carry zero instructions when copied out, contradicting RFC-0026;
-  `examples/README.md` also still mixes Phase-140-era consumption text with the current
-  `-DNANO_ROS_ROOT` contract.
 - **#167** — [riscv-nuttx image panics at boot — virtio-net IRQ re-entrancy race
   (EPC=0x4)](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults at boot
   (`EPC=RA=0x4`), exposed by phase-285 W2's `start_nuttx_riscv` harness (riscv-nuttx's first-ever
@@ -98,7 +93,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#80** — [Parameter persistence disabled /
   incomplete backends](0080-param-persistence-disabled-incomplete-backends.md).
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#172** — onboarding
+Recently resolved (see [`archived/`](archived/) for the full list): **#170** — every
+canonical example leaf (176) now ships a copy-out README, generated from facts read off the
+leaf by `scripts/docs/gen-example-readmes.py` (hand-written pages preserved; absolute GitHub
+links since a copied-out dir has no repo above it), gated by
+`example_shape::every_canonical_leaf_has_readme`, and e2e-verified by copying two leaves out
+and running the README commands verbatim. **#172** — onboarding
 drift batch: all 13 audit items closed — AGENTS.md's dead `nros build`/`deploy` verbs,
 the `examples/threadx-riscv64/` path (→ `qemu-riscv64-threadx`), cli.md's missing
 `generate-rust`/`generate-px4-msgs`/`codegen` entries + false "no release verb" claim,
