@@ -48,9 +48,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native_sim Cyclone server RECEIVES the goal/request but the client never completes
   (`dds_{c,cpp,rs}_action` = goal-received/client-not-completed; cpp service = 1/3 replies). Pub/sub
   works on the same fixture — specific to the request-response reply path. From the #164 re-triage.
-- **#174** — [Zephyr XRCE C/C++ 0-delivery](0174-zephyr-xrce-c-cpp-no-delivery.md): the native_sim
-  XRCE **C/C++** lanes deliver nothing though the agent starts; #163 fixed only the pure-Rust XRCE
-  images (now green), the `libnros_c` XRCE path is untouched. From the #164 re-triage.
 - **#173** — [Zephyr pub → native sub no delivery](0173-zephyr-pub-to-native-sub-no-delivery.md): a
   Zephyr native_sim zenoh-pico **publisher** delivers nothing to a **native** subscriber through a
   shared router (fails serially; `bidirectional` shows Native→Zephyr=41 / Zephyr→Native=0 in one
@@ -91,7 +88,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#80** (wontfix) —
+Recently resolved (see [`archived/`](archived/) for the full list): **#174** — Zephyr XRCE
+C/C++ "0-delivery" was a missing agent locator (the C/C++ analog of #163): `NROS_ENTRY_LOCATOR`
+(`nros-cpp/main.hpp`) only read `CONFIG_NROS_ZENOH_LOCATOR` (unset for XRCE) → `""` → the XRCE
+transport never connected (`run_components` rc=-100). `main.hpp` now synthesizes the agent
+`host:port` from `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}`; plus 3 stale action markers fixed. All 6
+XRCE C/C++ lanes green (phase-286 W3). **#80** (wontfix) —
 on-device parameter persistence is a non-goal; params are authored in launch files and the
 build system bakes them as node defaults (`orchestration/params.rs` → `declare_param` codegen).
 The dormant `ParamStore`/`FileParamStore`/persist seam is now dead code (harmless `NullParamStore`

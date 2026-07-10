@@ -236,6 +236,28 @@ and does not deliver on zephyr native_sim.
 **Acceptance:** C and C++ XRCE pub/sub + service + action deliver end-to-end on
 native_sim (parity with the now-green rust xrce lanes).
 
+**DONE 2026-07-10 — root cause was the missing agent locator (the C/C++ analog of
+#163), not a delivery bug.** The C/C++ XRCE entry opened its session with NO agent
+address: `NROS_ENTRY_LOCATOR` (nros-cpp `main.hpp`) only read
+`CONFIG_NROS_ZENOH_LOCATOR` (unset for XRCE) → `""` → the XRCE transport never
+connected (`run_components` rc=-100 `TRANSPORT_ERROR`, hence "0 delivery"). #163
+had fixed only the Rust images (via each example `build.rs` synthesizing the
+`host:port` into `NROS_LOCATOR`). Fix: `main.hpp` now synthesizes the bare
+`host:port` from `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` when it's an XRCE build
+(adjacent string-literal concat + stringize), which the XRCE session parser
+accepts. Covers both C and C++ (codegen routes both through
+`ZephyrBoard::run_components`).
+
+En route, three stale test markers surfaced once the transport connected (#164
+class): `xrce_c_action` server-ready grepped `"Waiting for goals"` (server prints
+`"Waiting for action goals"` = `ACTION_SERVER_READY_MARKER`); `xrce_cpp_action`
+grepped `"Waiting for goal"` + required `feedback >= 1` and a literal `"Feedback"`
+the Fibonacci server never streams (it completes with a result, like the C
+sibling) — gated on `ACTION_RESULT_PREFIX` instead.
+
+**Result: all 6 XRCE C/C++ lanes green** (`xrce_{c,cpp}_{talker_listener,service,
+action}`, 6/6 in the parallel `qemu-zephyr-xrce` group). #174 resolved.
+
 ### W4 — Cyclone action/service completion (native_sim)
 
 `dds_{c,cpp,rs}_action` = `server_received_goal=true, client_completed=false`;

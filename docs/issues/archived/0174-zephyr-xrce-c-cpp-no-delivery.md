@@ -1,11 +1,29 @@
 ---
 id: 174
 title: "Zephyr (native_sim) XRCE C/C++ lanes deliver nothing though the agent starts"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0164, issue-0163, phase-286]
+resolved_in: phase-286 W3
 ---
+
+## Resolution (phase-286 W3, 2026-07-10)
+
+Not a delivery bug — a missing agent locator, the C/C++ analog of #163 (which
+fixed only the Rust images). The C/C++ XRCE entry opened its session with NO agent
+address: `NROS_ENTRY_LOCATOR` (`nros-cpp/main.hpp`) only read
+`CONFIG_NROS_ZENOH_LOCATOR` (unset for XRCE) → `""` → the XRCE transport never
+connected (`run_components` rc=-100 `TRANSPORT_ERROR`). Fix: `main.hpp` synthesizes
+the bare `host:port` from `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` on an XRCE build
+(adjacent string-literal concat + stringize) — the form the XRCE session parser
+accepts; covers C + C++ (both route through `ZephyrBoard::run_components`). Three
+stale test markers surfaced once the transport connected (#164 class): the two
+`xrce_*_action` server-ready greps (`"Waiting for goals"`/`"Waiting for goal"` →
+`ACTION_SERVER_READY_MARKER`) and `xrce_cpp_action`'s bogus `feedback >= 1` +
+literal `"Feedback"` requirement (the Fibonacci server completes with a result and
+streams no feedback — gate on `ACTION_RESULT_PREFIX`). **All 6 XRCE C/C++ lanes
+green** (`xrce_{c,cpp}_{talker_listener,service,action}`).
 
 ## Problem
 

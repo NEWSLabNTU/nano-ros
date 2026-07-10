@@ -2056,7 +2056,10 @@ fn test_zephyr_xrce_cpp_action_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action server");
-    let _ = server.wait_for_pattern("Waiting for goal", Duration::from_secs(30));
+    let _ = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
 
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action client");
@@ -2073,12 +2076,18 @@ fn test_zephyr_xrce_cpp_action_e2e() {
     eprintln!("=== cpp/xrce action server output ===\n{}", server_output);
     eprintln!("=== cpp/xrce action client output ===\n{}", client_output);
 
-    let feedback = count_pattern(&client_output, "Feedback");
-    let completed = client_output.contains("completed")
-        || client_output.contains("Result")
-        || client_output.contains("succeeded");
-    if feedback >= 1 && completed {
-        eprintln!("SUCCESS: cpp/xrce action got {} feedback frames", feedback);
+    // The Fibonacci action client prints canonical prefixes (`nros_tests::output`):
+    // `ACTION_RESULT_PREFIX` on the final result, and (if the server streamed any)
+    // `ACTION_FEEDBACK_PREFIX` per feedback frame. This Fibonacci server computes
+    // the sequence and COMPLETES the goal with a result — it does NOT stream
+    // feedback (same as the C sibling, whose test also asserts only the result).
+    // So gate success on the result round-trip; report feedback as info. (Was
+    // grepping stale literals `"Feedback"` / `"completed"` the example never
+    // prints AND requiring feedback the server never sends — #164 marker class.)
+    let feedback = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
+    let completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
+    if completed {
+        eprintln!("SUCCESS: cpp/xrce action completed ({feedback} feedback frames)");
     } else {
         panic!(
             "cpp/xrce action E2E failed (feedback={}, completed={}).\nClient:\n{}\nServer:\n{}",
@@ -2837,8 +2846,11 @@ fn test_zephyr_xrce_c_action_e2e() {
     let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Xrce);
 
     let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
-    if !ready.contains("Waiting for goals") {
+    let ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    if !ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!("Zephyr C xrce action server not ready in 30 s.\nOutput:\n{ready}");
     }
     let mut server = server;
