@@ -49,3 +49,45 @@ Priority order:
    are done; only the last 10% is missing).
 6. Add greenfield bring-your-own-project/board docs for FreeRTOS, ThreadX,
    baremetal.
+
+## Priority 1 — false availability claims removed (2026-07-10)
+
+Truth-fixed, independent of the distribution decision. Every claim was verified
+against the tree before editing:
+
+- **`cargo install nros-cli` / crates.io links.** All CLI crates are
+  `publish = false` (`nros-cli`, `cargo-nano-ros`, `nros-cli-core`), and so is
+  every runtime crate — *nothing* is on crates.io. `nros-cli/README.md` and
+  `cargo-nano-ros/README.md` no longer print a `cargo install` line; they give
+  the real route (`git clone` → `just setup-cli` → `source activate.sh`, which
+  builds `packages/cli/target/release/nros` and puts it on `PATH`) and point at
+  `book/src/internals/cli-in-monorepo.md` for why a *global* `nros` is a
+  footgun. `nros-cli-core/README.md`'s `crates.io/crates/nros-cli` link now
+  points at the sibling crate.
+- **`book/src/user-guide/logging.md`** linked `crates.io/crates/nros-log`;
+  `nros-log` is `publish = false` too. Now links the in-tree crate and says so.
+- **`library.json` advertised `"arduino"`** with nothing behind it (no
+  `library.properties`, no glue — only a research note and an archived phase).
+  Removed from `frameworks`; `zephyr` + `espidf` stay (they have a real
+  `zephyr/module.yml` and `integrations/nano-ros/idf_component.yml`).
+- **`docs/release/registry-publishing.md`** pointed at
+  `integrations/platformio/library.{json,properties}` — neither exists. The PIO
+  manifest is `library.json` at the **repo root** (`integrations/platformio/`
+  holds only `nros_codegen.py`). Paths fixed, the publish command corrected to
+  run from the root, and the section now states plainly that the publish has
+  **never been executed and has no CI**.
+- **`docs/release/migration-install-local-removal.md`** told users to add
+  `lib_deps = nano-ros@*`; the library is unpublished, so that never resolves.
+  Corrected to a path/git pointer.
+
+Verified: `library.json` still parses as JSON; every replacement link target
+exists; `mdbook build` clean. (`just book` fails on an unrelated pre-existing
+regression — its `cargo doc --features rmw-zenoh,…` selects packages that no
+longer carry that feature, likely phase-248 C6e fallout.)
+
+**Still open: priorities 2–6.** Those need a *distribution decision* that is a
+product/release-policy call, not a mechanical fix: whether to publish the CLI
+(crates.io vs prebuilt release binaries), whether to publish the runtime crates
+or auto-provision `NROS_REPO_DIR`, whether to restore `find_package(NanoRos)` +
+`install()` rules retired in Phase 140, and whether to actually execute + CI the
+ESP-IDF / PlatformIO registry publishes.

@@ -1,7 +1,8 @@
 # Logging
 
 nano-ros ships a ROS 2 style leveled logging facade
-([`nros-log`](https://crates.io/crates/nros-log)) with the same
+([`nros-log`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-log),
+`publish = false` — in-tree only, not on crates.io) with the same
 `Logger` + severity surface as `rclcpp::Logger` /
 `rcutils_logging`. Records flow through a single per-platform sink
 (`PlatformSink`) that delegates to whichever

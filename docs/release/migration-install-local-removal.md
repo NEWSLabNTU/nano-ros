@@ -79,8 +79,10 @@ cmake --build build
   `CONFIG_NROS=y` + `CONFIG_NROS_RMW="zenoh"` in `prj.conf`.
 - **ESP-IDF.** `integrations/nano-ros/` is a component manifest —
   add it to your `idf_component.yml`.
-- **PlatformIO.** `integrations/platformio/library.json` — add
-  `lib_deps = nano-ros@*` (or a path/git pointer) in
+- **PlatformIO.** The manifest is `library.json` at the **repo root**
+  (`integrations/platformio/` holds only the `nros_codegen.py` extra-script).
+  The library is **not published** to the PlatformIO registry, so
+  `lib_deps = nano-ros@*` will not resolve — use a path or git pointer in
   `platformio.ini`.
 - **NuttX.** `integrations/nuttx/` is a `apps/external/` shim —
   symlink (or copy) and enable via `make menuconfig`.

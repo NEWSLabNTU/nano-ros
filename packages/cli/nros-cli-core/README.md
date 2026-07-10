@@ -1,6 +1,9 @@
 # nros-cli-core
 
-Library backing the canonical [`nros` CLI](https://crates.io/crates/nros-cli). Contains the subcommand dispatch, project scaffolder, config inspector, build / run / doctor wrappers, codegen commands, and shell-completion generator.
+Library backing the canonical [`nros` CLI](../nros-cli/). Contains the subcommand dispatch, project scaffolder, config inspector, build / run / doctor wrappers, codegen commands, and shell-completion generator.
+
+> **Not published.** This crate is `publish = false` and is not on crates.io.
+> Build the CLI from a nano-ros checkout with `just setup-cli`.
 
 ## License
 

@@ -1,9 +1,12 @@
 # cargo-nano-ros
 
-Shared codegen library for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) message generation. The canonical user CLI is `nros`; install it from the `nros-cli` crate.
+Shared codegen library for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) message generation. The canonical user CLI is `nros`, built from the `nros-cli` crate in this repo.
+
+> **Not published.** This crate is `publish = false`; there is no
+> `cargo install`. Build the CLI from a nano-ros checkout with `just setup-cli`,
+> then `source activate.sh` to put `nros` on `PATH`.
 
 ```bash
-cargo install nros-cli
 nros generate-rust --force
 ```
 

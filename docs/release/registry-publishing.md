@@ -78,9 +78,12 @@ in a fresh ESP-IDF project should pull the component and let
 **Registry.** [registry.platformio.org](https://registry.platformio.org).
 Publishing is via `pio package publish`.
 
-**Files.** `integrations/platformio/library.json` (PIO manifest),
-`integrations/platformio/library.properties` (Arduino-style sibling,
-optional but PIO honours it).
+**Files.** `library.json` at the **repo root** — that is the PIO manifest
+(its `build.extraScript` points at `integrations/platformio/nros_codegen.py`,
+which is the only file under `integrations/platformio/`). There is no
+`integrations/platformio/library.json` and no `library.properties`: the
+Arduino-style sibling was never written, and `arduino` was removed from the
+manifest's `frameworks` (#171).
 
 **Auth model.** Requires `pio account login` on the maintainer's
 machine, using PlatformIO account credentials. Tokens persist in
@@ -89,10 +92,13 @@ machine, using PlatformIO account credentials. Tokens persist in
 **Reference command (do NOT run from shared shell):**
 
 ```bash
-# Maintainer machine, after `git tag v0.X.Y`.
-cd integrations/platformio
+# Maintainer machine, after `git tag v0.X.Y`. Run from the repo root — that is
+# where `library.json` lives.
 pio package publish --type library
 ```
+
+> **Never executed.** No release has ever run this; there is no CI for it. Treat
+> the command as untested until a maintainer performs the first publish (#171).
 
 **Verification.** A test PIO project with `lib_deps = nano-ros@^0.X.Y`
 in `platformio.ini` and `pio run` should pull the library and
@@ -151,8 +157,7 @@ Per release cycle, the maintainer doing the cut should:
 
 1. Bump `version` in:
    - `integrations/nano-ros/idf_component.yml`
-   - `integrations/platformio/library.json`
-   - `integrations/platformio/library.properties`
+   - `library.json` (repo root — the PlatformIO manifest)
 2. Tag the repo: `git tag v0.X.Y && git push --tags`.
 3. Publish to the centralised registries only:
    - ESP Component Registry (`idf.py upload-component`)

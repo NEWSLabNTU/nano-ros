@@ -10,7 +10,8 @@
     "type": "git",
     "url": "https://github.com/NEWSLabNTU/nano-ros.git"
   },
-  "frameworks": ["zephyr", "espidf", "arduino"],
+  "_frameworks_comment": "Arduino was advertised here with no implementation behind it (no library.properties, no glue) — removed (#171). Re-add only alongside a real Arduino integration.",
+  "frameworks": ["zephyr", "espidf"],
   "platforms": "*",
   "headers": ["nros/init.h", "nros/node.h"],
   "build": {
