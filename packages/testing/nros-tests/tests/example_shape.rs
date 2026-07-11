@@ -703,3 +703,65 @@ fn unmigrated_trees_status_surface() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Test 8 — native standalone leaves use the RFC-0048 ament shape (phase-287 W7)
+// ---------------------------------------------------------------------------
+
+/// Every `examples/native/{c,cpp}/<leaf>/CMakeLists.txt` must be the RFC-0048
+/// ament shape: `find_package(nano_ros REQUIRED)`, no leftover interim/old-shape
+/// constructs (the `NANO_ROS_ROOT` resolve guard, `nano_ros_bootstrap()`, the
+/// `nano_ros_entry()` verb, or a raw `NanoRosBootstrap.cmake` include). Guards the
+/// phase-287 W6 native migration against regression + a stray un-migrated leaf.
+///
+/// Scoped to native standalone leaves — embedded / Zephyr / workspace trees keep
+/// their own shapes until their migration waves land.
+#[test]
+fn native_standalone_leaves_use_ament_shape() {
+    const FORBIDDEN: &[&str] = &[
+        "nano_ros_bootstrap(",
+        "if(NOT DEFINED NANO_ROS_ROOT",
+        "NanoRosBootstrap.cmake",
+        "nano_ros_entry(",
+        "nano_ros_link(",
+    ];
+    let mut bad: Vec<String> = Vec::new();
+    for lang in ["c", "cpp"] {
+        let root = examples_dir().join("native").join(lang);
+        if !root.is_dir() {
+            continue;
+        }
+        walk(&root, |dir| {
+            let cml = dir.join("CMakeLists.txt");
+            if !cml.is_file() {
+                return;
+            }
+            let rel = rel_to_project(&cml);
+            let Ok(body) = fs::read_to_string(&cml) else {
+                bad.push(format!("{} — unreadable", rel.to_string_lossy()));
+                return;
+            };
+            if !body.contains("find_package(nano_ros") {
+                bad.push(format!(
+                    "{} — missing `find_package(nano_ros REQUIRED)` (RFC-0048 ament shape)",
+                    rel.to_string_lossy()
+                ));
+            }
+            for marker in FORBIDDEN {
+                if body.contains(marker) {
+                    bad.push(format!(
+                        "{} — carries superseded `{}` (re-run \
+                         scripts/docs/migrate-example-cmake-ament.py)",
+                        rel.to_string_lossy(),
+                        marker
+                    ));
+                }
+            }
+        });
+    }
+    assert!(
+        bad.is_empty(),
+        "native standalone leaves not in the RFC-0048 ament shape:\n  {}",
+        bad.join("\n  ")
+    );
+}
