@@ -58,16 +58,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `find_package(NanoRos)` removed in Phase 140, registry publishes docs-only. Plus false
   availability claims to truth-fix now: `cargo install nros-cli` READMEs, Arduino in
   `library.json`, phantom PIO manifest paths in `registry-publishing.md`.
-- **#167** — [riscv-nuttx image panics at boot — virtio-net IRQ re-entrancy race
-  (EPC=0x4)](0167-riscv-nuttx-image-boot-panic.md): the rv-virt C-talker image faults at boot
-  (`EPC=RA=0x4`), exposed by phase-285 W2's `start_nuttx_riscv` harness (riscv-nuttx's first-ever
-  boot). **Root cause CONFIRMED = timing-dependent race, NOT config**: a `-d exec` trace of the
-  same image runs clean to idle while every gdb run crashes (QEMU slirp packet timing is host-timed,
-  not `-icount`-controlled). zenoh's TCP connect runs the full TX vring poll synchronously with the
-  virtio-net IRQ live; an RX/txdone IRQ mid-poll re-enters the vring → corrupt descriptor/ra → `jr`
-  to `~0x4`. arm boots the same image bare without panicking. Four config fixes (stacks/IOB/net
-  mirror) ruled out. **Documented known limitation** — fix needs a vendored NuttX virtio-net
-  IRQ-protection change or a connect-sequencing redesign. Gates phase-285 W2.b → #165.
 - **#166** — [Zephyr zenoh e2e serialize on build-time-baked router
   ports](0166-zephyr-e2e-serial-baked-port-parallelism-ceiling.md): the port scheme already gives
   unique per-(variant,lang) ports (xrce=7 / dds=4 parallel), but six
@@ -88,7 +78,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#174** — Zephyr XRCE
+Recently resolved (see [`archived/`](archived/) for the full list): **#167** — riscv-nuttx
+boot panic (`EPC=0x4`) was a `struct pollfd` ABI mismatch: NuttX's kernel `pollfd` is 24 bytes
+and its flat-build `poll()` writes all six fields into the caller's array, but Rust std/libc use
+the 8-byte POSIX `pollfd`, so std's `sanitize_standard_fds()` (fds 0/1/2 on the entry task's
+stack) overflowed by 48 bytes and smashed the saved return address. Fixed with a `-Wl,--wrap=poll`
+shim (`jerry73204/libc` `nuttx-0.2` @ `adb4c592e` + superproject `d06d25fa4`); boot-verified. The
+"timing-dependent virtio-net race" reading was a red herring of arm-vs-riscv stack-layout
+sensitivity. **#174** — Zephyr XRCE
 C/C++ "0-delivery" was a missing agent locator (the C/C++ analog of #163): `NROS_ENTRY_LOCATOR`
 (`nros-cpp/main.hpp`) only read `CONFIG_NROS_ZENOH_LOCATOR` (unset for XRCE) → `""` → the XRCE
 transport never connected (`run_components` rc=-100). `main.hpp` now synthesizes the agent

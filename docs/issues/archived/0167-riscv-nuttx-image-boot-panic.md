@@ -1,11 +1,30 @@
 ---
 id: 167
-title: "riscv-nuttx image panics at boot — garbage fn-ptr (EPC=0x4) inside ZenohRmw::open on the nros_cpp_init backend path"
-status: open
+title: "riscv-nuttx image panics at boot — struct pollfd ABI mismatch (std 8B ↔ NuttX 24B) smashes the entry task's return address"
+status: resolved
+resolved_in: d06d25fa4
 type: bug
 area: nuttx
 related: [issue-0165, issue-0135, phase-285]
 ---
+
+## Resolution (2026-07-11) — poll() `--wrap` ABI shim
+
+Fixed. Root cause = the `struct pollfd` ABI mismatch below. The fix routes
+`poll()` through a `-Wl,--wrap=poll` interposer that bridges Rust's 8-byte POSIX
+`pollfd` to NuttX's 24-byte kernel struct:
+
+- **libc fork** (`jerry73204/libc` branch `nuttx-0.2` @ `adb4c592e`) — added
+  `__wrap_poll` in `src/unix/nuttx/mod.rs`: copies each caller `pollfd` into a
+  private 24-byte NuttX-layout array, calls `__real_poll`, copies `revents` back.
+- **superproject** (`fix(#167)` `d06d25fa4`) — added `-Wl,--wrap=poll` to the
+  riscv `nros-nuttx-ffi/.cargo/config.toml` rustflags + bumped the libc pointer.
+
+**Boot-verified:** the rv-virt C-talker image now boots past the fault —
+`riscv_exception` never fires in a 50 s gdb window (previously every gdb run
+crashed within the first tick); serial shows normal `telnetd` startup, no panic
+dump. The three adjacent bug-fixes in `129fab4d4` (init stack, executor storage,
+virtio-net ctrl DMA) remain landed but are not what closed this.
 
 ## Summary
 
