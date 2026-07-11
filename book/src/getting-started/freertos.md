@@ -190,5 +190,9 @@ Canonical, copy-out:
   NXP-LPC55S69 / TI-MSP432 with a different board crate + linker
   script; see the [Bare-metal Cortex-M3](./bare-metal.md) page for
   the no-RTOS variant.
+- Your own board / RTOS: the
+  [Board Integration matrix](../concepts/board-integration.md) maps each
+  user profile (Cargo-first, vendor-IDE, Zephyr, ESP-IDF, NuttX, niche fork)
+  to the shortest bring-up path.
 - RTOS-specific debugging: [FreeRTOS LAN9118
   Debugging](../internals/freertos-lan9118-debugging.md).
