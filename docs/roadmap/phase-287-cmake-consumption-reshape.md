@@ -64,6 +64,34 @@ reused**, their **user-facing spelling is superseded** by RFC-0048.
   language snapshot from `ENABLED_LANGUAGES` is fragile — source inference in the
   verb is the reliable signal.
 
+## Landed (W5 native slice + W6 native canonical — 2026-07-11)
+
+- **W5 native (`07860c905`)** — `activate.{sh,fish}` export `nano_ros_ROOT`; a
+  sourced shell's `find_package(nano_ros)` resolves via CMake's `<pkg>_ROOT` env
+  with no `-Dnano_ros_ROOT`. The embedded-preset arm remains blocked on the
+  data-location decision (above).
+- **W6 native canonical (`07860c905`)** — 21 native standalone leaves migrated to
+  the ament shape via `scripts/docs/migrate-example-cmake-ament.py` (conservative:
+  only exact-canonical bodies; bespoke + own-msg leaves skipped). Platform delta in
+  `package.xml <export><nano_ros deploy="native"/>`. **Verified** via the real
+  `just native build-c` / `build-cpp` recipe paths (both green).
+
+  **Scope finding:** the "byte-identical CMakeLists across every example" goal
+  holds for the CANONICAL role leaves (talker/listener/action-*/service-*), but the
+  pedagogical `custom-*` examples deliberately carry extra CMake (custom platform
+  ref lib, custom transport threads, safety compile flags) and cannot be
+  byte-identical — they migrate by hand or stay bespoke. Own-interface packages
+  (`custom-msg`) are the `nano_ros_generate_interfaces` (§5) case.
+
+### W6 remaining — [migration] embedded / Zephyr / workspace / bespoke
+- **Do:** embedded native leaves (freertos/nuttx/threadx — need W5 presets),
+  Zephyr leaves (keep `find_package(Zephyr)` + Kconfig; the verb hides the
+  add_library-into-`app`, but the leaf is NOT byte-identical to native — Zephyr
+  owns the build), workspace roots + members (composition via `nros plan`), the 6
+  bespoke/own-msg native leaves, and `nros new` emitting the ament shape.
+- **Blocked-by:** W5 embedded presets (cross-compile leaves) + per-shape design
+  confirmation (Zephyr non-uniformity, workspace verb mapping).
+
 ## Waves (RFC-0048 implementation)
 
 Grouped by the four deliverables you asked for: **impl · migration · testing ·
