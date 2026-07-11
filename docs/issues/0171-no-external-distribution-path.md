@@ -33,6 +33,14 @@ distribution decision):
 - `library.json` advertises `"arduino"`.
 - `registry-publishing.md` points at nonexistent PlatformIO manifest paths.
 
+> **Planned.** The reshape is split into two phase docs:
+> [phase-287](../roadmap/phase-287-cmake-consumption-reshape.md) (C/C++ CMake
+> one-line bootstrap + example migration, #171 D5) and
+> [phase-288](../roadmap/phase-288-source-distribution-bootstrap.md)
+> (source-distribution bootstrap: one front door, fix the false prebuilt claim,
+> #171 D1/D2). Priority 1 (false claims) already landed; D3/D4/D6/D7 are decided
+> (see the decision log below).
+
 ## Fix direction
 
 Priority order:
