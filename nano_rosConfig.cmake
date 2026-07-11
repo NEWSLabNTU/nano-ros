@@ -38,6 +38,30 @@ set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 # for a C example. Setting this flag keeps `find_package(<msg>)` a pure validate.
 set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 
+# --- package.xml is the SSoT (RFC-0048 §4) -----------------------------------
+# Read the consumer's `<export><nano_ros deploy= board= rmw=/></export>` tuple
+# NOW, before importing nano-ros, so deploy→NANO_ROS_PLATFORM and rmw→
+# NANO_ROS_RMW reach the `add_subdirectory` body. This is what lets the leaf's
+# CMakeLists stay byte-identical across platforms — the delta is one line of
+# package.xml. Explicit `-DNANO_ROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they
+# are only set below when the caller left them at the default).
+include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+nano_ros_read_package_export()
+if(NANO_ROS_EXPORT_FOUND)
+    if(NANO_ROS_EXPORT_DEPLOY AND NOT NANO_ROS_PLATFORM)
+        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" NANO_ROS_PLATFORM)
+    endif()
+    if(NANO_ROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
+        set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}")
+    endif()
+    if(NANO_ROS_EXPORT_BOARD AND NOT NANO_ROS_BOARD)
+        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_BOARD}")
+    endif()
+    # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
+    set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
+    set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
+endif()
+
 # --- 1. import nano-ros ------------------------------------------------------
 include("${NANO_ROS_ROOT}/cmake/NanoRosBootstrap.cmake")
 nano_ros_bootstrap(ROOT "${NANO_ROS_ROOT}")

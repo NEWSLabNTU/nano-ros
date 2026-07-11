@@ -59,8 +59,18 @@ function(nano_ros_add_executable name)
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
+    # DEPLOY/BOARD default to the package.xml <export><nano_ros> tuple that
+    # find_package(nano_ros) parsed into NROS_DEPLOY / NROS_BOARD (RFC-0048 §4);
+    # an explicit keyword still wins.
     if(NOT _NRE_DEPLOY)
-        set(_NRE_DEPLOY native)
+        if(NROS_DEPLOY)
+            set(_NRE_DEPLOY "${NROS_DEPLOY}")
+        else()
+            set(_NRE_DEPLOY native)
+        endif()
+    endif()
+    if(NOT _NRE_BOARD AND NROS_BOARD)
+        set(_NRE_BOARD "${NROS_BOARD}")
     endif()
 
     # Generate the package's declared interface closure in the leaf's language.
@@ -99,7 +109,11 @@ function(nano_ros_add_node name)
             "nano_ros_add_executable for a standalone entry with its own main).")
     endif()
     if(NOT _NRN_DEPLOY)
-        set(_NRN_DEPLOY native)
+        if(NROS_DEPLOY)
+            set(_NRN_DEPLOY "${NROS_DEPLOY}")
+        else()
+            set(_NRN_DEPLOY native)
+        endif()
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
