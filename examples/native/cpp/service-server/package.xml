@@ -6,4 +6,8 @@
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>example_interfaces</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
+  </export>
 </package>

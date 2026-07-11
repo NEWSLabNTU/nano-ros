@@ -11,6 +11,9 @@
 
 set -l _nros_root (cd (dirname (status -f)); pwd)
 set -gx NROS_REPO_DIR $_nros_root
+# RFC-0048 (phase-287): find_package(nano_ros) locates nano_rosConfig.cmake via
+# CMake's <pkg>_ROOT env var — a sourced shell then needs no -Dnano_ros_ROOT.
+set -gx nano_ros_ROOT $_nros_root
 
 # ROS 2 Humble — fish needs `bass` or a hand-port of setup.bash. The
 # user `source setup.fish` if their ROS install ships one; otherwise

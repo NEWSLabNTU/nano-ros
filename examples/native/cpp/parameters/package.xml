@@ -5,4 +5,8 @@
   <description>Native C++ parameter-server demo — Phase 212.M.2 Application pkg shape</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
+  </export>
 </package>

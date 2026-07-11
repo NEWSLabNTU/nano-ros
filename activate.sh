@@ -25,6 +25,12 @@ else
     _nros_root="$(cd "$(dirname "$0")" && pwd)"
 fi
 export NROS_REPO_DIR="$_nros_root"
+# RFC-0048 (phase-287): the ament shape's `find_package(nano_ros REQUIRED)`
+# locates the in-tree `nano_rosConfig.cmake` via CMake's `<pkg>_ROOT` env var.
+# Exporting it here means a sourced shell needs no `-Dnano_ros_ROOT`; a copy-out
+# built outside a sourced shell passes `-Dnano_ros_ROOT=<checkout>` (or a `nros
+# setup` CMakePreset carries it).
+export nano_ros_ROOT="$_nros_root"
 
 # ROS 2 Humble — sourcing setup.bash exports AMENT_PREFIX_PATH,
 # CMAKE_PREFIX_PATH, ROS_DISTRO, etc. Required by `nros generate-rust`
