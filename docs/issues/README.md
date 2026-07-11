@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#176** — [RTIC mps2-an385 executor heap OOM](0176-rtic-mps2-executor-heap-oom.md): every
+  `deploy = "rtic-*"` qemu-arm-baremetal image boots then panics `memory allocation of 74888 bytes
+  failed` — the executor backing (74888 B) exceeds the 64 KB default heap
+  (`nros-platform-mps2-an385/memory.rs`). All four `test_qemu_rtic_*_e2e` fail. Was masked behind the
+  rtic-2.3.0 build break (now fixed via the `__NrosLocalCell` Send shim), which exposed it. Fix =
+  raise the mps2 default heap (→128 KB) or per-example `NROS_HEAP_SIZE`, or right-size the executor
+  storage. Runtime-only — `just check` is green.
 - **#175** — [Zephyr Cyclone action/service completion](0175-zephyr-cyclone-action-service-completion.md):
   native_sim Cyclone server RECEIVES the goal/request but the client never completes
   (`dds_{c,cpp,rs}_action` = goal-received/client-not-completed; cpp service = 1/3 replies). Pub/sub
