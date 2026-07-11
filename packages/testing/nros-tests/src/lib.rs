@@ -363,7 +363,7 @@ pub fn max_int_after(output: &str, pattern: &str) -> Option<i64> {
         .filter_map(|line| {
             line.split(pattern)
                 .nth(1)
-                .and_then(|rest| rest.trim().split_whitespace().next())
+                .and_then(|rest| rest.split_whitespace().next())
                 .and_then(|tok| tok.parse::<i64>().ok())
         })
         .max()
