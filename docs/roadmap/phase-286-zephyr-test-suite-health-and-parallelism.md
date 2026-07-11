@@ -269,6 +269,25 @@ phase_118 covers only pub/sub, so these action/service lanes have no LKG.
 complete end-to-end on native_sim across c/cpp/rs; add them to the phase_118-class
 coverage so they don't silently rot again.
 
+**INVESTIGATED 2026-07-10 — root cause narrowed, fix deferred (deep DDS discovery,
+distinct from the W1–W3 quick wins).** Reproduced `dds_rs_action_e2e`: the SERVER
+is fully green (goal received → executed → feedback published → succeeded), the
+CLIENT gets the immediate goal-accept reply but never the later feedback (topic) or
+the delayed `get_result` reply in 90 s. So client→server + the first server→client
+reply work; the LATE server→client paths do not reach the client. **Ruled out:**
+the #171/0171 VOLATILE-write-timing race (that fix landed AND is present on all
+three writers — `service.cpp` request + `service_send_reply`, and `publisher.cpp`
+feedback all gate on `dds_get_publication_matched_status.current_count`); stale
+markers (client genuinely stops at "waiting for result"); the benign
+`tid … is in use!` dynamic-thread cleanup warnings (both sides; server works
+despite them). **Remaining question:** the writers wait for a match, yet the
+client's feedback + `get_result`-reply READERS never complete match/receive — most
+likely a late-reader discovery/liveliness gap for the action's result/feedback
+entities on native_sim NSOS (the client's `get_result` reader is created lazily,
+only after goal-accept). Next step = a **trace-level rebuild** (`NROS_CYC_TRACE`
+both images) to read the reply/feedback writers' match/timeout at write time.
+Full evidence in #175. #175 stays open.
+
 ## Sequencing
 
 W1 (#166) → W2 (staleness — unblocks true rust-zenoh signal) → W3 (XRCE-C/C++)

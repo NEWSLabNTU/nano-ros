@@ -28,7 +28,48 @@ phase_118 covers only pub/sub, so these action/service lanes have had no
 recent last-known-good on fresh images — the completion gap could be a genuine
 regression or long-standing.
 
-## Suspects / direction
+## Narrowing (phase-286 W4, 2026-07-10)
+
+Reproduced `dds_rs_action_e2e` with `--no-capture`. Precise picture:
+
+- **Server side is fully green**: `Received goal request with order 1` → `Executing
+  goal` → `Publish feedback` → `Goal succeeded`. Same baked domain (52) both sides.
+- **Client side**: `Sending goal` → `Goal accepted by server, waiting for result`
+  → then NOTHING for the full 90 s wait. It gets the immediate goal-accept reply
+  but never the feedback (topic) nor the delayed `get_result` reply → never prints
+  `ACTION_RESULT_PREFIX`.
+- So client→server (goal request) AND the FIRST server→client reply (goal-accept,
+  written right after the request while the client's reply-reader is freshly
+  matched) both work. The LATE server→client paths — feedback (published at
+  execute time) and the `get_result` reply (written ~8 s later on completion) —
+  do not reach the client.
+
+**Ruled out:**
+
+- **NOT the #171/0171 VOLATILE-write-timing race.** That fix landed and was
+  extended to all three writers: `service.cpp` has `request_writer_matched` +
+  `wait_for_request_match` + `maybe_flush_request` (client request) AND
+  `service_send_reply` gates on `dds_get_publication_matched_status.current_count`;
+  `publisher.cpp` `writer_matched` gates the feedback publish the same way ("emits
+  valid wire data once at least one reader has matched … VOLATILE `dds_write` into
+  an empty pub-set is silently dropped"). So the writers already wait for a match.
+- **NOT a stale marker** (unlike the #174 action lanes) — the client genuinely
+  prints only up to "waiting for result".
+- **NOT the dynamic-thread `tid … is in use!` warnings** — those appear on BOTH
+  sides at `session_open` (Zephyr `kernel/dynamic.c` stack-free cleanup race) and
+  the server works despite them.
+
+**Remaining root-cause question:** the writers wait for a matched reader, yet the
+client's feedback + `get_result`-reply READERS never complete their match/receive
+with the server writers (either the server's match-wait times out because the
+client reader is created lazily — only after goal-accept, when the client calls
+`get_result` — and never discovered, OR it matches but the sample isn't received).
+Distinguishing needs a **trace-level rebuild** (`NROS_CYC_TRACE` on both images) to
+read the reply/feedback writers' `current_count` + match/timeout at write time.
+Likely a late-reader discovery/liveliness gap specific to the action's
+result/feedback entities on native_sim NSOS, not a QoS or write-timing bug.
+
+## Suspects / direction (superseded by the narrowing above)
 
 - The Cyclone reply/result writer→reader path on native_sim (NSOS sockets):
   service response topic, action `get_result` / feedback / status. Pub/sub works
