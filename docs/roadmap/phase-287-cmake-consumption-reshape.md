@@ -1,9 +1,17 @@
 # Phase 287 — C/C++ consumption reshape: ament-aligned `find_package(nano_ros)`
 
-Status: **In progress — 2026-07-11** (W1 + W2a landed as interim; design converged
-on RFC-0048) · Implements #171 decision **D5** + **RFC-0048** · Informs RFC-0026
-(examples), RFC-0018/0019 (C/C++ API), RFC-0014 (`nros setup`), RFC-0023 (ament
-codegen) · Sibling of phase-288 (source bootstrap, #171 D1/D2, **complete**).
+Status: **In progress — 2026-07-12** · Implements #171 decision **D5** +
+**RFC-0048** · Informs RFC-0026 (examples), RFC-0018/0019 (C/C++ API), RFC-0014
+(`nros setup`), RFC-0023 (ament codegen) · Sibling of phase-288 (source bootstrap,
+#171 D1/D2, **complete**).
+
+**Landed:** W1+W2a (interim bootstrap) · W3 (find_package + verbs) · W4 (package.xml
+deploy tuple) · W5 (nros setup presets + nros init, shape C′) · W6 native (all 27
+standalone leaves, incl. the 6 bespoke/own-msg) + `nros new` C/C++ ament shape ·
+W7 native-shape lint (example_shape Test 8) · W9 (evaluated → recommend option E,
+follow-up). **Remaining:** W6-rest (embedded/Zephyr/workspace — toolchain-gated /
+per-shape design) · W7 full cross-matrix · W8 (retire interim macros — BLOCKED until
+W6-rest since embedded/Zephyr/workspace still use nano_ros_bootstrap/entry/deploy).
 
 > **Goal.** A nano-ros C/C++ package is written in the **ament_cmake convention**
 > and its `CMakeLists.txt` is **byte-identical across every platform** (native,
@@ -180,13 +188,35 @@ old-path removal.**
   only the ament shape.
 
 ### W9 — [impl] Rust consumption UX (`[patch.crates-io]`) — semi-independent
-- **Design + implement if cheap.** Evaluate lighter handles than the per-consumer
-  `# nros-managed` `[patch.crates-io]` block (path deps written by `nros sync`, a
-  git-source `[patch]`, a workspace `[patch]` inherited once, a generated
-  `.cargo/config.toml` include) against #171 D2. Score on hand-written lines,
-  robustness to a moved checkout, IDE ergonomics.
-- **Acceptance:** comparison + recommendation recorded; the winner lands here or
-  spawns a follow-up.
+
+**Evaluated 2026-07-12.** Today `nros sync` writes ~12 `# nros-managed`
+`[patch.crates-io]` lines into each Rust leaf's `.cargo/config.toml`, each a
+RELATIVE path (`../../../../packages/core/nros`). The Cargo.toml stays
+registry-style (`nros = { version = "*" }`), so a leaf reads like a stock crate.
+
+| Option | Hand lines | Moved checkout | Copy-out (moved leaf) | Offline / D2 | IDE |
+| --- | --- | --- | --- | --- | --- |
+| **A. current — N relative-path patches** (sync-written) | 0 (sync) | re-run sync | breaks depth → re-run sync | ✅ | ✅ path deps |
+| B. path deps in Cargo.toml | ~12 | edit manifest | breaks (path in manifest) | ✅ | ✅ |
+| C. git-source `[patch]` | ~1 | n/a | ✅ | ❌ needs a git URL + network | ✅ |
+| D. workspace `[patch]` inherited | ~1 (root) | re-point root | ❌ copy-out has no workspace | ✅ | ✅ |
+| **E. single `include` of a sync-generated central patch** | 1 (the include) | re-run sync (one file) | one fragile include line vs 12 | ✅ | ✅ |
+
+**Recommendation: E.** Keep the sync-managed source-path patches (A's D2 +
+offline + IDE strengths), but consolidate them: `nros sync` generates ONE central
+`nros-patch.toml` (absolute paths to the checkout) and each leaf's committed
+`.cargo/config.toml` carries a single `include = ["…/nros-patch.toml"]`. Net: the
+committed per-leaf surface drops from ~12 fragile lines to 1, and a checkout move
+re-points one generated file that every leaf shares (vs re-syncing each). B/C/D
+are rejected — B/D break the standalone copy-out contract (RFC-0026), C violates
+#171 D2 (offline source distribution). The include line keeps A's relative-path
+fragility, but 1 line ≪ 12.
+
+**Status: recommendation recorded; implementation is a FOLLOW-UP** (not "cheap" —
+it changes `nros sync`'s emit, rewrites every Rust leaf's `.cargo/config.toml`, and
+needs a cargo-build sweep across the Rust example matrix to verify `[patch]`
+resolution through the `include`). Filed as its own slice so it doesn't gate the
+C/C++ waves. Independent of W3–W8.
 
 ## Non-goals
 
