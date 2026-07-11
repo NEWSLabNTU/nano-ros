@@ -2,8 +2,11 @@
 #ifndef NROS_CONFIG_GENERATED_NUTTX_H
 #define NROS_CONFIG_GENERATED_NUTTX_H
 #include <stdint.h>
-#define NROS_EXECUTOR_STORAGE_SIZE 79296
-#define NROS_EXECUTOR_SIZE 79296
+/* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
+ * rv-virt; too-small here overflows the executor storage buffer. Keep above the
+ * largest per-build value; the per-build header supersedes this when mirrored. */
+#define NROS_EXECUTOR_STORAGE_SIZE 98304
+#define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
 #define NROS_PUBLISHER_SIZE 560
 #define NROS_SUBSCRIBER_SIZE 560
