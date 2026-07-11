@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use nros_core::{
-    BorrowedMessage, CdrReader, Deserialize, DeserializeBorrowed, MessageInfo, RawMessageInfo,
-    RosAction, RosMessage, RosService,
+    BorrowedMessage, CdrReader, DeserializeBorrowed, MessageInfo, RawMessageInfo, RosAction,
+    RosMessage, RosService,
 };
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
@@ -1226,6 +1226,31 @@ fn payload_has_cdr_encap(p: &[u8]) -> bool {
     p.len() >= 4 && p[0] == 0x00 && matches!(p[1], 0x00 | 0x01 | 0x06 | 0x07 | 0x0a | 0x0b)
 }
 
+/// Deserialize an action result/feedback field payload, restoring the per-message
+/// CDR encapsulation header the backend's typed framing may have stripped (#175).
+/// `raw` is the field bytes at the payload offset; `top_encap` is the enclosing
+/// message's leading 4-byte encap (always a valid header). When `raw` already
+/// begins with an encap (zenoh/XRCE) it is read directly; when it does not
+/// (Cyclone `dds_stream` drops the inner encap of a nested message field) the
+/// top-level encap is spliced in front into a `CAP`-byte scratch buffer first.
+fn read_action_field<M: nros_serdes::Deserialize, const CAP: usize>(
+    top_encap: &[u8],
+    raw: &[u8],
+) -> Option<M> {
+    if payload_has_cdr_encap(raw) {
+        let mut reader = CdrReader::new_with_header(raw).ok()?;
+        return M::deserialize(&mut reader).ok();
+    }
+    if top_encap.len() < 4 || raw.len() + 4 > CAP {
+        return None;
+    }
+    let mut buf = [0u8; CAP];
+    buf[0..4].copy_from_slice(&top_encap[0..4]);
+    buf[4..4 + raw.len()].copy_from_slice(raw);
+    let mut reader = CdrReader::new_with_header(&buf[..4 + raw.len()]).ok()?;
+    M::deserialize(&mut reader).ok()
+}
+
 pub(crate) unsafe fn action_client_raw_try_process<
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
@@ -1538,8 +1563,11 @@ fn goal_id_from_counter(counter: u64) -> nros_core::GoalId {
 /// Decode one raw feedback slot (outer header + GoalId at [4..20] + inner-CDR
 /// payload at `offset`) and invoke the typed feedback closure (Phase 239.5).
 #[inline]
-fn dispatch_feedback<A, F>(data: &[u8], offset: usize, on_feedback: &mut F)
-where
+fn dispatch_feedback<A, F, const FEEDBACK_BUF: usize>(
+    data: &[u8],
+    offset: usize,
+    on_feedback: &mut F,
+) where
     A: RosAction,
     F: FnMut(&nros_core::GoalId, &A::Feedback),
 {
@@ -1549,9 +1577,9 @@ where
     let mut uuid = [0u8; 16];
     uuid.copy_from_slice(&data[4..20]);
     let goal_id = nros_core::GoalId { uuid };
-    if let Ok(mut reader) = CdrReader::new_with_header(&data[offset..])
-        && let Ok(fb) = A::Feedback::deserialize(&mut reader)
-    {
+    // #175 — restore the feedback's per-message encap if a typed transport
+    // framing (Cyclone) stripped it; the message's top-level encap is `data[0..4]`.
+    if let Some(fb) = read_action_field::<A::Feedback, FEEDBACK_BUF>(&data[0..4], &data[offset..]) {
         on_feedback(&goal_id, &fb);
     }
 }
@@ -1624,7 +1652,7 @@ where
                     tb.writer_publish(len);
                 }
                 if let Some((data, len)) = tb.reader_acquire() {
-                    dispatch_feedback::<A, _>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
                     did_work = true;
                 }
             }
@@ -1636,7 +1664,7 @@ where
                     }
                 }
                 while let Some((data, len)) = ring.try_pop() {
-                    dispatch_feedback::<A, _>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
                     ring.commit_pop();
                     did_work = true;
                 }
@@ -1656,10 +1684,13 @@ where
                 _ => nros_core::GoalStatus::Unknown,
             };
             let goal_id = goal_id_from_counter(core.goal_counter);
-            if let Ok(mut reader) =
-                CdrReader::new_with_header(&core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len])
-                && let Ok(res) = A::Result::deserialize(&mut reader)
-            {
+            // #175 — restore the result's per-message encap if a typed transport
+            // framing (Cyclone) stripped it; the reply's top-level encap is
+            // `result_buffer[0..4]`.
+            if let Some(res) = read_action_field::<A::Result, RESULT_BUF>(
+                &core.result_buffer[0..4],
+                &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len],
+            ) {
                 on_result(&goal_id, status, &res);
             }
         }

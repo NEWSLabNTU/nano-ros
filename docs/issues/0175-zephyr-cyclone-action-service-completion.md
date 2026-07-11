@@ -28,19 +28,38 @@ callback; zenoh/XRCE preserve the inner encap and pass through unchanged
 still PASS** (no regression on the encap-present path).
 
 **Residuals (separate bugs, NOT the encap):**
-- **C/C++ Cyclone action SERVER hangs in `create_action_server`** — the image opens
-  its session + `dds_create_participant` but never reaches the
-  `ACTION_SERVER_READY_MARKER` ("Waiting for action goals") even at 60 s, so
-  `dds_{c,cpp}_action_e2e` still fail at server-readiness. Rust's action server
-  reaches readiness fine, so this is specific to the `nros-c`/`nros-cpp`
-  `create_action_server` entity-declare path on Cyclone/Zephyr (client-side is now
-  correct via the same arena fix — once the server declares, they should complete).
+- **C/C++ Cyclone action SERVER register fails with `-100` (TRANSPORT_ERROR)** —
+  NOT a hang. Checkpoint-traced `server_configure`:
+  `nros_cpp_action_server_create` returns 0, then
+  **`nros_cpp_action_server_register` returns -100**, so the `if (rc) return`
+  guard skips the "Waiting for action goals" print → the harness times out at
+  server-readiness (`dds_{c,cpp}_action_e2e`). `register` →
+  `Executor::register_action_server_raw` (`nros-node/executor/action.rs:524`) which
+  creates FIVE RMW entities — send_goal / cancel_goal / get_result service servers
+  + feedback / status publishers — each `.map_err(|_| ActionCreationFailed)`
+  (surfaced as -100). Rust's action server creates the same five and reaches
+  readiness, so the divergence is the descriptor source: the **Rust** cyclone build
+  registers type descriptors at runtime (the `__cyclonedds-link` hook + codegen
+  descriptor builder), while the **C/C++** cyclone build uses the STATIC
+  `descriptors.cpp` table seeded by the cmake helper
+  `nros_zephyr_add_cyclonedds_action_descriptors(app)`. Leading hypothesis: that
+  table is missing one of the action's `action_msgs` types
+  (`action_msgs::srv::dds_::CancelGoal_` request/response or
+  `action_msgs::msg::dds_::GoalStatusArray_`), so `dds_create_topic` returns
+  UNSUPPORTED for that entity → `create_service_server` / `create_publisher`
+  fails → -100. Next step: trace which of the five creates fails (add the log
+  feature + a per-entity `log::info!` in `register_action_server_raw_sized`), then
+  extend the cmake action-descriptor helper to include the missing `action_msgs`
+  descriptors. Client-side is already correct via the arena encap-splice — once the
+  server declares, C/C++ Cyclone actions should complete.
 - The zenoh **cpp service** 1/3-completion (from the #164 re-triage) is untouched
   here.
 - The **typed** action-client dispatch (`action_client_callback_try_process`,
-  RFC-0041 Phase 239.2) has the SAME `new_with_header` assumption and would need the
-  same splice if a typed (closure-based) action client runs on Cyclone; the zephyr
-  examples use the raw/string-callback path, which is fixed.
+  RFC-0041 Phase 239.2) had the SAME `new_with_header` assumption — **now FIXED**:
+  the shared `arena.rs::read_action_field` helper applies the encap-splice to the
+  typed feedback (`dispatch_feedback`) and result paths too, so a typed
+  (closure-based) action client on Cyclone deserializes correctly. Latent (no
+  typed-action-client Cyclone e2e exists yet) but consistent with the raw path.
 
 ## Problem (original)
 
