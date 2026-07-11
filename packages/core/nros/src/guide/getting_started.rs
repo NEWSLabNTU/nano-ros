@@ -46,18 +46,12 @@
 //!
 //! ## 3. Generate message bindings
 //!
-//! Build the `nros` tool (one-time, from a nano-ros checkout):
+//! Build the `nros` tool (one-time, from a nano-ros checkout — nano-ros
+//! is a source distribution; there is no prebuilt `nros`):
 //!
 //! ```bash
-//! git submodule update --init packages/cli
-//! just setup-cli
-//! source ./activate.sh   # puts packages/cli/target/release/nros on PATH
-//! ```
-//!
-//! Or grab the no-Rust prebuilt:
-//!
-//! ```bash
-//! scripts/install-nros-prebuilt.sh
+//! ./scripts/bootstrap.sh   # builds packages/cli/target/release/nros
+//! source ./activate.sh     # puts it on PATH
 //! ```
 //!
 //! Generate bindings (for packages beyond `std_msgs`/`builtin_interfaces`,

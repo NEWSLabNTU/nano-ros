@@ -2016,8 +2016,8 @@ build-zenoh-pico:
 # Delegates to `setup-cli` (builds the in-tree `packages/cli/`
 # sub-workspace). The historical external-release install path
 # (Phase 195.D — NEWSLabNTU/nros-cli Releases) is retired by the
-# Phase 218 monorepo merge; for the no-Rust install path against a
-# tagged release, see `scripts/install-nros-prebuilt.sh`.
+# Phase 218 monorepo merge; phase-288 D1/D2 made source-build the only
+# route (`scripts/bootstrap.sh` is the user front door for the same build).
 [group("maintenance")]
 install-nros-cli: setup-cli
     @echo "nros CLI built in-tree at packages/cli/target/release/nros (Phase 218)."

@@ -17,21 +17,21 @@ nano-ros itself lives at [NEWSLabNTU/nano-ros](https://github.com/NEWSLabNTU/nan
 
 ## Install
 
-**Prebuilt binary (recommended — no Rust toolchain needed):**
+nano-ros is a **source distribution** (phase-288 D1/D2): there is no
+prebuilt `nros`. From a nano-ros checkout, the front door builds it —
+installing rustup if needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh
-# installs to ~/.nros/bin (override NROS_HOME); add it to PATH if prompted
+./scripts/bootstrap.sh
+# binary lands at packages/cli/target/release/nros; `source ./activate.sh`
+# puts it on PATH in every subsequent shell
 ```
 
-The prebuilt `nros` is a portable, libc-only binary (Linux glibc ≥ 2.35, macOS).
-`NROS_VERSION` selects a version.
-
-**From source (Rust):**
+Equivalent by hand (same build, same binary):
 
 ```bash
-git clone --recursive https://github.com/NEWSLabNTU/nros-cli
-cargo install --path nros-cli/packages/nros-cli   # builds the `nros` binary
+git submodule update --init packages/cli/third-party/ros-launch-manifest
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 ```
 
 ## Setup — one command for toolchains + sources

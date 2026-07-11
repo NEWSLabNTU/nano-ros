@@ -10,22 +10,20 @@ directly.
 ## Install
 
 The `nros` CLI ships from the in-tree sub-workspace at `packages/cli/`
-(Phase 218). **Recommended** — bootstrap, then activate the workspace
-to put it on PATH:
+(Phase 218). nano-ros is a **source distribution** — there is no
+prebuilt `nros` download (phase-288 D1/D2). One front door — bootstrap
+(builds the CLI from source; installs rustup if needed), then activate
+the workspace to put it on PATH:
 
 ```sh
-./scripts/bootstrap.sh base
+./scripts/bootstrap.sh
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 ```
 
-Alternatives (same binary, same location):
-
-- Already have cargo:
-  `git submodule update --init packages/cli/third-party/ros-launch-manifest`
-  then `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
-  (bootstrap runs both for you).
-- Tagged checkout, no Rust toolchain: `./scripts/install-nros-prebuilt.sh`
-  (downloads the prebuilt from the nano-ros-sdk Releases).
+Equivalent, if you already have cargo (same build, same binary):
+`git submodule update --init packages/cli/third-party/ros-launch-manifest`
+then `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
+(bootstrap runs both for you; `just setup-cli` is the internal alias).
 
 The resulting binary lives at `packages/cli/target/release/nros`. One
 checkout = one CLI version = one runtime ABI; contributors with

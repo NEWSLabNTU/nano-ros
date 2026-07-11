@@ -51,11 +51,11 @@ elif [ -z "${NROS_QUIET_ACTIVATE:-}" ] && ! command -v nros >/dev/null 2>&1; the
     # Tell the user how to fix it explicitly instead of letting a silent
     # "command not found" surprise them minutes later. Suppress with
     # NROS_QUIET_ACTIVATE=1 (CI lanes that build the CLI as a separate step).
-    echo "[nano-ros] CLI not built yet. Run one of:" >&2
-    echo "  ./scripts/bootstrap.sh base      (recommended; bare machine OK)" >&2
+    echo "[nano-ros] CLI not built yet. Run:" >&2
+    echo "  ./scripts/bootstrap.sh           (builds the CLI from source; installs rustup if needed)" >&2
+    echo "  Equivalent, if you have cargo:" >&2
     echo "  git submodule update --init packages/cli/third-party/ros-launch-manifest \\" >&2
-    echo "    && cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros   (if you have cargo)" >&2
-    echo "  ./scripts/install-nros-prebuilt.sh   (tagged checkout; downloads prebuilt)" >&2
+    echo "    && cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros" >&2
     echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 fi
 

@@ -31,29 +31,30 @@ trees the job will never read).
   #   third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
 ```
 
-**The rule — install the released `nros`, then provision via it; never hand
-`git submodule update`.** A *user* gets the prebuilt `nros` CLI from
-`install.sh` and runs `nros setup` to provision sources from
-`nros-sdk-index.toml` — they don't checkout `packages/codegen` or `cargo build`
-the CLI, and they don't `git submodule update` their libc / zenoh-pico /
-cyclonedds fork. CI simulates exactly that. There is **no** hand-init step:
+**The rule — build the in-tree `nros`, then provision via it; never hand
+`git submodule update`.** A *user* builds the `nros` CLI from source
+(`scripts/bootstrap.sh` — nano-ros is a source distribution, phase-288
+D1/D2) and runs `nros setup` to provision sources from
+`nros-sdk-index.toml` — they don't `git submodule update` their libc /
+zenoh-pico / cyclonedds fork. CI simulates exactly that. There is **no**
+hand-init step:
 
 ```yaml
-- name: Install the nros CLI (released binary)
+- name: Build the nros CLI (source, per-checkout)
   run: |
-    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-      | NROS_VERSION=0.3.0 sh
-    echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+    git submodule update --init packages/cli/third-party/ros-launch-manifest
+    cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+    echo "$PWD/packages/cli/target/release" >> "$GITHUB_PATH"
 # board's whole toolchain + source set:
 - run: nros setup <board> --rmw <rmw>
 # or a specific source (submodule) by name:
 - run: nros setup --source <name> [--source <name>…]
 ```
 
-Pin `NROS_VERSION` to the `[tool.nros]` version in the index. The build's own
-interface codegen resolves this same installed `nros` (via `$NROS_CLI` / PATH /
-`~/.nros`, Phase 195.D) as its codegen tool — so no codegen submodule / cargo
-build of the CLI is needed anywhere.
+The build's own interface codegen resolves this same per-checkout `nros`
+(via `$NROS_CLI` / PATH / `scripts/build/cargo.sh::nros_cli_bin`) as its
+codegen tool. Caching the built binary is safe (see the source-cache
+caveat below); caching `nros setup --source` dirs is NOT (phase-253).
 
 If a build needs a source the index doesn't provision, **that is an index/`nros`
 bug to fix** (add the `[source.*]` entry / teach `nros`), never a `git submodule`
@@ -92,15 +93,14 @@ Zephyr 4.4 needs Python ≥3.12; `scripts/zephyr/provision-py312-venv.sh` requir
 - uses: astral-sh/setup-uv@v5
 ```
 
-### 5. Install the released `nros` CLI — don't build it
+### 5. Build the in-tree `nros` CLI — there is no released binary
 
-The CLI ships as a prebuilt binary (`NEWSLabNTU/nros-cli` Releases, tag
-`nros-v<version>`, hosted in the SDK index as `[tool.nros]`). `install.sh` fetches
-+ sha-verifies it for the host into `~/.nros/bin` — the exact user bootstrap. Use
-it; do **not** checkout `packages/codegen` or `cargo build` the CLI in CI (that's
-a contributor path, not the user path, and Phase 195.D made the *installed*
-binary canonical for both `nros setup` and the in-build codegen tool). See §1 for
-the step.
+nano-ros is a source distribution (phase-288 D1/D2): the CLI is built
+per-checkout from `packages/cli/` (one checkout = one CLI = one runtime
+ABI). Every lane that needs `nros` runs the same
+`cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
+(see §1). The pre-288 prebuilt route (`NEWSLabNTU/nros-cli` Releases +
+`install.sh`, Phase 195) is retired.
 
 ### 6. Canonical codegen invocation: `nros codegen --args-file`
 

@@ -76,26 +76,20 @@ This group starts broad and then drills into each part:
 
 Pick one path from a fresh checkout — `just` is NOT a prereq.
 
-**A. Bare machine** (no Rust, no `just`, no cargo):
+**A. Front door** (bare machine OK — no Rust, no `just`):
 ```sh
-./scripts/bootstrap.sh base
+./scripts/bootstrap.sh
 ```
-Installs rustup, just, builds the in-tree `nros` CLI at
-`packages/cli/target/release/nros`, leaves the binary on PATH for
-this shell.
+Installs rustup if needed and builds the in-tree `nros` CLI from
+source at `packages/cli/target/release/nros`, leaving it on PATH for
+this shell (nano-ros is a source distribution — no prebuilt `nros`).
 
-**B. Already have cargo** (most contributors):
+**B. Already have cargo** (equivalent — same build, same binary):
 ```sh
+git submodule update --init packages/cli/third-party/ros-launch-manifest
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
-
-**C. Tagged release, no Rust at all**:
-```sh
-./scripts/install-nros-prebuilt.sh
-```
-Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
-sha256-verifies, installs to `packages/cli/target/release/nros`.
 
 Every subsequent shell sources the workspace env via one of:
 ```sh

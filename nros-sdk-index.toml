@@ -14,39 +14,13 @@
 
 # --- prebuilt host tools (target-agnostic) ---
 
-# The `nros` CLI itself (Phase 195.A). Post-Phase-218 the CLI lives in-tree
-# at `packages/cli/` and is built by `just setup-cli`; the no-Rust prebuilt
-# path is `scripts/install-nros-prebuilt.sh` which fetches a release asset of
-# THIS repo. The dist URLs + source recipe below point at the standalone
-# `github.com/NEWSLabNTU/nros-cli` repo (ARCHIVED / read-only) — preserved as
-# a transitional fallback for callers that still hit `[tool.nros]` via
-# `nros setup --tool nros` or `tools/setup.sh`; new install paths route
-# through `just setup-cli` instead. The binary is libc-only (launch parsing
-# shells out to play_launch_parser).
-[tool.nros]
-version = "0.3.6"
-upstream = "0.3.6" # nros-cli crate version = source.ref tag (nros-v0.3.6)
-# 0.3.6 makes serial/CAN-only builds drop the IP link — the generator bakes
-# `NROS_LINK_IP=0` into the generated `.cargo/config.toml` `[env]` (Phase 204.7)
-# + `nros new` scaffolds the size knobs into the config (204.7/204.8). 0.3.5
-# added the `[build.cc]` per-layer C/C++ override (CFLAGS/CXXFLAGS env +
-# NROS_CC_OPT) + `nros new` named size/speed profiles (Phase 204.15 inc 2 C-side
-# + 3). 0.3.4 added `[build.cargo]` (204.15 inc 2). 0.3.3 added `[build].optimize`
-# → the generated [profile.release] (inc 1). 0.3.2 added shallow+recursive
-# submodule/clone provisioning + `nros setup --full`. 0.3.1 added the Phase
-# 197.2 index schema (build_sources/dev_sources/[reference.*]); 0.3.0 rejected
-# them via deny_unknown_fields. See Phase 197.5.
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-linux-x86_64.tar.zst", sha256 = "8f81ac89589426537f3efce2002b70019925ae6d9a96d3369fad1480cc2986b3" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-linux-arm64.tar.zst", sha256 = "b16f66abd8846b35d3436479e5c66aa596d30514fb94a9d268e5c92321a0b9e3" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-macos-arm64.tar.zst", sha256 = "4b6a5457bfc77b6a2dba928eca0a2c7074785ce29d2108cad40ac77e2bccf4a6" }
-# dist.macos-x86_64 added once a macos-13 build seeds it (its job is currently
-# flaky in the runner queue); intel-mac falls back to the source recipe until then.
-[tool.nros.source]
-git = "https://github.com/NEWSLabNTU/nros-cli"
-ref = "nros-v0.3.6"
-# ros-launch-manifest-types is a path dep behind a nested submodule.
-configure = "git submodule update --init --recursive"
-install = "cargo install --path packages/nros-cli --root {prefix} --locked"
+# The `nros` CLI is NOT an index tool. It lives in-tree at `packages/cli/`
+# and is built from source per checkout (`scripts/bootstrap.sh`, or the
+# internal alias `just setup-cli`) — nano-ros is a source distribution
+# (phase-288 D1/D2). The pre-288 `[tool.nros]` entry pointed at the ARCHIVED
+# standalone `NEWSLabNTU/nros-cli` repo's 0.3.6 binaries — 15 releases stale
+# and ABI-mismatched with the checkout; installing it via
+# `nros setup --tool nros` was a footgun and the entry is removed.
 
 # nros2: rebuilt with --enable-slirp (nano-ros QEMU tests use -netdev user;
 # nros1 lacked slirp and couldn't network).

@@ -90,32 +90,28 @@ hand, and you do not need ROS 2 on the machine.
 
 ### 1. Get the `nros` CLI onto PATH
 
-Pick one path from a fresh checkout — `just` is NOT a prereq.
+nano-ros is a **source distribution** — there is no prebuilt `nros`
+download. One front door from a fresh checkout (`just` is NOT a
+prereq; rustup is installed on demand):
 
-**A. Bare machine** (no Rust, no `just`, no cargo):
 ```sh
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-./scripts/bootstrap.sh base
+./scripts/bootstrap.sh
 ```
-Installs rustup, just, builds the in-tree `nros` CLI at
-`packages/cli/target/release/nros`, leaves the binary on PATH for
-this shell.
 
-**B. Already have cargo** (most contributors):
+Builds the in-tree `nros` CLI **from source** at
+`packages/cli/target/release/nros` and leaves it on PATH for this
+shell.
+
+Already have cargo? The equivalent by hand (same build, same binary):
 ```sh
+git submodule update --init packages/cli/third-party/ros-launch-manifest
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
 
-**C. Tagged release, no Rust at all**:
-```sh
-./scripts/install-nros-prebuilt.sh
-```
-Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
-sha256-verifies, installs to `packages/cli/target/release/nros`.
-
-All three paths produce the per-checkout binary at
+Both produce the per-checkout binary at
 `packages/cli/target/release/nros`. **One checkout = one CLI version =
 one runtime ABI** — no global install, no `~/.nros/bin` PATH skew
 across worktrees.

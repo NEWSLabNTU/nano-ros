@@ -17,8 +17,12 @@ Usage:
   scripts/bootstrap.sh [flags] <subcommand> [args]
 
 Subcommands:
-  nros                       install the PREBUILT nros CLI (no just/cargo)
-  base                       base quick-start setup (rustup + just + CLI)
+  (no subcommand)            THE front door: build the nros CLI from source
+                             (installs rustup if needed; no just required),
+                             then print the next step (`nros setup <board>`)
+  nros                       alias of the no-subcommand front door
+  base                       contributor quick-start (front door + just +
+                             `just setup base`)
   all                        full contributor / test-all setup
   platform <name>            focused platform setup
   doctor [tier]              read-only diagnosis of build environment
@@ -26,7 +30,6 @@ Subcommands:
   shell-doctor               read-only diagnosis of SHELL state
                              (PATH, version lockstep, rc-file activate
                              line, stale deprecated-verb aliases)
-  (no subcommand)            install/check just, then show setup choices
 
 Flags:
   --dry-run                  print every destructive command, run none
@@ -34,17 +37,17 @@ Flags:
   --no-prompt                never ask (CI mode); overrides --prompt
   -h, --help                 this message
 
-The `nros` path is the just-free user route: it fetches the prebuilt `nros`
-binary (Phase 195.A) and you then run `nros setup <board>` followed by the
-platform build/run tool.
-The others are the contributor/source route (rustup + just + `just setup`).
+nano-ros is a SOURCE distribution (phase-288 D1/D2): there is no prebuilt
+`nros` download. The front door builds `packages/cli/` with cargo and
+leaves the binary at packages/cli/target/release/nros; `just setup-cli`
+is the internal alias for the same build.
 
-After a successful `base` run the script offers to append a
+After a successful front-door / `base` run the script offers to append a
 `source <repo>/activate.sh` line to your shell rc (auto-detected from
 $SHELL — bash / zsh / fish). Decline with --no-prompt to skip.
 
 Examples:
-  scripts/bootstrap.sh nros
+  scripts/bootstrap.sh
   scripts/bootstrap.sh --dry-run base
   scripts/bootstrap.sh --no-prompt base
   scripts/bootstrap.sh platform zephyr
@@ -218,40 +221,24 @@ build_in_tree_cli() {
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
 }
 
-# Phase 218 — the just-free `nros` path: previously fetched a prebuilt
-# binary from `nros-cli` Releases. After the Phase 218 monorepo merge,
-# `nros` ships from the in-tree sub-workspace at `packages/cli/`. Three
-# acquisition paths, in priority order:
-#   1. Already on PATH (a previous `just setup-cli` or activate.sh) — no-op.
-#   2. Tagged checkout — `scripts/install-nros-prebuilt.sh` fetches the
-#      matching `nros-<triple>.tar.gz` from the GitHub release and
-#      installs to `packages/cli/target/release/nros`.
-#   3. Branch / development checkout — build from source via
-#      `cargo build --release --manifest-path packages/cli/Cargo.toml
-#      --bin nros`. Needs rustup; install via this script's `base`
-#      subcommand first if not present.
-install_nros_prebuilt() {
+# Phase 288 (D1/D2) — THE user front door. nano-ros is a source
+# distribution: the only way to obtain `nros` is to build the in-tree
+# sub-workspace at `packages/cli/` with cargo (rustup is installed on
+# demand; `just` is NOT required). Two states:
+#   1. Already on PATH (a previous build or activate.sh) — no-op.
+#   2. Otherwise — rustup if needed, init the CLI submodule, cargo build.
+install_nros_source() {
     ensure_path
     if command -v nros >/dev/null 2>&1; then
         echo "bootstrap: nros already on PATH ($(command -v nros))."
+        echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
         return 0
     fi
 
-    # Path 2: tagged checkout → prebuilt fetch.
-    if [[ -x "${REPO_ROOT}/scripts/install-nros-prebuilt.sh" ]]; then
-        if git -C "${REPO_ROOT}" describe --tags --abbrev=0 --match 'nros-v*' >/dev/null 2>&1; then
-            run_cmd "tagged checkout — fetching prebuilt nros" \
-                "${REPO_ROOT}/scripts/install-nros-prebuilt.sh" \
-                || return 0
-            export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
-            echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
-            return 0
-        fi
-    fi
-
-    # Path 3: build from source.
+    install_rustup_if_missing
     build_in_tree_cli || return 1
-    echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
+    echo "bootstrap: next →  source ./activate.sh   then   nros setup <board>"
+    offer_shell_rc_update
 }
 
 # Phase 222.E.1 — the bare-machine path. Runs the cold-cache route:
@@ -472,8 +459,9 @@ main() {
     set -- "${args[@]}"
 
     case "${1:-}" in
-        nros)
-            install_nros_prebuilt
+        ""|nros)
+            # Phase 288 — the default IS the front door: source-build the CLI.
+            install_nros_source
             exit 0
             ;;
         shell-doctor)
@@ -496,9 +484,6 @@ main() {
     cd "$REPO_ROOT"
 
     case "${1:-}" in
-        "")
-            exec just setup
-            ;;
         all|everything|contributor|extended)
             echo "bootstrap: full setup will fetch/install all supported platform SDKs."
             exec just setup all

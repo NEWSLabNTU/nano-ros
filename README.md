@@ -59,13 +59,14 @@ Consumers either build in-tree (below) or add a path dependency (see
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-./scripts/bootstrap.sh base
+./scripts/bootstrap.sh
 ```
 
-Already have cargo? Init the CLI's submodule first, then build:
+The script installs rustup if needed and builds the CLI from source —
+nano-ros is a source distribution (there is no prebuilt `nros`).
+Equivalent, if you already have cargo:
 `git submodule update --init packages/cli/third-party/ros-launch-manifest &&
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
-Tagged release, no Rust at all? `./scripts/install-nros-prebuilt.sh`.
 
 ### 2. Activate the workspace (every new shell)
 
