@@ -288,6 +288,19 @@ only after goal-accept). Next step = a **trace-level rebuild** (`NROS_CYC_TRACE`
 both images) to read the reply/feedback writers' match/timeout at write time.
 Full evidence in #175. #175 stays open.
 
+**Deep inspection follow-up 2026-07-11 — narrowed to a selective receive-side gap.**
+Instrumented the server's reply + feedback writers (temporary trace, reverted): every
+write goes to a MATCHED reader (`cur=1`) — goal-accept reply, feedback, and the
+`get_result` reply all fire `dds_write` with the client's reader matched. So it is
+NOT write-timing/match/QoS. Also ruled out a client spin/dispatch gap:
+`action_client_raw_try_process` (`arena.rs:1219`) polls feedback + the `get_result`
+reply every spin. Yet only the goal-accept lands on the client; the later feedback +
+`get_result` reply never appear in the client's readers. It is a **selective
+receive-side delivery gap on native_sim NSOS** — first server→client reply received,
+later ones not. Next step = a **client-side** read-path trace (`subscriber.cpp` /
+reply-reader `dds_take`) to split "sample never reaches the reader cache" (RTPS/NSOS)
+vs "reaches it but `dds_take` misses" (reader state). #175 carries the full evidence.
+
 ## Sequencing
 
 W1 (#166) → W2 (staleness — unblocks true rust-zenoh signal) → W3 (XRCE-C/C++)

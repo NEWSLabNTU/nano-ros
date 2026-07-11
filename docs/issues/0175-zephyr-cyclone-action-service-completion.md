@@ -59,15 +59,37 @@ Reproduced `dds_rs_action_e2e` with `--no-capture`. Precise picture:
   sides at `session_open` (Zephyr `kernel/dynamic.c` stack-free cleanup race) and
   the server works despite them.
 
-**Remaining root-cause question:** the writers wait for a matched reader, yet the
-client's feedback + `get_result`-reply READERS never complete their match/receive
-with the server writers (either the server's match-wait times out because the
-client reader is created lazily — only after goal-accept, when the client calls
-`get_result` — and never discovered, OR it matches but the sample isn't received).
-Distinguishing needs a **trace-level rebuild** (`NROS_CYC_TRACE` on both images) to
-read the reply/feedback writers' `current_count` + match/timeout at write time.
-Likely a late-reader discovery/liveliness gap specific to the action's
-result/feedback entities on native_sim NSOS, not a QoS or write-timing bug.
+**Trace-level narrowing (2026-07-11) — the writes ARE matched; the samples don't
+arrive at the client readers.** Instrumented the SERVER's reply + feedback writers
+(temporary `LOG_INF` in `service.cpp::service_send_reply` +
+`publisher.cpp::publisher_publish_raw`, since reverted) and re-ran
+`dds_rs_action_e2e`. Every server write went to a **matched** reader:
+
+```
+svc_send_reply seq=0 ready=1 cur=1 tot=1            # goal-accept reply
+pub type=…Fibonacci_FeedbackMessage_ cur=1 tot=1    # feedback
+svc_send_reply seq=0 ready=1 cur=1 tot=1            # get_result reply
+```
+
+So it is **NOT** a write-timing / match-gate / QoS problem — `current_count = 1`
+on every write, the writer sees the client's reader, and `dds_write` runs. Also
+ruled out: **NOT a spin/dispatch gap on the client** — `action_client_raw_try_process`
+(`nros-node/src/executor/arena.rs:1219`) is driven every `spin_once` and DOES poll
+feedback (`try_recv_feedback_raw`, :1260) and the `get_result` reply
+(`try_recv_reply_raw`). The `tid … is in use!` dynamic-thread warnings are benign
+(both sides; server works). Bumping `NROS_CYCLONE_MATCH_TIMEOUT_MS` to 30 s does not
+help.
+
+**Precise remaining question:** the server writes goal-accept, feedback, AND the
+`get_result` reply — all to a matched reader — and the client's spin polls all three
+readers, yet only the **goal-accept** lands; the later **feedback** (topic) and
+**`get_result` reply** never appear in the client's readers (`try_recv_*` return
+empty, callbacks never fire). So it is a **selective receive-side delivery gap** on
+native_sim NSOS: the FIRST server→client reply is received, the LATER ones are not.
+Distinguishing "sample never reaches the client's reader cache" (RTPS/NSOS
+transport) vs "reaches the cache but `dds_take` misses it" (reader instance/state)
+needs a **client-side** trace (instrument `subscriber.cpp` take + the service
+reply reader take, or `NROS_CYC_TRACE` the client's read path) — the next step.
 
 ## Suspects / direction (superseded by the narrowing above)
 
