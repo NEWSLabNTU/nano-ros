@@ -80,16 +80,46 @@ feedback (`try_recv_feedback_raw`, :1260) and the `get_result` reply
 (both sides; server works). Bumping `NROS_CYCLONE_MATCH_TIMEOUT_MS` to 30 s does not
 help.
 
-**Precise remaining question:** the server writes goal-accept, feedback, AND the
-`get_result` reply — all to a matched reader — and the client's spin polls all three
-readers, yet only the **goal-accept** lands; the later **feedback** (topic) and
-**`get_result` reply** never appear in the client's readers (`try_recv_*` return
-empty, callbacks never fire). So it is a **selective receive-side delivery gap** on
-native_sim NSOS: the FIRST server→client reply is received, the LATER ones are not.
-Distinguishing "sample never reaches the client's reader cache" (RTPS/NSOS
-transport) vs "reaches the cache but `dds_take` misses it" (reader instance/state)
-needs a **client-side** trace (instrument `subscriber.cpp` take + the service
-reply reader take, or `NROS_CYC_TRACE` the client's read path) — the next step.
+**RESOLVED to the layer (client-side read trace, 2026-07-11) — the transport +
+rmw WORK; the bug is ABOVE them, in the nros action-client dispatch (and a
+premature `get_result` reply).** Instrumented the CLIENT's read paths
+(`subscriber.cpp::subscriber_try_recv_raw` + `_sequence`,
+`service.cpp::take_typed_wire` + the reply correlation check in
+`service_try_recv_reply_raw`; all temporary, reverted) and re-ran. The client
+DOES receive everything at the rmw layer:
+
+```
+sub_take  type=…Fibonacci_FeedbackMessage_    matched=1 taken=1   # feedback received
+reply_take type=…Fibonacci_GetResult_Response_ matched=1 taken=1   # result reply received
+reply_corr got_seq=0 got_guid=… pend=0 my_guid=… match=1           # correlation MATCHES
+```
+
+So: the feedback sample is taken (`taken=1`), the `get_result` **response** is taken
+(`taken=1`), and its correlation header matches the client's pending request
+(`match=1`) — i.e. `service_try_recv_reply_raw` returns the reply successfully to
+the action-client core. The goal-accept reply is likewise received and DOES reach
+the app (`on_goal_response` → "Goal accepted"). **Yet `on_feedback`
+("Next number in sequence received") and `on_result` ("Result received") never
+fire, and the test fails.** So the loss is strictly between the rmw take (works) and
+the app callback in
+`nros-node/src/executor/arena.rs::action_client_raw_try_process` (steps 2 =
+feedback, 3 = result; step 1 = goal-response works).
+
+**Second, likely-related finding:** the `get_result` response is received at CLIENT
+clock **04.339**, but the server does not print "Goal succeeded" until SERVER clock
+**08.385** (~2 s later) — the server replies to `get_result` **before the goal
+terminates** (a premature reply). service.cpp then clears `pending_seq` on that
+early match, so the client stops waiting and the true terminal result is never
+delivered. Fix direction is therefore two-fold, both ABOVE the cyclone rmw:
+1. **Action server** (`nros-node` action_core) must hold the `get_result` reply
+   until the goal reaches a terminal state (don't reply early), and
+2. **Action client dispatch** (`arena.rs::action_client_raw_try_process`) must
+   actually deliver the taken feedback + result to `on_feedback` / `on_result`
+   (verify the `try_recv_feedback_raw` / `try_recv_get_result_reply` return values
+   + the `FEEDBACK_PAYLOAD_OFFSET` / `RESULT_PAYLOAD_OFFSET` length gates).
+
+Cyclone transport + `service.cpp` reply routing are proven working and are NOT the
+cause. This is a nano-ros action-layer bug, likely not native_sim-specific.
 
 ## Suspects / direction (superseded by the narrowing above)
 

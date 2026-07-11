@@ -301,6 +301,21 @@ later ones not. Next step = a **client-side** read-path trace (`subscriber.cpp` 
 reply-reader `dds_take`) to split "sample never reaches the reader cache" (RTPS/NSOS)
 vs "reaches it but `dds_take` misses" (reader state). #175 carries the full evidence.
 
+**Client read trace 2026-07-11 — resolved to the LAYER: the rmw + transport WORK;
+the bug is in the nano-ros action layer.** Traced the client read paths (reverted):
+the client DOES receive everything at the rmw — feedback `sub_take taken=1`, the
+`get_result` **response** `reply_take taken=1`, and its correlation `match=1` (so
+`service_try_recv_reply_raw` returns the reply). The goal-accept reaches the app
+("Goal accepted"), but `on_feedback`/`on_result` never fire. So the loss is strictly
+between the rmw take (works) and the app callback in
+`arena.rs::action_client_raw_try_process` (feedback + result steps). Plus the server
+sends the `get_result` reply ~2 s BEFORE it prints "Goal succeeded" — a **premature
+reply** that clears the client's `pending_seq` so the terminal result is never
+awaited. Fix is two-fold and ABOVE cyclone: (1) action server must hold the
+`get_result` reply until the goal is terminal; (2) action-client dispatch must
+deliver the taken feedback + result to the callbacks. Cyclone transport +
+`service.cpp` routing are proven working, NOT the cause. #175 has the full trace.
+
 ## Sequencing
 
 W1 (#166) → W2 (staleness — unblocks true rust-zenoh signal) → W3 (XRCE-C/C++)
