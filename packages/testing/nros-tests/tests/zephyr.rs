@@ -1667,9 +1667,13 @@ fn test_zephyr_dds_cpp_action_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action server");
+    // Cyclone-on-Zephyr `create_action_server` declares its goal/cancel/result
+    // queryables + feedback/status writers serially (~10 s each under the current
+    // transport), so readiness lands ~30 s+ — give it 60 s (mirrors the zenoh
+    // action tests' bump).
     let server_ready = server.wait_for_pattern(
         nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
+        Duration::from_secs(60),
     );
     if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!(
@@ -1846,8 +1850,13 @@ fn test_zephyr_dds_c_action_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action server");
-    let server_ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
-    if !server_ready.contains("Waiting for goals") {
+    // See the C++ sibling: Cyclone-on-Zephyr `create_action_server` is slow to
+    // declare its entities (~10 s/queryable), so readiness needs a 60 s window.
+    let server_ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(60),
+    );
+    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!(
             "Zephyr C Cyclone action server didn't reach readiness.\nOutput:\n{}",
             server_ready

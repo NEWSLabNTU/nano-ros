@@ -7,7 +7,42 @@ area: rmw
 related: [issue-0164, issue-0157, phase-286]
 ---
 
-## Problem
+## RESOLVED for the rust action (root cause = nested-message encap) — 2026-07-11
+
+The core bug is FIXED: **Cyclone rust action completes end-to-end**
+(`test_zephyr_dds_rs_action_e2e` PASS, 9.5 s, was a 90 s timeout). Root cause,
+traced end-to-end (send + reply-write + client-take + correlation + the actual
+bytes): the action **result/feedback is a NESTED message field** inside the DDS
+typed `GetResult_Response` / `FeedbackMessage`, so it must NOT carry its own CDR
+encapsulation header — only the reply's top-level message does. The nros action
+layer serialised the result/feedback WITH an inner encap (`CdrWriter::new_with_header`);
+Cyclone's `dds_stream` typed framing consumed that inner encap in transit, so the
+fields arrived **raw** at the client while the consumer (`CallbackCtx::message` /
+`ffi_deserialize`, both `new_with_header`) expected an encap and ate the first data
+word (a sequence length) → empty/garbage result → `ctx.message::<Result>()` Err →
+callback silent. **Fix:** `arena.rs::action_client_raw_try_process` detects the
+missing per-message encap (a raw CDR field never begins with a `00 {00|01|06|07|0a|0b}`
+encoding identifier) and splices the reply's top-level encap back in front before the
+callback; zenoh/XRCE preserve the inner encap and pass through unchanged
+(`payload_has_cdr_encap`). Verified: rust cyclone action PASS, **rust xrce action
+still PASS** (no regression on the encap-present path).
+
+**Residuals (separate bugs, NOT the encap):**
+- **C/C++ Cyclone action SERVER hangs in `create_action_server`** — the image opens
+  its session + `dds_create_participant` but never reaches the
+  `ACTION_SERVER_READY_MARKER` ("Waiting for action goals") even at 60 s, so
+  `dds_{c,cpp}_action_e2e` still fail at server-readiness. Rust's action server
+  reaches readiness fine, so this is specific to the `nros-c`/`nros-cpp`
+  `create_action_server` entity-declare path on Cyclone/Zephyr (client-side is now
+  correct via the same arena fix — once the server declares, they should complete).
+- The zenoh **cpp service** 1/3-completion (from the #164 re-triage) is untouched
+  here.
+- The **typed** action-client dispatch (`action_client_callback_try_process`,
+  RFC-0041 Phase 239.2) has the SAME `new_with_header` assumption and would need the
+  same splice if a typed (closure-based) action client runs on Cyclone; the zephyr
+  examples use the raw/string-callback path, which is fixed.
+
+## Problem (original)
 
 On Zephyr native_sim CycloneDDS, a **service/action server receives the
 request/goal but the client never completes** — the result/completion round-trip

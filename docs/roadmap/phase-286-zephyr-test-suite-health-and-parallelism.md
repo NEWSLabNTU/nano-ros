@@ -316,6 +316,24 @@ awaited. Fix is two-fold and ABOVE cyclone: (1) action server must hold the
 deliver the taken feedback + result to the callbacks. Cyclone transport +
 `service.cpp` routing are proven working, NOT the cause. #175 has the full trace.
 
+**FIXED (rust action) 2026-07-11 — nested-message encap.** The final byte-level
+trace corrected the "premature reply" reading: the server correctly DEFERS
+`get_result` (goal active) and completes with a valid Succeeded result. The real
+defect: the action **result/feedback is a NESTED field** inside the DDS typed
+`GetResult_Response` / `FeedbackMessage`, so it must carry NO per-message CDR encap
+— but the nros action layer serialised it WITH one (`new_with_header`). Cyclone's
+`dds_stream` typed framing consumes that inner encap in transit, delivering the
+fields RAW to the client, while `ctx.message` / `ffi_deserialize` (`new_with_header`)
+expect an encap and eat the first data word → `ctx.message::<Result>()` Err →
+callback silent. Fix: `arena.rs::action_client_raw_try_process` splices the reply's
+top-level encap back in front when the payload arrives without one
+(`payload_has_cdr_encap`); zenoh/XRCE keep the encap and pass through.
+**`test_zephyr_dds_rs_action_e2e` PASS (9.5 s); `test_zephyr_xrce_rust_action_e2e`
+still PASS** (no regression). Residuals (separate, tracked in #175): the C/C++
+Cyclone action SERVER hangs in `create_action_server` (never reaches readiness — a
+`nros-c`/`nros-cpp` entity-declare issue, not the encap), and the typed
+(closure-callback) action-client dispatch needs the same splice.
+
 ## Sequencing
 
 W1 (#166) → W2 (staleness — unblocks true rust-zenoh signal) → W3 (XRCE-C/C++)

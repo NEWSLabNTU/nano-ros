@@ -1216,6 +1216,16 @@ pub(crate) unsafe fn action_server_raw_try_process<
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `ActionClientRawArenaEntry<...>`.
+/// True if `p` begins with a CDR encapsulation header (RTPS encoding
+/// identifier). The 4-byte header is `00 <id> <opts> <opts>` where `<id>` ∈
+/// {`00` BE, `01` LE, `06`/`07` D_CDR2, `0a`/`0b` PL_CDR2}. Raw CDR fields
+/// (e.g. a sequence's `u32` length) do not begin with this pattern, so a false
+/// result means the per-message encap was dropped by a typed transport framing
+/// (Cyclone) and must be spliced back before deserialization (#175).
+fn payload_has_cdr_encap(p: &[u8]) -> bool {
+    p.len() >= 4 && p[0] == 0x00 && matches!(p[1], 0x00 | 0x01 | 0x06 | 0x07 | 0x0a | 0x0b)
+}
+
 pub(crate) unsafe fn action_client_raw_try_process<
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
@@ -1277,13 +1287,20 @@ pub(crate) unsafe fn action_client_raw_try_process<
             // rejects the extra 4 bytes).
             const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
             if total_len > FEEDBACK_PAYLOAD_OFFSET {
-                unsafe {
-                    cb(
-                        &goal_id,
-                        core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len].as_ptr(),
-                        total_len - FEEDBACK_PAYLOAD_OFFSET,
-                        *context,
-                    );
+                // #175 — same encap restoration as the result path below: Cyclone's
+                // typed `FeedbackMessage` framing carries `feedback` as a nested
+                // field, so `dds_stream` drops the inner encap and the fields arrive
+                // raw here. Splice the top-level encap (`feedback_buffer[0..4]`) when
+                // absent; zenoh/XRCE keep it and pass through.
+                let raw = &core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len];
+                if payload_has_cdr_encap(raw) {
+                    unsafe { cb(&goal_id, raw.as_ptr(), raw.len(), *context) };
+                } else {
+                    let mut spliced = [0u8; FEEDBACK_BUF];
+                    let n = raw.len().min(FEEDBACK_BUF - 4);
+                    spliced[0..4].copy_from_slice(&core.feedback_buffer[0..4]);
+                    spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                    unsafe { cb(&goal_id, spliced.as_ptr(), 4 + n, *context) };
                 }
             }
         }
@@ -1331,14 +1348,28 @@ pub(crate) unsafe fn action_client_raw_try_process<
                         uuid
                     },
                 };
-                unsafe {
-                    cb(
-                        &goal_id,
-                        status,
-                        core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
-                        total_len - RESULT_PAYLOAD_OFFSET,
-                        *context,
-                    );
+                // #175 — restore the result's CDR encapsulation header if the
+                // backend's typed reply framing dropped it. Cyclone sends the
+                // `GetResult_Response` as a TYPED DDS sample whose `result` is a
+                // NESTED field (no per-message encap), so `dds_stream` consumes
+                // the inner encap the server serialised and the fields arrive raw
+                // at `RESULT_PAYLOAD_OFFSET`. The consumer (`CallbackCtx::message`
+                // / `ffi_deserialize`) reads with `new_with_header` and would eat
+                // the first data word (e.g. a sequence length) as the encap. A raw
+                // CDR field never begins with an encoding identifier
+                // (`00 {00|01|06|07|0a|0b}`), so detect the missing header and
+                // splice the reply's top-level encap (`result_buffer[0..4]`, always
+                // valid) in front. Zenoh/XRCE preserve the inner encap, so their
+                // payload already starts with one and is passed through unchanged.
+                let raw = &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len];
+                if payload_has_cdr_encap(raw) {
+                    unsafe { cb(&goal_id, status, raw.as_ptr(), raw.len(), *context) };
+                } else {
+                    let mut spliced = [0u8; RESULT_BUF];
+                    let n = raw.len().min(RESULT_BUF - 4);
+                    spliced[0..4].copy_from_slice(&core.result_buffer[0..4]);
+                    spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                    unsafe { cb(&goal_id, status, spliced.as_ptr(), 4 + n, *context) };
                 }
             }
         }
