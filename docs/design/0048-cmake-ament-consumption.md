@@ -138,26 +138,55 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
 ament_package()
 ```
 
-### 6. Toolchain automation — CMakePresets
+### 6. Toolchain automation — CMakePresets (shape C′)
 
 Cross-compile toolchains must be set **before `project()`**, but
 `find_package(nano_ros)` runs after — so the toolchain cannot come from it.
 **CMakePresets `toolchainFile`** is the CMake-native answer (applied before the
 first `project()`), and `nros` generates the presets so the user never
-hand-writes one:
+hand-writes one.
 
-- **`nros setup <board>`** — after provisioning the board's toolchain/SDK (RFC-0014),
-  writes `~/.nros/presets/<board>.json`:
-  ```json
-  { "configurePresets": [{
-      "name": "freertos-mps2-an385",
-      "toolchainFile": "$env{NROS_REPO_DIR}/cmake/toolchain/arm-freertos-armcm3.cmake",
-      "cacheVariables": { "nano_ros_ROOT": "$env{NROS_REPO_DIR}" }
-  }]}
-  ```
-- **`nros init`** (new verb) — in the user's project, generates a
-  `CMakePresets.json` that `"include"`s the `~/.nros/presets/*` fragments.
-  Idempotent; re-run after `nros setup` of a new board.
+The design splits the data by who owns it, and pushes **no placeholder
+mini-language** onto anyone (rejected: `${repo}`-style templating in TOML — it
+complicates parsing and bakes in an assumption about the nano-ros tree layout):
+
+1. **One board-intrinsic field in `nros-board.toml`** — the CMake toolchain file,
+   a plain in-repo relative path. `nros` (which ships *with* the tree) resolves it
+   against its own repo root, so no layout assumption reaches a board author or
+   user:
+   ```toml
+   [[board]]
+   names = ["nuttx"]
+   platform = "nuttx"
+   [board.cmake]
+   toolchain_file = "cmake/toolchain/armv7a-nuttx-eabi.cmake"
+   ```
+2. **SDK directory cache-vars stay inside CMake.** The platform modules
+   (`cmake/platform/nano-ros-<plat>.cmake`) default `NUTTX_DIR` / `THREADX_DIR` /
+   `NETX_DIR` / the config dirs from their own on-disk location
+   (`${CMAKE_CURRENT_LIST_DIR}/../../third-party/…`) — the module *lives* in the
+   repo, so it already knows the layout. (The threadx module already does this; the
+   nuttx module gains the same default.) A user with an external SDK overrides with
+   `-DNUTTX_DIR=…`. These never appear in a preset.
+3. **`nros setup <board>` emits the preset with literal absolute paths** — it
+   substitutes its own repo root and the store bin dir it just provisioned into, so
+   the emitted JSON has no `${…}` to parse:
+   ```jsonc
+   // ~/.nros/presets/nuttx-qemu-arm.json
+   { "version": 6,
+     "configurePresets": [{
+       "name": "nuttx-qemu-arm",
+       "toolchainFile": "/abs/nano-ros/cmake/toolchain/armv7a-nuttx-eabi.cmake",
+       "cacheVariables": { "nano_ros_ROOT": "/abs/nano-ros", "CMAKE_BUILD_TYPE": "Release" },
+       "environment": { "PATH": "/home/u/.nros/sdk/arm-gnu-toolchain/14.2/bin:$penv{PATH}" }
+     }]}
+   ```
+   The toolchain file names its compiler by bare name (`arm-none-eabi-gcc`), so the
+   only genuinely-dynamic datum is the store bin dir — carried on the preset's
+   `environment.PATH`, filled in from the provision result.
+4. **`nros init`** (new verb) — in the user's project, generates a
+   `CMakePresets.json` that `"include"`s the `~/.nros/presets/*` fragments.
+   Idempotent; re-run after `nros setup` of a new board.
 
 Then `cmake --preset <board>` configures with the toolchain + `nano_ros_ROOT`
 pre-`project()`; `find_package(nano_ros)` resolves. Native needs no toolchain —

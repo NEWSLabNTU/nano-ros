@@ -5333,6 +5333,7 @@ mod net_fragment_tests {
             entry: None,
             target_contains: None,
             capabilities: None,
+            cmake: None,
         }
     }
 

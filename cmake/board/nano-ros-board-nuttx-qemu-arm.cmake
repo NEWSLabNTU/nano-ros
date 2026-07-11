@@ -101,6 +101,17 @@ set(NUTTX_BOARD_TOOLCHAIN_FILE
 # ---------------------------------------------------------------------------
 # Validate NUTTX_DIR + pin the cargo target triple.
 # ---------------------------------------------------------------------------
+# RFC-0048 (phase-287 W5) — default NUTTX_DIR from the in-tree submodule so it
+# leaves the `nros setup` preset's -D set (the cmake/board glue legitimately
+# knows the repo layout — CLAUDE.md). env / -D still override for an
+# out-of-tree NuttX export. Mirrors the threadx module + NUTTX_FFI_CRATE_DIR above.
+if(NOT DEFINED NUTTX_DIR AND DEFINED ENV{NUTTX_DIR})
+    set(NUTTX_DIR "$ENV{NUTTX_DIR}")
+endif()
+if(NOT DEFINED NUTTX_DIR)
+    set(NUTTX_DIR "${_NROS_BOARD_ROOT}/third-party/nuttx/nuttx"
+        CACHE PATH "NuttX kernel export tree (pre-built)")
+endif()
 nros_nuttx_validate(REQUIRE NUTTX_DIR)
 nros_nuttx_set_cargo_target("armv7a-nuttx-eabihf")
 

@@ -43,3 +43,7 @@ signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main() -> !"
 heap = true
 atomics = true
 threads = true
+
+# RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
+[board.cmake]
+toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"

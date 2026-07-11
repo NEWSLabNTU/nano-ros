@@ -23,6 +23,7 @@ pub mod emit_package_xml;
 pub mod explain;
 pub mod generate;
 pub mod generate_px4;
+pub mod init;
 pub mod metadata;
 pub mod migrate;
 pub mod new;
@@ -101,6 +102,10 @@ pub enum Cmd {
 
     /// Resolve + fetch a board's toolchain/SDK packages (Phase 187)
     Setup(setup::Args),
+
+    /// Generate a project `CMakePresets.json` including the per-board presets
+    /// `nros setup` wrote (RFC-0048 §6). Then `cmake --preset <board>` works.
+    Init(init::Args),
 
     /// Health-check the workspace (SDK paths, toolchains, env)
     Doctor(doctor::Args),

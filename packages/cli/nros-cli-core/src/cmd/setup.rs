@@ -196,6 +196,9 @@ pub fn run(args: Args) -> Result<()> {
     let lock_path = PathBuf::from(LOCK_FILE);
     let mut lock = SdkLock::load(&lock_path)?;
     let mut installed = false;
+    // RFC-0048 §6 / phase-287 W5 — store bin dirs to fold onto the emitted
+    // CMakePreset's environment.PATH (so the cross-compiler resolves).
+    let mut bin_dirs: Vec<PathBuf> = Vec::new();
 
     for name in &packages {
         // `[tool.*]` packages install into the shared store; `[source.*]` are
@@ -216,6 +219,7 @@ pub fn run(args: Args) -> Result<()> {
             continue;
         };
         let prefix = tool_prefix(&root, name, &tool.version);
+        bin_dirs.push(prefix.join("bin"));
         let action = plan_install(tool, &host, &prefix);
         eprintln!("  {:<22} {}", name, describe(&action, &tool.version, &host));
 
@@ -251,6 +255,59 @@ pub fn run(args: Args) -> Result<()> {
     } else {
         eprintln!("nros setup: {board} — all packages already present");
     }
+
+    // RFC-0048 §6 / phase-287 W5 — emit the CMakePreset for this board so
+    // `nros init` + `cmake --preset <board>` cross-configure with no hand-set
+    // toolchain. Best-effort: a failure here never fails provisioning.
+    if !args.dry_run {
+        if let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs) {
+            eprintln!("nros setup: CMakePreset not written: {e:#}");
+        }
+    }
+    Ok(())
+}
+
+/// Resolve the board's `[board.cmake] toolchain_file` and write
+/// `~/.nros/presets/<board>.json`. Skips boards that have no preset shape (e.g.
+/// Zephyr, which uses `west build`, not `cmake --preset`).
+fn emit_board_cmake_preset(board: &str, workspace: &Path, bin_dirs: &[PathBuf]) -> Result<()> {
+    use crate::orchestration::{
+        board_descriptor::{BoardCatalog, PlatformKind},
+        cmake_preset,
+    };
+
+    // Presets are `include`d from an arbitrary project dir, so every emitted path
+    // must be absolute. Canonicalize the repo root (fall back to the given path if
+    // it can't be resolved).
+    let workspace_abs = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let workspace = workspace_abs.as_path();
+
+    let catalog =
+        BoardCatalog::load(workspace).map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
+    let Some(desc) = catalog
+        .descriptors()
+        .iter()
+        .find(|d| d.names.iter().any(|n| n == board))
+    else {
+        // Not a board descriptor (tool-only setup, alias mismatch) — no preset.
+        return Ok(());
+    };
+
+    let toolchain_abs = desc
+        .cmake
+        .as_ref()
+        .map(|c| workspace.join(&c.toolchain_file));
+    // Cross boards carry a toolchain file; host posix emits a toolchain-less
+    // preset (just `nano_ros_ROOT`). Everything else (Zephyr, …) has no
+    // `cmake --preset` flow — skip.
+    let is_host = matches!(desc.platform, PlatformKind::Posix);
+    if toolchain_abs.is_none() && !is_host {
+        return Ok(());
+    }
+
+    let path =
+        cmake_preset::emit_board_preset(board, workspace, toolchain_abs.as_deref(), bin_dirs)?;
+    eprintln!("nros setup: wrote CMakePreset {}", path.display());
     Ok(())
 }
 

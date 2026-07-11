@@ -121,24 +121,31 @@ old-path removal.**
   reconfigures the toolchain path (via the preset, W5) with no CMake edit.
 
 ### W5 — [impl] toolchain automation: `nros setup` presets + `nros init` — NEXT
-- **Do:** `nros setup <board>` writes `~/.nros/presets/<board>.json`
-  (`toolchainFile` + `nano_ros_ROOT`); new `nros init` verb generates the user
-  project's `CMakePresets.json` including those fragments (RFC-0048 §6). Export
-  `nano_ros_ROOT` from `activate.sh`.
+- **Design resolved (shape C′, RFC-0048 §6):** no `${repo}` templating (rejected —
+  complicates parsing, assumes the tree layout). One board-intrinsic field
+  `[board.cmake] toolchain_file` in `nros-board.toml` (a plain in-repo relative
+  path `nros` resolves against its own root); the SDK `*_DIR` cache-vars stay
+  inside the platform CMake modules (default from `${CMAKE_CURRENT_LIST_DIR}`);
+  `nros setup` emits the preset with **literal absolute paths** (repo root + store
+  bin dir substituted at emit time), the store compiler bin carried on the preset's
+  `environment.PATH`.
+- **Do:**
+  1. nuttx platform module: default `NUTTX_DIR` / `NUTTX_FFI_CRATE_DIR` from
+     `${CMAKE_CURRENT_LIST_DIR}` (mirror the threadx module) so they leave the -D
+     set. (native W5 slice — `activate.{sh,fish}` `nano_ros_ROOT` export — landed.)
+  2. `BoardDescriptor` (`board_descriptor.rs`): add `cmake: Option<BoardCmake>`
+     with `toolchain_file`; add `[board.cmake]` to the cross-compile board tomls
+     (freertos-mps2-an385, nuttx-qemu-arm, riscv nuttx, threadx-qemu-riscv64).
+  3. `nros setup <board>`: after provisioning, write `~/.nros/presets/<board>.json`
+     (toolchainFile abs, `nano_ros_ROOT`, `CMAKE_BUILD_TYPE`, `environment.PATH`
+     store bin). Native boards emit the toolchain-less variant.
+  4. new `nros init` verb: generate the project `CMakePresets.json` that `include`s
+     `~/.nros/presets/*`.
 - **Acceptance:** on a machine with only the pinned checkout + bootstrap, `nros
   setup <board>` → `nros init` → `cmake --preset <board>` cross-configures with no
-  hand-set `CMAKE_TOOLCHAIN_FILE` / `-Dnano_ros_ROOT`.
-- **Open design question (blocks the embedded arm):** the board→CMake-toolchain
-  mapping is today **hardcoded per just-recipe**, and an embedded configure needs
-  more than `toolchainFile` — `NUTTX_DIR` / `THREADX_DIR` / `NETX_DIR` / the
-  provisioned-SDK config dirs / `_NANO_ROS_CODEGEN_TOOL` / (cyclone)
-  `NROS_RMW_CYCLONEDDS_MSG_TO_IDL` all come from the SDK store the recipes resolve
-  at build time. Where should this data live so `nros setup` can emit it — new
-  `nros-board.toml` fields (`cmake_toolchain`, `cmake_cache_vars`), a table in the
-  CLI, or read back from the `sdk_store` provision result? This is RFC-0014
-  provisioning territory — resolve with the maintainer before implementing. The
-  **native** preset (`nano_ros_ROOT` only, no toolchain) is unblocked and can land
-  first; `nros init` for a native project is trivial.
+  hand-set `CMAKE_TOOLCHAIN_FILE` / `-Dnano_ros_ROOT`. Native preset + `nros init`
+  verified end-to-end; embedded presets verified by emitted-JSON shape + (where a
+  toolchain is provisioned) a configure.
 
 ### W6 — [migration] every example to the ament shape
 - **Do:** extend `scripts/docs/migrate-example-cmake.py` to emit the RFC-0048

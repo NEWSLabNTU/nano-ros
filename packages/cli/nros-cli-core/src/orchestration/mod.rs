@@ -9,6 +9,7 @@ pub mod board_descriptor;
 pub mod board_metadata;
 pub mod build;
 pub mod cargo_metadata_schema;
+pub mod cmake_preset;
 pub mod config;
 pub mod generate;
 pub mod launch_synth;

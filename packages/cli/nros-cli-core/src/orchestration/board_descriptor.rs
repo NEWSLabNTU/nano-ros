@@ -205,6 +205,25 @@ pub struct BoardDescriptor {
     /// `platform` via `capabilities()` during the 241.C migration.
     #[serde(default)]
     pub capabilities: Option<BoardCapabilities>,
+    /// CMake cross-compile facts for `nros setup`'s CMakePreset emission
+    /// (RFC-0048 §6 / phase-287 W5). `None` for host boards (posix) that need no
+    /// toolchain file — their preset carries only `nano_ros_ROOT`.
+    #[serde(default)]
+    pub cmake: Option<BoardCmake>,
+}
+
+/// `[board.cmake]` — CMake toolchain facts for the ament-shape preset flow.
+/// Deliberately minimal: only the board-intrinsic toolchain file. The SDK
+/// directory cache-vars (`NUTTX_DIR`, `THREADX_DIR`, …) are NOT restated here —
+/// the platform CMake modules default them from their own on-disk location, and
+/// the store compiler bin flows onto the preset's `environment.PATH` from the
+/// provision result. No `${…}` templating (RFC-0048 §6, shape C′).
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoardCmake {
+    /// Repo-relative path to the CMake toolchain file, e.g.
+    /// `cmake/toolchain/armv7a-nuttx-eabi.cmake`. `nros setup` resolves it against
+    /// the repo root and emits it as the preset's `toolchainFile`.
+    pub toolchain_file: String,
 }
 
 impl BoardDescriptor {
@@ -572,6 +591,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             entry: None,
             target_contains: None,
             capabilities: None,
+            cmake: None,
         };
         let rendered = descriptor.cargo_config_rendered(Path::new("/ws")).unwrap();
         assert_eq!(rendered, "inc = \"/ws/third-party/x\"");
@@ -599,6 +619,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             entry: None,
             target_contains: None,
             capabilities: None,
+            cmake: None,
         });
         let cat = BoardCatalog::from_descriptors(boards);
         let d = cat

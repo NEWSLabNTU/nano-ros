@@ -47,6 +47,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Explain(args) => cmd::explain::run(args),
         cmd::Cmd::Config(args) => cmd::config::run(args),
         cmd::Cmd::Setup(args) => cmd::setup::run(args),
+        cmd::Cmd::Init(args) => cmd::init::run(args),
         cmd::Cmd::Doctor(args) => cmd::doctor::run(args),
         cmd::Cmd::Board(args) => cmd::board::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),

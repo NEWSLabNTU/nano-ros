@@ -51,6 +51,16 @@ set(NUTTX_BOARD_TOOLCHAIN_FILE
     "${_NROS_NUTTX_BOARD_DIR}/riscv-nuttx-toolchain.cmake"
     CACHE FILEPATH "Optional CMake toolchain file for riscv-none-elf cross.")
 
+# RFC-0048 (phase-287 W5) — default NUTTX_DIR from the in-tree submodule so it
+# leaves the `nros setup` preset's -D set. env / -D still override. Mirrors the
+# arm board module + NUTTX_FFI_CRATE_DIR above.
+if(NOT DEFINED NUTTX_DIR AND DEFINED ENV{NUTTX_DIR})
+    set(NUTTX_DIR "$ENV{NUTTX_DIR}")
+endif()
+if(NOT DEFINED NUTTX_DIR)
+    set(NUTTX_DIR "${_NROS_BOARD_ROOT}/third-party/nuttx/nuttx"
+        CACHE PATH "NuttX kernel export tree (pre-built)")
+endif()
 nros_nuttx_validate(REQUIRE NUTTX_DIR)
 nros_nuttx_set_cargo_target("riscv32imac-unknown-nuttx-elf")
 

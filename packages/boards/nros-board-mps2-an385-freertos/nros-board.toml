@@ -32,3 +32,7 @@ crate_root_extra = "use panic_semihosting as _;"
 heap = true
 atomics = true
 threads = true
+
+# RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"

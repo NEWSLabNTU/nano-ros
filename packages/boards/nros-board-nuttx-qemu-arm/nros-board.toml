@@ -82,3 +82,7 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 heap = true
 atomics = true
 threads = true
+
+# RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
+[board.cmake]
+toolchain_file = "cmake/toolchain/armv7a-nuttx-eabi.cmake"
