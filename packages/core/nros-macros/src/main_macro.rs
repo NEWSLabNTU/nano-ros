@@ -1450,6 +1450,20 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 mod __nros_app {
                     use super::*;
 
+                    // rtic 2.3.0 asserts `Send` on late `#[local]` resources
+                    // (initialized in `#[init]`, claimed by a task at a
+                    // different priority). The `rmw-cffi` `Executor<'static>`
+                    // holds a raw `*mut CffiSession`, so it is `!Send`. These
+                    // RTIC boards are single-core cortex-m built with
+                    // `critical-section-single-core`: the executor/runtime
+                    // never cross cores, so the `Send` requirement is a
+                    // structural formality. Wrap the resources in a cell that
+                    // is unconditionally `Send` to satisfy the bound.
+                    struct __NrosLocalCell<T>(T);
+                    // SAFETY: single-core cortex-m — no other core can observe
+                    // this value; RTIC serializes access via priority ceilings.
+                    unsafe impl<T> ::core::marker::Send for __NrosLocalCell<T> {}
+
                     #[shared]
                     struct Shared {}
 
@@ -1464,8 +1478,8 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// concrete `Executor` / `Runtime` types.
                     #[local]
                     struct Local {
-                        executor: <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Executor,
-                        runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Runtime,
+                        executor: __NrosLocalCell<<__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Executor>,
+                        runtime: __NrosLocalCell<<__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Runtime>,
                     }
 
                     #[init]
@@ -1504,7 +1518,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // dequeued envelope.
                         #( #framework_register_dispatch_calls )*
                         __nros_run::spawn().unwrap();
-                        (Shared {}, Local { executor, runtime })
+                        (
+                            Shared {},
+                            Local {
+                                executor: __NrosLocalCell(executor),
+                                runtime: __NrosLocalCell(runtime),
+                            },
+                        )
                     }
 
                     /// RTIC run task — collapsed `__nros_spin` +
@@ -1546,7 +1566,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// dispatch task) is a separate follow-up.
                     #[task(local = [executor, runtime], priority = 1)]
                     async fn __nros_run(cx: __nros_run::Context) {
-                        let executor = cx.local.executor;
+                        let executor = &mut cx.local.executor.0;
                         // The board-side runtime owns the SPSC
                         // producer half. Today's collapse keeps it in
                         // `Local` for symmetry with the planned split
@@ -1555,7 +1575,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // be the producer-side bridge between executor
                         // callbacks and the SPSC consumer drained
                         // below.
-                        let _runtime = cx.local.runtime;
+                        let _runtime = &mut cx.local.runtime.0;
                         let mut consumer =
                             #rtic_consumer()
                                 .expect("RTIC dispatch consumer take");
