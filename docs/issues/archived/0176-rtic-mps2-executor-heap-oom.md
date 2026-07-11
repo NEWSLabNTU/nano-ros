@@ -1,11 +1,26 @@
 ---
 id: 176
 title: "RTIC mps2-an385 images OOM at runtime — executor backing (74888 B) exceeds the 64 KB default heap"
-status: open
+status: resolved
+resolved_in: ae0aecaa6
 type: bug
 area: baremetal
-related: [issue-0163, phase-271]
+related: [issue-0163, issue-0178, phase-271]
 ---
+
+## Resolution (2026-07-11)
+
+Fixed in `ae0aecaa6` — raised the mps2-an385 non-tls/non-dds default heap
+64 → 128 KB (`nros-platform-mps2-an385/src/memory.rs`). The executor backing
+is a single ~74888 B allocation, so 64 KB OOM'd; 128 KB clears it with headroom
+(MPS2 has 16 MB RAM, `HEAP` is `.bss` — no flash cost). Verified: after
+rebuilding the qemu-rtic fixtures, all four `test_qemu_rtic_*_e2e` no longer
+hit `memory allocation of 74888 bytes failed` (0 occurrences).
+
+**The e2e tests still fail** — the RTIC images now boot + bring up the network
+but never deliver (`published=0`) because the executor's zenoh session open is
+called from RTIC `#[init]` with interrupts masked. That is a **separate**
+architectural bug tracked in **#178**; this issue (the heap OOM) is resolved.
 
 ## Summary
 

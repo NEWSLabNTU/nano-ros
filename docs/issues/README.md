@@ -50,13 +50,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
   `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
   split archives. Independent of #175's Cyclone descriptor work.
-- **#176** — [RTIC mps2-an385 executor heap OOM](0176-rtic-mps2-executor-heap-oom.md): every
-  `deploy = "rtic-*"` qemu-arm-baremetal image boots then panics `memory allocation of 74888 bytes
-  failed` — the executor backing (74888 B) exceeds the 64 KB default heap
-  (`nros-platform-mps2-an385/memory.rs`). All four `test_qemu_rtic_*_e2e` fail. Was masked behind the
-  rtic-2.3.0 build break (now fixed via the `__NrosLocalCell` Send shim), which exposed it. Fix =
-  raise the mps2 default heap (→128 KB) or per-example `NROS_HEAP_SIZE`, or right-size the executor
-  storage. Runtime-only — `just check` is green.
+- **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
+  every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
+  `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
+  smoltcp gets no timer/RX IRQ → the TCP handshake never completes → `published=0`. All four
+  `test_qemu_rtic_*_e2e` fail with zero delivery. Fix (architectural) = move the session open out of
+  `#[init]` into the `__nros_run` task (after interrupts unmask). Runtime-only — `just check` green.
 - **#175** — [Zephyr Cyclone action/service completion](0175-zephyr-cyclone-action-service-completion.md):
   native_sim Cyclone server RECEIVES the goal/request but the client never completes
   (`dds_{c,cpp,rs}_action` = goal-received/client-not-completed; cpp service = 1/3 replies). Pub/sub
@@ -91,7 +90,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#167** — riscv-nuttx
+Recently resolved (see [`archived/`](archived/) for the full list): **#176** — RTIC mps2-an385
+heap OOM (`memory allocation of 74888 bytes failed`): the per-entry executor backing is a single
+~74888 B alloc that overflowed the 64 KB non-tls default heap. Fixed by raising the mps2-an385
+default heap to 128 KB (`ae0aecaa6`; MPS2 has 16 MB RAM, `HEAP` is `.bss`). The RTIC e2e still fail
+downstream on the separate init-time connect hang (#178). **#167** — riscv-nuttx
 boot panic (`EPC=0x4`) was a `struct pollfd` ABI mismatch: NuttX's kernel `pollfd` is 24 bytes
 and its flat-build `poll()` writes all six fields into the caller's array, but Rust std/libc use
 the 8-byte POSIX `pollfd`, so std's `sanitize_standard_fds()` (fds 0/1/2 on the entry task's
