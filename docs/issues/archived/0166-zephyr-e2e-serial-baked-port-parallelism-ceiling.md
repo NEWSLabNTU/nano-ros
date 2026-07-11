@@ -1,7 +1,7 @@
 ---
 id: 166
 title: "Zephyr zenoh e2e tests serialize on build-time-baked router ports — a runtime-locator override would unlock per-test parallelism"
-status: open
+status: resolved
 type: enhancement
 area: testing
 related: [phase-89, issue-0141, phase-286]

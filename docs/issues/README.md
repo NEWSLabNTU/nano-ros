@@ -56,10 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   smoltcp gets no timer/RX IRQ → the TCP handshake never completes → `published=0`. All four
   `test_qemu_rtic_*_e2e` fail with zero delivery. Fix (architectural) = move the session open out of
   `#[init]` into the `__nros_run` task (after interrupts unmask). Runtime-only — `just check` green.
-- **#175** — [Zephyr Cyclone action/service completion](0175-zephyr-cyclone-action-service-completion.md):
-  native_sim Cyclone server RECEIVES the goal/request but the client never completes
-  (`dds_{c,cpp,rs}_action` = goal-received/client-not-completed; cpp service = 1/3 replies). Pub/sub
-  works on the same fixture — specific to the request-response reply path. From the #164 re-triage.
 - **#173** — [Zephyr pub → native sub no delivery](0173-zephyr-pub-to-native-sub-no-delivery.md): a
   Zephyr native_sim zenoh-pico **publisher** delivers nothing to a **native** subscriber through a
   shared router (fails serially; `bidirectional` shows Native→Zephyr=41 / Zephyr→Native=0 in one
@@ -70,13 +66,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `find_package(NanoRos)` removed in Phase 140, registry publishes docs-only. Plus false
   availability claims to truth-fix now: `cargo install nros-cli` READMEs, Arduino in
   `library.json`, phantom PIO manifest paths in `registry-publishing.md`.
-- **#166** — [Zephyr zenoh e2e serialize on build-time-baked router
-  ports](0166-zephyr-e2e-serial-baked-port-parallelism-ceiling.md): the port scheme already gives
-  unique per-(variant,lang) ports (xrce=7 / dds=4 parallel), but six
-  `qemu-zephyr-{pubsub,service,action}-{rust,cpp}` groups stay `max-threads=1` because multiple
-  tests reuse one fixture image whose port is baked (`CONFIG_NROS_ZENOH_LOCATOR`). A native_sim
-  **runtime** `NROS_LOCATOR` override → ephemeral per-test ports → drop all six serial groups.
-  ~292 s family run; the serial DDS-zenoh lanes are the tail.
 - **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
@@ -90,7 +79,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#176** — RTIC mps2-an385
+Recently resolved (see [`archived/`](archived/) for the full list): **#175** — Zephyr Cyclone
+action completion (all three lanes): rust nested-message encap-splice + typed dispatch
+(`844021843`/`e9bb39686`) and the C/C++ server register `-100` (ROS-slash vs DDS-mangled feedback
+type in `find_descriptor`, fixed via `ros_form_to_dds` normalisation; `facd36ca4`) — `dds_{c,cpp,rs}_action_e2e`
+all PASS (phase-286 W4). **#166** — Zephyr zenoh e2e baked-port serialization: native_sim
+`-testargs --nros-locator` runtime override → per-test ephemeral zenohd; all six
+`qemu-zephyr-{pubsub,service,action}-{rust,cpp}` groups + the ws-entry lane now parallel (phase-286
+W1). **#176** — RTIC mps2-an385
 heap OOM (`memory allocation of 74888 bytes failed`): the per-entry executor backing is a single
 ~74888 B alloc that overflowed the 64 KB non-tls default heap. Fixed by raising the mps2-an385
 default heap to 128 KB (`ae0aecaa6`; MPS2 has 16 MB RAM, `HEAP` is `.bss`). The RTIC e2e still fail

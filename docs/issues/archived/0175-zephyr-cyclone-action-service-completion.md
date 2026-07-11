@@ -1,11 +1,25 @@
 ---
 id: 175
 title: "Zephyr (native_sim) Cyclone action/service: server receives but the result round-trip never completes"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0164, issue-0157, phase-286]
 ---
+
+## RESOLVED — all three lanes (rust + C + C++) 2026-07-11
+
+Fully closed. The rust core bug (nested-message encap, below) plus both residuals
+landed: (1) the **typed** action-client dispatch got the same encap-splice via a
+shared `read_action_field` helper (`arena.rs`); (2) the **C/C++ Cyclone action
+server register `-100`** was a ROS-slash vs DDS-mangled type-name mismatch — the
+feedback publisher's `find_descriptor` (exact strcmp) missed the registered
+`…::dds_::Fibonacci_FeedbackMessage_` key because `action_topic_type` derived the
+slash form; fixed by normalising through `ros_form_to_dds` in
+`descriptors.cpp::action_topic_type`. Verified: `dds_{c,cpp,rs}_action_e2e` all
+PASS (C/C++ 5.5 s, were 60 s register-fail timeouts; rust 9.8 s), C service boots
+PASS. Commits `844021843`/`e9bb39686` (rust encap + typed) + `facd36ca4` (C/C++
+register). See phase-286 W4.
 
 ## RESOLVED for the rust action (root cause = nested-message encap) — 2026-07-11
 
