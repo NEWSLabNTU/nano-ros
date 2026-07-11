@@ -1,6 +1,6 @@
 # Phase 287 — C/C++ consumption reshape: one-line bootstrap + uniform example CMake
 
-Status: **Draft — 2026-07-11** · Implements #171 decision **D5** · Informs
+Status: **In progress — 2026-07-11** (W1 done) · Implements #171 decision **D5** · Informs
 RFC-0026 (examples), RFC-0018/0019 (C/C++ integration) · Sibling of phase-288
 (source-distribution bootstrap, #171 D1/D2).
 
@@ -70,6 +70,18 @@ names their target + languages) — everything else is the framework's.
 - **Acceptance:** one hand-written example (native/c/talker) rebuilds via the
   new 5-line shape, solo copy-out AND inside a workspace; C, C++, and all three
   RMW backends.
+- **Done (2026-07-11):** `cmake/NanoRosBootstrap.cmake` ships
+  `nano_ros_bootstrap([ROOT])` (root guard + `nano_ros_workspace_pkg_guard` +
+  the RMW-conditional `enable_language(CXX)`) and `nano_ros_link(<target>)`
+  (auto-links every `NROS_GENERATED_INTERFACE_LIBS` + `nros_platform_link_app`,
+  so the user no longer names `<pkg>__nano_ros_<lang>`). Migrated + built
+  `native/c/talker` (zenoh **and** cyclonedds — the CXX branch) and
+  `native/cpp/talker` (zenoh), all rc=0, binaries link + run. The leaf went
+  53→36 lines with the RMW/CXX micro-option and the hand-named msg lib gone; the
+  root-resolve prelude is now identical for every leaf (a depth-agnostic
+  walk-up, no per-leaf `../../../..`). `include_guard(GLOBAL)` makes the
+  workspace-member case a no-op (the guard already returns early when nano-ros
+  is imported).
 
 ### W2 — migrate every example leaf
 - **Do:** rewrite the 233 example `CMakeLists.txt` to the target shape. Because
