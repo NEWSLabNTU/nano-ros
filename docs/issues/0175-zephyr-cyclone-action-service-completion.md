@@ -47,11 +47,23 @@ still PASS** (no regression on the encap-present path).
   (`action_msgs::srv::dds_::CancelGoal_` request/response or
   `action_msgs::msg::dds_::GoalStatusArray_`), so `dds_create_topic` returns
   UNSUPPORTED for that entity → `create_service_server` / `create_publisher`
-  fails → -100. Next step: trace which of the five creates fails (add the log
-  feature + a per-entity `log::info!` in `register_action_server_raw_sized`), then
-  extend the cmake action-descriptor helper to include the missing `action_msgs`
-  descriptors. Client-side is already correct via the arena encap-splice — once the
-  server declares, C/C++ Cyclone actions should complete.
+  fails → -100. **Update — NOT a missing descriptor.** Inspected the C fixture's
+  generated table (`build-c-action-server-cyclonedds/cyclonedds-ts/`): all five
+  action types ARE generated —
+  `Fibonacci_SendGoal_Request_`/`_Response_`, `Fibonacci_GetResult_Request_`/`_Response_`,
+  `Fibonacci_FeedbackMessage_`, `CancelGoal_Request_`/`_Response_`, `GoalStatusArray_`
+  (+ their `_register_N.c` registrars, `target_sources`'d into the app). So the
+  descriptors exist and are compiled in. The -100 is therefore a **lookup /
+  registration-linkage / FFI type-string mismatch**, not a missing type: either the
+  `_register_N.c` registrars are not actually invoked at boot (so `find_descriptor`
+  sees an empty table), or the name `register_action_server_raw` constructs for one
+  entity (e.g. the `action_msgs::srv::dds_::CancelGoal_` cancel service, or the
+  `GoalStatusArray_` status topic) does not match the registered key. Next step:
+  add the log feature + a per-entity `log::info!` in
+  `register_action_server_raw_sized` to name the failing create, then compare its
+  requested type string against the registered descriptor key. Client-side is
+  already correct via the arena encap-splice — once the server declares, C/C++
+  Cyclone actions should complete.
 - The zenoh **cpp service** 1/3-completion (from the #164 re-triage) is untouched
   here.
 - The **typed** action-client dispatch (`action_client_callback_try_process`,
