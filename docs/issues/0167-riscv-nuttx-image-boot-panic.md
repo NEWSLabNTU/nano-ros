@@ -108,6 +108,50 @@ riscv code path that is wrong per se.
 - `CONFIG_NETDEV_WORK_THREAD` is **not a real Kconfig symbol** in this NuttX;
   olddefconfig drops it. virtio-net leaves `rxtype` = 0 (`NETDEV_RX_WORK`).
 
+## DEFINITIVE ROOT CAUSE (2026-07-11) — `struct pollfd` ABI mismatch (std ↔ NuttX)
+
+Traced end-to-end with gdb watchpoints. The corrupting write is a **CPU write from
+Rust std**, not DMA:
+
+- Rust std's `sanitize_standard_fds()` (`std/src/sys/pal/unix/mod.rs`) polls fds
+  0/1/2 at program start: `poll(&[pollfd{fd:0..2, events:0, revents:0}; 3], 3, 0)`.
+- The `libc` crate's `pollfd` for the nuttx target is the **generic 8-byte POSIX**
+  layout (`fd:i32, events:i16, revents:i16`).
+- **NuttX's `struct pollfd` (`include/sys/poll.h`) is 24 bytes**: `fd, events(u32),
+  revents(u32), arg, cb, priv` — the kernel writes ALL six into the caller's array.
+- So `poll()` writes 3×24 = 72 bytes into std's 24-byte (3×8) stack array → **48-byte
+  overflow** → overwrites the entry task's saved return address (which sits just past
+  the array) → the task returns to a garbage/zeroed address → instruction-access
+  fault (`EPC=0x4` or `0x0`) at boot.
+
+gdb watchpoint on the saved-ra slot caught the writers exactly: `poll` writes a
+pointer, then `poll_teardown` writes 0, into `nsh_main`'s saved-ra slot; the poll
+call is `main` (`nros_nuttx_ffi::main`, Rust std startup) with `fds=…, nfds=3`.
+
+`arm-nuttx` has the **same** latent bug — its stack layout just absorbs the 48-byte
+overflow into unused space instead of a live return address. The "timing-dependent"
+observation (crashes under gdb, not `-d exec`) was a red herring of that layout
+sensitivity, not a race.
+
+### The three fixes already landed (commit fix(#167), fork c3fa5dfb06) are REAL but
+### adjacent bugs, not this root cause:
+- init stack 3072→64 KB (nros_cpp_init's 12 KB frame overflowed);
+- executor storage fallback 79304→98304 (stale, undersized the C++ Node buffer);
+- virtio-net ctrl-queue async-DMA-to-stack.
+Each is a genuine defect exposed while hunting; none closes the pollfd overflow.
+
+### Fix options (needs a decision — spans std/libc/NuttX ABI)
+1. **libc `poll()` shim** in the fork: keep `pollfd` 8 bytes (std compiles), but make
+   `poll`/`ppoll` allocate a 24-byte NuttX `pollfd` array internally, copy fd/events
+   in and revents out. Contained to the libc fork; needs a way to call NuttX's real
+   poll under a different symbol.
+2. **libc `pollfd` = 24 bytes + std patch**: correct struct, but std's
+   `sanitize_standard_fds` uses a 3-field literal → requires patching the pinned
+   nightly std source (no in-repo std-patch mechanism today; `nuttx-libc-patch.sh`
+   patches libc only).
+3. **NuttX-side**: have `poll()` use internal per-fd storage instead of writing
+   arg/cb/priv into the user's pollfd — a vendored NuttX change (fork branch).
+
 ## Decision (2026-07-09)
 
 **Documented known limitation; riscv-nuttx stays off-matrix (per #165).** The fix
