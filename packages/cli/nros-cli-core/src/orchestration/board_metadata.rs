@@ -752,7 +752,10 @@ set(NROS_BOARD_PRJ_CONF
         bad.insert("NROS_BOARD_REQUIRES_RUST".into(), "n".into());
         let drift = compute_drift(&cargo, &bad);
         let fields: Vec<&str> = drift.iter().map(|d| d.field).collect();
-        assert!(fields.contains(&"rmw_source"), "rmw_source drift: {drift:?}");
+        assert!(
+            fields.contains(&"rmw_source"),
+            "rmw_source drift: {drift:?}"
+        );
         assert!(
             fields.contains(&"requires_rust"),
             "requires_rust drift: {drift:?}"

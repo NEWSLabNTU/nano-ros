@@ -141,11 +141,7 @@ pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
 /// custom-transport bare-metal mode, so a no-op `0` return is correct —
 /// the symbol just has to exist for the link to resolve.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn strtol(
-    s: *const c_char,
-    endptr: *mut *mut c_char,
-    _base: c_int,
-) -> i64 {
+pub unsafe extern "C" fn strtol(s: *const c_char, endptr: *mut *mut c_char, _base: c_int) -> i64 {
     if !endptr.is_null() {
         unsafe { *endptr = s as *mut c_char }
     }

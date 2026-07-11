@@ -368,7 +368,8 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         args.name,
         zephyr_ws.display()
     );
-    eprintln!("  contract: zephyr_line={zephyr_line}, requires_rust={}, rmw_source={}, rust_targets=[{}]",
+    eprintln!(
+        "  contract: zephyr_line={zephyr_line}, requires_rust={}, rmw_source={}, rust_targets=[{}]",
         meta.requires_rust.unwrap_or(false),
         meta.rmw_source.as_deref().unwrap_or("-"),
         meta.rust_targets.join(", "),
@@ -387,9 +388,8 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         if args.dry_run {
             eprintln!("      (--dry-run: skipped)");
         } else {
-            let index = SdkIndex::load(&index_path).wrap_err_with(|| {
-                format!("load SDK index from {}", index_path.display())
-            })?;
+            let index = SdkIndex::load(&index_path)
+                .wrap_err_with(|| format!("load SDK index from {}", index_path.display()))?;
             provision_named_sources(
                 &index,
                 &index_path,
@@ -461,7 +461,10 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
     }
 
     if args.dry_run {
-        eprintln!("nros setup board {}: (--dry-run: nothing changed)", args.name);
+        eprintln!(
+            "nros setup board {}: (--dry-run: nothing changed)",
+            args.name
+        );
     } else {
         eprintln!(
             "nros setup board {}: consumer Zephyr tree provisioned",
@@ -918,7 +921,11 @@ mod tests {
         );
 
         // ESP32-C3 QEMU: declared arch riscv32, no index host-tool (rustup target).
-        assert!(resolve_packages(&idx, "qemu-esp32-baremetal").unwrap().is_empty());
+        assert!(
+            resolve_packages(&idx, "qemu-esp32-baremetal")
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(resolve_packages(&idx, "native").unwrap(), vec!["zenohd"]);
         let orin = resolve_packages(&idx, "orin-spe").unwrap();
         assert!(orin.contains(&"arm-none-eabi-gcc") && orin.contains(&"nv-spe-fsp"));

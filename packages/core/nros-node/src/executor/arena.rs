@@ -1652,7 +1652,11 @@ where
                     tb.writer_publish(len);
                 }
                 if let Some((data, len)) = tb.reader_acquire() {
-                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(
+                        &data[..len],
+                        FEEDBACK_PAYLOAD_OFFSET,
+                        on_feedback,
+                    );
                     did_work = true;
                 }
             }
@@ -1664,7 +1668,11 @@ where
                     }
                 }
                 while let Some((data, len)) = ring.try_pop() {
-                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(
+                        &data[..len],
+                        FEEDBACK_PAYLOAD_OFFSET,
+                        on_feedback,
+                    );
                     ring.commit_pop();
                     did_work = true;
                 }

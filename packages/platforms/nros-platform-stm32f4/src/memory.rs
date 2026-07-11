@@ -22,7 +22,10 @@ const fn parse_usize(s: &str) -> usize {
     let mut n: usize = 0;
     while i < bytes.len() {
         let b = bytes[i];
-        assert!(b >= b'0' && b <= b'9', "NROS_HEAP_SIZE must be decimal bytes");
+        assert!(
+            b >= b'0' && b <= b'9',
+            "NROS_HEAP_SIZE must be decimal bytes"
+        );
         n = n * 10 + (b - b'0') as usize;
         i += 1;
     }
