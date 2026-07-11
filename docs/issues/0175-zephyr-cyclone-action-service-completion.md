@@ -28,42 +28,26 @@ callback; zenoh/XRCE preserve the inner encap and pass through unchanged
 still PASS** (no regression on the encap-present path).
 
 **Residuals (separate bugs, NOT the encap):**
-- **C/C++ Cyclone action SERVER register fails with `-100` (TRANSPORT_ERROR)** —
-  NOT a hang. Checkpoint-traced `server_configure`:
-  `nros_cpp_action_server_create` returns 0, then
-  **`nros_cpp_action_server_register` returns -100**, so the `if (rc) return`
-  guard skips the "Waiting for action goals" print → the harness times out at
-  server-readiness (`dds_{c,cpp}_action_e2e`). `register` →
-  `Executor::register_action_server_raw` (`nros-node/executor/action.rs:524`) which
-  creates FIVE RMW entities — send_goal / cancel_goal / get_result service servers
-  + feedback / status publishers — each `.map_err(|_| ActionCreationFailed)`
-  (surfaced as -100). Rust's action server creates the same five and reaches
-  readiness, so the divergence is the descriptor source: the **Rust** cyclone build
-  registers type descriptors at runtime (the `__cyclonedds-link` hook + codegen
-  descriptor builder), while the **C/C++** cyclone build uses the STATIC
-  `descriptors.cpp` table seeded by the cmake helper
-  `nros_zephyr_add_cyclonedds_action_descriptors(app)`. Leading hypothesis: that
-  table is missing one of the action's `action_msgs` types
-  (`action_msgs::srv::dds_::CancelGoal_` request/response or
-  `action_msgs::msg::dds_::GoalStatusArray_`), so `dds_create_topic` returns
-  UNSUPPORTED for that entity → `create_service_server` / `create_publisher`
-  fails → -100. **Update — NOT a missing descriptor.** Inspected the C fixture's
-  generated table (`build-c-action-server-cyclonedds/cyclonedds-ts/`): all five
-  action types ARE generated —
-  `Fibonacci_SendGoal_Request_`/`_Response_`, `Fibonacci_GetResult_Request_`/`_Response_`,
-  `Fibonacci_FeedbackMessage_`, `CancelGoal_Request_`/`_Response_`, `GoalStatusArray_`
-  (+ their `_register_N.c` registrars, `target_sources`'d into the app). So the
-  descriptors exist and are compiled in. The -100 is therefore a **lookup /
-  registration-linkage / FFI type-string mismatch**, not a missing type: either the
-  `_register_N.c` registrars are not actually invoked at boot (so `find_descriptor`
-  sees an empty table), or the name `register_action_server_raw` constructs for one
-  entity (e.g. the `action_msgs::srv::dds_::CancelGoal_` cancel service, or the
-  `GoalStatusArray_` status topic) does not match the registered key. Next step:
-  add the log feature + a per-entity `log::info!` in
-  `register_action_server_raw_sized` to name the failing create, then compare its
-  requested type string against the registered descriptor key. Client-side is
-  already correct via the arena encap-splice — once the server declares, C/C++
-  Cyclone actions should complete.
+- **C/C++ Cyclone action SERVER register `-100` (TRANSPORT_ERROR) — RESOLVED.**
+  Root cause: the **feedback publisher** create returned `UNSUPPORTED` on a
+  **ROS-slash vs DDS-mangled type-name mismatch**. Decisive trace:
+  `pub_create topic=/fibonacci/_action/feedback type=example_interfaces/action/Fibonacci
+  eff=example_interfaces/action/Fibonacci_FeedbackMessage_ found=0`. The C/C++ action
+  server passes the ROS-form action type verbatim (`example_interfaces/action/Fibonacci`);
+  `action_topic_type` derived the feedback type in the same **slash** form
+  (`…/Fibonacci_FeedbackMessage_`), but `find_descriptor` is exact-`strcmp` against the
+  registered **DDS** key `example_interfaces::action::dds_::Fibonacci_FeedbackMessage_`
+  → null → `create_publisher` UNSUPPORTED → the register's `.map_err → -100`. Only the
+  action feedback/status publishers hit this: the three services already normalise via
+  `descriptors_for_service`→`ros_form_to_dds`, and Rust passes the DDS form directly.
+  **Fix:** `action_topic_type` (descriptors.cpp) now runs `type_name` through
+  `ros_form_to_dds` before deriving the feedback/status suffix, so the slash form maps
+  to the registered DDS key. `ros_form_to_dds` moved from service.cpp's anonymous
+  namespace into descriptors.cpp's named namespace (declared in descriptors.hpp) to
+  share it. DDS-form input (Rust) passes through untouched. Verified:
+  `dds_c_action_e2e` + `dds_cpp_action_e2e` **PASS 5.5s** (were 60s register-fail
+  timeouts); `dds_rs_action_e2e` **PASS 9.8s** (no regression); C service boots PASS
+  (the `ros_form_to_dds` move is behaviour-preserving).
 - The zenoh **cpp service** 1/3-completion (from the #164 re-triage) is untouched
   here.
 - The **typed** action-client dispatch (`action_client_callback_try_process`,

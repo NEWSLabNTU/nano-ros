@@ -81,6 +81,44 @@ std::size_t registered_descriptor_count() {
     return g_count;
 }
 
+// Issue 0157 — accept the ROS user-level form `<pkg>/srv/<Svc>` (what a
+// hand-written C/C++ component naturally passes to `nros_cpp_service_*_
+// register`) alongside the DDS-mangled `<pkg>::srv::dds_::<Svc>_` the
+// descriptor registry stores. zenoh tolerates the slash form because both
+// peers derive the SAME keyexpr from it (symmetric); Cyclone's registry
+// lookup is exact-match, so the slash form resolved nothing and every
+// service create failed with UNSUPPORTED (the zephyr C/C++ cyclone service
+// e2e's silent no-reply). Converts `a/b/C` → `a::b::dds_::C_`; DDS-form
+// (or any slash-less) input passes through untouched.
+bool ros_form_to_dds(const char *type_name, char *out, std::size_t out_cap) {
+    if (std::strchr(type_name, '/') == nullptr) {
+        std::size_t len = std::strlen(type_name);
+        if (len + 1 > out_cap) return false;
+        std::memcpy(out, type_name, len + 1);
+        return true;
+    }
+    const char *last_slash = std::strrchr(type_name, '/');
+    std::size_t out_len = 0;
+    for (const char *p = type_name; *p != '\0'; ++p) {
+        if (*p == '/') {
+            const char *insert = (p == last_slash) ? "::dds_::" : "::";
+            std::size_t ilen = std::strlen(insert);
+            if (out_len + ilen >= out_cap) return false;
+            std::memcpy(out + out_len, insert, ilen);
+            out_len += ilen;
+        } else {
+            if (out_len + 1 >= out_cap) return false;
+            out[out_len++] = *p;
+        }
+    }
+    // Trailing `_` to match the registered `<Svc>_` convention (the later
+    // `service_type_name` strips exactly one before adding `_Request_`).
+    if (out_len + 2 > out_cap) return false;
+    out[out_len++] = '_';
+    out[out_len] = '\0';
+    return true;
+}
+
 bool action_topic_type(const char *topic_name, const char *type_name,
                        char *out, std::size_t out_cap) {
     std::size_t nlen = topic_name != nullptr ? std::strlen(topic_name) : 0;
@@ -88,19 +126,26 @@ bool action_topic_type(const char *topic_name, const char *type_name,
     std::size_t flen = std::strlen(feedback_suffix);
     bool is_feedback =
         nlen >= flen && std::strcmp(topic_name + nlen - flen, feedback_suffix) == 0;
-    std::size_t blen = std::strlen(type_name);
+    // Normalise to the DDS-mangled registry key first. C/C++ action servers
+    // pass the ROS-form action type (`pkg/action/A`) verbatim (issue #175
+    // residual #1: the slash form resolved no descriptor → feedback/status
+    // create returned UNSUPPORTED → register -100). Rust already passes the
+    // DDS form, which `ros_form_to_dds` leaves untouched.
+    char base[256];
+    if (!ros_form_to_dds(type_name, base, sizeof(base))) return false;
+    std::size_t blen = std::strlen(base);
     if (!is_feedback) {
         if (blen + 1 > out_cap) return false;
-        std::memcpy(out, type_name, blen + 1);
+        std::memcpy(out, base, blen + 1);
         return true;
     }
     // Action feedback: bare base `<A>_` → `<A>_FeedbackMessage_`. Strip
     // the single trailing `_`, append `_FeedbackMessage_`.
-    if (blen > 0 && type_name[blen - 1] == '_') --blen;
+    if (blen > 0 && base[blen - 1] == '_') --blen;
     const char *infix = "_FeedbackMessage_";
     std::size_t ilen = std::strlen(infix);
     if (blen + ilen + 1 > out_cap) return false;
-    std::memcpy(out, type_name, blen);
+    std::memcpy(out, base, blen);
     std::memcpy(out + blen, infix, ilen);
     out[blen + ilen] = '\0';
     return true;

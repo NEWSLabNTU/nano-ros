@@ -38,6 +38,13 @@ std::size_t registered_descriptor_count();
 bool action_topic_type(const char *topic_name, const char *type_name,
                        char *out, std::size_t out_cap);
 
+/**
+ * Convert a ROS-form type name (`pkg/msg/Name`) to the DDS-mangled registry
+ * key (`pkg::msg::dds_::Name_`). Slash-less input (already DDS-form, or any
+ * name without `/`) passes through untouched. Defined in `service.cpp`.
+ */
+bool ros_form_to_dds(const char *type_name, char *out, std::size_t out_cap);
+
 } // namespace nros_rmw_cyclonedds
 
 #endif // NROS_RMW_CYCLONEDDS_DESCRIPTORS_HPP

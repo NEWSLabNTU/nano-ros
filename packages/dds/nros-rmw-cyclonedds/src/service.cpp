@@ -650,43 +650,8 @@ bool action_effective_base(const char* service_name, const char* type_name, char
     return true;
 }
 
-// Issue 0157 — accept the ROS user-level form `<pkg>/srv/<Svc>` (what a
-// hand-written C/C++ component naturally passes to `nros_cpp_service_*_
-// register`) alongside the DDS-mangled `<pkg>::srv::dds_::<Svc>_` the
-// descriptor registry stores. zenoh tolerates the slash form because both
-// peers derive the SAME keyexpr from it (symmetric); Cyclone's registry
-// lookup is exact-match, so the slash form resolved nothing and every
-// service create failed with UNSUPPORTED (the zephyr C/C++ cyclone service
-// e2e's silent no-reply). Converts `a/b/C` → `a::b::dds_::C_`; DDS-form
-// (or any slash-less) input passes through untouched.
-bool ros_form_to_dds(const char* type_name, char* out, std::size_t out_cap) {
-    if (std::strchr(type_name, '/') == nullptr) {
-        std::size_t len = std::strlen(type_name);
-        if (len + 1 > out_cap) return false;
-        std::memcpy(out, type_name, len + 1);
-        return true;
-    }
-    const char* last_slash = std::strrchr(type_name, '/');
-    std::size_t out_len = 0;
-    for (const char* p = type_name; *p != '\0'; ++p) {
-        if (*p == '/') {
-            const char* insert = (p == last_slash) ? "::dds_::" : "::";
-            std::size_t ilen = std::strlen(insert);
-            if (out_len + ilen >= out_cap) return false;
-            std::memcpy(out + out_len, insert, ilen);
-            out_len += ilen;
-        } else {
-            if (out_len + 1 >= out_cap) return false;
-            out[out_len++] = *p;
-        }
-    }
-    // Trailing `_` to match the registered `<Svc>_` convention (the later
-    // `service_type_name` strips exactly one before adding `_Request_`).
-    if (out_len + 2 > out_cap) return false;
-    out[out_len++] = '_';
-    out[out_len] = '\0';
-    return true;
-}
+// `ros_form_to_dds` moved to descriptors.cpp (shared with `action_topic_type`
+// / `find_descriptor`); declared in descriptors.hpp.
 
 bool descriptors_for_service(const char* service_name, const char* type_name,
                              const dds_topic_descriptor_t** out_req,
