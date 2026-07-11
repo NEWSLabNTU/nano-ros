@@ -91,3 +91,54 @@ product/release-policy call, not a mechanical fix: whether to publish the CLI
 or auto-provision `NROS_REPO_DIR`, whether to restore `find_package(NanoRos)` +
 `install()` rules retired in Phase 140, and whether to actually execute + CI the
 ESP-IDF / PlatformIO registry publishes.
+
+## Distribution decisions (2026-07-10/11)
+
+Agreed in discussion. **Actions are compiled into a separate phase doc**; only
+the two book fixes below shipped here.
+
+- **D1 — CLI via a bootstrap SCRIPT that BUILDS from source.** Not a `just`
+  step (fresh env may lack `just`), not folded into `nros setup` (needs the
+  binary first). `scripts/bootstrap.sh` already builds from a checkout without
+  `just`. *Action (phase):* make it the one front door; `packages/cli/
+  install.sh` advertises a **prebuilt** download from a `NEWSLabNTU/nros-cli`
+  Releases repo that (per this issue) does not exist — a 4th false claim to
+  fix.
+- **D2 — bundled source; no crates.io, no prebuilt libraries.** Mixed-language
+  runtime (no_std Rust + C/C++ FFI) × many platform/arch combos makes prebuilt
+  infeasible and crates.io unable to carry the C/C++ deps. Consumption model:
+  user pulls the nano-ros source at a pinned version → runs the bootstrap
+  (builds CLI) + `nros setup <board>` (prereqs) → their project's manifest
+  points at the nano-ros **entry manifest** (CMake include into the checkout;
+  Cargo `[patch.crates-io]` → checkout). Supersedes priority 3.
+- **D3 — no Arduino.** Done (removed from `library.json`, priority 1).
+- **D4 — no PlatformIO for now (future work).** Manifest + extra-script stay
+  in-tree but unpublished. Narrows priority 5 to ESP-IDF (also unexecuted / no
+  CI). Not mentioned in the book (D7).
+- **D5 — C/C++ per-package self-contained, boilerplate simplified.** A leaf
+  already builds standalone via the `NANO_ROS_ROOT` guard, but every leaf
+  copy-pastes the ~10-line guard + the `if(NROS_RMW STREQUAL cyclonedds)
+  enable_language(CXX)` micro-option. *Action (phase):* the CMakeLists must be
+  **identical for any RMW/platform** — collapse to a one-line
+  `nano_ros_bootstrap()` + `nano_ros_entry()` + link; hide the CXX/RMW knobs.
+  No `find_package`/`install` (Phase 140 removed them; source-tree include fits
+  D2). **A standalone phase reshapes the CMake and migrates all examples.**
+- **D6 — bring-your-own-board docs already exist.** `concepts/board-
+  integration.md` is a user-profile→path matrix (FreeRTOS/ThreadX/NuttX/
+  bare-metal/Zephyr/ESP-IDF/PX4/niche-fork); `porting/{board-crate-import,
+  custom-board,vendor-overlay}.md` cover consuming/writing one. *Done here:* a
+  brief cross-link from `getting-started/freertos.md` → the matrix. Priority 6
+  otherwise de-scoped.
+- **D7 — the book (`book/src/`) never discusses publish status or future
+  work** (it is user-facing). *Done here:* reverted the publish aside my
+  priority-1 edit added to `user-guide/logging.md`. (`publish = false` inside
+  Cargo.toml *snippets* and the contributor `internals/creating-examples.md`
+  explanation of the `[patch.crates-io]` mechanism are fine — not user-facing
+  availability claims.)
+
+### Cargo consumption UX (open, phase)
+
+`[patch.crates-io]` works but is heavy on the consumer side. Evaluate lighter
+handles (path deps via a generated `.cargo/config.toml`, a `[patch]` on a git
+source, a workspace inherit, or a `nros sync`-managed block) and pick the best
+UX. Decide in the CMake/consumption reshape phase.
