@@ -1,7 +1,8 @@
 //! Free-list heap allocator for bare-metal MPS2-AN385.
 //!
 //! Heap size (the `HEAP` static lands in RAM — `.bss`/`.data`):
-//!   - 64 KB default (zenoh-pico / xrce-dds builds)
+//!   - 128 KB default (zenoh-pico / xrce-dds builds; the per-entry executor
+//!     backing is a single ~75 KB alloc — #176)
 //!   - 128 KB with `link-tls` (mbedTLS context + certs + crypto)
 //!   - 2 MB with `dds-heap` (Phase 97.3.mps2-an385 — DDS
 //!     DcpsDomainParticipant builtin entities; same budget as the
@@ -20,8 +21,14 @@ use zpico_alloc::FreeListHeap;
 const DEFAULT_HEAP_SIZE: usize = 2 * 1024 * 1024;
 #[cfg(all(feature = "link-tls", not(feature = "dds-heap")))]
 const DEFAULT_HEAP_SIZE: usize = 128 * 1024;
+// #176 — the per-entry executor backing is a single ~74888 B allocation
+// (grew past the historical zenoh-pico ~12–16 KB working set with the
+// `Executor<'s>` per-entry storage rework), so 64 KB OOMs the RTIC boot path.
+// 128 KB clears it with headroom; MPS2-AN385 has 16 MB RAM and `HEAP` is
+// `.bss` (zero-init → no flash cost). `NROS_HEAP_SIZE` still shrinks it for
+// size-critical nodes.
 #[cfg(not(any(feature = "link-tls", feature = "dds-heap")))]
-const DEFAULT_HEAP_SIZE: usize = 64 * 1024;
+const DEFAULT_HEAP_SIZE: usize = 128 * 1024;
 
 /// `NROS_HEAP_SIZE` (compile-time env, decimal bytes) or [`DEFAULT_HEAP_SIZE`].
 const HEAP_SIZE: usize = match option_env!("NROS_HEAP_SIZE") {
