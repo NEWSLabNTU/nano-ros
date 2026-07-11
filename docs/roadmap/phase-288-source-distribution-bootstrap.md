@@ -1,8 +1,21 @@
 # Phase 288 — source-distribution bootstrap: one front door, no false prebuilt
 
-Status: **Draft — 2026-07-11** · Implements #171 decisions **D1 + D2** · Informs
-RFC-0003, RFC-0014 (setup / provisioning) · Sibling of phase-287 (CMake
-consumption reshape, #171 D5).
+Status: **Complete — 2026-07-11** (W1+W2 `f163eb81e`, W3+W4 docs follow-up) ·
+Implements #171 decisions **D1 + D2** · Informs RFC-0003, RFC-0014 (setup /
+provisioning) · Sibling of phase-287 (CMake consumption reshape, #171 D5).
+
+> **Landed notes.** W1 went further than `packages/cli/install.sh`: the audit
+> found THREE prebuilt surfaces — `install.sh` (archived nros-cli Releases,
+> newest asset 0.3.7), `scripts/install-nros-prebuilt.sh` (this repo's
+> Releases; no `nros-v*` release exists; no CI consumer), and the SDK index's
+> `[tool.nros]` (would install the stale 0.3.6 into the store). All three
+> deleted. `.github/workflows/release.yml` (tag-gated artifact builder,
+> skip-safe, never produced a release) is now **orphaned infra** — kept
+> pending a maintainer keep-or-delete call. W2: bare `scripts/bootstrap.sh`
+> is the front door (rustup-on-demand → CLI submodule → cargo build →
+> "next → nros setup"); verified in an `env -i` shell with no `just`/`nros`
+> on PATH. W3+W4: `installation.md` gained the end-to-end flow + the
+> "Pinning a version" section (tag ↔ `nros version` lockstep ↔ index pin).
 
 > **Goal.** A new user obtains nano-ros exactly one way: pull the source at a
 > pinned version, run a single **bootstrap script that builds the `nros` CLI

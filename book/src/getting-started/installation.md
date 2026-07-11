@@ -3,14 +3,41 @@
 nano-ros is distributed as **source**, vendored into the consumer's
 project tree (git submodule, `west` manifest, ESP-IDF component, etc.)
 and built in-tree via `add_subdirectory(nano-ros)`. There is no binary
-tarball, no system-wide install step, no `find_package(NanoRos)`.
+tarball, no system-wide install step, no `find_package(NanoRos)`, and
+no prebuilt `nros` CLI.
+
+## The whole flow, end to end
+
+Four steps take a bare machine to a building project; each is detailed
+in a section below.
+
+```sh
+# 1. Pull the source at a pinned version (or `main` for latest):
+git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros
+
+# 2. Build the `nros` CLI from source (installs rustup if needed):
+./scripts/bootstrap.sh
+
+# 3. Wire the workspace env into this (and every future) shell:
+source ./activate.sh          # or: direnv allow / source ./activate.fish
+
+# 4. Provision the toolchains + RMW daemon for your target:
+nros setup <board> --rmw <zenoh|xrce|cyclonedds>    # e.g. `native`
+```
+
+Then point **your project's manifest** at the checkout — Pattern A/B
+below for CMake (the `add_subdirectory` / `-DNANO_ROS_ROOT` guard), or
+the [Rust-only consumers](#rust-only-consumers) path dependency. See
+[Pinning a version](#pinning-a-version) for how the tag relates to
+`nros version`.
 
 > **`activate.sh` is the after-install step, NOT a prereq.** Sourcing
 > `activate.sh` (or `activate.fish`, or `direnv allow`) only wires the
 > workspace env into a new shell — it presumes the `nros` binary
-> already exists at `packages/cli/target/release/nros`. The three
-> bootstrap paths below (A/B/C) are what produce that binary; the
-> activate file is what makes it findable in every subsequent shell.
+> already exists at `packages/cli/target/release/nros`. The bootstrap
+> front door below is what produces that binary; the activate file is
+> what makes it findable in every subsequent shell.
 
 > See [build-as-subdirectory.md](build-as-subdirectory.md) for the
 > canonical user incantation (4-line `CMakeLists.txt`). This page
@@ -206,8 +233,15 @@ mbedtls); `nros-core` isn't carved out for crates.io either, to
 avoid a hybrid distribution model with version drift between the
 crates.io snapshot and in-repo HEAD.
 
-Rust packages consume nano-ros via path dependency on the
-in-workspace checkout:
+Rust packages consume nano-ros one of two ways:
+
+- **Registry-style names + patch redirection** (what every shipped
+  example uses): declare `nros = { version = "*" }` (+ msg crates) and
+  let `nros sync` write the `# nros-managed` `[patch.crates-io]` block
+  into `.cargo/config.toml`, resolving the names into the checkout
+  (`NROS_REPO_DIR` names it). Copy the project anywhere; re-run
+  `nros sync` to re-point.
+- **Explicit path dependency** on the in-workspace checkout:
 
 ```toml
 [dependencies]
@@ -220,6 +254,32 @@ Each Rust package carries its own `.cargo/config.toml` patch entries
 when needed — see
 [`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
 for the pattern.
+
+## Pinning a version
+
+Consumers pin the **source tree**, not a package: clone (or submodule)
+at a `nros-v<X.Y.Z>` git tag —
+
+```sh
+git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
+# or, as a submodule in your project:
+git submodule add -b main https://github.com/NEWSLabNTU/nano-ros third_party/nano-ros
+git -C third_party/nano-ros checkout nros-v0.5.0
+```
+
+The tag names the **bundle version**: the `nros` CLI built from that
+tree prints the same number (`nros version` → `nros 0.5.0`; the
+`scripts/check-version-lockstep.sh` gate + `bootstrap.sh shell-doctor`
+enforce binary↔tree agreement), and the tree's committed
+`nros-sdk-index.toml` pins the exact toolchain/SDK versions
+`nros setup` will provision for it. One tag therefore fixes the whole
+surface: runtime source, CLI behavior, and provisioned toolchains.
+Upgrading = checking out a newer tag and re-running
+`./scripts/bootstrap.sh` (rebuilds the CLI to match) + `nros setup`
+(reconciles the SDK store against the new index; already-current
+packages are no-ops). See
+[versioning](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/development/versioning.md)
+for how the bundle number is chosen.
 
 ## Contributor setup (working on nano-ros itself)
 
