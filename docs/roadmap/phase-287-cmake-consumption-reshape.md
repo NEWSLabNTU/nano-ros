@@ -43,6 +43,27 @@ reused**, their **user-facing spelling is superseded** by RFC-0048.
   `scripts/docs/migrate-example-cmake.py`. → **re-migrated** to the ament shape in
   W6; the transform is extended, not thrown away.
 
+## Landed (W3 + W4 — 2026-07-11)
+
+- **W3 (`ce15b3a37`)** — `nano_rosConfig.cmake` (repo root, found via
+  `nano_ros_ROOT`) + `cmake/NanoRosVerbs.cmake` (`nano_ros_add_executable` /
+  `nano_ros_add_node` / `nano_ros_generate_interfaces`). `find_package(<msg>)` is
+  **validate-only** under `find_package(nano_ros)` (gated by
+  `NROS_FIND_PACKAGE_VALIDATE_ONLY`); the verb owns codegen in the source-inferred
+  language via `nros_find_interfaces` (the `nros codegen resolve-deps` path that
+  resolves well-known ROS pkgs with no in-tree bundle). **Verified:**
+  `native/{c,cpp}/talker` in the full RFC-0048 ament shape configure + build +
+  link (C bindings for the C leaf, C++ for the C++ leaf).
+- **W4 (`1be4fb1b8`)** — `cmake/NanoRosPackageXml.cmake`
+  (`nano_ros_read_package_export`) parses `<export><nano_ros deploy= board=
+  rmw=/>`; the config reads it before importing nano-ros (deploy→platform,
+  rmw→RMW) and the verbs default DEPLOY/BOARD from it. **Verified:** a native leaf
+  builds with the tuple in `package.xml` and **no `DEPLOY` in CMakeLists**.
+
+  Design notes captured in agent memory (`project_phase287_w3_ament_cmake`): the
+  language snapshot from `ENABLED_LANGUAGES` is fragile — source inference in the
+  verb is the reliable signal.
+
 ## Waves (RFC-0048 implementation)
 
 Grouped by the four deliverables you asked for: **impl · migration · testing ·
@@ -70,7 +91,7 @@ old-path removal.**
   (all platform data in `package.xml`); switching `board=` in `package.xml`
   reconfigures the toolchain path (via the preset, W5) with no CMake edit.
 
-### W5 — [impl] toolchain automation: `nros setup` presets + `nros init`
+### W5 — [impl] toolchain automation: `nros setup` presets + `nros init` — NEXT
 - **Do:** `nros setup <board>` writes `~/.nros/presets/<board>.json`
   (`toolchainFile` + `nano_ros_ROOT`); new `nros init` verb generates the user
   project's `CMakePresets.json` including those fragments (RFC-0048 §6). Export
@@ -78,6 +99,17 @@ old-path removal.**
 - **Acceptance:** on a machine with only the pinned checkout + bootstrap, `nros
   setup <board>` → `nros init` → `cmake --preset <board>` cross-configures with no
   hand-set `CMAKE_TOOLCHAIN_FILE` / `-Dnano_ros_ROOT`.
+- **Open design question (blocks the embedded arm):** the board→CMake-toolchain
+  mapping is today **hardcoded per just-recipe**, and an embedded configure needs
+  more than `toolchainFile` — `NUTTX_DIR` / `THREADX_DIR` / `NETX_DIR` / the
+  provisioned-SDK config dirs / `_NANO_ROS_CODEGEN_TOOL` / (cyclone)
+  `NROS_RMW_CYCLONEDDS_MSG_TO_IDL` all come from the SDK store the recipes resolve
+  at build time. Where should this data live so `nros setup` can emit it — new
+  `nros-board.toml` fields (`cmake_toolchain`, `cmake_cache_vars`), a table in the
+  CLI, or read back from the `sdk_store` provision result? This is RFC-0014
+  provisioning territory — resolve with the maintainer before implementing. The
+  **native** preset (`nano_ros_ROOT` only, no toolchain) is unblocked and can land
+  first; `nros init` for a native project is trivial.
 
 ### W6 — [migration] every example to the ament shape
 - **Do:** extend `scripts/docs/migrate-example-cmake.py` to emit the RFC-0048
