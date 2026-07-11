@@ -1312,8 +1312,38 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // Kconfig is the single source of truth for both languages.
                 const BAKED_LOCATOR: ::core::option::Option<&str> =
                     ::core::option_env!("NROS_LOCATOR");
-                let config = match BAKED_LOCATOR {
+                // #166 / phase-286 W1 — native_sim test parallelism. The test
+                // harness launches the image with `-testargs --nros-locator=<loc>`
+                // and starts a per-test zenohd on that ephemeral port; preferring
+                // it over the compile-time bake lets every test dial a DISTINCT
+                // router, retiring the shared-baked-port serialization of the
+                // ws-entry lane. Provided by `nros-platform-zephyr` (argv-backed,
+                // process lifetime); returns NULL on real embedded → the bake
+                // stands. Mirrors `nros::zephyr_component_main!`.
+                unsafe extern "C" {
+                    fn nros_runtime_locator_override() -> *const ::core::ffi::c_char;
+                }
+                let runtime_locator: ::core::option::Option<&str> = {
+                    let p = unsafe { nros_runtime_locator_override() };
+                    if p.is_null() {
+                        ::core::option::Option::None
+                    } else {
+                        match unsafe { ::core::ffi::CStr::from_ptr(p) }.to_str() {
+                            ::core::result::Result::Ok(s) if !s.is_empty() => {
+                                ::core::option::Option::Some(s)
+                            }
+                            _ => ::core::option::Option::None,
+                        }
+                    }
+                };
+                let effective_locator = runtime_locator.or(match BAKED_LOCATOR {
                     ::core::option::Option::Some(loc) if !loc.is_empty() => {
+                        ::core::option::Option::Some(loc)
+                    }
+                    _ => ::core::option::Option::None,
+                });
+                let config = match effective_locator {
+                    ::core::option::Option::Some(loc) => {
                         ::nros::ExecutorConfig::new(loc)
                             .node_name(::core::env!("CARGO_PKG_NAME"))
                     }

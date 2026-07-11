@@ -2957,13 +2957,15 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     );
     eprintln!("Workspace Entry binary: {}", entry_binary.display());
 
-    // Start zenohd on the Zephyr rust-pubsub port — the Entry's baked
-    // locator points here, and so does the external listener below.
-    let port =
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust);
-    eprintln!("Starting zenohd router on port {port}...");
-    let router = ZenohRouter::start(port).expect("Failed to start zenohd");
-    eprintln!("zenohd locator: {}", router.locator());
+    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override. The
+    // ws-runtime Entry now reads `-testargs --nros-locator=<loc>` (the generated
+    // `rust_main` prefers it over the baked locator, mirroring
+    // `zephyr_component_main!`), so this test dials its own ephemeral router
+    // instead of the shared baked rust-pubsub port — no longer serial.
+    eprintln!("Starting per-test zenohd router (ephemeral port)...");
+    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let locator = router.locator();
+    eprintln!("zenohd started on {locator}");
 
     // Build + start an EXTERNAL native listener on the same locator. The
     // Entry's talker publishes `/chatter`; this listener is the observable
@@ -2974,7 +2976,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     use std::process::Command;
     let mut listener_cmd = Command::new(listener_path);
     listener_cmd
-        .env("NROS_LOCATOR", format!("tcp/127.0.0.1:{port}"))
+        .env("NROS_LOCATOR", &locator)
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
@@ -2985,8 +2987,9 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // Boot the single-process Entry (talker + listener). `ZephyrProcess::Drop`
     // kills it, so no manual teardown is required on an early panic.
     eprintln!("Starting Zephyr workspace Entry...");
-    let mut entry = ZephyrProcess::start(&entry_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr workspace Entry");
+    let mut entry =
+        ZephyrProcess::start_with_locator(&entry_binary, ZephyrPlatform::NativeSim, &locator)
+            .expect("Failed to start Zephyr workspace Entry");
 
     // The external listener must log at least one real `Received:` line.
     // Timeout is generous: on a slow native_sim host the Entry's zenoh-pico

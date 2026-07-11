@@ -187,8 +187,29 @@ parallel (were all `max-threads = 1`). Per-group speedups measured: pubsub-rust
 2.8× (152→54 s), pubsub-cpp 1.9× (98→51 s), service+action 2.2× (75→34 s). The
 mechanism (native_sim `-testargs --nros-locator` runtime override, honored by the
 Rust macro + the C/C++ `ZephyrBoard::run_components`) is proven green on at least
-one Zephyr↔Zephyr lane per RMW-role. Remaining serial: `qemu-zephyr-ws-entry`
-(ws-runtime entry, override not wired — a W1 follow-up).
+one Zephyr↔Zephyr lane per RMW-role.
+
+#### W1 follow-up — ws-entry override wired (2026-07-11)
+
+The last serial group, `qemu-zephyr-ws-entry`, is retired. The ws-runtime Entry
+uses the `nros::main!` **proc-macro** (`nros-macros/main_macro.rs`), NOT the
+`zephyr_component_main!` macro nor the CLI `generate.rs` emitter — so its Zephyr
+arm needed its own override read. The macro's Framework::Zephyr `config` build now
+prefers `nros_runtime_locator_override()` over the baked `option_env!("NROS_LOCATOR")`
+(same shape as `zephyr_component_main!`; NULL on real embedded ⇒ the bake stands).
+`test_zephyr_workspace_entry_native_sim_e2e` converted to
+`ZenohRouter::start_unique()` + `start_with_locator` (external native listener
+points at the same ephemeral router); the `qemu-zephyr-ws-entry` nextest group +
+its override filter deleted so the test falls through to the parallel
+`qemu-zephyr` group. Fixture rebuilt with the override embedded (`build-ws-rs-entry-zenoh`
+relinked; `nros_runtime_locator_override` referenced by the generated `rust_main`).
+**Verified 2026-07-11** via a direct prebuilt-binary e2e (the nextest lane was
+blocked by a concurrent full-suite run saturating the box, load >130, so the
+verification bypassed cargo/nextest): zenohd on an ephemeral port 7789, the Entry
+booted ("zephyr workspace entry up (2 nodes)") and dialed the `-testargs
+--nros-locator` override (the old bake would have dialed 7456), delivering **48
+messages** to an external native listener on that same ephemeral router. The
+override path is proven; W1 is fully parallel with no remaining serial group.
 
 ### W2 — staleness-guard false-positive (#147 class)
 
@@ -333,6 +354,22 @@ still PASS** (no regression). Residuals (separate, tracked in #175): the C/C++
 Cyclone action SERVER hangs in `create_action_server` (never reaches readiness — a
 `nros-c`/`nros-cpp` entity-declare issue, not the encap), and the typed
 (closure-callback) action-client dispatch needs the same splice.
+
+**RESIDUALS RESOLVED 2026-07-11.** Both #175 residuals landed:
+- *Typed dispatch* — shared `read_action_field` helper (`arena.rs`) applies the
+  same encap-splice on the typed `action_client_callback_try_process` path
+  (feedback + result). Committed with the core encap fix.
+- *C/C++ action SERVER register `-100`* — NOT a `create_action_server` hang; the
+  **feedback publisher** create returned UNSUPPORTED on a ROS-slash vs DDS-mangled
+  type-name mismatch (`action_topic_type` derived `…/Fibonacci_FeedbackMessage_`
+  slash form; `find_descriptor` is exact-strcmp vs the registered DDS key
+  `…::dds_::Fibonacci_FeedbackMessage_`). Fix: `action_topic_type` (descriptors.cpp)
+  runs `type_name` through `ros_form_to_dds` before deriving the feedback/status
+  suffix; `ros_form_to_dds` moved to descriptors.cpp's named namespace (shared).
+  **`dds_c_action_e2e` + `dds_cpp_action_e2e` PASS 5.5 s** (were 60 s register-fail
+  timeouts); `dds_rs_action_e2e` PASS 9.8 s (no regression); C service boots PASS.
+  All three cyclone action lanes (c/cpp/rs) now green → **W4 acceptance met**;
+  **#175 resolved.**
 
 ## Sequencing
 
