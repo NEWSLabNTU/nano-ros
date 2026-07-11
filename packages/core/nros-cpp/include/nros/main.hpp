@@ -256,7 +256,7 @@ class NativeBoard {
 #ifndef NROS_ENTRY_LOCATOR
 #if defined(CONFIG_NROS_ZENOH_LOCATOR)
 #define NROS_ENTRY_LOCATOR CONFIG_NROS_ZENOH_LOCATOR
-#elif defined(CONFIG_NROS_RMW_XRCE) && defined(CONFIG_NROS_XRCE_AGENT_ADDR) && \
+#elif defined(CONFIG_NROS_RMW_XRCE) && defined(CONFIG_NROS_XRCE_AGENT_ADDR) &&                     \
     defined(CONFIG_NROS_XRCE_AGENT_PORT)
 // #174 / phase-286 W3 — XRCE has NO zenoh locator; its agent endpoint lives in
 // CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}. Without this, `NROS_ENTRY_LOCATOR` fell to
@@ -269,7 +269,7 @@ class NativeBoard {
 // "127.0.0.1:2018".
 #define NROS_ENTRY_LOCATOR_STRINGIZE_(x) #x
 #define NROS_ENTRY_LOCATOR_STRINGIZE(x) NROS_ENTRY_LOCATOR_STRINGIZE_(x)
-#define NROS_ENTRY_LOCATOR \
+#define NROS_ENTRY_LOCATOR                                                                         \
     CONFIG_NROS_XRCE_AGENT_ADDR ":" NROS_ENTRY_LOCATOR_STRINGIZE(CONFIG_NROS_XRCE_AGENT_PORT)
 #else
 #define NROS_ENTRY_LOCATOR ""
