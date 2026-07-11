@@ -40,7 +40,26 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // `--rmw` fails here with the known-list, not as a broken downstream build.
     let rmw = rmw_resolver::resolve_rmw(&cfg.rmw).map_err(|e| eyre::eyre!("nros new: {e}"))?;
 
-    let build_type = format!("nros.{}.{}", cfg.lang, cfg.platform);
+    // RFC-0048 (phase-287) — a C/C++ package is written in the ament shape:
+    // `build_type` is `ament_cmake` and the platform delta lives in the
+    // `<export><nano_ros deploy= rmw=/>` tuple (find_package(nano_ros) reads it).
+    // Rust keeps its `nros.<lang>.<platform>` build_type + needs no tuple.
+    let deploy = if cfg.platform == "native" {
+        "native"
+    } else {
+        cfg.platform.as_str()
+    };
+    let is_cxx = matches!(cfg.lang.as_str(), "c" | "cpp");
+    let build_type = if is_cxx {
+        "ament_cmake".to_string()
+    } else {
+        format!("nros.{}.{}", cfg.lang, cfg.platform)
+    };
+    let nano_ros_export = if is_cxx {
+        format!("\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>", rmw.cmake_value)
+    } else {
+        String::new()
+    };
 
     fs::create_dir_all(dir.join("src"))?;
 
@@ -54,7 +73,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
-    <build_type>{build_type}</build_type>
+    <build_type>{build_type}</build_type>{nano_ros_export}
   </export>
 </package>
 "#,
@@ -784,6 +803,7 @@ nano_ros_workspace_pkg_guard()
 
 fn scaffold_c(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
     let _ = platform;
+    let _ = rmw_value;
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES C CXX)
@@ -791,26 +811,17 @@ project({name} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Phase 227.4 — declared RMW baked in (override at configure with -DNANO_ROS_RMW=…).
-set(NANO_ROS_RMW {rmw_value} CACHE STRING "nano-ros RMW backend")
+# RFC-0048 — ament shape. Platform + RMW live in package.xml's
+# <export><nano_ros deploy= rmw=/>; find_package(nano_ros) reads it.
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-{bootstrap}
-# Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
-# generates msg/srv/action bindings (+ FFI glue) for every transitive
-# interface dep declared via `<depend>` tags.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+nano_ros_add_executable({name} src/main.c)
+ament_target_dependencies({name} std_msgs)
 
-# Phase 212.N.6 — Entry pkg shape (single-Node self-bringup; Phase 219
-# adds the `LAUNCH "<bringup>:<file>.launch.xml"` form for multi-Node).
-nano_ros_entry(
-    NAME {name}
-    SOURCES src/main.c
-    DEPLOY native)
-
-target_link_libraries({name} PRIVATE std_msgs__nano_ros_c)
-nros_platform_link_app({name})
+install(TARGETS {name} DESTINATION lib/${{PROJECT_NAME}})
+ament_package()
 "#,
-        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
@@ -876,6 +887,7 @@ int main(int argc, char** argv) {{
 
 fn scaffold_cpp(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
     let _ = platform;
+    let _ = rmw_value;
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES C CXX)
@@ -883,26 +895,17 @@ project({name} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 227.4 — declared RMW baked in (override at configure with -DNANO_ROS_RMW=…).
-set(NANO_ROS_RMW {rmw_value} CACHE STRING "nano-ros RMW backend")
+# RFC-0048 — ament shape. Platform + RMW live in package.xml's
+# <export><nano_ros deploy= rmw=/>; find_package(nano_ros) reads it.
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-{bootstrap}
-# Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
-# generates msg/srv/action bindings (+ FFI glue) for every transitive
-# interface dep declared via `<depend>` tags.
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+nano_ros_add_executable({name} src/main.cpp)
+ament_target_dependencies({name} std_msgs)
 
-# Phase 212.N.6 — Entry pkg shape (single-Node self-bringup; Phase 219
-# adds the `LAUNCH "<bringup>:<file>.launch.xml"` form for multi-Node).
-nano_ros_entry(
-    NAME {name}
-    SOURCES src/main.cpp
-    DEPLOY native)
-
-target_link_libraries({name} PRIVATE std_msgs__nano_ros_cpp)
-nros_platform_link_app({name})
+install(TARGETS {name} DESTINATION lib/${{PROJECT_NAME}})
+ament_package()
 "#,
-        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
@@ -1009,19 +1012,25 @@ mod tests {
     }
 
     #[test]
-    fn c_and_cpp_scaffold_bake_declared_rmw() {
+    fn c_and_cpp_scaffold_emit_ament_shape() {
+        // RFC-0048 — the CMakeLists is the ament shape; RMW moved to the
+        // package.xml <nano_ros> tuple (written by scaffold_package), so it no
+        // longer appears in the CMakeLists.
         let dc = tmp();
         scaffold_c("bar", "native", "cyclonedds", dc.path()).unwrap();
         let cm = fs::read_to_string(dc.path().join("CMakeLists.txt")).unwrap();
         assert!(
-            cm.contains("set(NANO_ROS_RMW cyclonedds"),
-            "expected baked rmw in:\n{cm}"
+            cm.contains("find_package(nano_ros REQUIRED)"),
+            "expected ament shape in:\n{cm}"
         );
+        assert!(cm.contains("nano_ros_add_executable(bar src/main.c)"), "{cm}");
+        assert!(!cm.contains("nano_ros_entry"), "stray old-shape verb:\n{cm}");
+        assert!(!cm.contains("set(NANO_ROS_RMW"), "RMW should be in package.xml:\n{cm}");
 
         let dpp = tmp();
         scaffold_cpp("baz", "native", "xrce", dpp.path()).unwrap();
         let cm = fs::read_to_string(dpp.path().join("CMakeLists.txt")).unwrap();
-        assert!(cm.contains("set(NANO_ROS_RMW xrce"), "{cm}");
+        assert!(cm.contains("nano_ros_add_executable(baz src/main.cpp)"), "{cm}");
     }
 
     #[test]
