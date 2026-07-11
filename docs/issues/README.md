@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#177** — [native C cyclonedds fixture duplicate register symbols](0177-native-cyclonedds-ts-duplicate-register-symbols.md):
+  `fixture-native-c-cyclonedds` fails to link — `register_<Type>_0` (Int32/String/UInt*/MultiArray…)
+  defined in **both** `libstd_msgs__cyclonedds_ts.a` and `libexample_interfaces__cyclonedds_ts.a`
+  (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
+  `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
+  split archives. Independent of #175's Cyclone descriptor work.
 - **#176** — [RTIC mps2-an385 executor heap OOM](0176-rtic-mps2-executor-heap-oom.md): every
   `deploy = "rtic-*"` qemu-arm-baremetal image boots then panics `memory allocation of 74888 bytes
   failed` — the executor backing (74888 B) exceeds the 64 KB default heap
