@@ -62,6 +62,25 @@ nros_cmake_configure_if_needed() {
     fi
 
     if [ "$needs_configure" -eq 1 ]; then
+        # RFC-0048 (phase-287): an ament-shape example resolves nano-ros through
+        # `find_package(nano_ros)`, which locates the in-tree nano_rosConfig.cmake
+        # via CMake's `nano_ros_ROOT` env var. A fixture / CI build that did not
+        # `source ./activate.sh` won't have it — derive it here (from NROS_REPO_DIR
+        # / NANO_ROS_ROOT, else a walk-up to the `nros-sdk-index.toml` sentinel)
+        # so every in-tree build path resolves it. Copy-out builds outside the
+        # tree pass `-Dnano_ros_ROOT=<checkout>` per the RFC-0026 contract.
+        if [ -z "${nano_ros_ROOT:-}" ]; then
+            local _nrr="${NROS_REPO_DIR:-${NANO_ROS_ROOT:-}}"
+            if [ -z "$_nrr" ]; then
+                local _d
+                _d="$(cd "$src_dir" && pwd)"
+                while [ -n "$_d" ] && [ "$_d" != "/" ] && [ ! -f "$_d/nros-sdk-index.toml" ]; do
+                    _d="$(dirname "$_d")"
+                done
+                [ -f "$_d/nros-sdk-index.toml" ] && _nrr="$_d"
+            fi
+            [ -n "$_nrr" ] && export nano_ros_ROOT="$_nrr"
+        fi
         cmake -S "$src_dir" -B "$build_dir" "${gen[@]}" "$@"
         mv "$stamp_tmp" "$stamp_file"
     else

@@ -16,7 +16,7 @@ workspace shapes are out of scope for this transform.
 
 Rewrites the CMakeLists to:
 
-    cmake_minimum_required(VERSION 3.24)
+    cmake_minimum_required(VERSION 3.22)
     project(<proj> LANGUAGES C CXX)
     set(CMAKE_<C|CXX>_STANDARD <n>)          # preserved from the original
     set(CMAKE_<C|CXX>_STANDARD_REQUIRED ON)
@@ -143,7 +143,7 @@ def _transform_cmake(text: str, pkgxml: Path) -> tuple[str | None, str]:
     deps = _depends(pkgxml)
 
     out = []
-    out.append("cmake_minimum_required(VERSION 3.24)")
+    out.append("cmake_minimum_required(VERSION 3.22)")
     out.append(f"project({proj} LANGUAGES C CXX)")
     out.append("")
     if std:

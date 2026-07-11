@@ -62,21 +62,30 @@ system prefix (the Phase-140 install rules stay retired). The config:
 - registers the msg-codegen redirect (§2);
 - defines the `nano_ros_add_executable` / `nano_ros_add_node` verbs (§3).
 
-### 2. `find_package(<msg_pkg>)` triggers codegen — per line
+### 2. `find_package(<msg_pkg>)` — the ament line, codegen from `package.xml`
 
 Ament consumers `find_package(std_msgs)` to pick up a **pre-built** typesupport
-lib. nano-ros has no install, so the consumer must **codegen** the bindings.
-`find_package(nano_ros)` drops a redirect into
-**`CMAKE_FIND_PACKAGE_REDIRECTS_DIR`** (CMake ≥3.24, the FetchContent mechanism),
-so a later `find_package(std_msgs REQUIRED)` routes into nano-ros codegen for
-*that* package. Consequences, both intended:
+lib. nano-ros has no install, so the bindings must be **codegen'd**.
 
-- **Codegen is opt-in per line** — only what you `find_package` is generated
-  (replaces today's "codegen the whole `<depend>` closure at once").
-- The writing is ament-literal — the porter changes nothing about their
-  `find_package(std_msgs)` line.
+**As implemented (phase-287 W3), `find_package(<msg_pkg>)` is a validate-only
+line** — it resolves the package (via the compat find-stubs on `CMAKE_MODULE_PATH`)
+to satisfy the ament `REQUIRED` and confirm the dependency, but it does **not**
+itself generate. The authoritative codegen is driven by the `nano_ros_add_*` verb,
+which knows the leaf's language (inferred from its sources) and reads the
+`package.xml` `<depend>` closure through `nros codegen resolve-deps` (the CLI path
+that resolves well-known ROS packages with **no in-tree bundle or sourced ROS
+install** — the find-stub's cmake-glob resolution cannot). This keeps C and C++
+leaves byte-identical and avoids pulling a C++ interface lib (and CXX
+target-features) into a C leaf's scope from a `find_package` line.
 
-`cmake_minimum_required(VERSION 3.24)` is the floor (redirects).
+> **Rationale for the split** (vs. the originally-sketched per-line
+> `CMAKE_FIND_PACKAGE_REDIRECTS_DIR` mechanism, CMake ≥3.24): the redirect approach
+> needs the find-stub to resolve each package's IDLs itself, which fails for
+> well-known ROS packages that have no in-tree bundle. Driving codegen from
+> `package.xml <depend>` via the CLI is both robust and more ament-idiomatic
+> (deps are declared in the manifest). The floor stays
+> **`cmake_minimum_required(VERSION 3.22)`** — resolution uses `nano_ros_ROOT`
+> (CMake ≥3.12) + the module-path find-stubs (ancient), not the 3.24 redirect.
 
 ### 3. Two verbs for two roles
 

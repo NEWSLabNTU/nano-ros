@@ -12,7 +12,7 @@ codegen) · Sibling of phase-288 (source bootstrap, #171 D1/D2, **complete**).
 > + `nano_ros_ROOT` (no install). Full design: **RFC-0048**.
 >
 > ```cmake
-> cmake_minimum_required(VERSION 3.24)
+> cmake_minimum_required(VERSION 3.22)
 > project(freertos_c_talker LANGUAGES C CXX)
 > find_package(nano_ros REQUIRED)
 > find_package(std_msgs REQUIRED)
@@ -100,12 +100,13 @@ old-path removal.**
 ### W3 — [impl] `nano_rosConfig.cmake` + the two verbs
 - **Do:** ship an in-tree `nano_rosConfig.cmake` found via `nano_ros_ROOT`
   (exported by `activate.sh`). It wraps the W1 bootstrap (import + RMW/CXX),
-  registers the msg-codegen redirect in `CMAKE_FIND_PACKAGE_REDIRECTS_DIR`
-  (RFC-0048 §2), and defines `nano_ros_add_executable` (standalone entry — exe on
-  native/FreeRTOS/NuttX/ThreadX, `add_library`-into-`app` on Zephyr) and
-  `nano_ros_add_node` (workspace component library). `ament_target_dependencies`
-  shim links the generated `*__nano_ros_<lang>`. `nano_ros_generate_interfaces`
-  for msg pkgs (RFC-0048 §5). Bump the floor to `cmake_minimum_required(3.24)`.
+  prepends the compat find-stubs so `find_package(<msg>)` validates (RFC-0048 §2 —
+  the verb owns codegen; **not** the 3.24 redirect mechanism), and defines
+  `nano_ros_add_executable` (standalone entry — exe on native/FreeRTOS/NuttX/
+  ThreadX, `add_library`-into-`app` on Zephyr) and `nano_ros_add_node` (workspace
+  component library). `ament_target_dependencies` shim links the generated
+  `*__nano_ros_<lang>`. `nano_ros_generate_interfaces` for msg pkgs (RFC-0048 §5).
+  Floor stays `cmake_minimum_required(3.22)` (`nano_ros_ROOT` is 3.12+).
 - **Acceptance:** `find_package(nano_ros REQUIRED)` + `find_package(std_msgs)` +
   `nano_ros_add_executable` builds `native/c/talker` (zenoh, xrce, cyclonedds) and
   `native/cpp/talker`; a Zephyr leaf builds via the `add_library`-into-`app` arm;
