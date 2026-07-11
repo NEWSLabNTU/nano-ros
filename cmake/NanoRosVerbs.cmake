@@ -44,6 +44,25 @@ function(_nros_infer_lang out_var)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# _nros_generate_declared_interfaces(<lang>)
+#   Run interface codegen for the invoking package's declared interface deps —
+#   but only when its package.xml actually declares one. A no-dep leaf (a pure
+#   `nros::init` demo, or an own-msg pkg that generates via
+#   nano_ros_generate_interfaces) would otherwise trip a spurious
+#   "no interface packages resolved" warning from nros_find_interfaces.
+# ---------------------------------------------------------------------------
+function(_nros_generate_declared_interfaces lang)
+    set(_pkgxml "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
+    if(NOT EXISTS "${_pkgxml}")
+        return()
+    endif()
+    file(READ "${_pkgxml}" _body)
+    if(_body MATCHES "<(depend|build_depend|exec_depend|run_depend|build_export_depend)>")
+        nros_find_interfaces(LANGUAGE ${lang} SKIP_INSTALL)
+    endif()
+endfunction()
+
+# ---------------------------------------------------------------------------
 # nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
@@ -73,8 +92,9 @@ function(nano_ros_add_executable name)
         set(_NRE_BOARD "${NROS_BOARD}")
     endif()
 
-    # Generate the package's declared interface closure in the leaf's language.
-    nros_find_interfaces(LANGUAGE ${_lang} SKIP_INSTALL)
+    # Generate the package's declared interface closure in the leaf's language
+    # (no-op when package.xml declares no interface deps).
+    _nros_generate_declared_interfaces(${_lang})
 
     set(_board_arg "")
     if(_NRE_BOARD)

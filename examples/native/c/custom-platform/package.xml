@@ -8,6 +8,7 @@
   <license>Apache-2.0</license>
 
   <export>
-    <build_type>cmake</build_type>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
   </export>
 </package>

@@ -10,6 +10,7 @@
   <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
-    <build_type>cmake</build_type>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
   </export>
 </package>

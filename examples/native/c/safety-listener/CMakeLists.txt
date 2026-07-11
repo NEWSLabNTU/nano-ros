@@ -10,31 +10,14 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # it to `NANO_ROS_SAFETY_E2E=ON` before nros-cpp/nros-c read the option, building
 # the zenoh backend with the CRC + validated-recv API. (Was a hand-set
 # `NANO_ROS_SAFETY_E2E` knob; now the declarative axis the registry owns.)
+# Set BEFORE find_package(nano_ros) so the axis reaches the import.
 set(NANO_ROS_FEATURES "safety")
-# --- nano-ros bootstrap (uniform across every example — do not hand-edit) ---
-# Resolve the nano-ros checkout: -DNANO_ROS_ROOT → $NROS_REPO_DIR → in-tree
-# walk-up. Everything after (helper include, per-pkg guard, RMW/CXX) is handled
-# by nano_ros_bootstrap().
-if(NOT DEFINED NANO_ROS_ROOT)
-    if(NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
-    else()
-        set(_nros_d "${CMAKE_CURRENT_SOURCE_DIR}")
-        while(_nros_d AND NOT EXISTS "${_nros_d}/nros-sdk-index.toml")
-            get_filename_component(_nros_d "${_nros_d}" DIRECTORY)
-        endwhile()
-        set(NANO_ROS_ROOT "${_nros_d}")
-    endif()
-endif()
-include("${NANO_ROS_ROOT}/cmake/NanoRosBootstrap.cmake")
-nano_ros_bootstrap()
-# --- end nano-ros bootstrap ---
 
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-nano_ros_entry(
-    NAME c_safety_listener
-    SOURCES src/main.c
-    DEPLOY native)
+nano_ros_add_executable(c_safety_listener src/main.c)
+ament_target_dependencies(c_safety_listener std_msgs)
 
-nano_ros_link(c_safety_listener)
+install(TARGETS c_safety_listener DESTINATION lib/${PROJECT_NAME})
+ament_package()
