@@ -314,6 +314,7 @@ dependencies = [
 name = "nros-board-nuttx"
 version = "0.4.0"
 dependencies = [
+ "log",
  "nros",
  "nros-board-common",
  "nros-platform",

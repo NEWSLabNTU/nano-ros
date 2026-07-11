@@ -19,6 +19,10 @@ linker = "riscv-none-elf-gcc"
 rustflags = [
     "-C", "link-arg=-march=rv32imac",
     "-C", "link-arg=-mabi=ilp32",
+    # #167 — interpose poll() to bridge Rust's 8-byte POSIX `pollfd` to NuttX's
+    # 24-byte kernel struct (std's sanitize_standard_fds overflows the caller's
+    # array otherwise). `__wrap_poll` lives in the patched libc fork.
+    "-C", "link-arg=-Wl,--wrap=poll",
 ]
 
 [env]
