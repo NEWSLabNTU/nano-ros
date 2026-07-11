@@ -1280,9 +1280,11 @@ colcon-parity:
     file install/lib/consumer/consumer
 
 # acceptance (local, from-source): scaffold + build + run a fresh project with the
-# in-tree nros CLI. Local mirror of the `fresh-machine` job in release.yml (which
-# instead fetches the prebuilt release binary on a bare runner — that fresh-machine
-# path stays CI-only). Work dir under tmp/ (gitignored).
+# in-tree nros CLI — proves the documented user flow (bootstrap → new → sync →
+# cargo build → run). The prebuilt fresh-machine CI twin died with release.yml
+# (phase-288 D1/D2: source distribution, no prebuilt nros). Work dir under tmp/
+# (gitignored). Note: the pre-288 recipe drove the Phase-222-removed `nros build`
+# verb — builds go through the platform tool (cargo here), never `nros`.
 [group("ci")]
 acceptance: setup-cli
     #!/usr/bin/env bash
@@ -1294,8 +1296,8 @@ acceptance: setup-cli
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
     NROS_REPO_DIR="$repo" "$nros" new accept_app --platform native --lang rust --use-case talker
     cd accept_app
-    NROS_REPO_DIR="$repo" "$nros" sync . >/dev/null 2>&1 || true
-    NROS_REPO_DIR="$repo" "$nros" build
+    NROS_REPO_DIR="$repo" "$nros" sync
+    cargo build
     timeout 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
     echo "acceptance OK."
 

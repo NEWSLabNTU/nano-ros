@@ -79,12 +79,16 @@ just release-bump 0.4.1                # sed both files + lockstep check
 git diff Cargo.toml packages/cli/Cargo.toml
 git commit -am 'release: nros-v0.4.1'
 git tag nros-v0.4.1
-git push origin main nros-v0.4.1       # triggers release.yml
+git push origin main nros-v0.4.1
 ```
 
-The CI lane (`release.yml`) builds the CLI for four target
-triples (linux+macos × x86_64+aarch64) and attaches the tarballs to
-the GitHub release that the tag created.
+The tag publishes **no artifacts** — nano-ros is a source distribution
+(phase-288 D1/D2; the pre-288 `release.yml` prebuilt pipeline is
+deleted). A tag is the consumer's pin: it fixes the runtime source, the
+CLI the tree builds (`nros version` lockstep), and the toolchain
+versions in the committed `nros-sdk-index.toml`. See the book's
+[Pinning a version](../../book/src/getting-started/installation.md)
+section.
 
 ## ABI guard (Phase 218.E)
 
@@ -129,4 +133,5 @@ was chosen so that:
 - ABI guard impl: `packages/cli/nros-cli-core/src/abi_guard.rs`
 - Lockstep check: `scripts/check-version-lockstep.sh`
 - Bump recipe: `just release-bump` in the root `justfile`
-- Release workflow: `.github/workflows/release.yml`
+- (The pre-288 `.github/workflows/release.yml` prebuilt pipeline is
+  deleted — tags publish no artifacts.)

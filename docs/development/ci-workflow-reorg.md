@@ -85,7 +85,7 @@ ways, so CI can be green while `just check` is red (and vice versa):
 | **pr-checks.yml** | check + ci(no_std) + sdk-index + scaffold + colcon | push+PR (broad) | cancel ✓ | `just ci-fast` (+ `just check-sdk-index` etc. when prereqs present) |
 | **host-tests.yml** | host-unit + host-integration | PR + nightly | cancel ✓ on PR | `just test` / `just test-integration` |
 | **nightly.yml** | host-integration(full) + platform-ci(6) + zephyr-dual-line | `schedule` + `workflow_dispatch` + path-scoped PR | **cancel ✗** | `just test-all`, `just <plat> ci`, `just zephyr ci-both` |
-| **release.yml** | release-nros-cli → nros-acceptance | tags `nros-v*` | — | `cargo build --release --bin nros`, `just acceptance` |
+| ~~release.yml~~ | release-nros-cli → nros-acceptance | tags `nros-v*` | — | DELETED 2026-07-11 (phase-288 D1/D2 — no prebuilt channel); `just acceptance` survives as the local source-route gate |
 | **images.yml** | build-ci-base-image + build-zephyr-ci-image | push (ci/docker/**) | cancel ✗ | (optional `just docker build-*-image`) |
 | **docs.yml** | deploy-book | push main (book/api paths) | cancel ✗ | `just doc` / `just book` |
 

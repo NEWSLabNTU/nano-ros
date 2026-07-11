@@ -24,7 +24,7 @@ run all of a file's jobs.
 | **pr-checks.yml** | `check` (← check; push=`check-fast`, PR/nightly=`check`+no-std), `scaffold-journey`, `colcon-parity`, `sdk-index` | push + PR + nightly(0 2) + dispatch | workflow, cancel ✓ |
 | **host-tests.yml** | `unit` (← host-unit), `integration` (← host-integration) | PR + nightly(0 3) + dispatch | per-job (unit cancel-on-PR; integration ✗) |
 | **nightly.yml** | `platform` (← platform-ci, cron 0 7), `zephyr-example-matrix`/`zephyr-dual-line-summary`/`zephyr-copy-out` (← zephyr-dual-line, cron 0 5) | PR + 2 crons + dispatch | per-job (platform cancel-on-PR; zephyr ✗); `github.event.schedule` routes each cron to its job set |
-| **release.yml** | `build`/`release` (← release-nros-cli, tag/dispatch), `fresh-machine` (← nros-acceptance, tag+nightly 0 6+dispatch) | tags `nros-v*` + cron(0 6) + dispatch | per-job (acceptance ✗) |
+| ~~release.yml~~ | `build`/`release` (← release-nros-cli, tag/dispatch), `fresh-machine` (← nros-acceptance, tag+nightly 0 6+dispatch) — **deleted 2026-07-11** (phase-288 D1/D2: no prebuilt channel; never shipped a release, and its acceptance drove the Phase-222-removed `nros build`) | tags `nros-v*` + cron(0 6) + dispatch | per-job (acceptance ✗) |
 | **images.yml** | `ci-base`/`zephyr` (← build-ci-base-image / build-zephyr-ci-image) | push (ci/docker paths) + dispatch | per-job, ✗ |
 | **docs.yml** | `deploy` (← deploy-book) | push (book/api paths) + dispatch | `deploy-book`, ✗ |
 

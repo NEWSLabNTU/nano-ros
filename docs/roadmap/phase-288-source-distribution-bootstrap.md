@@ -10,8 +10,10 @@ provisioning) · Sibling of phase-287 (CMake consumption reshape, #171 D5).
 > Releases; no `nros-v*` release exists; no CI consumer), and the SDK index's
 > `[tool.nros]` (would install the stale 0.3.6 into the store). All three
 > deleted. `.github/workflows/release.yml` (tag-gated artifact builder,
-> skip-safe, never produced a release) is now **orphaned infra** — kept
-> pending a maintainer keep-or-delete call. W2: bare `scripts/bootstrap.sh`
+> never produced a release; its acceptance script drove the
+> Phase-222-removed `nros build` verb) — **deleted** on the maintainer's
+> call (2026-07-11); `just acceptance` repaired (same dead verb) and kept
+> as the local source-route gate. W2: bare `scripts/bootstrap.sh`
 > is the front door (rustup-on-demand → CLI submodule → cargo build →
 > "next → nros setup"); verified in an `env -i` shell with no `just`/`nros`
 > on PATH. W3+W4: `installation.md` gained the end-to-end flow + the
