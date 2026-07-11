@@ -13,6 +13,12 @@ superseded-by: null
 
 Status: design study · Date: 2026-05-28 · Tracks Phase 172 **W.5**
 
+> **Extended by [RFC-0048](0048-cmake-ament-consumption.md)** (phase-287): after
+> provisioning a board's toolchain, `nros setup <board>` also emits a CMakePreset
+> fragment (`~/.nros/presets/<board>.json` — `toolchainFile` + `nano_ros_ROOT`)
+> and a new `nros init` verb wires a user project's `CMakePresets.json` to it, so
+> a cross-compiled `cmake --preset <board>` needs no hand-set toolchain.
+
 ## Problem
 
 First-image setup is the largest UX delta vs micro-ROS

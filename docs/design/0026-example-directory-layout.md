@@ -52,6 +52,13 @@ in-repo relative walk-up. Copying a directory out of the repo and building it
 against a checkout is part of the CI-checked surface
 (`just zephyr check-copy-out`, W6 smokes).
 
+> **The C/C++ CMakeLists shape is being reshaped by [RFC-0048](0048-cmake-ament-consumption.md)**
+> (phase-287, #171 D5): the `-DNANO_ROS_ROOT` guard becomes source-backed
+> `find_package(nano_ros)`, one ament-convention `CMakeLists.txt` byte-identical
+> across platforms, with board/RMW moved into `package.xml <export>`. The
+> copy-out contract itself (build a copied-out leaf against a checkout) is
+> preserved; only the spelling changes.
+
 ### Lockfiles
 
 `examples/**/Cargo.lock` is **gitignored repo-wide** (phase-277 W7): standalone
