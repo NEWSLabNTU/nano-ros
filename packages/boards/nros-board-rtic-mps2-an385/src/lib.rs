@@ -207,8 +207,20 @@ fn qemu_config_with_overlay(
     config
 }
 
+/// #178 — hardware-ready deferred-open carrier. Holds the `'static` transport
+/// parameters so [`RticMps2An385::open_executor`] can open the executor from the
+/// RTIC run task (interrupts live) instead of `#[init]` (interrupts masked,
+/// which would deadlock the zenoh TCP handshake).
+pub struct RticBoot {
+    locator: &'static str,
+    domain_id: u32,
+    node_name: &'static str,
+}
+
 /// Shared RTIC `#[init]` body: bring up the board from `config`, register the
-/// linked RMW backend, open the executor, and build the dispatch runtime.
+/// linked RMW backend, split the dispatch SPSC, and build the dispatch runtime.
+/// #178 — does NOT open the executor (that blocking connect is deferred to
+/// [`RticMps2An385::open_executor`]); returns the `(RticBoot, RticRuntime)` pair.
 ///
 /// `deploy` — the `[package.metadata.nros.deploy.<board>]` overlay; `None` on
 /// the no-deploy code path.  Issue #98 / RFC-0045 — node name comes from
@@ -217,12 +229,13 @@ fn qemu_config_with_overlay(
 fn init_with_config(
     config: nros_board_mps2_an385::Config,
     deploy: Option<&nros_platform::DeployOverlay>,
-) -> (::nros::Executor<'static>, RticRuntime) {
+) -> (RticBoot, RticRuntime) {
     nros_board_mps2_an385::init_hardware(&config);
 
     // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
     // feature so the board can build DDS-/XRCE-only; another `nros-rmw-*`
-    // crate then registers the linked backend.
+    // crate then registers the linked backend. (No network I/O — a
+    // section-free registry insert — so it stays in `#[init]`.)
     #[cfg(feature = "rmw-zenoh")]
     match nros_rmw_zenoh::register() {
         Ok(()) => {}
@@ -242,13 +255,6 @@ fn init_with_config(
         .and_then(|b| b.node_name)
         .or(option_env!("NROS_NODE_NAME"))
         .unwrap_or("nros-rtic-mps2");
-    let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
-        .domain_id(config.domain_id)
-        .node_name(node_name);
-    let executor = match ::nros::Executor::open(&exec_config) {
-        Ok(e) => e,
-        Err(_) => nros_board_mps2_an385::exit_failure(),
-    };
 
     let (producer, consumer) = take_dispatch_queue()
         .expect("RticMps2An385::init_hardware: dispatch queue already claimed");
@@ -260,7 +266,14 @@ fn init_with_config(
     #[cfg(feature = "e2e-synthetic-callback")]
     enqueue_e2e_callback(&mut runtime);
 
-    (executor, runtime)
+    // `config.zenoh_locator` is a `&'static str` (option_env / baked literal);
+    // node_name likewise — so the carrier is `'static`, no borrow of `config`.
+    let boot = RticBoot {
+        locator: config.zenoh_locator,
+        domain_id: config.domain_id,
+        node_name,
+    };
+    (boot, runtime)
 }
 
 impl RticBoardEntry for RticMps2An385 {
@@ -268,10 +281,11 @@ impl RticBoardEntry for RticMps2An385 {
     type Core = cortex_m::Peripherals;
     type Executor = ::nros::Executor<'static>;
     type Runtime = RticRuntime;
+    type Boot = RticBoot;
 
     const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];
 
-    fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
+    fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Boot, Self::Runtime) {
         init_with_config(qemu_config(), None)
     }
 
@@ -279,8 +293,19 @@ impl RticBoardEntry for RticMps2An385 {
         _device: Self::Pac,
         _core: Self::Core,
         deploy: &nros_platform::DeployOverlay,
-    ) -> (Self::Executor, Self::Runtime) {
+    ) -> (Self::Boot, Self::Runtime) {
         init_with_config(qemu_config_with_overlay(deploy), Some(deploy))
+    }
+
+    /// #178 — the blocking executor open, called from the RTIC run task.
+    fn open_executor(boot: Self::Boot) -> Self::Executor {
+        let exec_config = ::nros::ExecutorConfig::new(boot.locator)
+            .domain_id(boot.domain_id)
+            .node_name(boot.node_name);
+        match ::nros::Executor::open(&exec_config) {
+            Ok(e) => e,
+            Err(_) => nros_board_mps2_an385::exit_failure(),
+        }
     }
 }
 

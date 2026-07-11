@@ -66,11 +66,26 @@ pub trait RticBoardEntry: Board {
     /// RTOS consumer would inherit.
     type Core: 'static;
 
-    /// Executor type the board hands back. Concrete board impls plug
-    /// in `nros::Executor`; the assoc type keeps the layering clean
-    /// (`nros-platform` does not depend on `nros`). The proc-macro
-    /// stashes this value in RTIC `#[local]` storage.
+    /// Executor type the board hands back from
+    /// [`open_executor`](Self::open_executor). Concrete board impls plug in
+    /// `nros::Executor`; the assoc type keeps the layering clean
+    /// (`nros-platform` does not depend on `nros`). The proc-macro drives the
+    /// opened executor's spin loop in the `__nros_run` task.
     type Executor: 'static;
+
+    /// #178 — hardware-ready deferred-open carrier returned by
+    /// [`init_hardware`](Self::init_hardware). Holds whatever the board needs
+    /// to open the executor later (locator / domain / node-name — all
+    /// `'static`), but performs **no** blocking network I/O itself.
+    ///
+    /// The split exists because `Executor::open` does a **blocking** zenoh
+    /// session open (a TCP connect driven by the platform poll loop, which
+    /// needs the timer tick + RX interrupt), and RTIC runs `#[init]` with
+    /// interrupts masked. The proc-macro stashes this carrier in RTIC
+    /// `#[local]` storage from `#[init]`, then the `__nros_run` task calls
+    /// [`open_executor`](Self::open_executor) on its first poll — after `init`
+    /// returns and interrupts unmask.
+    type Boot: 'static;
 
     /// Dispatch sink the proc-macro wires into RTIC `#[local]`
     /// storage. Required to implement
@@ -91,11 +106,12 @@ pub trait RticBoardEntry: Board {
     const DISPATCHERS: &'static [&'static str];
 
     /// Run from inside the proc-macro-generated `#[init]` body.
-    /// Returns the `(Executor, Runtime)` pair the macro stashes in
-    /// RTIC `#[local]` storage. The board impl owns clock / pin /
-    /// transport bringup before constructing the executor + runtime
-    /// pair.
-    fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Executor, Self::Runtime);
+    /// Brings up clock / pin / transport hardware and splits the dispatch
+    /// SPSC, then returns the `(Boot, Runtime)` pair the macro stashes in
+    /// RTIC `#[local]` storage. #178 — this must NOT open the executor (that
+    /// blocking connect is deferred to [`open_executor`](Self::open_executor),
+    /// called from the `__nros_run` task where interrupts are live).
+    fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Boot, Self::Runtime);
 
     /// Like [`init_hardware`](Self::init_hardware) but applies a deploy-metadata
     /// overlay (Phase 244.D1) to the board's compiled-in net/locator `Config`
@@ -113,9 +129,19 @@ pub trait RticBoardEntry: Board {
         device: Self::Pac,
         core: Self::Core,
         _deploy: &DeployOverlay,
-    ) -> (Self::Executor, Self::Runtime) {
+    ) -> (Self::Boot, Self::Runtime) {
         <Self as RticBoardEntry>::init_hardware(device, core)
     }
+
+    /// #178 — open the executor from the [`Boot`](Self::Boot) carrier.
+    ///
+    /// This performs the **blocking** zenoh session open (`Executor::open`),
+    /// so it MUST be called from the `__nros_run` task, NOT `#[init]`:
+    /// RTIC masks interrupts during `#[init]`, which starves the platform
+    /// poll loop (no timer tick / RX IRQ) and deadlocks the TCP handshake.
+    /// The proc-macro calls this on the task's first poll, once `init` has
+    /// returned and interrupts are unmasked.
+    fn open_executor(boot: Self::Boot) -> Self::Executor;
 }
 
 #[cfg(test)]
@@ -162,16 +188,23 @@ mod tests {
         }
     }
 
+    struct DummyBoot;
+
     impl RticBoardEntry for DummyBoard {
         type Pac = DummyPac;
         type Core = DummyCore;
         type Executor = DummyExecutor;
         type Runtime = DummyRuntime;
+        type Boot = DummyBoot;
 
         const DISPATCHERS: &'static [&'static str] = &["USART1", "USART2"];
 
-        fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
-            (DummyExecutor, DummyRuntime)
+        fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Boot, Self::Runtime) {
+            (DummyBoot, DummyRuntime)
+        }
+
+        fn open_executor(_boot: Self::Boot) -> Self::Executor {
+            DummyExecutor
         }
     }
 
@@ -179,7 +212,8 @@ mod tests {
     fn dummy_board_satisfies_rtic_board_entry() {
         // Trait-method call confirms the assoc types + const slot
         // line up. We never spin the returned pair.
-        let (_exec, _rt) = <DummyBoard as RticBoardEntry>::init_hardware(DummyPac, DummyCore);
+        let (boot, _rt) = <DummyBoard as RticBoardEntry>::init_hardware(DummyPac, DummyCore);
+        let _exec = <DummyBoard as RticBoardEntry>::open_executor(boot);
         assert_eq!(<DummyBoard as RticBoardEntry>::DISPATCHERS.len(), 2);
     }
 }

@@ -351,11 +351,21 @@ impl BoardExit for RticStm32F4 {
 /// Phase 216.B.2 follow-up — transport config (locator / domain_id)
 /// still comes from `option_env!` / `Config::nucleo_f429zi()` defaults.
 /// Only the node-name source changes between the two call paths.
+/// #178 — hardware-ready deferred-open carrier (see the mps2-an385 sibling).
+/// Holds the `'static` transport params so [`RticStm32F4::open_executor`] can
+/// open the executor from the RTIC run task instead of `#[init]` (where RTIC
+/// masks interrupts, deadlocking the zenoh TCP handshake).
+pub struct RticBoot {
+    locator: &'static str,
+    domain_id: u32,
+    node_name: &'static str,
+}
+
 fn rtic_stm32f4_init(
     device: stm32f4xx_hal::pac::Peripherals,
     core: cortex_m::Peripherals,
     node_name: &'static str,
-) -> (::nros::Executor<'static>, RticRuntime) {
+) -> (RticBoot, RticRuntime) {
     // Step 1–2: hardware bringup via the direct-exec sibling.
     //
     // Transport config (locator / domain_id) comes from build-time env
@@ -399,37 +409,25 @@ fn rtic_stm32f4_init(
         }
     }
 
-    // Step 4: open the Executor against the configured
-    // locator + domain. The proc-macro emit stashes the
-    // returned value in RTIC `#[local]` storage owned by
-    // `__nros_spin`. The values flow through the
-    // `BoardConfig` accessors so a future `nros.toml` reader
-    // can swap in without touching the call shape.
-    let exec_config = ::nros::ExecutorConfig::new(
-        <nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::zenoh_locator(&config),
-    )
-    .domain_id(<nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::domain_id(&config))
-    .node_name(node_name);
-    let executor = match ::nros::Executor::open(&exec_config) {
-        Ok(e) => e,
-        Err(err) => {
-            defmt::error!(
-                "RticStm32F4::init_hardware: Executor::open failed: {:?}",
-                defmt::Debug2Format(&err)
-            );
-            panic!("Executor::open failed");
-        }
-    };
-
-    // Step 5: split the dispatch SPSC + stash the consumer half.
+    // Step 4: split the dispatch SPSC + stash the consumer half.
     // The proc-macro emit fishes the consumer out via
-    // `take_dispatch_consumer()` from the `__nros_dispatch`
-    // task's `#[init]` setup.
+    // `take_dispatch_consumer()` from the `__nros_run` task.
     let (producer, consumer) =
         take_dispatch_queue().expect("RticStm32F4::init_hardware: dispatch queue already claimed");
     stash_dispatch_consumer(consumer);
 
-    (executor, RticRuntime::with_producer(producer))
+    // #178 — do NOT open the executor here (RTIC masks interrupts in `#[init]`,
+    // so the blocking zenoh connect would deadlock). Return the `'static`
+    // transport params in a `Boot` carrier; `open_executor` (run task) opens it.
+    // `config.zenoh_locator` is a `pub &'static str` field (option_env / baked
+    // literal) — read it directly, not through the lifetime-erased
+    // `BoardConfig::zenoh_locator(&config)` accessor.
+    let boot = RticBoot {
+        locator: config.zenoh_locator,
+        domain_id: config.domain_id,
+        node_name,
+    };
+    (boot, RticRuntime::with_producer(producer))
 }
 
 // ---------------------------------------------------------------
@@ -468,6 +466,9 @@ impl RticBoardEntry for RticStm32F4 {
     /// half via [`take_dispatch_consumer`].
     type Runtime = RticRuntime;
 
+    /// #178 — hardware-ready deferred-open carrier; see [`RticBoot`].
+    type Boot = RticBoot;
+
     /// RTIC interrupt slots reserved for software tasks. The
     /// proc-macro (216.B.3) splices this into the generated
     /// `#[rtic::app(dispatchers = […])]` attribute. STM32F4 has
@@ -477,7 +478,7 @@ impl RticBoardEntry for RticStm32F4 {
     /// `examples/stm32f4/rust/talker-rtic/src/main.rs`.
     const DISPATCHERS: &'static [&'static str] = &["USART1", "USART2"];
 
-    fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Executor, Self::Runtime) {
+    fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Boot, Self::Runtime) {
         // Phase 216.B.2 follow-up — transport config (locator / domain_id)
         // from build-time env vars; node name falls back to the
         // board-historical default `"nros"`. The deploy-overlay path
@@ -494,13 +495,32 @@ impl RticBoardEntry for RticStm32F4 {
         device: Self::Pac,
         core: Self::Core,
         deploy: &DeployOverlay,
-    ) -> (Self::Executor, Self::Runtime) {
+    ) -> (Self::Boot, Self::Runtime) {
         let node_name = deploy
             .boot_config
             .map(::nros::BootConfig::from_baked)
             .and_then(|b| b.node_name)
             .unwrap_or("nros");
         rtic_stm32f4_init(device, core, node_name)
+    }
+
+    /// #178 — the blocking executor open, called from the RTIC run task
+    /// (interrupts live). Opening in `#[init]` would deadlock the zenoh
+    /// TCP handshake (no timer/RX IRQ while RTIC masks interrupts).
+    fn open_executor(boot: Self::Boot) -> Self::Executor {
+        let exec_config = ::nros::ExecutorConfig::new(boot.locator)
+            .domain_id(boot.domain_id)
+            .node_name(boot.node_name);
+        match ::nros::Executor::open(&exec_config) {
+            Ok(e) => e,
+            Err(err) => {
+                defmt::error!(
+                    "RticStm32F4::open_executor: Executor::open failed: {:?}",
+                    defmt::Debug2Format(&err)
+                );
+                panic!("Executor::open failed");
+            }
+        }
     }
 }
 

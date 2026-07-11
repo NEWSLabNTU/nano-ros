@@ -1,6 +1,6 @@
 ---
 id: 178
-title: "RTIC mps2-an385 images never deliver — Executor::open (blocking zenoh connect) runs in #[init] with interrupts masked"
+title: "RTIC mps2-an385 images never deliver — blocking zenoh connect vs RTIC (init-mask [fixed] + wfi-yield / no monotonic [open])"
 status: open
 type: bug
 area: baremetal
@@ -33,39 +33,67 @@ zenohd logs **no** incoming session — the guest never completes the TCP
 handshake. Non-RTIC mps2 talkers over the *same* slirp/smoltcp path deliver
 fine, so it is RTIC-entry-specific.
 
-## Root cause
+## Root cause — three layers (layer 1 fixed; 2–3 open)
 
-The RTIC scaffold opens the executor **inside `#[init]`**:
-`nros::main!` → `RticBoardEntry::init_hardware_with_deploy` →
-`init_with_config` → `::nros::Executor::open(&exec_config)`
-(`nros-board-rtic-mps2-an385/src/lib.rs:248`). `Executor::open` performs the
-**blocking zenoh-pico session open** = a TCP connect driven by the smoltcp poll
-loop, which needs the CMSDK timer tick and LAN9118 RX interrupt to make
-progress.
+The delivery failure is a stack of RTIC ↔ blocking-network-I/O mismatches, each
+uncovered only after fixing the one above it.
 
-But RTIC runs `#[init]` **with interrupts globally masked** and before the
-scheduler starts — so no timer tick and no RX IRQ fire while `Executor::open`
-blocks on the handshake. The connect can never complete → `init` never returns
-→ the `__nros_run` task never spins → zero delivery. "Ethernet ready" prints
-because the NIC bring-up is synchronous; the blocking connect is the next step.
+### Layer 1 — `Executor::open` in `#[init]` (interrupts masked) — FIXED
 
-This is the same class as the FreeRTOS "poll-task priority / executor-on-stack"
-constraints — blocking network I/O must not run in a no-interrupt context.
+The scaffold opened the executor **inside `#[init]`**: `nros::main!` →
+`RticBoardEntry::init_hardware_with_deploy` → `Executor::open`. That is a
+**blocking** zenoh-pico session open (a TCP connect driven by the platform poll
+loop), and RTIC runs `#[init]` **with interrupts masked**, before the scheduler
+starts — so it deadlocks there.
 
-## Fix direction (architectural — RTIC entry contract)
+**Fixed** by deferring the open: `RticBoardEntry` now returns a `Boot` carrier
+from `init_hardware` (hardware up, no network I/O) and exposes
+`open_executor(boot)`, which the generated `__nros_run` task calls on its first
+poll — after `init` returns and interrupts unmask. Verified: a probe print at
+`open_executor` fires and the task reaches the open in task context. Spans the
+trait (`nros-platform/src/board/rtic_entry.rs`), the macro
+(`nros-macros/src/main_macro.rs`), and both board impls
+(`nros-board-rtic-{mps2-an385,stm32f4}`).
 
-Move the zenoh session open **out of `#[init]`** into the `__nros_run` task
-(runs after `init` returns and interrupts are unmasked):
+### Layer 2 — the connect needs `wfi` to yield to QEMU (slirp) — OPEN
 
-1. `RticBoardEntry::init_hardware` returns hardware + an **unopened**
-   executor config (or a deferred-open handle); the `__nros_run` task calls
-   `Executor::open` on its first poll, once the scheduler + timer are live.
-2. Spans the macro emit (`nros-macros/src/main_macro.rs` RTIC `#[init]`/task),
-   the `RticBoardEntry` trait (`nros-platform/src/board/rtic_entry.rs`), and the
-   board impl (`nros-board-rtic-mps2-an385`, `-stm32f4`). This is the deferred
-   Phase 216 dispatch-wiring follow-up the scaffold comments reference.
+Even opened from the task, the connect still hangs (talker stalls right after
+`Ethernet ready`; zenohd logs **no** incoming session). The zenoh-pico connect
+busy-waits with a poll + a **`wfi` idle hook** whose whole job (per
+`nros-board-mps2-an385/src/lib.rs:83`) is to *"release the CPU to QEMU's main
+loop between iterations"* so **host-timed slirp** can deliver the handshake
+packets. Under `-icount shift=auto`, a pure spin races virtual time ahead of
+wall-clock, so slirp never delivers → hang.
 
-Alternatively, if RTIC exposes an interrupts-enabled late-init hook, open there.
+That hook (`nros_board_mps2_an385::enable_wfi_idle`) is **never called** anywhere
+in the tree — the direct-exec path evidently yields some other way, but the RTIC
+scaffold does not install it.
+
+### Layer 3 — `wfi` needs an armed periodic IRQ, via RTIC's monotonic — OPEN
+
+`enable_wfi_idle`'s own docs: *"Must be called AFTER an IRQ source is armed; for
+RTIC examples that means immediately after `Mono::start` … wfi with no pending
+interrupt deadlocks."* RTIC declares **no monotonic**, so SysTick is unarmed →
+no periodic IRQ to wake `wfi`. Confirmed: calling `enable_wfi_idle` without an
+armed IRQ hangs *earlier* (first `wfi` never wakes).
+
+Attempted arming SysTick directly with a board-crate `#[cortex_m_rt::exception]
+fn SysTick` + `enable_wfi_idle` — it builds but does **not** fix delivery: the
+board-crate exception handler is not wired into the `#[rtic::app]`-generated
+vector table (RTIC owns it), so the tick never fires. The periodic IRQ must come
+through RTIC's own mechanism.
+
+## Fix direction (remaining — layers 2 + 3)
+
+1. Give the generated `#[rtic::app]` a **monotonic** (`rtic-monotonics` Systick):
+   add the dep to the RTIC examples, and have the macro emit
+   `Mono::start(cx.core.SYST, <freq>)` in `#[init]`. This arms the periodic IRQ
+   through RTIC (correct vector wiring + priority).
+2. After `Mono::start`, call the board's `enable_wfi_idle()` — add a
+   `RticBoardEntry` hook (e.g. `fn on_scheduler_ready()`) the macro invokes, or
+   fold it into `open_executor`'s prologue once the monotonic is guaranteed live.
+3. Verify SysTick fires *during* the priority-1 `__nros_run` task (its exception
+   priority must outrank the task) so `wfi` in the connect busy-wait wakes.
 
 ## Notes
 
@@ -73,6 +101,8 @@ Alternatively, if RTIC exposes an interrupts-enabled late-init hook, open there.
   (a zero-cost `__NrosLocalCell` newtype cannot change runtime behavior); those
   two only let the image build + boot far enough to expose this.
 - Latent for a long time — the RTIC images could not build (rtic 2.3.0) then
-  OOM'd (#176), so this init-time hang was never reached until both were fixed.
-- `just check` (build/clippy) is green; this is a runtime-only defect on the
-  `test-all` e2e lane.
+  OOM'd (#176), so this hang was never reached until both were fixed. It is
+  plausible these `test_qemu_rtic_*_e2e` tests have not passed since the
+  `Executor<'s>` per-entry rework; treat green here as unproven history.
+- Layer 1 (deferral) is landed; `just check` stays green. Layers 2–3 are the
+  remaining runtime-only work on the `test-all` e2e lane.

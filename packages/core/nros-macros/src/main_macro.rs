@@ -1478,7 +1478,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// concrete `Executor` / `Runtime` types.
                     #[local]
                     struct Local {
-                        executor: __NrosLocalCell<<__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Executor>,
+                        // #178 — the executor's zenoh session open is a BLOCKING
+                        // connect (smoltcp poll loop needs the timer + RX IRQ). RTIC
+                        // runs `#[init]` with interrupts masked, so opening there
+                        // deadlocks the handshake. Instead `#[init]` stashes the
+                        // board's `Boot` carrier (hardware already up, no network
+                        // I/O) and the `__nros_run` task opens the executor on its
+                        // first poll — after `init` returns and interrupts unmask.
+                        // `Option` so the task can move the `Boot` out of `#[local]`.
+                        boot: __NrosLocalCell<::core::option::Option<<__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Boot>>,
                         runtime: __NrosLocalCell<<__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Runtime>,
                     }
 
@@ -1499,29 +1507,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // into the RTIC `#[init]` so each Entry pkg pins its own
                         // ip / locator (the default impl ignores it, so boards
                         // without a baked net Config are unchanged).
-                        let (mut executor, runtime) =
+                        //
+                        // #178 — `init_hardware_with_deploy` now brings up the
+                        // hardware and returns a `Boot` carrier WITHOUT opening the
+                        // executor (no blocking network I/O here — interrupts are
+                        // masked). The `__nros_run` task calls `open_executor(boot)`
+                        // + `register_dispatch` once interrupts are live.
+                        let (boot, runtime) =
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware_with_deploy(
                                 cx.device,
                                 cx.core,
                                 &#deploy_overlay_ts,
                             );
-                        // Phase 216 final wave — per-Node dispatch
-                        // registration. Each Node pkg's
-                        // `<pkg>::register_dispatch(&mut executor)`
-                        // (emitted by `nros::node!()`) builds the
-                        // Node's `State` blob and pushes
-                        // `(state, __nros_node_<pkg>_on_callback)`
-                        // into the executor's dispatch-slot table.
-                        // The `__nros_run` task's
-                        // `executor.dispatch_callback(cb_id, ctx)`
-                        // call (above) walks this table once per
-                        // dequeued envelope.
-                        #( #framework_register_dispatch_calls )*
                         __nros_run::spawn().unwrap();
                         (
                             Shared {},
                             Local {
-                                executor: __NrosLocalCell(executor),
+                                boot: __NrosLocalCell(::core::option::Option::Some(boot)),
                                 runtime: __NrosLocalCell(runtime),
                             },
                         )
@@ -1564,9 +1566,26 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// `ExecutorNodeRuntime` sink is plumbed (so the
                     /// spin task can run at lower priority than the
                     /// dispatch task) is a separate follow-up.
-                    #[task(local = [executor, runtime], priority = 1)]
+                    #[task(local = [boot, runtime], priority = 1)]
                     async fn __nros_run(cx: __nros_run::Context) {
-                        let executor = &mut cx.local.executor.0;
+                        // #178 — open the executor HERE, not in `#[init]`.
+                        // `Executor::open` performs the blocking zenoh-pico
+                        // session open (a TCP connect driven by the smoltcp poll
+                        // loop, which needs the timer tick + RX IRQ). This task
+                        // runs after `#[init]` returns and interrupts are unmasked,
+                        // so the handshake can complete; opening in `#[init]`
+                        // (interrupts masked) deadlocks it.
+                        let mut executor =
+                            <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::open_executor(
+                                cx.local.boot.0.take().expect("RTIC boot carrier already taken"),
+                            );
+                        // Phase 216 final wave — per-Node dispatch registration.
+                        // Each Node pkg's `<pkg>::register_dispatch(&mut executor)`
+                        // (emitted by `nros::node!()`) builds the Node's `State`
+                        // blob and pushes `(state, __nros_node_<pkg>_on_callback)`
+                        // into the executor's dispatch-slot table. #178 moved these
+                        // out of `#[init]` to run against the just-opened executor.
+                        #( #framework_register_dispatch_calls )*
                         // The board-side runtime owns the SPSC
                         // producer half. Today's collapse keeps it in
                         // `Local` for symmetry with the planned split
