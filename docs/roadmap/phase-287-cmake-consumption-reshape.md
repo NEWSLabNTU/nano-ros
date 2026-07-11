@@ -83,18 +83,36 @@ names their target + languages) — everything else is the framework's.
   workspace-member case a no-op (the guard already returns early when nano-ros
   is imported).
 
-### W2 — migrate every example leaf
-- **Do:** rewrite the 233 example `CMakeLists.txt` to the target shape. Because
-  the old boilerplate has drifted, this is a **generator/transform**, not a
-  blind sed: parse each leaf's existing `nano_ros_entry(...)` / link args,
-  re-emit the uniform head. Preserve any genuinely per-example lines (extra
-  sources, custom `nros_find_interfaces LANGUAGE`, the cyclonedds descriptor TU
-  hook) below the bootstrap.
-- **Do:** fold the migration into the example scaffolder (`nros new`) so new
-  leaves emit the new shape and never regrow the guard.
-- **Acceptance:** `git grep 'NOT DEFINED NANO_ROS_ROOT' examples/` empty; a
-  shape lint (sibling of `example_shape`) fails a leaf that hand-rolls the guard
-  instead of calling `nano_ros_bootstrap()`.
+### W2 — migrate the example leaves
+The migration surface is **not uniform** (found 2026-07-11): the guard-block +
+`nano_ros_workspace_pkg_guard()` shape W1 targets exists only in the **25 native
+leaves**. Embedded leaves (freertos/nuttx/threadx) open with
+`set(NANO_ROS_PLATFORM …)` + `set(NANO_ROS_BOARD …)` and a different post-guard
+call; Zephyr leaves are Kconfig/west-driven (no guard block); workspace members
+inherit from their root. So W2 splits.
+
+- **W2a — native (done 2026-07-11).** `scripts/docs/migrate-example-cmake.py`
+  (surgical: replaces the guard block + its leading comment block + the trailing
+  `enable_language(CXX)` micro-option with the bootstrap prelude, and collapses
+  the `target_link_libraries(<t> PRIVATE <msg>) + nros_platform_link_app(<t>)`
+  pair to `nano_ros_link(<t>)` **only** when every linked lib is a generated
+  `*__nano_ros_*` — custom-platform / custom-transport-loopback keep their
+  explicit extra-lib blocks). Migrated 25 native `c/*` + `cpp/*` leaves;
+  `fixtures-build.sh native {c,cpp}` both rc=0.
+- **W2b — embedded (freertos/nuttx/threadx), TODO.** Needs a design step first:
+  `nano_ros_bootstrap()` (or `nano_ros_entry`'s `DEPLOY`) must absorb the
+  per-leaf `NANO_ROS_PLATFORM`/`NANO_ROS_BOARD` so the embedded head becomes as
+  uniform as native — the platform/board is *config*, not a micro-option, but it
+  should be declared once, not spelled across five `set()` lines. Then extend
+  the transform + rebuild the embedded fixture lanes.
+- **W2c — zephyr, likely out of scope.** Zephyr consumption is a west module +
+  Kconfig, not the `nano_ros_*` CMake-fn path D5 addresses; confirm and de-scope
+  (or note the minimal alignment) rather than force it into the same shape.
+- **Do (after W2a-c):** fold the shape into the example scaffolder (`nros new`)
+  so new leaves emit it and never regrow the guard.
+- **Acceptance:** `git grep 'NOT DEFINED NANO_ROS_ROOT'` empty for the migrated
+  classes; a shape lint fails a leaf that hand-rolls the guard instead of
+  calling `nano_ros_bootstrap()`.
 
 ### W3 — build-verify the migrated tree
 - **Do:** rebuild the fixture set across platforms (native + the cross lanes
