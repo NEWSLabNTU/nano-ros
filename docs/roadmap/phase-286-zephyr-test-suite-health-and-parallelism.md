@@ -1,8 +1,11 @@
 # Phase 286 — Zephyr test-suite health & parallelism (#166 speedup + #164 residuals)
 
-Status: **In progress (W1 slice 1) — 2026-07-09** · Drives issue #166 (test parallelism) +
+Status: **Complete — 2026-07-11** · Drives issue #166 (test parallelism) +
 the live residuals from issue #164 (zephyr family re-triage) to resolution ·
-Follows #163 (resolved — pure-Rust backend restored).
+Follows #163 (resolved — pure-Rust backend restored). W1 (all six serial groups +
+the ws-entry follow-up now parallel), W2 (content-aware staleness guard), W3 (XRCE
+C/C++ delivery — #174), and W4 (Cyclone action completion — #175, incl. the C/C++
+register `-100` residual) all landed.
 
 > **Goal.** Make the `tests/zephyr.rs` family both **fast** and **honestly
 > green**. Two independent tracks surfaced by the 2026-07-09 full-family re-run
