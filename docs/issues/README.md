@@ -68,7 +68,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#181** — [build-test-fixtures exits 0 with lanes unbuilt](0181-fixture-sweep-silent-lane-gaps.md):
   esp32, px4, freertos/threadx-linux RUST examples + two native rust leaves absent/stale after a
   green sweep → a dozen tests fail "not prebuilt" and masquerade as runtime bugs.
-- **#180** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0180-rust-leaf-class-prefix-lint-violations.md):
+- **#187** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0187-rust-leaf-class-prefix-lint-violations.md):
   the W7 lint demands a HYPHENATED package prefix inside a Rust `class` path — unsatisfiable
   literally; normalise `-`/`_` in the lint or re-spec the metadata.
 - **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):

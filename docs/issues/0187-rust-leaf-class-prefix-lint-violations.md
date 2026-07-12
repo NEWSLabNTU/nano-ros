@@ -1,5 +1,5 @@
 ---
-id: 180
+id: 187
 title: "examples_canonical_shape red: 12 stm32f4/baremetal rust leaves violate the §212.L.4 class-prefix rule"
 status: open
 type: tech-debt
