@@ -44,6 +44,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#188** — [nuttx action goal rejected at handshake + cpp service red](0188-nuttx-action-goal-reject-cpp-service.md):
+  `nros_action_send_goal` ret=-2 on nuttx only (pubsub + C service green on the same images);
+  the #179 reply-framing fix does not apply — fails before any result exchange.
 - **#186** — [test rot: integration shell smokes + migrate drift gate](0186-stale-test-preconditions-integration-migrate.md):
   three `integrations/` shell smokes probe the pre-208.D.7 layout; `migrate_workspace_e2e` red until
   the pinned nros release catches the post-212.I emitter spec.
@@ -62,11 +65,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#187** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0187-rust-leaf-class-prefix-lint-violations.md):
   the W7 lint demands a HYPHENATED package prefix inside a Rust `class` path — unsatisfiable
   literally; normalise `-`/`_` in the lint or re-spec the metadata.
-- **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):
-  phase-287 native-identical freertos images: pubsub + service e2e GREEN, action goal + feedback
-  deliver, but the client dies on `Failed to deserialize result` (zenoh query/reply path). First
-  real exercise of this lane — the pre-287 images baked port 7447 vs the harness's 7551+ and never
-  connected; exposed, not regressed.
 - **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
   every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
   `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
@@ -86,7 +84,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#182** — the realtime-tier
+Recently resolved (see [`archived/`](archived/) for the full list): **#179** — zenoh action
+get-result deserialize (ALL platforms): offset-5 slices + unconditional trampoline re-header, three
+bugs cross-validating; one delivered-with-single-encap contract everywhere — native matrix 5/5,
+ws roundtrips 4/4, freertos+threadx-linux e2e 4/4. **#182** — the realtime-tier
 "no differentiation" (nuttx c/cpp tiers + cpp subnode, ctrl==telem) was NOT a scheduling bug: all
 five lanes pass on truly-fresh fixtures. The sweep's fixtures ran museum GENERATED entry TUs —
 both the configure-time entry codegen (`CMAKE_CONFIGURE_DEPENDS`) and the workspace-fixture input

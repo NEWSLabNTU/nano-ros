@@ -1,7 +1,8 @@
 ---
 id: 179
 title: "zenoh C/C++ action e2e (ALL platforms incl. native): goal + feedback deliver, get-result reply fails to deserialize"
-status: open
+status: resolved
+resolved_in: "phase-287 follow-up (2026-07-13)"
 type: bug
 area: rmw-zenoh
 related: [phase-287, issue-0135]
@@ -90,3 +91,34 @@ decode), exercised the same way by both platforms' native-identical images.
   generally. Feedback frames on the SAME payload type deserialize fine and
   the client sometimes drops/coalesces feedback frames before dying —
   suggests reply-buffer handling in the zenoh cffi reply path.
+
+## Resolution (2026-07-13)
+
+Three framing bugs cross-validating each other across the C and C++ client
+paths (each cited another as proof of correctness):
+
+1. `nros-c` `nros_action_client_poll` sliced the get-result reply at byte 5;
+   the server writes `[CDR hdr 4][status i8][align(4)][payload]`, so the
+   payload starts at byte 8 — the three alignment-pad bytes prefixed the body.
+2. `nros-cpp`'s poll dispatch had the SAME offset-5 slice, with a comment
+   citing the C wrapper's identical bug as evidence (and phase-239 had
+   reverted a correct 8-offset by measuring against that broken pair).
+3. The `nros-cpp` client trampolines UNCONDITIONALLY prepended a CDR header,
+   double-framing payloads the arena dispatch (post-#175) already delivers
+   headered. The mixed hexdumps (double-encap + raw frames interleaved) came
+   from the two dispatch paths racing with opposite framings.
+
+Fix = one contract everywhere, matching the arena dispatch: action payloads
+are delivered WITH exactly one CDR encapsulation header (splice the reply's
+top-level encap when a stripped-fields payload arrives raw — detected via the
+`00 {00|01|06|07|0a|0b}` encap signature); the blocking C wrapper and the cpp
+trampolines pass through / prepend idempotently.
+
+Verified: native action matrix 5/5 (C, C++, C++-callback, both interop
+directions), ws action roundtrips 4/4 (c/cpp/mixed/rust), embedded
+freertos + threadx-linux action e2e 4/4, XRCE action + native cyclone action
+regression-green.
+
+Residual (NOT this bug): nuttx C/C++ action fail earlier in the flow — the
+GOAL is rejected (`Goal was rejected by server (order=10, ret=-2)`) before
+any result exchange; nuttx cpp service also red. Filed as #188.
