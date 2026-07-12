@@ -8,10 +8,26 @@ Status: **In progress — 2026-07-12** · Implements #171 decision **D5** +
 **Landed:** W1+W2a (interim bootstrap) · W3 (find_package + verbs) · W4 (package.xml
 deploy tuple) · W5 (nros setup presets + nros init, shape C′) · W6 native (all 27
 standalone leaves, incl. the 6 bespoke/own-msg) + `nros new` C/C++ ament shape ·
-W7 native-shape lint (example_shape Test 8) · W9 (evaluated → recommend option E,
-follow-up). **Remaining:** W6-rest (embedded/Zephyr/workspace — toolchain-gated /
-per-shape design) · W7 full cross-matrix · W8 (retire interim macros — BLOCKED until
-W6-rest since embedded/Zephyr/workspace still use nano_ros_bootstrap/entry/deploy).
+**W6 embedded (49 canonical leaves migrated to the native-identical shape;
+`find_package(nano_ros)`, 0 on the old bootstrap/entry shape)** · W7 native-shape
+lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
+
+**Remaining (verified against origin 2026-07-13):**
+- **W6 Zephyr** — `examples/zephyr/*` still on the old shape (0 `find_package(nano_ros)`);
+  keeps `find_package(Zephyr)` + Kconfig (NOT byte-identical — Zephyr owns the build),
+  the `nano_ros_add_executable` verb hides the `add_library`-into-`app` arm.
+- **W6 workspace** — 22 `nano_ros_workspace(` roots + members not migrated:
+  root → `find_package(nano_ros)`, members `nano_ros_workspace_pkg_guard()` +
+  `nano_ros_node_register()` → `nano_ros_add_node()`; plus the component
+  `scaffold_c/cpp` template in `cargo-nano-ros/src/scaffold.rs`.
+- **W7 full cross-matrix** — `just build-test-fixtures && just test-all` on an idle
+  box (all cross-toolchains are provisioned: `just doctor tier=all` all `[OK]` after
+  `just rmw_zenoh setup`). Not a correctness gate.
+- **W8 (old-path removal)** — retire the public `nano_ros_bootstrap` / `nano_ros_link`
+  / `nano_ros_deploy` macros + `NanoRosBootstrap.cmake`; BLOCKED until W6 Zephyr +
+  workspace stop calling them (`git grep` the markers before removing).
+- **W9 impl** — option E (single `include` of a `nros sync`-generated central
+  `nros-patch.toml`); independent follow-up.
 
 > **Goal.** A nano-ros C/C++ package is written in the **ament_cmake convention**
 > and its `CMakeLists.txt` is **byte-identical across every platform** (native,
