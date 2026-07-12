@@ -2,8 +2,12 @@
 <package format="3">
   <name>threadx_linux_cpp_service_server</name>
   <version>0.1.0</version>
-  <description>ThreadX Linux C++ service server example</description>
+  <description>Native C++ service server (AddTwoInts) — Phase 212.M.2 Application pkg shape</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>example_interfaces</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="threadx" board="threadx-linux" rmw="zenoh"/>
+  </export>
 </package>

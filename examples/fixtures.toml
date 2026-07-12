@@ -2549,72 +2549,84 @@ platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/talker"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7551" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/listener"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7551" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/service-server"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7561" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/service-client"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7561" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/action-server"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7571" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/action-client"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7571" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/talker"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7651" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/listener"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7651" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/service-server"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7661" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/service-client"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7661" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/action-server"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7671" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/action-client"
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7671" }
 
 # ===========================================================================
 # nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).
@@ -2626,72 +2638,84 @@ platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/talker"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7552" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/listener"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7552" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/service-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7562" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/service-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7562" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/action-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7572" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/action-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7572" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/talker"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7652" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/listener"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7652" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/service-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7662" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/service-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7662" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/action-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7672" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/action-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7672" }
 
 # ===========================================================================
 # qemu-riscv-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).
@@ -2717,72 +2741,84 @@ platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/talker"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7555" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/listener"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7555" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/service-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7565" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/service-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7565" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/action-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7575" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/action-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7575" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/talker"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7655" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/listener"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7655" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/service-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7665" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/service-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7665" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/action-server"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7675" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/action-client"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7675" }
 
 # ===========================================================================
 # threadx-riscv64 — C / C++ (cmake). Zenoh here; experimental Cyclone gated inline.
@@ -2794,84 +2830,84 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/talker"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7553" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7553" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/listener"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7553" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7553" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-server"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7563" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7563" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-client"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7563" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7563" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-server"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7573" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7573" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-client"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7573" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7573" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/talker"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7653" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7653" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/listener"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7653" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7653" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-server"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7663" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7663" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-client"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7663" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7663" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-server"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7673" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7673" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-client"
-cmake_defs = { NROS_THREADX_LOCATOR = "tcp/10.0.2.2:7673" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7673" }
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).

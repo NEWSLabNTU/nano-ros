@@ -2,8 +2,12 @@
 <package format="3">
   <name>freertos_cpp_talker</name>
   <version>0.1.0</version>
-  <description>FreeRTOS C++ QEMU talker example</description>
+  <description>Native C++ talker — Phase 212.M.2 Application pkg shape</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
+  </export>
 </package>

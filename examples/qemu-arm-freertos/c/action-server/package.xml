@@ -3,9 +3,15 @@
 <package format="3">
   <name>freertos_c_action_server</name>
   <version>0.1.0</version>
-  <description>FreeRTOS QEMU MPS2-AN385 C Fibonacci action server — Phase 212.L Component pkg</description>
-  <maintainer email="dev@example.com">Developer</maintainer>
-  <license>MIT OR Apache-2.0</license>
+  <description>nano-ros native C action server example (Phase 212.M canonical Application pkg shape)</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
 
   <depend>example_interfaces</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
+  </export>
 </package>

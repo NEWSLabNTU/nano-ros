@@ -246,76 +246,72 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
 pub fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
     NUTTX_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "talker", "nuttx_cpp_talker"))
+        .get_or_try_init(|| build_cmake_example("cpp", "talker", "cpp_talker"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
     NUTTX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "nuttx_cpp_listener"))
+        .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-server", "nuttx_cpp_service_server")
-        })
+        .get_or_try_init(|| build_cmake_example("cpp", "service-server", "cpp_service_server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_cmake_example("cpp", "service-client", "nuttx_cpp_service_client")
-        })
+        .get_or_try_init(|| build_cmake_example("cpp", "service-client", "cpp_service_client"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_action_server() -> TestResult<&'static Path> {
     NUTTX_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "nuttx_cpp_action_server"))
+        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "cpp_action_server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_action_client() -> TestResult<&'static Path> {
     NUTTX_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "nuttx_cpp_action_client"))
+        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "cpp_action_client"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_talker() -> TestResult<&'static Path> {
     NUTTX_C_TALKER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "talker", "nuttx_c_talker"))
+        .get_or_try_init(|| build_cmake_example("c", "talker", "c_talker"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_listener() -> TestResult<&'static Path> {
     NUTTX_C_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "listener", "nuttx_c_listener"))
+        .get_or_try_init(|| build_cmake_example("c", "listener", "c_listener"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_service_server() -> TestResult<&'static Path> {
     NUTTX_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-server", "nuttx_c_service_server"))
+        .get_or_try_init(|| build_cmake_example("c", "service-server", "c_service_server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_service_client() -> TestResult<&'static Path> {
     NUTTX_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-client", "nuttx_c_service_client"))
+        .get_or_try_init(|| build_cmake_example("c", "service-client", "c_service_client"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_action_server() -> TestResult<&'static Path> {
     NUTTX_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-server", "nuttx_c_action_server"))
+        .get_or_try_init(|| build_cmake_example("c", "action-server", "c_action_server"))
         .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
     NUTTX_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-client", "nuttx_c_action_client"))
+        .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
         .map(|p| p.as_path())
 }

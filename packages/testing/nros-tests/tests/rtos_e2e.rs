@@ -260,7 +260,13 @@ impl Platform {
     fn start_process(self, binary: &Path, node_idx: u8, name: &str) -> TestResult<RtosProcess> {
         match self {
             Platform::Freertos => {
-                QemuProcess::start_mps2_an385_networked(binary).map(RtosProcess::Qemu)
+                // phase-287 W6 — the board's lwIP config is STATIC 192.0.3.10 /
+                // gw 192.0.3.1 (no DHCP), so default slirp (10.0.2.0/24) never
+                // answers the guest's gateway ARP and the session dies before
+                // the first SYN. Use the board-net slirp launcher (the
+                // phase-263 C2b entry-fixture pattern); the images bake
+                // `tcp/192.0.3.1:<port>` locators (examples/fixtures.toml).
+                QemuProcess::start_mps2_an385_freertos_slirp(binary).map(RtosProcess::Qemu)
             }
             Platform::Nuttx => QemuProcess::start_nuttx_virt(binary, true).map(RtosProcess::Qemu),
             Platform::ThreadxLinux => {

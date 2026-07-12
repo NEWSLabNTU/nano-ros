@@ -1,48 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
-# Phase 212.L Component pkg — class prefix must equal PROJECT_NAME (L.4).
-project(nuttx_riscv_c_talker VERSION 0.1.0 LANGUAGES C CXX)
+project(c_talker LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Phase 144.6 — consume nano-ros via add_subdirectory(<repo-root>).
-set(NANO_ROS_PLATFORM nuttx)
-set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into this example.")
-set(NANO_ROS_RMW "${NROS_RMW}")
-set(NANO_ROS_BOARD    nuttx-qemu-riscv)
-# Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
-#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
-#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
-#   3. in-repo relative walk-up (this example inside the nano-ros tree).
-if(NOT DEFINED NANO_ROS_ROOT)
-    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
-    else()
-        get_filename_component(NANO_ROS_ROOT
-            "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
-    endif()
-endif()
-add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
+nano_ros_add_executable(c_talker src/main.c)
+ament_target_dependencies(c_talker std_msgs)
 
-# Phase 240.6 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C
-# Talker component + `talker_configure(node, executor)` creates a raw publisher +
-# a timer publishing the std_msgs/String demo payload (hand-encoded CDR —
-# the NuttX kernel link has no generated-interface plumbing yet, so the
-# typed generated C bindings the other platforms use are unavailable here).
-# The raw publish carries the DDS-mangled keyexpr verbatim.
-nano_ros_node_register(
-    NAME     talker
-    CLASS    nuttx_riscv_c_talker::Talker
-    LANGUAGE C
-    TYPED
-    SOURCES  src/Talker.c
-    DEPLOY   nuttx)
-
-# Per-target deploy config (Phase 212.L.8).
-nano_ros_deploy(
-    TARGET     nuttx
-    RMW        ${NROS_RMW}
-    DOMAIN_ID  0)
+install(TARGETS c_talker DESTINATION lib/${PROJECT_NAME})
+ament_package()

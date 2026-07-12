@@ -1,9 +1,17 @@
 <?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>riscv64_threadx_c_service_client</name>
   <version>0.1.0</version>
-  <description>ThreadX RISC-V QEMU C service client example</description>
-  <maintainer email="dev@example.com">Developer</maintainer>
-  <license>MIT OR Apache-2.0</license>
+  <description>nano-ros native C service client example (Phase 212.M canonical Application pkg shape)</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
   <depend>example_interfaces</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>
+  </export>
 </package>

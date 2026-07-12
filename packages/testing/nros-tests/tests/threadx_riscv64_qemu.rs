@@ -112,11 +112,9 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     }
 
     let root = nros_tests::project_root();
-    let talker_bin = root
-        .join("examples/qemu-riscv64-threadx/c/talker/build-cyclonedds/riscv64_threadx_c_talker");
-    let listener_bin = root.join(
-        "examples/qemu-riscv64-threadx/c/listener/build-cyclonedds/riscv64_threadx_c_listener",
-    );
+    let talker_bin = root.join("examples/qemu-riscv64-threadx/c/talker/build-cyclonedds/c_talker");
+    let listener_bin =
+        root.join("examples/qemu-riscv64-threadx/c/listener/build-cyclonedds/c_listener");
     if !talker_bin.exists() || !listener_bin.exists() {
         nros_tests::skip!(
             "CycloneDDS ThreadX fixtures missing; build with: \
