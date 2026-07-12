@@ -48,14 +48,26 @@ set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
 nano_ros_read_package_export()
 if(NANO_ROS_EXPORT_FOUND)
+    # Tuple values go into the CACHE, not directory scope. The imported root
+    # CMakeLists declares `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` with cached posix/
+    # zenoh defaults; a directory-scope set here would shadow them only on the
+    # FIRST configure — on any reconfigure the stale cached default is visible
+    # to the `NOT NANO_ROS_*` guards, the tuple is skipped, and a freertos leaf
+    # silently reconfigures as posix (Threads_FOUND death on a cross
+    # toolchain). Writing the tuple into the cache on first parse makes
+    # reconfigures stable; an explicit `-D` still wins (the guard sees it).
     if(NANO_ROS_EXPORT_DEPLOY AND NOT NANO_ROS_PLATFORM)
-        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" NANO_ROS_PLATFORM)
+        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" _nros_tuple_platform)
+        set(NANO_ROS_PLATFORM "${_nros_tuple_platform}" CACHE STRING
+            "nano-ros platform (from the package.xml <nano_ros deploy=…> tuple)")
     endif()
     if(NANO_ROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
-        set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}")
+        set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}" CACHE STRING
+            "RMW backend (from the package.xml <nano_ros rmw=…> tuple)")
     endif()
     if(NANO_ROS_EXPORT_BOARD AND NOT NANO_ROS_BOARD)
-        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_BOARD}")
+        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_BOARD}" CACHE STRING
+            "nano-ros board (from the package.xml <nano_ros board=…> tuple)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")

@@ -642,6 +642,11 @@ function(nano_ros_node_register)
         # for consistency and a domain id of 0 (the deploy DOMAIN_ID default —
         # the typed path's runtime domain is the compile-time NROS_ENTRY_DOMAIN_ID).
         set(NROS_ENTRY_APP_DOMAIN_ID 0)
+        # Per-image IP last octet (default .10; distinct per test-pair member —
+        # identical IP+MAC seeds give identical zenoh ZIDs → one-peer collapse).
+        if(NOT DEFINED NROS_ENTRY_IP_LAST)
+            set(NROS_ENTRY_IP_LAST 10)
+        endif()
         set(_appcfg_src "${_entry_dir}/nros_app_config_def.c")
         configure_file(
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"

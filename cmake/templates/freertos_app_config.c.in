@@ -29,8 +29,13 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .domain_id = @NROS_ENTRY_APP_DOMAIN_ID@,
     },
     .network = {
-        .ip      = { 192, 0, 3, 10 },
-        .mac     = { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00 },
+        /* Last octet is per-image (@NROS_ENTRY_IP_LAST@, default 10): two QEMU
+         * nodes of a test pair MUST differ — the board seeds its PRNG from
+         * IP+MAC, and identical seeds give identical zenoh ZIDs, which the
+         * router treats as ONE peer (max_links=1) → silent no-delivery
+         * (phase-287 W6; same lesson as the threadx-riscv64 .40/.41 split). */
+        .ip      = { 192, 0, 3, @NROS_ENTRY_IP_LAST@ },
+        .mac     = { 0x02, 0x00, 0x00, 0x00, 0x00, @NROS_ENTRY_IP_LAST@ },
         .gateway = { 192, 0, 3, 1 },
         .netmask = { 255, 255, 255, 0 },
         .prefix  = 24,

@@ -86,6 +86,6 @@ function(nano_ros_link target)
     # native). Only when the platform overlay defined it AND nano_ros_entry did
     # not already perform it for this target.
     if(COMMAND nros_platform_link_app)
-        nros_platform_link_app(${target})
+        nros_platform_link_app_deferred(${target})
     endif()
 endfunction()

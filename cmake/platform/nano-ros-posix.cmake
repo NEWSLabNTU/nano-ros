@@ -83,6 +83,13 @@ function(nros_platform_link_app target)
             "nros_platform_link_app: '${target}' is not a CMake target.")
     endif()
 
+    # phase-287 W6 — make the portable `NROS_APP_MAIN_REGISTER()` shim
+    # (app_main.h) expand to the POSIX `int main(argc, argv)` variant on the
+    # host. Nothing defined `NROS_HOST_POSIX` before, which is why every native
+    # example hardcoded `_POSIX()` — and a copy-out of that source to an
+    # embedded board then died at link with an undefined `app_main`.
+    target_compile_definitions(${target} PRIVATE NROS_HOST_POSIX)
+
     # Issue 0091 — GNU ld (binutils 2.38, fresh Ubuntu 22.04) hits an internal BFD
     # merge bug (`_bfd_merged_section_offset`, merge.c:939) linking the large Rust
     # staticlib `libnros_c.a` on the native link. `lld` does not hit it and is a

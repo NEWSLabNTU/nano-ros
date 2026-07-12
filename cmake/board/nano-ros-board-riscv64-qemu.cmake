@@ -175,7 +175,14 @@ nros_threadx_setup_picolibc(CXX_COMPAT_DIR "${_NROS_BOARD_CXX_COMPAT_DIR}")
 # Build kernel + NetX Duo + virtio-net via the layer-2 helpers.
 # Board overrides the soft-float-incompatible context-switch / scheduler
 # assembly with ULONG=4 layout fixes (board's c/ directory).
+#
+# The port + overrides are RISC-V assembly (.S). The ament-shape leaf declares
+# only `LANGUAGES C CXX` (byte-identical CMakeLists — phase-287 W6; the old
+# leaves carried `ASM` themselves), so the BOARD enables ASM: without it cmake
+# SILENTLY drops every .S source and the kernel links with undefined
+# `_tx_thread_stack_build` / `_tx_thread_system_return`.
 # ---------------------------------------------------------------------------
+enable_language(ASM)
 if(NOT TARGET threadx_kernel)
     nros_threadx_build_kernel(
         PORT          "risc-v64/gnu"

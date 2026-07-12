@@ -50,6 +50,42 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 
+# --------------------------------------------------------------------------
+# Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
+# the workspace guard path loads NanoRosEntry without Bootstrap, and both the
+# C2 gate below and Bootstrap's `nano_ros_link` call these.
+# --------------------------------------------------------------------------
+# Idempotent wrapper around the platform overlay's `nros_platform_link_app`.
+# The ament verb path runs the phase-263 C2 embedded link pass inside
+# `nano_ros_entry` AND then calls `nano_ros_link` — on NuttX the second pass
+# is fatal (`nros_nuttx_build_example` creates a named `<name>_build` custom
+# target; duplicate = CMP0002 error), on other platforms it is silent
+# duplication. A target property marks the first pass (phase-287 W6).
+function(nros_platform_link_app_once target)
+    get_property(_nros_linked TARGET ${target} PROPERTY _NROS_PLATFORM_LINK_DONE)
+    if(_nros_linked)
+        return()
+    endif()
+    set_property(TARGET ${target} PROPERTY _NROS_PLATFORM_LINK_DONE TRUE)
+    nros_platform_link_app(${target})
+endfunction()
+
+# Deferred variant — runs the (once-guarded) platform link at END of the
+# calling directory's scope. The ament shape links interface deps via
+# `ament_target_dependencies(<t> std_msgs)` AFTER the `nano_ros_add_*` verb
+# returns, but the NuttX board's `nros_platform_link_app` materialises the
+# target's LINK_LIBRARIES / include closure into text files for the cargo
+# cross-link AT CALL TIME — an immediate call sees no interface libs and the
+# firmware compile dies with `std_msgs.h: No such file`. Deferring to scope
+# end sees the fully-wired target; the once-guard collapses the gate's and
+# `nano_ros_link`'s deferrals into one pass (phase-287 W6).
+function(nros_platform_link_app_deferred target)
+    # DEFER CALL arguments are re-evaluated when the deferred call runs (where
+    # `${target}` no longer exists) — bake the value into the code string now.
+    cmake_language(EVAL CODE
+        "cmake_language(DEFER CALL nros_platform_link_app_once [[${target}]])")
+endfunction()
+
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     cmake_parse_arguments(_NRA
@@ -267,7 +303,7 @@ function(nano_ros_entry)
        AND NANO_ROS_PLATFORM STREQUAL "posix"
        AND COMMAND nros_platform_link_app
        AND ("native" IN_LIST _NRA_DEPLOY))
-        nros_platform_link_app(${_NRA_NAME})
+        nros_platform_link_app_deferred(${_NRA_NAME})
     endif()
 
     # phase-263 C2b — bake the connect locator BEFORE the embedded link pass. On NuttX the
@@ -279,23 +315,57 @@ function(nano_ros_entry)
     # block then only does the FreeRTOS app-config TU + header-mirror ordering.) Zephyr is exempt
     # (Kconfig locator). Precedence: -DNROS_ENTRY_LOCATOR cache > LOCATOR arg > per-board default
     # (threadx-linux dials host loopback; QEMU boards dial the slirp host 10.0.2.2).
+    # Whether THIS entry targets the active board. Two spellings (phase-287 W5):
+    #   * workspace system.toml deploy targets are NAMED BY BOARD — the active
+    #     `NANO_ROS_BOARD` appears in the entry's DEPLOY list (phase-263 C2);
+    #   * the RFC-0048 `package.xml <export><nano_ros deploy=…/>` tuple carries
+    #     the deploy/PLATFORM token ("freertos", …) in DEPLOY while the board
+    #     rides the `board=` attr — there the active platform matches instead.
+    # Normalize legacy/variant platform spellings to the deploy token before
+    # comparing (`threadx_linux` / `threadx_riscv64` → `threadx`,
+    # `freertos_armcm3` → `freertos`, `nuttx_armv7a` → `nuttx`) — the just
+    # recipes still pass `-DNANO_ROS_PLATFORM=threadx_linux`, which the root
+    # maps to the threadx module but would never equal the tuple's `threadx`.
+    set(_nra_platform_norm "${NANO_ROS_PLATFORM}")
+    if(_nra_platform_norm MATCHES "^(threadx|freertos|nuttx)_")
+        string(REGEX REPLACE "_.*$" "" _nra_platform_norm "${_nra_platform_norm}")
+    endif()
+    set(_nra_board_active FALSE)
+    if(DEFINED NANO_ROS_BOARD)
+        if(("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)
+           OR ("${NANO_ROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
+           OR ("${_nra_platform_norm}" IN_LIST _NRA_DEPLOY))
+            set(_nra_board_active TRUE)
+        endif()
+    endif()
+
     set(_nra_locator "")
     if(TARGET ${_NRA_NAME}
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
-       AND DEFINED NANO_ROS_BOARD
-       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
+       AND _nra_board_active)
         if(DEFINED NROS_ENTRY_LOCATOR)
             set(_nra_locator "${NROS_ENTRY_LOCATOR}")
         elseif(_NRA_LOCATOR)
             set(_nra_locator "${_NRA_LOCATOR}")
         elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
             set(_nra_locator "tcp/127.0.0.1:7447")
+        elseif(NANO_ROS_PLATFORM STREQUAL "freertos")
+            # Static lwIP net 192.0.3.0/24 — the gateway IS the slirp host
+            # (phase-263 C2b; default 10.0.2.0/24 slirp never answers the
+            # guest's gateway ARP for 192.0.3.1).
+            set(_nra_locator "tcp/192.0.3.1:7447")
         else()
             set(_nra_locator "tcp/10.0.2.2:7447")
         endif()
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+        # phase-287 W6 — bake the domain the same way (fixture pairs pass
+        # `-DNROS_DOMAIN_ID=<n>`; portable sources read NROS_ENTRY_DOMAIN_ID).
+        if(DEFINED NROS_DOMAIN_ID)
+            target_compile_definitions(${_NRA_NAME} PRIVATE
+                "NROS_ENTRY_DOMAIN_ID=${NROS_DOMAIN_ID}")
+        endif()
     endif()
 
     # phase-263 C2 (issue 0097) — embedded LAUNCH Entry link pass. The standalone
@@ -309,9 +379,8 @@ function(nano_ros_entry)
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
        AND COMMAND nros_platform_link_app
-       AND DEFINED NANO_ROS_BOARD
-       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
-        nros_platform_link_app(${_NRA_NAME})
+       AND _nra_board_active)
+        nros_platform_link_app_deferred(${_NRA_NAME})
     endif()
 
     # phase-263 C2a (issue 0097) — two wirings the embedded LAUNCH Entry needs that the
@@ -339,8 +408,7 @@ function(nano_ros_entry)
     #      HARD file-level OBJECT_DEPENDS on the mirrored header(s).
     if(TARGET ${_NRA_NAME}
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
-       AND DEFINED NANO_ROS_BOARD
-       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
+       AND _nra_board_active)
         # (1) locator — baked earlier (BEFORE the link pass, for the NuttX configure-time
         # COMPILE_DEFINITIONS ferry). `_nra_locator` is in scope here. Zephyr is EXEMPT (its
         # locator threads via the `CONFIG_NROS_ZENOH_LOCATOR` Kconfig), so the earlier block left
@@ -358,6 +426,13 @@ function(nano_ros_entry)
             if(NANO_ROS_PLATFORM STREQUAL "freertos")
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")
                 set(NROS_ENTRY_APP_DOMAIN_ID 0)
+                # Per-image IP last octet (default .10). Test pairs bake a
+                # distinct value per member (`-DNROS_ENTRY_IP_LAST=11` via
+                # fixtures.toml) — identical IP+MAC seeds → identical ZIDs →
+                # the router sees one peer and delivery silently dies.
+                if(NOT DEFINED NROS_ENTRY_IP_LAST)
+                    set(NROS_ENTRY_IP_LAST 10)
+                endif()
                 set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
                 configure_file(
                     "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"
