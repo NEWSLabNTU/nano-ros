@@ -56,10 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   smoltcp gets no timer/RX IRQ → the TCP handshake never completes → `published=0`. All four
   `test_qemu_rtic_*_e2e` fail with zero delivery. Fix (architectural) = move the session open out of
   `#[init]` into the `__nros_run` task (after interrupts unmask). Runtime-only — `just check` green.
-- **#173** — [Zephyr pub → native sub no delivery](0173-zephyr-pub-to-native-sub-no-delivery.md): a
-  Zephyr native_sim zenoh-pico **publisher** delivers nothing to a **native** subscriber through a
-  shared router (fails serially; `bidirectional` shows Native→Zephyr=41 / Zephyr→Native=0 in one
-  router). Zephyr↔Zephyr + Native→Zephyr work. Un-masked by phase-286 W1 slice 3.
 - **#171** — [No external distribution path](0171-no-external-distribution-path.md): every
   integrate-into-my-project surface (Zephyr module, CMake, ESP-IDF, PIO, Rust crates, the `nros`
   CLI itself) roots at a full monorepo clone — CLI + crates `publish = false`,
@@ -79,7 +75,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
   xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#175** — Zephyr Cyclone
+Recently resolved (see [`archived/`](archived/) for the full list): **#173** — Zephyr pub → native
+sub "no delivery" was a **stale-fixture false alarm**: the prebuilt native listener was Int32-era
+while its source migrated to `std_msgs/String`, and the #164 cross tests ran it under
+`NROS_SKIP_FIXTURE_CHECK=1` (bypassing the staleness guard) → keyexpr type mismatch (`Int32_` vs
+`String_`) → 0 delivery. Rebuild the fixture → all four cross lanes (rust+cpp, both directions) PASS.
+No RMW code change. **#175** — Zephyr Cyclone
 action completion (all three lanes): rust nested-message encap-splice + typed dispatch
 (`844021843`/`e9bb39686`) and the C/C++ server register `-100` (ROS-slash vs DDS-mangled feedback
 type in `find_descriptor`, fixed via `ros_form_to_dds` normalisation; `facd36ca4`) — `dds_{c,cpp,rs}_action_e2e`

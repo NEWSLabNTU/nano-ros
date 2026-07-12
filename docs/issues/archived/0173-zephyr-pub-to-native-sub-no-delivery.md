@@ -1,11 +1,41 @@
 ---
 id: 173
 title: "Zephyr (native_sim) publisher → native subscriber delivers nothing through a shared zenoh router"
-status: open
+status: resolved
 type: bug
 area: rmw
-related: [issue-0164, phase-286]
+related: [issue-0164, phase-286, issue-0147]
 ---
+
+## RESOLVED — stale-fixture false alarm (not an RMW bug) — 2026-07-12
+
+The "zenoh-pico pub → native sub broken" premise was a **misdiagnosis caused by a
+stale native-listener fixture**. The prebuilt `examples/native/rust/listener`
+binary was **Int32-era (built 07-01)** while its source had migrated to
+`std_msgs/String` on **07-06**. rmw_zenoh bakes the message type into the wire
+keyexpr (`0/chatter/std_msgs::msg::dds_::<Type>_/*`), so the stale **Int32**
+listener subscribed `…::Int32_/*` while every talker (rust + cpp, zephyr + native)
+publishes `…::String_/TypeHashNotSupported` → the router never matched the two
+keyexprs → 0 delivery.
+
+Why it looked like a Zephyr-pub bug: the #164 sweep / phase-286 W1 cross tests run
+with `NROS_SKIP_FIXTURE_CHECK=1` (the parallelism work bypassed the guard), which
+ran the **stale** Int32 listener instead of erroring on it. The content-aware
+staleness guard (#147 / phase-286 W2) DOES catch it when not skipped (a fresh run
+errors `Test fixture is STALE — a source is newer than the built binary`).
+
+**Diagnosis path:** captured the wire keyexprs with `zenohd` debug logging — sub =
+`…Int32_/*`, pub = `…String_/…`. Rebuilt the listener from current source (now
+`String`); re-ran in the REAL harness (not a hand-rolled repro, which is itself
+unreliable — a manual native→native repro also shows 0 while `nano2nano`'s
+`test_talker_listener_communication` PASSES). **All four #173 cross lanes now PASS:**
+`test_zephyr_to_native_e2e` (45 s), `test_bidirectional_native_zephyr_e2e` (10 s,
+both directions), `test_zephyr_cpp_talker_to_native_listener` (4.5 s),
+`test_native_talker_to_zephyr_cpp_listener` (9 s).
+
+**Fix = rebuild the fixture** (no code change). Lesson: `NROS_SKIP_FIXTURE_CHECK`
+masks genuine staleness — the #164 cross-test "delivery" failures were stale-fixture
+artifacts, not RMW bugs. Do not skip the guard on delivery-class e2e.
 
 ## Problem
 
