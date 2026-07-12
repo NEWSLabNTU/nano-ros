@@ -50,12 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
   `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
   split archives. Independent of #175's Cyclone descriptor work.
-- **#180** — [Zephyr service server → native client: no reply](0180-zephyr-service-server-native-client-no-reply.md):
-  the Zephyr (native_sim) zenoh service SERVER receives + replies to every request, but the native
-  full-zenoh client never surfaces `Result of add_two_ints:` (blocks in `promise.wait`, exits with
-  no output). Reverse (`native_server_zephyr_client`) + native↔native both pass — specific to the
-  zephyr-pico-server → native-client reply route. Surfaced by #164's fresh-fixture sweep; candidate
-  is the #153 gossip-gap worsened against a slow pico queryable.
 - **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):
   phase-287 native-identical freertos images: pubsub + service e2e GREEN, action goal + feedback
   deliver, but the client dies on `Failed to deserialize result` (zenoh query/reply path). First
@@ -80,13 +74,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-- **#164** — [tests/zephyr.rs: 29/45 fail on freshly built
-  images](0164-zephyr-family-mass-rot-fresh-sweep.md): first full fixture sweep in a long time
-  exposed accumulated rot — ~6 stale `"Result:"`/`"[OK]"` markers + pre-277 boot banners
-  (delivery/boot proven working), the #163 backend gap (RESOLVED — rust zenoh/xrce lanes green), and untriaged
-  xrce-C/C++, cyclone-action, and workspace-entry failures. Marker sweep first.
-
-Recently resolved (see [`archived/`](archived/) for the full list): **#173** — Zephyr pub → native
+Recently resolved (see [`archived/`](archived/) for the full list): **#164** — the tests/zephyr.rs
+"mass rot" (29/45 fail on fresh images) is fully drained: every lane resolved to a stale marker
+(fixed), the #163 backend gap, the #147 staleness false-positive (phase-286 W2), a spun-off delivery
+bug (#173/#174/#175/#180), or the mtime treadmill — no RMW defect left; the formerly-`#[ignore]`d
+zenoh C action test was a stale-marker false "hang" and now passes. **#180** — the zephyr-service →
+native-client "no reply" was the #153 gossip-gap (server liveliness gossips ahead of its queryable
+route); the native service client's retry was widened `3×1s → 8×2s` to span the slow-pico window
+(native path unchanged). **#173** — Zephyr pub → native
 sub "no delivery" was a **stale-fixture false alarm**: the prebuilt native listener was Int32-era
 while its source migrated to `std_msgs/String`, and the #164 cross tests ran it under
 `NROS_SKIP_FIXTURE_CHECK=1` (bypassing the staleness guard) → keyexpr type mismatch (`Int32_` vs

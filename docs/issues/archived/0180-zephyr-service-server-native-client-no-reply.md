@@ -1,11 +1,30 @@
 ---
 id: 180
 title: "Zephyr (native_sim) service server → native client: server replies but the native client never receives the reply"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0164, issue-0153, issue-0173]
 ---
+
+## RESOLVED — issue-0153 gossip-gap race, client retry widened — 2026-07-13
+
+Not a reply-routing bug. The full query→reply DOES route (a manual repro with a
+zenohd routing trace shows `Declare queryable` → `Route query` → `Route reply` →
+`Received final reply` → the client prints `Result of add_two_ints: 5`). It is the
+**issue-0153 gossip gap**: the zephyr-pico server's LIVELINESS token (what
+`wait_for_service` observes) gossips to the router AHEAD of its queryable ROUTE, so a
+`z_get` fired in that window matches no queryable and completes instantly with no
+reply. Against a native peer the gap is ~1-3 s; against a slow zephyr-pico native_sim
+server it is ~5-8 s. The native client retried only `3 × 1 s` (~3 s) — enough for a
+native peer, too short for the pico server, so the nextest lost the race every time
+while a hand-run with more lead time won it.
+
+**Fix:** widened the native service client's retry to `8 × 2 s` (~16 s) so the window
+is spanned against either backend. A native server still completes on attempt 0 with
+no added delay (the retry only engages when a call returns no reply). Verified:
+`test_zephyr_server_native_client` PASSES (~6 s, 2/2 runs). No change to the
+native↔native path (attempt 0 unchanged).
 
 ## Problem
 

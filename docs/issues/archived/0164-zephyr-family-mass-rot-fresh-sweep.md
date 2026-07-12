@@ -1,11 +1,22 @@
 ---
 id: 164
 title: "tests/zephyr.rs family: 29/45 fail on freshly built images — stale markers, the #163 backend gap, and untriaged xrce/action/entry lanes"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0157, issue-0163, phase-277, phase-286]
 ---
+
+## RESOLVED — mass rot fully drained 2026-07-13
+
+Every failing lane resolved to one of: a stale test marker (fixed), the #163 backend
+gap (resolved), the #147 content-aware staleness false-positive (fixed, phase-286
+W2), a spun-off delivery bug (#173 stale fixture, #174 XRCE, #175 Cyclone, #180 the
+zephyr-service → native-client gossip-gap), or the mtime treadmill (rebuild the
+fixture). No RMW code defect remains in the family. The last residual (#180) landed
+2026-07-13. On freshly-built fixtures every previously-failing lane passes
+individually, including the formerly-`#[ignore]`d zenoh C action test (which was a
+stale-marker false "hang", not a hang). See the round-2 sweep notes below.
 
 ## Summary
 
