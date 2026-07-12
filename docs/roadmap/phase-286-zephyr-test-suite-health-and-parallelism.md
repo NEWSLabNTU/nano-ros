@@ -210,18 +210,19 @@ relinked; `nros_runtime_locator_override` referenced by the generated `rust_main
 ephemeral port, not the baked 7456) — the parallelism goal (no shared baked port)
 is met and the serial group is retired.
 
-**CORRECTION 2026-07-12: the ws-entry e2e itself is NOT green — it is a flaky
-delivery race, a pre-existing #164 residual the override does NOT fix.** An initial
-manual run delivered 48 messages, but that was a timing-dependent PASS: re-running
-on a free box (zenohd binds in ~2 s instead of ~14 s under load) delivers **0**, and
-`test_zephyr_workspace_entry_native_sim_e2e` fails consistently in nextest
-("Listener timed out" — the external native listener receives nothing after
-readiness). The Entry's internal pico publisher → host zenohd → external native
-subscriber path loses samples depending on the sub-vs-pub declaration ordering
-(the router computes the data route once and caches it; a late external subscriber
-can miss it). This is the same pico-pub→native-sub delivery class as the #164
-family and must be tracked as a real residual — the "48 messages" claim above was a
-flaky pass and should not have been read as verification.
+**ws-entry e2e GREEN 2026-07-12** — but the initial "48 messages" claim was wrong,
+and so was a first "flaky race" re-diagnosis. The real bug was a **message-type
+mispair**: the ws demo Entry (`talker_pkg`) publishes `std_msgs/Int32` on
+`/chatter`, but the test's external observer (`examples/native/rust/listener`)
+subscribes `std_msgs/String`. rmw_zenoh bakes the type into the wire keyexpr
+(`…::Int32_/*` vs `…::String_/*`), so the router never matched them → 0 delivery.
+The earlier "48 messages" pass used the STALE Int32-era listener binary (which
+happened to match the Int32 demo); once that binary was rebuilt to `String` (the
+07-06 migration, see #173) the mispair surfaced. **Fix:** the native listener's
+message type is now `NROS_SUB_TYPE`-selectable (default `String`,
+`NROS_SUB_TYPE=int32` for the Int32 demo), and the ws-entry test sets `int32`.
+`test_zephyr_workspace_entry_native_sim_e2e` PASSES (49 s). The override mechanism
+was never the problem — it correctly dials the ephemeral port.
 
 ### W2 — staleness-guard false-positive (#147 class)
 

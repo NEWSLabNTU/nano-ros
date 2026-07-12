@@ -147,17 +147,19 @@ fixture). The 7 remaining fails:
   - `cpp_service_server_to_client_e2e` (zenoh): server handles 1 request, client gets
     1 OK, expected ≥3 — a zenoh C++ service completion/throughput shortfall (distinct
     from #175's Cyclone one). Actionable; not yet its own issue.
-  - `workspace_entry_native_sim_e2e`: the ws-runtime Entry's internal pico publisher
-    → host zenohd → external native subscriber loses samples (flaky/timing race — the
-    router caches the data route; a late external sub can miss it). The phase-286 W1
-    override wired parallelism but does NOT fix this delivery race. Same pico-pub →
-    external-native-sub class as this family; standalone talker→listener
-    (`zephyr_to_native`) is reliably green after the #173 fixture rebuild, but the
-    2-node entry is not. Actionable residual.
+  - `workspace_entry_native_sim_e2e` — **RESOLVED 2026-07-12**: NOT a delivery race
+    (an earlier note here was wrong). A **message-type mispair** — the ws demo Entry
+    (`talker_pkg`) publishes `std_msgs/Int32` on `/chatter` while the test observer
+    (`examples/native/rust/listener`) subscribed `std_msgs/String`; rmw_zenoh bakes
+    the type into the keyexpr so the router never matched. Same class as #173 (the
+    07-06 String migration of the shared listener fixed the String-talker tests but
+    exposed this Int32-demo test). Fix: the native listener's type is now
+    `NROS_SUB_TYPE`-selectable and the ws-entry test sets `int32`. Test PASSES (49 s).
 
 **Net:** the "mass rot" is essentially cleared — rebuild the 5 stale fixtures and the
-family is 43/45, with two genuine delivery residuals (zenoh cpp service throughput +
-ws-entry pico-pub delivery race) left to chase.
+family is 43/45, with ws-entry now green (44/45), leaving **one** genuine delivery
+residual: the zenoh C++ service throughput shortfall (`cpp_service_server_to_client`,
+1/3).
 
 ## References
 

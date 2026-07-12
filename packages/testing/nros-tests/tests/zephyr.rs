@@ -2975,8 +2975,12 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     use nros_tests::process::ManagedProcess;
     use std::process::Command;
     let mut listener_cmd = Command::new(listener_path);
+    // The ws demo Entry (`talker_pkg`) publishes std_msgs/Int32 on /chatter;
+    // the observability listener must subscribe the SAME type (the message type
+    // is baked into the wire keyexpr) or the router never matches it.
     listener_cmd
         .env("NROS_LOCATOR", &locator)
+        .env("NROS_SUB_TYPE", "int32")
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
