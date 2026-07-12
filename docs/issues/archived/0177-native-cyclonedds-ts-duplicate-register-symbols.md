@@ -1,7 +1,8 @@
 ---
 id: 177
 title: "native C cyclonedds fixture fails to link — duplicate register_<Type>_0 symbols across std_msgs & example_interfaces ts libs"
-status: open
+status: resolved
+resolved_in: "fd7d42b87 (phase-287)"
 type: bug
 area: cyclonedds
 related: [issue-0138, issue-0175]
@@ -73,3 +74,14 @@ Not caused by the concurrent #175 Cyclone descriptor work (that touches
   `libexample_interfaces__cyclonedds_ts.a`, action-* leaves). The zenoh cells
   on the same leaves build + run fine, so the migration is unaffected — this
   issue is the sole blocker for the threadx-linux cyclone lane.
+
+## Resolution (2026-07-12, `fd7d42b87`)
+
+Fix direction 1 variant: the register ctor is namespaced by PACKAGE —
+`nros_rmw_cyclonedds_idlc_compile` gained an optional `PKG_NAME` (threaded
+from `generate_from_msg`), emitting `register_<pkg>_<stem>_<idx>`. Callers
+without PKG_NAME (the hand-IDL `rmw_dds_common_graph` TU, legacy
+`add_idl_library` users) keep the historical names; the six threadx-riscv64
+rust `cyclonedds_app.c` strong-override TUs extern the new names. Verified:
+native c+cpp cyclonedds fixture lanes link green; the follow-up full sweep
+passed the native stage.

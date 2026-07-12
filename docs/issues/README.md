@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#177** — [native C cyclonedds fixture duplicate register symbols](0177-native-cyclonedds-ts-duplicate-register-symbols.md):
-  `fixture-native-c-cyclonedds` fails to link — `register_<Type>_0` (Int32/String/UInt*/MultiArray…)
-  defined in **both** `libstd_msgs__cyclonedds_ts.a` and `libexample_interfaces__cyclonedds_ts.a`
-  (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
-  `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
-  split archives. Independent of #175's Cyclone descriptor work.
 - **#186** — [test rot: integration shell smokes + migrate drift gate](0186-stale-test-preconditions-integration-migrate.md):
   three `integrations/` shell smokes probe the pre-208.D.7 layout; `migrate_workspace_e2e` red until
   the pinned nros release catches the post-212.I emitter spec.
@@ -95,7 +89,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#164** — the tests/zephyr.rs
+Recently resolved (see [`archived/`](archived/) for the full list): **#177** — native/threadx-linux
+cyclone duplicate `register_<Type>_0` link failure: idlc register ctors now package-namespaced
+(`register_<pkg>_<stem>_<idx>`, `fd7d42b87`); both cyclone fixture lanes link green. **#164** — the tests/zephyr.rs
 "mass rot" (29/45 fail on fresh images) is fully drained: every lane resolved to a stale marker
 (fixed), the #163 backend gap, the #147 staleness false-positive (phase-286 W2), a spun-off delivery
 bug (#173/#174/#175/#180), or the mtime treadmill — no RMW defect left; the formerly-`#[ignore]`d
