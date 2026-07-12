@@ -2175,9 +2175,12 @@ fn test_zephyr_server_native_client() {
     eprintln!("\n=== Zephyr server output ===\n{}", zephyr_output);
     eprintln!("\n=== Native client output ===\n{}", client_output);
 
-    // Check Zephyr server status
-    let zephyr_connected = zephyr_output.contains("Session opened");
+    // Check Zephyr server status. Reaching the readiness marker implies the
+    // session opened + the service was declared (you cannot wait for service
+    // requests without a session), so readiness IS the connection signal — the
+    // old literal `"Session opened"` grep is stale (the example never prints it).
     let zephyr_ready = zephyr_output.contains(nros_tests::output::SERVICE_SERVER_READY_MARKER);
+    let zephyr_connected = zephyr_ready;
     let zephyr_received =
         zephyr_output.contains(nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER);
     let zephyr_replied = zephyr_output.contains("a: ");
@@ -2760,19 +2763,15 @@ fn test_zephyr_c_service_server_to_client_e2e() {
 
 /// Zephyr C zenoh action server ↔ client.
 ///
-/// `#[ignore]`d — runtime-verified to fail (re-verified 2026-05-26 with fresh
-/// NSOS fixtures + latest code). **Not 177.30** (that was the NuttX *C++*
-/// `fflush(stdout)` deadlock, now fixed; the zephyr C app uses Zephyr `LOG_INF`,
-/// no libc stdout lock). The failure is on the **server side**: the C zenoh
-/// action server boots and logs "Network ready (NSOS)" but **never reaches
-/// "Waiting for goals"** — it hangs during `create_action_server` (the
-/// zenoh-pico declare path for the goal/cancel/result/feedback/status entities),
-/// so the client never even sends. The zephyr **cpp + rust** zenoh action
-/// servers reach readiness and pass, so this is **C-specific** (the nros-c
-/// action-server setup over zenoh-pico on zephyr). pub/sub + service C pass on
-/// the same fixture. Distinct open gap — needs its own investigation.
+/// Previously `#[ignore]`d as "server hangs in `create_action_server`, never
+/// reaches readiness" — that was a STALE-MARKER false diagnosis, not a hang. The
+/// server does reach readiness and prints `"Waiting for action goals"`
+/// (`ACTION_SERVER_READY_MARKER`); the old readiness grep looked for the literal
+/// `"Waiting for goals"`, which never matches, so the test timed out at the 30 s
+/// readiness wait and was read as a server hang. Same class as #174's
+/// `xrce_c_action`. With the marker corrected the full action completes
+/// (server ready → goal → result) in ~5 s; un-ignored 2026-07-12.
 #[test]
-#[ignore = "zephyr C zenoh action server hangs in create_action_server (never reaches 'Waiting for goals'); C-specific, NOT 177.30; cpp/rust pass"]
 fn test_zephyr_c_action_server_to_client_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
@@ -2785,8 +2784,11 @@ fn test_zephyr_c_action_server_to_client_e2e() {
     let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Zenoh);
 
     let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
-    if !ready.contains("Waiting for goals") {
+    let ready = server.wait_for_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    if !ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
         panic!("Zephyr C zenoh action server not ready in 30 s.\nOutput:\n{ready}");
     }
     let mut server = server;

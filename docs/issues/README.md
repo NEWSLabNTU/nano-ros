@@ -50,6 +50,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
   `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
   split archives. Independent of #175's Cyclone descriptor work.
+- **#180** — [Zephyr service server → native client: no reply](0180-zephyr-service-server-native-client-no-reply.md):
+  the Zephyr (native_sim) zenoh service SERVER receives + replies to every request, but the native
+  full-zenoh client never surfaces `Result of add_two_ints:` (blocks in `promise.wait`, exits with
+  no output). Reverse (`native_server_zephyr_client`) + native↔native both pass — specific to the
+  zephyr-pico-server → native-client reply route. Surfaced by #164's fresh-fixture sweep; candidate
+  is the #153 gossip-gap worsened against a slow pico queryable.
 - **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):
   phase-287 native-identical freertos images: pubsub + service e2e GREEN, action goal + feedback
   deliver, but the client dies on `Failed to deserialize result` (zenoh query/reply path). First

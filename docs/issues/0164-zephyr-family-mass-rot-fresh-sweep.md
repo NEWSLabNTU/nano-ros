@@ -166,6 +166,39 @@ PASSING. The remaining 5 fails are stale-fixture guard errors — mechanical
 (44 pass / 1 skip). No RMW code defects remain in this family; close #164 once a
 fresh full-fixture sweep confirms green.
 
+## Fresh full-fixture sweep 2026-07-12 (round 2)
+
+Rebuilt ALL zephyr fixtures (`just zephyr build-fixtures`) + reran with
+`--run-ignored all`: **43 passed (1 flaky) / 3 failed / 0 skipped** (46 incl. the
+previously-ignored test). Findings:
+
+- **The `#[ignore]`d `test_zephyr_c_action_server_to_client_e2e` was a STALE-MARKER
+  false "hang", not a real hang.** The zenoh C action server DOES reach readiness
+  and prints `"Waiting for action goals"` (`ACTION_SERVER_READY_MARKER`); the test
+  grepped the literal `"Waiting for goals"`, which never matches, so it timed out at
+  the 30 s readiness wait and was recorded as a `create_action_server` hang (same
+  class as #174's `xrce_c_action`). Marker corrected → the full action completes
+  (server → goal → result) in ~5 s → **un-ignored, PASSES.**
+- **`test_zephyr_server_native_client` — TWO issues.** (1) A stale `zephyr_connected`
+  marker (`"Session opened"`, which the service-server example never prints —
+  reaching the readiness marker already implies a session; fixed to derive from
+  readiness). (2) A REAL residual underneath: the zephyr service SERVER receives all
+  4 requests and replies to each (`Incoming request` / `a: 5 b: 3` …), but the NATIVE
+  client never surfaces a `Result of add_two_ints:` and exits with no output — the
+  reply does not reach the native client. The same native client works native↔native
+  (`nano2nano`), so this is specific to zephyr-server → native-client service reply
+  delivery (candidate: issue-0153 gossip-gap, worse against a slow zephyr-pico
+  server). **New actionable residual — needs its own issue.**
+- **`test_zephyr_workspace_entry_native_sim_e2e`** failed only on mtime staleness
+  (its prebuilt-Entry guard does not honor `NROS_SKIP_FIXTURE_CHECK`); it PASSES on a
+  freshly-built Entry (verified 49 s). Not a defect.
+- The other prior fails (`dds_{c,cpp,rs}_action`, cross tests) are green on fresh
+  fixtures; the earlier "5 stale-fixture" set was the mtime treadmill.
+
+**Net:** #164's mass rot is cleared except ONE genuine residual — the
+zephyr-service-server → native-client reply delivery gap (`server_native_client`).
+File it and close #164 once that has its own issue.
+
 ## References
 
 `packages/testing/nros-tests/tests/zephyr.rs`, archived issue 0157 (the
