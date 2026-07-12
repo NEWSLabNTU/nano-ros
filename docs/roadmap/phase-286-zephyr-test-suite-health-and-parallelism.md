@@ -206,13 +206,22 @@ points at the same ephemeral router); the `qemu-zephyr-ws-entry` nextest group +
 its override filter deleted so the test falls through to the parallel
 `qemu-zephyr` group. Fixture rebuilt with the override embedded (`build-ws-rs-entry-zenoh`
 relinked; `nros_runtime_locator_override` referenced by the generated `rust_main`).
-**Verified 2026-07-11** via a direct prebuilt-binary e2e (the nextest lane was
-blocked by a concurrent full-suite run saturating the box, load >130, so the
-verification bypassed cargo/nextest): zenohd on an ephemeral port 7789, the Entry
-booted ("zephyr workspace entry up (2 nodes)") and dialed the `-testargs
---nros-locator` override (the old bake would have dialed 7456), delivering **48
-messages** to an external native listener on that same ephemeral router. The
-override path is proven; W1 is fully parallel with no remaining serial group.
+**Override mechanism proven** (the Entry dials the `-testargs --nros-locator`
+ephemeral port, not the baked 7456) — the parallelism goal (no shared baked port)
+is met and the serial group is retired.
+
+**CORRECTION 2026-07-12: the ws-entry e2e itself is NOT green — it is a flaky
+delivery race, a pre-existing #164 residual the override does NOT fix.** An initial
+manual run delivered 48 messages, but that was a timing-dependent PASS: re-running
+on a free box (zenohd binds in ~2 s instead of ~14 s under load) delivers **0**, and
+`test_zephyr_workspace_entry_native_sim_e2e` fails consistently in nextest
+("Listener timed out" — the external native listener receives nothing after
+readiness). The Entry's internal pico publisher → host zenohd → external native
+subscriber path loses samples depending on the sub-vs-pub declaration ordering
+(the router computes the data route once and caches it; a late external subscriber
+can miss it). This is the same pico-pub→native-sub delivery class as the #164
+family and must be tracked as a real residual — the "48 messages" claim above was a
+flaky pass and should not have been read as verification.
 
 ### W2 — staleness-guard false-positive (#147 class)
 

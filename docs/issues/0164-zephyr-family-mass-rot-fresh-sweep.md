@@ -129,6 +129,36 @@ Native→Zephyr delivered 41 samples while Zephyr→Native delivered 0. Zephyr�
 specifically the zephyr-pico **publisher → host-zenohd → native-subscriber** path.
 Not a port/parallelism artifact (fails serial). Own follow-up.
 
+## Fresh sweep 2026-07-12 — mass-rot drained to 5 stale-fixtures + 2 real residuals
+
+Full `--test zephyr` on current main (NO `NROS_SKIP_FIXTURE_CHECK`): **38 passed /
+7 failed / 1 skipped** (was 21/24/1 at filing). The spun-off issues all landed:
+#163 (backend), #147/W2 (content-aware staleness), #174 (XRCE C/C++), #175 (Cyclone
+action, all lanes), #173 (zephyr-pub→native — was a stale Int32-vs-String listener
+fixture). The 7 remaining fails:
+
+- **5 = stale-fixture errors** (the guard working, not bugs): `dds_{c,cpp,rs}_action_e2e`,
+  `zephyr_server_native_client`, `native_server_zephyr_client` — the guard reports
+  e.g. `native-rs-service-client` binary older than
+  `generated/builtin_interfaces/src/lib.rs` (a codegen mtime bump; the classic
+  treadmill). Proven to PASS when rebuilt (the 3 action lanes were verified fresh in
+  #175). Fix = `just build-test-fixtures`.
+- **2 = real residuals:**
+  - `cpp_service_server_to_client_e2e` (zenoh): server handles 1 request, client gets
+    1 OK, expected ≥3 — a zenoh C++ service completion/throughput shortfall (distinct
+    from #175's Cyclone one). Actionable; not yet its own issue.
+  - `workspace_entry_native_sim_e2e`: the ws-runtime Entry's internal pico publisher
+    → host zenohd → external native subscriber loses samples (flaky/timing race — the
+    router caches the data route; a late external sub can miss it). The phase-286 W1
+    override wired parallelism but does NOT fix this delivery race. Same pico-pub →
+    external-native-sub class as this family; standalone talker→listener
+    (`zephyr_to_native`) is reliably green after the #173 fixture rebuild, but the
+    2-node entry is not. Actionable residual.
+
+**Net:** the "mass rot" is essentially cleared — rebuild the 5 stale fixtures and the
+family is 43/45, with two genuine delivery residuals (zenoh cpp service throughput +
+ws-entry pico-pub delivery race) left to chase.
+
 ## References
 
 `packages/testing/nros-tests/tests/zephyr.rs`, archived issue 0157 (the
