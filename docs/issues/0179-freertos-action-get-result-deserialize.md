@@ -1,6 +1,6 @@
 ---
 id: 179
-title: "Embedded C/C++ action e2e (freertos + threadx-linux): goal + feedback deliver, get-result reply fails to deserialize"
+title: "zenoh C/C++ action e2e (ALL platforms incl. native): goal + feedback deliver, get-result reply fails to deserialize"
 status: open
 type: bug
 area: rmw-zenoh
@@ -75,3 +75,18 @@ deliver, then `Failed to deserialize result`; `accepted=true, completed=false`)
 on its 4/6-green lane — so this is NOT freertos-specific: the bug lives in the
 shared rmw-zenoh-cffi get-result reply path (or the nros-c client-side result
 decode), exercised the same way by both platforms' native-identical images.
+
+## Root-cause scoping (bisect-by-baseline, same day)
+
+- **NATIVE reproduces**: `native_api::test_c_action_communication` fails with
+  the identical signature on freshly built fixtures.
+- **Pre-existing on trunk, NOT a phase-287 regression**: a worktree at
+  `0d9484b20` (pre-session tip, untouched sources) with freshly rebuilt
+  native fixtures fails IDENTICALLY — the lane only ever looked green on
+  stale museum binaries (the 0148/0164 treadmill class).
+- **zenoh-only**: `c_xrce_api::test_c_xrce_action_fibonacci` (same portable
+  main.c, XRCE backend) passes — the bug lives in the zenoh rmw get-result
+  query/reply path, not in the examples, the action layer API, or CDR
+  generally. Feedback frames on the SAME payload type deserialize fine and
+  the client sometimes drops/coalesces feedback frames before dying —
+  suggests reply-buffer handling in the zenoh cffi reply path.
