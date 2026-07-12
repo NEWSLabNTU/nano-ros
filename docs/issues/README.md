@@ -50,6 +50,27 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
   `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
   split archives. Independent of #175's Cyclone descriptor work.
+- **#186** — [test rot: integration shell smokes + migrate drift gate](0186-stale-test-preconditions-integration-migrate.md):
+  three `integrations/` shell smokes probe the pre-208.D.7 layout; `migrate_workspace_e2e` red until
+  the pinned nros release catches the post-212.I emitter spec.
+- **#185** — [zephyr self-pkg M-F.3 shim bake half-missing + bringup lanes](0185-zephyr-selfpkg-shim-bake-and-bringup-lanes.md):
+  `config_h=true, config_cmake=false` under build/west-fixtures — emitter-side; plus
+  cli_bringup zephyr/platformio reds. Bisect across the three same-week phase-287 emitters.
+- **#184** — [baremetal XRCE/serial emulator heap OOM](0184-baremetal-xrce-serial-emulator-heap-oom.md):
+  `memory allocation of 74888 bytes failed` — the #176 executor-backing fix (mps2 heap 64→128 KB)
+  missed the talker-xrce/serial image configs.
+- **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
+  zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
+  NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
+- **#182** — [realtime tiers: high tier does not outrun low](0182-realtime-tier-scheduling-no-differentiation.md):
+  nuttx c/cpp tiers + cpp subnode/portable — ctrl==telem counters; tier spec not reaching the
+  executor (bind_group_sched seeding) or both tiers on one thread.
+- **#181** — [build-test-fixtures exits 0 with lanes unbuilt](0181-fixture-sweep-silent-lane-gaps.md):
+  esp32, px4, freertos/threadx-linux RUST examples + two native rust leaves absent/stale after a
+  green sweep → a dozen tests fail "not prebuilt" and masquerade as runtime bugs.
+- **#180** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0180-rust-leaf-class-prefix-lint-violations.md):
+  the W7 lint demands a HYPHENATED package prefix inside a Rust `class` path — unsatisfiable
+  literally; normalise `-`/`_` in the lint or re-spec the metadata.
 - **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):
   phase-287 native-identical freertos images: pubsub + service e2e GREEN, action goal + feedback
   deliver, but the client dies on `Failed to deserialize result` (zenoh query/reply path). First
