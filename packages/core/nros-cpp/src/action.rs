@@ -623,23 +623,34 @@ static mut FEEDBACK_STASH_LEN: i32 = -1;
 static mut FEEDBACK_STASH: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
 static mut FEEDBACK_STASH_GOAL_ID: nros::GoalId = nros::GoalId { uuid: [0u8; 16] };
 
+/// Issue #179 — a raw payload never starts with a CDR encapsulation
+/// identifier (`00 {00|01|06|07|0a|0b}`). The upstream dispatch (arena /
+/// poll) now delivers action payloads WITH a single encap header (splicing
+/// one in when a C server's stripped-fields reply arrives raw), so the
+/// trampolines must prepend ONLY when the header is genuinely absent —
+/// the old unconditional prepend double-framed every zenoh delivery.
+fn payload_has_cdr_encap(buf: &[u8]) -> bool {
+    buf.len() >= 2 && buf[0] == 0 && matches!(buf[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b)
+}
+
 unsafe extern "C" fn cpp_feedback_trampoline(
     goal_id: *const nros::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut c_void,
 ) {
+    let data = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
     let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-    let copy_len = feedback_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            feedback_data,
-            framed.as_mut_ptr().add(CDR_HEADER_LEN),
-            copy_len,
-        );
-    }
-    let framed_len = CDR_HEADER_LEN + copy_len;
+    let framed_len = if payload_has_cdr_encap(data) {
+        let n = feedback_len.min(DEFAULT_RX_BUF_SIZE);
+        framed[..n].copy_from_slice(&data[..n]);
+        n
+    } else {
+        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+        let n = feedback_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
+        CDR_HEADER_LEN + n
+    };
 
     // Always stash the latest feedback for `try_recv_feedback` /
     // `feedback_stream().try_next()` polling.
@@ -683,19 +694,21 @@ unsafe extern "C" fn cpp_result_trampoline(
     result_len: usize,
     context: *mut c_void,
 ) {
-    // User callbacks expect normal CDR bytes, so restore the header stripped
-    // before `complete_goal_raw` stored the result fields.
+    // User callbacks expect normal CDR bytes. The upstream dispatch delivers
+    // WITH a single encap header (issue #179); prepend only when it is
+    // genuinely absent.
+    let data = unsafe { core::slice::from_raw_parts(result_data, result_len) };
     let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-    let copy_len = result_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            result_data,
-            framed.as_mut_ptr().add(CDR_HEADER_LEN),
-            copy_len,
-        );
-    }
-    let framed_len = CDR_HEADER_LEN + copy_len;
+    let framed_len = if payload_has_cdr_encap(data) {
+        let n = result_len.min(DEFAULT_RX_BUF_SIZE);
+        framed[..n].copy_from_slice(&data[..n]);
+        n
+    } else {
+        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+        let n = result_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
+        CDR_HEADER_LEN + n
+    };
 
     // Always stash the result for Future::wait polling
     unsafe {
@@ -1509,50 +1522,57 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
         && let Some(cb) = feedback_cb
     {
-        // [CDR_HEADER(4)][GoalId.length(u32 = 4)][GoalId.uuid(16)][feedback_fields]
-        // — same off-by-N as the trampoline version: prior code
-        // used `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) and missed
-        // the `write_u32(16)` length-prefix that `write_goal_id`
-        // emits before the UUID bytes.
+        // [CDR_HEADER(4)][GoalId.uuid(16)][feedback payload] — SEQ_PREFIX_LEN
+        // is 0 since 233.6 (kept in the sum so the framing reads uniformly).
+        // Issue #179 — deliver WITH a single encap header, mirroring the
+        // arena dispatch: a typed server's payload already carries one
+        // (`ffi_serialize`), a stripped-fields payload gets the reply's own
+        // top-level encap spliced in front. The old verbatim pass-through
+        // handed raw fields to `ffi_deserialize`, which ate the first data
+        // word as the encap.
         const FEEDBACK_PAYLOAD_OFFSET: usize =
             CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
         if total_len > FEEDBACK_PAYLOAD_OFFSET {
             let buf = core.feedback_buffer_ref();
-            unsafe {
-                cb(
-                    &goal_id.uuid,
-                    buf[FEEDBACK_PAYLOAD_OFFSET..total_len].as_ptr(),
-                    total_len - FEEDBACK_PAYLOAD_OFFSET,
-                    ctx,
-                );
+            let raw = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
+            if payload_has_cdr_encap(raw) {
+                unsafe { cb(&goal_id.uuid, raw.as_ptr(), raw.len(), ctx) };
+            } else {
+                let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
+                let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+                spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
+                spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
+                unsafe { cb(&goal_id.uuid, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx) };
             }
         }
     }
 
     // Poll result reply
     //
-    // Layout: [CDR_HEADER(4)][status(i8)][payload]. The payload (the
-    // serialized result message) starts immediately after the status byte at
-    // offset 5 — there is no alignment pad here, matching the C wrapper's
-    // `nros_action_client_poll` (which yields the full result sequence E2E).
-    // A prior 8-byte offset (a mistaken Phase-96.1 "alignment" change) skipped
-    // 3 bytes into the payload and truncated the sequence to `[0]` (Phase 239).
-    const RESULT_PAYLOAD_OFFSET: usize = 5;
+    // Layout (`reply_get_result_from_slab`): [CDR_HEADER(4)][status(i8)]
+    // [align(4) → byte 8][result payload]. Issue #179 — the old offset-5
+    // slice handed the three alignment-pad bytes to the deserializer as the
+    // start of the body (its comment cited the C wrapper's identical bug as
+    // proof of correctness — two bugs cross-validating; phase-239's revert
+    // of a prior 8-offset was measuring against that same broken pair).
+    // Deliver WITH a single encap header, arena-style.
+    const RESULT_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + 4;
     if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
         && let Some(cb) = result_cb
-        && total_len >= RESULT_PAYLOAD_OFFSET
+        && total_len >= 5
     {
         let buf = core.result_buffer_ref();
         let status = buf[4] as i32;
         let uuid = make_uuid(core.goal_counter());
-        unsafe {
-            cb(
-                &uuid,
-                status,
-                buf[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
-                total_len - RESULT_PAYLOAD_OFFSET,
-                ctx,
-            );
+        let raw = &buf[RESULT_PAYLOAD_OFFSET.min(total_len)..total_len];
+        if payload_has_cdr_encap(raw) {
+            unsafe { cb(&uuid, status, raw.as_ptr(), raw.len(), ctx) };
+        } else {
+            let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
+            let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+            spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
+            spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
+            unsafe { cb(&uuid, status, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx) };
         }
     }
 

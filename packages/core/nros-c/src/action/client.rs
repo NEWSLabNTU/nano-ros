@@ -657,18 +657,21 @@ pub unsafe extern "C" fn nros_action_get_result(
                 _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
             };
 
-            // Prepend CDR header for C deserializer
-            let output_len = CDR_HEADER_LEN + data_len;
-            if output_len > result_capacity {
+            // Issue #179 — the dispatch paths now deliver the result WITH its
+            // CDR encapsulation header (arena + poll both splice one in when a
+            // C server's reply arrives raw), so copy verbatim. The old
+            // unconditional re-header here double-framed a typed server's
+            // reply and, combined with the poll path's off-by-alignment slice,
+            // broke every zenoh C/C++ action client.
+            if data_len > result_capacity {
                 return NROS_RET_ERROR;
             }
             let out = core::slice::from_raw_parts_mut(result, result_capacity);
-            let payload = write_cdr_le_header(out).expect("out_capacity >= CDR_HEADER_LEN");
             // SAFETY: BLK_RESULT_LEN's Acquire load above fences the
             // buffer write in `blk_result_cb`.
             let buf = unsafe { &*BLK_RESULT_BUF.0.get() };
-            payload[..data_len].copy_from_slice(&buf[..data_len]);
-            *result_len = output_len;
+            out[..data_len].copy_from_slice(&buf[..data_len]);
+            *result_len = data_len;
             return NROS_RET_OK;
         }
         let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
@@ -939,7 +942,19 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
                 6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
                 _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
             };
-            let result_offset = 5;
+            // Issue #179 — the reply is `[CDR hdr 4][status i8][align(4)]
+            // [result payload]`: the payload starts at stream-pos 4 = byte 8,
+            // NOT byte 5. Slicing at 5 handed the three alignment-pad bytes
+            // to the deserializer as the start of the result body → every
+            // zenoh C/C++ action client failed `Failed to deserialize result`
+            // on all platforms (feedback worked: its 4+16 framing lands
+            // aligned by luck). Mirror the arena dispatch (executor/arena.rs
+            // `RESULT_PAYLOAD_OFFSET`): payload@8, delivered WITH a CDR
+            // encapsulation header — a typed/Rust server serialised one
+            // in-line; a C server's `strip_cdr_header`→slab reply arrives
+            // raw, so splice the reply's own (always-valid) top-level encap
+            // in front. Callback contract: bytes = encap-headered result.
+            let result_offset = (CDR_HEADER_LEN + 4).min(total_len);
             let uuid = nros_goal_uuid_t {
                 uuid: {
                     let mut u = [0u8; 16];
@@ -947,13 +962,19 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
                     u
                 },
             };
-            cb(
-                &uuid,
-                c_status,
-                buf[result_offset..total_len].as_ptr(),
-                total_len - result_offset,
-                ctx,
-            );
+            let raw = &buf[result_offset..total_len];
+            let has_encap =
+                raw.len() >= 2 && raw[0] == 0 && matches!(raw[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b);
+            if has_encap {
+                cb(&uuid, c_status, raw.as_ptr(), raw.len(), ctx);
+            } else {
+                const SPLICE_BUF: usize = 1024;
+                let mut spliced = [0u8; SPLICE_BUF];
+                let n = raw.len().min(SPLICE_BUF - CDR_HEADER_LEN);
+                spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
+                spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
+                cb(&uuid, c_status, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx);
+            }
         }
     }
 
