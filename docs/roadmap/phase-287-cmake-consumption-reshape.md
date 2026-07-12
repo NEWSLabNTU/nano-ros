@@ -91,14 +91,95 @@ reused**, their **user-facing spelling is superseded** by RFC-0048.
   byte-identical — they migrate by hand or stay bespoke. Own-interface packages
   (`custom-msg`) are the `nano_ros_generate_interfaces` (§5) case.
 
+## In flight (W6 embedded — 2026-07-12, option A decided)
+
+**Shape decision (maintainer, 2026-07-12): embedded canonical role leaves are
+NATIVE-IDENTICAL** — same `CMakeLists.txt` AND same portable `src/main.{c,cpp}`
+as the native counterpart; the platform delta is ONLY the package.xml
+`<nano_ros deploy= board= rmw=/>` tuple. Component-model pedagogy stays in the
+workspace examples + phase-242 POCs.
+
+What makes one source portable (all landed):
+- `NROS_HOST_POSIX` was never defined by any build path — the root cause of
+  every native C main hardcoding `NROS_APP_MAIN_REGISTER_POSIX()` (a copy-out
+  to a board then died at link with undefined `app_main`). The posix
+  `nros_platform_link_app` now defines it; the auto `NROS_APP_MAIN_REGISTER()`
+  picks POSIX on host / VOID (`app_main`) on FreeRTOS/NuttX/ThreadX / Zephyr's
+  `int main` under `__ZEPHYR__`.
+- Portable connect seam: `NROS_ENTRY_LOCATOR` + `NROS_ENTRY_DOMAIN_ID` defaults
+  in `<nros/app_main.h>` (C) and applied inside `nros::init` (C++). Precedence:
+  explicit arg > env (`$NROS_LOCATOR`/`$ROS_DOMAIN_ID`, hosted) > baked macro >
+  local default. The NanoRosEntry board gate bakes the locator (QEMU slirp
+  `tcp/10.0.2.2:7447`, threadx-linux loopback) and ferries `-DNROS_DOMAIN_ID`
+  to `NROS_ENTRY_DOMAIN_ID`.
+- Native cpp mains converted to `nros_app_main` + `NROS_APP_MAIN_REGISTER()`.
+
+**Migrated (49 leaves)** via `scripts/docs/migrate-embedded-example-native-shape.py`:
+qemu-arm-freertos (12), qemu-arm-nuttx (12), qemu-riscv-nuttx (1),
+qemu-riscv64-threadx (12), threadx-linux (12) — c+cpp × role leaves. Old
+component sources git-rm'd; harness exe names de-prefixed
+(`freertos_c_talker` → `c_talker`, …) in `fixtures/binaries/*.rs`; e2e markers
+were already the native strings ("I heard:", "Waiting for messages"). Plus 3
+easy bespoke native leaves (logging, safety-listener c+cpp) → ament shape.
+
+**Verified (zenoh fixture matrix + rtos e2e, 2026-07-12).** All four lanes
+BUILD green (freertos / nuttx-arm / threadx-linux / threadx-riscv64, c+cpp;
+nuttx-riscv talker too). rtos e2e (nuttx serialized `-j 1` — parallel cold-boot
+QEMU flake):
+
+| lane (c/cpp)     | pubsub | service | action |
+|------------------|--------|---------|--------|
+| freertos         | ✓✓     | ✓✓      | ✗✗ #179 |
+| nuttx            | ✓✓     | ✓/✗cpp  | ✗✗ #179 |
+| threadx-linux    | ✓✓     | ✓✓      | ✗✗ #179 |
+| threadx-riscv64  | ✓✓     | ✓✓      | (no c/cpp action tests) |
+
+Every ✓ lane above is delivery the harness could never see before — the old
+role images baked `tcp/10.0.2.2:7447` while the harness listens per-(variant,
+lang) (`7551`–`7675`), so pre-287 these C/C++ rtos_e2e lanes could not even
+connect. #179 (embedded get-result reply deserialize, shared rmw-zenoh-cffi
+path) is the one open runtime bug; cyclone side-lanes blocked by #177
+(threadx-linux dup ts symbols) — both filed.
+
+Landed fixes the migration forced out (all load-bearing beyond it):
+- `nano_rosConfig.cmake` writes the package.xml tuple into the CACHE —
+  reconfigures used to fall back to root's cached `posix` and cross leaves
+  died at `Threads_FOUND`.
+- `NanoRosEntry` gate: `_nra_board_active` accepts board-name (workspace) OR
+  deploy/platform-token (tuple) spellings, normalizing legacy
+  `threadx_linux`-style `-DNANO_ROS_PLATFORM` values.
+- Platform link is now `nros_platform_link_app_once` + DEFERRED to leaf-scope
+  end (wrappers in NanoRosEntry.cmake): the double gate+`nano_ros_link` call
+  was fatal on NuttX (dup `<name>_build` target), and an immediate call ran
+  before `ament_target_dependencies` → NuttX's include/lib text files missed
+  the interface closure (`std_msgs.h: No such file`).
+- Per-cell fixture identity: `NROS_ENTRY_LOCATOR` baked for 48 cells
+  (freertos rehosted to `tcp/192.0.3.1:<port>` + rtos_e2e freertos switched to
+  the board-net slirp launcher — default slirp never answers the 192.0.3.1
+  gateway ARP, pcap-proven); pair members get distinct IP/MAC last octets
+  (freertos `@NROS_ENTRY_IP_LAST@` template param; threadx-rv64 the existing
+  `NROS_APP_NET_IP_LAST`) — identical baked identities seed identical PRNGs →
+  identical zenoh ZIDs → the router collapses the pair to ONE peer and
+  delivery silently dies.
+- `nros::init` locator precedence fixed: arg > env (hosted) > baked
+  `NROS_ENTRY_LOCATOR` > local default — the hosted branch's eager
+  `tcp/127.0.0.1:7447` had shadowed threadx-linux's baked port.
+- Minimal-libcpp / freestanding portability: `enable_language(ASM)` in the
+  riscv64-qemu board overlay (leaf no longer declares ASM; cmake silently
+  dropped the port `.S` files), `#ifdef _IOLBF` around `setvbuf`, global C
+  spellings for stdio/signal/strtoll in the cpp mains and
+  `nros-rmw-cyclonedds/src/descriptors.cpp`, host-only gates for
+  env/argv parsing.
+
 ### W6 remaining — [migration] embedded / Zephyr / workspace / bespoke
 - **Do:** embedded native leaves (freertos/nuttx/threadx — need W5 presets),
   Zephyr leaves (keep `find_package(Zephyr)` + Kconfig; the verb hides the
   add_library-into-`app`, but the leaf is NOT byte-identical to native — Zephyr
   owns the build), workspace roots + members (composition via `nros plan`), the 6
   bespoke/own-msg native leaves, and `nros new` emitting the ament shape.
-- **Blocked-by:** W5 embedded presets (cross-compile leaves) + per-shape design
-  confirmation (Zephyr non-uniformity, workspace verb mapping).
+- **Blocked-by:** ~~W5 embedded presets~~ (landed 2026-07-12 — cross-compile
+  leaves are unblocked) + per-shape design confirmation (Zephyr non-uniformity,
+  workspace verb mapping).
 
 ## Waves (RFC-0048 implementation)
 
@@ -128,7 +209,7 @@ old-path removal.**
   (all platform data in `package.xml`); switching `board=` in `package.xml`
   reconfigures the toolchain path (via the preset, W5) with no CMake edit.
 
-### W5 — [impl] toolchain automation: `nros setup` presets + `nros init` — NEXT
+### W5 — [impl] toolchain automation: `nros setup` presets + `nros init` — LANDED (`07a2fdc64`, shape C′)
 - **Design resolved (shape C′, RFC-0048 §6):** no `${repo}` templating (rejected —
   complicates parsing, assumes the tree layout). One board-intrinsic field
   `[board.cmake] toolchain_file` in `nros-board.toml` (a plain in-repo relative

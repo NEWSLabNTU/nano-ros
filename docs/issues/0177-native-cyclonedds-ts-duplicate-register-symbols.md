@@ -67,3 +67,9 @@ Not caused by the concurrent #175 Cyclone descriptor work (that touches
 - Surfaced while rebuilding all fixtures for the RTIC e2e run (see #176). The
   `native` stage was already broken on trunk independent of #167 / the RTIC
   Send fix.
+- phase-287 W6 (2026-07-12): the same duplicate-`register_*_0` link failure now
+  also blocks the **threadx-linux C/C++ cyclonedds fixture cells** in their
+  ament shape (`libstd_msgs__cyclonedds_ts.a` vs
+  `libexample_interfaces__cyclonedds_ts.a`, action-* leaves). The zenoh cells
+  on the same leaves build + run fine, so the migration is unaffected — this
+  issue is the sole blocker for the threadx-linux cyclone lane.

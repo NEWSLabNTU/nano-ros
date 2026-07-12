@@ -50,6 +50,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (example_interfaces' ts archive bundles the std_msgs primitives). Blocks the `native` stage of
   `build-test-fixtures`. Fix = dedup the typegen, `--allow-multiple-definition` (#0138 pattern), or
   split archives. Independent of #175's Cyclone descriptor work.
+- **#179** — [FreeRTOS C/C++ action get-result reply fails to deserialize](0179-freertos-action-get-result-deserialize.md):
+  phase-287 native-identical freertos images: pubsub + service e2e GREEN, action goal + feedback
+  deliver, but the client dies on `Failed to deserialize result` (zenoh query/reply path). First
+  real exercise of this lane — the pre-287 images baked port 7447 vs the harness's 7551+ and never
+  connected; exposed, not regressed.
 - **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
   every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
   `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
