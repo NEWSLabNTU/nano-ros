@@ -21,7 +21,9 @@
 
 #include "descriptors.hpp"
 
-#include <cstring>
+// <string.h> (not <cstring>): the riscv64-threadx minimal libcpp does not
+// inject strchr/strrchr into namespace std (phase-287; NROS_CPP_STD pitfall).
+#include <string.h>
 
 namespace nros_rmw_cyclonedds {
 
@@ -50,7 +52,7 @@ void register_descriptor(const char *type_name,
     // mirrors how Cyclone itself dedupes topic-create with the same
     // name + descriptor.
     for (std::size_t i = 0; i < g_count; ++i) {
-        if (std::strcmp(g_entries[i].type_name, type_name) == 0) {
+        if (strcmp(g_entries[i].type_name, type_name) == 0) {
             return;
         }
     }
@@ -70,7 +72,7 @@ const dds_topic_descriptor_t *find_descriptor(const char *type_name) {
         return nullptr;
     }
     for (std::size_t i = 0; i < g_count; ++i) {
-        if (std::strcmp(g_entries[i].type_name, type_name) == 0) {
+        if (strcmp(g_entries[i].type_name, type_name) == 0) {
             return g_entries[i].descriptor;
         }
     }
@@ -91,20 +93,20 @@ std::size_t registered_descriptor_count() {
 // e2e's silent no-reply). Converts `a/b/C` → `a::b::dds_::C_`; DDS-form
 // (or any slash-less) input passes through untouched.
 bool ros_form_to_dds(const char *type_name, char *out, std::size_t out_cap) {
-    if (std::strchr(type_name, '/') == nullptr) {
-        std::size_t len = std::strlen(type_name);
+    if (strchr(type_name, '/') == nullptr) {
+        std::size_t len = strlen(type_name);
         if (len + 1 > out_cap) return false;
-        std::memcpy(out, type_name, len + 1);
+        memcpy(out, type_name, len + 1);
         return true;
     }
-    const char *last_slash = std::strrchr(type_name, '/');
+    const char *last_slash = strrchr(type_name, '/');
     std::size_t out_len = 0;
     for (const char *p = type_name; *p != '\0'; ++p) {
         if (*p == '/') {
             const char *insert = (p == last_slash) ? "::dds_::" : "::";
-            std::size_t ilen = std::strlen(insert);
+            std::size_t ilen = strlen(insert);
             if (out_len + ilen >= out_cap) return false;
-            std::memcpy(out + out_len, insert, ilen);
+            memcpy(out + out_len, insert, ilen);
             out_len += ilen;
         } else {
             if (out_len + 1 >= out_cap) return false;
@@ -121,11 +123,11 @@ bool ros_form_to_dds(const char *type_name, char *out, std::size_t out_cap) {
 
 bool action_topic_type(const char *topic_name, const char *type_name,
                        char *out, std::size_t out_cap) {
-    std::size_t nlen = topic_name != nullptr ? std::strlen(topic_name) : 0;
+    std::size_t nlen = topic_name != nullptr ? strlen(topic_name) : 0;
     const char *feedback_suffix = "/_action/feedback";
-    std::size_t flen = std::strlen(feedback_suffix);
+    std::size_t flen = strlen(feedback_suffix);
     bool is_feedback =
-        nlen >= flen && std::strcmp(topic_name + nlen - flen, feedback_suffix) == 0;
+        nlen >= flen && strcmp(topic_name + nlen - flen, feedback_suffix) == 0;
     // Normalise to the DDS-mangled registry key first. C/C++ action servers
     // pass the ROS-form action type (`pkg/action/A`) verbatim (issue #175
     // residual #1: the slash form resolved no descriptor → feedback/status
@@ -133,20 +135,20 @@ bool action_topic_type(const char *topic_name, const char *type_name,
     // DDS form, which `ros_form_to_dds` leaves untouched.
     char base[256];
     if (!ros_form_to_dds(type_name, base, sizeof(base))) return false;
-    std::size_t blen = std::strlen(base);
+    std::size_t blen = strlen(base);
     if (!is_feedback) {
         if (blen + 1 > out_cap) return false;
-        std::memcpy(out, base, blen + 1);
+        memcpy(out, base, blen + 1);
         return true;
     }
     // Action feedback: bare base `<A>_` → `<A>_FeedbackMessage_`. Strip
     // the single trailing `_`, append `_FeedbackMessage_`.
     if (blen > 0 && base[blen - 1] == '_') --blen;
     const char *infix = "_FeedbackMessage_";
-    std::size_t ilen = std::strlen(infix);
+    std::size_t ilen = strlen(infix);
     if (blen + ilen + 1 > out_cap) return false;
-    std::memcpy(out, base, blen);
-    std::memcpy(out + blen, infix, ilen);
+    memcpy(out, base, blen);
+    memcpy(out + blen, infix, ilen);
     out[blen + ilen] = '\0';
     return true;
 }
@@ -172,7 +174,7 @@ extern "C" void nros_rmw_cyclonedds_register_descriptor(
     nros_rmw_cyclonedds::register_descriptor(type_name, descriptor);
     if (descriptor != nullptr && descriptor->m_typename != nullptr &&
         (type_name == nullptr ||
-         std::strcmp(descriptor->m_typename, type_name) != 0)) {
+         strcmp(descriptor->m_typename, type_name) != 0)) {
         nros_rmw_cyclonedds::register_descriptor(descriptor->m_typename,
                                                  descriptor);
     }
