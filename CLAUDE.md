@@ -94,7 +94,9 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append
   objects → garbage-pointer SEGVs). Long-unrebuilt families "pass" on museum binaries — trust
   only a fresh full sweep, and re-measure any perf number on cleanly rebuilt fixtures before
-  filing an issue from it (→ archived issues 0148/0164).
+  filing an issue from it (→ archived issues 0148/0164). A `nros` CLI rebuild also stales every
+  WORKSPACE fixture (the codegen tool is in the input signature + CONFIGURE_DEPENDS since #182 —
+  rebuild the family, don't debug the "runtime bug").
 - **Test greps use `nros_tests::output::*` constants, never literal strings** — example
   banners/markers get slimmed (phase-277 broke ~10 tests grepping `"Result:"`/`"[OK]"`/old
   banners while delivery worked). If a test times out, FIRST diff the grep pattern against what

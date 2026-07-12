@@ -20,7 +20,22 @@ workspace="$repo_root/$dir"
 }
 
 {
-    printf 'nros-workspace-fixture-v1\0%s\0' "$record"
+    printf 'nros-workspace-fixture-v2\0%s\0' "$record"
+    # #182 — the fixture is a function of the CODEGEN TOOL, not just the
+    # workspace sources: `nros codegen entry` emits the entry TU, `nros ws
+    # sync`/`generate-*` shape the msg crates. A signature blind to the tool
+    # let a fixture built with a pre-fd32a0f75 emitter verify as "fresh"
+    # (realtime tier lanes ran museum TUs with correct-looking sources).
+    # Hash the CLI binary's content into the signature; absent binary hashes
+    # as the literal marker (the build script builds it before stamping).
+    nros_bin="$repo_root/packages/cli/target/release/nros"
+    if [ -x "$nros_bin" ]; then
+        printf 'tool:nros\0'
+        sha256sum "$nros_bin" | awk '{printf "%s", $1}'
+        printf '\0'
+    else
+        printf 'tool:nros-absent\0'
+    fi
     find "$workspace" \
         \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name generated \) \
         -prune -o -type f -print0 \

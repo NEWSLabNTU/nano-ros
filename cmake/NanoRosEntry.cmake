@@ -656,6 +656,19 @@ function(_nros_entry_invoke_codegen)
             "  stderr: ${_stderr}")
     endif()
 
+    # #182 — the generated TU is a function of the CODEGEN TOOL too, not just
+    # its inputs: a `nros` rebuild that changes the emitter (e.g. the fd32a0f75
+    # group-split fallback, the phase-281 tier seams) must re-run this
+    # configure-time codegen, or an existing build dir keeps linking a museum
+    # TU while every source-level dep looks current (the #147 resolver probe
+    # reads the toolchain dep graph and is equally blind to the tool). Depend
+    # on the CLI binary itself: its mtime change → cmake re-configure →
+    # `nros codegen entry` re-runs.
+    if(EXISTS "${_nros_bin}")
+        set_property(DIRECTORY APPEND PROPERTY
+            CMAKE_CONFIGURE_DEPENDS "${_nros_bin}")
+    endif()
+
     # CONFIGURE_DEPENDS from the depfile so any change to the launch
     # XML, any package.xml the pkg-index walked, or the bringup's
     # `system.toml` re-runs cmake configure.

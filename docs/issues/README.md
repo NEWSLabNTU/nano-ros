@@ -56,9 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
-- **#182** — [realtime tiers: high tier does not outrun low](0182-realtime-tier-scheduling-no-differentiation.md):
-  nuttx c/cpp tiers + cpp subnode/portable — ctrl==telem counters; tier spec not reaching the
-  executor (bind_group_sched seeding) or both tiers on one thread.
 - **#181** — [build-test-fixtures exits 0 with lanes unbuilt](0181-fixture-sweep-silent-lane-gaps.md):
   esp32, px4, freertos/threadx-linux RUST examples + two native rust leaves absent/stale after a
   green sweep → a dozen tests fail "not prebuilt" and masquerade as runtime bugs.
@@ -89,7 +86,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#177** — native/threadx-linux
+Recently resolved (see [`archived/`](archived/) for the full list): **#182** — the realtime-tier
+"no differentiation" (nuttx c/cpp tiers + cpp subnode, ctrl==telem) was NOT a scheduling bug: all
+five lanes pass on truly-fresh fixtures. The sweep's fixtures ran museum GENERATED entry TUs —
+both the configure-time entry codegen (`CMAKE_CONFIGURE_DEPENDS`) and the workspace-fixture input
+signature were blind to the `nros` CLI binary, so the Jul-8 group-split/tier emitter fixes never
+re-ran. Two guards landed: the CLI joins `CMAKE_CONFIGURE_DEPENDS` (rebuild → codegen re-runs;
+byte-identical output skips the rewrite) and the signature (v2) hashes the CLI content, so a
+stale-tool fixture now fails loud at test time. Pre-v2 stamps read stale until each family
+rebuilds once. **#177** — native/threadx-linux
 cyclone duplicate `register_<Type>_0` link failure: idlc register ctors now package-namespaced
 (`register_<pkg>_<stem>_<idx>`, `fd7d42b87`); both cyclone fixture lanes link green. **#164** — the tests/zephyr.rs
 "mass rot" (29/45 fail on fresh images) is fully drained: every lane resolved to a stale marker
