@@ -31,11 +31,13 @@ static struct {
 int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 
     const char* locator = getenv("NROS_LOCATOR");
     if (!locator) {
-        locator = "tcp/127.0.0.1:7447";
+        locator = NROS_ENTRY_LOCATOR;
     }
     const char* domain_str = getenv("ROS_DOMAIN_ID");
     uint8_t domain_id = domain_str ? (uint8_t)atoi(domain_str) : 0;
@@ -83,4 +85,4 @@ int nros_app_main(int argc, char** argv) {
     return 0;
 }
 
-NROS_APP_MAIN_REGISTER_POSIX()
+NROS_APP_MAIN_REGISTER()

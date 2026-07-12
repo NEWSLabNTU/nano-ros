@@ -182,7 +182,9 @@ int nros_app_main(int argc, char** argv) {
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline (Phase 177.34).
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 
     memset(&app, 0, sizeof(app));
 
@@ -291,4 +293,4 @@ int nros_app_main(int argc, char** argv) {
 // <nros/app_main.h>). Pre-212 example shipped a bare `main()` here;
 // the canonical shape uses the macro so the entry point is uniform
 // across the example matrix.
-NROS_APP_MAIN_REGISTER_POSIX()
+NROS_APP_MAIN_REGISTER()

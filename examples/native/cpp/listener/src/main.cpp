@@ -1,13 +1,14 @@
 /// @file main.cpp
 /// @brief C++ listener example - subscribes to std_msgs/String (manual-poll)
 
-#include <cstdio>
-#include <cstdlib>
-#include <csignal>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
 
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
-    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+    fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/String
@@ -32,15 +33,17 @@ static void signal_handler(int signum) {
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
-    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
     (void)argc;
     (void)argv;
 
-    std::printf("nros C++ Listener\n");
-    std::printf("===================\n");
+    printf("nros C++ Listener\n");
+    printf("===================\n");
 
     // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
@@ -48,16 +51,16 @@ int main(int argc, char** argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "listener"), 1);
-    std::printf("Node created: %s\n", node.get_name());
+    printf("Node created: %s\n", node.get_name());
 
     nros::Subscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
 
     // Set up signal handler
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-    std::printf("\nWaiting for messages (Ctrl+C to exit)...\n\n");
+    printf("\nWaiting for messages (Ctrl+C to exit)...\n\n");
 
     int message_count = 0;
 
@@ -72,15 +75,17 @@ int main(int argc, char** argv) {
         std_msgs::msg::String msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            std::printf("I heard: [%s]\n", msg.data.c_str());
+            printf("I heard: [%s]\n", msg.data.c_str());
         }
     }
 
     // Cleanup
-    std::printf("\nShutting down...\n");
-    std::printf("Total messages received: %d\n", message_count);
+    printf("\nShutting down...\n");
+    printf("Total messages received: %d\n", message_count);
     nros::shutdown();
 
-    std::printf("Goodbye!\n");
+    printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER()

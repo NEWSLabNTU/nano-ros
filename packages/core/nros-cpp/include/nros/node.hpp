@@ -674,12 +674,13 @@ inline Result init(const char* locator, uint8_t domain_id) {
     // ($NROS_LOCATOR / $ROS_DOMAIN_ID) so the no-arg `nros::init()`
     // call works without `getenv()` boilerplate in user code.
     // Explicit non-null `locator` / non-zero `domain_id` still win.
+    // Phase-287 W6 — the hard "tcp/127.0.0.1:7447" fallback moved BELOW the
+    // baked-macro check: threadx-linux is a HOSTED embedded target, and the
+    // eager default here shadowed its baked `NROS_ENTRY_LOCATOR` port.
     if (locator == nullptr) {
         const char* env_loc = ::std::getenv("NROS_LOCATOR");
         if (env_loc != nullptr && env_loc[0] != '\0') {
             locator = env_loc;
-        } else {
-            locator = "tcp/127.0.0.1:7447";
         }
     }
     if (domain_id == 0) {
@@ -702,6 +703,18 @@ inline Result init(const char* locator, uint8_t domain_id) {
         }
     }
 #endif
+    // Baked compile-time locator (embedded gate) beats the local default but
+    // loses to an explicit arg / env (phase-287 W6; see the 3-arg overload).
+#ifdef NROS_ENTRY_LOCATOR
+    if (locator == nullptr) {
+        locator = NROS_ENTRY_LOCATOR;
+    }
+#endif
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    if (locator == nullptr) {
+        locator = "tcp/127.0.0.1:7447";
+    }
+#endif
     // Phase 266 (W6) — unified default session name "node" across C, C++, and Rust.
     return init(locator, domain_id, "node");
 }
@@ -719,12 +732,12 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // 0. This makes `init_with_launch_auto()` (which delegates here with a
     // null locator) honor the env overlay instead of passing a null locator
     // to the backend → TransportError / degraded session.
+    // Phase-287 W6 — the hard local default moved BELOW the baked-macro check
+    // (threadx-linux is hosted; the eager default shadowed its baked port).
     if (locator == nullptr) {
         const char* env_loc = ::std::getenv("NROS_LOCATOR");
         if (env_loc != nullptr && env_loc[0] != '\0') {
             locator = env_loc;
-        } else {
-            locator = "tcp/127.0.0.1:7447";
         }
     }
     if (domain_id == 0) {
@@ -744,6 +757,28 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
             }
             domain_id = static_cast<uint8_t>(acc);
         }
+    }
+#endif
+    // Phase-287 W6 — compile-time connect defaults, so ONE portable source
+    // works native + embedded. `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
+    // are target compile definitions the embedded board gate bakes
+    // (NanoRosEntry.cmake; Kconfig on Zephyr via <nros/main.hpp>); on native
+    // they are undefined and the env/arg resolution above stands. Precedence:
+    // explicit arg > env (hosted) > baked macro > backend default.
+#ifdef NROS_ENTRY_LOCATOR
+    if (locator == nullptr) {
+        locator = NROS_ENTRY_LOCATOR;
+    }
+#endif
+#ifdef NROS_ENTRY_DOMAIN_ID
+    if (domain_id == 0) {
+        domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
+    }
+#endif
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    // Hosted local-router default — LAST, after env + baked macro.
+    if (locator == nullptr) {
+        locator = "tcp/127.0.0.1:7447";
     }
 #endif
     // Phase 128.C.1 — RMW-blind init. Every backend (cyclonedds,

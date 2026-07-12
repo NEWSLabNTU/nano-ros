@@ -1,13 +1,14 @@
 /// @file main.cpp
 /// @brief C++ action server example - Fibonacci (callback-based)
 
-#include <cstdio>
-#include <cstdlib>
-#include <csignal>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
 
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
-    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+    fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -49,14 +50,14 @@ static void signal_handler(int signum) {
 
 static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal, void* ctx) {
     auto* state = static_cast<ServerState*>(ctx);
-    std::printf("Received goal request with order %d\n", goal.order);
+    printf("Received goal request with order %d\n", goal.order);
     if (goal.order < 0 || goal.order >= 64) {
-        std::printf("Goal rejected: order out of range\n");
+        printf("Goal rejected: order out of range\n");
         return nros::GoalResponse::Reject;
     }
 
     state->goal_count++;
-    std::printf("Executing goal\n");
+    printf("Executing goal\n");
 
     int32_t a = 0;
     int32_t b = 1;
@@ -72,7 +73,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
                 fb.sequence.push_back(result.sequence[k]);
             }
             state->srv->publish_feedback(uuid, fb);
-            std::printf("Publish feedback\n");
+            printf("Publish feedback\n");
         }
 
         int32_t next = a + b;
@@ -81,7 +82,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     }
 
     if (state->srv->complete_goal(uuid, result).ok()) {
-        std::printf("Goal succeeded\n");
+        printf("Goal succeeded\n");
     }
     return nros::GoalResponse::AcceptAndExecute;
 }
@@ -90,19 +91,21 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
-    std::setvbuf(stdout, nullptr, _IOLBF, 0);
-    std::printf("nros C++ Action Server (Fibonacci)\n");
-    std::printf("===================================\n");
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
+    printf("nros C++ Action Server (Fibonacci)\n");
+    printf("===================================\n");
 
     // Launch-aware init. Env overlay active today.
     NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "fibonacci_action_server"), 1);
-    std::printf("Node created: %s\n", node.get_name());
+    printf("Node created: %s\n", node.get_name());
 
     nros::ActionServer<Fibonacci> srv;
     NROS_TRY_RET(node.create_action_server(srv, "/fibonacci"), 1);
@@ -112,19 +115,21 @@ int main(int argc, char** argv) {
     ServerState state{&srv, 0};
     srv.set_goal_callback_with_ctx(on_goal, &state);
 
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-    std::printf("\nWaiting for action goals (Ctrl+C to exit)...\n\n");
+    printf("\nWaiting for action goals (Ctrl+C to exit)...\n\n");
 
     while (g_running && nros::ok()) {
         nros::spin_once(100);
     }
 
-    std::printf("\nShutting down...\n");
-    std::printf("Total goals handled: %d\n", state.goal_count);
+    printf("\nShutting down...\n");
+    printf("Total goals handled: %d\n", state.goal_count);
     nros::shutdown();
 
-    std::printf("Goodbye!\n");
+    printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER()

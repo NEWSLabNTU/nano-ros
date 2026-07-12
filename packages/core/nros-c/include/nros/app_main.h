@@ -49,6 +49,21 @@ int nros_app_main(int argc, char** argv);
 }
 #endif
 
+/* ---- Portable connect defaults (phase-287 W6) ----
+ *
+ * One example source builds native AND embedded: on the host these fall back
+ * to the local router / domain 0 (with `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env
+ * overrides applied by the example before consulting them); on an embedded
+ * board the build bakes both as target compile definitions
+ * (NanoRosEntry.cmake board gate — e.g. `tcp/10.0.2.2:7447` for QEMU slirp),
+ * so the `#ifndef` defaults below never fire there. */
+#ifndef NROS_ENTRY_LOCATOR
+#define NROS_ENTRY_LOCATOR "tcp/127.0.0.1:7447"
+#endif
+#ifndef NROS_ENTRY_DOMAIN_ID
+#define NROS_ENTRY_DOMAIN_ID 0
+#endif
+
 /* ---- Platform-specific entry shims ---- */
 
 /* C++ files want `extern "C"` linkage on the platform entry symbol so

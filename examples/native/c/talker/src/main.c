@@ -79,16 +79,18 @@ int nros_app_main(int argc, char** argv) {
 
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 
     // Get configuration from environment
     const char* locator = getenv("NROS_LOCATOR");
     if (!locator) {
-        locator = "tcp/127.0.0.1:7447";
+        locator = NROS_ENTRY_LOCATOR;
     }
 
     const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = 0;
+    uint8_t domain_id = (uint8_t)NROS_ENTRY_DOMAIN_ID;
     if (domain_str) {
         domain_id = (uint8_t)atoi(domain_str);
     }
@@ -139,4 +141,4 @@ int nros_app_main(int argc, char** argv) {
     return 0;
 }
 
-NROS_APP_MAIN_REGISTER_POSIX()
+NROS_APP_MAIN_REGISTER()

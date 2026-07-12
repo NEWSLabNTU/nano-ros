@@ -11,16 +11,19 @@
 ///     zenohd --listen tcp/127.0.0.1:7447
 ///     NROS_LOCATOR=tcp/127.0.0.1:7447 ./build/cpp_logging
 
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 #include <nros/log.hpp>
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
-    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
     (void)argc;
     (void)argv;
 
@@ -28,21 +31,21 @@ int main(int argc, char** argv) {
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
     auto init = nros::init();
     if (!init.ok()) {
-        std::fprintf(stderr, "nros::init failed: %d\n", init.raw());
+        fprintf(stderr, "nros::init failed: %d\n", init.raw());
         return 1;
     }
 
     nros::Node node;
     auto created = nros::create_node(node, "demo");
     if (!created.ok()) {
-        std::fprintf(stderr, "create_node failed: %d\n", created.raw());
+        fprintf(stderr, "create_node failed: %d\n", created.raw());
         nros::shutdown();
         return 1;
     }
 
     auto logger = node.get_logger();
     if (logger == nullptr) {
-        std::fprintf(stderr, "node.get_logger() returned NULL\n");
+        fprintf(stderr, "node.get_logger() returned NULL\n");
         nros::shutdown();
         return 1;
     }
@@ -58,3 +61,5 @@ int main(int argc, char** argv) {
     nros::shutdown();
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER()

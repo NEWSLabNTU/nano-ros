@@ -10,23 +10,26 @@
 /// `RmwSubscriber::try_recv_validated` the C path does.
 
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
-    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+    fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
 #include "std_msgs.hpp"
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
 
-    std::printf("nros C++ Safety Listener\n");
+    printf("nros C++ Safety Listener\n");
 
     // Phase 212.M.2 — `nros::init()` pulls locator + domain_id from
     // `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
@@ -38,7 +41,7 @@ int main(int argc, char** argv) {
     // Poll-mode subscription — the validated receive path is poll-only.
     nros::Subscription<std_msgs::msg::Int32> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
-    std::printf("Waiting for Int32 messages on /chatter...\n");
+    printf("Waiting for Int32 messages on /chatter...\n");
 
     int count = 0;
     while (nros::ok()) {
@@ -52,7 +55,7 @@ int main(int argc, char** argv) {
             const char* crc = status.crc_valid == 1   ? "ok"
                               : status.crc_valid == 0 ? "FAIL"
                                                       : "n-a";
-            std::printf("[%d] Received: data=%d [SAFETY] INTEGRITY gap=%lld dup=%d crc=%s\n", count,
+            printf("[%d] Received: data=%d [SAFETY] INTEGRITY gap=%lld dup=%d crc=%s\n", count,
                         msg.data, (long long)status.gap, (int)status.duplicate, crc);
         }
     }
@@ -60,3 +63,5 @@ int main(int argc, char** argv) {
     nros::shutdown();
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER()

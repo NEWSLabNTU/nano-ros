@@ -12,6 +12,7 @@
  *     ./build/c_logging
  */
 
+#include <nros/app_main.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/log.h>
@@ -23,11 +24,13 @@
 int main(void) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline (Phase 177.34).
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
     setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 
     const char* locator = getenv("NROS_LOCATOR");
     if (locator == NULL) {
-        locator = "tcp/127.0.0.1:7447";
+        locator = NROS_ENTRY_LOCATOR;
     }
 
     nros_support_t support = nros_support_get_zero_initialized();

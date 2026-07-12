@@ -1,14 +1,15 @@
 /// @file main.cpp
 /// @brief C++ talker example - publishes std_msgs/String "Hello World: N" at 1 Hz
 
-#include <cstdio>
-#include <cstdlib>
-#include <csignal>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
 
-// Route NROS_TRY_RET through std::fprintf (we have stdio).
+// Route NROS_TRY_RET through fprintf (we have stdio).
 #define NROS_TRY_LOG(file, line, expr, ret)                                                        \
-    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+    fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
+#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/String
@@ -45,15 +46,15 @@ static void timer_callback(void* context) {
     // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
     ctx->count++;
     char payload[64];
-    std::snprintf(payload, sizeof(payload), "Hello World: %d", ctx->count);
+    snprintf(payload, sizeof(payload), "Hello World: %d", ctx->count);
     std_msgs::msg::String msg;
     msg.data = payload;
 
     nros::Result ret = ctx->publisher->publish(msg);
     if (ret.ok()) {
-        std::printf("Publishing: '%s'\n", msg.data.c_str());
+        printf("Publishing: '%s'\n", msg.data.c_str());
     } else {
-        std::fprintf(stderr, "Publish failed: %d\n", ret.raw());
+        fprintf(stderr, "Publish failed: %d\n", ret.raw());
     }
 }
 
@@ -61,15 +62,17 @@ static void timer_callback(void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int main(int argc, char** argv) {
+int nros_app_main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
-    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+#ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
     (void)argc;
     (void)argv;
 
-    std::printf("nros C++ Talker\n");
-    std::printf("===================\n");
+    printf("nros C++ Talker\n");
+    printf("===================\n");
 
     // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime. Falling back
@@ -78,7 +81,7 @@ int main(int argc, char** argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "talker"), 1);
-    std::printf("Node created: %s\n", node.get_name());
+    printf("Node created: %s\n", node.get_name());
 
     nros::Publisher<std_msgs::msg::String> pub;
     NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
@@ -91,10 +94,10 @@ int main(int argc, char** argv) {
     NROS_TRY_RET(node.create_timer(timer, 1000, timer_callback, &ctx), 1);
 
     // Set up signal handler
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-    std::printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
+    printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
 
     // Spin
     while (g_running && nros::ok()) {
@@ -102,9 +105,11 @@ int main(int argc, char** argv) {
     }
 
     // Cleanup
-    std::printf("\nShutting down...\n");
+    printf("\nShutting down...\n");
     nros::shutdown();
 
-    std::printf("Goodbye!\n");
+    printf("Goodbye!\n");
     return 0;
 }
+
+NROS_APP_MAIN_REGISTER()
