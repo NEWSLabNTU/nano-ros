@@ -208,8 +208,15 @@ nros_require_ws_sync() {
     if nros_cli_ws_sync_available "$bin"; then
         return 0
     fi
-    echo "[PREREQ] nros ws sync verb unavailable (in-tree CLI at packages/cli/ lacks Phase 210.D.1 / 210.E.3.d.native; rebuild via 'just setup-cli', or set \$NROS_CLI to a binary that carries the verb)" >&2
-    exit 0
+    # issue #181 — a fixture build REQUIRES `nros ws sync` to generate the
+    # per-example `generated/` msg crates; without it the rust lane produces
+    # NOTHING. Exiting 0 here silently skipped the whole rust half of the sweep
+    # (freertos/threadx-linux/native), which then surfaced downstream as
+    # `test-all` reds ("fixture not prebuilt") that look like runtime bugs. Fail
+    # LOUD instead: a stale/wrong CLI is an actionable setup error, not a
+    # skippable lane.
+    echo "[ERROR] nros ws sync verb unavailable (CLI at '$bin' lacks Phase 210.D.1 / 210.E.3.d.native; rebuild via 'just setup-cli', or set \$NROS_CLI to a binary that carries the verb). Cannot build rust fixtures without it — failing loud (issue #181) rather than skipping the lane and failing downstream tests." >&2
+    exit 1
 }
 
 nros_cargo_fetch_standalone_manifests() {

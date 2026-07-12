@@ -179,7 +179,7 @@ build-fixture-rust:
     # Replaces the legacy `nros generate-rust --force` + hand-managed
     # `.cargo/config.toml [patch.crates-io]` chunks.
     nros_repo_root="$PWD"
-    for ex in talker listener service-server service-client action-server \
+    for ex in talker listener service-server service-client service-client-callback action-server \
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/native/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
@@ -206,7 +206,7 @@ build-fixture-rust-core:
     nros_cli="$(nros_cli_bin)"
     nros_require_ws_sync "$nros_cli"
     nros_repo_root="$PWD"
-    for ex in talker listener service-server service-client action-server \
+    for ex in talker listener service-server service-client service-client-callback action-server \
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/native/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
