@@ -705,19 +705,30 @@ fn unmigrated_trees_status_surface() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 8 — native standalone leaves use the RFC-0048 ament shape (phase-287 W7)
+// Test 8 — standalone leaves use the RFC-0048 ament shape (phase-287 W6/W7)
 // ---------------------------------------------------------------------------
 
-/// Every `examples/native/{c,cpp}/<leaf>/CMakeLists.txt` must be the RFC-0048
-/// ament shape: `find_package(nano_ros REQUIRED)`, no leftover interim/old-shape
-/// constructs (the `NANO_ROS_ROOT` resolve guard, `nano_ros_bootstrap()`, the
-/// `nano_ros_entry()` verb, or a raw `NanoRosBootstrap.cmake` include). Guards the
-/// phase-287 W6 native migration against regression + a stray un-migrated leaf.
-///
-/// Scoped to native standalone leaves — embedded / Zephyr / workspace trees keep
-/// their own shapes until their migration waves land.
+/// Platform trees whose standalone `{c,cpp}/<leaf>/CMakeLists.txt` are migrated to
+/// the RFC-0048 ament shape. Native (W6 native) + every embedded family (W6
+/// embedded: 49 canonical leaves, native-identical CMakeLists). Zephyr + workspace
+/// are NOT here — they keep their own shapes until their migration waves land.
+const AMENT_SHAPE_TREES: &[&str] = &[
+    "native",
+    "qemu-arm-freertos",
+    "qemu-arm-nuttx",
+    "qemu-riscv-nuttx",
+    "qemu-riscv64-threadx",
+    "threadx-linux",
+];
+
+/// Every `examples/<tree>/{c,cpp}/<leaf>/CMakeLists.txt` (for the migrated trees)
+/// must be the RFC-0048 ament shape: `find_package(nano_ros REQUIRED)`, no leftover
+/// interim/old-shape constructs (the `NANO_ROS_ROOT` resolve guard,
+/// `nano_ros_bootstrap()`, the `nano_ros_entry()` verb, or a raw
+/// `NanoRosBootstrap.cmake` include). Guards the W6 native + embedded migrations
+/// against regression + a stray un-migrated leaf.
 #[test]
-fn native_standalone_leaves_use_ament_shape() {
+fn standalone_leaves_use_ament_shape() {
     const FORBIDDEN: &[&str] = &[
         "nano_ros_bootstrap(",
         "if(NOT DEFINED NANO_ROS_ROOT",
@@ -726,42 +737,52 @@ fn native_standalone_leaves_use_ament_shape() {
         "nano_ros_link(",
     ];
     let mut bad: Vec<String> = Vec::new();
-    for lang in ["c", "cpp"] {
-        let root = examples_dir().join("native").join(lang);
-        if !root.is_dir() {
-            continue;
-        }
-        walk(&root, |dir| {
-            let cml = dir.join("CMakeLists.txt");
-            if !cml.is_file() {
-                return;
+    let mut checked = 0usize;
+    for tree in AMENT_SHAPE_TREES {
+        for lang in ["c", "cpp"] {
+            let root = examples_dir().join(tree).join(lang);
+            if !root.is_dir() {
+                continue;
             }
-            let rel = rel_to_project(&cml);
-            let Ok(body) = fs::read_to_string(&cml) else {
-                bad.push(format!("{} — unreadable", rel.to_string_lossy()));
-                return;
-            };
-            if !body.contains("find_package(nano_ros") {
-                bad.push(format!(
-                    "{} — missing `find_package(nano_ros REQUIRED)` (RFC-0048 ament shape)",
-                    rel.to_string_lossy()
-                ));
-            }
-            for marker in FORBIDDEN {
-                if body.contains(marker) {
+            walk(&root, |dir| {
+                let cml = dir.join("CMakeLists.txt");
+                if !cml.is_file() {
+                    return;
+                }
+                checked += 1;
+                let rel = rel_to_project(&cml);
+                let Ok(body) = fs::read_to_string(&cml) else {
+                    bad.push(format!("{} — unreadable", rel.to_string_lossy()));
+                    return;
+                };
+                if !body.contains("find_package(nano_ros") {
                     bad.push(format!(
-                        "{} — carries superseded `{}` (re-run \
-                         scripts/docs/migrate-example-cmake-ament.py)",
-                        rel.to_string_lossy(),
-                        marker
+                        "{} — missing `find_package(nano_ros REQUIRED)` (RFC-0048 ament shape)",
+                        rel.to_string_lossy()
                     ));
                 }
-            }
-        });
+                for marker in FORBIDDEN {
+                    if body.contains(marker) {
+                        bad.push(format!(
+                            "{} — carries superseded `{}` (re-run \
+                             scripts/docs/migrate-example-cmake-ament.py)",
+                            rel.to_string_lossy(),
+                            marker
+                        ));
+                    }
+                }
+            });
+        }
     }
     assert!(
         bad.is_empty(),
-        "native standalone leaves not in the RFC-0048 ament shape:\n  {}",
+        "standalone leaves not in the RFC-0048 ament shape:\n  {}",
         bad.join("\n  ")
+    );
+    // Sanity: the migrated trees exist + were walked (guards a silent-empty pass if
+    // the examples layout moves).
+    assert!(
+        checked >= 27,
+        "expected >=27 migrated standalone leaves, walked only {checked} — layout moved?"
     );
 }
