@@ -143,10 +143,13 @@ fixture). The 7 remaining fails:
   `generated/builtin_interfaces/src/lib.rs` (a codegen mtime bump; the classic
   treadmill). Proven to PASS when rebuilt (the 3 action lanes were verified fresh in
   #175). Fix = `just build-test-fixtures`.
-- **2 = real residuals:**
-  - `cpp_service_server_to_client_e2e` (zenoh): server handles 1 request, client gets
-    1 OK, expected ≥3 — a zenoh C++ service completion/throughput shortfall (distinct
-    from #175's Cyclone one). Actionable; not yet its own issue.
+- **2 = ~~real residuals~~ TEST BUGS, both fixed 2026-07-12:**
+  - `cpp_service_server_to_client_e2e` (zenoh) — **RESOLVED**: NOT a throughput
+    shortfall. `AddTwoIntsClient` is a ONE-SHOT (`on_tick` sends one request, prints
+    one `Result of add_two_ints:`, sets `done_`) — identical to the C sibling, whose
+    test asserts `>= 1`. The cpp test asserted `>= 3` (a stale "4 calls" comment),
+    which is unsatisfiable by design. Delivery of the 1 reply works. Fixed the
+    assertion to `>= 1`; test PASSES (35.7 s).
   - `workspace_entry_native_sim_e2e` — **RESOLVED 2026-07-12**: NOT a delivery race
     (an earlier note here was wrong). A **message-type mispair** — the ws demo Entry
     (`talker_pkg`) publishes `std_msgs/Int32` on `/chatter` while the test observer
@@ -156,10 +159,12 @@ fixture). The 7 remaining fails:
     exposed this Int32-demo test). Fix: the native listener's type is now
     `NROS_SUB_TYPE`-selectable and the ws-entry test sets `int32`. Test PASSES (49 s).
 
-**Net:** the "mass rot" is essentially cleared — rebuild the 5 stale fixtures and the
-family is 43/45, with ws-entry now green (44/45), leaving **one** genuine delivery
-residual: the zenoh C++ service throughput shortfall (`cpp_service_server_to_client`,
-1/3).
+**Net:** the "mass rot" is cleared. Both non-stale fails were TEST bugs (ws-entry
+observer type mispair + cpp-service over-assertion), now fixed and individually
+PASSING. The remaining 5 fails are stale-fixture guard errors — mechanical
+`just build-test-fixtures`. After that rebuild the family should be fully green
+(44 pass / 1 skip). No RMW code defects remain in this family; close #164 once a
+fresh full-fixture sweep confirms green.
 
 ## References
 

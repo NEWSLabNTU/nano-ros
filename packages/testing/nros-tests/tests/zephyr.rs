@@ -2529,7 +2529,10 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
             .unwrap();
 
-    // Wait for client to complete (4 calls × ~1s sleep + connection time)
+    // Wait for the client to complete. Like the C sibling, `AddTwoIntsClient`
+    // is a ONE-SHOT: `on_tick` sends a single request, prints one
+    // `Result of add_two_ints:` on the reply, then sets `done_` — so the
+    // asserted signal is >= 1 completed call, not a loop.
     let client_output = client
         .wait_for_output(Duration::from_secs(30))
         .unwrap_or_default();
@@ -2553,15 +2556,10 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
     );
 
-    if ok_count >= 3 {
+    if ok_count >= 1 {
         eprintln!(
-            "\nSUCCESS: C++ service client completed {} calls, server handled {} requests",
+            "\nSUCCESS: C++ service client completed {} call(s), server handled {} request(s)",
             ok_count, request_count
-        );
-    } else if request_count > 0 {
-        panic!(
-            "Server handled {} requests but client got only {} OK (expected >= 3)",
-            request_count, ok_count
         );
     } else {
         panic!(
