@@ -1841,6 +1841,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/talker"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 
@@ -1849,6 +1853,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/listener"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 
@@ -1857,6 +1865,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-server"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 
@@ -1865,6 +1877,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-client"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 
@@ -1873,6 +1889,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-server"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 
@@ -1881,6 +1901,10 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-client"
+# issue #181 — without an explicit target the role build ran for the HOST
+# (the example .cargo/config.toml carries only the [patch] block) and the
+# sweep exited 0 with no thumbv7m ELF for the harness to consume.
+target = "thumbv7m-none-eabi"
 no_default_features = true
 target_dir = "target-zenoh"
 

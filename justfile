@@ -894,7 +894,7 @@ build-test-fixtures-leaves:
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         echo "build-test-fixtures: NROS_JOBSERVER=1 — serial launcher; child tools inherit fifo tokens"
         run_stage zephyr just zephyr build-fixtures
-        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4; do
+        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
             run_stage "$platform" just "$platform" build-fixtures
         done
         exit 0
@@ -918,9 +918,9 @@ build-test-fixtures-leaves:
         printf 'SHELL := /bin/bash\n'
         printf '.SHELLFLAGS := -eu -o pipefail -c\n'
         printf '.DELETE_ON_ERROR:\n'
-        printf '.PHONY: all zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4\n'
-        printf 'all: zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4\n\n'
-        for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4; do
+        printf '.PHONY: all zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4\n'
+        printf 'all: zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4\n\n'
+        for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 esp32 px4; do
             child_jobs="$inner"
             if [ "$platform" = "zephyr" ]; then
                 child_jobs="$budget"

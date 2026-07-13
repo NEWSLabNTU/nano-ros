@@ -20,13 +20,13 @@
 # ${NROS_BUILD_JOBS}, which the wrapper sets high so the jobserver — not
 # GNU parallel — is the real throttle.
 
-PLATFORMS := native qemu freertos nuttx threadx_linux threadx_riscv64 zephyr stm32f4 esp32
+PLATFORMS := native qemu freertos nuttx threadx_linux threadx_riscv64 zephyr stm32f4 esp32 px4
 EXAMPLE_OVERLAP_PLATFORMS := native freertos threadx_linux threadx_riscv64
 # esp32: independent fixture tree (n-esp32-qemu + logging-smoke-esp32-qemu);
 # `just esp32 build-fixtures` chains build-logging-smoke. Must be here, not
 # only in PLATFORMS — test-all exercises the esp32 fixtures, so build-all
 # (the top build tier) must build them or the suite hard-fails "not built".
-INDEPENDENT_FIXTURE_PLATFORMS := qemu nuttx zephyr stm32f4 esp32
+INDEPENDENT_FIXTURE_PLATFORMS := qemu nuttx zephyr stm32f4 esp32 px4
 OVERLAP_FIXTURES := $(addprefix fixtures-,$(EXAMPLE_OVERLAP_PLATFORMS))
 INDEPENDENT_FIXTURES := $(addprefix fixtures-,$(INDEPENDENT_FIXTURE_PLATFORMS))
 FIXTURES := $(OVERLAP_FIXTURES) $(INDEPENDENT_FIXTURES)

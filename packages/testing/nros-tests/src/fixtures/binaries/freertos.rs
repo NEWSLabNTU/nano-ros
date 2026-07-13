@@ -62,20 +62,24 @@ static FREERTOS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    // Issue #181 — the role crates are lib-only Component pkgs since 212.L
+    // (same as NuttX, see nuttx.rs `require_entry_binary`): the runnable
+    // firmware is the sibling `<role>-entry` image `build-examples` prebuilds
+    // at --release. The old path probed a `qemu-freertos-<role>` bin the role
+    // crate can no longer produce, so the lane looked permanently unbuilt.
+    let _ = binary_name;
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", name));
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}-entry", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
-            "FreeRTOS example directory not found: {}",
+            "FreeRTOS entry example not found: {}",
             example_dir.display()
         )));
     }
 
-    let binary_path = example_dir.join(format!(
-        "target-zenoh/thumbv7m-none-eabi/nros-fast-release/{}",
-        binary_name
-    ));
+    let bin = format!("freertos_rs_{}_entry", name.replace('-', "_"));
+    let binary_path = example_dir.join(format!("target/thumbv7m-none-eabi/release/{bin}"));
 
     // Tests must not compile fixtures — run `just build-test-fixtures` first.
     super::require_prebuilt_binary(&binary_path)

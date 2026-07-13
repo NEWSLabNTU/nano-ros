@@ -7,7 +7,7 @@ pub mod nuttx;
 pub mod threadx_linux;
 pub mod threadx_riscv64;
 
-use crate::{TestError, TestResult, pinned_nightly, project_root};
+use crate::{TestError, TestResult, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::{
@@ -4117,6 +4117,13 @@ pub fn c_xrce_listener_binary() -> PathBuf {
 /// can't use the generic `build_example()` which uses stable `cargo build`.
 /// The channel comes from `tools/rust-toolchain.toml` via [`pinned_nightly`].
 fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    // Issue #181 — this used to `cargo build` IN-TEST (against the repo's
+    // no-compilation-inside-tests rule) and then probe a HYPHENATED binary
+    // name the crates stopped producing (their `[[bin]]` names are
+    // underscored), so it failed "Binary not found after build" on every
+    // host while the fixture sweep skipped the esp32 lane entirely. The
+    // lane is now part of `build-test-fixtures` (`just esp32 build-fixtures`);
+    // consume the prebuilt ELF like every other platform.
     let root = project_root();
     let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/{}", name));
 
@@ -4127,51 +4134,25 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
         )));
     }
 
-    eprintln!("Building qemu-esp32/rust/{}...", name);
-
-    let mut args = vec![format!("+{}", pinned_nightly())];
-    args.extend(cargo_build_args());
-    let output = cmd("cargo", args)
-        .dir(&example_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
     let binary_path = example_dir.join(format!(
         "target/riscv32imc-unknown-none-elf/{}/{}",
         cargo_target_profile_dir(),
         binary_name
     ));
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
+    require_prebuilt_binary(&binary_path)
 }
 
 /// Build esp32-qemu-talker (cached)
 pub fn build_esp32_qemu_talker() -> TestResult<&'static Path> {
     ESP32_QEMU_TALKER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_example("talker", "esp32-qemu-talker"))
+        .get_or_try_init(|| build_esp32_qemu_example("talker", "esp32_qemu_talker"))
         .map(|p| p.as_path())
 }
 
 /// Build esp32-qemu-listener (cached)
 pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
     ESP32_QEMU_LISTENER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_example("listener", "esp32-qemu-listener"))
+        .get_or_try_init(|| build_esp32_qemu_example("listener", "esp32_qemu_listener"))
         .map(|p| p.as_path())
 }
 

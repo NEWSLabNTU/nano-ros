@@ -26,9 +26,12 @@ domain_id = 0
 # Issue #48 — slirp addressing: guest on 10.0.2.0/24, host alias 10.0.2.2.
 # `nros::main!()` threads these into the firmware boot `Config` via
 # `BoardEntry::run_with_deploy`. Mirrors talker_entry.
-ip = "10.0.2.15"
+# issue #181 — pair members MUST differ (identical IP/MAC seeds identical
+# zenoh ZIDs → the router collapses the pair to one peer, silent no-delivery;
+# same split as the C leaves' NROS_ENTRY_IP_LAST 10/11).
+ip = "10.0.2.16"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7451"
+locator = "tcp/10.0.2.2:7471"
 [dependencies]
 freertos_rs_action_client = { path = "../action-client" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.

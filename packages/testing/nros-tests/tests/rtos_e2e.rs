@@ -257,16 +257,29 @@ impl Platform {
     /// ThreadX QEMU RISC-V, where the MAC address is derived from the
     /// index. Other platforms either use slirp (per-instance NAT) or
     /// pre-assigned static IPs in the firmware and ignore the index.
-    fn start_process(self, binary: &Path, node_idx: u8, name: &str) -> TestResult<RtosProcess> {
+    fn start_process(
+        self,
+        binary: &Path,
+        node_idx: u8,
+        name: &str,
+        lang: Lang,
+    ) -> TestResult<RtosProcess> {
         match self {
             Platform::Freertos => {
-                // phase-287 W6 — the board's lwIP config is STATIC 192.0.3.10 /
-                // gw 192.0.3.1 (no DHCP), so default slirp (10.0.2.0/24) never
-                // answers the guest's gateway ARP and the session dies before
-                // the first SYN. Use the board-net slirp launcher (the
-                // phase-263 C2b entry-fixture pattern); the images bake
-                // `tcp/192.0.3.1:<port>` locators (examples/fixtures.toml).
-                QemuProcess::start_mps2_an385_freertos_slirp(binary).map(RtosProcess::Qemu)
+                // phase-287 W6 — the C/C++ images run the board's STATIC lwIP
+                // plan (192.0.3.10 / gw 192.0.3.1, no DHCP): default slirp
+                // (10.0.2.0/24) never answers their gateway ARP, so they get
+                // the board-net slirp launcher and bake `tcp/192.0.3.1:<port>`
+                // locators (examples/fixtures.toml). The RUST *-entry images
+                // keep the historical DEFAULT-slirp plan (guest 10.0.2.15,
+                // host 10.0.2.2 — their Cargo `[package.metadata.nros.deploy]`
+                // bakes `tcp/10.0.2.2:<port>`), so they need the plain
+                // launcher (issue #181; unifying the plans is follow-up work).
+                if matches!(lang, Lang::Rust) {
+                    QemuProcess::start_mps2_an385_networked(binary).map(RtosProcess::Qemu)
+                } else {
+                    QemuProcess::start_mps2_an385_freertos_slirp(binary).map(RtosProcess::Qemu)
+                }
             }
             Platform::Nuttx => QemuProcess::start_nuttx_virt(binary, true).map(RtosProcess::Qemu),
             Platform::ThreadxLinux => {
@@ -521,21 +534,22 @@ fn build_pair(platform: Platform, lang: Lang, variant: Variant) -> (&'static Pat
 /// first node gets `stabilization_delay()` of head-start.
 fn start_pair(
     platform: Platform,
+    lang: Lang,
     first_bin: &Path,
     second_bin: &Path,
     first_name: &str,
     second_name: &str,
 ) -> TestResult<(RtosProcess, RtosProcess)> {
-    let first = platform.start_process(first_bin, 0, first_name)?;
+    let first = platform.start_process(first_bin, 0, first_name, lang)?;
 
     match platform {
         Platform::Nuttx => {
-            let second = platform.start_process(second_bin, 1, second_name)?;
+            let second = platform.start_process(second_bin, 1, second_name, lang)?;
             Ok((first, second))
         }
         _ => {
             std::thread::sleep(platform.stabilization_delay());
-            let second = platform.start_process(second_bin, 1, second_name)?;
+            let second = platform.start_process(second_bin, 1, second_name, lang)?;
             Ok((first, second))
         }
     }
@@ -600,20 +614,20 @@ fn test_rtos_pubsub_e2e(
         Platform::Nuttx => {
             // Parallel launch.
             let listener = platform
-                .start_process(listener_bin, 1, "nuttx-listener")
+                .start_process(listener_bin, 1, "nuttx-listener", lang)
                 .expect("Failed to start listener");
             let talker = platform
-                .start_process(talker_bin, 0, "nuttx-talker")
+                .start_process(talker_bin, 0, "nuttx-talker", lang)
                 .expect("Failed to start talker");
             (listener, talker)
         }
         _ => {
             let listener = platform
-                .start_process(listener_bin, 1, "rtos-listener")
+                .start_process(listener_bin, 1, "rtos-listener", lang)
                 .expect("Failed to start listener");
             std::thread::sleep(platform.stabilization_delay());
             let talker = platform
-                .start_process(talker_bin, 0, "rtos-talker")
+                .start_process(talker_bin, 0, "rtos-talker", lang)
                 .expect("Failed to start talker");
             (listener, talker)
         }
@@ -633,6 +647,10 @@ fn test_rtos_pubsub_e2e(
         (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
             "nros entry ready"
         }
+        // issue #181 — the freertos rust `*-entry` images (the runnables since
+        // 212.L made the role crates lib-only) print the entry-runtime banner,
+        // not the C examples' "Waiting for messages".
+        (Platform::Freertos, Lang::Rust) => "Application setup complete",
         _ => "Waiting for messages",
     };
     let listener_boot = listener
@@ -713,6 +731,7 @@ fn test_rtos_service_e2e(
     eprintln!("[{} {}] service: starting server/client...", platform, lang);
     let (mut server, mut client) = start_pair(
         platform,
+        lang,
         server_bin,
         client_bin,
         "rtos-server",
@@ -728,6 +747,9 @@ fn test_rtos_service_e2e(
         (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
             "nros entry ready"
         }
+        // issue #181 — see the pubsub gate: freertos rust entries print the
+        // entry-runtime banner.
+        (Platform::Freertos, Lang::Rust) => "Application setup complete",
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
     let server_boot = server
@@ -821,6 +843,7 @@ fn test_rtos_action_e2e(
     eprintln!("[{} {}] action: starting server/client...", platform, lang);
     let (mut server, mut client) = start_pair(
         platform,
+        lang,
         server_bin,
         client_bin,
         "rtos-action-server",
@@ -834,6 +857,8 @@ fn test_rtos_action_e2e(
         (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
             "nros entry ready"
         }
+        // issue #181 — freertos rust entries print the entry-runtime banner.
+        (Platform::Freertos, Lang::Rust) => "Application setup complete",
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
     let server_boot = server

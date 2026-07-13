@@ -111,9 +111,13 @@ build-qemu:
     echo "Creating flash images..."
     mkdir -p build/esp32-qemu
     for ex in talker listener; do
-        bin_name="esp32-qemu-$ex"
-        elf="examples/qemu-esp32-baremetal/rust/$ex/target/riscv32imc-unknown-none-elf/$target_profile_dir/$bin_name"
-        out="build/esp32-qemu/$bin_name.bin"
+        # Crate [[bin]] names use underscores (esp32_qemu_talker); the packed
+        # flash image keeps the historical hyphenated name every QEMU
+        # runner/test references (issue #181 — the hyphen/underscore drift
+        # left espflash opening a nonexistent ELF while the lane exited 0).
+        elf_name="esp32_qemu_${ex}"
+        elf="examples/qemu-esp32-baremetal/rust/$ex/target/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
+        out="build/esp32-qemu/esp32-qemu-$ex.bin"
         if command -v espflash &>/dev/null; then
             espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
             echo "  $out"
