@@ -26,6 +26,35 @@
 # This config file sits at the checkout root, so its own directory is the root.
 set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 
+# --- Zephyr arm (287-W6) ------------------------------------------------------
+# On Zephyr, nano-ros is already IN the build as a west/Zephyr module (the
+# `zephyr/` dir, Kconfig-selected — it owns the runtime import, the RMW
+# feature choice, and `nros_find_interfaces`). `find_package(nano_ros)` here
+# must NOT `add_subdirectory` the checkout again; it only supplies the ament
+# surface: the package.xml tuple, the find-package stubs, and the verbs.
+# The leaf keeps `find_package(Zephyr)` first — Zephyr owns the build, so a
+# Zephyr leaf is deliberately NOT byte-identical to native (RFC-0048 §3).
+if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
+    include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+    nano_ros_read_package_export()
+    # deploy="zephyr" (board/RMW stay with Zephyr's own BOARD/Kconfig axes).
+    set(NANO_ROS_PLATFORM zephyr)
+    set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
+    set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
+    set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
+    # find_package(<msg_pkg>) validate-stubs, WITHOUT the full compat module
+    # (NrosRclcppCompat asserts NanoRos::NanoRosCpp, which a C-only Zephyr
+    # image doesn't define).
+    if(NOT "${NANO_ROS_ROOT}/cmake/compat/stubs" IN_LIST CMAKE_MODULE_PATH)
+        list(PREPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake/compat/stubs")
+    endif()
+    include("${NANO_ROS_ROOT}/cmake/compat/stubs/_NrosFindRosMsgPackage.cmake")
+    include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
+    include("${NANO_ROS_ROOT}/cmake/NanoRosVerbs.cmake")
+    set(nano_ros_FOUND TRUE)
+    return()
+endif()
+
 # `find_package(<msg_pkg>)` here VALIDATES the dependency and satisfies the ament
 # `REQUIRED` line; it does NOT itself codegen. The authoritative generation is
 # driven by the `nano_ros_add_*` verb, which knows the leaf's language (inferred

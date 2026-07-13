@@ -9,7 +9,6 @@ project(nros_zephyr_zenoh_action_client_c)
 # package.xml SSoT (issue #11): resolve + generate the transitive interface
 # closure declared in package.xml (<depend>example_interfaces</depend>) into
 # `app` — resolve-deps pulls action_msgs / unique_identifier_msgs too.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
@@ -21,13 +20,7 @@ endif()
 # (LANGUAGE C) configure_files `zephyr_entry_main_c_typed.cpp.in` (a C++ entry
 # that drives the C component's NROS_C_COMPONENT factory/configure seam) +
 # compiles src/FibonacciClient.c into the global `app`. No hand-written main.c.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+find_package(nano_ros REQUIRED)
+find_package(example_interfaces REQUIRED)
 
-nano_ros_node_register(
-    NAME      fibonacci_action_client
-    CLASS     nros_zephyr_zenoh_action_client_c::FibonacciClient
-    LANGUAGE  C
-    TYPED
-    SOURCES   src/FibonacciClient.c
-    DEPLOY    zephyr)
+nano_ros_add_node(fibonacci_action_client CLASS nros_zephyr_zenoh_action_client_c::FibonacciClient TYPED src/FibonacciClient.c)

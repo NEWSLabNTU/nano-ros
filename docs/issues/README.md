@@ -44,6 +44,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#192** — [FVP AEMv8-R cyclone talker: picolibc SSP pulls undefined `getentropy`](0192-fvp-aemv8r-cyclone-getentropy-link.md):
+  final link fails in the SDK picolibc's `__stack_chk_init`; pre-existing museum-lane red
+  (identical at HEAD and with the 287-W6 migration), no `CONFIG_STACK_PROTECTOR` set.
 - **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
   lane restored to the sweep (#181), boots + logging green; the four cross-delivery tests get 0
   samples — check pair identity/port drift first (the #179/#181 lessons), then the #64 heap notes.

@@ -39,7 +39,12 @@ function(_nros_system_resolve_cli outvar)
         list(APPEND _hints "$ENV{NROS_HOME}/bin")
     endif()
     list(APPEND _hints "$ENV{HOME}/.nros/bin")
-    find_program(_nros_cli_found NAMES nros HINTS ${_hints}
+    # PATHS, not HINTS: hints are searched BEFORE the environment PATH, so a
+    # stale provisioned ~/.nros/bin/nros would shadow the activate.sh-wired
+    # in-tree CLI (sweep contract: activate.sh is the PATH SSoT). A museum
+    # binary here bakes the retired pre-258 shape (system_main.c, no
+    # system_config.cmake) and every nros_system_generate fixture goes red.
+    find_program(_nros_cli_found NAMES nros PATHS ${_hints}
         DOC "nros CLI binary (Phase 212.E codegen-system)")
     if(_nros_cli_found)
         set(${outvar} "${_nros_cli_found}" PARENT_SCOPE)

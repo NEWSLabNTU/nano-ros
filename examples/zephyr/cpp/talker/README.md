@@ -6,7 +6,7 @@ The node is a stateful **component** rather than a hand-written imperative
 `Hello World: N` (the official ROS 2 demo chatter). The **Zephyr typed
 carrier** generates the entry:
 
-- `nano_ros_node_register(TYPED … DEPLOY zephyr)` (with
+- `nano_ros_add_node(TYPED … DEPLOY zephyr)` (with
   `NANO_ROS_PLATFORM=zephyr`) `configure_file`s
   `cmake/templates/zephyr_entry_main_typed.cpp.in` — a plain `int main(void)`
   that constructs the component, calls `configure(node)`, and runs

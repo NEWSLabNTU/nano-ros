@@ -3,7 +3,7 @@
 #
 # Instead of a hand-written imperative `main.cpp`, the node is a stateful
 # component (`AddTwoIntsClient::configure(node)`); the Zephyr typed carrier
-# generates the entry (`nano_ros_node_register(TYPED … DEPLOY zephyr)` →
+# generates the entry (`nano_ros_add_node(... TYPED ...)` →
 # ZephyrBoard::run_components).
 
 cmake_minimum_required(VERSION 3.20.0)
@@ -14,7 +14,7 @@ project(zephyr_cpp_service_client LANGUAGES CXX)
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
 
-include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")
+find_package(nano_ros REQUIRED)
 find_package(example_interfaces REQUIRED)
 
 
@@ -38,14 +38,5 @@ endif()
 # The Zephyr typed carrier branch keys on NANO_ROS_PLATFORM=zephyr + DEPLOY
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_node_register(
-    NAME      add_two_ints_client
-    CLASS     zephyr_cpp_service_client::AddTwoIntsClient
-    LANGUAGE  CPP
-    HEADER    AddTwoIntsClient.hpp
-    TYPED
-    SOURCES   src/AddTwoIntsClient.cpp
-    DEPLOY    zephyr)
+nano_ros_add_node(add_two_ints_client CLASS zephyr_cpp_service_client::AddTwoIntsClient HEADER AddTwoIntsClient.hpp TYPED src/AddTwoIntsClient.cpp)

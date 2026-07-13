@@ -127,6 +127,11 @@ function(nros_generate_interfaces target)
   if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")
     set(_ARG_LANGUAGE "C")
   endif()
+  # Normalize case exactly like the canonical generator does — the ament verb
+  # passes the inferred language in lowercase (`cpp`), and every branch below
+  # compares against "CPP" (287-W6: a lowercase value silently fell into the C
+  # branch and the leaf failed on a missing std_msgs.hpp).
+  string(TOUPPER "${_ARG_LANGUAGE}" _ARG_LANGUAGE)
 
   # phase-263 C2c — idempotent across node pkgs that share an interface. A multi-node Zephyr
   # workspace entry add_subdirectory's several node pkgs that each `nros_find_interfaces` the

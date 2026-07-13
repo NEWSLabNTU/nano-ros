@@ -16,7 +16,6 @@ project(nros_zephyr_zenoh_service_server_c)
 
 # package.xml SSoT (issue #11): resolve + generate the transitive interface
 # closure declared in package.xml (<depend>example_interfaces</depend>) into `app`.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
@@ -34,13 +33,7 @@ endif()
 # `zephyr_entry_main_c_typed.cpp.in` + compiles src/AddTwoIntsServer.c with
 # -DNROS_PKG_NAME=<pkg sym> so its NROS_C_COMPONENT factory/configure seam links
 # against the generated entry, all into the global `app`. No second executable.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+find_package(nano_ros REQUIRED)
+find_package(example_interfaces REQUIRED)
 
-nano_ros_node_register(
-    NAME      add_two_ints_server
-    CLASS     nros_zephyr_zenoh_service_server_c::AddTwoIntsServer
-    LANGUAGE  C
-    TYPED
-    SOURCES   src/AddTwoIntsServer.c
-    DEPLOY    zephyr)
+nano_ros_add_node(add_two_ints_server CLASS nros_zephyr_zenoh_service_server_c::AddTwoIntsServer TYPED src/AddTwoIntsServer.c)

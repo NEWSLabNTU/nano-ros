@@ -19,16 +19,11 @@ nros_generate_interfaces(std_msgs LANGUAGE CPP)
 
 # phase-244.C2.1 — typed carrier. Instead of an imperative `main.cpp`, the node is
 # a stateful component (`Talker::configure(node)`); the Zephyr typed carrier
-# generates the entry (`nano_ros_node_register(TYPED … DEPLOY zephyr)` →
+# generates the entry (`nano_ros_add_node(... TYPED ...)` →
 # ZephyrBoard::run_components) and target_sources/links it into the global `app`.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+find_package(nano_ros REQUIRED)
 
-nano_ros_node_register(
-    NAME      talker
-    CLASS     nros_zephyr_aemv8r_cyclonedds_talker::Talker
-    LANGUAGE  CPP
-    HEADER    Talker.hpp
+nano_ros_add_node(talker CLASS nros_zephyr_aemv8r_cyclonedds_talker::Talker
+    HEADER Talker.hpp
     TYPED
-    SOURCES   src/Talker.cpp
-    DEPLOY    zephyr)
+    SOURCES src/Talker.cpp)

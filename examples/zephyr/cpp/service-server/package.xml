@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>nros_zephyr_listener_c</name>
+  <name>zephyr_cpp_service_server</name>
   <version>0.1.0</version>
-  <description>nano-ros Zephyr C listener example (package.xml SSoT shape, issue #11)</description>
+  <description>nano-ros Zephyr C++ service server example (RFC-0048 ament shape)</description>
   <maintainer email="example@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
-  <depend>std_msgs</depend>
+  <depend>example_interfaces</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

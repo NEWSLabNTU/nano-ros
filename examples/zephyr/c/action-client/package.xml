@@ -10,6 +10,7 @@
   <depend>example_interfaces</depend>
 
   <export>
-    <build_type>cmake</build_type>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="zephyr"/>
   </export>
 </package>

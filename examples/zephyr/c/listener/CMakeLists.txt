@@ -19,7 +19,6 @@ project(nros_zephyr_listener_c)
 
 # package.xml SSoT: generate the typed C bindings for the interface closure
 # (std_msgs) into `app` — same call the zephyr C service/action examples use.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
@@ -42,13 +41,7 @@ endif()
 # `zephyr_entry_main_c_typed.cpp.in` + compiles src/Listener.c with
 # -DNROS_PKG_NAME=<pkg sym> so its NROS_C_COMPONENT factory/configure seam links
 # against the generated entry, all into the global `app`. No second executable.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-nano_ros_node_register(
-    NAME      listener
-    CLASS     nros_zephyr_listener_c::Listener
-    LANGUAGE  C
-    TYPED
-    SOURCES   src/Listener.c
-    DEPLOY    zephyr)
+nano_ros_add_node(listener CLASS nros_zephyr_listener_c::Listener TYPED src/Listener.c)

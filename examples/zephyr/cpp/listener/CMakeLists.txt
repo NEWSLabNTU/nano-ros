@@ -3,7 +3,7 @@
 #
 # Instead of a hand-written imperative `main.cpp`, the node is a stateful
 # component (`Listener::configure(node)`); the Zephyr typed carrier generates the
-# entry (`nano_ros_node_register(TYPED … DEPLOY zephyr)` → ZephyrBoard::run_components).
+# entry (`nano_ros_add_node(... TYPED ...)` → ZephyrBoard::run_components).
 
 cmake_minimum_required(VERSION 3.20.0)
 
@@ -16,7 +16,7 @@ project(zephyr_cpp_listener LANGUAGES CXX)
 #
 # Phase 210.E.3.c — find_package shape via the rclcpp source-compat
 # module's smart Find-stub.
-include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")
+find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
@@ -39,14 +39,5 @@ endif()
 # The Zephyr typed carrier branch keys on NANO_ROS_PLATFORM=zephyr + DEPLOY
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
-set(NANO_ROS_PLATFORM zephyr)
-include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_node_register(
-    NAME      listener
-    CLASS     zephyr_cpp_listener::Listener
-    LANGUAGE  CPP
-    HEADER    Listener.hpp
-    TYPED
-    SOURCES   src/Listener.cpp
-    DEPLOY    zephyr)
+nano_ros_add_node(listener CLASS zephyr_cpp_listener::Listener HEADER Listener.hpp TYPED src/Listener.cpp)
