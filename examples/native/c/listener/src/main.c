@@ -67,6 +67,23 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
     }
 }
 
+// std_msgs/Int32 variant, selected by `NROS_SUB_TYPE=int32`. The message type is
+// baked into the wire keyexpr, so the subscriber's type must match the
+// publisher's — the cross-RMW ws-bridge e2e forwards Int32 on /chatter.
+static void subscription_callback_int32(const uint8_t* data, size_t len, void* context) {
+    listener_context_t* ctx = (listener_context_t*)context;
+
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
+
+    if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
+        ctx->message_count++;
+        printf("Received: %d\n", msg.data);
+    } else {
+        fprintf(stderr, "Failed to deserialize message (len=%zu)\n", len);
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Main
 // ----------------------------------------------------------------------------
@@ -116,9 +133,14 @@ int nros_app_main(int argc, char** argv) {
         .message_count = 0,
     };
 
-    NROS_CHECK_RET(nros_subscription_init(&app.subscription, &app.node,
-                                          std_msgs_msg_string_get_type_support(), "/chatter",
-                                          subscription_callback, &app.listener_ctx),
+    const char* sub_type = getenv("NROS_SUB_TYPE");
+    int use_int32 = sub_type && (strcmp(sub_type, "int32") == 0 || strcmp(sub_type, "Int32") == 0);
+    NROS_CHECK_RET(nros_subscription_init(
+                       &app.subscription, &app.node,
+                       use_int32 ? std_msgs_msg_int32_get_type_support()
+                                 : std_msgs_msg_string_get_type_support(),
+                       "/chatter", use_int32 ? subscription_callback_int32 : subscription_callback,
+                       &app.listener_ctx),
                    1);
     printf("Subscription created for topic: %s\n",
            nros_subscription_get_topic_name(&app.subscription));

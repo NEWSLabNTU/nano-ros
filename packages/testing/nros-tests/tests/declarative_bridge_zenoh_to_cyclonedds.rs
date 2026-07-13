@@ -65,7 +65,11 @@ fn nano_cyclone_listener() -> PathBuf {
 
 fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
     let mut cmd = Command::new(binary);
+    // The ws-bridge demo forwards std_msgs/Int32 on /chatter (issue #183), so the
+    // observability listener must subscribe Int32 — the type is baked into the
+    // wire keyexpr, and the Int32-typed cyclone topic won't match a String sub.
     cmd.env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_SUB_TYPE", "int32")
         .env("RUST_LOG", "info");
     ManagedProcess::spawn_command(cmd, "nano-cyclone-listener-declarative-bridge")
         .expect("spawn nano cyclone listener")
@@ -73,7 +77,10 @@ fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
 
 fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
     let mut cmd = Command::new(bin);
-    cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
+    // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
+    cmd.env("RUST_LOG", "info")
+        .env("NROS_PUB_TYPE", "int32")
+        .env("NROS_LOCATOR", locator);
     let mut talker = ManagedProcess::spawn_command(cmd, "native-rs-talker-declarative-bridge")
         .expect("spawn talker");
     talker
@@ -136,7 +143,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
 
     let listener_output = listener
         .wait_for_output_count(
-            nros_tests::output::LISTENER_LOG_PREFIX,
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
             2,
             Duration::from_secs(12),
         )
@@ -148,7 +155,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     drop(zenohd);
 
     eprintln!("nano cyclone listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    let received = count_pattern(&listener_output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     eprintln!("nano cyclone listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

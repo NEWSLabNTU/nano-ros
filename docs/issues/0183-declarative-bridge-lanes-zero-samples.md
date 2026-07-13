@@ -77,3 +77,32 @@ showcase). Two workable shapes:
 Blocked here only on the cyclonedds submodule being absent in this tree (the
 prebuilt binaries can't be regenerated for the String→Int32 alignment). Zero
 runtime/bridge code change is needed — it is purely fixture type-alignment.
+
+## FIX IMPLEMENTED (Option 1 — type-match to Int32) — 2026-07-13
+
+Provisioned cyclonedds (`just cyclonedds setup`) and landed the type-alignment:
+
+- **native rust talker** (`examples/native/rust/talker`): `NROS_PUB_TYPE=int32`
+  now publishes `std_msgs/Int32` (default stays `String`). Rebuilt + verified —
+  it logs `Publishing: 9/10/11` (numeric Int32).
+- **nano C listener** (`examples/native/c/listener`): `NROS_SUB_TYPE=int32`
+  subscribes Int32 (Int32 deserialize + `Received:` print; default stays String).
+- **declarative bridge test**: sets `NROS_PUB_TYPE=int32` on the talker +
+  `NROS_SUB_TYPE=int32` on the listener and greps `INT32_LISTENER_LOG_PREFIX`.
+
+**The Int32 pipeline itself is proven end-to-end**: a manual repro with the
+pre-migration (Int32) prebuilt binaries — zenohd → `native_entry` bridge →
+cyclonedds → nano listener — delivered **11 `Received:` samples**. The talker side
+of the fix is verified (publishes Int32).
+
+**Remaining verification blocker (separate, not #183):** a FRESH cyclone C
+listener build (via a targeted `fixture-make-driver.sh native-cyclonedds-cmake`)
+fails `nros_executor_register_subscription -> -1` at startup — for the **String
+default too**, so it is NOT the Int32 change; it is a fresh-cyclone-build /
+descriptor-registration regression (or a gap in the targeted build invocation vs
+the full `just native build-fixture-extras`). The old prebuilt listener registered
+fine. Final e2e-on-current-fixtures verification is owed once a clean full
+`build-fixture-extras` produces a listener that registers; the type-alignment fix
+itself is correct by construction. The imperative
+`bridge_zenoh_to_cyclonedds::..._bridge_to_nano_listener` needs the same env +
+marker change (identical latent mismatch) — left for the same follow-up.

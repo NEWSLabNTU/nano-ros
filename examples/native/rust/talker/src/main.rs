@@ -28,6 +28,7 @@ use core::fmt::Write as _;
 
 use log::{error, info};
 use nros::prelude::*;
+use std_msgs::msg::Int32;
 use std_msgs::msg::String as StringMsg;
 
 fn main() {
@@ -47,30 +48,59 @@ fn main() {
     let cfg = ctx.config("talker");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 
-    let publisher = {
-        let mut node = executor
-            .create_node("talker")
-            .expect("Failed to create node");
-        info!("Node created: talker");
-        let pub_ = node
-            .create_publisher::<StringMsg>("/chatter")
-            .expect("Failed to create publisher");
-        info!("Publisher created for topic: /chatter");
-        pub_
-    };
-
-    let mut count: i32 = 0;
-    executor
-        .register_timer(nros::TimerDuration::from_millis(1000), move || {
-            count = count.wrapping_add(1);
-            let mut msg = StringMsg::default();
-            let _ = write!(msg.data, "Hello World: {count}");
-            match publisher.publish(&msg) {
-                Ok(()) => info!("Publishing: '{}'", msg.data),
-                Err(e) => error!("Publish error: {:?}", e),
-            }
-        })
-        .expect("Failed to register publish timer");
+    // The message type is baked into the wire keyexpr; publish the type the
+    // subscriber expects. Default is `std_msgs/String` (the canonical talker
+    // demo); `NROS_PUB_TYPE=int32` publishes `std_msgs/Int32` instead — used by
+    // the cross-RMW ws-bridge e2e, whose demo forwards Int32 on /chatter.
+    let pub_type = std::env::var("NROS_PUB_TYPE").unwrap_or_default();
+    if pub_type.eq_ignore_ascii_case("int32") {
+        let publisher = {
+            let mut node = executor
+                .create_node("talker")
+                .expect("Failed to create node");
+            info!("Node created: talker");
+            let pub_ = node
+                .create_publisher::<Int32>("/chatter")
+                .expect("Failed to create publisher");
+            info!("Publisher created for topic: /chatter");
+            pub_
+        };
+        let mut count: i32 = 0;
+        executor
+            .register_timer(nros::TimerDuration::from_millis(1000), move || {
+                count = count.wrapping_add(1);
+                let msg = Int32 { data: count };
+                match publisher.publish(&msg) {
+                    Ok(()) => info!("Publishing: {}", msg.data),
+                    Err(e) => error!("Publish error: {:?}", e),
+                }
+            })
+            .expect("Failed to register publish timer");
+    } else {
+        let publisher = {
+            let mut node = executor
+                .create_node("talker")
+                .expect("Failed to create node");
+            info!("Node created: talker");
+            let pub_ = node
+                .create_publisher::<StringMsg>("/chatter")
+                .expect("Failed to create publisher");
+            info!("Publisher created for topic: /chatter");
+            pub_
+        };
+        let mut count: i32 = 0;
+        executor
+            .register_timer(nros::TimerDuration::from_millis(1000), move || {
+                count = count.wrapping_add(1);
+                let mut msg = StringMsg::default();
+                let _ = write!(msg.data, "Hello World: {count}");
+                match publisher.publish(&msg) {
+                    Ok(()) => info!("Publishing: '{}'", msg.data),
+                    Err(e) => error!("Publish error: {:?}", e),
+                }
+            })
+            .expect("Failed to register publish timer");
+    }
 
     executor
         .spin_blocking(SpinOptions::default())
