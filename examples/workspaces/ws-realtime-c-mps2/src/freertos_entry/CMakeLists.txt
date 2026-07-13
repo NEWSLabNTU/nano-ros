@@ -4,15 +4,7 @@ project(freertos_entry VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
 
 # phase-281 W2 — embedded C multi-tier entry on FreeRTOS/mps2-an385 (QEMU).
 #
@@ -32,8 +24,7 @@ nano_ros_workspace_pkg_guard()
 # session and spawns one RTOS task per non-boot tier (RFC-0015 Model 1 embedded).
 # This is the same C run_tiers glue the C++ freertos e2e exercises — here it
 # drives C *nodes*, closing the C × freertos matrix cell.
-nano_ros_entry(
-    NAME    freertos_entry
+nano_ros_add_executable(freertos_entry
     BOARD   mps2-an385-freertos
     LAUNCH  "demo_bringup:system.launch.xml"
     LANG    c

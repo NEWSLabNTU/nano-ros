@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_params_c LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-269 W1 (launch parameters, C — issue #116) — the C projection of
 # ws-params-rust. Native (posix) only: a C talker seeds launch parameters via
@@ -20,6 +20,5 @@ set(_ws_subdirs
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

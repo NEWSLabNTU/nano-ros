@@ -63,18 +63,26 @@ function(_nros_generate_declared_interfaces lang)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>])
+# nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>]
+#     [LAUNCH <pkg:launch.xml>] [TYPED] [HOST <h>] [LOCATOR <l>] [ARGS <a>…])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
 # W4; until then DEPLOY defaults to `native` and an embedded board is passed
 # explicitly (or comes from a prior `nano_ros_use_board`).
+#
+# 287-W6 workspace slice 3 — LAUNCH/TYPED/HOST/LOCATOR/ARGS pass through to
+# `nano_ros_entry` so a workspace Entry pkg (multi-node carrier generated from
+# a bringup launch manifest) can use the ament verb instead of the raw
+# `nano_ros_entry(...)` call.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_executable name)
-    cmake_parse_arguments(_NRE "" "BOARD" "DEPLOY" ${ARGN})
-    set(_srcs ${_NRE_UNPARSED_ARGUMENTS})
-    if(NOT _srcs)
+    cmake_parse_arguments(_NRE "TYPED" "BOARD;LAUNCH;HOST;LOCATOR;LANG" "DEPLOY;SOURCES;ARGS" ${ARGN})
+    set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
+    if(NOT _srcs AND NOT _NRE_LAUNCH)
         message(FATAL_ERROR
-            "nano_ros_add_executable(${name}): no sources given.")
+            "nano_ros_add_executable(${name}): no sources given "
+            "(a LAUNCH-generated entry may omit sources; anything else "
+            "needs at least one).")
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
@@ -100,12 +108,41 @@ function(nano_ros_add_executable name)
     if(_NRE_BOARD)
         set(_board_arg BOARD ${_NRE_BOARD})
     endif()
+    # Entry-carrier knobs (LAUNCH-generated multi-node entries + typed
+    # components + connection overrides) forward verbatim.
+    set(_entry_extra "")
+    if(_NRE_LAUNCH)
+        list(APPEND _entry_extra LAUNCH ${_NRE_LAUNCH})
+    endif()
+    if(_NRE_TYPED)
+        list(APPEND _entry_extra TYPED)
+    endif()
+    if(_NRE_HOST)
+        list(APPEND _entry_extra HOST ${_NRE_HOST})
+    endif()
+    if(_NRE_LOCATOR)
+        list(APPEND _entry_extra LOCATOR ${_NRE_LOCATOR})
+    endif()
+    if(_NRE_ARGS)
+        list(APPEND _entry_extra ARGS ${_NRE_ARGS})
+    endif()
+    # Language: explicit LANG wins (the only way a LAUNCH-only entry — no
+    # sources to infer from — can select C; nano_ros_entry's sourceless
+    # default is cpp). With sources, infer; without either, let nano_ros_entry
+    # default.
+    set(_lang_arg "")
+    if(_NRE_LANG)
+        set(_lang_arg LANG ${_NRE_LANG})
+    elseif(_srcs)
+        set(_lang_arg LANG ${_lang})
+    endif()
     nano_ros_entry(
         NAME ${name}
         SOURCES ${_srcs}
         DEPLOY ${_NRE_DEPLOY}
-        LANG ${_lang}
-        ${_board_arg})
+        ${_lang_arg}
+        ${_board_arg}
+        ${_entry_extra})
 
     nano_ros_link(${name})
 endfunction()
@@ -128,12 +165,15 @@ function(nano_ros_add_node name)
             "(a workspace component registers a class; use "
             "nano_ros_add_executable for a standalone entry with its own main).")
     endif()
-    if(NOT _NRN_DEPLOY)
-        if(NROS_DEPLOY)
-            set(_NRN_DEPLOY "${NROS_DEPLOY}")
-        else()
-            set(_NRN_DEPLOY native)
-        endif()
+    # DEPLOY defaults to the package.xml tuple; with neither, the component is
+    # registered CARRIER-LESS (no DEPLOY forwarded) — a workspace member's
+    # carrier is assembled by its Entry pkg / the workspace root, exactly like
+    # the pre-verb `nano_ros_node_register` calls that omitted DEPLOY. (287-W6
+    # slice 3: the earlier implicit `native` default forced every member onto
+    # the per-node carrier path — fatal on FreeRTOS, whose carrier requires
+    # TYPED, and a spurious extra exe on posix.)
+    if(NOT _NRN_DEPLOY AND NROS_DEPLOY)
+        set(_NRN_DEPLOY "${NROS_DEPLOY}")
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
@@ -161,12 +201,16 @@ function(nano_ros_add_node name)
     if(_NRN_CALLBACK_GROUPS)
         list(APPEND _extra_args CALLBACK_GROUPS ${_NRN_CALLBACK_GROUPS})
     endif()
+    set(_deploy_arg "")
+    if(_NRN_DEPLOY)
+        set(_deploy_arg DEPLOY ${_NRN_DEPLOY})
+    endif()
     nano_ros_node_register(
         NAME ${name}
         CLASS ${_NRN_CLASS}
         LANGUAGE ${_lang}
         SOURCES ${_srcs}
-        DEPLOY ${_NRN_DEPLOY}
+        ${_deploy_arg}
         ${_typed_arg}
         ${_extra_args})
 endfunction()

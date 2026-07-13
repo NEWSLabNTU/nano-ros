@@ -4,15 +4,7 @@ project(freertos_entry VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
 
 # phase-263 C2c — the FreeRTOS (QEMU MPS2-AN385 + lwIP) embedded C++ workspace entry (the
 # C++ sibling of C2b's C entry). The workspace root configured FreeRTOS
@@ -21,8 +13,7 @@ nano_ros_workspace_pkg_guard()
 # (`nros_app_main` + `FreertosBoard::run_components`); `DEPLOY` matches `NANO_ROS_BOARD`, so
 # `nano_ros_entry`'s embedded pass links the bootable ELF, generates the `NROS_APP_CONFIG`
 # TU, and bakes the slirp locator. LAUNCH-only.
-nano_ros_entry(
-    NAME    freertos_entry
+nano_ros_add_executable(freertos_entry
     BOARD   mps2-an385-freertos
     LAUNCH  "demo_bringup:system.launch.xml"
     TYPED

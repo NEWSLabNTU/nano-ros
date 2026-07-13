@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_qos_c LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-263 B4 (QoS, C) — per-entity QoS-override demo (the C projection of
 # ws-qos-rust). Native (posix) only: a C talker publishes `std_msgs/Int32` on
@@ -25,6 +25,5 @@ set(_ws_subdirs
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

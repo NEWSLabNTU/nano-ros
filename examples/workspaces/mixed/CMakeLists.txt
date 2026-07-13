@@ -14,7 +14,7 @@ endif()
 
 project(c_and_cpp_mixed_workspace LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-263 C2c — ONE platform per configure (the Rust+C+C++ mix is combined by the
 # `nros_ws_runtime` umbrella). Default posix; an embedded fixture row passes
@@ -54,6 +54,5 @@ endif()
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

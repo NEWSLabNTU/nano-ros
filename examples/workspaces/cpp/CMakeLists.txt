@@ -21,7 +21,7 @@ project(multi_node_workspace_cpp LANGUAGES C CXX)
 #     cmake -S src/talker_pkg -B build -DNANO_ROS_ROOT=/path/to/nano-ros
 # Workspace build (from this dir):
 #     cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros && cmake --build build
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-263 C2c — the workspace builds as ONE platform per configure (like the C
 # workspace + the standalone embedded examples). Default posix (native); an embedded
@@ -61,5 +61,4 @@ endif()
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SUBDIRS  ${_ws_subdirs})

@@ -50,7 +50,14 @@ set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 # is dynamic — inside a function body it resolves to the *caller's* list
 # dir, not this file's — so the Phase 238 carrier `configure_file` must use
 # this captured path to find `templates/nuttx_entry_main.cpp.in`.
-set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}")
+# CACHE INTERNAL (like NanoRosEntry's `_NROS_ENTRY_DIR`): the workspace path
+# includes this module inside a FUNCTION scope (`_nros_import_once`), so a
+# normal variable dies with that frame and a member pkg's embedded-carrier
+# `configure_file` resolved `/templates/…` (287-W6: every freertos workspace
+# member failed "File /templates/freertos_entry_main_c_typed.cpp.in does not
+# exist"; posix never touches the templates, which hid it).
+set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
+    "nano_ros_node_register module dir")
 
 # Issue 0088 — order any target whose TUs `#include <nros/nros_config_generated.h>`
 # (or the C++ variant) AFTER the per-build header generators. The headers are

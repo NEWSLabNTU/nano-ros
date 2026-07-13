@@ -50,7 +50,30 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     endif()
     include("${NANO_ROS_ROOT}/cmake/compat/stubs/_NrosFindRosMsgPackage.cmake")
     include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
+    # NanoRosEntry too: a Zephyr workspace-entry app uses
+    # `nano_ros_add_executable(... LAUNCH ...)`, whose body calls
+    # `nano_ros_entry` (both modules are re-include guarded).
+    include("${NANO_ROS_ROOT}/cmake/NanoRosEntry.cmake")
     include("${NANO_ROS_ROOT}/cmake/NanoRosVerbs.cmake")
+    set(nano_ros_FOUND TRUE)
+    return()
+endif()
+
+# --- Workspace-root arm (287-W6 slice 3) -------------------------------------
+# A multi-pkg workspace ROOT opens with
+#     find_package(nano_ros REQUIRED COMPONENTS workspace)
+#     nano_ros_workspace(BACKEND … PLATFORM … SYSTEM … SUBDIRS …)
+# The root must NOT import nano-ros here: `nano_ros_workspace()` owns the
+# import (it maps BACKEND→NANO_ROS_RMW *before* the add_subdirectory body
+# runs — an eager import here would bake the cache-default RMW and an
+# xrce/cyclonedds workspace would silently configure as zenoh). The arm only
+# supplies the workspace orchestrator + the verbs; member/Entry pkgs each call
+# plain `find_package(nano_ros REQUIRED)`, which no-ops onto the already
+# imported targets (the bootstrap is target-guarded).
+if("workspace" IN_LIST nano_ros_FIND_COMPONENTS)
+    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
+    include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+    set(nano_ros_workspace_FOUND TRUE)
     set(nano_ros_FOUND TRUE)
     return()
 endif()

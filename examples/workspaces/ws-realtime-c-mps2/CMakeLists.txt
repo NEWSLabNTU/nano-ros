@@ -14,7 +14,7 @@ endif()
 
 project(ws_realtime_c_mps2 LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-281 W2 (RFC-0015 Model 1 embedded) — the FreeRTOS/mps2-an385 projection of
 # ws-realtime-c: the C sibling of ws-realtime-cpp-mps2. A C control node + a C
@@ -39,6 +39,5 @@ set(_ws_subdirs
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

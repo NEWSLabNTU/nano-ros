@@ -4,21 +4,12 @@ project(native_action_server_entry VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
 
 # phase-263 A4 (actions, MIXED) — Fibonacci action: a C server + a C client (the cross-language
 # cpp variant is blocked on the action_msgs cpp-codegen gap). The entry is C++ (TYPED, drives the
 # C component via run_components). Single-node server entry; cross-process topology (issue 0096).
-nano_ros_entry(
-    NAME    native_action_server_entry
+nano_ros_add_executable(native_action_server_entry
     SOURCES src/main.cpp
     BOARD   native
     LAUNCH  "demo_bringup:action_server.launch.xml"

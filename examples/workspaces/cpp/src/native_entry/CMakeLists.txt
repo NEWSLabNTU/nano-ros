@@ -11,24 +11,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Phase 219.I — workspace builds inherit the helpers via the parent
 # root; standalone solo builds bootstrap via the include below.
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
 
 # Phase 247 (RFC-0043) — TYPED Entry. `nano_ros_entry(TYPED)` shells
 # `nros codegen entry --lang cpp --typed`, routing each launch node to the real
 # executor via its component object (construct + `configure(node)`) instead of
 # the legacy `__nros_component_<pkg>_register` interpreter call.
-nano_ros_entry(
-    NAME    native_entry
+nano_ros_add_executable(native_entry
     SOURCES src/main.cpp
     BOARD   native
-    TYPED
     LAUNCH  "demo_bringup:system.launch.xml"
+    TYPED
     DEPLOY  native)

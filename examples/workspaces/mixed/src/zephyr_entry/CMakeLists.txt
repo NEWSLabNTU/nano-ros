@@ -27,10 +27,16 @@ set(NROS_WS_RUST_NODE_DIRS "${_rust_node_dir}")
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_workspace_entry_mixed)
 
-set(NANO_ROS_PLATFORM zephyr)
-# Include NanoRosEntry (→ NanoRosNodeRegister) WITHOUT NanoRosWorkspace's corrosion nros-c
-# build — on Zephyr the nano-ros module already provides the runtime via find_package(Zephyr).
-include("${NROS_REPO_DIR}/cmake/NanoRosEntry.cmake")
+# RFC-0048 ament shape (287-W6): on Zephyr `find_package(nano_ros)` supplies
+# the verbs + entry/register machinery WITHOUT re-importing the runtime — the
+# nano-ros west module (find_package(Zephyr)) already provides NanoRos::*.
+find_package(nano_ros REQUIRED)
+
+# The Rust member below keeps the pre-ament register shape (LANGUAGE RUST is
+# outside the C/C++ verb surface) and opens with the workspace-guard preamble.
+# Stub the guard so it does NOT bootstrap a second nano-ros import — on Zephyr
+# the west module owns the runtime (an import here would add_subdirectory the
+# checkout with NANO_ROS_PLATFORM=zephyr, which nros-c rejects).
 if(NOT COMMAND nano_ros_workspace_pkg_guard)
     function(nano_ros_workspace_pkg_guard)
     endfunction()
@@ -44,8 +50,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../c_talker_pkg" c_talker_pkg)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../cpp_listener_pkg" cpp_listener_pkg)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../rust_heartbeat_pkg" rust_heartbeat_pkg)
 
-nano_ros_entry(
-    NAME    zephyr_entry
+nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     LAUNCH  "demo_bringup:system.launch.xml"
     TYPED

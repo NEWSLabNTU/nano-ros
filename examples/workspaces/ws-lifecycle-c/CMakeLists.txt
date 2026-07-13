@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_lifecycle_c LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-269 W2 (lifecycle autostart, C — issue #117) — the C projection of
 # ws-lifecycle-rust. Native (posix) only: a C managed node whose bringup
@@ -21,6 +21,5 @@ set(_ws_subdirs
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

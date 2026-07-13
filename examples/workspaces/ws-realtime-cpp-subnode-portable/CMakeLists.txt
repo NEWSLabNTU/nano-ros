@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_realtime_cpp_subnode_portable LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # Phase 273 W4 (RFC-0047) — portability fixture for the sub-node 2-group workspace.
 #
@@ -27,6 +27,5 @@ set(_ws_subdirs
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   deploy_bringup
     SUBDIRS  ${_ws_subdirs})

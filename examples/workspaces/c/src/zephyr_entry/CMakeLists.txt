@@ -23,19 +23,10 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_workspace_entry_c)
 
-set(NANO_ROS_PLATFORM zephyr)
-# Include NanoRosEntry (→ NanoRosNodeRegister) for nano_ros_entry + nano_ros_node_register
-# WITHOUT NanoRosWorkspace's `add_subdirectory(<nano-ros>)` corrosion build — on Zephyr the
-# nano-ros MODULE (auto-loaded by find_package(Zephyr)) already provides NanoRos::*; pulling
-# the corrosion nros-c CMakeLists in would clash (it doesn't know NANO_ROS_PLATFORM=zephyr).
-include("${NROS_REPO_DIR}/cmake/NanoRosEntry.cmake")
-# Stub the workspace guard so the reused node-pkg CMakeLists (which expect a workspace root)
-# don't `include(NanoRosWorkspace)` themselves — they only need nano_ros_node_register, which
-# the include above already defined, plus the Zephyr-module nros.
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    function(nano_ros_workspace_pkg_guard)
-    endfunction()
-endif()
+# RFC-0048 ament shape (287-W6): on Zephyr `find_package(nano_ros)` supplies
+# the verbs + entry/register machinery WITHOUT re-importing the runtime — the
+# nano-ros west module (find_package(Zephyr)) already provides NanoRos::*.
+find_package(nano_ros REQUIRED)
 
 # The launch XML (demo_bringup:system.launch.xml) names c_talker_pkg + c_listener_pkg.
 # Build their component libs here (their `nano_ros_node_register` has no DEPLOY, so they
@@ -43,8 +34,7 @@ endif()
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../c_talker_pkg" c_talker_pkg)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../c_listener_pkg" c_listener_pkg)
 
-nano_ros_entry(
-    NAME    zephyr_entry
+nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     LAUNCH  "demo_bringup:system.launch.xml"
     LANG    c

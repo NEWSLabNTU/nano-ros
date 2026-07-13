@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_realtime_c LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
+find_package(nano_ros REQUIRED COMPONENTS workspace)
 
 # phase-269 W3 (scheduling tiers, C — issue #119) — the C projection of
 # ws-realtime-rust. Native (posix) only: a control node + a telemetry node whose
@@ -44,6 +44,5 @@ endif()
 nano_ros_workspace(
     BACKEND  zenoh
     PLATFORM "${NANO_ROS_PLATFORM}"
-    NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SYSTEM   demo_bringup
     SUBDIRS  ${_ws_subdirs})

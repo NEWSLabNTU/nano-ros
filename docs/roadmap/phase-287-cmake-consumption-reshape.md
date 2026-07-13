@@ -44,13 +44,38 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   verbs to build the composition graph — `workspace.rs::parse_add_node_call` now
   recognises `nano_ros_add_node`'s positional grammar (without it `nros plan` fails
   "missing source metadata"). The C workspace CONFIGURES (posix, `CFG_RC=0`).
-  **Remaining:** the cpp + other workspaces' members (same mechanical pattern, now
-  that the verb + parser support it); the workspace **root**
-  (`nano_ros_workspace()` orchestrator) + **Entry pkgs** (`nano_ros_entry(...
-  LAUNCH ...)` multi-node carriers — the composition layer, a distinct slice; the
-  `nano_ros_add_executable` verb would need LAUNCH/TYPED passthrough + an entry
-  parser); and the component `scaffold_c/cpp` template
+  **Remaining:** the component `scaffold_c/cpp` template
   (`cargo-nano-ros/src/scaffold.rs`).
+
+  **Slice 3 landed (2026-07-13) — roots + Entry pkgs.** All ~24 workspace ROOTS
+  move to `find_package(nano_ros REQUIRED COMPONENTS workspace)` (a new config
+  arm that supplies ONLY NanoRosWorkspace + the tuple parser and returns —
+  `nano_ros_workspace()` keeps owning the import so BACKEND→RMW is mapped
+  before the add_subdirectory body; an eager import would bake the cache
+  default) and drop the `NANO_ROS_ROOT` kv (the config sets the var in scope).
+  All 67 C/C++/mixed ENTRY pkgs move from the guard preamble +
+  `nano_ros_entry(NAME …)` to `find_package(nano_ros REQUIRED)` +
+  `nano_ros_add_executable(<name> [SOURCES …] [BOARD b] [LAUNCH "pkg:x.xml"]
+  [LANG c] [TYPED] DEPLOY …)` — the verb gained LAUNCH/TYPED/HOST/LOCATOR/ARGS
+  (+ optional LANG: the only way a LAUNCH-only entry, which has no sources to
+  infer from, selects C; sourceless defaults stay cpp) via
+  `scripts/docs/migrate-workspace-entries-ament.py`. Zephyr entry apps use the
+  Zephyr config arm (which now also includes NanoRosEntry); the MIXED zephyr
+  entry keeps a `nano_ros_workspace_pkg_guard` stub for its unmigrated RUST
+  member. Two latent slice-2 bugs fixed en route: (a)
+  `_NROS_NODE_REGISTER_DIR` is now CACHE INTERNAL — the workspace path includes
+  NodeRegister inside a function scope, so the normal var died and every
+  freertos workspace member failed `configure_file` on
+  `/templates/freertos_entry_main_c_typed.cpp.in` (posix never touches the
+  templates, which hid it); (b) `nano_ros_add_node` no longer defaults DEPLOY
+  to `native` — a member without DEPLOY registers carrier-less like the old
+  register calls (the implicit default was fatal on FreeRTOS, whose carrier
+  requires TYPED). **Verified:** 20/20 roots configure+build (posix);
+  freertos/nuttx/threadx C+C++(+mixed) workspace fixture lanes green; zephyr
+  fixture sweep green (incl. ws entries + the mixed rust-umbrella entry);
+  66/66 zephyr + entry e2e tests, 101-test workspace e2e sweep green (13
+  initial reds all traced to stale standalone fixtures / ros2-daemon flake,
+  green on rebuilt fixtures); `just check` green.
 
   **Slice 2 landed (2026-07-13):** the remaining **54 C/C++ node members** across
   cpp/mixed/ws-custom-msg/ws-lifecycle/ws-params/ws-qos/ws-safety/ws-realtime
