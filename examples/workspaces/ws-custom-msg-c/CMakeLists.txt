@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 
 project(ws_custom_msg_c LANGUAGES C CXX)
 
+# 287-W6 — the migrated members resolve the workspace-local interface pkg via
+# `find_package(custom_msgs REQUIRED)`; the compat layer auto-emits its
+# Find-stub for packages under this search path (Phase 210.A.2).
+set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
 
 # phase-263 B6 (C) — workspace-local custom-message demo (the C projection of

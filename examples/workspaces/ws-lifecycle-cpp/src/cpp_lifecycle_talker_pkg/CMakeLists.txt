@@ -4,31 +4,17 @@ project(cpp_lifecycle_talker_pkg VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # Phase 269 W2 — typed managed-node C++ component: counter publisher on /chatter.
 # Lifecycle autostart is wired in the entry by emit_cpp.rs W2.
-nano_ros_node_register(
-    NAME    talker
-    CLASS   cpp_lifecycle_talker_pkg::LifecycleTalker
-    SOURCES src/LifecycleTalker.cpp)
+nano_ros_add_node(talker CLASS cpp_lifecycle_talker_pkg::LifecycleTalker src/LifecycleTalker.cpp)
 
 # Phase 270 (#103) — managed node written with the nros::LifecycleNode wrapper
 # (self-drives REP-2002 via the on_* overrides, not the entry autostart codegen).
-nano_ros_node_register(
-    NAME    managed_talker
-    CLASS   cpp_lifecycle_talker_pkg::ManagedTalker
-    SOURCES src/ManagedTalker.cpp)
+nano_ros_add_node(managed_talker CLASS cpp_lifecycle_talker_pkg::ManagedTalker src/ManagedTalker.cpp)
 
 if(TARGET std_msgs__nano_ros_cpp)
     target_link_libraries(cpp_lifecycle_talker_pkg_talker_component

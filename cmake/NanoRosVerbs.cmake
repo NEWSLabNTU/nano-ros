@@ -117,7 +117,7 @@ endfunction()
 # the carrier entry ELF is assembled by the workspace root / `nros plan`.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_node name)
-    cmake_parse_arguments(_NRN "TYPED" "CLASS" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     set(_srcs ${_NRN_SOURCES} ${_NRN_UNPARSED_ARGUMENTS})
     if(NOT _srcs)
         message(FATAL_ERROR "nano_ros_add_node(${name}): no sources given.")
@@ -147,13 +147,28 @@ function(nano_ros_add_node name)
     if(_NRN_TYPED)
         set(_typed_arg TYPED)
     endif()
+    # 287-W6 workspace slice 2 — pass-through for the register's remaining
+    # per-component knobs (rclcpp-shape components, custom class headers,
+    # RFC-0047 callback-group declarations) so every node member can use the
+    # ament verb, not just the plain TYPED ones.
+    set(_extra_args "")
+    if(_NRN_HEADER)
+        list(APPEND _extra_args HEADER ${_NRN_HEADER})
+    endif()
+    if(_NRN_SHAPE)
+        list(APPEND _extra_args SHAPE ${_NRN_SHAPE})
+    endif()
+    if(_NRN_CALLBACK_GROUPS)
+        list(APPEND _extra_args CALLBACK_GROUPS ${_NRN_CALLBACK_GROUPS})
+    endif()
     nano_ros_node_register(
         NAME ${name}
         CLASS ${_NRN_CLASS}
         LANGUAGE ${_lang}
         SOURCES ${_srcs}
         DEPLOY ${_NRN_DEPLOY}
-        ${_typed_arg})
+        ${_typed_arg}
+        ${_extra_args})
 endfunction()
 
 # ---------------------------------------------------------------------------

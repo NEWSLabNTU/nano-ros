@@ -8,25 +8,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Phase 219.I — workspace builds inherit the helpers via the parent
 # root; standalone solo builds (this dir) bootstrap via the include
 # below. Same Node-pkg shape emitted by the current C++ scaffold.
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # Phase 212.L.9 — declarative Node pkg shape. No add_executable, no
 # `main()`; the linked Entry pkg's BSP-generated runtime (post-219.D)
 # owns the entry point, executor init, and the spin loop.
-nano_ros_node_register(
-    NAME    listener
-    CLASS   listener_pkg::Listener
-    SOURCES src/Listener.cpp)
+nano_ros_add_node(listener CLASS listener_pkg::Listener src/Listener.cpp)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node

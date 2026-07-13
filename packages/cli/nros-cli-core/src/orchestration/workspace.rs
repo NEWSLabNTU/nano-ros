@@ -498,7 +498,18 @@ fn parse_add_node_call(
     package_name: &str,
     cmakelists: &Path,
 ) -> Option<CmakeNodeSummary> {
-    const KEYWORDS: &[&str] = &["CLASS", "TYPED", "DEPLOY"];
+    // HEADER / SHAPE (one value) + CALLBACK_GROUPS (multi) ride through the
+    // verb to `nano_ros_node_register` (287-W6 workspace slice 2) — the parser
+    // must consume their VALUES so they are not misread as positional sources.
+    const KEYWORDS: &[&str] = &[
+        "CLASS",
+        "TYPED",
+        "DEPLOY",
+        "HEADER",
+        "SHAPE",
+        "CALLBACK_GROUPS",
+        "SOURCES",
+    ];
     let tokens = tokenize_cmake_body(body);
     let mut name: Option<String> = None;
     let mut class: Option<String> = None;
@@ -510,6 +521,10 @@ fn parse_add_node_call(
             current = match tok.as_str() {
                 "CLASS" => Some("CLASS"),
                 "DEPLOY" => Some("DEPLOY"),
+                "HEADER" => Some("HEADER"),
+                "SHAPE" => Some("SHAPE"),
+                "CALLBACK_GROUPS" => Some("CALLBACK_GROUPS"),
+                "SOURCES" => Some("SOURCES"),
                 _ => None, // TYPED — bare flag, no value
             };
             continue;
@@ -519,7 +534,14 @@ fn parse_add_node_call(
                 class = Some(tok);
                 current = None;
             }
+            Some("HEADER") | Some("SHAPE") => {
+                current = None; // consumed; summary doesn't track them
+            }
+            Some("CALLBACK_GROUPS") => {
+                // multi-value; swallow until the next keyword
+            }
             Some("DEPLOY") => deploy.push(tok),
+            Some("SOURCES") => sources.push(tok),
             _ => {
                 // A bare token: the first is the node name, the rest are sources.
                 if name.is_none() {
