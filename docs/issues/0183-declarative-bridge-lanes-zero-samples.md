@@ -30,3 +30,50 @@ up rather than a forwarding bug. The ws-bridge workspace fixtures went
 through the same fresh-sweep rebuild; check their entry build + the
 `nros plan` wiring before suspecting the bridge runtime. Untriaged beyond
 this; needs its own session.
+
+## ROOT CAUSE — message-type mismatch (NOT a bridge/forwarding bug) — 2026-07-13
+
+The "never came up" reading was wrong. The bridge RUNTIME works: a manual repro
+with the prebuilt binaries (zenohd → `native_entry` bridge → cyclonedds → nano C
+listener) delivered **11 `Received:` samples** end-to-end. The failure is a
+**message-type mismatch in the test's fixture pairing:**
+
+- The ws-bridge demo is intrinsically **`std_msgs/Int32`**: its own
+  `talker_pkg` publishes Int32 on `/chatter`, and the generated
+  `demo_bringup/nros-bridge.toml` forwards it typed as
+  `std_msgs::msg::dds_::Int32_` (`fields = [{name=data, type=int32}]`). So the
+  bridge stages an **Int32** Cyclone descriptor and registers `/chatter` as an
+  Int32-typed topic on the cyclone egress.
+- But the test drives it with the **SHARED** `talker_binary` (native rust
+  talker) and observes with the **SHARED** nano `c/listener` — both of which
+  commit `8f9433782` (277-W4.b, "native chatter examples match official ROS 2
+  demos") migrated to **`std_msgs/String`** ("Hello World: N" / `I heard: [%s]`).
+- Result: the bridge's Int32-typed cyclone topic never matches the String
+  subscriber (DDS type mismatch) → 0 delivery. The `wait_for_output_count(
+  LISTENER_LOG_PREFIX, 2, 12 s)` then times out and returns `Err`, and the
+  test's `.unwrap_or_default()` turns that into the **empty** `listener_output`
+  the report saw — not a crashed listener.
+
+The imperative sibling's `..._bridge_to_nano_listener` shares the same shared
+String talker + String C listener + `LISTENER_LOG_PREFIX` grep, so it has the
+identical latent mismatch (its `..._bridge_ros2` variant passes because it uses a
+`ros2 topic echo` receiver + greps `data:`, not the nano listener).
+
+## Fix plan (needs `just cyclonedds setup` to rebuild + verify)
+
+Re-align the test to the Int32 bridge (keep the demo's deliberate Int32 cross-RMW
+showcase). Two workable shapes:
+
+1. **Type-select the shared fixtures by env** (mirrors the #164 native-rust
+   listener `NROS_SUB_TYPE` fix): add `NROS_PUB_TYPE=int32` to the native rust
+   talker and `NROS_SUB_TYPE=int32` (Int32 deserialize + `Received:` print) to the
+   nano `c/listener`; the bridge tests set both and grep `INT32_LISTENER_LOG_PREFIX`
+   (`Received:`). Rebuild the cyclone C listener (needs cyclonedds).
+2. **Migrate the ws-bridge demo to String** to match 277-W4.b's direction
+   (`talker_pkg`/`listener_pkg`/`system.toml`/`nros-bridge.toml` → String), so the
+   shared String talker/listener pair cleanly. Simpler test, but drops the Int32
+   showcase and needs the `native_entry` rebuilt (needs cyclonedds).
+
+Blocked here only on the cyclonedds submodule being absent in this tree (the
+prebuilt binaries can't be regenerated for the String→Int32 alignment). Zero
+runtime/bridge code change is needed — it is purely fixture type-alignment.
