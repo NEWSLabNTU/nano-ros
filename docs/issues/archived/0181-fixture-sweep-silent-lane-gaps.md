@@ -1,7 +1,8 @@
 ---
 id: 181
 title: "build-test-fixtures exits 0 with whole lanes unbuilt (esp32, px4, freertos/threadx-linux rust) — tests then fail 'not prebuilt'"
-status: open
+status: resolved
+resolved_in: "phase-287 follow-up (2026-07-13)"
 type: bug
 area: build
 related: [issue-0164, phase-287]
@@ -69,3 +70,34 @@ a green sweep + a dozen `fixture not prebuilt` reds. `scripts/build/fixtures-bui
   variant matrix — some tests read `target/` (`build_native_listener`) while the
   loop stages per-RMW dirs; a full coverage audit against what each test consumes
   is a separate follow-up.
+
+## Resolution (2026-07-13)
+
+Upstream `5411bd49d` fixed the loudest mechanism (missing `ws sync` verb
+exit-0-skipped the whole rust half; now fails loud + the native codegen loop
+covers service-client-callback). This follow-up closes the rest:
+
+- **esp32 + px4 lanes added to BOTH sweep drivers** (`build-test-fixtures-leaves`
+  fallback make-graph + jobserver loop in the justfile; `build-all.mk`
+  PLATFORMS/INDEPENDENT_FIXTURE_PLATFORMS — esp32 was already in the mk, px4
+  in neither; the fallback had neither).
+- **esp32 name drift**: the crates' `[[bin]]` names are underscored
+  (`esp32_qemu_talker`) while the recipe + harness probed hyphenated names —
+  espflash opened a nonexistent ELF and the lane "passed". Recipe packs the
+  ELF under its real name (flash `.bin` keeps the historical hyphenated name
+  every consumer references); the harness now CONSUMES the prebuilt ELF
+  (`require_prebuilt_binary`) instead of `cargo build`-ing in-test.
+- **freertos rust roles**: the role crates are lib-only (212.L) — the harness
+  probed a `qemu-freertos-<role>` bin they can't produce. Builders now consume
+  the `<role>-entry` release images (the NuttX pattern); the six fixture rows
+  gained `target = "thumbv7m-none-eabi"` (they built for the HOST before —
+  exit 0, no board artifact); the six entries bake per-variant ports
+  (7451/7461/7471) instead of a uniform 7451, pair members carry distinct IPs
+  (10.0.2.15/.16 — the ZID lesson), and rtos_e2e gained a freertos-rust
+  launcher arm (default-slirp plan) + entry-banner readiness gates.
+- threadx-linux rust + the stale native rust leaves were sweep-ordering
+  staleness, not gaps.
+
+Verified: px4 2/2, esp32 boots + logging green, freertos rust boots + opens
+its session on the right port. Residual runtime reds (0-delivery) filed as
+**#191** (freertos rust entries) and **#190** (esp32 cross-delivery).

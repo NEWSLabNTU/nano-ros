@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
+  lane restored to the sweep (#181), boots + logging green; the four cross-delivery tests get 0
+  samples — check pair identity/port drift first (the #179/#181 lessons), then the #64 heap notes.
+- **#191** — [freertos rust entries: boot + connect, 0 delivery](0191-freertos-rust-entry-zero-delivery.md):
+  lane repaired end-to-end by #181 (entry images, per-variant ports, IP split, launcher/gates);
+  session opens, nothing publishes — entry runtime path, never previously exercised.
 - **#188** — [nuttx action goal rejected at handshake + cpp service red](0188-nuttx-action-goal-reject-cpp-service.md):
   `nros_action_send_goal` ret=-2 on nuttx only (pubsub + C service green on the same images);
   the #179 reply-framing fix does not apply — fails before any result exchange.
@@ -62,9 +68,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
-- **#181** — [build-test-fixtures exits 0 with lanes unbuilt](0181-fixture-sweep-silent-lane-gaps.md):
-  esp32, px4, freertos/threadx-linux RUST examples + two native rust leaves absent/stale after a
-  green sweep → a dozen tests fail "not prebuilt" and masquerade as runtime bugs.
 - **#187** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0187-rust-leaf-class-prefix-lint-violations.md):
   the W7 lint demands a HYPHENATED package prefix inside a Rust `class` path — unsatisfiable
   literally; normalise `-`/`_` in the lint or re-spec the metadata.
@@ -87,7 +90,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#184** — the baremetal
+Recently resolved (see [`archived/`](archived/) for the full list): **#181** — the fixture sweep
+no longer exits 0 with unbuilt lanes: esp32+px4 lanes added to both drivers, esp32 ELF-name drift
++ in-test builds removed, freertos rust rewired to the *-entry images with per-variant ports;
+residuals split to #191/#190. **#184** — the baremetal
 serial/XRCE OOM wasn't a missed board default: the three images PIN `NROS_HEAP_SIZE=24576`
 (phase-204.5 size recipe) in their `.cargo/config.toml`, unbootable once the phase-271 executor
 backing became a single ~75 KB allocation. Pins → 131072 (the #176 default; `.bss`, no flash
