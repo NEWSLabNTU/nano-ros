@@ -53,9 +53,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#185** — [zephyr self-pkg M-F.3 shim bake half-missing + bringup lanes](0185-zephyr-selfpkg-shim-bake-and-bringup-lanes.md):
   `config_h=true, config_cmake=false` under build/west-fixtures — emitter-side; plus
   cli_bringup zephyr/platformio reds. Bisect across the three same-week phase-287 emitters.
-- **#184** — [baremetal XRCE/serial emulator heap OOM](0184-baremetal-xrce-serial-emulator-heap-oom.md):
-  `memory allocation of 74888 bytes failed` — the #176 executor-backing fix (mps2 heap 64→128 KB)
-  missed the talker-xrce/serial image configs.
+- **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
+  with the heap fixed the lanes fail one layer deeper — zenoh-serial hangs silently at
+  `Executor::open` (both images, no error), XRCE fails `Transport(ConnectionFailed)` within ~2 s.
+  Suspects: the #178 wfi-yield/-icount family on the serial poll loop, or phase-282's tx
+  batching/flush-thread rework never draining InitSyn on a single-threaded image. Green history
+  unproven (museum-binary population; pre-271 images couldn't even boot this path).
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
@@ -84,7 +87,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#179** — zenoh action
+Recently resolved (see [`archived/`](archived/) for the full list): **#184** — the baremetal
+serial/XRCE OOM wasn't a missed board default: the three images PIN `NROS_HEAP_SIZE=24576`
+(phase-204.5 size recipe) in their `.cargo/config.toml`, unbootable once the phase-271 executor
+backing became a single ~75 KB allocation. Pins → 131072 (the #176 default; `.bss`, no flash
+cost) + the book's size-minimal recipe corrected (its 24 KB advice OOMs every `nros::main!`
+image; the published pre-271 footprint RAM rows are stale pending re-measure). The
+`max_callbacks` shrink route was rejected: arena floor + XRCE session still bust 24 KB, and the
+`_sized` seam is posix-only. Images boot past allocation; the deeper session-open failure split
+to #189. **#179** — zenoh action
 get-result deserialize (ALL platforms): offset-5 slices + unconditional trampoline re-header, three
 bugs cross-validating; one delivered-with-single-encap contract everywhere — native matrix 5/5,
 ws roundtrips 4/4, freertos+threadx-linux e2e 4/4. **#182** — the realtime-tier

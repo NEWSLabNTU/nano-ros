@@ -28,9 +28,12 @@ NROS_XRCE_MAX_SERVICE_SERVERS   = "1"
 NROS_XRCE_MAX_SERVICE_CLIENTS   = "1"
 NROS_XRCE_SUBSCRIBER_RING_DEPTH = "1"
 NROS_XRCE_BUFFER_SIZE           = "256"
-# Phase 204.5 — heap sized to the right side of the XRCE session
-# struct above + a fragmentation margin.
-NROS_HEAP_SIZE = "24576"
+# #184 — the phase-271 per-entry executor backing is a single ~75 KB
+# allocation, so the phase-204.5 "XRCE session + margin" 24 KB heap OOMs at
+# boot (`memory allocation of 74888 bytes failed`). Match the #176 board
+# default (128 KB): HEAP is `.bss` on the 16 MB MPS2-AN385 — no flash cost.
+# The tight XRCE pools above still bound the session struct itself.
+NROS_HEAP_SIZE = "131072"
 
 [target.thumbv7m-none-eabi]
 # -serial pty: QEMU exposes UART0 as a host PTY (for zenohd serial plugin)

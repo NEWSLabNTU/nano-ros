@@ -289,7 +289,12 @@ rustflags = [
 [env]
 NROS_LINK_IP        = "0"      # 204.7 — drop zenoh-pico TCP/UDP link C
 ZPICO_NO_SMOLTCP    = "1"      # skip smoltcp glue on bare-metal
-NROS_HEAP_SIZE      = "24576"  # 204.5 — right-size for zenoh-pico working set
+# Heap floor: the phase-271 per-entry executor backing is a single ~75 KB
+# allocation, so a `nros::main!` image needs ≥128 KB (the #176 board
+# default) — the pre-271 24 KB "zenoh-pico working set" figure OOMs at
+# boot. HEAP is `.bss` (no flash cost); shrink below the default only on
+# a non-`nros::main!` direct-mode image with a measured smaller peak.
+NROS_HEAP_SIZE      = "131072"
 NROS_SMOLTCP_MAX_SOCKETS     = "1"   # 204.2 — brokered client multiplexes
 NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 ```

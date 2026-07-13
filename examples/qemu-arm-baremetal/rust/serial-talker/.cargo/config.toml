@@ -16,9 +16,11 @@ ZPICO_NO_SMOLTCP = "1"
 # turns those off → no IP-link C; `--gc-sections` (above) strips the residual
 # smoltcp platform impl. Serial link (`Z_FEATURE_LINK_SERIAL`) stays on.
 NROS_LINK_IP = "0"
-# Phase 204.5 — zenoh-pico tcp/serial client working set is small; shrink the
-# 64 KB default static heap.
-NROS_HEAP_SIZE = "24576"
+# #184 — the phase-271 per-entry executor backing is a single ~75 KB
+# allocation, so the phase-204.5 24 KB "zenoh-pico working set" heap OOMs at
+# boot (`memory allocation of 74888 bytes failed`). Match the #176 board
+# default (128 KB): HEAP is `.bss` on the 16 MB MPS2-AN385 — no flash cost.
+NROS_HEAP_SIZE = "131072"
 
 [target.thumbv7m-none-eabi]
 # -serial pty: QEMU exposes UART0 as a host PTY (for zenohd serial plugin)
