@@ -16,7 +16,7 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
 - **W6 Zephyr** — `examples/zephyr/*` still on the old shape (0 `find_package(nano_ros)`);
   keeps `find_package(Zephyr)` + Kconfig (NOT byte-identical — Zephyr owns the build),
   the `nano_ros_add_executable` verb hides the `add_library`-into-`app` arm.
-- **W6 workspace** — IN PROGRESS. The **6 C-workspace node members** are migrated
+- **W6 workspace** — members DONE (2026-07-13). The **6 C-workspace node members** were migrated
   (`9c20918fc`): `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` →
   `find_package(nano_ros)` + `nano_ros_add_node(<name> CLASS <c> [TYPED] <srcs>)`.
   **Key unblocker landed:** `nros plan`/`nros metadata` statically parses the CMake
@@ -28,9 +28,26 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   (`nano_ros_workspace()` orchestrator) + **Entry pkgs** (`nano_ros_entry(...
   LAUNCH ...)` multi-node carriers — the composition layer, a distinct slice; the
   `nano_ros_add_executable` verb would need LAUNCH/TYPED passthrough + an entry
-  parser); the component `scaffold_c/cpp` template
-  (`cargo-nano-ros/src/scaffold.rs`); and a full workspace BUILD (only *configure*
-  is verified so far).
+  parser); and the component `scaffold_c/cpp` template
+  (`cargo-nano-ros/src/scaffold.rs`).
+
+  **Slice 2 landed (2026-07-13):** the remaining **54 C/C++ node members** across
+  cpp/mixed/ws-custom-msg/ws-lifecycle/ws-params/ws-qos/ws-safety/ws-realtime
+  (+subnode/portable/rclcpp/mps2 variants) + the workspace templates migrated via
+  `scripts/docs/migrate-workspace-members-ament.py`. Supporting changes:
+  `nano_ros_add_node` gained HEADER/SHAPE/CALLBACK_GROUPS pass-through (+ the
+  SOURCES-keyword form — positional sources after a multi-value keyword get
+  swallowed by cmake_parse_arguments); `parse_add_node_call` consumes the new
+  keywords so their values are not misread as sources; custom-msg workspace
+  roots set `NROS_INTERFACE_SEARCH_PATH` so members' `find_package(custom_msgs)`
+  resolves via the Phase-210.A.2 auto-emitted stubs. The mixed workspace's RUST
+  member stays on `nano_ros_node_register` (LANGUAGE RUST is outside the C/C++
+  verb surface). **Verified: 18/18 workspace roots CONFIGURE + BUILD green**
+  (posix, zenoh; ws-safety with its standard `-DNANO_ROS_SAFETY_E2E=ON` fixture
+  flag — the workspace feature-lowering gap there is pre-existing, see the
+  fixtures.toml note) **and 49/49 workspace e2e tests pass** (lifecycle, subnode,
+  multi-node, qos, params, safety, service/action roundtrips) on rebuilt
+  fixtures.
 - **W7 full cross-matrix** — `just build-test-fixtures && just test-all` on an idle
   box (all cross-toolchains are provisioned: `just doctor tier=all` all `[OK]` after
   `just rmw_zenoh setup`). Not a correctness gate.
