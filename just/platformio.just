@@ -3,9 +3,9 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Install PlatformIO Core. Required by `integration_platformio` smoke
-# test (Phase 139.6) and by users consuming nano-ros via the
-# `integrations/platformio/` shell.
+# Install PlatformIO Core. Required by the `cli_bringup_platformio`
+# test and by users consuming nano-ros via the
+# `integrations/platformio/` extra_script adapter.
 #
 # Tries `pipx install platformio` first (isolated, user-local); falls
 # back to `pip install --user platformio` when pipx is absent.

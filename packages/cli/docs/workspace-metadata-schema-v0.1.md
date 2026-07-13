@@ -190,7 +190,7 @@ No second TOML dialect. Renames go through the Phase 212.N.12 in-flight alias me
 
 ## 6. Stability + versioning
 
-v0.1 is the FROZEN initial schema. Forward-compatible additions (new optional keys) are minor bumps (v0.2, v0.3, …). Removing or renaming keys requires a major bump (v1.0) and a `nros migrate workspace` sweep.
+v0.1 is the FROZEN initial schema. Forward-compatible additions (new optional keys) are minor bumps (v0.2, v0.3, …). Removing or renaming keys requires a major bump (v1.0) and a migration sweep (the pre-212 `nros migrate workspace` one-shot is retired, #186 — a v1.0 break would ship its own tool).
 
 The schema version is **implicit** in v0.1 — no `schema_version` field on any table. v1.0 will introduce one if and when a breaking change is needed.
 

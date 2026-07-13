@@ -675,17 +675,13 @@ filter = "package(nros-tests) and kind(lib) and test(ros2::tests::)"
 test-group = "ros2-interop"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-#  * `integration_esp_idf` (`idf.py build`) and `zpico_drift_gate`
-#    (`cargo build -p zpico-sys` ×2) are NOT resource conflicts — esp_idf
-#    binds no ports, and drift_gate builds into a dedicated
-#    `target-zpico-drift-gate/` dir (no cargo target-lock contention). They
-#    are CPU/IO-bound cold builds that just need headroom past the 60s
-#    default when every core is busy, so a slow-timeout bump (no group) is
-#    sufficient. Verified: esp_idf ~35s, drift_gate ~26s standalone.
-[[profile.default.overrides]]
-filter = "binary(integration_esp_idf)"
-slow-timeout = { period = "120s", terminate-after = 3 }
-
+#  * `zpico_drift_gate` (`cargo build -p zpico-sys` ×2) is NOT a resource
+#    conflict — it builds into a dedicated `target-zpico-drift-gate/` dir
+#    (no cargo target-lock contention). It is a CPU/IO-bound cold build
+#    that just needs headroom past the 60s default when every core is
+#    busy, so a slow-timeout bump (no group) is sufficient (~26s
+#    standalone). (#186 — the `integration_esp_idf` twin override was
+#    removed with that test binary.)
 [[profile.default.overrides]]
 filter = "binary(zpico_drift_gate)"
 slow-timeout = { period = "120s", terminate-after = 3 }

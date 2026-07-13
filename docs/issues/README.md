@@ -53,9 +53,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#188** — [nuttx action goal rejected at handshake + cpp service red](0188-nuttx-action-goal-reject-cpp-service.md):
   `nros_action_send_goal` ret=-2 on nuttx only (pubsub + C service green on the same images);
   the #179 reply-framing fix does not apply — fails before any result exchange.
-- **#186** — [test rot: integration shell smokes + migrate drift gate](0186-stale-test-preconditions-integration-migrate.md):
-  three `integrations/` shell smokes probe the pre-208.D.7 layout; `migrate_workspace_e2e` red until
-  the pinned nros release catches the post-212.I emitter spec.
 - **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
   with the heap fixed the lanes fail one layer deeper — zenoh-serial hangs silently at
   `Executor::open` (both images, no error), XRCE fails `Transport(ConnectionFailed)` within ~2 s.
@@ -87,7 +84,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#185** — the "half-baked
+
+Recently resolved (see [`archived/`](archived/) for the full list): **#186** — test rot
+deleted, not repaired (maintainer call): the three integration shell
+smokes probed layouts retired in 208.D.7/D.8/D.10 and could never run again (canonical shapes
+covered by `cli_bringup_*` + the west fixtures), and the whole hidden `nros migrate workspace`
+verb went with them — its "release pin" drift gate was a tautology (post-218 there is no pin,
+and the in-tree emitter never adopted the post-212.I sub-table). Pre-212 trees migrate via the
+nros-v0.5.0 tag's CLI (breaking-removal note in the archive + diagnostics). **#185** — the "half-baked
 shim" was a museum WEST fixture, not an emitter bug: no current code path can emit
 `system_config.h` without `.cmake` (single writer + the shim FATALs on either missing), and all
 four lanes pass 4/4 on fresh fixtures — the three suspected phase-287 commits are innocent. The

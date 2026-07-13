@@ -164,8 +164,9 @@ Pick by whether the app uses codegen: `nros::main!()` app → `deploy` metadata
 ## Retired files
 
 - **`nros.toml` — retired in full** (phase-256). A workspace-root `nros.toml`
-  is rejected by the CLI (`NrosTomlNotSupported`; run `nros migrate
-  workspace`); the legacy per-package overlay is a deprecated fallback that
+  is rejected by the CLI (`NrosTomlNotSupported`; migrate with the
+  `nros-v0.5.0` tag's `nros migrate workspace` — the one-shot verb is retired
+  on newer trees, #186); the legacy per-package overlay is a deprecated fallback that
   `nros check` flags; the embedded-runtime role never shipped (no example
   ever declared one). If a doc tells you to write `nros.toml`, it predates
   the migration — the content belongs in `deploy` metadata or `system.toml`.

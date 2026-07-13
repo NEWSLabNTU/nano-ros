@@ -25,7 +25,6 @@ pub mod generate;
 pub mod generate_px4;
 pub mod init;
 pub mod metadata;
-pub mod migrate;
 pub mod new;
 pub mod new_system;
 pub mod plan;
@@ -77,16 +76,6 @@ pub enum Cmd {
     /// Collect component source metadata for orchestration planning
     Metadata(metadata::Args),
 
-    /// Migrate a pre-212 workspace to the new shape (Phase 212.I).
-    ///
-    /// Hidden from `nros --help`: this is an internal maintainer tool
-    /// that runs once per pre-212 workspace and retires. End users start
-    /// from the post-212 shape (`nros new system <bringup>`) and never
-    /// touch this verb. Kept callable via `cargo run -p nros-cli` for
-    /// the in-tree fixture sweep.
-    #[command(subcommand, hide = true)]
-    Migrate(MigrateSub),
-
     /// Resolve launch files, manifests, and metadata into nros-plan.json
     Plan(plan::Args),
 
@@ -130,9 +119,7 @@ pub enum Cmd {
     Release(release::Args),
 }
 
-#[derive(Debug, Subcommand)]
-pub enum MigrateSub {
-    /// Migrate a pre-212 workspace (`nros.toml` + `component_nros.toml` +
-    /// committed `metadata/*.json`) to the post-212 layout.
-    Workspace(migrate::Args),
-}
+// #186 — the hidden `nros migrate workspace` one-shot (Phase 212.I) is
+// retired: its emitter never adopted the post-212.I component sub-table
+// spec and pre-212 workspaces have aged out. A tree that still needs the
+// migration runs it from the `nros-v0.5.0` tag's CLI.

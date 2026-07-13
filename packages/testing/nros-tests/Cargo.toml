@@ -301,18 +301,10 @@ path = "tests/zpico_build_matrix.rs"
 # Phase 139.6 — per-RTOS integration-shell smoke tests. Each skips
 # cleanly via `nros_tests::skip!` when the RTOS SDK / toolchain isn't
 # installed on the test box; full builds run in per-RTOS CI.
-[[test]]
-name = "integration_zephyr"
-path = "tests/integration_zephyr.rs"
-
-[[test]]
-name = "integration_esp_idf"
-path = "tests/integration_esp_idf.rs"
-
-[[test]]
-name = "integration_platformio"
-path = "tests/integration_platformio.rs"
-
+# (#186 — the zephyr / esp-idf / platformio smokes were deleted: they
+# probed layouts retired in Phase 208.D.7/D.8/D.10 and could never run
+# again; the canonical shapes are covered by the cli_bringup_* tests +
+# the west fixtures.)
 [[test]]
 name = "integration_nuttx"
 path = "tests/integration_nuttx.rs"

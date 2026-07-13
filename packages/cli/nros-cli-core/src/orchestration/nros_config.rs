@@ -36,11 +36,14 @@ use super::cargo_metadata_schema::{
 #[derive(Debug, Error)]
 pub enum NrosConfigError {
     /// A pre-212 `nros.toml` sits at the workspace root. Clean break — point
-    /// the user at the migration tool.
+    /// the user at the migration path (#186 retired the one-shot
+    /// `migrate workspace` verb; it lives in the nros-v0.5.0 tag's CLI).
     #[error(
-        "nros.toml at workspace root is no longer supported; run \
-         `nros migrate workspace .` to convert to the new shape \
-         (Phase 212.B → see docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)"
+        "nros.toml at workspace root is no longer supported (Phase 212.B); \
+         run `nros migrate workspace .` from the nros-v0.5.0 tag's CLI (the \
+         verb is retired on newer trees), or start fresh from \
+         `nros new system <bringup>` \
+         (see docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)"
     )]
     NrosTomlNotSupported { path: PathBuf },
 

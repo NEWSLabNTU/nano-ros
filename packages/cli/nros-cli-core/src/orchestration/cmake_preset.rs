@@ -188,8 +188,7 @@ mod tests {
         let repo = tmp.path().join("nano-ros");
         let missing = tmp.path().join("does/not/exist/bin");
 
-        let path =
-            emit_board_preset_into(&presets, "posix", &repo, None, &[missing]).unwrap();
+        let path = emit_board_preset_into(&presets, "posix", &repo, None, &[missing]).unwrap();
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let preset = &doc["configurePresets"][0];
         assert!(preset.get("toolchainFile").is_none());
@@ -213,7 +212,12 @@ mod tests {
         let includes = doc["include"].as_array().unwrap();
         assert_eq!(includes.len(), 2);
         // sorted: nuttx-qemu-arm.json before posix.json
-        assert!(includes[0].as_str().unwrap().ends_with("nuttx-qemu-arm.json"));
+        assert!(
+            includes[0]
+                .as_str()
+                .unwrap()
+                .ends_with("nuttx-qemu-arm.json")
+        );
         assert!(includes[1].as_str().unwrap().ends_with("posix.json"));
     }
 }

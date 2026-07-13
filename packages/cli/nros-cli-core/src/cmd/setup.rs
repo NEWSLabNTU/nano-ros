@@ -279,7 +279,8 @@ fn emit_board_cmake_preset(board: &str, workspace: &Path, bin_dirs: &[PathBuf]) 
     // Presets are `include`d from an arbitrary project dir, so every emitted path
     // must be absolute. Canonicalize the repo root (fall back to the given path if
     // it can't be resolved).
-    let workspace_abs = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let workspace_abs =
+        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let workspace = workspace_abs.as_path();
 
     let catalog =

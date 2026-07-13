@@ -39,9 +39,6 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
-        cmd::Cmd::Migrate(sub) => match sub {
-            cmd::MigrateSub::Workspace(args) => cmd::migrate::run(args),
-        },
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),
         cmd::Cmd::Explain(args) => cmd::explain::run(args),

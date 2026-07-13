@@ -15,8 +15,9 @@ superseded-by: null
 > shape — a single `nros.toml` whose *kind* (workspace root / `[component]` /
 > direct-mode `[node]`) was discriminated by which sections were present, with
 > Cargo-style walk-up resolution — is **superseded**. A workspace-root
-> `nros.toml` is now **rejected by the CLI** (`NrosTomlNotSupported`; run
-> `nros migrate workspace`). Workspace/system config lives in `Cargo.toml`
+> `nros.toml` is now **rejected by the CLI** (`NrosTomlNotSupported`; migrate
+> via the `nros-v0.5.0` tag's `nros migrate workspace` — the one-shot verb is
+> retired on newer trees, #186). Workspace/system config lives in `Cargo.toml`
 > metadata + a language-agnostic `system.toml`. RMW selection has its own home —
 > see RFC-0031.
 >
