@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#193** — [fresh native cyclone C listener fails register_subscription -> -1](0193-native-cyclone-c-listener-register-subscription-fails.md):
+  a native `c/listener` rebuilt against a freshly-provisioned cyclonedds boots + creates its
+  subscription but `nros_executor_register_subscription` returns -1 (reader-create fails; likely
+  the std_msgs Cyclone descriptor isn't registered under CODEGEN=OFF). Affects the String default
+  too (not a message-type issue); the old prebuilt registered fine. Blocks native cyclone C
+  listener e2e + #183's final verification. Surfaced by #183.
 - **#192** — [FVP AEMv8-R cyclone talker: picolibc SSP pulls undefined `getentropy`](0192-fvp-aemv8r-cyclone-getentropy-link.md):
   final link fails in the SDK picolibc's `__stack_chk_init`; pre-existing museum-lane red
   (identical at HEAD and with the 287-W6 migration), no `CONFIG_STACK_PROTECTOR` set.

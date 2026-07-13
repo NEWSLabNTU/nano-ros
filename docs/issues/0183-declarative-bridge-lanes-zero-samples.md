@@ -4,7 +4,7 @@ title: "declarative ws-bridge lanes deliver 0 samples (zenoh→cyclonedds nano l
 status: open
 type: bug
 area: testing
-related: [phase-287, issue-0164]
+related: [phase-287, issue-0164, issue-0193]
 ---
 
 ## Summary
@@ -103,7 +103,8 @@ descriptor-registration regression (or a gap in the targeted build invocation vs
 the full `just native build-fixture-extras`). The old prebuilt listener registered
 fine. Final e2e-on-current-fixtures verification is owed once a clean full
 `build-fixture-extras` produces a listener that registers; the type-alignment fix
-itself is correct by construction.
+itself is correct by construction. **This register-1 blocker is now tracked
+separately as #193** (it hits the String default too, so it is not the #183 change).
 
 **Imperative sibling needs NO change (corrected):** `bridge_zenoh_to_cyclonedds`'s
 hand-written `bridge-zenoh-to-cyclonedds-fwd` bin was already migrated to
