@@ -427,6 +427,20 @@ needs a cargo-build sweep across the Rust example matrix to verify `[patch]`
 resolution through the `include`). Filed as its own slice so it doesn't gate the
 C/C++ waves. Independent of W3–W8.
 
+**Addendum (verified 2026-07-14):**
+- **`include = [...]` works on STABLE cargo** (empirically checked on 1.96: an
+  `[alias]` defined only in the included file resolves) — `config-include` is
+  no longer a nightly gate, so E has no toolchain cost.
+- **E centralizes only the repo-crate patches.** A real leaf's managed block
+  (e.g. `native/rust/talker`) is ~10 lines: ~8 repo-crate paths
+  (`../../../../packages/...`) that can move to the central `nros-patch.toml`,
+  plus 2+ `generated/*` msg-crate patches (`builtin_interfaces`, `std_msgs`,
+  ...) whose paths are LEAF-LOCAL by design (per-leaf `generated/` is the
+  copy-out contract) and must stay in the leaf's config. Net per-leaf surface
+  after E ≈ 1 include + the leaf's own generated-msg lines — still a real
+  reduction, but "12 → 1" only for the repo crates; the sync emit keeps two
+  tiers.
+
 ## Non-goals
 
 - Distribution / how a user *obtains* nano-ros — phase-288 (#171 D1/D2).
