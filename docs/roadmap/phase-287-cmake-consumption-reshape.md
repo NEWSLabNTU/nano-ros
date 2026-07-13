@@ -16,10 +16,21 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
 - **W6 Zephyr** — `examples/zephyr/*` still on the old shape (0 `find_package(nano_ros)`);
   keeps `find_package(Zephyr)` + Kconfig (NOT byte-identical — Zephyr owns the build),
   the `nano_ros_add_executable` verb hides the `add_library`-into-`app` arm.
-- **W6 workspace** — 22 `nano_ros_workspace(` roots + members not migrated:
-  root → `find_package(nano_ros)`, members `nano_ros_workspace_pkg_guard()` +
-  `nano_ros_node_register()` → `nano_ros_add_node()`; plus the component
-  `scaffold_c/cpp` template in `cargo-nano-ros/src/scaffold.rs`.
+- **W6 workspace** — IN PROGRESS. The **6 C-workspace node members** are migrated
+  (`9c20918fc`): `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` →
+  `find_package(nano_ros)` + `nano_ros_add_node(<name> CLASS <c> [TYPED] <srcs>)`.
+  **Key unblocker landed:** `nros plan`/`nros metadata` statically parses the CMake
+  verbs to build the composition graph — `workspace.rs::parse_add_node_call` now
+  recognises `nano_ros_add_node`'s positional grammar (without it `nros plan` fails
+  "missing source metadata"). The C workspace CONFIGURES (posix, `CFG_RC=0`).
+  **Remaining:** the cpp + other workspaces' members (same mechanical pattern, now
+  that the verb + parser support it); the workspace **root**
+  (`nano_ros_workspace()` orchestrator) + **Entry pkgs** (`nano_ros_entry(...
+  LAUNCH ...)` multi-node carriers — the composition layer, a distinct slice; the
+  `nano_ros_add_executable` verb would need LAUNCH/TYPED passthrough + an entry
+  parser); the component `scaffold_c/cpp` template
+  (`cargo-nano-ros/src/scaffold.rs`); and a full workspace BUILD (only *configure*
+  is verified so far).
 - **W7 full cross-matrix** — `just build-test-fixtures && just test-all` on an idle
   box (all cross-toolchains are provisioned: `just doctor tier=all` all `[OK]` after
   `just rmw_zenoh setup`). Not a correctness gate.
