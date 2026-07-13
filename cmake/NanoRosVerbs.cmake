@@ -23,9 +23,10 @@
 
 include_guard(GLOBAL)
 
-# `nano_ros_bootstrap` / `nano_ros_link` (root resolve + auto-link of the
-# generated interface libs + platform). Imported already by the config, but keep
-# the include so the verbs are usable if a caller pulls this module directly.
+# `_nros_bootstrap` / `_nros_link` (root resolve + auto-link of the generated
+# interface libs + platform — config internals since W8 retired the public
+# spelling). Imported already by the config, but keep the include so the verbs
+# are usable if a caller pulls this module directly.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBootstrap.cmake")
 
 # ---------------------------------------------------------------------------
@@ -144,7 +145,7 @@ function(nano_ros_add_executable name)
         ${_board_arg}
         ${_entry_extra})
 
-    nano_ros_link(${name})
+    _nros_link(${name})
 endfunction()
 
 # ---------------------------------------------------------------------------

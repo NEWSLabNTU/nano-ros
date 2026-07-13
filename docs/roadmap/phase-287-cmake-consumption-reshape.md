@@ -123,9 +123,21 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   - **Host-env (user action):** platformio test red because the pipx
     platformio venv (and pipx itself) point at a removed
     `~/miniconda3` python — `pipx` needs reinstalling on this box.
-- **W8 (old-path removal)** — retire the public `nano_ros_bootstrap` / `nano_ros_link`
-  / `nano_ros_deploy` macros + `NanoRosBootstrap.cmake`; BLOCKED until W6 Zephyr +
-  workspace stop calling them (`git grep` the markers before removing).
+- **W8 (old-path removal) — DONE (2026-07-14), one deliberate carve-out.**
+  `nano_ros_bootstrap` / `nano_ros_link` renamed to `_nros_bootstrap` /
+  `_nros_link` (config/Verbs internals; `NanoRosBootstrap.cmake` stays as the
+  internal module, its header now says so) — zero external callers remained
+  (only the retired W2a migration script, deleted, and the example_shape lint
+  that FORBIDS the old names, kept). Also retired the two long-dead
+  deprecation shims (`nano_ros_application` 212.N.6,
+  `nano_ros_component_register` 213.B.1 — zero callers each).
+  **Carve-out: `nano_ros_deploy` stays.** It is not an example-facing macro
+  any more (no example calls it) but a live L.9 seam: it emits the
+  deploy-target JSON that `nros plan`/`nros metadata` consume, and
+  `nros_system_generate`'s self-pkg detection keys on it; the
+  `multi_pkg_workspace_*` + `l9_deploy` test fixtures use it. Retiring it
+  means moving that metadata onto the package.xml tuple in the planner — its
+  own slice, tracked as follow-up alongside W9.
 - **W9 impl** — option E (single `include` of a `nros sync`-generated central
   `nros-patch.toml`); independent follow-up.
 

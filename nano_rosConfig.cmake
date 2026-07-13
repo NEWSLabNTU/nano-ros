@@ -128,7 +128,7 @@ endif()
 
 # --- 1. import nano-ros ------------------------------------------------------
 include("${NANO_ROS_ROOT}/cmake/NanoRosBootstrap.cmake")
-nano_ros_bootstrap(ROOT "${NANO_ROS_ROOT}")
+_nros_bootstrap(ROOT "${NANO_ROS_ROOT}")
 
 # --- 2. find-package stubs + ament shims -------------------------------------
 # NrosRclcppCompat prepends `cmake/compat/stubs/` to CMAKE_MODULE_PATH so a stock
