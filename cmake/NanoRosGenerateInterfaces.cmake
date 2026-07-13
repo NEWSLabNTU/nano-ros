@@ -735,10 +735,22 @@ function(nros_generate_interfaces target)
             endif()
           endforeach()
           list(APPEND _cyc_force_load_libs ${target}__cyclonedds_ts)
-          target_link_libraries(${_lib_target} INTERFACE
-            "-Wl,--whole-archive"
-            ${_cyc_force_load_libs}
-            "-Wl,--no-whole-archive")
+          # issue #193 — CMake < 3.24 has no $<LINK_LIBRARY:WHOLE_ARCHIVE>.
+          # Emitting the group via target_link_LIBRARIES lets CMake de-dupe the
+          # ts lib out of the `--whole-archive` group (it keeps a bare, GC-able
+          # copy), so the descriptor static-init ctors get GC'd →
+          # `find_descriptor -> nullptr -> register_subscription -> -1`. The
+          # de-dup-safe pre-3.24 idiom (per CMake's marc.chevrier,
+          # discourse.cmake.org/t/5883) is target_link_OPTIONS with a `SHELL:`
+          # group: link options are raw flags, not library items, so they are
+          # never de-duped, and `$<TARGET_FILE:…>` carries the build-order edge.
+          # Link the target normally too (ordinary archive membership) — the
+          # documented cost is the lib appearing twice on the link line.
+          foreach(_wl ${_cyc_force_load_libs})
+            target_link_libraries(${_lib_target} INTERFACE ${_wl})
+            target_link_options(${_lib_target} INTERFACE
+              "SHELL:-Wl,--whole-archive $<TARGET_FILE:${_wl}> -Wl,--no-whole-archive")
+          endforeach()
         endif()
       endif()
     endif()

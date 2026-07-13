@@ -53,12 +53,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#194** — [threadx-linux rust rtos e2e: boots, 0 delivery](0194-threadx-linux-rust-entry-zero-delivery.md):
   deterministic (3/3 retries, solo) on fresh fixtures; C/C++ threadx lanes green — sibling of
   #191 on the language axis (rust entry runtime publish path), loopback so not a net-plan issue.
-- **#193** — [fresh native cyclone C listener fails register_subscription -> -1](0193-native-cyclone-c-listener-register-subscription-fails.md):
-  a native `c/listener` rebuilt against a freshly-provisioned cyclonedds boots + creates its
-  subscription but `nros_executor_register_subscription` returns -1 (reader-create fails; likely
-  the std_msgs Cyclone descriptor isn't registered under CODEGEN=OFF). Affects the String default
-  too (not a message-type issue); the old prebuilt registered fine. Blocks native cyclone C
-  listener e2e + #183's final verification. Surfaced by #183.
 - **#192** — [FVP AEMv8-R cyclone talker: picolibc SSP pulls undefined `getentropy`](0192-fvp-aemv8r-cyclone-getentropy-link.md):
   final link fails in the SDK picolibc's `__stack_chk_init`; pre-existing museum-lane red
   (identical at HEAD and with the 287-W6 migration), no `CONFIG_STACK_PROTECTOR` set.
@@ -103,7 +97,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#186** — test rot
+Recently resolved (see [`archived/`](archived/) for the full list): **#193** — fresh native
+cyclone C listener `register_subscription -> -1` was `find_descriptor -> nullptr`: on CMake < 3.24
+the descriptor ts lib's static-init ctors were GC'd because the `-Wl,--whole-archive <target-name>`
+group let CMake de-dupe the archive out. Fixed with the de-dup-safe pre-3.24 idiom —
+`target_link_options(... "SHELL:-Wl,--whole-archive $<TARGET_FILE:…> -Wl,--no-whole-archive")` — no
+3.24 requirement (kept the #181 3.22 floor). Verified on CMake 3.22.1: 30 ctors link, register
+succeeds, and the #183 bridge chain delivers e2e. **#186** — test rot
 deleted, not repaired (maintainer call): the three integration shell
 smokes probed layouts retired in 208.D.7/D.8/D.10 and could never run again (canonical shapes
 covered by `cli_bringup_*` + the west fixtures), and the whole hidden `nros migrate workspace`

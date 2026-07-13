@@ -1,11 +1,30 @@
 ---
 id: 193
 title: "Freshly-built native cyclone C listener fails nros_executor_register_subscription -> -1 at startup"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0183, issue-0181, issue-0175]
 ---
+
+## RESOLVED — CMake 3.22 whole-archive via target_link_options (SHELL) — 2026-07-14
+
+Kept the `#181` CMake 3.22 floor (no 3.24 requirement). The `else()` (< 3.24)
+branch of the descriptor force-load in `NanoRosGenerateInterfaces.cmake` now uses
+the de-dup-safe pre-3.24 idiom (CMake maintainer marc.chevrier,
+discourse.cmake.org/t/5883): `target_link_OPTIONS(... INTERFACE "SHELL:-Wl,
+--whole-archive $<TARGET_FILE:<ts-lib>> -Wl,--no-whole-archive")` (link OPTIONS are
+raw flags, never de-duped like library items; `$<TARGET_FILE>` carries build order),
+alongside a normal `target_link_libraries` of the same target for ordinary archive
+membership (the ts lib appears twice — the documented pre-3.24 cost). The prior
+`target_link_libraries ... -Wl,--whole-archive <target-name> ...` let CMake drop the
+whole-archived copy in favour of a bare one → descriptors GC'd → register -1.
+
+Verified on CMake 3.22.1: `c_listener` now links **30** `register_std_msgs_*`
+constructors (was 0); `nros_executor_register_subscription` succeeds for BOTH the
+String default and `NROS_SUB_TYPE=int32`; and the #183 declarative ws-bridge chain
+(zenoh Int32 talker → bridge → cyclonedds → nano Int32 listener) delivers samples
+end-to-end (`Received: 6…11`). This also unblocks #183's final verification.
 
 ## Summary
 
