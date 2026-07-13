@@ -56,7 +56,10 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
         format!("nros.{}.{}", cfg.lang, cfg.platform)
     };
     let nano_ros_export = if is_cxx {
-        format!("\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>", rmw.cmake_value)
+        format!(
+            "\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>",
+            rmw.cmake_value
+        )
     } else {
         String::new()
     };
@@ -117,9 +120,10 @@ pub struct ComponentScaffoldConfig {
     /// shape, named after the flavor.
     pub use_case: String,
     /// Source language. `rust` lands the planned-mode `nros::Component` shape;
-    /// `c` / `cpp` land the typed component shape (RFC-0043):
-    /// `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` + a
-    /// `configure(::nros::Node&)` (C++) / `NROS_C_COMPONENT` (C) seam.
+    /// `c` / `cpp` land the typed component shape (RFC-0043) in the RFC-0048
+    /// ament spelling: `find_package(nano_ros REQUIRED)` +
+    /// `nano_ros_add_node(...)` + a `configure(::nros::Node&)` (C++) /
+    /// `NROS_C_COMPONENT` (C) seam.
     pub lang: String,
     pub force: bool,
 }
@@ -294,7 +298,7 @@ source_metadata = "metadata/{module}.json"
 }
 
 /// Scaffold a **C++ Node pkg** — typed component (RFC-0043). Emits the
-/// §212.L.9 cmake-fn surface (`nano_ros_node_register`) and a
+/// RFC-0048 ament surface (`find_package(nano_ros)` + `nano_ros_add_node`) and a
 /// `<UserClass>::configure(::nros::Node&)` real-callback body in the
 /// `<pkg>::` namespace per §212.L.4 (class prefix must equal `PROJECT_NAME`).
 /// `configure` creates a `Publisher` + binds a member timer callback by
@@ -333,7 +337,8 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
-    <build_type>cmake</build_type>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
   </export>
 </package>
 "#,
@@ -349,26 +354,23 @@ project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-{bootstrap}
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # Typed component (RFC-0043). No add_executable, no `main()`; the linked
 # Entry pkg's typed runtime constructs this class + calls `configure(node)`
 # on the real executor. `DEPLOY native` also builds a standalone runnable
 # single-node ELF via the typed native carrier.
-nano_ros_node_register(
-    NAME    {node_name}
-    CLASS   {pkg_sym}::{class_name}
+nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name}
     SOURCES src/{class_name}.cpp
     DEPLOY  native)
 
-# `nros_find_interfaces` declares an INTERFACE lib per dep
+# The verb generated the package.xml `<depend>` closure as INTERFACE libs
 # (`std_msgs__nano_ros_cpp` etc.) carrying the generated headers' include
 # dirs + FFI-glue link. The typed `Publisher<Int32>` needs them.
 target_link_libraries({pkg_sym}_{node_name}_component
     PUBLIC std_msgs__nano_ros_cpp)
 "#,
-        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
@@ -493,7 +495,8 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <maintainer email="TODO@todo.com">TODO</maintainer>
   <license>Apache-2.0</license>
   <export>
-    <build_type>cmake</build_type>
+    <build_type>ament_cmake</build_type>
+    <nano_ros deploy="native"/>
   </export>
 </package>
 "#,
@@ -509,19 +512,15 @@ project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-{bootstrap}
+find_package(nano_ros REQUIRED)
+
 # Typed C component (RFC-0043). The raw `/chatter` publisher carries the type
 # name as a string, so no generated C bindings are needed. `DEPLOY native`
 # also builds a standalone runnable single-node ELF via the typed C carrier.
-nano_ros_node_register(
-    NAME     {node_name}
-    CLASS    {pkg_sym}::{class_name}
-    LANGUAGE C
-    TYPED
-    SOURCES  src/{class_name}.c
-    DEPLOY   native)
+nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
+    SOURCES src/{class_name}.c
+    DEPLOY  native)
 "#,
-        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
@@ -779,28 +778,6 @@ rustflags = [
     Ok(())
 }
 
-/// Standard preamble that bootstraps the nano-ros workspace cmake fns
-/// (`nano_ros_workspace_pkg_guard`, `nano_ros_node_register`,
-/// `nano_ros_entry`, `nros_find_interfaces`, …) regardless of whether the
-/// pkg is built solo or as a workspace member. Lands in every scaffolded
-/// C / C++ CMakeLists at the top, right after `project()`.
-///
-/// Phase 219.I shape — see `cmake/NanoRosWorkspace.cmake`.
-const NROS_BOOTSTRAP_BLOCK: &str = r#"# Phase 219.I — bootstrap nano-ros workspace helpers. Workspace builds
-# inherit the helpers from the parent root; standalone solo builds
-# require `-DNANO_ROS_ROOT=<path-to-nano-ros>` and locate them via the
-# include() below.
-if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
-            "standalone builds, or build via the workspace root.")
-    endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-endif()
-nano_ros_workspace_pkg_guard()
-"#;
-
 fn scaffold_c(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
     let _ = platform;
     let _ = rmw_value;
@@ -1023,14 +1000,26 @@ mod tests {
             cm.contains("find_package(nano_ros REQUIRED)"),
             "expected ament shape in:\n{cm}"
         );
-        assert!(cm.contains("nano_ros_add_executable(bar src/main.c)"), "{cm}");
-        assert!(!cm.contains("nano_ros_entry"), "stray old-shape verb:\n{cm}");
-        assert!(!cm.contains("set(NANO_ROS_RMW"), "RMW should be in package.xml:\n{cm}");
+        assert!(
+            cm.contains("nano_ros_add_executable(bar src/main.c)"),
+            "{cm}"
+        );
+        assert!(
+            !cm.contains("nano_ros_entry"),
+            "stray old-shape verb:\n{cm}"
+        );
+        assert!(
+            !cm.contains("set(NANO_ROS_RMW"),
+            "RMW should be in package.xml:\n{cm}"
+        );
 
         let dpp = tmp();
         scaffold_cpp("baz", "native", "xrce", dpp.path()).unwrap();
         let cm = fs::read_to_string(dpp.path().join("CMakeLists.txt")).unwrap();
-        assert!(cm.contains("nano_ros_add_executable(baz src/main.cpp)"), "{cm}");
+        assert!(
+            cm.contains("nano_ros_add_executable(baz src/main.cpp)"),
+            "{cm}"
+        );
     }
 
     #[test]

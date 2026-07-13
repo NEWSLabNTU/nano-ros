@@ -766,10 +766,11 @@ mod component_scaffold {
         let dir = tmp.path().join("c-talker");
         let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
         assert!(cmake.contains("project(c_talker VERSION 0.1.0 LANGUAGES C CXX)"));
-        // Typed C component (RFC-0043): raw publisher, no generated bindings.
-        assert!(cmake.contains("LANGUAGE C"));
-        assert!(cmake.contains("TYPED"));
-        assert!(cmake.contains("CLASS    c_talker::Talker"));
+        // RFC-0048 ament shape: find_package + the add_node verb (language is
+        // inferred from the .c source); typed C component (RFC-0043) — raw
+        // publisher, no generated bindings.
+        assert!(cmake.contains("find_package(nano_ros REQUIRED)"));
+        assert!(cmake.contains("nano_ros_add_node(talker CLASS c_talker::Talker TYPED"));
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
         assert!(source.contains("NROS_C_COMPONENT(c_talker_t, talker_configure)"));
@@ -799,7 +800,8 @@ mod component_scaffold {
 
         let dir = tmp.path().join("cpp-talker");
         let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
-        assert!(cmake.contains("CLASS   cpp_talker::Talker"));
+        assert!(cmake.contains("find_package(nano_ros REQUIRED)"));
+        assert!(cmake.contains("nano_ros_add_node(talker CLASS cpp_talker::Talker"));
         assert!(cmake.contains("std_msgs__nano_ros_cpp"));
 
         // Header at include/<pkg>/<Class>.hpp (typed Entry includes it by that path).

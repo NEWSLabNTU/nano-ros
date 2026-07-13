@@ -44,8 +44,14 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   verbs to build the composition graph — `workspace.rs::parse_add_node_call` now
   recognises `nano_ros_add_node`'s positional grammar (without it `nros plan` fails
   "missing source metadata"). The C workspace CONFIGURES (posix, `CFG_RC=0`).
-  **Remaining:** the component `scaffold_c/cpp` template
-  (`cargo-nano-ros/src/scaffold.rs`).
+  **Slice 4 landed (2026-07-13):** the `nros new --component --lang c|cpp`
+  scaffold templates (`cargo-nano-ros/src/scaffold.rs`) emit the ament shape
+  (`find_package(nano_ros REQUIRED)` [+ `find_package(std_msgs)`] +
+  `nano_ros_add_node(... DEPLOY native)`; package.xml gains
+  `<build_type>ament_cmake</build_type>` + the `deploy="native"` tuple); the
+  workspace-guard preamble block is gone from the scaffolder. Verified: both
+  scaffolded components cmake-configure + build SOLO under a sourced
+  activate.sh; cargo-nano-ros test suite green. **W6 is complete.**
 
   **Slice 3 landed (2026-07-13) — roots + Entry pkgs.** All ~24 workspace ROOTS
   move to `find_package(nano_ros REQUIRED COMPONENTS workspace)` (a new config
