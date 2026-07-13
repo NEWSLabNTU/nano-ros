@@ -155,7 +155,10 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener(talker_binary: PathBu
     drop(zenohd);
 
     eprintln!("nano cyclone listener output:\n{listener_output}");
-    let received = count_pattern(&listener_output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("nano cyclone listener received {received} bridged sample(s)");
     assert!(
         received >= 2,

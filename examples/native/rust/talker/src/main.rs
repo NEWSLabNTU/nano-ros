@@ -28,8 +28,7 @@ use core::fmt::Write as _;
 
 use log::{error, info};
 use nros::prelude::*;
-use std_msgs::msg::Int32;
-use std_msgs::msg::String as StringMsg;
+use std_msgs::msg::{Int32, String as StringMsg};
 
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
