@@ -117,7 +117,7 @@ endfunction()
 # the carrier entry ELF is assembled by the workspace root / `nros plan`.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_node name)
-    cmake_parse_arguments(_NRN "" "CLASS" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRN "TYPED" "CLASS" "SOURCES;DEPLOY" ${ARGN})
     set(_srcs ${_NRN_SOURCES} ${_NRN_UNPARSED_ARGUMENTS})
     if(NOT _srcs)
         message(FATAL_ERROR "nano_ros_add_node(${name}): no sources given.")
@@ -137,13 +137,23 @@ function(nano_ros_add_node name)
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
-    nros_find_interfaces(LANGUAGE ${_lang} SKIP_INSTALL)
+    # Generate the package's declared interface closure (no-op when package.xml
+    # declares none — a TYPED component publishes raw topics with no bindings).
+    _nros_generate_declared_interfaces(${_lang})
 
+    # TYPED (RFC-0043): a typed component carries the type name as a string, no
+    # generated bindings — forward the flag to the register.
+    set(_typed_arg "")
+    if(_NRN_TYPED)
+        set(_typed_arg TYPED)
+    endif()
     nano_ros_node_register(
         NAME ${name}
         CLASS ${_NRN_CLASS}
+        LANGUAGE ${_lang}
         SOURCES ${_srcs}
-        DEPLOY ${_NRN_DEPLOY})
+        DEPLOY ${_NRN_DEPLOY}
+        ${_typed_arg})
 endfunction()
 
 # ---------------------------------------------------------------------------

@@ -476,7 +476,83 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
             manifest_path: cmakelists.clone(),
         });
     }
+    // RFC-0048 (phase-287 W6) — the ament-shape spelling of a workspace component:
+    // `nano_ros_add_node(<name> CLASS <ns::Class> [TYPED] <sources…> [DEPLOY <t>…])`.
+    // Positional name + sources (unlike node_register's all-keyword form), so it needs
+    // a dedicated parse. Language is inferred from the source extensions.
+    for call in extract_cmake_calls(&stripped, "nano_ros_add_node") {
+        let Some(summary) = parse_add_node_call(&call, package_name, &cmakelists) else {
+            continue;
+        };
+        out.push(summary);
+    }
     Ok(out)
+}
+
+/// Parse a `nano_ros_add_node(<name> CLASS <ns::Class> [TYPED] <src…> [DEPLOY <t>…])`
+/// call body. The first non-keyword token is the node name; `CLASS` takes one
+/// value; `TYPED` is a bare flag; `DEPLOY` takes values; every other bare token is
+/// a source. Language is inferred from source extensions, else the CLASS.
+fn parse_add_node_call(
+    body: &str,
+    package_name: &str,
+    cmakelists: &Path,
+) -> Option<CmakeNodeSummary> {
+    const KEYWORDS: &[&str] = &["CLASS", "TYPED", "DEPLOY"];
+    let tokens = tokenize_cmake_body(body);
+    let mut name: Option<String> = None;
+    let mut class: Option<String> = None;
+    let mut deploy: Vec<String> = Vec::new();
+    let mut sources: Vec<String> = Vec::new();
+    let mut current: Option<&str> = None;
+    for tok in tokens {
+        if KEYWORDS.contains(&tok.as_str()) {
+            current = match tok.as_str() {
+                "CLASS" => Some("CLASS"),
+                "DEPLOY" => Some("DEPLOY"),
+                _ => None, // TYPED — bare flag, no value
+            };
+            continue;
+        }
+        match current {
+            Some("CLASS") => {
+                class = Some(tok);
+                current = None;
+            }
+            Some("DEPLOY") => deploy.push(tok),
+            _ => {
+                // A bare token: the first is the node name, the rest are sources.
+                if name.is_none() {
+                    name = Some(tok);
+                } else {
+                    sources.push(tok);
+                }
+            }
+        }
+    }
+    let name = name?;
+    // Infer from the source extension, NOT the class: a C node's class still uses
+    // `::` (e.g. `c_talker_pkg::Talker`), so class-based inference mislabels it Cpp.
+    let language = infer_language_from_sources(&sources);
+    Some(CmakeNodeSummary {
+        package: package_name.to_string(),
+        component: name.clone(),
+        executable: name,
+        class,
+        language,
+        deploy_targets: deploy,
+        manifest_path: cmakelists.to_path_buf(),
+    })
+}
+
+/// C++ if any source has a C++ extension, else C.
+fn infer_language_from_sources(sources: &[String]) -> ComponentLanguage {
+    for s in sources {
+        if s.ends_with(".cpp") || s.ends_with(".cxx") || s.ends_with(".cc") || s.ends_with(".C") {
+            return ComponentLanguage::Cpp;
+        }
+    }
+    ComponentLanguage::C
 }
 
 /// Strip `#` line comments from a CMake source while preserving line
@@ -1677,5 +1753,50 @@ type = "std_msgs/msg/Int32"
         );
         let ws = Workspace::discover(&s.0).unwrap();
         assert!(ws.packages[0].cmake_component_metadata.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // RFC-0048 (phase-287 W6) — `nano_ros_add_node` (positional) discovery.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parse_add_node_positional_name_class_sources() {
+        let body = "talker CLASS c_talker_pkg::Talker TYPED src/Talker.c";
+        let s = parse_add_node_call(body, "c_talker_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(s.component, "talker");
+        assert_eq!(s.executable, "talker");
+        assert_eq!(s.class.as_deref(), Some("c_talker_pkg::Talker"));
+        // Language from the `.c` source, NOT the `::`-bearing class.
+        assert_eq!(s.language, ComponentLanguage::C);
+    }
+
+    #[test]
+    fn parse_add_node_cpp_source_and_deploy() {
+        let body = "listener CLASS ws::Listener src/Listener.cpp DEPLOY native";
+        let s = parse_add_node_call(body, "cpp_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(s.component, "listener");
+        assert_eq!(s.language, ComponentLanguage::Cpp);
+        assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+    }
+
+    #[test]
+    fn discover_finds_add_node_from_cmakelists() {
+        let s = Scratch::new("addnode");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            "find_package(nano_ros REQUIRED)\n\
+             nano_ros_add_node(talker CLASS talker_pkg::Talker TYPED src/Talker.c)\n",
+        );
+        let ws = Workspace::discover(&s.0).unwrap();
+        let meta = &ws.packages[0].cmake_component_metadata;
+        assert_eq!(meta.len(), 1);
+        assert_eq!(meta[0].component, "talker");
+        assert_eq!(meta[0].class.as_deref(), Some("talker_pkg::Talker"));
     }
 }
