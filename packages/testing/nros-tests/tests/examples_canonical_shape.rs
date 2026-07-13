@@ -239,6 +239,13 @@ fn check_pkg_dir(examples_root: &Path, pkg_dir: &Path, violations: &mut Vec<Viol
 
     // §212.L.4 — `class = "<pkg>::<Class>"` prefix rule.
     // Applies to both `[...component]` (pre-N.12) and `[...node]` (post-N.12).
+    //
+    // #187 — compare against the CRATE IDENT (`-`→`_`), not the verbatim
+    // Cargo package name: `class` is a Rust path (hyphens are
+    // unrepresentable), and the consumer derives the crate the same way
+    // (`ComponentLinkage::resolved_crate_name` — "package.xml ⇒ Cargo crate
+    // convention"). Demanding a hyphenated prefix was unsatisfiable for
+    // every hyphen-named package.
     if has_component || has_node {
         let component = nros_meta
             .get("node")
@@ -247,13 +254,14 @@ fn check_pkg_dir(examples_root: &Path, pkg_dir: &Path, violations: &mut Vec<Viol
         let class = component.get("class").and_then(|v| v.as_str());
         match (class, pkg_name.as_deref()) {
             (Some(c), Some(p)) => {
-                let prefix = format!("{p}::");
+                let prefix = format!("{}::", p.replace('-', "_"));
                 if !c.starts_with(&prefix) {
                     violations.push(Violation {
                         dir: rel,
                         reason: format!(
                             "[package.metadata.nros.component] class = \"{c}\" must start \
-                             with package name prefix \"{prefix}\" (§212.L.4)"
+                             with the package's crate-ident prefix \"{prefix}\" \
+                             (package name with `-`→`_`; §212.L.4 / #187)"
                         ),
                     });
                 }

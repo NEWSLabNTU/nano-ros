@@ -74,9 +74,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
-- **#187** — [shape-lint red: 12 rust leaves vs §212.L.4 class prefix](0187-rust-leaf-class-prefix-lint-violations.md):
-  the W7 lint demands a HYPHENATED package prefix inside a Rust `class` path — unsatisfiable
-  literally; normalise `-`/`_` in the lint or re-spec the metadata.
 - **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
   every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
   `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
@@ -97,7 +94,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#193** — fresh native
+Recently resolved (see [`archived/`](archived/) for the full list): **#187** — the W7
+class-prefix lint compared verbatim hyphenated Cargo names against Rust paths (unsatisfiable;
+22 leaves red by resolution). The consumer (`resolved_crate_name`) canonically maps pkg → crate
+ident (`-`→`_`), and the older sibling lint already normalized; the W7 walker now compares the
+crate-ident prefix. Seeded-violation verified. **#193** — fresh native
 cyclone C listener `register_subscription -> -1` was `find_descriptor -> nullptr`: on CMake < 3.24
 the descriptor ts lib's static-init ctors were GC'd because the `-Wl,--whole-archive <target-name>`
 group let CMake de-dupe the archive out. Fixed with the de-dup-safe pre-3.24 idiom —
