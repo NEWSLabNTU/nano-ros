@@ -100,9 +100,29 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   fixtures.toml note) **and 49/49 workspace e2e tests pass** (lifecycle, subnode,
   multi-node, qos, params, safety, service/action roundtrips) on rebuilt
   fixtures.
-- **W7 full cross-matrix** — `just build-test-fixtures && just test-all` on an idle
-  box (all cross-toolchains are provisioned: `just doctor tier=all` all `[OK]` after
-  `just rmw_zenoh setup`). Not a correctness gate.
+- **W7 full cross-matrix — RUN (2026-07-14).** `just doctor tier=all` all OK;
+  `just build-test-fixtures` green ×2; full workspace nextest sweep:
+  **1268 run, 1231 pass, 37 fail, every red triaged**:
+  - **ament-shape regressions found + FIXED in-tree:** 5 zephyr cpp leaves
+    needed READMEs (new package.xml made them canonical leaves) and the FVP
+    aemv8r cpp leaf needed a fixture-coverage TEST_DRIVEN_BUILDERS entry
+    (same reason). No functional ament-shape red anywhere in the matrix.
+  - **Load flakes (pass solo):** nuttx C/C++ rtos lanes ×6 (QEMU readiness
+    timeouts only under the full-sweep concurrency), lifecycle/daemon flakes.
+  - **Bare-run artifacts:** `skip!`-class tests (threadx-linux cyclone talker
+    missing optional fixture, safety pre-force-build) count as failures
+    outside the `just test-all` junit-rewrite; they are skips in CI semantics.
+  - **Known open issues confirmed:** #178 (rtic ×4 — fresh images, layers 2–3
+    live), #183 (declarative bridge), #187 (shape lint), #189 (serial/xrce
+    qemu), #190 (esp32 ×4), #191 (freertos rust ×6), #192 (fvp trio).
+  - **New issues filed from the sweep:** **#194** (threadx-linux RUST rtos
+    lanes 0 delivery — deterministic, sibling of #191), **#195**
+    (threadx-riscv64 cyclone two-qemu 0 delivery), **#196** (native rust
+    fixture stale-probe misses `generated/` drift — the month-old
+    service-client-callback museum binary).
+  - **Host-env (user action):** platformio test red because the pipx
+    platformio venv (and pipx itself) point at a removed
+    `~/miniconda3` python — `pipx` needs reinstalling on this box.
 - **W8 (old-path removal)** — retire the public `nano_ros_bootstrap` / `nano_ros_link`
   / `nano_ros_deploy` macros + `NanoRosBootstrap.cmake`; BLOCKED until W6 Zephyr +
   workspace stop calling them (`git grep` the markers before removing).

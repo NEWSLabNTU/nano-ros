@@ -73,11 +73,12 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     "qemu-arm-freertos/rust/service-client-entry",
     "qemu-arm-freertos/rust/action-server-entry",
     "qemu-arm-freertos/rust/action-client-entry",
-    // Cyclone-on-Zephyr aemv8r reference — built by the FVP recipe
-    // `just zephyr build-fvp-aemv8r-cyclonedds-rust` and run by
-    // `fvp_runtime_rust.rs` (the cpp sibling has no package.xml, so it is
-    // not a leaf here; it is built by `build-fvp-aemv8r-cyclonedds`).
+    // Cyclone-on-Zephyr aemv8r references — built by the FVP recipes
+    // `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}` and run by
+    // `fvp_runtime.rs` / `fvp_runtime_rust.rs`. The cpp leaf gained its
+    // package.xml in 287-W6 (ament shape), so it is a gated leaf now too.
     "zephyr/rust/cyclonedds/talker-aemv8r",
+    "zephyr/cpp/cyclonedds/talker-aemv8r",
 ];
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must

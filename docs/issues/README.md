@@ -44,6 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#196** — [native rust fixture stale-probe misses generated/ drift](0196-native-rust-fixture-stale-probe-misses-generated.md):
+  month-old service-client-callback binary survived every sweep ("native OK") while the
+  test-side mtime gate failed it — build probe and test gate must watch the same input set.
+- **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
+  deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
+  first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
+- **#194** — [threadx-linux rust rtos e2e: boots, 0 delivery](0194-threadx-linux-rust-entry-zero-delivery.md):
+  deterministic (3/3 retries, solo) on fresh fixtures; C/C++ threadx lanes green — sibling of
+  #191 on the language axis (rust entry runtime publish path), loopback so not a net-plan issue.
 - **#193** — [fresh native cyclone C listener fails register_subscription -> -1](0193-native-cyclone-c-listener-register-subscription-fails.md):
   a native `c/listener` rebuilt against a freshly-provisioned cyclonedds boots + creates its
   subscription but `nros_executor_register_subscription` returns -1 (reader-create fails; likely

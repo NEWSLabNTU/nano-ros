@@ -106,3 +106,7 @@ through RTIC's own mechanism.
   `Executor<'s>` per-entry rework; treat green here as unproven history.
 - Layer 1 (deferral) is landed; `just check` stays green. Layers 2–3 are the
   remaining runtime-only work on the `test-all` e2e lane.
+- 2026-07-14 (phase-287 W7 sweep): confirmed on freshly rebuilt images
+  (`build/fixtures-cargo/qemu-arm-baremetal` rebuilt in the same sweep) — all
+  four `test_qemu_rtic_*_e2e` still 0 messages, 3/3 retries at reduced load.
+  Matches layers 2–3 being the live cause.
