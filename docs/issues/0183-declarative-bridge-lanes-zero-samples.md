@@ -103,6 +103,12 @@ descriptor-registration regression (or a gap in the targeted build invocation vs
 the full `just native build-fixture-extras`). The old prebuilt listener registered
 fine. Final e2e-on-current-fixtures verification is owed once a clean full
 `build-fixture-extras` produces a listener that registers; the type-alignment fix
-itself is correct by construction. The imperative
-`bridge_zenoh_to_cyclonedds::..._bridge_to_nano_listener` needs the same env +
-marker change (identical latent mismatch) — left for the same follow-up.
+itself is correct by construction.
+
+**Imperative sibling needs NO change (corrected):** `bridge_zenoh_to_cyclonedds`'s
+hand-written `bridge-zenoh-to-cyclonedds-fwd` bin was already migrated to
+`std_msgs/String` by phase-277 (`TYPE_NAME = std_msgs::msg::dds_::String_`), so its
+String talker + String listener + String fwd bin + `LISTENER_LOG_PREFIX` are
+internally consistent — no mismatch. Only the DECLARATIVE ws-bridge demo stayed
+Int32 (its `talker_pkg` + generated `nros-bridge.toml`), which is why only its
+lane broke. This fix is declarative-only.
