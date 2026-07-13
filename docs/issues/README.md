@@ -56,9 +56,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#186** — [test rot: integration shell smokes + migrate drift gate](0186-stale-test-preconditions-integration-migrate.md):
   three `integrations/` shell smokes probe the pre-208.D.7 layout; `migrate_workspace_e2e` red until
   the pinned nros release catches the post-212.I emitter spec.
-- **#185** — [zephyr self-pkg M-F.3 shim bake half-missing + bringup lanes](0185-zephyr-selfpkg-shim-bake-and-bringup-lanes.md):
-  `config_h=true, config_cmake=false` under build/west-fixtures — emitter-side; plus
-  cli_bringup zephyr/platformio reds. Bisect across the three same-week phase-287 emitters.
 - **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
   with the heap fixed the lanes fail one layer deeper — zenoh-serial hangs silently at
   `Executor::open` (both images, no error), XRCE fails `Transport(ConnectionFailed)` within ~2 s.
@@ -90,7 +87,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
-Recently resolved (see [`archived/`](archived/) for the full list): **#181** — the fixture sweep
+Recently resolved (see [`archived/`](archived/) for the full list): **#185** — the "half-baked
+shim" was a museum WEST fixture, not an emitter bug: no current code path can emit
+`system_config.h` without `.cmake` (single writer + the shim FATALs on either missing), and all
+four lanes pass 4/4 on fresh fixtures — the three suspected phase-287 commits are innocent. The
+west `.compile-ok` stamp was date-only (no tool identity), so the sweep consumed a partial
+sweep-era bake; it now stamps the `nros` CLI's sha256 and `require_west_fixture` fails loud on
+mismatch (negative-tested). The fifth bullet (zephyr workspace-entry e2e) stays with the
+#164/#181 zephyr-family rebuild. **#181** — the fixture sweep
 no longer exits 0 with unbuilt lanes: esp32+px4 lanes added to both drivers, esp32 ELF-name drift
 + in-test builds removed, freertos rust rewired to the *-entry images with per-variant ports;
 residuals split to #191/#190. **#184** — the baremetal

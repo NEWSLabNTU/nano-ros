@@ -43,6 +43,25 @@ if [ -z "${ZEPHYR_BASE:-}" ] || [ ! -d "$ZEPHYR_BASE" ]; then
     exit 0
 fi
 
+# #185 (the #182 guard, west edition) — every west fixture's bake runs the
+# `nros` CLI (nros_system_generate / nros_generate_interfaces), so the fixture
+# is a function of the CODEGEN TOOL. Stamp the CLI's content hash next to the
+# date; `require_west_fixture` compares it and fails loud on a stale-tool
+# fixture instead of soft-passing a museum bake (the #185 half-bake red
+# herring). A date-only legacy stamp reads as stale — one rebuild refreshes.
+west_fixture_stamp() {
+    local bld="$1"
+    local nros_bin="$repo_root/packages/cli/target/release/nros"
+    {
+        date -u +%Y-%m-%dT%H:%M:%SZ
+        if [ -x "$nros_bin" ]; then
+            printf 'tool:nros=%s\n' "$(sha256sum "$nros_bin" | awk '{print $1}')"
+        else
+            printf 'tool:nros=absent\n'
+        fi
+    } > "$bld/.compile-ok"
+}
+
 # id : src-rel : app-subdir ('.' = src root) : board ('' = from board.cmake) : extra-cmake-args
 WEST_FIXTURES=(
     "west_bringup_zephyr:packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr:zephyr_app:native_sim/native/64:-DCONF_FILE=prj.conf;prj-zenoh.conf"
@@ -67,7 +86,7 @@ for entry in "${WEST_FIXTURES[@]}"; do
         native_sim*) [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
     esac
     if env "${tc_env[@]}" west "${args[@]}"; then
-        date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"
+        west_fixture_stamp "$bld"
         echo "   built $bld"
         n=$((n + 1))
     else
@@ -105,7 +124,7 @@ for entry in "${SELF_PKG_FIXTURES[@]}"; do
     # Issue 0154 — post-258 bake contract: config header + config cmake
     # (system_main.c retired with the install seam).
     if [ -f "$bld/nros-system/system_config.h" ] && [ -f "$bld/nros-system/system_config.cmake" ]; then
-        date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"
+        west_fixture_stamp "$bld"
         echo "   baked $bld/nros-system (link out-of-scope)"
         sp_n=$((sp_n + 1))
     else

@@ -2354,11 +2354,56 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when west / Zephyr
     // SDK absent); resolves the prebuilt artifact here. Built by `just zephyr
     // build-fixtures`.
-    let p = project_root()
-        .join("build/west-fixtures")
-        .join(id)
-        .join(rel);
-    require_prebuilt_binary(&p)
+    let fixture_dir = project_root().join("build/west-fixtures").join(id);
+
+    // #185 (the #182 guard, west edition) — the bake is a function of the
+    // `nros` CLI (nros_system_generate / nros_generate_interfaces run it at
+    // configure time), so a fixture built with a different CLI is a museum
+    // bake even when every source file looks current. The build script stamps
+    // `tool:nros=<sha256>` into `.compile-ok`; compare against the current
+    // binary and fail loud instead of soft-passing. A date-only legacy stamp
+    // reads as stale (one rebuild refreshes it).
+    let stamp = fixture_dir.join(".compile-ok");
+    if let Ok(stamp_text) = fs::read_to_string(&stamp) {
+        let stamped_tool = stamp_text
+            .lines()
+            .find_map(|l| l.strip_prefix("tool:nros="))
+            .map(str::trim);
+        let cli = project_root().join("packages/cli/target/release/nros");
+        // Same hasher the stamping script uses (sha256sum) — no new dep, and
+        // byte-identical output by construction.
+        let current = Command::new("sha256sum")
+            .arg(&cli)
+            .output()
+            .ok()
+            .and_then(|o| {
+                o.status.success().then(|| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+            });
+        let fresh = match (stamped_tool, current.as_deref()) {
+            (Some(stamped), Some(current)) => stamped == current,
+            // CLI missing on disk: can't judge — let the artifact check decide.
+            (Some(_), None) => true,
+            // Legacy date-only stamp: pre-guard build → stale.
+            (None, _) => false,
+        };
+        if !fresh {
+            return Err(TestError::BuildFailed(format!(
+                "West fixture {id} is STALE — built with a different `nros` CLI \
+                 than the current packages/cli/target/release/nros.\n  stamp: {}\n\
+                 Run `bash scripts/build/west-fixtures.sh` (or `just zephyr \
+                 build-fixtures`) to rebuild.",
+                stamp.display()
+            )));
+        }
+    }
+
+    require_prebuilt_binary(&fixture_dir.join(rel))
 }
 
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
