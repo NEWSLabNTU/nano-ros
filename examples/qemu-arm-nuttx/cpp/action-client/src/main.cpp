@@ -50,13 +50,27 @@ int nros_app_main(int argc, char** argv) {
         order = atoi(ord);
     }
 #endif
-    printf("\nSending goal\n");
-
     example_interfaces::action::Fibonacci::Goal goal;
     goal.order = order;
 
+    // Issue 0153 / #188 — retry the goal handshake with a ~1 s spin backoff.
+    // On zenoh the server's readiness gossips ahead of its send-goal
+    // queryable route; a query fired in that window matches no queryable and
+    // can only time out (-2). Same fix shape as the native rust demo.
     uint8_t goal_id[16];
-    ret = client.send_goal(goal, goal_id);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+            fprintf(stderr, "send_goal timed out; retrying (attempt %d)\n", attempt + 1);
+            for (int i = 0; i < 10; i++) {
+                nros::spin_once(100);
+            }
+        }
+        printf("\nSending goal\n");
+        ret = client.send_goal(goal, goal_id);
+        if (ret.ok() || ret.raw() != -2 /* NROS_RET_TIMEOUT */) {
+            break;
+        }
+    }
     if (!ret.ok()) {
         fprintf(stderr, "Goal was rejected by server (order=%d, ret=%d)\n", order, ret.raw());
         nros::shutdown();

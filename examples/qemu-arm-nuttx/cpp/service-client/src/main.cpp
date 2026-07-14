@@ -63,14 +63,32 @@ int nros_app_main(int argc, char** argv) {
     req.a = a;
     req.b = b;
 
+    // Issue 0153 / #188 — retry the call with a ~1 s spin backoff. On zenoh
+    // the server's readiness gossips ahead of its queryable route; a query
+    // fired in that window matches no queryable and can only time out (a
+    // zenoh get is evaluated against the queryables visible at fire time, so
+    // waiting longer on the same future never helps). Same fix shape as the
+    // native rust demo. Each attempt is a FRESH send_request (new query).
     example_interfaces::srv::AddTwoInts::Response resp;
-    auto fut = client.send_request(req);
-    if (fut.is_consumed()) {
-        fprintf(stderr, "send_request failed\n");
-        nros::shutdown();
-        return 1;
+    nros::Result ret = nros::Result(-2 /* NROS_RET_TIMEOUT */);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+            fprintf(stderr, "service call timed out; retrying (attempt %d)\n", attempt + 1);
+            for (int i = 0; i < 10; i++) {
+                nros::spin_once(100);
+            }
+        }
+        auto fut = client.send_request(req);
+        if (fut.is_consumed()) {
+            fprintf(stderr, "send_request failed\n");
+            nros::shutdown();
+            return 1;
+        }
+        ret = fut.wait(nros::global_handle(), 5000, resp);
+        if (ret.ok() || ret.raw() != -2 /* NROS_RET_TIMEOUT */) {
+            break;
+        }
     }
-    nros::Result ret = fut.wait(nros::global_handle(), 5000, resp);
 
     int exit_code = 0;
     if (ret.ok()) {

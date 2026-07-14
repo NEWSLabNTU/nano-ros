@@ -94,7 +94,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#187** — the W7
+Recently resolved (see [`archived/`](archived/) for the full list): **#188** — the nuttx
+C/C++ action + C++ service reds were the #153 gossip gap unported: ret=-2 is TIMEOUT (not a
+rejection) on a query fired before the server's queryable gossips (a zenoh get only matches
+queryables visible at fire time). The native rust demos got the 3-attempt/1 s-backoff retry in
+#153; ported to the three nuttx clients (fresh query per attempt; retries only on -2). All six
+nuttx action+service lanes 6/6, fixed lanes 3× serialized. freertos/threadx copies carry the
+same latent window (noted in the archive). **#187** — the W7
 class-prefix lint compared verbatim hyphenated Cargo names against Rust paths (unsatisfiable;
 22 leaves red by resolution). The consumer (`resolved_crate_name`) canonically maps pkg → crate
 ident (`-`→`_`), and the older sibling lint already normalized; the W7 walker now compares the

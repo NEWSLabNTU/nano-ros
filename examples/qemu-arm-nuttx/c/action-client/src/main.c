@@ -166,11 +166,28 @@ int nros_app_main(int argc, char** argv) {
         goto cleanup;
     }
 
-    printf("\nSending goal\n");
-
+    // Issue 0153 / #188 — retry the goal handshake with a 1 s backoff. On
+    // zenoh the server's readiness gossips ahead of its send-goal queryable
+    // route; a send_goal query fired in that window matches no queryable and
+    // can only time out (a zenoh get is evaluated against the queryables
+    // visible at fire time — waiting longer on the same query never helps).
+    // Same fix shape as the native rust action-client demo.
     nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, (size_t)goal_len,
-                                &goal_uuid);
+    ret = NROS_RET_TIMEOUT;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+            fprintf(stderr, "send_goal timed out; retrying (attempt %d)\n", attempt + 1);
+            /* Spin the executor for ~1 s instead of sleeping so the session
+             * keeps servicing keep-alives + discovery gossip. */
+            nros_executor_spin_some(&app.executor, 1000000000ull);
+        }
+        printf("\nSending goal\n");
+        ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, (size_t)goal_len,
+                                    &goal_uuid);
+        if (ret != NROS_RET_TIMEOUT) {
+            break;
+        }
+    }
 
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to send goal: %d\n", ret);
