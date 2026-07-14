@@ -44,18 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#196** — [native rust fixture stale-probe misses generated/ drift](0196-native-rust-fixture-stale-probe-misses-generated.md):
-  month-old service-client-callback binary survived every sweep ("native OK") while the
-  test-side mtime gate failed it — build probe and test gate must watch the same input set.
 - **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
 - **#194** — [threadx-linux rust rtos e2e: boots, 0 delivery](0194-threadx-linux-rust-entry-zero-delivery.md):
   deterministic (3/3 retries, solo) on fresh fixtures; C/C++ threadx lanes green — sibling of
   #191 on the language axis (rust entry runtime publish path), loopback so not a net-plan issue.
-- **#192** — [FVP AEMv8-R cyclone talker: picolibc SSP pulls undefined `getentropy`](0192-fvp-aemv8r-cyclone-getentropy-link.md):
-  final link fails in the SDK picolibc's `__stack_chk_init`; pre-existing museum-lane red
-  (identical at HEAD and with the 287-W6 migration), no `CONFIG_STACK_PROTECTOR` set.
 - **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
   lane restored to the sweep (#181), boots + logging green; the four cross-delivery tests get 0
   samples — check pair identity/port drift first (the #179/#181 lessons), then the #64 heap notes.
@@ -85,7 +79,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#189** — both baremetal
+Recently resolved (see [`archived/`](archived/) for the full list): **#192** — the FVP
+`getentropy` link red was the #193 CMake<3.24 whole-archive flag-dedup class on the ZEPHYR
+generator: three-item `-Wl,--whole-archive <ffi.a> -Wl,--no-whole-archive` triples collapsed into
+an UNCLOSED bracket that swallowed picolibc's `-lc` whole-archive → every `libc_ssp_*` member
+force-included → `__stack_chk_init` → undefined `getentropy` (nothing in-tree references
+`__stack_chk_*` at all). Fix: one comma-joined token per lib; FVP lane links + smoke OK,
+cpp-talker-zenoh regression green. **#196** — not a probe hole: `examples/fixtures.toml` simply
+had NO `rmw = "zenoh"` variant row for rust/service-client-callback (every sibling has one), so
+no sweep ever built the `target-zenoh/` binary the test consumes. Row added; both rust-client
+interop tests pass on a sweep-built binary. Full consumer↔manifest audit: no other native gap
+(px4 pair intentionally owned by `just px4 build-fixtures`). **#189** — both baremetal
 serial lanes revived. Zenoh-serial: the provisioned zenohd lost `transport_serial` in the
 phase-187 migration (router exited on the serial listener) AND serial-only firmware compiled the
 frozen-clock smoltcp spin branch (`ZPICO_SMOLTCP` hardcoded in the Phase-136.4 manifest) — zenohd

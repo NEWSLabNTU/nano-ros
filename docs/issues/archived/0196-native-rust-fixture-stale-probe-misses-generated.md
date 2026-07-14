@@ -1,7 +1,8 @@
 ---
 id: 196
 title: "native rust fixture stale-probe misses generated/ drift — month-old museum binary passed every sweep"
-status: open
+status: resolved
+resolved_in: "2026-07-14 — missing rmw=zenoh manifest row for service-client-callback added to examples/fixtures.toml"
 type: tech-debt
 area: testing
 related: [issue-0181, phase-287]
@@ -27,7 +28,29 @@ full sweep while the build stage kept reporting green — the #181 "silent lane
 gap" shape: build-side probe and test-side gate disagree about what "stale"
 means.
 
-## Root-cause direction
+## Resolution (2026-07-14) — missing manifest row, not a probe hole
+
+The build-side probe and the test gate did NOT disagree about staleness —
+there was simply **no manifest row for the artifact the test consumes**.
+`build_native_service_client_callback` resolves
+`target-zenoh/<profile>/service-client-callback` (`build_example_rmw`,
+`Rmw::Zenoh`), but `examples/fixtures.toml` carried only the PLAIN row for
+this dir (default features → `target/`). Every per-RMW sibling
+(talker/listener/service-server/service-client/action-*) has an
+`rmw = "zenoh"` + `target_dir = "target-zenoh"` variant row —
+service-client-callback's was never added (RFC-0041 / Phase 239). So the
+sweep faithfully built `target/` (green) while the June-12 hand-built
+`target-zenoh/` binary rotted; the test-side mtime gate then correctly
+flagged it. Fixed by adding the missing variant row; the sweep now builds
+`target-zenoh/` and both
+`test_service_callback_interop_rust_client_{c,cpp}_server` pass.
+
+Audit of every other `build_example_rmw` consumer against the manifest:
+all native rust (dir, target-dir) pairs are covered; the px4 pair
+(px4-stub / offboard-companion, `target-xrce`) is intentionally
+off-manifest — `just px4 build-fixtures` owns those builds.
+
+## Original root-cause direction (superseded)
 
 `scripts/build/fixtures-build.sh` (native rust cells) decides rebuild via the
 `rust-fixture-stale.sh` probe + cargo's own freshness. Two candidate holes:

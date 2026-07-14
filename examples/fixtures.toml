@@ -1557,6 +1557,20 @@ no_default_features = true
 features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
+# #196 — this row was missing: `build_native_service_client_callback` resolves
+# `target-zenoh/<profile>/service-client-callback`, but only the plain
+# (default-features → `target/`) row existed, so no sweep ever built or
+# refreshed the binary the test consumes (a hand-built June-12 artifact sat
+# there while `build-test-fixtures` reported green).
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/service-client-callback"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
 [[fixture]]
 platform = "native"
 lang = "rust"

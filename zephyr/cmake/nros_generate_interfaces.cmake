@@ -479,6 +479,18 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # $<LINK_LIBRARY:WHOLE_ARCHIVE> isn't available on the Zephyr-pinned CMake
       # (3.22) — use raw flags and an explicit build-order dependency on `app`.
       #
+      # #192 (the #193 class) — the flags MUST be ONE comma-joined `-Wl,` item,
+      # not three separate items: CMake < 3.24 de-duplicates repeated identical
+      # flag items across the aggregated link line, so with two generated
+      # packages (std_msgs + builtin_interfaces) the second triple's
+      # `-Wl,--whole-archive` / `-Wl,--no-whole-archive` collide with the
+      # first's AND with Zephyr's own whole-archive bracket — the surviving
+      # tokens leave an UNCLOSED bracket that swallows everything to the end of
+      # the link line, including picolibc's `-lc` (every `libc_ssp_*` member
+      # force-included → `__stack_chk_init` → undefined `getentropy` on targets
+      # with no entropy driver, e.g. FVP AEMv8-R). The comma-joined form is a
+      # single unique-per-lib token the de-dup cannot split.
+      #
       # Phase 246.4 — the link wiring is intentionally NOT shared with the
       # canonical generator: it solves the OPPOSITE ld-order problem (there, the
       # nros-cpp runtime must follow the ffi lib; here, the ffi lib must follow
@@ -486,7 +498,7 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # a per-package INTERFACE library). The IMPORTED-target dance the canonical
       # path needs is dead weight here, so the FFI lib is linked by raw path.
       target_link_libraries(app PRIVATE
-        "-Wl,--whole-archive" "${_ffi_lib}" "-Wl,--no-whole-archive")
+        "-Wl,--whole-archive,${_ffi_lib},--no-whole-archive")
       add_dependencies(app ${target}_cpp_ffi_build)
     endif()
 
