@@ -63,11 +63,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   lane repaired end-to-end by #181 (entry images, per-variant ports, IP split, launcher/gates);
   session opens, nothing publishes — entry runtime path, never previously exercised.
 - **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
-  with the heap fixed the lanes fail one layer deeper — zenoh-serial hangs silently at
-  `Executor::open` (both images, no error), XRCE fails `Transport(ConnectionFailed)` within ~2 s.
-  Suspects: the #178 wfi-yield/-icount family on the serial poll loop, or phase-282's tx
-  batching/flush-thread rework never draining InitSyn on a single-threaded image. Green history
-  unproven (museum-binary population; pre-271 images couldn't even boot this path).
+  zenoh-serial half RESOLVED 2026-07-14 (two stacked defects: the provisioned zenohd lost
+  `transport_serial` in the phase-187 migration and exited on the serial listener; serial-only
+  firmware compiled the smoltcp spin branch — frozen clock, 2.5 s spins, timers credited 10 ms —
+  because the Phase-136.4 manifest hardcoded `ZPICO_SMOLTCP`; serial pubsub e2e green 4/4).
+  REMAINING: the XRCE half — the talker-xrce image transmits ZERO bytes on the pty (socat -x);
+  the uxr custom UART transport never writes. Neither of the original suspects.
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.

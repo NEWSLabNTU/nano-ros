@@ -214,11 +214,26 @@ impl ZenohRouter {
         }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
+        let mut handle = cmd.spawn()?;
 
         // Serial listeners don't have a TCP port to probe, so wait a bit
         // for zenohd to initialize and open the serial devices.
         std::thread::sleep(Duration::from_secs(2));
+
+        // #189 — FAIL LOUD if the router already died. A zenohd built without
+        // `zenoh/transport_serial` (the pre-nros2 SDK binaries) refuses the
+        // serial listener ("Unicast not supported for serial protocol") and
+        // exits within the sleep above; the old code returned the corpse and
+        // every guest hung silently at its serial handshake until the test
+        // timeout.
+        if let Ok(Some(status)) = handle.try_wait() {
+            return Err(TestError::ProcessFailed(format!(
+                "zenohd exited ({status}) right after starting with serial \
+                 listener(s) — the provisioned zenohd likely lacks the \
+                 `zenoh/transport_serial` feature (needs the 1.7.2-nros2 \
+                 build; re-run `just zenohd setup` after `git pull`)."
+            )));
+        }
 
         Ok(Self {
             handle,

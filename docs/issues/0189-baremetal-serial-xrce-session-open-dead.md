@@ -39,6 +39,45 @@ serialized, fresh images 2026-07-13:
    (it errors instead of hanging) — possibly agent-side pacing vs the
    1 s startup delay, or the serial framing on the pty.
 
+## Progress — zenoh-serial half RESOLVED (2026-07-14)
+
+Two stacked defects, both fixed and verified (serial pubsub e2e green 4/4,
+~9 s; ethernet lanes 8/8 unaffected):
+
+1. **The provisioned zenohd has no serial transport.** The phase-187 SDK
+   migration dropped `--features zenoh/transport_serial` (the legacy
+   `scripts/zenohd/build.sh` always had it): a `1.7.2-nros1` router refuses
+   `--listen serial/...` ("Unicast not supported for serial protocol") and
+   exits; the harness's 2 s blind sleep returned the corpse, so every guest
+   hung at its serial handshake. Fixed: `[tool.zenohd]` → `1.7.2-nros2`
+   source-built with the feature (dist rows return when the sdk repo seeds
+   nros2 assets), `ci/nano-ros-sdk/scripts/build-zenohd.sh` carries the
+   flag, `just zenohd setup` is provenance-version-aware (a bare `-x` check
+   pinned the pre-serial binary forever), and `ZenohRouter::start_serial`
+   fails loud when the router dies at startup.
+2. **Serial-only firmware compiled the smoltcp spin branch.** The Phase
+   136.4 manifest migration hardcoded `ZPICO_SMOLTCP` in
+   `[platform.bare-metal] defines` — its own comment deferred the Phase-132
+   `ZPICO_NO_SMOLTCP` opt-out "if such a board materialises" (the serial
+   boards already existed). On a serial-only image the smoltcp branch's
+   clock (`smoltcp_clock_now_ms`) is frozen, so `zpico_spin_once(10)` only
+   returned on router keepalives (~2.5 s), and the no_std executor credits
+   just the REQUESTED 10 ms per spin — the 1 Hz timer needed ~250 s wall to
+   come due. Fixed in the runner (Step 6): serial-only link set +
+   `ZPICO_NO_SMOLTCP` swaps the define for `ZPICO_SERIAL` (probe-verified:
+   session opens, spins honor the 10 ms budget, publishes flow).
+
+## Remaining — the XRCE half (narrowed)
+
+`test_qemu_xrce_pubsub_e2e` still fails (`Executor::open failed:
+Transport(ConnectionFailed)` ~2 s after boot). NEW evidence (socat -x on
+the pty pair): the talker-xrce image transmits **zero bytes** — the uxr
+custom UART transport never writes anything (the zenoh serial-talker
+drives the identical wiring fine, so the UART/pty path is good). Suspect
+the phase-244.D1 `setup_transport` custom-transport install or the
+transport's open/write fns on bare-metal; the agent side is healthy
+(runs, `serial` mode present). Distinct subsystem — needs its own pass.
+
 ## History caveat
 
 These lanes were part of the museum-binary population (#182 class): the

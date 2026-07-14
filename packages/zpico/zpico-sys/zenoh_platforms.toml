@@ -287,10 +287,15 @@ when = { target_not = "embedded" }
 # `clock_gettime`, both unresolved at bare-metal link time. Phase 136.4
 # (build_c_shim → build_zenoh_pico_unified manifest migration) dropped
 # this define from the bare-metal path; the manifest had no opinion so
-# `ZPICO_SMOLTCP` was simply not emitted. The legacy `ZPICO_NO_SMOLTCP`
-# env-based opt-out (Phase 132) for hypothetical serial-only firmware
-# is not wired through the manifest yet — restore here if such a board
-# materialises.
+# `ZPICO_SMOLTCP` was simply not emitted.
+#
+# #189 — the legacy `ZPICO_NO_SMOLTCP` env-based opt-out (Phase 132) IS
+# wired again, in the runner (Step 6 of `build_zenoh_pico_unified`): a
+# serial-only link set + `ZPICO_NO_SMOLTCP` swaps this define for
+# `ZPICO_SERIAL`. The serial-only boards were never hypothetical
+# (qemu-arm-baremetal serial-talker/-listener predate the migration),
+# and the smoltcp spin branch's clock is frozen without a smoltcp iface
+# — timers never fire on such firmware.
 defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
 include = ["system/common"]

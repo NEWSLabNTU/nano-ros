@@ -51,16 +51,20 @@ dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-arm64.tar.zst", sha256 = "8eba3c6e8e9dd51ae0583146209100a5e09a670649f1ed0840c26608caa32095" }
 dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-macos-arm64.tar.zst", sha256 = "eb9cd46e48e2196fb13d09112a655b3b926ff18a2350eb7ae79336205165b954" }
 
+# nros2 (#189): built WITH `zenoh/transport_serial` — the nros1 binaries
+# refuse `--listen serial/...` ("Unicast not supported for serial protocol")
+# and exit, killing the serial e2e lanes. The legacy in-tree build always
+# enabled the feature; the phase-187 migration dropped it. `dist.<host>` rows
+# return once the nano-ros-sdk repo seeds zenohd-1.7.2-nros2 assets
+# (ci/nano-ros-sdk/scripts/build-zenohd.sh carries the same flag); until
+# then every host source-builds via the recipe below.
 [tool.zenohd]
-version = "1.7.2-nros1"
+version = "1.7.2-nros2"
 upstream = "1.7.2" # = source.ref
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-linux-x86_64.tar.zst", sha256 = "9f90cb3b83d11c9213e25f0fc1fc9826600a215abf0526cfa361f2a1f5fa9698" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-linux-arm64.tar.zst", sha256 = "c92508860fa1efd0262ff797da478e1c5db1547a63c05f536a32ca136000d9ce" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-macos-arm64.tar.zst", sha256 = "5f0491a24ceb7364e7ae1d3475a421eaa78369b14acee488337ffe17ebab1af5" }
 [tool.zenohd.source]
 git = "https://github.com/eclipse-zenoh/zenoh"
 ref = "1.7.2"
-install = "cargo install --path zenohd --root {prefix} --locked"
+install = "cargo install --path zenohd --root {prefix} --locked --features zenoh/transport_serial"
 
 # sccache — shared compiler cache (issue #74). The justfile already wires
 # `RUSTC_WRAPPER := sccache` (and the zephyr fixture build uses it as a CMake

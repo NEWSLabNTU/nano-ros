@@ -1281,7 +1281,26 @@ fn build_zenoh_pico_unified(
     }
 
     // Step 6 — defines (unconditional, key=value, env-derived).
+    //
+    // #189 — the Phase-132 serial-only opt-out, restored post-manifest-
+    // migration. Phase 136.4 moved the bare-metal compile from
+    // `build_c_shim` (which honored `ZPICO_NO_SMOLTCP`) into this manifest
+    // path, whose `[platform.bare-metal] defines` hardcode `ZPICO_SMOLTCP`
+    // — so every serial-only firmware compiled the smoltcp spin branch,
+    // whose clock (`smoltcp_clock_now_ms`) is frozen without a smoltcp
+    // iface: `zpico_spin_once(10)` could only return on router traffic
+    // (~2.5 s keepalives) and the no_std executor credits just the
+    // requested 10 ms per spin, so timers never came due (serial pubsub
+    // published 0 forever). With the opt-out set and a serial-only link
+    // set, swap in `ZPICO_SERIAL` — the branch built for exactly this.
+    let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
+    println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
+    let serial_only = link.serial && !(link.tcp || link.udp_unicast || link.udp_multicast);
     for define in &plat.defines {
+        if define == "ZPICO_SMOLTCP" && opt_out_smoltcp && serial_only {
+            build.define("ZPICO_SERIAL", None);
+            continue;
+        }
         build.define(define, None);
     }
     for (key, value) in &plat.defines_kv {

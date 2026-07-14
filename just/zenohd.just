@@ -17,9 +17,22 @@ default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -x build/zenohd/zenohd ]; then
-        echo "zenohd present: build/zenohd/zenohd"
+    # #189 — the presence check is VERSION-AWARE via the install's
+    # .nros-provenance: a bare `-x` skip pinned the pre-serial 1.7.2-nros1
+    # binary forever after the index moved on (the `--version` output is
+    # identical across nros revisions, so provenance is the only tell).
+    want="$(awk '/^\[tool.zenohd\]/{f=1;next} /^\[/{f=0} f && /^version =/{gsub(/"/,"",$3); print $3; exit}' nros-sdk-index.toml)"
+    have=""
+    if [ -f build/zenohd/.nros-provenance ]; then
+        have="$(sed -n 's/^version = "\(.*\)"/\1/p' build/zenohd/.nros-provenance | head -1)"
+    fi
+    if [ -x build/zenohd/zenohd ] && [ -n "$want" ] && [ "$have" = "$want" ]; then
+        echo "zenohd present: build/zenohd/zenohd ($have)"
         exit 0
+    fi
+    if [ -x build/zenohd/zenohd ]; then
+        echo "zenohd present but $have != index $want — reprovisioning."
+        rm -rf build/zenohd
     fi
     source scripts/build/cargo.sh
     nros="$(nros_cli_bin)"
