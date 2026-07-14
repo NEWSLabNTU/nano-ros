@@ -34,7 +34,7 @@ distribution decision):
 - `registry-publishing.md` points at nonexistent PlatformIO manifest paths.
 
 > **Planned.** The reshape is split into two phase docs:
-> [phase-287](../roadmap/phase-287-cmake-consumption-reshape.md) (C/C++ CMake
+> [phase-287](../roadmap/archived/phase-287-cmake-consumption-reshape.md) (C/C++ CMake
 > one-line bootstrap + example migration, #171 D5) and
 > [phase-288](../roadmap/phase-288-source-distribution-bootstrap.md)
 > (source-distribution bootstrap: one front door, fix the false prebuilt claim,

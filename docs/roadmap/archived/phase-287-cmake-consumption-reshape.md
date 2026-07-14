@@ -1,18 +1,31 @@
 # Phase 287 — C/C++ consumption reshape: ament-aligned `find_package(nano_ros)`
 
-Status: **In progress — 2026-07-12** · Implements #171 decision **D5** +
+Status: **COMPLETE — 2026-07-14** · Implements #171 decision **D5** +
 **RFC-0048** · Informs RFC-0026 (examples), RFC-0018/0019 (C/C++ API), RFC-0014
 (`nros setup`), RFC-0023 (ament codegen) · Sibling of phase-288 (source bootstrap,
 #171 D1/D2, **complete**).
 
-**Landed:** W1+W2a (interim bootstrap) · W3 (find_package + verbs) · W4 (package.xml
-deploy tuple) · W5 (nros setup presets + nros init, shape C′) · W6 native (all 27
-standalone leaves, incl. the 6 bespoke/own-msg) + `nros new` C/C++ ament shape ·
-**W6 embedded (49 canonical leaves migrated to the native-identical shape;
-`find_package(nano_ros)`, 0 on the old bootstrap/entry shape)** · W7 native-shape
-lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
+**All waves landed:** W1+W2a (interim bootstrap) · W3 (find_package + verbs) ·
+W4 (package.xml deploy tuple) · W5 (nros setup presets + nros init, shape C′) ·
+W6 native (27 standalone leaves) + embedded (49 canonical leaves) + Zephyr
+(13 leaves) + workspace members (62) + roots (~24) + Entry pkgs (67) +
+`nros new` scaffolds · W7 shape lint + full cross-matrix (all 37 reds triaged;
+new issues #194/#195/#196) · W8 old-path removal (`_nros_bootstrap`/`_nros_link`
+internalised, dead shims retired; `nano_ros_deploy` carve-out below) ·
+W9 option E (central `nros-patch.toml` + one include per Rust leaf, 109
+consumer configs migrated).
 
-**Remaining (verified against origin 2026-07-13):**
+**Acceptance:** every example CMakeLists is the ament shape (grep-set empty
+modulo the two documented carve-outs: the mixed workspace's RUST member —
+LANGUAGE RUST is outside the C/C++ verb surface — and the mixed zephyr entry's
+pkg-guard stub for it); deploy lives in package.xml; `example_shape` lint
+gates the shape; the fixture matrix builds; `nros new` emits the ament shape.
+
+**Follow-up (not phase-gated):** retire `nano_ros_deploy` by moving its
+deploy-target JSON onto the package.xml tuple in the planner (see the W8
+carve-out below for why it stays for now).
+
+## Wave log (as-landed)
 - **W6 Zephyr — leaves DONE (2026-07-13).** All 13 `examples/zephyr/{c,cpp}` leaves
   (incl. the FVP AEMv8-R cyclone talker) migrated to
   `find_package(nano_ros REQUIRED)` + `find_package(<msg>)` +
