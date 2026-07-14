@@ -44,10 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#197** — [pure-C workspace `nros plan` fails at cmake-configure: missing source metadata](0197-c-workspace-plan-missing-source-metadata.md):
-  `examples/workspaces/c` aborts configure — c_talker_pkg/c_listener_pkg have no plan-visible
-  source metadata; C-node metadata lands in the build dir, not passed to `nros plan` nor
-  source-root-discoverable. 287-W6 ament-migration regression; rust workspaces unaffected.
 - **#196** — [native rust fixture stale-probe misses generated/ drift](0196-native-rust-fixture-stale-probe-misses-generated.md):
   month-old service-client-callback binary survived every sweep ("native OK") while the
   test-side mtime gate failed it — build probe and test gate must watch the same input set.
@@ -95,7 +91,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#188** — the nuttx
+Recently resolved (see [`archived/`](archived/) for the full list): **#197** — the pure-C
+workspace (`examples/workspaces/c`) aborted cmake-configure with `missing-source-metadata` for
+c_talker_pkg/c_listener_pkg. Root cause: a STALE in-tree `nros` (built 2 days before 287-W6's
+`nano_ros_add_node` ament verb + its `parse_add_node_call` parser landed), so it parsed zero
+components from the migrated CMakeLists. Fixed by rebuilding the CLI; added a fail-loud
+CLI-staleness guard to `nros_require_ws_sync` so a stale CLI can't silently break workspace
+planning at configure again. **#188** — the nuttx
 C/C++ action + C++ service reds were the #153 gossip gap unported: ret=-2 is TIMEOUT (not a
 rejection) on a query fired before the server's queryable gossips (a zenoh get only matches
 queryables visible at fire time). The native rust demos got the 3-attempt/1 s-backoff retry in

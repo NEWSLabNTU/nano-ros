@@ -205,6 +205,40 @@ nros_require_ws_sync() {
     if [ -z "$bin" ]; then
         bin="$(nros_cli_bin 2>/dev/null)" || true
     fi
+    # issue #197 — a STALE in-tree CLI silently breaks WORKSPACE planning. The
+    # 287-W6 ament migration spells a component `nano_ros_add_node(...)`, which
+    # needs a matching CLI-side parser (`parse_add_node_call`); a binary built
+    # before the migration lacks it, so `nros plan` fails `missing-source-
+    # metadata` for the workspace's C nodes mid-cmake-configure (an opaque
+    # error two layers down from the real cause). The `ws sync` probe below
+    # does NOT catch this — `ws sync` is older, so a stale binary passes it.
+    # Guard staleness explicitly, fail LOUD pointing at setup-cli. Same
+    # rationale as the #181 ws-sync guard: a stale/wrong CLI is an actionable
+    # setup error, not something to let cascade into a downstream fixture death.
+    local _co_root _co_bin _bin_real _co_real _src_newer
+    _co_root="${NROS_REPO_DIR:-}"
+    if [ -z "$_co_root" ]; then
+        local _self="${BASH_SOURCE[0]:-$0}"
+        _co_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || _co_root=""
+    fi
+    _co_bin="$_co_root/packages/cli/target/release/nros"
+    _bin_real="$(readlink -f "$bin" 2>/dev/null || printf '%s' "$bin")"
+    _co_real="$(readlink -f "$_co_bin" 2>/dev/null || printf '%s' "$_co_bin")"
+    # Only assess staleness when the resolved CLI IS the per-checkout binary
+    # (we can't reason about an external/overridden binary's sources).
+    if [ -n "$_co_root" ] && [ -x "$_co_bin" ] && [ "$_bin_real" = "$_co_real" ]; then
+        # Same prune+quit scan setup-cli uses: first cli source newer than the
+        # binary means a rebuild is owed (a new subcommand/parser, or the
+        # post-rebase mtime treadmill — either way `just setup-cli` fixes it).
+        _src_newer="$(find "$_co_root/packages/cli" \
+            \( -name target -o -name generated \) -prune -o \
+            \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
+            -newer "$_co_bin" -print -quit 2>/dev/null)"
+        if [ -n "$_src_newer" ]; then
+            echo "[ERROR] in-tree nros CLI is STALE — source '$_src_newer' is newer than '$_co_bin'. A stale CLI silently breaks workspace planning (issue #197: it can lack parsers for newer cmake verbs like nano_ros_add_node, so \`nros plan\` fails missing-source-metadata at cmake-configure). Rebuild via 'just setup-cli' before building fixtures." >&2
+            exit 1
+        fi
+    fi
     if nros_cli_ws_sync_available "$bin"; then
         return 0
     fi
