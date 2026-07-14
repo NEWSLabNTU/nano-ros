@@ -62,9 +62,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#191** — [freertos rust entries: boot + connect, 0 delivery](0191-freertos-rust-entry-zero-delivery.md):
   lane repaired end-to-end by #181 (entry images, per-variant ports, IP split, launcher/gates);
   session opens, nothing publishes — entry runtime path, never previously exercised.
-- **#188** — [nuttx action goal rejected at handshake + cpp service red](0188-nuttx-action-goal-reject-cpp-service.md):
-  `nros_action_send_goal` ret=-2 on nuttx only (pubsub + C service green on the same images);
-  the #179 reply-framing fix does not apply — fails before any result exchange.
 - **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
   with the heap fixed the lanes fail one layer deeper — zenoh-serial hangs silently at
   `Executor::open` (both images, no error), XRCE fails `Transport(ConnectionFailed)` within ~2 s.

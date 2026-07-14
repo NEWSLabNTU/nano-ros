@@ -18,9 +18,13 @@ pubsub + C service passed on the same images.
 
 Fresh-fixture triage (staleness excluded by the #182/#185 guards):
 
-- `ret=-2` is `NROS_RET_TIMEOUT`, not a rejection: the send-goal / service
-  query is sent, and the blocking wait expires. The action server never logs
-  a goal request — the query never reaches it.
+- `ret=-2` is `NROS_RET_TIMEOUT`, not a rejection (`NROS_RET_REJECTED` is
+  `-13` — the client example's "Goal was rejected" print fires on ANY
+  `!ret.ok()`; a parallel static triage, `59b7c35b0`, spotted the same
+  mislabel). The send-goal / service query is sent, and the blocking wait
+  expires. Runtime evidence goes one step further than the static read: the
+  action server never logs a goal request — the query never reaches it (so
+  it is the REQUEST leg, not a late accept-response).
 - The C++ service client runs its whole flow and its future wait fails with
   the same -2 after its 5 s budget (an earlier lossy grep misread this as a
   post-banner hang).
