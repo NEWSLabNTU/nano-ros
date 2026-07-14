@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#197** — [pure-C workspace `nros plan` fails at cmake-configure: missing source metadata](0197-c-workspace-plan-missing-source-metadata.md):
+  `examples/workspaces/c` aborts configure — c_talker_pkg/c_listener_pkg have no plan-visible
+  source metadata; C-node metadata lands in the build dir, not passed to `nros plan` nor
+  source-root-discoverable. 287-W6 ament-migration regression; rust workspaces unaffected.
 - **#196** — [native rust fixture stale-probe misses generated/ drift](0196-native-rust-fixture-stale-probe-misses-generated.md):
   month-old service-client-callback binary survived every sweep ("native OK") while the
   test-side mtime gate failed it — build probe and test gate must watch the same input set.
