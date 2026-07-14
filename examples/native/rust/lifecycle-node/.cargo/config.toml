@@ -1,11 +1,9 @@
+include = ["../../../../../nros-patch.toml"]
 [patch.crates-io]
 lifecycle_msgs = { path = "generated/lifecycle_msgs" }  # nros-managed
-nros = { path = "../../../../packages/core/nros" }  # nros-managed
 nros-board-native = { path = "../../../../packages/boards/nros-board-native" }  # nros-managed
-nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi" }  # nros-managed
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed

@@ -1,3 +1,4 @@
+include = ["../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 # nros-board-freertos/build.rs needs these to locate the FreeRTOS + CFFI platform
@@ -21,10 +22,7 @@ rustflags = [
 action_msgs = { path = "generated/action_msgs" }  # nros-managed
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
-nros = { path = "../../../../packages/core/nros" }  # nros-managed
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }  # nros-managed
-nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
 nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }  # nros-managed
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed

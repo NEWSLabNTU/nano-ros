@@ -1,3 +1,4 @@
+include = ["../../../../../nros-patch.toml"]
 [build]
 target = "armv7a-nuttx-eabihf"
 
@@ -60,9 +61,6 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # `# nros-managed` suffix), so `nros ws sync` preserves it as a user key.
 libc = { path = "../../../../third-party/nuttx/libc" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-nros = { path = "../../../../packages/core/nros" }  # nros-managed
 nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }  # nros-managed
-nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed

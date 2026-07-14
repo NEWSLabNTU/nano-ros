@@ -1,10 +1,9 @@
+include = ["../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
 [patch.crates-io]
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-nros-core = { path = "../../../core/nros-core" }  # nros-managed
-nros-serdes = { path = "../../../core/nros-serdes" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed
 
 [target.thumbv7m-none-eabi]

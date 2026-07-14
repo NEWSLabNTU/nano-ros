@@ -87,3 +87,4 @@ examples/**/target-*/
 # refreshes them without --locked) and committed copies go stale (known-issue
 # pattern: locks pinning nros-core 0.1.0 after the 218.J bump).
 examples/**/Cargo.lock
+/nros-patch.toml

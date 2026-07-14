@@ -1,3 +1,4 @@
+include = ["../../../../../../nros-patch.toml"]
 [build]
 target = "thumbv7m-none-eabi"
 
@@ -11,8 +12,5 @@ rustflags = [
 
 [patch.crates-io]
 mps2-an385-pac = { path = "../../../../boards/mps2-an385-pac" }  # nros-managed
-nros = { path = "../../../../core/nros" }  # nros-managed
 nros-board-mps2-an385 = { path = "../../../../boards/nros-board-mps2-an385" }  # nros-managed
 nros-board-rtic-mps2-an385 = { path = "../../../../boards/nros-board-rtic-mps2-an385" }  # nros-managed
-nros-core = { path = "../../../../core/nros-core" }  # nros-managed
-nros-serdes = { path = "../../../../core/nros-serdes" }  # nros-managed

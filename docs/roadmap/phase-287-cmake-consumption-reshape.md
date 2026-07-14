@@ -138,8 +138,18 @@ lint (example_shape Test 8) · W9 (evaluated → recommend option E, follow-up).
   `multi_pkg_workspace_*` + `l9_deploy` test fixtures use it. Retiring it
   means moving that metadata onto the package.xml tuple in the planner — its
   own slice, tracked as follow-up alongside W9.
-- **W9 impl** — option E (single `include` of a `nros sync`-generated central
-  `nros-patch.toml`); independent follow-up.
+- **W9 impl — DONE (2026-07-14), option E.** `nros sync` now (1) regenerates
+  `<checkout>/nros-patch.toml` (gitignored; absolute paths; idempotent
+  skip-write) carrying the `[patch.crates-io]` for the universal trio
+  `nros`/`nros-core`/`nros-serdes`, and (2) manages a single
+  `include = ["…/nros-patch.toml"]` line at the top of each leaf's
+  `.cargo/config.toml` (our entry recognised by basename, evicted + re-pointed
+  each sync; user include entries preserved; RMW/board/generated patches stay
+  per-leaf per the warning-freeness rule — see the addendum above). All 99
+  Rust-leaf configs migrated by a full `build-test-fixtures` re-sync; sweep
+  green, native + xprocess + nuttx-rust e2e green. Unused-patch warning count
+  in the embedded lanes is ~unchanged vs pre-W9 (those lanes' per-leaf emits
+  already carried unused entries); `ws clean` also strips the include.
 
 > **Goal.** A nano-ros C/C++ package is written in the **ament_cmake convention**
 > and its `CMakeLists.txt` is **byte-identical across every platform** (native,
