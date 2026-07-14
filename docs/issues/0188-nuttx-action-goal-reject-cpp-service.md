@@ -26,6 +26,43 @@ nuttx, before any feedback/result exchange. Serialized run (`-j 1`), fresh
 fixtures (2026-07-13). nuttx C/C++ PUBSUB + C SERVICE pass on the same
 images, so transport + pub/sub + basic request/reply work.
 
+## Triage 2026-07-14 (static — corrects the framing)
+
+**`ret=-2` is `NROS_RET_TIMEOUT`, NOT a rejection.** `NROS_RET_REJECTED` is `-13`
+(`nros_generated.h`). The client example mislabels it: `send_goal` returning ANY
+`!ret.ok()` prints "Goal was rejected by server":
+
+```cpp
+// examples/*/cpp/action-client/src/main.cpp:59-64
+ret = client.send_goal(goal, goal_id);
+if (!ret.ok()) {
+    fprintf(stderr, "Goal was rejected by server (order=%d, ret=%d)\n", order, ret.raw());
+    ...
+}
+```
+
+So the send-goal request→response round-trip **times out** on nuttx — the server
+most likely ACCEPTED the goal; the accept-response just doesn't reach the client's
+spin within budget. **This flips the investigation** from "why does the server
+reject?" to "why doesn't the goal-response come back in time on nuttx?".
+
+- Mechanism: `nros_action_send_goal` (`nros-c/src/action/client.rs:449`) =
+  async-send + spin-the-executor-until-accepted/rejected/timeout. On nuttx the spin
+  hits `NROS_RET_TIMEOUT`.
+- **#179 does NOT cover this.** #179 (`09cdeca9a`) fixed the action RESULT
+  deserialize (unified zenoh encap contract) — a LATER stage. #188 fails at the
+  send-goal HANDSHAKE, upstream of #179's fix. Separate.
+- Two failing signatures, likely one area:
+  - `send_goal` (C AND cpp) times out ⇒ not language-specific ⇒ specific to the
+    **SendGoal service** (UUID + goal) vs the plain AddTwoInts service that passes.
+  - cpp AddTwoInts service red while C passes ⇒ a C++-service-on-nuttx issue.
+  Both are request/reply round-trips timing out on nuttx's net stack.
+
+**Next (needs the qemu e2e, not yet run):** capture the server side — does it print
+"Received goal request" (server SEES the goal)? Does it send the accept-response?
+Does the client's spin receive it? This is the layer-boundary evidence that pins
+which side drops the reply.
+
 ## Notes
 
 - Whether the server ever SEES the goal (server boot output) not yet
