@@ -36,3 +36,33 @@ images, so transport + pub/sub + basic request/reply work.
 - cpp service red on nuttx only — possibly the same underlying
   request/response quirk on the nuttx net stack (send_goal IS a service
   call); triage together.
+
+## Triage 2026-07-14 (fresh fixtures, serialized 3× each)
+
+Reproduced on freshly rebuilt nuttx fixtures (post-#182/#185 guards, so
+staleness is ruled out this time). Rust action + C service PASS on the same
+images; C/C++ action + C++ service fail deterministically. New facts:
+
+- **The server never sees the goal.** Server output stops at "Waiting for
+  action goals"; no goal-request line ever appears (the filed open question,
+  answered). The failure is on the REQUEST leg, not accept/reject logic.
+- **`ret=-2` is `NROS_RET_TIMEOUT`**, not a rejection: `nros_action_send_goal`
+  = `send_goal_async` (returns OK) + a blocking executor-spin wait for the
+  goal response, which expires. The current client build prints
+  `Failed to send goal: -2` (the issue's "Goal was rejected" wording came
+  from an older client print site — same underlying -2).
+- **The C++ SERVICE client stalls even earlier**: it prints its banner
+  (`nros C++ Service Client (AddTwoInts)`) and then NOTHING — no call
+  attempt, 0 responses, for the full 60 s window, 3/3 tries. Distinct stall
+  shape from the C action client (which does send + wait). So there may be
+  TWO defects: (a) send_goal query never matching the server's queryable on
+  nuttx (gossip-gap class — the #153 "query before queryable visible"
+  family, plausible on QEMU's slow guest boot), and (b) a C++-client init
+  hang after banner (before any request I/O).
+- Suggested next steps: (a) capture the zenohd router log during the C
+  action lane to see whether the send_goal query has a matching queryable
+  when it fires, and add/verify a gossip-gap backoff on the nuttx action
+  client like the demo-client one (#153); (b) attach to the cpp service
+  client under QEMU (or add a post-banner probe print) to find the init
+  stall point — compare against the PASSING nuttx C service client's init
+  order.
