@@ -62,13 +62,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#191** — [freertos rust entries: boot + connect, 0 delivery](0191-freertos-rust-entry-zero-delivery.md):
   lane repaired end-to-end by #181 (entry images, per-variant ports, IP split, launcher/gates);
   session opens, nothing publishes — entry runtime path, never previously exercised.
-- **#189** — [baremetal serial/XRCE session open dead post-#184](0189-baremetal-serial-xrce-session-open-dead.md):
-  zenoh-serial half RESOLVED 2026-07-14 (two stacked defects: the provisioned zenohd lost
-  `transport_serial` in the phase-187 migration and exited on the serial listener; serial-only
-  firmware compiled the smoltcp spin branch — frozen clock, 2.5 s spins, timers credited 10 ms —
-  because the Phase-136.4 manifest hardcoded `ZPICO_SMOLTCP`; serial pubsub e2e green 4/4).
-  REMAINING: the XRCE half — the talker-xrce image transmits ZERO bytes on the pty (socat -x);
-  the uxr custom UART transport never writes. Neither of the original suspects.
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
@@ -92,7 +85,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#197** — the pure-C
+Recently resolved (see [`archived/`](archived/) for the full list): **#189** — both baremetal
+serial lanes revived. Zenoh-serial: the provisioned zenohd lost `transport_serial` in the
+phase-187 migration (router exited on the serial listener) AND serial-only firmware compiled the
+frozen-clock smoltcp spin branch (`ZPICO_SMOLTCP` hardcoded in the Phase-136.4 manifest) — zenohd
+reprovisioned `1.7.2-nros2` + provenance-aware setup, runner swaps in `ZPICO_SERIAL`. XRCE: the
+image registered NO RMW backend at all (#163 class — `__register_linked_rmw()` is a Phase-249
+no-op, the board's explicit register covers only `rmw-zenoh`, linkme is dead on bare-metal), so
+`Executor::open` failed before one byte hit the UART; `setup_transport` now calls
+`nros_rmw_xrce_cffi::register()`, and the documented `serial/...` → custom-vtable locator route
+is actually implemented on non-POSIX. All lanes green (xrce+serial+ethernet emulator, POSIX XRCE
+10/10). **#197** — the pure-C
 workspace (`examples/workspaces/c`) aborted cmake-configure with `missing-source-metadata` for
 c_talker_pkg/c_listener_pkg. Root cause: a STALE in-tree `nros` (built 2 days before 287-W6's
 `nano_ros_add_node` ament verb + its `parse_add_node_call` parser landed), so it parsed zero

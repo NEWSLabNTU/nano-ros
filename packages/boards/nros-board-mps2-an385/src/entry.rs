@@ -212,6 +212,16 @@ impl BoardEntry for Mps2An385 {
                 Mps2An385::println(format_args!("XRCE custom transport install failed"));
                 Mps2An385::exit_failure();
             }
+            // #189 — register the XRCE backend explicitly. Bare-metal runs no
+            // `.init_array`, so the linkme auto-register in nros-rmw-xrce-cffi
+            // never fires (#163 class), and `__register_linked_rmw()` is a
+            // Phase-249 no-op: without this call NO backend is registered and
+            // `Executor::open` fails before a single byte reaches the UART.
+            // Mirrors the explicit `nros_rmw_zenoh::register()` in `boot()`.
+            if let Err(err) = nros_rmw_xrce_cffi::register() {
+                Mps2An385::println(format_args!("XRCE RMW register failed: {err:?}"));
+                Mps2An385::exit_failure();
+            }
         }
         let _ = deploy;
     }

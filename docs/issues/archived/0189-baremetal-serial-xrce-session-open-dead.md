@@ -1,7 +1,8 @@
 ---
 id: 189
 title: "qemu-arm-baremetal serial/XRCE lanes: session open dead AFTER the #184 heap fix — zenoh-serial hangs at Executor::open, XRCE fails ConnectionFailed fast"
-status: open
+status: resolved
+resolved_in: "2026-07-14 — zenohd transport_serial reprovision + ZPICO_SERIAL swap (7c609a0ac); XRCE register() in setup_transport + serial/ custom-vtable dispatch (this commit)"
 type: bug
 area: baremetal
 related: [issue-0184, issue-0178, phase-282]
@@ -67,16 +68,48 @@ Two stacked defects, both fixed and verified (serial pubsub e2e green 4/4,
    `ZPICO_NO_SMOLTCP` swaps the define for `ZPICO_SERIAL` (probe-verified:
    session opens, spins honor the 10 ms budget, publishes flow).
 
-## Remaining — the XRCE half (narrowed)
+## XRCE half RESOLVED (2026-07-14)
 
-`test_qemu_xrce_pubsub_e2e` still fails (`Executor::open failed:
-Transport(ConnectionFailed)` ~2 s after boot). NEW evidence (socat -x on
-the pty pair): the talker-xrce image transmits **zero bytes** — the uxr
-custom UART transport never writes anything (the zenoh serial-talker
-drives the identical wiring fine, so the UART/pty path is good). Suspect
-the phase-244.D1 `setup_transport` custom-transport install or the
-transport's open/write fns on bare-metal; the agent side is healthy
-(runs, `serial` mode present). Distinct subsystem — needs its own pass.
+`test_qemu_xrce_pubsub_e2e` failed (`Executor::open failed:
+Transport(ConnectionFailed)` ~2 s after boot) with **zero bytes** on the
+pty (socat -x) while the vtable install in `setup_transport` provably
+succeeded and the identical UART/pty wiring carried the zenoh serial
+lane. Root cause: **no RMW backend was ever registered on this image** —
+a #163/#131-class registration gap, not a transport defect:
+
+- `nros::main!()`'s `__register_linked_rmw()` is a Phase-249 no-op (the
+  board owns registration since Phase 248 C5a).
+- The board's explicit registration in `entry.rs::boot()` covers only
+  zenoh, gated `#[cfg(feature = "rmw-zenoh")]` — the XRCE image builds
+  the board `default-features = false, features = ["board-entry",
+  "xrce-transport"]`, so it compiles out.
+- nros-rmw-xrce-cffi's linkme auto-register never fires on bare-metal
+  (no `.init_array`).
+
+So `Executor::open` failed inside the CFFI resolve before a single byte
+could reach the UART. (The pre-BoardEntry examples called
+`xrce::register()` by hand — exactly what `xrce_transport.rs`'s doc
+comment still shows; the phase-244.D1 BoardEntry migration lost that
+call.) Fixed: `Mps2An385::setup_transport` now calls
+`nros_rmw_xrce_cffi::register()` (fail-loud) right after the vtable
+install.
+
+Also landed while triaging: `xrce_session_open`'s locator dispatch now
+implements the documented `serial/...` → custom-vtable contract
+(nros-rmw-xrce-cffi lib.rs doc) on non-POSIX builds when a vtable is
+armed — previously such a locator silently fell through to the bare
+host:port UDP path (no UDP provider on a serial-only image →
+ConnectionFailed, zero wire bytes). This lane's baked locator is
+`custom://uart` so it never hit that branch, but any board configured
+with a zenoh-style `serial/<dev>#...` locator + XRCE transport would
+have. POSIX `serial://` routing unchanged.
+
+Verified: manual harness (socat pair + MicroXRCEAgent serial -v6) shows
+the full session handshake + steady publishing on the wire;
+`test_qemu_xrce_pubsub_e2e` passes (~3 s). Regressions:
+`test_qemu_serial_pubsub_e2e` green, ethernet emulator set 8/8, POSIX
+XRCE lanes (c_xrce_api + large_msg + bridge_mixed_rmw, 10/10) green on
+freshly rebuilt fixtures.
 
 ## History caveat
 

@@ -320,7 +320,25 @@ nros_rmw_ret_t xrce_session_open(const char* locator, uint8_t mode, uint32_t dom
 #else
     const char* serial_path = NULL;
 #endif
-    if (locator_is_custom(locator)) {
+    /* #189 — implement the documented contract (`custom://` OR `serial/...`
+     * routes through the installed vtable, nros-rmw-xrce-cffi lib.rs doc):
+     * on non-POSIX builds a zenoh-style `serial/<device>#...` locator names
+     * a UART the board wrapped via `set_custom_transport_ops` — there is no
+     * POSIX serial fallback here, and the previous dispatch silently fell
+     * through to the bare host:port UDP path (no UDP provider on a
+     * serial-only bare-metal image → ConnectionFailed with zero bytes ever
+     * written to the UART). Only reroute when a vtable is actually armed so
+     * a genuine mis-locator still surfaces as the UDP parse error it always
+     * was. POSIX keeps the `serial://<path>` → xrce_posix_serial_init route
+     * unchanged (`serial/` vs `serial:/` prefixes are disjoint). */
+    int route_custom = locator_is_custom(locator);
+#if !defined(UCLIENT_PLATFORM_POSIX)
+    if (!route_custom && locator != NULL && strncmp(locator, "serial/", 7) == 0 &&
+        xrce_custom_transport_is_armed()) {
+        route_custom = 1;
+    }
+#endif
+    if (route_custom) {
         st->use_custom_transport = true;
         nros_rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
         if (ret != NROS_RMW_RET_OK) {
