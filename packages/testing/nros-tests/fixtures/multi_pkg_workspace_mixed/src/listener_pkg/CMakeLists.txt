@@ -6,11 +6,10 @@
 # writes a JSON fragment to the build dir under
 # `nros-metadata.json` (consumed by `nros codegen-system`).
 #
-# `nano_ros_deploy(...)` carries the per-target rmw + domain_id that
-# used to live in the retired `src/demo_bringup/system.toml`. The
-# included module (NanoRosNodeRegister) is pulled in by the
-# top-level CMakeLists so `@NANO_ROS_ROOT@` has already been
-# substituted by the integration test's stage step.
+# (`nano_ros_deploy` was retired post-287 — the deploy/rmw tuple lives in
+# package.xml.) The included module (NanoRosNodeRegister) is pulled in by the
+# top-level CMakeLists so `@NANO_ROS_ROOT@` has already been substituted by
+# the integration test's stage step.
 
 # §212.L.4: pkg dir name IS pkg name; CLASS must start with `${PROJECT_NAME}::`.
 # Sub-`project()` rescopes the L.4 check to the pkg dir name.
@@ -22,10 +21,6 @@ nano_ros_node_register(
     SOURCES src/listener.cpp
     DEPLOY  native)
 
-nano_ros_deploy(
-    TARGET    native
-    RMW       zenoh
-    DOMAIN_ID 0)
 
 # The consuming test (`cmake_mixed_corrosion_bridge_builds`) only
 # asserts this executable builds. Corrosion bridges the Rust

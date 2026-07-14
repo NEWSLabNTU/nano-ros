@@ -18,11 +18,8 @@
 #         module for the body + the BOARD-arg semantics.
 #
 #   (The `nano_ros_application` / `nano_ros_component_register` deprecation
-#   shims were retired in 287-W8.)
-#
-#   * `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
-#       [LOCATOR <uri>])`
-#       — records per-target rmw / domain_id / locator config.
+#   shims were retired in 287-W8; `nano_ros_deploy` post-287 — the per-package
+#   deploy/rmw tuple lives in package.xml `<export><nano_ros …/>`.)
 #
 # Side effect: every fn appends to GLOBAL props and rewrites
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` so `nros codegen-system`
@@ -98,23 +95,17 @@ define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
 define_property(GLOBAL PROPERTY NROS_APPLICATIONS_JSON
     BRIEF_DOCS "Accumulated application JSON fragments"
     FULL_DOCS  "Phase 212.L.9 / 212.N.6 — appended by nano_ros_entry().")
-define_property(GLOBAL PROPERTY NROS_DEPLOY_TARGETS_JSON
-    BRIEF_DOCS "Accumulated deploy_targets JSON fragments"
-    FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_deploy().")
 set_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON "")
 set_property(GLOBAL PROPERTY NROS_APPLICATIONS_JSON "")
-set_property(GLOBAL PROPERTY NROS_DEPLOY_TARGETS_JSON "")
 
 # Emit the JSON file. Idempotent — called after every fn so the file
 # is always current. Keep small: writes the whole doc each time.
 function(_nros_metadata_emit)
     get_property(_comps   GLOBAL PROPERTY NROS_COMPONENTS_JSON)
     get_property(_apps    GLOBAL PROPERTY NROS_APPLICATIONS_JSON)
-    get_property(_targets GLOBAL PROPERTY NROS_DEPLOY_TARGETS_JSON)
     set(_doc "{\n")
     string(APPEND _doc "  \"components\": [${_comps}\n  ],\n")
-    string(APPEND _doc "  \"applications\": [${_apps}\n  ],\n")
-    string(APPEND _doc "  \"deploy_targets\": {${_targets}\n  }\n")
+    string(APPEND _doc "  \"applications\": [${_apps}\n  ]\n")
     string(APPEND _doc "}\n")
     file(WRITE "${CMAKE_BINARY_DIR}/nros-metadata.json" "${_doc}")
 endfunction()
@@ -841,32 +832,11 @@ endfunction()
 # deprecation shims were retired in 287-W8 — both caller sweeps completed long
 # ago; zero callers remained.)
 
-function(nano_ros_deploy)
-    cmake_parse_arguments(_NRD "" "TARGET;RMW;DOMAIN_ID;LOCATOR" "" ${ARGN})
-    foreach(_req TARGET RMW DOMAIN_ID)
-        if(NOT DEFINED _NRD_${_req})
-            message(FATAL_ERROR
-                "nano_ros_deploy: ${_req} required")
-        endif()
-    endforeach()
-    if(DEFINED _NRD_LOCATOR AND NOT _NRD_LOCATOR STREQUAL "")
-        set(_loc_json "\"${_NRD_LOCATOR}\"")
-    else()
-        set(_loc_json "null")
-    endif()
-
-    get_property(_acc GLOBAL PROPERTY NROS_DEPLOY_TARGETS_JSON)
-    if(_acc)
-        set(_sep ",")
-    else()
-        set(_sep "")
-    endif()
-    set(_entry
-"${_sep}\n    \"${_NRD_TARGET}\": {\"rmw\": \"${_NRD_RMW}\", \
-\"domain_id\": ${_NRD_DOMAIN_ID}, \"locator\": ${_loc_json}}")
-    set_property(GLOBAL APPEND_STRING PROPERTY NROS_DEPLOY_TARGETS_JSON "${_entry}")
-    _nros_metadata_emit()
-endfunction()
+# (`nano_ros_deploy` was retired post-287 — nothing consumed its
+# deploy_targets JSON: the CLI's MetadataDoc reads only `components`, and the
+# per-package deploy/rmw tuple lives in package.xml `<export><nano_ros …/>`
+# since 287-W4. `nros_system_generate`'s self-pkg detection now keys on the
+# package.xml tuple instead of the retired cmake call.)
 
 # Phase 212.N.6 — pull in `nano_ros_entry`. The Entry module
 # back-includes this file (guarded) for the shared helpers

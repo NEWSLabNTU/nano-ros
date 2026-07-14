@@ -62,7 +62,7 @@ examples/threadx-linux/
 │   │                             #   `cargo build`; gitignored.
 │   └── src/lib.rs                # the component class; nros::main! generates the entry
 └── c/talker/                    # CMake, add_subdirectory
-    ├── CMakeLists.txt            # targets + nano_ros_deploy(...)
+    ├── CMakeLists.txt            # targets (deploy tuple in package.xml)
     ├── package.xml
     └── src/Talker.c
 
@@ -98,7 +98,6 @@ threadx-riscv64 —
 [`examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt):
 
 ```cmake
-nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
 ```
 
 Network shape (guest IP, gateway, router locator) beyond these fields

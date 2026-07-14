@@ -162,10 +162,10 @@ CMAKE_FIXTURES=(
     # component/application/deploy metadata) — the test inspects it.
     "metadata_cpp:examples/workspaces/cpp"
     # §212.L.9 cmake-fn metadata: each configures a tiny CMakeLists exercising
-    # nano_ros_node_register / nano_ros_deploy → nros-metadata.json (test inspects).
+    # nano_ros_node_register → nros-metadata.json (test inspects).
+    # (l9_deploy retired with nano_ros_deploy post-287 — deploy tuple in package.xml.)
     "l9_register_cpp:packages/testing/nros-tests/fixtures/l9_register_cpp"
     "l9_register_c:packages/testing/nros-tests/fixtures/l9_register_c"
-    "l9_deploy:packages/testing/nros-tests/fixtures/l9_deploy"
     # Phase 246 — the ThreadX `threadx_bringup`(+_rv64) NULL-context baker-audit
     # fixtures are retired with `NanoRosThreadxSystemCodegen.cmake`. ThreadX C/C++
     # is exercised by the typed-carrier examples (examples/threadx-linux/cpp/* +

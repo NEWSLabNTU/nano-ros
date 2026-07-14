@@ -18,7 +18,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 | File | Owns | Per |
 |------|------|-----|
 | `Cargo.toml` | Rust build: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`); node identity via `[package.metadata.nros.node]`; entry/boot via `[package.metadata.nros.entry]`; **embedded net config via `[package.metadata.nros.deploy.<target>]`**; workspace membership via `[workspace.metadata.nros]` | Rust project |
-| `CMakeLists.txt` | C/C++ build: targets, language deps, the `NROS_RMW` option; node/entry registration via `nano_ros_node_register` / `nano_ros_entry`; **per-target deploy config via `nano_ros_deploy(...)`** | C/C++ project |
+| `CMakeLists.txt` | C/C++ build: targets, language deps, the `NROS_RMW` option; node/entry registration via `nano_ros_node_register` / `nano_ros_entry` | C/C++ project |
 | `.cargo/config.toml` | **`[patch.crates-io]` dependency injection only** (written by `nros sync`; local crate + generated-msg paths), plus the cargo `[build]`/`[target]`/`[env]` knobs (target triple, runner, rustflags). **No nano-ros runtime config.** | Rust project |
 | `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
 | **`system.toml`** | **System topology** — components, deploy targets, domain, RMW, capability axes (`[safety]`, `[param_services]`), tiers. The language-agnostic universal descriptor (same schema for Rust/C/C++). **Optional for single-node** (the toolchain synthesises an implicit 1-component system when absent). | bringup pkg |
@@ -28,7 +28,8 @@ standalone `config.toml` for hand-written `no_std` apps.
 > build file (`Cargo.toml` feature / `CMakeLists.txt` option). If it changes the
 > *system topology* (components, deploy, domain, RMW), it lives in `system.toml`.
 > If it is the *physical link + router address a target boots with*, it lives in
-> the `deploy` config (`[package.metadata.nros.deploy.<t>]` / `nano_ros_deploy`).
+> the `deploy` config (`[package.metadata.nros.deploy.<t>]` for Rust / the
+> package.xml `<export><nano_ros deploy=… rmw=…/>` tuple for C/C++).
 
 ### Config home by language × scale
 
@@ -37,7 +38,7 @@ Mirrors [RFC-0004 §3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/des
 | | Single-node | Workspace |
 |---|---|---|
 | **Rust** | `Cargo.toml [package.metadata.nros.{node,entry,deploy.<t>}]` (+ `nros::main!`); optional `system.toml` to pin rmw/domain | root `[workspace.metadata.nros]` + node `[package.metadata.nros.node]` + entry `[package.metadata.nros.entry]` + bringup `system.toml` |
-| **C / C++** | `CMakeLists.txt` (`NANO_ROS_PLATFORM/RMW`, `nano_ros_deploy`) + `package.xml`; optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
+| **C / C++** | `CMakeLists.txt` + `package.xml` (the `<nano_ros deploy=… rmw=…/>` tuple); optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
 
 Where a concern has both a native-idiom projection and a `system.toml`, the
 resolution is a **fixed precedence ladder**, not a merge: explicit CLI/build
@@ -79,16 +80,17 @@ netmask = "255.255.255.0"
 # domain_id = 0
 ```
 
-**C/C++** — `nano_ros_deploy()` in the app's `CMakeLists.txt` (one call per
-deploy target):
+**C/C++** — the `<export><nano_ros …/>` tuple in the package's
+`package.xml` (RFC-0048 §4; the retired `nano_ros_deploy()` cmake call's
+successor). Domain/locator ride the build config (`config.toml` /
+`-DNROS_ENTRY_LOCATOR`), not the tuple:
 
-```cmake
-# CMakeLists.txt (e.g. examples/qemu-arm-freertos/c/talker)
-nano_ros_deploy(
-    TARGET     freertos
-    RMW        ${NROS_RMW}
-    DOMAIN_ID  0
-    LOCATOR    "tcp/10.0.2.2:7447")
+```xml
+<!-- package.xml (e.g. examples/qemu-arm-freertos/c/talker) -->
+<export>
+  <build_type>ament_cmake</build_type>
+  <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
+</export>
 ```
 
 RT/stack/priority for a single-node embedded app comes from **board-crate
@@ -348,7 +350,7 @@ targets bake their config at build time instead):
 |----------|---------------|----------------|-------|
 | Desktop (POSIX) | env (`ExecutorConfig::from_env()`) | `rmw-cffi, platform-posix, std` + zenoh dep | run zenohd locally (`just native zenohd`) |
 | QEMU bare-metal | `[package.metadata.nros.deploy.<t>]` ip/mac/gateway/locator | `rmw-cffi, platform-bare-metal, ros-humble` + zenoh | TAP/slirp bridge |
-| FreeRTOS hardware | `deploy` metadata / `nano_ros_deploy` + board features (RT) | `…, platform-freertos, …` | `FREERTOS_DIR`/`LWIP_DIR` |
+| FreeRTOS hardware | `deploy` metadata / the package.xml tuple + board features (RT) | `…, platform-freertos, …` | `FREERTOS_DIR`/`LWIP_DIR` |
 | ESP32 WiFi | `deploy` metadata (`ssid`/`password` via build env) | `…, platform-bare-metal, …` | `SSID`/`PASSWORD` build env |
 | Zephyr module | Kconfig overlay (`prj-<rmw>.conf`) | (Kconfig → features) | |
 | Hand-written `no_std` (no codegen) | standalone `config.toml` → `Config::from_toml` | per-board | net config in a file, not in code |

@@ -226,7 +226,7 @@ The native Rust / C / C++ talkers all read `NROS_LOCATOR` first, fall
 back to `ZENOH_LOCATOR`, then to the build-time default. Embedded
 targets have no runtime env — their locator is compile-baked from the
 deploy config (`[package.metadata.nros.deploy.<t>]` /
-`nano_ros_deploy`), so a rebuild is the override.
+the package.xml tuple), so a rebuild is the override.
 
 ### B5. Binary exits immediately, no error printed
 

@@ -3,9 +3,8 @@
 #
 # Pre-212 sidecar TOML / `metadata/*.json` / `nros.toml` have all been
 # retired (§212.L Non-Goals). Component metadata is declared at
-# configure time via `nano_ros_node_register(...)`, the executable
-# via `nano_ros_entry(...)`, and per-deploy config via
-# `nano_ros_deploy(...)`. All three fns ship from `cmake/` and emit
+# configure time via `nano_ros_node_register(...)` and the executable
+# via `nano_ros_entry(...)`. Both fns ship from `cmake/` and emit
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` — no committed sidecar.
 #
 # `@NANO_ROS_ROOT@` is rewritten by the staging harness before configure
@@ -15,9 +14,6 @@ project(multi_pkg_workspace_cpp C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
-
-# Per-deploy config (§212.L — Entry pkgs are native-only at this surface).
-nano_ros_deploy(TARGET native RMW zenoh DOMAIN_ID 0)
 
 # Component pkgs — each its own `project()` so the L.4
 # `CLASS startswith ${PROJECT_NAME}::` rule resolves correctly.

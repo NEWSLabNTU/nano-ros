@@ -1,8 +1,10 @@
-//! §212.L.9 cmake-fn metadata — `nano_ros_node_register` / `nano_ros_deploy`
-//! emit `nros-metadata.json` with the expected component / deploy entries.
+//! §212.L.9 cmake-fn metadata — `nano_ros_node_register` emits
+//! `nros-metadata.json` with the expected component entries.
+//! (`nano_ros_deploy` + its `l9_deploy` fixture were retired post-287 —
+//! the deploy/rmw tuple lives in package.xml.)
 //!
-//! The cmake configure runs in the **build stage** — three cmake fixtures
-//! (`l9_register_cpp`, `l9_register_c`, `l9_deploy` under
+//! The cmake configure runs in the **build stage** — two cmake fixtures
+//! (`l9_register_cpp`, `l9_register_c` under
 //! `compile-check-fixtures.sh`) each configure a tiny CMakeLists exercising one
 //! cmake fn and emit `nros-metadata.json`. These tests inspect the prebuilt JSON
 //! rather than running cmake at run time (issue 0034 / 0041). The negative
@@ -58,18 +60,3 @@ fn nano_ros_node_register_accepts_c_language() -> nros_tests::TestResult<()> {
     Ok(())
 }
 
-#[test]
-fn nano_ros_deploy_records_target_config() -> nros_tests::TestResult<()> {
-    let body = metadata("l9_deploy")?;
-    assert!(
-        body.contains("\"native\": {\"rmw\": \"zenoh\", \"domain_id\": 7, \"locator\": null}"),
-        "missing native deploy_targets entry:\n{body}"
-    );
-    assert!(
-        body.contains(
-            "\"zephyr\": {\"rmw\": \"cyclonedds\", \"domain_id\": 3, \"locator\": \"tcp/10.0.0.1:7447\"}"
-        ),
-        "missing zephyr deploy_targets entry:\n{body}"
-    );
-    Ok(())
-}

@@ -49,7 +49,7 @@ examples/qemu-arm-freertos/
 │   │                               #   `cargo build`; gitignored.
 │   └── src/lib.rs                  # the component class; nros::main! generates the entry
 ├── c/talker/                 # CMake project, add_subdirectory consumption
-│   ├── CMakeLists.txt              # targets + nano_ros_deploy(...)
+│   ├── CMakeLists.txt              # targets (deploy tuple in package.xml)
 │   ├── package.xml
 │   └── src/Talker.c
 └── cpp/talker/               # CMake C++14 project

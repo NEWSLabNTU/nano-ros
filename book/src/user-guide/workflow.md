@@ -30,7 +30,7 @@ side-by-side under a shared `src/`:
 │   └── my_robot_node/
 │       ├── package.xml
 │       ├── Cargo.toml             # Rust — deps + [package.metadata.nros.*]
-│       ├── CMakeLists.txt         # C/C++ — targets + nano_ros_deploy(...)
+│       ├── CMakeLists.txt         # C/C++ — targets (deploy tuple in package.xml)
 │       └── src/
 └── build/ install/ log/           # if you use colcon
 ```
@@ -87,7 +87,8 @@ implemented — see the [Coverage Matrix](https://github.com/NEWSLabNTU/nano-ros
 
 Runtime configuration (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, …) works on
 POSIX. Embedded targets bake config from
-`[package.metadata.nros.deploy.<t>]` / `nano_ros_deploy(...)`, plus
+`[package.metadata.nros.deploy.<t>]` (Rust) / the package.xml
+`<nano_ros deploy=…/>` tuple (C/C++), plus
 Kconfig on Zephyr. See [Configuration](configuration.md).
 
 ## 5. Build, Test, Deploy

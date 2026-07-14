@@ -55,9 +55,11 @@ endfunction()
 
 # Detect M-F.3 self-pkg bringup shape. Returns TRUE in outvar when
 # `<abs>/Cargo.toml` carries `[package.metadata.nros.deploy.zephyr*]`
-# OR `<abs>/CMakeLists.txt` calls `nano_ros_deploy(TARGET zephyr...)`
-# (the L.9 cmake-side equivalent). A self-pkg eats its own bringup
-# role — workspace AND bringup dir are the pkg itself.
+# OR `<abs>/package.xml` carries the RFC-0048 §4 tuple
+# `<nano_ros deploy="zephyr" …/>` (the C/C++ deploy SSoT; replaces the
+# retired `nano_ros_deploy(TARGET zephyr …)` CMakeLists grep). A
+# self-pkg eats its own bringup role — workspace AND bringup dir are
+# the pkg itself.
 function(_nros_system_detect_self_pkg abs outvar)
     set(${outvar} FALSE PARENT_SCOPE)
     if(EXISTS "${abs}/Cargo.toml")
@@ -70,9 +72,9 @@ function(_nros_system_detect_self_pkg abs outvar)
             return()
         endif()
     endif()
-    if(EXISTS "${abs}/CMakeLists.txt")
-        file(READ "${abs}/CMakeLists.txt" _cml)
-        if(_cml MATCHES "nano_ros_deploy[ \t]*\\([^)]*TARGET[ \t]+zephyr")
+    if(EXISTS "${abs}/package.xml")
+        file(READ "${abs}/package.xml" _pxml)
+        if(_pxml MATCHES "<nano_ros[^>]*deploy=\"zephyr")
             set(${outvar} TRUE PARENT_SCOPE)
         endif()
     endif()
@@ -82,8 +84,8 @@ endfunction()
 # absolute path, a path relative to the app's source dir, or a sibling
 # dir name (walks one level up — workspace shape). Returns a dir that
 # is EITHER a Path A bringup (`system.toml` present) OR an M-F.3
-# self-pkg (Cargo.toml + deploy.zephyr OR CMakeLists.txt +
-# nano_ros_deploy TARGET zephyr).
+# self-pkg (Cargo.toml + deploy.zephyr OR package.xml +
+# <nano_ros deploy="zephyr" .../>).
 function(_nros_system_resolve_bringup arg outvar)
     if(IS_ABSOLUTE "${arg}" AND IS_DIRECTORY "${arg}")
         set(${outvar} "${arg}" PARENT_SCOPE)
@@ -132,7 +134,7 @@ function(nros_system_generate bringup_pkg)
             "${CMAKE_SOURCE_DIR}, and their parents. The dir must "
             "contain system.toml (Path A bringup) OR a Cargo.toml "
             "with [package.metadata.nros.deploy.zephyr*] / a "
-            "CMakeLists.txt with nano_ros_deploy(TARGET zephyr...) "
+            "package.xml with a <nano_ros deploy=zephyr .../> tuple "
             "(M-F.3 self-pkg bringup).")
     endif()
 

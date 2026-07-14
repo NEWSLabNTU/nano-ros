@@ -40,7 +40,3 @@ nano_ros_node_register(
     SOURCES src/talker.cpp
     DEPLOY  px4)
 
-nano_ros_deploy(
-    TARGET    px4
-    RMW       cyclonedds
-    DOMAIN_ID 0)

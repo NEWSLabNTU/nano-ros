@@ -1,7 +1,7 @@
 # Phase 212.M.10 fixture — brake_arbiter component pkg (PX4 host-compile shape).
 #
 # Per §212.L.9 the C++ pkg metadata surface is the cmake fn pair
-# `nano_ros_node_register` + `nano_ros_deploy` — sidecar
+# `nano_ros_node_register` (nano_ros_deploy retired post-287) — sidecar
 # `component_nros.toml` is forbidden (§Non-Goals + §212.M.10).
 
 cmake_minimum_required(VERSION 3.22)
@@ -29,7 +29,3 @@ nano_ros_node_register(
     SOURCES src/brake_arbiter.cpp
     DEPLOY  px4)
 
-nano_ros_deploy(
-    TARGET    px4
-    RMW       cyclonedds
-    DOMAIN_ID 0)

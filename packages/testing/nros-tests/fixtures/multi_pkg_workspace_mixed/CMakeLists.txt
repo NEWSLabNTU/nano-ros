@@ -9,8 +9,8 @@
 # - Rust (`talker_pkg`) — `[package.metadata.nros.component]` in
 #   `src/talker_pkg/Cargo.toml`.
 # - C++ (`listener_pkg`) — `nano_ros_node_register(NAME ... CLASS
-#   ... SOURCES ... DEPLOY ...)` in `src/listener_pkg/CMakeLists.txt`,
-#   plus `nano_ros_deploy(...)` for the deploy/domain config (replaces
+#   ... SOURCES ... DEPLOY ...)` in `src/listener_pkg/CMakeLists.txt`
+#   (`nano_ros_deploy` retired post-287 — deploy tuple in package.xml; replaces
 #   the retired bringup pkg's `system.toml`).
 #
 # Top-level cmake just wires Corrosion (Rust → C++) and adds the C++
@@ -22,7 +22,7 @@ project(multi_pkg_workspace_mixed C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Pull in the §212.L.9 cmake fn surface (nano_ros_node_register,
-# nano_ros_deploy, nano_ros_entry) from the workspace root. The
+# nano_ros_entry) from the workspace root. The
 # integration test rewrites @NANO_ROS_ROOT@ at stage time.
 include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
 

@@ -55,7 +55,7 @@ examples/native/cpp/talker/
 POSIX talkers read the locator + domain from arguments passed to
 `nros::init(...)`; no config file is needed. Embedded variants under
 `examples/<plat>/cpp/talker/` bake theirs from the
-`nano_ros_deploy(...)` call in their `CMakeLists.txt`.
+package.xml `<nano_ros deploy=…/>` tuple.
 
 CMake preamble matches the canonical example at
 [`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt) —

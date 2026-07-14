@@ -54,7 +54,7 @@ examples/native/c/talker/
 
 On native, locator + domain come from env vars (`NROS_LOCATOR`,
 `ROS_DOMAIN_ID`) with built-in defaults; embedded targets bake them at
-build time via `nano_ros_deploy(...)` in `CMakeLists.txt` (see
+build time via the package.xml `<nano_ros deploy=… rmw=…/>` tuple (see
 [Configuration](../user-guide/configuration.md)).
 
 The CMake preamble matches the canonical example shape in
@@ -130,7 +130,7 @@ Three runtime knobs:
 | Node name | `talker` | hard-coded in source |
 
 On an embedded target the same knobs are compile-baked from the
-`nano_ros_deploy(TARGET <t> RMW <rmw> DOMAIN_ID <n> LOCATOR <loc>)`
+the package.xml `<export><nano_ros deploy="<t>" rmw="<rmw>"/>` tuple
 call in `CMakeLists.txt` (see
 [Configuration](../user-guide/configuration.md)).
 

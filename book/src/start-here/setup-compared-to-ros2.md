@@ -134,7 +134,8 @@ Multi-RMW bridges (one binary, two or more backends) use
 - **Configuration is build-time on embedded.** Runtime env vars
   (`ROS_DOMAIN_ID`, `NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR`,
   …) work on POSIX; embedded targets bake config from
-  `[package.metadata.nros.deploy.<t>]` (Rust) / `nano_ros_deploy(...)`
+  `[package.metadata.nros.deploy.<t>]` (Rust) / the package.xml
+  `<nano_ros deploy=…/>` tuple (C/C++)
   (CMake), plus Kconfig on Zephyr.
 
 ## Next Step
