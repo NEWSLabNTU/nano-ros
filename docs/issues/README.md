@@ -47,9 +47,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
-- **#194** — [threadx-linux rust rtos e2e: boots, 0 delivery](0194-threadx-linux-rust-entry-zero-delivery.md):
-  deterministic (3/3 retries, solo) on fresh fixtures; C/C++ threadx lanes green — sibling of
-  #191 on the language axis (rust entry runtime publish path), loopback so not a net-plan issue.
 - **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
   lane restored to the sweep (#181), boots + logging green; the four cross-delivery tests get 0
   samples — check pair identity/port drift first (the #179/#181 lessons), then the #64 heap notes.
@@ -79,7 +76,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#192** — the FVP
+Recently resolved (see [`archived/`](archived/) for the full list): **#194** — the
+threadx-linux rust rtos-e2e zero-delivery was three stacked defects, none in the runtime:
+museum pre-212.L role binaries satisfied a retired builder path (the freertos #181 entry-image
+repair was never applied here), the board crate lacked the #131 `rmw-zenoh` forwarding so every
+entry image booted with NoBackend (`Executor::open` ConnectionFailed, zero wire I/O), and the
+rust entry `main` lost `startup.c`'s `setvbuf` so a piped harness never saw the readiness
+banner. Entry builders + markers + per-variant baked ports + board feature + stdout
+line-buffering landed; pubsub/service/action all pass. Re-triage #191 against the same causes.
+**#192** — the FVP
 `getentropy` link red was the #193 CMake<3.24 whole-archive flag-dedup class on the ZEPHYR
 generator: three-item `-Wl,--whole-archive <ffi.a> -Wl,--no-whole-archive` triples collapsed into
 an UNCLOSED bracket that swallowed picolibc's `-lc` whole-archive → every `libc_ssp_*` member

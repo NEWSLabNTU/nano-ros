@@ -36,3 +36,9 @@ nros-board-common = { path = "../nros-board-common", features = ["build-helpers"
 
 [features]
 default = []
+# #131 / #194 — forward the family board's zenoh-backend link + boot-path
+# register() (same as the riscv64 sibling). Without this, a rust Entry image's
+# `Executor::open` finds NoBackend and fails Transport(ConnectionFailed) with
+# ZERO wire I/O (the observed threadx-linux rust rtos_e2e zero-delivery). The
+# Entry pkg forwards its own `rmw-zenoh`; a cyclonedds build leaves it off.
+rmw-zenoh = ["nros-board-threadx/rmw-zenoh"]

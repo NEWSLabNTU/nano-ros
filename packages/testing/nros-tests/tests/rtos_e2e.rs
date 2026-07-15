@@ -649,8 +649,11 @@ fn test_rtos_pubsub_e2e(
         }
         // issue #181 — the freertos rust `*-entry` images (the runnables since
         // 212.L made the role crates lib-only) print the entry-runtime banner,
-        // not the C examples' "Waiting for messages".
-        (Platform::Freertos, Lang::Rust) => "Application setup complete",
+        // not the C examples' "Waiting for messages". issue #194 — the
+        // threadx-linux rust lane consumes the same `*-entry` image shape.
+        (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
+            "Application setup complete"
+        }
         _ => "Waiting for messages",
     };
     let listener_boot = listener
@@ -748,8 +751,10 @@ fn test_rtos_service_e2e(
             "nros entry ready"
         }
         // issue #181 — see the pubsub gate: freertos rust entries print the
-        // entry-runtime banner.
-        (Platform::Freertos, Lang::Rust) => "Application setup complete",
+        // entry-runtime banner. issue #194 — threadx-linux rust entries too.
+        (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
+            "Application setup complete"
+        }
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
     let server_boot = server
@@ -858,7 +863,10 @@ fn test_rtos_action_e2e(
             "nros entry ready"
         }
         // issue #181 — freertos rust entries print the entry-runtime banner.
-        (Platform::Freertos, Lang::Rust) => "Application setup complete",
+        // issue #194 — threadx-linux rust entries too.
+        (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
+            "Application setup complete"
+        }
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
     let server_boot = server

@@ -88,3 +88,4 @@ examples/**/target-*/
 # pattern: locks pinning nros-core 0.1.0 after the 218.J bump).
 examples/**/Cargo.lock
 /nros-patch.toml
+.aider*

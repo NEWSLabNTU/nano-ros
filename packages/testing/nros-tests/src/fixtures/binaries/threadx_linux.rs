@@ -49,19 +49,17 @@ static THREADX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/threadx-linux/rust/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "ThreadX Linux example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    let binary_path = example_dir.join(format!("target-zenoh/nros-fast-release/{}", binary_name));
-    super::require_prebuilt_binary(&binary_path)
+// Issue #194 — the role crates are lib-only Component pkgs since 212.L (same
+// as FreeRTOS/NuttX, see freertos.rs `build_rust_example` / nuttx.rs
+// `require_entry_binary`): the runnable image is the sibling `<role>-entry`
+// Entry pkg the fixture rows prebuild. The old path probed a
+// `target-zenoh/…/threadx-linux-<role>` bin the role crate can no longer
+// produce — pre-212.L museum binaries (May 2026, pre-phase-277 output
+// markers) satisfied the probe and delivered under the OLD `Received [N]:`
+// marker, so the harness's `I heard:` grep counted 0 while delivery worked.
+fn build_rust_example(name: &str, _binary_name: &str) -> TestResult<PathBuf> {
+    let bin = format!("threadx_linux_rs_{}_entry", name.replace('-', "_"));
+    require_entry_binary(name, &bin)
 }
 
 pub fn build_threadx_talker() -> TestResult<&'static Path> {

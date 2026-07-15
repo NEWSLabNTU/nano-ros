@@ -135,6 +135,29 @@ impl nros_platform::BoardExit for ThreadxLinux {
     }
 }
 
+/// Issue #194 — line-buffer stdout before any output. The Rust Entry image's
+/// `nros::main!` `fn main` overrides the board `startup.c` weak C `main` (which
+/// carried the `setvbuf` fix), so when a test harness pipes stdout glibc
+/// full-buffers it and the readiness banner never reaches the harness within
+/// its gate window. Mirrors `startup.c` / the C examples' `_IOLBF` fix.
+fn line_buffer_stdout() {
+    unsafe extern "C" {
+        fn setvbuf(
+            stream: *mut core::ffi::c_void,
+            buffer: *mut core::ffi::c_char,
+            mode: core::ffi::c_int,
+            size: usize,
+        ) -> core::ffi::c_int;
+        // glibc's stdout FILE* — hosted Linux only (this crate is the
+        // ThreadX-on-Linux simulation board, so that is always true here).
+        static mut stdout: *mut core::ffi::c_void;
+    }
+    const IOLBF: core::ffi::c_int = 1; // glibc _IOLBF
+    unsafe {
+        setvbuf(stdout, core::ptr::null_mut(), IOLBF, 0);
+    }
+}
+
 impl nros_platform::BoardEntry for ThreadxLinux {
     fn run<F, E>(setup: F) -> Result<(), E>
     where
@@ -146,6 +169,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         // bring-up resets some C static state, so `node::run` also
         // re-registers from inside the app thread; here we just seed
         // the slot for any pre-kernel logging.
+        line_buffer_stdout();
         crate::node::register_log_writer_public();
         let cfg = Config::default();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, None, setup)
@@ -165,6 +189,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        line_buffer_stdout();
         crate::node::register_log_writer_public();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(
             config_with_overlay(deploy),

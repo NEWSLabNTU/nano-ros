@@ -21,11 +21,12 @@ deploy = "threadx-linux"
 [package.metadata.nros.deploy.threadx-linux]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/127.0.0.1:7455"
+locator = "tcp/127.0.0.1:7465"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
 nros = { version = "*", default-features = false }
-nros-board-threadx-linux = { version = "*" }
+# #131 / #194 — forward the family board's zenoh-backend link + boot-path register().
+nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 threadx_linux_rs_service_client = { path = "../service-client" }
 
