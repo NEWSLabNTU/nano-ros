@@ -1716,6 +1716,42 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
+/// (`ws-realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
+/// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
+/// build-riscv-c-workspaces`; consumed by `realtime_tiers_cpp_riscv_nuttx_e2e`.
+pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
+    static NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-nuttx-riscv-realtime",
+                "ws-realtime-cpp",
+                "build-workspace-fixtures-nuttx-riscv",
+                "riscv_nuttx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// #199 follow-up — the 2-tier **C** realtime NuttX rv-virt (riscv32) entry
+/// (`ws-realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
+/// [`build_nuttx_workspace_c_realtime_entry`]. Built by `just nuttx
+/// build-riscv-c-workspaces`; consumed by `realtime_tiers_c_riscv_nuttx_e2e`.
+pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Path> {
+    static NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-nuttx-riscv-realtime",
+                "ws-realtime-c",
+                "build-workspace-fixtures-nuttx-riscv",
+                "riscv_nuttx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-281 W3-nuttx — the 2-tier **Rust** realtime NuttX (QEMU arm-virt) entry
 /// (`ws-realtime-rust/src/nuttx_entry`): ctrl (high tier, 10 ms) + telem (low
 /// tier, 100 ms) Rust nodes over ONE shared session via `<QemuArmVirt>::run_tiers`
@@ -1744,6 +1780,21 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
                 &binary_path,
                 &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
             )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Resolve the prebuilt riscv-nuttx (rv-virt) C talker kernel ELF (cached).
+///
+/// #199 follow-up — the first riscv-nuttx C-lane RUNTIME fixture: the
+/// standalone `examples/qemu-riscv-nuttx/c/talker` cmake example, built by
+/// `just nuttx build-riscv-c` with the baked `tcp/10.0.2.2:17868` locator
+/// (see its `examples/fixtures.toml` row). Consumed by `c_riscv_nuttx_e2e`.
+pub fn build_nuttx_riscv_c_talker() -> TestResult<&'static Path> {
+    static NUTTX_RISCV_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NUTTX_RISCV_C_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("qemu-riscv-nuttx/c/talker", "c_talker", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }

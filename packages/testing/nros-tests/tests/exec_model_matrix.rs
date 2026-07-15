@@ -24,13 +24,12 @@ use std::path::PathBuf;
 const LANGS: &[&str] = &["rust", "c", "cpp"];
 /// The platforms with a multi-tier (`run_tiers`) path in scope.
 ///
-/// The `nuttx` cells are **arm-virt by design**. riscv-nuttx (rv-virt,
-/// phase-285 / #165) is deliberately an OFF-MATRIX board: its Rust `run_tiers`
-/// path is proven by its own e2e (`realtime_tiers_riscv_nuttx_e2e`), but it is
-/// not a matrix axis — promoting it would make all three langs' riscv e2e
-/// mandatory while the riscv C lane (`just nuttx build-riscv-c`) has a
-/// pre-existing ffi-link red. Revisit if the C/C++ riscv lanes go green.
-const PLATFORMS: &[&str] = &["native", "freertos", "zephyr", "nuttx"];
+/// The `nuttx` cells are arm-virt; `nuttx-riscv` is the rv-virt (riscv32)
+/// second-arch NuttX board, PROMOTED to a matrix axis after #199's fix chain
+/// took all three riscv lanes green (phase-285 landed rust; the #199
+/// follow-ups landed the C/C++ workspace entries + e2e). Fixtures:
+/// `just nuttx build-riscv-rust` (rust) + `build-riscv-c-workspaces` (c/cpp).
+const PLATFORMS: &[&str] = &["native", "freertos", "zephyr", "nuttx", "nuttx-riscv"];
 
 /// Cells proven by a named e2e. The `&str` is the test file (without `.rs`) in
 /// `packages/testing/nros-tests/tests/`; the gate asserts it exists.
@@ -51,6 +50,13 @@ const COVERED: &[(&str, &str, &str)] = &[
     // std::thread per tier over one shared session; NuttX is `std` + zenoh-pico
     // `Z_FEATURE_MULTI_THREAD = 1`) drives a Rust node too. All 12 cells proven.
     ("rust", "nuttx", "realtime_tiers_rust_nuttx_e2e"),
+    // #199 follow-ups — the rv-virt (riscv32) second-arch NuttX axis: rust
+    // landed in phase-285 W5/W6; the C/C++ workspace entries + e2e landed with
+    // the #199 fix chain (link_app port, run_tiers seam, #149 nightly pin,
+    // per-arch ffi-glue cross config). 15 cells proven.
+    ("rust", "nuttx-riscv", "realtime_tiers_riscv_nuttx_e2e"),
+    ("c", "nuttx-riscv", "realtime_tiers_c_riscv_nuttx_e2e"),
+    ("cpp", "nuttx-riscv", "realtime_tiers_cpp_riscv_nuttx_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.

@@ -241,12 +241,40 @@ build-riscv-c:
     unset NROS_CMAKE_EXTRA_DEFS
     echo "NuttX riscv C examples built!"
 
+# #199 follow-up — rv-virt (riscv32) C WORKSPACE fixtures (the RT-tiers entry).
+# Mirrors the arm `workspace-fixtures-build.sh nuttx c` invocation with the
+# riscv toolchain; provisions the rv-virt kernel like build-riscv-c (the shared
+# tree holds one board config at a time).
+[group("full-matrix")]
+build-riscv-c-workspaces:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
+        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+    fi
+    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
+        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    fi
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    NUTTX_DEFCONFIG="$rv_defconfig" \
+        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
+        bash scripts/nuttx/build-nuttx.sh
+    export NUTTX_DIR="$nuttx_dir"
+    CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
+        NROS_CARGO_PROFILE=release \
+        bash scripts/build/workspace-fixtures-build.sh nuttx-riscv c
+    CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
+        NROS_CARGO_PROFILE=release \
+        bash scripts/build/workspace-fixtures-build.sh nuttx-riscv cpp
+
 # phase-285 W5 — build the rv-virt RUST workspace Entry (ws-realtime-rust/
 # src/riscv_nuttx_entry). Provisions the rv-virt kernel export itself (same
 # reconfigure preamble as build-riscv-c) — deliberately NOT a dependency on
-# build-riscv-c: the rust Entry needs only the kernel/staging export, and the
-# C-talker half of that recipe is red independently (undefined generated
-# std_msgs bindings at the ffi image link — pre-existing, tracked separately).
+# build-riscv-c: the rust Entry needs only the kernel/staging export. (The
+# C lane's historical ffi-link red was #199, fixed 2026-07-16; the recipes
+# stay decoupled so each provisions independently.)
 [group("full-matrix")]
 build-riscv-rust:
     #!/usr/bin/env bash
@@ -278,7 +306,7 @@ build-riscv-rust:
 
 # Build every NuttX tier. `build-all-full` removed.
 [group("full-matrix")]
-build-all: build build-examples build-fixtures build-riscv-c build-riscv-rust
+build-all: build build-examples build-fixtures build-riscv-c build-riscv-c-workspaces build-riscv-rust
     @echo "NuttX build-all completed."
 
 # Run NuttX QEMU integration tests

@@ -433,12 +433,21 @@ function(nros_generate_interfaces target)
       # with build-std=core and use nightly toolchain.
       set(_ffi_cargo_prefix "")
       if(DEFINED Rust_CARGO_TARGET AND Rust_CARGO_TARGET MATCHES "nuttx")
+        # Per-arch cross compiler for the generated config (#199 follow-up —
+        # this block used to hardcode the arm pair, breaking the riscv board).
+        # The env key is the triple with `-`→`_` (cc-rs convention).
+        if(Rust_CARGO_TARGET MATCHES "^riscv32")
+          set(_ffi_cross_gcc "riscv-none-elf-gcc")
+        else()
+          set(_ffi_cross_gcc "arm-none-eabi-gcc")
+        endif()
+        string(REPLACE "-" "_" _ffi_cc_env_key "${Rust_CARGO_TARGET}")
         file(MAKE_DIRECTORY "${_ffi_crate_dir}/.cargo")
         file(WRITE "${_ffi_crate_dir}/.cargo/config.toml"
           "[build]\ntarget = \"${Rust_CARGO_TARGET}\"\n\n"
           "[unstable]\nbuild-std = [\"core\"]\n\n"
-          "[target.${Rust_CARGO_TARGET}]\nlinker = \"arm-none-eabi-gcc\"\n\n"
-          "[env]\nCC_armv7a_nuttx_eabi = \"arm-none-eabi-gcc\"\n"
+          "[target.${Rust_CARGO_TARGET}]\nlinker = \"${_ffi_cross_gcc}\"\n\n"
+          "[env]\nCC_${_ffi_cc_env_key} = \"${_ffi_cross_gcc}\"\n"
         )
         # Pin to the EXACT nightly the rest of the build uses — the dated
         # nightly is what's installed (matches examples/qemu-arm-nuttx/rust-

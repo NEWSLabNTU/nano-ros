@@ -183,7 +183,7 @@ build_workspace() {
             # cargo path runs (steps that emit + copy the kernel ELF), mirroring the standalone
             # NuttX `all`-build which skips the EXCLUDE_FROM_ALL host exe.
             local build_target="$entry"
-            if [ "$platform" = "nuttx" ]; then
+            if [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
                 build_target="${entry}_build"
             fi
             echo "     cmake --build $build_subdir --target $build_target"
@@ -192,7 +192,7 @@ build_workspace() {
             built_path="$(find "$build_subdir" -type f -name "$entry" -perm -111 | sort | head -n 1 || true)"
             if [ -n "$built_path" ]; then
                 echo "     built: $dir/$built_path"
-            elif [ "$platform" = "nuttx" ]; then
+            elif [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
                 # "No silent caps": on NuttX the real artifact is the kernel ELF that
                 # `${entry}_build`'s cargo cross-link emits and its POST_BUILD step copies
                 # to a `$entry`-named executable under $build_subdir (nros-nuttx.cmake).

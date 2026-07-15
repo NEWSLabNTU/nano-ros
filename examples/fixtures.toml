@@ -770,6 +770,21 @@ entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17863" }
 
+# #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
+# riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
+# plan). Built by `just nuttx build-riscv-c-workspaces`. Consumed by
+# tests/realtime_tiers_cpp_riscv_nuttx_e2e.rs (port 17870).
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-riscv-realtime"
+platform = "nuttx-riscv"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-cpp"
+bringup = "src/demo_bringup"
+entry = "riscv_nuttx_entry"
+build_subdir = "build-workspace-fixtures-nuttx-riscv"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17870" }
+
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
 # (`ws-realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
 # shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The C
@@ -787,6 +802,23 @@ bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17864" }
+
+# #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
+# sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
+# `[tiers.*.nuttx]` table keys on the RTOS). Built by `just nuttx
+# build-riscv-c-workspaces` (provisions the rv-virt kernel; the recipe exports
+# NUTTX_DIR + the riscv CC). Own build_subdir (one board per CMake configure).
+# Consumed by tests/realtime_tiers_c_riscv_nuttx_e2e.rs (port 17869).
+[[workspace_fixture]]
+id = "workspace-c-nuttx-riscv-realtime"
+platform = "nuttx-riscv"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-c"
+bringup = "src/demo_bringup"
+entry = "riscv_nuttx_entry"
+build_subdir = "build-workspace-fixtures-nuttx-riscv"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17869" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"
@@ -2795,6 +2827,9 @@ platform = "nuttx-riscv"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv-nuttx/c/talker"
+# #199 follow-up — dedicated e2e port (the rust riscv realtime entry uses
+# 17867): the guest dials the host router through the QEMU slirp gateway.
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17868" }
 
 # ===========================================================================
 # threadx-linux — C / C++ (cmake). Zenoh here; Cyclone cells stay gated inline.

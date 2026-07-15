@@ -39,6 +39,17 @@ elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-arm")
     if(DEFINED ENV{NUTTX_APPS_DIR} AND NOT NUTTX_APPS_DIR)
         set(NUTTX_APPS_DIR "$ENV{NUTTX_APPS_DIR}" CACHE PATH "NuttX apps tree")
     endif()
+elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-riscv")
+    # #199 follow-up — the rv-virt (riscv32) C++ RT-tiers entry, kernel-linked via
+    # the riscv cargo nros-nuttx-ffi. Same run_tiers emission as the arm entry
+    # (the `[tiers.*.nuttx]` table keys on the RTOS, shared across arches).
+    list(APPEND _ws_subdirs src/riscv_nuttx_entry)
+    if(DEFINED ENV{NUTTX_DIR} AND NOT NUTTX_DIR)
+        set(NUTTX_DIR "$ENV{NUTTX_DIR}" CACHE PATH "NuttX kernel tree")
+    endif()
+    if(DEFINED ENV{NUTTX_APPS_DIR} AND NOT NUTTX_APPS_DIR)
+        set(NUTTX_APPS_DIR "$ENV{NUTTX_APPS_DIR}" CACHE PATH "NuttX apps tree")
+    endif()
 endif()
 
 nano_ros_workspace(

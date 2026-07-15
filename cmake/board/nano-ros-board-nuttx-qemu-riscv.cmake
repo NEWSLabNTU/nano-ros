@@ -69,6 +69,25 @@ if(NOT DEFINED CACHE{Rust_CARGO_TARGET})
         "Rust cargo target triple (set by NuttX riscv board overlay)")
 endif()
 
+# issue #149 (ported from the arm overlay, #199 follow-up) — in a WORKSPACE
+# (host-side) configure the standalone toolchain file is NOT loaded, so a
+# tier-3 build-std cross-build spawned during the configure (the C++ interface
+# FFI glue `nano_ros_cpp_ffi_<msg>`) would run under host STABLE →
+# `E0463: can't find crate for core`. Pin the NuttX nightly here, read from the
+# same rust-toolchain.toml SSoT the arm overlay uses (one NuttX nightly across
+# arches — the patched libc fork pins it).
+if(NOT Rust_TOOLCHAIN MATCHES "nightly")
+    set(_nros_nuttx_tc_ssot "${_NROS_BOARD_ROOT}/examples/qemu-arm-nuttx/rust-toolchain.toml")
+    if(EXISTS "${_nros_nuttx_tc_ssot}")
+        file(READ "${_nros_nuttx_tc_ssot}" _nros_nuttx_tc_content)
+        string(REGEX MATCH "channel[ \t]*=[ \t]*\"([^\"]+)\"" _nros_tc_m "${_nros_nuttx_tc_content}")
+        if(CMAKE_MATCH_1)
+            set(Rust_TOOLCHAIN "${CMAKE_MATCH_1}" CACHE STRING
+                "Rust toolchain (issue #149 — NuttX nightly pinned for workspace configure)" FORCE)
+        endif()
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # nros_board_link_app(<target>) — identical logic to the arm overlay; pulls the
 # carrier add_executable's SOURCES/INCLUDE_DIRECTORIES/LINK_LIBRARIES and feeds

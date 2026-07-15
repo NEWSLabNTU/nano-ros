@@ -15,6 +15,12 @@ use std::path::Path;
 
 fn main() {
     nros_board_common::nuttx_platform_build::run_platform();
+    // #199 follow-up — the C/C++ multi-tier entry seam (`nros_board_nuttx_run_tiers`),
+    // whole-archived for the generated entry's `NuttxBoard::run_tiers` reference.
+    // Same shared helper + seam source as the arm sibling (the seam is POSIX C,
+    // arch-agnostic; the riscv NUTTX_* env selects the cross compiler/cflags).
+    let run_tiers = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_run_tiers.c");
+    nros_board_common::nuttx_platform_build::compile_run_tiers_seam(&run_tiers);
     let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_builtins_stub.c");
     nros_board_common::nuttx_image_link::run_image_link(&stub);
 }
