@@ -44,6 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#202** — [cli orchestration_e2e: 17/17 red + unwired](0202-cli-orchestration-e2e-suite-unwired-and-red.md):
+  the nros-cli-core e2e suite still resolves fixtures at `packages/testing_workspaces/` (they
+  moved to `packages/cli/testing_workspaces/` in phase-218) + a second walk-up bug drops the
+  repo dir; dead since the move, and NO just/CI lane ever runs `packages/cli` tests (#181
+  silent-lane class) — every 287/288 orchestration change landed without this coverage.
+- **#201** — [C++ `HeapSequence<T>` skips element dtors](0201-cpp-heapsequence-nested-heap-leak.md):
+  destructor/move-assign free only the outer array, and the FFI deserialize error path strands
+  inner allocations — a heap-field nested type inside a heap sequence (two-level heap config,
+  nothing rejects it) leaks on C++ only (C `_fini` recurses; Rust `Vec` drops). Recommended:
+  reject the combination at codegen now, real dtor support if a use case arrives.
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
