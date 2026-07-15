@@ -1,7 +1,7 @@
 ---
 id: 183
 title: "declarative ws-bridge lanes deliver 0 samples (zenoh→cyclonedds nano listener + nested-header, zenoh→xrce)"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [phase-287, issue-0164, issue-0193]
@@ -30,6 +30,25 @@ up rather than a forwarding bug. The ws-bridge workspace fixtures went
 through the same fresh-sweep rebuild; check their entry build + the
 `nros plan` wiring before suspecting the bridge runtime. Untriaged beyond
 this; needs its own session.
+
+## RESOLVED — 2026-07-15
+
+All three lanes verified green on freshly rebuilt fixtures (`just native
+build-fixtures`, #193's whole-archive fix in place so the fresh cyclone C
+listener registers):
+
+- `declarative_zenoh_to_cyclonedds_bridge_to_nano_listener` — PASS (the
+  2026-07-13 Int32 type-alignment below, verification previously blocked
+  on #193).
+- `declarative_zenoh_to_cyclonedds_nested_header_to_ros2` — PASS.
+- `declarative_zenoh_to_xrce_bridge_to_nros_listener` — PASS after applying
+  the SAME Int32 alignment the cyclone test got: the ws-bridge-xrce demo
+  also forwards `std_msgs/Int32` on `/chatter` (`nros-bridge.toml`), but the
+  test drove the shared talker/listener at their String defaults. Fixed in
+  `tests/declarative_bridge_zenoh_to_xrce.rs`: `NROS_PUB_TYPE=int32` on the
+  talker + `NROS_SUB_TYPE=int32` on the xrce listener (the native rust
+  listener's Int32 branch prints the same `LISTENER_LOG_PREFIX`, so the
+  grep is unchanged).
 
 ## ROOT CAUSE — message-type mismatch (NOT a bridge/forwarding bug) — 2026-07-13
 

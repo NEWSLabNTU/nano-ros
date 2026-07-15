@@ -91,11 +91,16 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
         .expect("spawn declarative xrce bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 
-    // xrce listener — connects to the same agent on the same domain.
+    // xrce listener — connects to the same agent on the same domain. The
+    // ws-bridge demo forwards std_msgs/Int32 on /chatter (issue #183), so the
+    // observability listener must subscribe Int32 — the Int32-typed agent topic
+    // won't match a String sub. (The Int32 branch prints the same
+    // `LISTENER_LOG_PREFIX` line, so the grep below is type-agnostic.)
     let mut listener_cmd = Command::new(&xrce_listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_SUB_TYPE", "int32")
         .env("NROS_LOCATOR", format!("udp/{xrce_locator}"));
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "xrce-listener-declarative-bridge")
@@ -105,8 +110,10 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(
         .expect("xrce listener did not become ready");
 
     let mut talker_cmd = Command::new(&talker_binary);
+    // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.
     talker_cmd
         .env("RUST_LOG", "info")
+        .env("NROS_PUB_TYPE", "int32")
         .env("NROS_LOCATOR", &zenoh_locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-xrce-bridge")
         .expect("spawn talker");

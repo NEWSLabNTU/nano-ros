@@ -49,9 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   component is structurally unpublishable as laid out (3-file shell, `_nros_root=../..` escapes
   the archive). Needs a layout decision (root manifest packing the tree vs wontfix) BEFORE the
   maintainer credentials + CI lane; the doc's deprecated `idf.py upload-component` is fixed.
-- **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
-  zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
-  NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
 - **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
   every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
   `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
@@ -66,7 +63,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#195** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#183** — declarative
+ws-bridge 0-sample lanes were a fixture type mismatch, not a bridge bug: both ws-bridge demos
+forward `std_msgs/Int32` on `/chatter` while the shared talker/listener fixtures defaulted to
+String post-277-W4.b. Cyclone lane got the `NROS_PUB_TYPE`/`NROS_SUB_TYPE=int32` alignment on
+2026-07-13 (verify was blocked on #193); the xrce test got the same alignment 2026-07-15. All
+three lanes PASS on fresh fixtures (6/6 across the declarative + imperative bridge families).
+**#195** — the
 threadx-riscv64 cyclone two-qemu zero-delivery: the descriptor-registration ctors never RAN —
 the flat bare-metal image walks no `.init_array` (orphan section, no bounds), so every
 reader/writer create failed -1. Fixed with lds `.init_array` bounds + a board ctor walk, atop a
