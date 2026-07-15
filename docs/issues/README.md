@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
+  phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
+  jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
+  native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
+  Hardware-gated measurement, not implementation work.
+
 Recently resolved (see [`archived/`](archived/) for the full list): **#199** — the
 `build-riscv-c` ffi-link red (undefined `std_msgs_msg_string_*`) was the riscv board
 cmake overlay being a stale pre-phase-281 mirror of the arm one: the phase-281

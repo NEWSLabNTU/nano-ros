@@ -5,12 +5,18 @@
 make-scheduled fixture graph, then reduce repeated compilation by giving
 fixture builds shared caches where the build configuration is compatible.
 
-**Status.** IN PROGRESS. Created 2026-06-07 after a focused audit of
-the fixture build scripts. Native fixture orchestration now uses make
-for the high-cost C/C++ RMW groups and `scripts/build/fixtures-build.sh`
-no longer depends on GNU parallel. Remaining implementation is centered
-on fixture cache measurement, shared-target-dir candidates, and broad
-validation.
+**Status.** COMPLETE — 2026-07-16. All implementation waves (W1–W13)
+landed: 226.A–C (make-scheduled fixture graph, GNU parallel + hidden
+fan-out removed), 226.G (Zephyr scheduler migration Z1–Z6), 226.D
+(shared Rust fixture target dirs for qemu-arm-baremetal + stm32f4, incl.
+the make-leaf export fix), 226.E (CMake/Corrosion efficiency audit,
+measured + concluded). The follow-up breakages the broad validation
+surfaced were all resolved in their own issues (0012 stale lockfiles,
+0013 talker-embassy `skip_build`, 0014 template prefetch). The only
+residue is the three 226.F timing/CPU measurements, which are blocked on
+a ≥200 GiB-scratch CI runner and are carved out into **issue #200**
+(fixture-build timing campaign) — hardware-gated measurement, not
+implementation work.
 
 **Priority.** P1. Fixture prebuilds are now a normal part of the full
 verification workflow. The current path is slow, recompiles shared
