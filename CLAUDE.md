@@ -25,6 +25,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | A specific design decision (stable vs evolving) | [docs/design/](docs/design/README.md) — numbered RFCs |
 | A known bug / limitation / tech-debt (troubleshooting) | [docs/issues/](docs/issues/README.md) — numbered issues (open) + `archived/` |
 | Build / test / SDK tiers / jobserver / zephyr versions | [AGENTS.md](AGENTS.md) + [docs/development/](docs/development/) + `just/*.just` |
+| Long-form practices + pitfalls (cmake, tests, multi-session) | AGENTS.md “Practices & Pitfalls” (this file keeps the one-liners) |
 | `nros setup` / provisioning / `nros-sdk-index.toml` | RFC-0014 + AGENTS.md “Toolchain & SDK Provisioning” |
 | Feature axes (RMW × platform × ROS edition) | ARCHITECTURE §2 + RFC-0005, RFC-0006 |
 | Platform/RMW impl notes + deep pitfalls | [docs/reference/platform-implementation-notes.md](docs/reference/platform-implementation-notes.md) |
@@ -89,7 +90,8 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
-- **Fixture mtime treadmill:** any pull/rebase refreshes source mtimes → EVERY prebuilt fixture
+- **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
+  tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
   reads STALE. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
   or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append
   objects → garbage-pointer SEGVs). Long-unrebuilt families "pass" on museum binaries — trust
@@ -103,6 +105,12 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   the fixture actually prints. → archived issues 0157/0164.
 - **Test names describe behavior, not phase numbers** (`zephyr_xrce_service_e2e`, not `phase212_n9_…`).
   Phases go stale; cross-ref a phase in a doc-comment, never the identifier. → AGENTS.md Testing.
+- **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES** — only `just test-all`'s
+  junit rewrite makes them skips. Read the panic text before filing a bare-run red as a regression.
+  And full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3 in-sweep, passed
+  solo) — retest a QEMU red SOLO before filing. → AGENTS.md Test Pitfalls.
+- **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
+  `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
   `nros`, `play_launch_parser`, `zenohd`). `just doctor` enforces it. The pre-218
   `export PATH="$HOME/.nros/bin:$PATH"` is insufficient.
@@ -170,6 +178,21 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
   (archived). Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
+- **cmake `include()` inside a FUNCTION drops the file's normal vars when the frame pops** —
+  capture module dirs `CACHE INTERNAL` (the `_NROS_ENTRY_DIR` pattern); a plain
+  `set(_X_DIR ${CMAKE_CURRENT_LIST_DIR})` broke every freertos ws member's `configure_file`
+  (287-W6; posix hid it). And `find_program` HINTS beat PATH — a stale `~/.nros/bin` binary
+  shadows the activate.sh CLI; use `PATHS` for fallbacks. → AGENTS.md CMake Pitfalls.
+- **Case-normalize enum-ish cmake args** (`string(TOUPPER)`) — the ament verbs pass lowercase
+  `cpp`; a case-sensitive `STREQUAL "CPP"` silently takes the C branch. → AGENTS.md CMake Pitfalls.
+- **Rust leaf `.cargo/config.toml` is `nros sync`-managed (RFC-0048 W9)**: one
+  `include = ["…/nros-patch.toml"]` (central, gitignored, absolute paths) + leaf-local
+  `generated/*`/platform patches. Never hand-edit; moved checkout → re-run `nros sync`. Central
+  membership = only crates registry-named in EVERY graph (else cargo "unused patch" warnings).
+  → AGENTS.md Rust Consumption.
+- **Parallel agent sessions push to `main`** — fetch + check origin's highest issue id (incl.
+  `archived/`) before filing; expect `docs/issues/README.md` rebase conflicts; write full
+  background logs to files (`| tail` hides the real error). → AGENTS.md Multi-Session Pitfalls.
 
 ## Verification
 Kani (bounded harnesses, `just verify-kani`) + Verus (unbounded proofs, `just verify-verus`).

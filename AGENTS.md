@@ -159,80 +159,120 @@ When pulling or rebasing the superproject, inspect submodule changes. If a pull 
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
 
-## Handover Notes (2026-06-08, session 2)
+## Practices & Pitfalls
 
-Active branch: `main`. The seven local commits from session 1 were pushed to
-`origin/main` (`50248367a..35b28a091`, clean fast-forward, no divergence).
-Session 2 then landed Phase 225.O groundwork; `bf308a0b1` is committed locally
-on `main` and **not yet pushed**. Worktree dirty only on `AGENTS.md` (this
-handover update).
+### Agent Practices
 
-### Phase 225 current state
+- **Always `just ci` after a task.** Never `sudo` — tell the user.
+- **Green CI locally BEFORE pushing** — run `just format` then `just ci`. CI stops at the first failing step; re-run until fully green. A toolchain bump can surface new pre-existing lints (e.g. rust-1.96 `unnecessary_cast` / `drop_non_drop` / `not_unsafe_ptr_arg_deref`) — fix them locally rather than discovering them remotely.
+- **Always nightly for `rustfmt`** — `rustfmt.toml` enables nightly-only options; stable produces different output. Run `cargo +nightly fmt`.
+- **Never merge in git.** Use `git pull --rebase` or `git fetch` + `git rebase`. Never create merge commits unless asked.
+- **Submodule rebase on superproject pull:** if a pull advances a submodule pointer AND local work exists → enter it, fetch, rebase local onto upstream, check out the expected commit, record in parent. Never leave a submodule at an older commit when remote advanced.
+- **Vendored-fork branch workflow** (cyclonedds, netxduo): land fixes with linear history. **Push the fork branch FIRST, then bump the superproject pointer.** By default, the agent does NOT push fork remotes (exfiltration guard) — the agent commits + rebases locally and leaves the branch ready; the maintainer pushes.
+- **Don't modify vendored/generated:** `third-party/`, `packages/interfaces/*/generated/`, build output — unless the task explicitly requires regeneration. Preserve worktree changes.
+- **Examples are standalone copy-out projects** (`examples/<plat>/<lang>/<example>/`); no workspace walk-up. Non-example bins under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`.
+- **Unused vars:** `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
 
-Phase 225 still not fully closed. The three 225.O checkboxes remain unchecked —
-all are infra-blocked, now narrowed by a parallel investigation (see the
-refreshed "Remaining blockers" in
-`docs/roadmap/phase-225-workspace-fixture-migration.md`):
+### Platform Pitfalls
 
-- `qemu_nuttx_entry` — libc-patch gap **wired** in
-  `workspace-fixtures-build.sh` (necessary, no-op until a NuttX row exists).
-  Still blocked by: ws-sync renders one merged `.cargo/config.toml` and the
-  NuttX board template's global `[build] target`/`[unstable] build-std` would
-  poison `native_entry` + force build-std everywhere (CLI/board-template fix);
-  and the standalone `nros::main!` NuttX deploy shape is unverified (all
-  existing NuttX Rust examples are `libapps.a` staticlib Components).
-- Zephyr Entry — tractable but multi-day. Recommended Approach A: emit a
-  workspace-Entry leaf from `zephyr-fixture-leaves.sh` so the existing
-  `zephyr-fixture-run-one.sh` west path builds it (the workspace lane has no
-  west branch and a different codegen contract).
-- ESP32 Entry — not tractable in one pass. A latent macro bug was **fixed**
-  (`main_macro.rs` esp32 -> `Esp32C3`, was nonexistent `Esp32`). Still blocked
-  by `NullNodeRuntime` in the bare-metal driver (awaiting 212.N.4), WiFi-only
-  board with no CI-runnable OpenETH `BoardEntry`, and nightly + scoped
-  `-Z build-std` plumbing.
+- **After clone, run ONE of** `direnv allow` / `source ./activate.sh` / `source ./activate.fish` — else `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`.
+- **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+- **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
+- **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an explicit call. A pure-Rust image needs the REAL backend dep (`rmw-zenoh = ["dep:nros-rmw-zenoh"]`) — and a direct reference, or rustc's staticlib DCE drops the dep's `#[no_mangle]` export (symbol in the rlib, absent from the `.a`).
+- **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on native. `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` — never pin it to a literal in confs (the phase-180 split-brain silently ran every cyclone image on domain 0). Cyclone fixture pairs bake distinct domains (50–58) for parallel SPDP.
+- **FreeRTOS:** `APP_TASK_STACK` 64 KB → "Invalid mbox" otherwise; IP-seeded `srand()`; poll-task priority ≥ 4; manual action server needs `try_handle_get_result()`.
+- **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails with -80).
+- **Zephyr zsock serializes send/recv per-fd:** `Z_CONFIG_SOCKET_TIMEOUT` must stay 100 ms (5 s starves tx → lease death); intra-image pub→sub needs `Z_FEATURE_LOCAL_SUBSCRIBER=1`.
+- **NuttX spin uses `sem_timedwait`** (pthread condvar hangs).
+- **NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not `INT` ms** (deadlock otherwise).
+- **smoltcp multicast:** join the GROUP addr, not `0.0.0.0`; LAN9118 needs promiscuous in QEMU.
+- **QEMU:** `-icount shift=auto`; use `nros_tests::qemu::qemu_system_arm_cmd()`.
+- **Embedded Cyclone:** transient samples use `ddsrt_{malloc,calloc,free}`, never libc — RTOS heap is separate.
+- **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
+- **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` (default 16 KB), NOT `CONFIG_HEAP_MEM_POOL_SIZE`.
+- **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share entropy → identical GUIDs/ports → discovery sees the peer as itself → false-negative "no delivery".
+- **Never clang-format `cmake/templates/*`** — reflow splits `@VAR@` configure_file tokens → generated TU fails "stray '@'". `.clang-format-ignore` guards.
+- **Hand-mirrored FFI structs drift on append** (QoS `tx_express`, `callback_group` — 3×): mirror-only TU passes a SHORTER struct by value → tail field garbage. Gated: `check-ffi-struct-mirrors` (push lane) + cross-include TU in `check-c`. Include order is one-way: `nros_cpp_ffi.h` BEFORE `component.h`.
+- **zpico shim + zenoh-pico library MUST share the generated zenoh config** — flag-gated struct fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break. `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
 
-Everything else in the phase doc is checked. Product examples and CLI workflow
-fixtures no longer use product-facing `NodeId`, `EntityId`, `CallbackId`,
-`ComponentContext`, `ComponentResult`, `ExecutableComponent`, or
-`nros::Component`. Remaining `CallbackId` references are intentional dispatch
-internals in `book/src/internals/dispatch-strategy.md` and
-`packages/testing/nros-tests/tests/phase216_a_dispatch_strategy.rs`.
+### CMake Pitfalls
 
-### Verification run this session
+- **A cmake `include()` inside a FUNCTION scope drops the included file's normal
+  variables when the frame pops** — only the function/macro *definitions* survive.
+  Any module that captures its own dir (`set(_X_DIR "${CMAKE_CURRENT_LIST_DIR}")`)
+  for later `configure_file` template lookups must use `CACHE INTERNAL` (the
+  `_NROS_ENTRY_DIR` pattern). 287-W6: `_NROS_NODE_REGISTER_DIR` was a normal var,
+  the workspace path includes NodeRegister inside `_nros_import_once()` (a
+  function), and every FreeRTOS workspace member failed `configure_file` on
+  `"/templates/freertos_entry_main_c_typed.cpp.in"` — posix never touches the
+  templates, which hid it for months.
+- **`find_program` HINTS are searched BEFORE the environment PATH.** A resolver
+  that lists `~/.nros/bin` as a HINT lets a stale provisioned binary shadow the
+  activate.sh-wired in-tree CLI (a June-era `nros` baked the retired pre-258
+  bake shape and turned every `nros_system_generate` west fixture red). Use
+  `PATHS` (searched AFTER PATH) for fallback locations, and keep
+  `~/.nros/bin/nros` fresh after CLI-shape changes.
+- **Case-normalize enum-ish cmake args at the function top**
+  (`string(TOUPPER …)`) — the RFC-0048 verbs pass inferred values in lowercase
+  (`cpp`), and a case-sensitive `STREQUAL "CPP"` chain silently falls into the
+  wrong branch (287-W6: the Zephyr interface generator emitted C bindings for a
+  C++ leaf → "std_msgs.hpp: No such file"). The canonical generator already
+  normalizes; keep siblings in lockstep.
+- **`cmake_parse_arguments` swallows positional args after a multi-value
+  keyword** — a call like `nano_ros_add_node(n CALLBACK_GROUPS g src/A.cpp)`
+  loses the source. Verbs accept an explicit `SOURCES` keyword for this; when
+  extending a verb, add new multi-value keywords BEFORE the positional-sources
+  convention breaks someone.
+- **Old-shape CMake surface is retired** (287-W8 + post-287): `nano_ros_bootstrap`
+  / `nano_ros_link` are `_nros_*` config internals, `nano_ros_deploy` /
+  `nano_ros_application` / `nano_ros_component_register` are gone. The ament
+  shape (`find_package(nano_ros REQUIRED)` + `nano_ros_add_executable` /
+  `nano_ros_add_node`, deploy tuple in package.xml) is the only leaf shape;
+  `example_shape.rs`'s FORBIDDEN list gates regressions.
 
-- `cargo check -p nros-macros` (clean, after the esp32 -> `Esp32C3` fix)
-- `bash -n scripts/build/workspace-fixtures-build.sh` (syntax OK)
-- `scripts/build/workspace-fixtures-build.sh native rust` (green; confirms the
-  new NuttX libc-patch call is a no-op for non-NuttX rows)
+### Rust Consumption (RFC-0048 W9)
 
-### Push handoff
+- **`nros sync` owns each Rust leaf's `.cargo/config.toml` managed surface**: one
+  `include = ["…/nros-patch.toml"]` line (the central, gitignored, absolute-path
+  patch file at the checkout root) + the leaf-local `generated/*` and
+  platform-specific `# nros-managed` patch lines. Never hand-edit them; a moved
+  checkout needs one `nros sync` to re-point the central file.
+- **Central-patch membership rule:** a crate may live in `nros-patch.toml` only
+  if it is registry-named in EVERY consumer's dependency graph — cargo emits
+  "patch `X` was not used in the crate graph" per unused entry, and the file is
+  shared by all leaves. That limits it to the universal trio
+  (`nros`/`nros-core`/`nros-serdes`); RMW/board/driver crates are NOT universal
+  (verified: a freertos entry's slim graph lacks the cyclone/xrce crates).
+- cargo's `config-include` is STABLE (verified on 1.96) — no nightly gate.
 
-`origin/main` is at `35b28a091` (session-1 commits pushed). One unpushed local
-commit remains: `bf308a0b1 fix(workspaces): wire nuttx libc patch + fix esp32
-board mapping`, plus this `AGENTS.md` update. If resuming with intent to
-publish, `git fetch origin`, rebase if needed, then push.
+### Test Pitfalls
 
-### Verification already run in session 1 after the final rebase
+- **Tests must fail on unmet preconditions** (`assert!`/`bail!`/`nros_tests::skip!`). A bare `eprintln!`+`return` reports PASS. Same rule at runtime: panic, never silent early-return.
+- **No compilation inside tests.** Compile in the build stage; test consumes prebuilt fixture.
+- **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture reads STALE. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append objects). Long-unrebuilt families "pass" on museum binaries — trust only a fresh full sweep.
+- **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES.** Only `just test-all`'s junit rewrite converts the `[SKIPPED]` panic into a skip. When triaging a bare-run red, read the panic text first — "fixture not built"/`[SKIPPED]` reds are skips in CI semantics, not regressions.
+- **Full-sweep QEMU lanes flake under load.** With the whole suite fanned out, concurrent QEMU boots miss readiness banners (287-W7: all six nuttx C/C++ rtos lanes failed 3/3 retries in-sweep, then passed solo). Retest a QEMU-lane red SOLO before filing an issue from it.
+- **Build-side stale probes and test-side stale gates must watch the SAME inputs** (issue 0196): the native-rust fixture probe missed `generated/**`, so a month-old museum binary passed every "native OK" sweep while the test gate failed it. When adding a fixture family, source one shared staleness helper.
+- **Test greps use `nros_tests::output::*` constants, never literal strings** — example banners/markers get slimmed (phase-277 broke ~10 tests grepping `"Result:"`/`"[OK]"`/old banners). If a test times out, FIRST diff the grep pattern against what the fixture actually prints.
+- **Test names describe behavior, not phase numbers** — cross-reference a phase in a doc-comment, never the identifier.
 
-- `cargo test -p nros --quiet`
-- `cargo test --manifest-path packages/cli/nros-cli-core/Cargo.toml --test orchestration_generate --quiet`
-- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform native`
-- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform freertos`
-- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform threadx-linux`
-- `scripts/build/workspace-fixtures-build.sh native rust`
-- `scripts/build/workspace-fixtures-build.sh native mixed`
+### Multi-Session / Shell Pitfalls
 
-Earlier, before rebasing over `50248367a`, these also passed:
-
-- `scripts/build/workspace-fixtures-build.sh native c`
-- `scripts/build/workspace-fixtures-build.sh native cpp`
-- Rust formatting over dirty Rust files
-- `clang-format --dry-run --Werror` over changed C/C++ API and example files
-- `python3 -m py_compile scripts/build/fixtures-manifest.py`
-- `bash -n scripts/build/workspace-fixtures-build.sh`
-- `git diff --check`
-- `cargo check --manifest-path packages/cli/cargo-nano-ros/Cargo.toml --quiet`
-- `cargo check -p nros-macros --quiet`
+- **Parallel agent sessions push to `main` concurrently.** `git fetch` + check
+  `origin/main`'s highest issue id (including `archived/`) immediately before
+  filing a `docs/issues/` entry; expect `docs/issues/README.md` rebase conflicts
+  (merge both sides, renumber only your own files). Stash-wrap local-only files
+  (`packages/zpico/zpico-sys/c/include/zpico.h`-style) around every rebase.
+- **Write full logs of background builds/tests to files** and grep afterwards;
+  `cmd | tail -N` swallows the mid-log error that explains the failure.
+- **`pkill -f <pattern>` matches your OWN wrapper shell** when the pattern
+  appears in the command string you are currently running (the agent shell's
+  `zsh -c 'bash -c "… just check …"'` self-killed with exit 144). Kill by PID,
+  or pick a pattern the current command line cannot contain.
+- **zsh gotchas in agent shells:** unmatched globs abort the whole compound
+  command (`rm -rf foo* && build` never builds — use `find`), and unquoted
+  `$var` does NOT word-split (a loop over `$FILES` sees one giant argument —
+  use `xargs` or explicit arrays).
 
 ## CLI Install & Submodule Operations
 
