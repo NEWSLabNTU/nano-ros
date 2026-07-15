@@ -9,13 +9,43 @@ path to runtime parity with the Rust embedded path (which already runs real
 bodies). Unblocks RFC-0032 §8a / phase-236 236.C (ASI deletes its imperative
 `main.cpp`).
 
-**Status.** In progress (2026-06). Design = RFC-0043 (Draft). **240.1 DONE**
-(2026-06-12) — `nros/component.hpp` member-callback binding + a native
-component-object POC running real pub/sub on the executor
-(`examples/native/cpp/component-poc`). The NuttX executor-callback path is also
-spike-validated for pub/sub + timer (RFC-0043 §Spike); service/action on the
-executor under the embedded lifecycle is unspiked (240.5). This phase carries
-236.D's detailed breakdown (phase-236 236.D now points here).
+**Status.** **CLOSED — Complete/Superseded (2026-07-16).** Everything this
+phase set out to do landed and was runtime-proven by 2026-06-13 (240.1–240.5
+incl. the NuttX pub/sub + service + action E2Es for both languages), and the
+follow-on phases finished the tail this doc still listed as open:
+
+- **240.6 interpreter retirement — DONE via phase-257**: the legacy non-typed
+  entry, `EntryNodeRuntime`, `declared_node.hpp`, `NROS_NODE_REGISTER`, and the
+  legacy `emit_cpp::emit`/`emit_c::emit` are all deleted from the tree (only
+  retirement comments remain); zero declarative consumers survive in examples.
+- **240.8 Zephyr carrier — exceeded**: typed entry carriers now exist for ALL
+  platforms (`{native,nuttx,freertos,threadx,zephyr}_entry_main{,_c}_typed.cpp.in`)
+  and phase-281 proved all 12 exec-model cells at runtime.
+- The stale unchecked boxes below (240.3-rest / 240.4-rest talker migrations,
+  raw↔typed type-name unification, `NROS_NODE` factory macro) were in fact
+  resolved by the 240.5 pub/sub E2E entry (2026-06-13) or superseded by the
+  typed `emit_typed` construction shape.
+
+**Residual disposition (checked against the current design, 2026-07-16):**
+
+- `bind_service_client` callback helper — **superseded, not carried**: the
+  RFC-0041 / phase-239 unified callback model landed callback-based service +
+  action clients in BOTH languages (`nros::Client<S>` handler-style dispatch,
+  C `nros_client_set_response_callback` + async send; E2E green), replacing the
+  raw bind-helper idea entirely.
+- C transform-poc variant — **not carried**: both constituent primitives (C
+  subscription-callback dispatch, C raw publish) are independently
+  runtime-proven; the composition adds no mechanism coverage and the RFC-0026
+  example matrix does not demand the cell.
+- ASI `Controller` on FVP — **still relevant, owned by phase-236** (the 236.C
+  acceptance gate; FVP run recipes exist via phase-214/217). Tracked there,
+  not here.
+
+Original status line (2026-06): In progress. Design = RFC-0043 (now Stable).
+**240.1 DONE** (2026-06-12) — `nros/component.hpp` member-callback binding + a
+native component-object POC running real pub/sub on the executor
+(`examples/native/cpp/component-poc`). This phase carried 236.D's detailed
+breakdown (phase-236 236.D pointed here).
 
 **Depends on.** RFC-0043; the Rust executor + `ExecutorNodeRuntime`
 (`packages/core/nros/src/node_runtime.rs`, `nros-node/src/executor/`); the

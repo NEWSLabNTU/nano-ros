@@ -231,6 +231,11 @@ builds on is proven, not theoretical.
   construct-ordering delta + the one-field `shape` metadata marker + the
   template-migration-defer.
 
+- 2026-07-16 — phase-242 CLOSED (in-tree complete; rclcpp shape runtime-proven
+  by phase-272 W3 + the phase-281 native matrix cell). The ASI/FVP consumer
+  proof (242.5) is owned by phase-236's 236.C acceptance. Q5 (Rust parity)
+  remains the RFC's one deferred open question; no phase holds it.
+
 ## References
 
 - Runtime binding: RFC-0043 (this RFC amends its Q1 component shape).

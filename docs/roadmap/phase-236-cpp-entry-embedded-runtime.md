@@ -265,7 +265,10 @@ every platform via phase-281). The ONE item phase-240 hands back is the 236.C
 acceptance itself: the ASI `Controller` on FVP run — the mechanism half is fully
 de-risked (native transform relay + all-platform typed carriers), what remains
 needs the external ASI sources + an FVP run (`just zephyr run-fvp-aemv8r`).
-The waves, for the record:
+**[Phase-242](archived/phase-242-rclcpp-faithful-component-model.md) (RFC-0044
+rclcpp-faithful `ComponentNode`) is likewise CLOSED in-tree-complete
+(2026-07-16)** — its 242.5 ASI-migration + FVP-smoke consumer proof also folds
+into the same 236.C acceptance below. The waves, for the record:
 
 - **240.1** component-object API + `NROS_NODE` macro (member entities +
   `configure(Node&)` binding callbacks by identity, C++ `create_subscription_raw`).
