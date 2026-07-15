@@ -258,8 +258,14 @@ C++ glue, direct `nros-nuttx-ffi` cargo build) booted in QEMU vs the talker:
 sub callback, correct `Int32`). Executor real-callback dispatch works on NuttX;
 the C++ side is a thin wrapper.
 
-**Breakdown → [phase-240](phase-240-entry-real-callback-binding.md)** (RFC-0043
-implementation). The detailed, code-grounded work items live there; the waves:
+**Breakdown → [phase-240](archived/phase-240-entry-real-callback-binding.md)**
+(RFC-0043 implementation — **CLOSED Complete/Superseded 2026-07-16**; 240.1–240.6
+all landed + runtime-proven, interpreter retired via phase-257, typed carriers on
+every platform via phase-281). The ONE item phase-240 hands back is the 236.C
+acceptance itself: the ASI `Controller` on FVP run — the mechanism half is fully
+de-risked (native transform relay + all-platform typed carriers), what remains
+needs the external ASI sources + an FVP run (`just zephyr run-fvp-aemv8r`).
+The waves, for the record:
 
 - **240.1** component-object API + `NROS_NODE` macro (member entities +
   `configure(Node&)` binding callbacks by identity, C++ `create_subscription_raw`).
