@@ -1,7 +1,8 @@
 ---
 id: 171
 title: "No external integration path avoids vendoring the full monorepo — CLI/crates unpublished, no CMake package, registry publishes docs-only, false availability claims"
-status: open
+status: resolved
+resolved_in: "phase-287 + phase-288 (residual → issue-0198)"
 type: enhancement
 area: build
 related: [rfc-0003, rfc-0014, rfc-0040, phase-140, phase-222]
@@ -150,3 +151,23 @@ the two book fixes below shipped here.
 handles (path deps via a generated `.cargo/config.toml`, a `[patch]` on a git
 source, a workspace inherit, or a `nros sync`-managed block) and pick the best
 UX. Decide in the CMake/consumption reshape phase.
+
+## Resolution (2026-07-15)
+
+Every priority/decision is executed or explicitly re-homed; the umbrella
+closes. Ledger:
+
+| Item | Outcome |
+| --- | --- |
+| P1 false claims | Fixed 2026-07-10 (this doc, above) + the 4th claim (`packages/cli/install.sh` prebuilt advert) removed in phase-288 W1 — the script is gone; `git grep` for prebuilt/`cargo install` claims is clean (the nros-cli README now states the truth: no crates.io release, build from checkout). |
+| P2 CLI installable | D1 executed — `scripts/bootstrap.sh` is the single front door (builds `nros` from source, no `just` prerequisite); phase-288 W2, **complete**. |
+| P3 publish runtime crates | Superseded by D2 (bundled source, no crates.io/prebuilt). Consumption UX landed as RFC-0048 W9: `nros sync` manages a central `nros-patch.toml` + one `include` line per Rust leaf. |
+| P4 C/C++ CMake story | D5 executed — RFC-0048 ament shape (`find_package(nano_ros REQUIRED)` + role verbs, deploy tuple in package.xml), every example/workspace/scaffold migrated; [phase-287](../roadmap/archived/phase-287-cmake-consumption-reshape.md) **COMPLETE**, old-shape surface retired (W8 + the post-287 `nano_ros_deploy` retirement). |
+| P5 registry publishes | D3 (Arduino) dropped, done. D4: PlatformIO deliberately unpublished (manifest stays in-tree). ESP-IDF publish execution + CI is the ONE live remainder — needs maintainer-held registry credentials, carved out as **[#198](0198-esp-idf-registry-publish-unexecuted.md)**. |
+| P6 BYO-board docs | D6 — already existed (`concepts/board-integration.md` matrix + porting pages); cross-link added. Done. |
+| D7 book hygiene | Done (no publish-status talk in `book/src/`). |
+| Cargo consumption UX (was "open, phase") | Decided (option E) + implemented in phase-287 W9. |
+
+Zephyr west-module root = repo root remains by design under D2 (bundled
+source at a pinned tag IS the distribution model); phase-288 W3/W4 document
+the pin + consumption flow end to end.

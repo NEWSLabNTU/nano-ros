@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#198** — [ESP-IDF registry publish never executed, no CI](0198-esp-idf-registry-publish-unexecuted.md):
+  the one distribution surface left open by #171/phase-288 — the component manifest works via
+  path/git but the Espressif-registry publish needs maintainer credentials + a tag-triggered CI
+  lane. Carved out so the #171 umbrella could close.
 - **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
@@ -62,12 +66,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   smoltcp gets no timer/RX IRQ → the TCP handshake never completes → `published=0`. All four
   `test_qemu_rtic_*_e2e` fail with zero delivery. Fix (architectural) = move the session open out of
   `#[init]` into the `__nros_run` task (after interrupts unmask). Runtime-only — `just check` green.
-- **#171** — [No external distribution path](0171-no-external-distribution-path.md): every
-  integrate-into-my-project surface (Zephyr module, CMake, ESP-IDF, PIO, Rust crates, the `nros`
-  CLI itself) roots at a full monorepo clone — CLI + crates `publish = false`,
-  `find_package(NanoRos)` removed in Phase 140, registry publishes docs-only. Plus false
-  availability claims to truth-fix now: `cargo install nros-cli` READMEs, Arduino in
-  `library.json`, phantom PIO manifest paths in `registry-publishing.md`.
 - **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
@@ -76,7 +74,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#194** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#171** — the
+no-external-distribution umbrella closes: D1/D2 source-distribution bootstrap (phase-288), the
+RFC-0048 ament CMake shape + W9 Rust consumption (phase-287, complete), false claims all
+truth-fixed; the single live remainder (ESP-IDF registry execution) is #198. **#194** — the
 threadx-linux rust rtos-e2e zero-delivery was three stacked defects, none in the runtime:
 museum pre-212.L role binaries satisfied a retired builder path (the freertos #181 entry-image
 repair was never applied here), the board crate lacked the #131 `rmw-zenoh` forwarding so every
