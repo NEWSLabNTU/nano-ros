@@ -42,7 +42,10 @@
 //! file just provides the family-side helper. The legacy
 //! [`crate::run`] coexists during the 212.N transition.
 
-use core::ffi::c_void;
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
@@ -79,6 +82,52 @@ unsafe extern "C" {
 /// Network polling task stack size in words (1 KB = 256 words).
 const POLL_TASK_STACK: u32 = 256;
 
+// #191 — `log`-crate sink for the entry runtime. The Node components
+// (`freertos_rs_talker` etc.) emit their e2e markers (`Publishing:` /
+// `I heard:`) via `log::info!`; the freertos board installed NO `log::Log`
+// backend, so every record was silently dropped — images built, booted, and
+// delivered while the harness (which counts the marker lines) reported
+// "messages received: 0". Mirrors `nros-board-threadx`'s `install_uart_logger`
+// (same fn-pointer indirection so the sink stays generic over `BoardPrint`).
+static LOG_PRINT_FN: AtomicUsize = AtomicUsize::new(0);
+
+struct UartLogger;
+
+impl log::Log for UartLogger {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        let p = LOG_PRINT_FN.load(Ordering::Relaxed);
+        if p != 0 {
+            // SAFETY: `p` is only ever set by `install_uart_logger` to a valid
+            // `fn(core::fmt::Arguments)` cast to `usize`; 0 means unset (checked).
+            let f: fn(core::fmt::Arguments<'_>) = unsafe { core::mem::transmute(p) };
+            f(*record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static UART_LOGGER: UartLogger = UartLogger;
+
+/// Install the `log` sink, routing records through `B::println`. Idempotent:
+/// re-arms the print fn each call and ignores a repeated `set_logger` (the
+/// second returns `Err`). Call once per boot before the user setup runs.
+fn install_uart_logger<B: BoardPrint>() {
+    fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
+        B::println(args);
+    }
+    // Cast through a fn pointer then a raw pointer — `fn_item as usize` directly
+    // trips the `fn_to_numeric_cast` lint (`-D warnings`).
+    let f: fn(core::fmt::Arguments<'_>) = print_via_board::<B>;
+    LOG_PRINT_FN.store(f as *const () as usize, Ordering::Relaxed);
+    let _ = log::set_logger(&UART_LOGGER);
+    log::set_max_level(log::LevelFilter::Trace);
+}
+
 struct AppContext<F> {
     config: Config,
     /// Issue #98 / RFC-0045 — baked `.nros_boot_config` for node-name resolution.
@@ -106,6 +155,10 @@ where
     // Phase 228.E.2 — the boot bringup (network + RNG + poll task + zenoh task
     // config + netif wait) is shared with the per-tier app task.
     unsafe { freertos_boot_bringup::<B>(&ctx.config) };
+
+    // #191 — wire `log::info!` (the Node components' marker lines) to the
+    // board console BEFORE the user setup runs.
+    install_uart_logger::<B>();
 
     // FnOnce — `core::ptr::read` because this task entry is only
     // called once by FreeRTOS.
@@ -504,6 +557,9 @@ where
 {
     let ctx = unsafe { &mut *(arg as *mut AppContextTiers<F>) };
     unsafe { freertos_boot_bringup::<B>(&ctx.config) };
+
+    // #191 — same `log` sink wiring as the single-task entry above.
+    install_uart_logger::<B>();
 
     if ctx.tiers.is_empty() {
         B::println(format_args!("nros: run_tiers called with no tiers"));

@@ -242,16 +242,22 @@ pub fn init_hardware(config: &Config) {
     // stack. zenoh-pico runs its own 32 KB `FreeListHeap` for `z_malloc`, so
     // the Rust heap barely sees use (≈20 B live after `Executor::open`); the
     // nros + zenoh-pico spin/poll path, by contrast, drives a deep call stack.
-    // At 48 KB heap the first timer fire faulted with a corrupted closure
-    // fn-ptr near `_stack_end` (stack-depth overflow into `.bss`); shrinking
-    // the heap to 16 KB grows the stack to ≈98 KB and clears it (issue #64).
+    // #190 — 128 KB. The #64-era 16 KB budget predates the phase-271 executor
+    // rework: the executor backing is now a single ~75 KB heap allocation, so
+    // a 16 KB heap dies at open ("memory allocation of 17032 bytes failed"
+    // right after "Ethernet ready.") before any delivery can happen — the
+    // same class as #184's 24 KB baremetal pins. #64's stack-overflow caution
+    // (48 KB heap left too little stack) still applies in spirit — the heap
+    // and stack share the esp32-c3 DRAM region — 128 KB overflowed `.bss` by
+    // ~14 KB at link (`section '.bss' will not fit in region 'DRAM'`), so
+    // 96 KB is the working point, validated by the esp32 delivery e2e tests.
     // For DDS builds the example crate enables `nros-platform/global-allocator`,
     // which registers a 256 KB static `FreeListHeap` instead — calling
     // `esp_alloc::heap_allocator!` on top of that produces the
     // "the `#[global_allocator]` in nros_platform conflicts with
     // global allocator in: esp_alloc" link error (Phase 101.7).
     #[cfg(not(feature = "dds-heap"))]
-    esp_alloc::heap_allocator!(size: 16 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently

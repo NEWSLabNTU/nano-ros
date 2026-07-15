@@ -19,6 +19,12 @@ name = "nros_board_freertos"
 # this crate today and get the same surface; the build-glue
 # refactor happens transparently.
 [dependencies]
+# #191 — `log` sink for the entry runtime: node components emit their e2e
+# markers (`Publishing:` / `I heard:`) via `log::info!`; without a board
+# `log::Log` backend every record is dropped and the harness counts zero
+# delivery on lanes that actually work. Mirrors the threadx board's
+# `install_uart_logger` wiring.
+log = { version = "0.4", default-features = false }
 # 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
 # generic `run<B>` is generic over. Trait-only surface; no
 # build-script transitive deps pulled.

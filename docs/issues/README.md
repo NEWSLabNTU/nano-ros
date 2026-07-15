@@ -53,11 +53,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
 - **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
-  lane restored to the sweep (#181), boots + logging green; the four cross-delivery tests get 0
-  samples — check pair identity/port drift first (the #179/#181 lessons), then the #64 heap notes.
-- **#191** — [freertos rust entries: boot + connect, 0 delivery](0191-freertos-rust-entry-zero-delivery.md):
-  lane repaired end-to-end by #181 (entry images, per-variant ports, IP split, launcher/gates);
-  session opens, nothing publishes — entry runtime path, never previously exercised.
+  the #64-era 16 KB heap OOM'd every post-271 image (fixed: 96 KB; 128 overflows DRAM); the four
+  delivery lanes now hit the pre-documented esp32-c3 session-init memory corruption instead —
+  NEW hard evidence in the issue: the OpenSyn cookie is echoed with 8 bytes stomped by a
+  duplicated heap pointer (0x3fc89458 ×2 = free-list node) → router "Decoding cookie failed";
+  first-attempt, so the connect_with_retry re-entrancy lead is ruled out.
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
@@ -85,8 +85,13 @@ repair was never applied here), the board crate lacked the #131 `rmw-zenoh` forw
 entry image booted with NoBackend (`Executor::open` ConnectionFailed, zero wire I/O), and the
 rust entry `main` lost `startup.c`'s `setvbuf` so a piped harness never saw the readiness
 banner. Entry builders + markers + per-variant baked ports + board feature + stdout
-line-buffering landed; pubsub/service/action all pass. Re-triage #191 against the same causes.
-**#192** — the FVP
+line-buffering landed; pubsub/service/action all pass. **#191** — the freertos
+rust `*-entry` lane delivered all along: the board installed no `log::Log` backend, so the
+components' `log::info!` markers (`Publishing:` / `I heard:`) were dropped and the
+marker-counting harness reported 0. `install_uart_logger` (threadx shape) ported into
+`nros-board-freertos` entry; all three rust e2e lanes green 3/3 (full freertos matrix 9/9).
+Bare `nros::main!()` is Form-1 self-bringup (entry lib re-exports `register`) — the empty
+step-2 launch placeholders are dead files, not the cause. **#192** — the FVP
 `getentropy` link red was the #193 CMake<3.24 whole-archive flag-dedup class on the ZEPHYR
 generator: three-item `-Wl,--whole-archive <ffi.a> -Wl,--no-whole-archive` triples collapsed into
 an UNCLOSED bracket that swallowed picolibc's `-lc` whole-archive → every `libc_ssp_*` member

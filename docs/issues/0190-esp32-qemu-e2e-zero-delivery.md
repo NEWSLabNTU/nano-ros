@@ -32,3 +32,39 @@ esp32_emulator test_esp32_workspace_entry_e2e     — 0
   ZID lesson — check the talker/listener baked IP/MAC), baked-port drift vs
   the harness's per-(variant,lang) table (the C/C++ lesson), then the #64
   heap/stack budget.
+
+## Progress (2026-07-15) — OOM fixed; residual = session-init memory corruption
+
+**Cause 1 (fixed): #64-era 16 KB heap.** All four delivery tests died at
+`memory allocation of 17032 bytes failed` right after `Ethernet ready.` —
+`esp_alloc::heap_allocator!(size: 16 * 1024)` predates the phase-271
+executor rework (~75 KB backing allocation; the #184 class). 128 KB
+overflowed DRAM at link (`.bss … overflowed by 13968 bytes`); **96 KB**
+links and boots (boot + logging lanes green).
+
+**Cause 2 (open): the pre-documented esp32-c3 session-init corruption**
+(the `esp32_emulator.rs` header residual), now deterministic and
+packet-characterized:
+
+- socat-level: TCP handshake + zenoh InitSyn/InitAck complete; the guest's
+  OpenSyn is answered with a close — router (`RUST_LOG=debug`) says
+  `Decoding cookie failed at …/establishment/accept.rs:493`.
+- pcap diff of the 49-byte cookie: the guest echoes it with bytes 7–14
+  replaced by `58 94 c8 3f 58 94 c8 3f` — the pointer 0x3fc89458 (esp32-c3
+  DRAM, ≈ heap start; app segment 3 loads at 0x3fc89298) written TWICE =
+  allocator free-list node stomped into memory that still carries live
+  handshake bytes (invalid/double free or use-after-free).
+- Happens on the FIRST connect attempt (single TCP session in the pcap),
+  so the header's `connect_with_retry` re-entrancy lead is ruled out for
+  this failure mode.
+- `_z_slice_copy` of the cookie is a deep copy and the bare-metal zenoh
+  config (`[platform.bare-metal]`, batching on) is byte-identical to the
+  GREEN cortex-m3 qemu-arm-baremetal lanes — the differentiator is the
+  esp32 allocator/arch side, not the shared zenoh-pico config.
+
+Also found: `qemu.rs::wait_for_output_pattern` returns `Ok(output)` on
+TIMEOUT when any output was collected — the pair test's step-1 gate
+("Listener connected and subscribed") passes without the listener ever
+reaching `Waiting for messages...` (a string that, additionally, no
+current image prints). Fail-loud cleanup candidate when this lane is
+revived.
