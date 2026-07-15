@@ -1062,6 +1062,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
             })
             .collect();
+    // Phase 289 (#178) — Rtic entity registration. `register_dispatch` only
+    // installs the on_callback trampoline into the dispatch-slot table; it
+    // never runs `Node::register(ctx)` — so an RTIC image opened its session
+    // but owned NO node/publisher/timer entities and published nothing (the
+    // phase-216 B.3 "per-Node register wiring" follow-up). Route through the
+    // same owned-spin `<pkg>::register(&mut RuntimeCtx)` seam every other
+    // board uses (`install_node_typed`: entities + tick registry + the
+    // component table `dispatch_callback` scans).
+    let framework_register_entity_calls: Vec<proc_macro2::TokenStream> = framework_node_pkg_idents
+        .iter()
+        .map(|ident| {
+            quote! {
+                ::#ident::register(&mut __nros_rt)
+                    .expect("nros::main!: Node register failed on the RTIC entry");
+            }
+        })
+        .collect();
 
     // Phase 216.B.3 — framework-dispatched emit body. `OwnedSpin`
     // keeps the long-standing `fn __nros_entry_run + fn main` shape
@@ -1424,6 +1441,24 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             let rtic_device = rtic_spec.device_path;
             let rtic_dispatchers = rtic_spec.dispatchers;
             let rtic_consumer = rtic_spec.dispatch_consumer_path;
+            // Phase 289 (#178) — optional periodic-tick hardware task. The
+            // `binds` route wires the handler through RTIC's real vector
+            // table (the same mechanism the dispatchers use) — a board-crate
+            // `#[exception] SysTick` does NOT get wired (verified in #178).
+            let rtic_tick_ts: proc_macro2::TokenStream = match rtic_spec.tick_irq {
+                Some(tick_irq) => quote! {
+                    /// Phase 289 — periodic tick. Priority 2 so it PREEMPTS
+                    /// the priority-1 `__nros_run` task: its whole job is
+                    /// waking the `wfi` inside that task's connect/poll
+                    /// busy-waits. The board acknowledges the IRQ in
+                    /// `on_tick` (an unacknowledged flag is an IRQ storm).
+                    #[task(binds = #tick_irq, priority = 2)]
+                    fn __nros_tick(_cx: __nros_tick::Context) {
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::on_tick();
+                    }
+                },
+                None => quote! {},
+            };
 
             // Phase 216.B.3 SKELETON — `#[rtic::app(...)]` module that
             // delegates boot to `RticBoardEntry::init_hardware`. The
@@ -1598,6 +1633,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     /// dispatch task) is a separate follow-up.
                     #[task(local = [boot, runtime], priority = 1)]
                     async fn __nros_run(cx: __nros_run::Context) {
+                        // Phase 289 (#178 layer 2) — install the board's
+                        // idle-yield hooks (e.g. `wfi` on the busy-wait
+                        // sites) now that interrupts are unmasked and the
+                        // tick IRQ is armed. MUST precede `open_executor`:
+                        // the blocking connect below is the busy-wait the
+                        // yield exists for.
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::on_interrupts_live();
                         // #178 — open the executor HERE, not in `#[init]`.
                         // `Executor::open` performs the blocking zenoh-pico
                         // session open (a TCP connect driven by the smoltcp poll
@@ -1605,17 +1647,25 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // runs after `#[init]` returns and interrupts are unmasked,
                         // so the handshake can complete; opening in `#[init]`
                         // (interrupts masked) deadlocks it.
-                        let mut executor =
+                        let executor =
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::open_executor(
                                 cx.local.boot.0.take().expect("RTIC boot carrier already taken"),
                             );
-                        // Phase 216 final wave — per-Node dispatch registration.
-                        // Each Node pkg's `<pkg>::register_dispatch(&mut executor)`
-                        // (emitted by `nros::node!()`) builds the Node's `State`
-                        // blob and pushes `(state, __nros_node_<pkg>_on_callback)`
-                        // into the executor's dispatch-slot table. #178 moved these
-                        // out of `#[init]` to run against the just-opened executor.
-                        #( #framework_register_dispatch_calls )*
+                        // Phase 289 (#178) — wrap the executor in the SAME
+                        // `ExecutorNodeRuntime` every owned-spin board uses and
+                        // run each Node pkg's full `register()` (entities +
+                        // tick registry + component table) against it. The
+                        // earlier `register_dispatch`-only wiring installed the
+                        // on_callback trampoline but never created the node /
+                        // publisher / timer entities, so the image opened its
+                        // session and then published nothing.
+                        let mut __nros_crt =
+                            ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+                        {
+                            let mut __nros_rt =
+                                ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(&mut __nros_crt);
+                            #( #framework_register_entity_calls )*
+                        }
                         // The board-side runtime owns the SPSC
                         // producer half. Today's collapse keeps it in
                         // `Local` for symmetry with the planned split
@@ -1629,8 +1679,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             #rtic_consumer()
                                 .expect("RTIC dispatch consumer take");
                         loop {
-                            let _ = executor.spin_once(
-                                ::core::time::Duration::from_millis(1),
+                            // Phase 289 — trait spin (`spin_once(ms)` +
+                            // `run_ticks`), matching the owned-spin boards, so
+                            // registered timers fire and service/action poll
+                            // components tick.
+                            let _ = ::nros::__macro_support::nros_platform::NodeDispatchRuntime::spin_once(
+                                &mut __nros_crt,
+                                10,
                             );
                             // Phase 216 final dispatch wiring — drain
                             // every envelope the board's SPSC has
@@ -1655,10 +1710,20 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             // body fill, not a macro rewrite.
                             while let Some(envelope) = consumer.dequeue() {
                                 let cb = envelope.into_inner();
-                                executor.dispatch_callback(cb.cb_id, cb.ctx_ptr);
+                                // SAFETY: the board's `signal_callback` enqueues a
+                                // `*mut CallbackCtx<'static>` (see the rtic board
+                                // crates); single-core, drained on this task only.
+                                let ctx = unsafe {
+                                    &mut *(cb.ctx_ptr as *mut ::nros::CallbackCtx<'static>)
+                                };
+                                __nros_crt.dispatch_callback(cb.cb_id, ctx);
                             }
                         }
                     }
+
+                    // Phase 289 (#178) — periodic tick hardware task
+                    // (empty when the board spec declares no tick_irq).
+                    #rtic_tick_ts
 
                     // Phase 216.B.4 — user-supplied `#[task]` trampolines.
                     // Each calls a sibling `<name>_impl` fn the user
@@ -2387,19 +2452,29 @@ struct RticBoardSpec {
     device_path: SynPath,
     dispatchers: Vec<Ident>,
     dispatch_consumer_path: SynPath,
+    /// Phase 289 (#178) — interrupt ident of the board's periodic tick
+    /// timer. The macro emits a `#[task(binds = <tick_irq>, priority = 2)]`
+    /// hardware task calling `RticBoardEntry::on_tick()`; the board arms the
+    /// timer in `init_hardware` and acknowledges it in `on_tick`. The tick's
+    /// job is waking the `wfi` idle-yield inside `__nros_run`'s blocking
+    /// connect/poll busy-waits (priority 2 so it preempts the priority-1 run
+    /// task). `None` = no tick task emitted (board runs without wfi-yield).
+    tick_irq: Option<Ident>,
 }
 
 fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
-    let (device, dispatchers, consumer) = match deploy {
+    let (device, dispatchers, consumer, tick_irq) = match deploy {
         "rtic-stm32f4" => (
             "stm32f4xx_hal::pac",
             &["USART1", "USART2"][..],
             "::nros_board_rtic_stm32f4::take_dispatch_consumer",
+            Some("TIM2"),
         ),
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
             "::nros_board_rtic_mps2_an385::take_dispatch_consumer",
+            Some("TIMER0"),
         ),
         _ => return None,
     };
@@ -2410,6 +2485,7 @@ fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
             .map(|name| Ident::new(name, Span::call_site()))
             .collect(),
         dispatch_consumer_path: syn::parse_str::<SynPath>(consumer).ok()?,
+        tick_irq: tick_irq.map(|name| Ident::new(name, Span::call_site())),
     })
 }
 

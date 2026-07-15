@@ -17,6 +17,9 @@ name = "nros_board_rtic_mps2_an385"
 framework = "rtic"
 
 [dependencies]
+# Phase 289 (#191 class) — nros_log dispatcher install at RTIC boot so Node
+# pkgs' nros_info! marker lines reach the semihosting console.
+nros-log = { path = "../../core/nros-log", default-features = false }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
 nros-board-mps2-an385 = { path = "../nros-board-mps2-an385" }
 nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }

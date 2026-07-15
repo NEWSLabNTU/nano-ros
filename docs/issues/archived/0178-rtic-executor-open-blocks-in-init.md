@@ -1,7 +1,9 @@
 ---
 id: 178
 title: "RTIC mps2-an385 images never deliver — blocking zenoh connect vs RTIC (init-mask [fixed] + wfi-yield / no monotonic [open])"
-status: open
+status: resolved
+resolved_in: "2026-07-15 — phase-289: CMSDK TIMER0 binds-tick + wfi idle-yield + Node::register on the RTIC entry + nros_log init + pair-port/marker repairs; all four rtic lanes green"
+
 type: bug
 area: baremetal
 related: [issue-0176, phase-216, phase-271]
@@ -119,3 +121,45 @@ through RTIC's own mechanism.
   (`build/fixtures-cargo/qemu-arm-baremetal` rebuilt in the same sweep) — all
   four `test_qemu_rtic_*_e2e` still 0 messages, 3/3 retries at reduced load.
   Matches layers 2–3 being the live cause.
+
+## RESOLVED (2026-07-15) — phase-289 landed; SIX layers total
+
+Layers 2–3 landed per the phase-289 design (CMSDK TIMER0 armed in
+`init_hardware`, macro-emitted `#[task(binds = TIMER0, priority = 2)]` →
+`RticBoardEntry::on_tick` (ack), and `on_interrupts_live()` installing
+`enable_wfi_idle()` at the top of `__nros_run`). Probe-verified: 1 kHz
+tick, clean INTCLEAR, `Executor::open` completes — the layer-1/2/3 stack
+was real and the fix works exactly as designed.
+
+Getting from "session opens" to green exposed three MORE layers, all
+entry-scaffold/test rot rather than runtime bugs:
+
+* **Layer 4 — no entity registration.** The RTIC emit only called
+  `register_dispatch` (the on_callback trampoline slot) and never ran
+  `Node::register(ctx)` — images owned no node/publisher/timer and
+  published nothing (the phase-216 B.3 "per-Node register wiring"
+  follow-up that never landed). Fixed: `__nros_run` now wraps the opened
+  executor in the same `ExecutorNodeRuntime` + `RuntimeCtx` +
+  `<pkg>::register()` seam every owned-spin board uses, spins via
+  `NodeDispatchRuntime::spin_once` (timers fire, service/action poll
+  components tick), and routes SPSC envelopes through
+  `ExecutorNodeRuntime::dispatch_callback`.
+* **Layer 5 — no `nros_log` dispatcher (the #191 class).** The RTIC boot
+  never called `nros_log::init(...)`, so the nodes' `Publishing:` /
+  `I heard:` markers were dropped even once delivery worked. Fixed in
+  `init_with_config`.
+* **Layer 6 — pair-port drift + retired test markers.** The service pair
+  baked routers 7472/7473 and the action pair 7470/7471 — each image its
+  OWN port, so the pairs could not even meet, and none matched the
+  harness table (`7450 + variant offset` → 7460/7470). Rebaked to the
+  table. The service test also grepped the retired imperative client's
+  "All service calls completed" / "Handled:" banners; the phase-244.D1
+  declarative client issues ONE call and logs the canonical
+  `SERVICE_RESULT_PREFIX` — the test now greps the shared constants
+  (#157 class).
+
+Verified: all four `test_qemu_rtic_*_e2e` GREEN on freshly rebuilt
+fixtures (first proven green in the post-`Executor<'s>` era; action is
+flaky-2/3 under the retry policy — the first attempt can hit the #153
+gossip-gap window, same latent class as the freertos/threadx clients).
+Non-RTIC baremetal emulator suite 11/11; `just check` green.

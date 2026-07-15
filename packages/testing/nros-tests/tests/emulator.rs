@@ -637,11 +637,16 @@ fn test_qemu_rtic_service_e2e() {
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     // Wait for client to complete (it exits after 4 service calls).
-    // Phase 182.6 — early-exit on the completion marker; on timeout
-    // `wait_for_output_pattern` still returns whatever it collected, so this
-    // never captures less than the old blind 90 s wait.
+    // Phase 289 (#178) — the phase-244.D1 declarative client issues ONE
+    // request and logs the canonical `Result of add_two_ints:` line (the
+    // shared `SERVICE_RESULT_PREFIX` constant); the old imperative client's
+    // "All service calls completed" 4-call banner is retired. Grep the
+    // constant, not a literal (#157 class).
     let client_output = client
-        .wait_for_output_pattern("All service calls completed", Duration::from_secs(90))
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_RESULT_PREFIX,
+            Duration::from_secs(90),
+        )
         .unwrap_or_default();
 
     // Collect server output
@@ -657,11 +662,14 @@ fn test_qemu_rtic_service_e2e() {
 
     // Verify service communication
     assert!(
-        client_output.contains("All service calls completed"),
-        "RTIC QEMU service client did not complete all calls"
+        client_output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
+        "RTIC QEMU service client never logged a service result"
     );
 
-    let handled = count_pattern(&server_output, "Handled:");
+    let handled = count_pattern(
+        &server_output,
+        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
+    );
     eprintln!("RTIC QEMU service: server handled {} requests", handled);
     assert!(
         handled >= 1,

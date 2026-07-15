@@ -10,8 +10,13 @@ branch). Completes the phase-216 Track-B e2e story ("emulator-first
 validation"); phase-216 stays the design-of-record for the framework
 integration itself.
 
-**Status.** Design locked 2026-07-15 (this doc). Implementation not
-started.
+**Status.** COMPLETE 2026-07-15 — all six work items landed plus three
+additional layers the design phase could not see (entity registration
+never wired on the RTIC path [the phase-216 B.3 follow-up], missing
+`nros_log::init`, and pair-port/marker rot in the fixtures + test).
+All four `test_qemu_rtic_*_e2e` lanes green on fresh fixtures (action
+flaky-2/3: first-attempt #153 gossip-gap window). Full layer-by-layer
+account in archived issue 0178.
 
 **Issue.** [0178](../issues/0178-rtic-executor-open-blocks-in-init.md) —
 carries the full three-layer root-cause analysis and the failed

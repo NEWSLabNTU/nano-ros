@@ -232,6 +232,22 @@ fn init_with_config(
 ) -> (RticBoot, RticRuntime) {
     nros_board_mps2_an385::init_hardware(&config);
 
+    // Phase 289 (#191 class) — install the agnostic `nros_log` dispatcher so
+    // the Node pkgs' `nros_info!` marker lines (`Publishing:` / `I heard:`)
+    // reach the semihosting console. The direct-exec board does this in its
+    // `BoardEntry` boot (`nros-board-mps2-an385/src/entry.rs`); the RTIC
+    // entry never did — nodes registered their `Logger` against an
+    // uninitialized dispatcher and every record was silently dropped.
+    nros_log::init(nros_log::sinks::default());
+
+    // Phase 289 (#178 layer 3) — arm CMSDK TIMER0 as the periodic tick that
+    // wakes the `wfi` idle-yield installed by `on_interrupts_live`. The
+    // proc-macro emits a `#[task(binds = TIMER0, priority = 2)]` handler
+    // (RTIC wires the real vector; NVIC unmask is RTIC's job), which calls
+    // `on_tick` to acknowledge. Arming here is pure register config — no
+    // interrupt is DELIVERED until `#[init]` returns and RTIC unmasks.
+    arm_tick_timer();
+
     // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
     // feature so the board can build DDS-/XRCE-only; another `nros-rmw-*`
     // crate then registers the linked backend. (No network I/O — a
@@ -276,6 +292,42 @@ fn init_with_config(
     (boot, runtime)
 }
 
+// ---- Phase 289 — CMSDK TIMER0 tick (raw MMIO; the PAC is IRQ-names-only) ----
+//
+// CMSDK APB timer 0 on MPS2-AN385 (QEMU `hw/timer/cmsdk-apb-timer.c`,
+// base per `hw/arm/mps2.c`): CTRL 0x0 (bit0 EN, bit3 IRQEN), VALUE 0x4,
+// RELOAD 0x8, INTSTATUS/INTCLEAR 0xC (write 1 to clear). Clocked at the
+// 25 MHz system clock → RELOAD 25 000 = 1 ms tick. 1 ms bounds every
+// `wfi` wait in the connect/poll busy-waits without measurable IRQ load.
+const CMSDK_TIMER0_BASE: usize = 0x4000_0000;
+const TIMER_CTRL: usize = 0x0;
+const TIMER_RELOAD: usize = 0x8;
+const TIMER_INTCLEAR: usize = 0xC;
+const TIMER_CTRL_EN: u32 = 1 << 0;
+const TIMER_CTRL_IRQEN: u32 = 1 << 3;
+/// 25 MHz sysclk / 1 kHz tick.
+const TICK_RELOAD: u32 = 25_000;
+
+fn arm_tick_timer() {
+    // SAFETY: CMSDK TIMER0 MMIO, single-core, called once during `#[init]`
+    // before any task runs; same raw-MMIO discipline as the UART/LAN9118
+    // bring-up in `nros-board-mps2-an385`.
+    unsafe {
+        core::ptr::write_volatile((CMSDK_TIMER0_BASE + TIMER_RELOAD) as *mut u32, TICK_RELOAD);
+        core::ptr::write_volatile(
+            (CMSDK_TIMER0_BASE + TIMER_CTRL) as *mut u32,
+            TIMER_CTRL_EN | TIMER_CTRL_IRQEN,
+        );
+    }
+}
+
+fn clear_tick_irq() {
+    // SAFETY: write-1-to-clear INTCLEAR; safe from the tick handler.
+    unsafe {
+        core::ptr::write_volatile((CMSDK_TIMER0_BASE + TIMER_INTCLEAR) as *mut u32, 1);
+    }
+}
+
 impl RticBoardEntry for RticMps2An385 {
     type Pac = mps2_an385_pac::Peripherals;
     type Core = cortex_m::Peripherals;
@@ -306,6 +358,22 @@ impl RticBoardEntry for RticMps2An385 {
             Ok(e) => e,
             Err(_) => nros_board_mps2_an385::exit_failure(),
         }
+    }
+
+    /// Phase 289 — acknowledge TIMER0. Un-cleared = IRQ storm that starves
+    /// the priority-1 `__nros_run` task.
+    fn on_tick() {
+        clear_tick_irq();
+    }
+
+    /// Phase 289 (#178 layer 2) — install `wfi` on both busy-wait sites
+    /// (`sleep_ms` + `nros_smoltcp::do_poll`) now that TIMER0 is armed and
+    /// interrupts are unmasked. Without this, the zenoh connect spin races
+    /// QEMU `-icount` virtual time ahead of wall-clock and host-timed slirp
+    /// never delivers the handshake packets (#178 layer 2).
+    fn on_interrupts_live() {
+        #[cfg(feature = "ethernet")]
+        nros_board_mps2_an385::enable_wfi_idle();
     }
 }
 

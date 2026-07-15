@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
-  every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
-  `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
-  smoltcp gets no timer/RX IRQ → the TCP handshake never completes → `published=0`. All four
-  `test_qemu_rtic_*_e2e` fail with zero delivery. Fix (architectural) = move the session open out of
-  `#[init]` into the `__nros_run` task (after interrupts unmask). Runtime-only — `just check` green.
 - **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
   seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
   single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
@@ -58,7 +52,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#198** — wontfix
+Recently resolved (see [`archived/`](archived/) for the full list): **#178** — the RTIC
+lanes deliver (phase-289): six stacked layers — open-in-`#[init]` [pre-fixed], no `wfi` yield, no
+armed IRQ through RTIC's vector table (fixed: CMSDK TIMER0 + macro-emitted priority-2 `binds`
+tick + `on_interrupts_live` → `enable_wfi_idle`), `register_dispatch`-only wiring that never ran
+`Node::register` (no entities → nothing published; now the owned-spin `register()` seam inside
+`__nros_run`), no `nros_log::init` (#191 class), and service/action pairs baked onto four
+DIFFERENT router ports none matching the harness table + the service test grepping the retired
+4-call banner (#157 class). All four rtic lanes green — first proven green post-`Executor<'s>`. **#198** — wontfix
 (option B): documented source consumption IS the ESP-IDF contract (clone + bootstrap +
 path dependency, micro-ROS precedent); registry publish rejected on verified facts — the shell
 pack is runtime-less, a whole-tree pack can't be turnkey (Rust toolchain + nros CLI required,

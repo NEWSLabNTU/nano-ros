@@ -32,7 +32,10 @@ dispatch = "deferred"
 # from the talker (.10/7450), listener (.11), and action server (.12/7470) so
 # they coexist on the QEMU net.
 [package.metadata.nros.deploy.rtic-mps2-an385]
-locator = "tcp/10.0.2.2:7473"
+# Phase 289 (#178) — MUST match the harness router port
+# `platform::BAREMETAL.zenohd_port_for(<variant>, Rust)` (7450 + variant offset):
+# both pair images share ONE router; per-image ports made the pair unroutable.
+locator = "tcp/10.0.2.2:7460"
 ip = "10.0.2.15"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

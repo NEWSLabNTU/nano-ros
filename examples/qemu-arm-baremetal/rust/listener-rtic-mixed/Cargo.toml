@@ -56,7 +56,6 @@ mps2-an385-pac = { version = "*" }
 
 # RTIC v2
 rtic = { version = "2.1", features = ["thumbv7-backend"] }
-rtic-monotonics = { version = "2.0", features = ["cortex-m-systick"] }
 
 # Cortex-M runtime
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

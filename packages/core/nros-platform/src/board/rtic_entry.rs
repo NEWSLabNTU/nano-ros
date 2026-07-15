@@ -142,6 +142,31 @@ pub trait RticBoardEntry: Board {
     /// The proc-macro calls this on the task's first poll, once `init` has
     /// returned and interrupts are unmasked.
     fn open_executor(boot: Self::Boot) -> Self::Executor;
+
+    /// Phase 289 (#178 layer 3) — clear + re-arm the board's periodic tick
+    /// IRQ. Invoked from the proc-macro-emitted
+    /// `#[task(binds = <tick_irq>, priority = 2)]` hardware task, whose only
+    /// job is waking the `wfi` inside `__nros_run`'s connect/poll busy-waits.
+    /// The board arms the timer itself in
+    /// [`init_hardware`](Self::init_hardware) (it owns the PAC); this hook
+    /// only handles the per-interrupt acknowledge. An unacknowledged flag is
+    /// an IRQ storm that starves the priority-1 run task — always clear it.
+    ///
+    /// Default: no-op, for boards whose `RticBoardSpec` declares no
+    /// `tick_irq` (the macro then emits no tick task at all).
+    fn on_tick() {}
+
+    /// Phase 289 (#178 layer 2) — called once at the top of the
+    /// `__nros_run` task, after `#[init]` returned and interrupts unmasked,
+    /// BEFORE [`open_executor`](Self::open_executor). The place to install
+    /// idle-yield hooks that require a live IRQ source (e.g. the mps2
+    /// board's `enable_wfi_idle()`, which makes the zenoh connect busy-wait
+    /// `wfi` between iterations so host-timed slirp packets can arrive under
+    /// QEMU `-icount`). Installing `wfi` with no armed IRQ deadlocks — the
+    /// tick task exists precisely so this hook is safe to run here.
+    ///
+    /// Default: no-op.
+    fn on_interrupts_live() {}
 }
 
 #[cfg(test)]

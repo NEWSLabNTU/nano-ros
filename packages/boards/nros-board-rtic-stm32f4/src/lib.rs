@@ -390,6 +390,14 @@ fn rtic_stm32f4_init(
 
     let _syst = nros_board_stm32f4::init_hardware(&config, device, core);
 
+    // Phase 289 (#178 layer 3) — arm TIM2 as the periodic tick that wakes the
+    // `wfi` idle-yield (the macro emits `#[task(binds = TIM2, priority = 2)]`
+    // → `on_tick`). Raw PAC pointers: `device` was consumed by the HAL
+    // bring-up above (RCC constrain/freeze), and register-block access does
+    // not need ownership. Arming is pure config — nothing is DELIVERED until
+    // `#[init]` returns and RTIC unmasks.
+    arm_tick_timer();
+
     // Step 3: explicit RMW backend registration (bare-metal
     // has no `.init_array` walk). `nros_rmw_zenoh::register`
     // is idempotent w.r.t. double-register (returns
@@ -433,6 +441,35 @@ fn rtic_stm32f4_init(
 // ---------------------------------------------------------------
 // RticBoardEntry impl — Phase 216.B.2 trait surface.
 // ---------------------------------------------------------------
+
+// ---- Phase 289 — TIM2 tick (raw PAC pointers; RCC already frozen) ----
+
+/// Arm TIM2 for a ~1 ms update interrupt. PSC/ARR sized for the 84 MHz APB1
+/// timer clock of the `nucleo_f429zi()` config (84 MHz / (83+1) = 1 MHz;
+/// ARR 999 → 1 kHz). Compile-coverage board — no emulator lane runs this.
+fn arm_tick_timer() {
+    // SAFETY: raw PAC register blocks, single-core, called once during
+    // `#[init]` before any task runs. TIM2EN lives in APB1ENR, untouched by
+    // the earlier `freeze()` (which only writes the clock-tree config).
+    unsafe {
+        let rcc = &*stm32f4xx_hal::pac::RCC::ptr();
+        rcc.apb1enr.modify(|_, w| w.tim2en().set_bit());
+        let tim = &*stm32f4xx_hal::pac::TIM2::ptr();
+        tim.psc.write(|w| w.psc().bits(83));
+        tim.arr.write(|w| w.bits(999));
+        tim.dier.write(|w| w.uie().set_bit());
+        tim.cr1.modify(|_, w| w.cen().set_bit());
+    }
+}
+
+/// Clear the TIM2 update flag — un-cleared = IRQ storm.
+fn clear_tick_irq() {
+    // SAFETY: see `arm_tick_timer`; UIF clear is a plain SR write.
+    unsafe {
+        let tim = &*stm32f4xx_hal::pac::TIM2::ptr();
+        tim.sr.modify(|_, w| w.uif().clear_bit());
+    }
+}
 
 impl RticBoardEntry for RticStm32F4 {
     /// STM32F4 HAL Peripheral Access Crate handle — matches the
@@ -522,6 +559,15 @@ impl RticBoardEntry for RticStm32F4 {
             }
         }
     }
+
+    /// Phase 289 — acknowledge the TIM2 update IRQ.
+    fn on_tick() {
+        clear_tick_irq();
+    }
+
+    // `on_interrupts_live` keeps the trait default (no-op): the stm32f4 RTIC
+    // lane is compile-coverage only, and the board has no `enable_wfi_idle`
+    // equivalent wired today. The tick task still runs (harmless heartbeat).
 }
 
 /// One-shot slot for the dispatch [`Consumer`] half. Populated by
