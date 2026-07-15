@@ -52,7 +52,7 @@ resolved_in: "phase-249 (R2/R3) + R1 dispatch + 2026-06-15 cleanup tail"
 ## Why
 
 RFC-0042 §D3 has four goals. The **single shared runtime** model
-([phase-241-d3-single-runtime](../roadmap/phase-241-d3-single-runtime.md), Stable
+([phase-241-d3-single-runtime](../../roadmap/archived/phase-241-d3-single-runtime.md), Stable
 + in progress) delivers the hardest one — *no papering-over* (bullet 3): one Rust
 staticlib per binary ⇒ `std`/`compiler-builtins` monomorphized once ⇒
 `--allow-multiple-definition` removable for real. But two D3 goals + one
@@ -128,7 +128,7 @@ registration that lets the weak default die — apply directly.)
 
 ## References
 
-- [phase-241-d3-single-runtime](../roadmap/phase-241-d3-single-runtime.md) — the
+- [phase-241-d3-single-runtime](../../roadmap/archived/phase-241-d3-single-runtime.md) — the
   foundation this rides on (W1–W12 + the W11 Option D synthesized runtime).
 - [RFC-0042](../design/0042-platform-build-determinism.md) §D3 — the four goals;
   bullet 3 done, 1+2 here.

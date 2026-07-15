@@ -212,7 +212,7 @@ upheld by comments and per-combination workarounds:
 #### D3 implementation — single shared runtime (2026-06-13, Stable)
 
 The "no papering-over" goal landed via a **single-runtime** model, NOT a generated
-whole-archive manifest. Detail + work items: `docs/roadmap/phase-241-d3-single-runtime.md`.
+whole-archive manifest. Detail + work items: `docs/roadmap/archived/phase-241-d3-single-runtime.md`.
 
 - **One Rust staticlib per binary.** The FFI crate *is* the umbrella: a C binary
   links only `libnros_c.a`, a C++ binary only `libnros_cpp.a`. Each bundles the

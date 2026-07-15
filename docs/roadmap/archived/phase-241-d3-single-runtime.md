@@ -1,7 +1,16 @@
 # Phase 241.D3-rev — single shared runtime (one Rust staticlib per binary)
 
-Status: **Approved — in progress** (2026-06-13) · Branch `issue-42-d3-link-determinism` ·
+Status: **COMPLETE — archived** (2026-07-16) · Branch `issue-42-d3-link-determinism` ·
 Implements/revises RFC-0042 D3 · Supersedes the slice-4 provider approach.
+
+> Close-out: W1–W7 landed with the W7 cascade fixes; W8/W9 live in
+> `nros-cpp/Cargo.toml` (`param-services`/`lifecycle-services` forwards) + the
+> hosted cmake feature lists; W10 verified 2026-07-16
+> (`c_parameters_roundtrip` + `cpp_parameters_roundtrip` PASS); W11/W12
+> resolved 2026-06-14; W13 R1 done, R2/R3 delivered by
+> [phase-249](phase-249-one-registration-trigger.md) (archived). RFC-0042 D3
+> flipped Stable in the 2026-06-15 close-out. This doc was left in the active
+> roadmap when phase-241 proper was archived — no open work remains.
 
 ## Problem
 

@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model 1 — nano-ros execution model (slides)</title>
+<style>
+  :root {
+    --paper:#f3f5f4; --panel:#ffffff; --panel-2:#eaeeec;
+    --ink:#10181b; --ink-2:#45555b; --ink-3:#6f8087;
+    --line:#d3dbd8; --line-2:#c2ccc8;
+    --teal:#109f8d; --teal-soft:#d5efeb; --amber:#b5791a; --amber-soft:#f3e7cf;
+    --grid:rgba(16,159,141,0.09);
+    --shadow:0 1px 0 rgba(16,24,27,0.04), 0 18px 40px -22px rgba(16,24,27,0.30);
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0b1114; --panel:#10181b; --panel-2:#16211f;
+      --ink:#e7eeeb; --ink-2:#a3b3b0; --ink-3:#6f8087;
+      --line:#23312e; --line-2:#2d3d39;
+      --teal:#3ad0bb; --teal-soft:#14312d; --amber:#e0a53a; --amber-soft:#33280f;
+      --grid:rgba(58,208,187,0.08);
+      --shadow:0 1px 0 rgba(0,0,0,0.4), 0 24px 60px -26px rgba(0,0,0,0.8);
+    }
+  }
+  :root[data-theme="light"]{--paper:#f3f5f4;--panel:#ffffff;--panel-2:#eaeeec;--ink:#10181b;--ink-2:#45555b;--ink-3:#6f8087;--line:#d3dbd8;--line-2:#c2ccc8;--teal:#109f8d;--teal-soft:#d5efeb;--amber:#b5791a;--amber-soft:#f3e7cf;--grid:rgba(16,159,141,0.09);--shadow:0 1px 0 rgba(16,24,27,0.04),0 18px 40px -22px rgba(16,24,27,0.30);}
+  :root[data-theme="dark"]{--paper:#0b1114;--panel:#10181b;--panel-2:#16211f;--ink:#e7eeeb;--ink-2:#a3b3b0;--ink-3:#6f8087;--line:#23312e;--line-2:#2d3d39;--teal:#3ad0bb;--teal-soft:#14312d;--amber:#e0a53a;--amber-soft:#33280f;--grid:rgba(58,208,187,0.08);--shadow:0 1px 0 rgba(0,0,0,0.4),0 24px 60px -26px rgba(0,0,0,0.8);}
+
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:28px 28px;
+    overflow:hidden;
+  }
+
+  /* deck mechanics */
+  .deck { position:fixed; inset:0; }
+  .slide {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; justify-content:center;
+    padding:clamp(24px,5vw,72px) clamp(24px,6vw,96px) 92px;
+    opacity:0; visibility:hidden; transform:translateY(10px);
+    transition:opacity .34s ease, transform .34s ease, visibility 0s .34s;
+    overflow-y:auto;
+  }
+  .slide.active { opacity:1; visibility:visible; transform:none; transition:opacity .34s ease, transform .34s ease; }
+  @media (prefers-reduced-motion: reduce){ .slide{ transition:opacity .12s; transform:none; } }
+  .inner { width:100%; max-width:1040px; margin:0 auto; }
+
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--teal); font-weight:600; }
+  h1,h2,h3 { text-wrap:balance; line-height:1.13; margin:0; letter-spacing:-.01em; }
+  h2 { font-family:var(--mono); font-size:clamp(24px,3.6vw,40px); font-weight:600; }
+  .sub { margin-top:16px; color:var(--ink-2); font-size:clamp(15px,1.9vw,19px); max-width:70ch; line-height:1.55; }
+  .sub strong { color:var(--ink); font-weight:650; }
+  p { margin:0; }
+  em { font-style:normal; color:var(--teal); }
+
+  /* nav chrome */
+  .bar {
+    position:fixed; left:0; right:0; bottom:0; height:60px; z-index:20;
+    display:flex; align-items:center; gap:16px; padding:0 clamp(18px,4vw,40px);
+    background:color-mix(in srgb, var(--paper) 84%, transparent);
+    backdrop-filter:blur(8px); border-top:1px solid var(--line);
+    font-family:var(--mono);
+  }
+  .bar .brand { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); }
+  .bar .brand b { color:var(--teal); font-weight:600; }
+  .dots { display:flex; gap:7px; margin-left:auto; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--line-2); border:none; padding:0; cursor:pointer; transition:background .2s,transform .2s; }
+  .dot:hover { background:var(--ink-3); }
+  .dot.on { background:var(--teal); transform:scale(1.25); }
+  .count { font-size:12px; color:var(--ink-2); font-variant-numeric:tabular-nums; min-width:52px; text-align:right; }
+  .navbtn { background:var(--panel-2); border:1px solid var(--line); color:var(--ink); width:30px; height:30px; border-radius:7px; cursor:pointer; font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .navbtn:hover { border-color:var(--teal); color:var(--teal); }
+  .navbtn:disabled { opacity:.35; cursor:default; }
+  .hint { position:fixed; top:16px; right:18px; z-index:20; font-family:var(--mono); font-size:11px; color:var(--ink-3); letter-spacing:.08em; }
+
+  /* code */
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+  .cap { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding:10px 15px; border-bottom:1px solid var(--line); background:var(--panel-2); display:flex; justify-content:space-between; gap:10px; }
+  .cap .lang { color:var(--teal); }
+  pre { margin:0; padding:15px 16px; overflow-x:auto; font-family:var(--mono); font-size:clamp(11px,1.35vw,13.5px); line-height:1.65; color:var(--ink); }
+  code { font-family:var(--mono); }
+  .cmt{color:var(--ink-3);} .kw{color:var(--amber);} .fn{color:var(--teal);} .lit{color:var(--ink-2);} .hl{background:var(--teal-soft); border-radius:3px; padding:0 3px;}
+  p code,li code,td code { font-size:.9em; background:var(--panel-2); padding:1px 5px; border-radius:5px; border:1px solid var(--line); color:var(--ink); }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:820px){ .grid2{ grid-template-columns:1fr; } }
+  .mt { margin-top:22px; }
+
+  /* three-prop cards (title slide + idea slide) */
+  .props { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow); }
+  .props > div { background:var(--panel); padding:18px; }
+  .props .n { font-family:var(--mono); font-size:12px; color:var(--teal); font-weight:600; }
+  .props .t { margin-top:9px; font-weight:650; font-size:16px; }
+  .props .d { margin-top:6px; font-size:13.5px; color:var(--ink-2); line-height:1.5; }
+  @media (max-width:760px){ .props{ grid-template-columns:1fr; } }
+
+  /* stack diagram */
+  .stack { display:grid; gap:9px; }
+  .layer { display:grid; grid-template-columns:112px 1fr; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel); }
+  .layer .lab { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); padding:11px 13px; background:var(--panel-2); border-right:1px solid var(--line); display:flex; align-items:center; }
+  .layer .body { padding:11px 13px; display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+  .chip { font-family:var(--mono); font-size:12px; font-weight:600; padding:6px 11px; border-radius:7px; border:1px solid var(--line-2); background:var(--panel-2); color:var(--ink); }
+  .chip.crit{ border-color:var(--amber); color:var(--amber); background:var(--amber-soft); }
+  .chip.tk{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); }
+  .chip.session{ flex:1; min-width:180px; text-align:center; border-style:dashed; border-color:var(--teal); color:var(--teal); background:var(--teal-soft); }
+  .arrow{ text-align:center; color:var(--ink-3); font-family:var(--mono); font-size:13px; }
+
+  /* trace */
+  .trace{ padding:18px 16px 6px; }
+  .trow{ display:grid; grid-template-columns:92px 1fr; align-items:center; margin-bottom:8px; }
+  .trow .tl{ font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink-2); display:flex; flex-direction:column; line-height:1.2; }
+  .trow .tl .pr{ font-size:10px; color:var(--ink-3); font-weight:500; }
+  .lane{ position:relative; height:28px; border-radius:6px; background:repeating-linear-gradient(90deg,transparent 0,transparent 59px,var(--line) 59px,var(--line) 60px); border:1px solid var(--line); }
+  .blk{ position:absolute; top:3px; bottom:3px; border-radius:4px; font-family:var(--mono); font-size:10px; color:#fff; font-weight:600; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .blk.high{ background:var(--amber); color:#1a1205; } .blk.norm{ background:var(--teal); color:#04211d; } .blk.low{ background:var(--ink-3); }
+  .blk.pre{ opacity:.28; }
+  .tnote{ display:flex; gap:16px; flex-wrap:wrap; padding:6px 16px 14px; font-size:12px; color:var(--ink-2); font-family:var(--mono); }
+  .tnote span{ display:inline-flex; align-items:center; gap:6px; }
+  .sw{ width:11px; height:11px; border-radius:3px; } .sw.high{background:var(--amber);} .sw.norm{background:var(--teal);} .sw.low{background:var(--ink-3);}
+
+  /* table */
+  .tbl-wrap{ overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; min-width:560px; font-size:13px; }
+  th,td{ text-align:left; padding:10px 13px; border-bottom:1px solid var(--line); vertical-align:top; }
+  thead th{ font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:600; background:var(--panel-2); }
+  tbody tr:last-child td{ border-bottom:none; }
+  td code{ white-space:nowrap; }
+  .rtos{ font-family:var(--mono); font-weight:650; color:var(--ink); }
+
+  .note{ margin-top:18px; display:grid; grid-template-columns:auto 1fr; gap:13px; padding:14px 16px; border:1px solid var(--line); border-left:3px solid var(--teal); border-radius:10px; background:var(--panel); font-size:14px; color:var(--ink-2); }
+  .note.amber{ border-left-color:var(--amber); }
+  .note .tag{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--teal); font-weight:700; padding-top:2px; }
+  .note.amber .tag{ color:var(--amber); }
+  .note strong{ color:var(--ink); font-weight:650; }
+
+  /* file tree */
+  .tree{ font-family:var(--mono); font-size:clamp(11px,1.5vw,13.5px); line-height:1.85; color:var(--ink-2); }
+  .tree .d{ color:var(--ink); font-weight:600; }
+  .tree .t{ color:var(--teal); }
+  .tree .a{ color:var(--amber); }
+  .tree .c{ color:var(--ink-3); }
+
+  /* term chain */
+  .chain { display:grid; grid-template-columns:1fr auto 1fr auto 1fr auto 1fr; align-items:stretch; gap:0; }
+  .cbox { border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:13px 14px; box-shadow:var(--shadow); }
+  .cbox .who { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); }
+  .cbox .term { font-family:var(--mono); font-size:clamp(15px,2vw,19px); font-weight:650; margin-top:5px; }
+  .cbox .ex { font-family:var(--mono); font-size:12px; color:var(--ink-2); margin-top:5px; }
+  .cbox .role { font-size:12.5px; color:var(--ink-2); margin-top:7px; line-height:1.4; }
+  .cbox.task { border-color:var(--teal); }
+  .cbox.task .term { color:var(--teal); }
+  .conn { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 4px; color:var(--ink-3); }
+  .conn .card { font-family:var(--mono); font-size:10px; color:var(--teal); font-weight:600; }
+  .conn .ar { font-size:18px; line-height:1; }
+  .conn .how { font-family:var(--mono); font-size:8.5px; color:var(--ink-3); letter-spacing:.04em; }
+  @media (max-width:860px){
+    .chain{ grid-template-columns:1fr; }
+    .conn{ flex-direction:row; gap:8px; padding:6px 0; }
+    .conn .ar{ transform:rotate(90deg); }
+  }
+  .demo-map { display:grid; gap:8px; }
+  .maprow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-family:var(--mono); font-size:12.5px; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--panel); }
+  .maprow .step { color:var(--ink-2); } .maprow b{ color:var(--ink); } .maprow .t{ color:var(--teal); } .maprow .sep{ color:var(--ink-3); }
+
+  /* title slide */
+  .title-kicker{ display:flex; align-items:center; gap:12px; font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:26px; }
+  .title-kicker .d{ width:7px; height:7px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 4px var(--teal-soft); }
+  h1{ font-family:var(--mono); font-size:clamp(32px,7vw,62px); font-weight:600; }
+  h1 .m{ color:var(--teal); }
+</style>
+</head>
+<body>
+
+<div class="hint">← → / space to navigate</div>
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide active">
+    <div class="inner">
+      <div class="title-kicker"><span class="d"></span> nano-ros · rfc-0015 · rt orchestration</div>
+      <h1>Model 1<br><span class="m">one execution model</span><br>every RTOS, every language.</h1>
+      <p class="sub mt">A ROS 2 graph — nodes, timers, subscriptions, services — lowered onto an RTOS the
+      same way whether written in <strong>Rust, C, or C++</strong>. The kernel's fixed-priority scheduler does the real-time work.</p>
+    </div>
+  </section>
+
+  <!-- 2 · THE IDEA -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">the whole model</div>
+      <h2 class="mt">Three rules. That's it.</h2>
+      <div class="props mt">
+        <div>
+          <div class="n">01 · tier → task</div>
+          <div class="t">One RTOS task per priority tier</div>
+          <div class="d">Not per node, not per callback — so a tier costs exactly one OS priority slot.</div>
+        </div>
+        <div>
+          <div class="n">02 · task → executor</div>
+          <div class="t">Each task owns one Executor</div>
+          <div class="d">All executors run over <em>one shared</em> RMW session per binary — the "Borrowed" store. No N× RAM.</div>
+        </div>
+        <div>
+          <div class="n">03 · gating</div>
+          <div class="t">active_groups filter</div>
+          <div class="d">Every task runs the same setup; the filter admits only its tier's callback groups.</div>
+        </div>
+      </div>
+      <div class="stack mt">
+        <div class="layer"><div class="lab">Tiers</div><div class="body"><span class="chip crit">high · prio 80</span><span class="chip">low · prio 10</span></div></div>
+        <div class="arrow">↓ one RTOS task each</div>
+        <div class="layer"><div class="lab">Tasks</div><div class="body"><span class="chip tk">Executor</span><span class="chip tk">Executor</span></div></div>
+        <div class="arrow">↓ all borrow one handle</div>
+        <div class="layer"><div class="lab">Session</div><div class="body"><span class="chip session">1 shared RMW (zenoh-pico) session · Z_FEATURE_MULTI_THREAD=1</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · TASK ≠ CALLBACK -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">vocabulary — read this first</div>
+      <h2 class="mt">A task is a thread, not a callback</h2>
+      <p class="sub">Four terms from three worlds. The confusing one: <strong>task</strong> means <em>OS thread</em>, never a unit of work. One task runs <strong>many</strong> callbacks.</p>
+      <div class="chain mt">
+        <div class="cbox">
+          <div class="who">ROS</div><div class="term">callback</div>
+          <div class="ex">on_ctrl</div>
+          <div class="role">the work — runs on an event</div>
+        </div>
+        <div class="conn"><span class="card">N : 1</span><span class="ar">→</span><span class="how">belongs to</span></div>
+        <div class="cbox">
+          <div class="who">ROS (rclcpp)</div><div class="term">group</div>
+          <div class="ex">"ctrl"</div>
+          <div class="role">what runs together</div>
+        </div>
+        <div class="conn"><span class="card">N : 1</span><span class="ar">→</span><span class="how">system.toml</span></div>
+        <div class="cbox">
+          <div class="who">nano-ros</div><div class="term">tier</div>
+          <div class="ex">high · prio 80</div>
+          <div class="role">at what priority</div>
+        </div>
+        <div class="conn"><span class="card">1 : 1</span><span class="ar">→</span><span class="how">codegen</span></div>
+        <div class="cbox task">
+          <div class="who">RTOS</div><div class="term">task</div>
+          <div class="ex">pthread / k_thread</div>
+          <div class="role">the thread that runs it (Executor loop)</div>
+        </div>
+      </div>
+      <div class="demo-map mt">
+        <div class="maprow"><span class="step"><b>on_ctrl</b> <span class="sep">∈</span> group <b>"ctrl"</b> <span class="sep">→</span> tier <span class="t">high</span> <span class="sep">→</span> <span class="t">task_tier_high</span> (prio 80, 10 ms)</span></div>
+        <div class="maprow"><span class="step"><b>on_telem</b> <span class="sep">∈</span> group <b>"telem"</b> <span class="sep">→</span> tier <span class="t">low</span> <span class="sep">→</span> <span class="t">task_tier_low</span> (prio 10, 100 ms)</span></div>
+      </div>
+      <div class="note amber"><span class="tag">why not 1 thread per callback</span><div>That would burn one OS priority slot per callback — Cortex-M0+ has ~4 total. Model 1 bundles callbacks by priority need into <strong>one thread per tier</strong>; the thread cooperatively runs all its callbacks. Kernel preempts <em>between</em> tiers, executor schedules <em>within</em>.</div></div>
+    </div>
+  </section>
+
+  <!-- 4 · AUTHOR A NODE -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">step 1 — author</div>
+      <h2 class="mt">A node labels its callback group</h2>
+      <p class="sub">Same shape in every language: create a node, tag it with a group name, wire timers/pubs.
+      The group name is the join key to the deployment config. <span class="c"></span></p>
+      <div class="grid2 mt">
+        <div class="panel">
+          <div class="cap"><span>ctrl_pkg/src/lib.rs</span><span class="lang">rust</span></div>
+<pre><span class="kw">fn</span> <span class="fn">register</span>(ctx: &amp;<span class="kw">mut</span> NodeContext) -&gt; NodeResult&lt;()&gt; {
+    <span class="kw">let mut</span> node = ctx.<span class="fn">create_node</span>(NodeOptions::<span class="fn">new</span>(<span class="lit">"control_node"</span>))?;
+    node.<span class="fn">callback_group</span>(<span class="hl">"ctrl"</span>)?;               <span class="cmt">// ← group label</span>
+    <span class="kw">let</span> pub_ctrl = node.<span class="fn">create_publisher_for_topic</span>::&lt;Int32&gt;(<span class="lit">"/ctrl"</span>)?;
+    <span class="kw">let</span> _t = node.<span class="fn">create_timer_for_callback_name</span>(
+                 <span class="lit">"on_ctrl"</span>, TimerDuration::<span class="fn">from_millis</span>(<span class="lit">10</span>))?;
+    node.<span class="fn">callback_for_name</span>(<span class="lit">"on_ctrl"</span>).<span class="fn">publishes_entity</span>(&amp;pub_ctrl)?;
+    Ok(())
+}
+<span class="fn">nros::node!</span>(Control);</pre>
+        </div>
+        <div class="panel">
+          <div class="cap"><span>ctrl_pkg/src/Ctrl.cpp</span><span class="lang">c++</span></div>
+<pre><span class="kw">void</span> Ctrl::<span class="fn">on_tick</span>() {
+    std_msgs::msg::Int32 msg;
+    msg.data = count_++;
+    pub_.<span class="fn">publish</span>(msg);
+}
+
+::nros::Result Ctrl::<span class="fn">configure</span>(::nros::Node&amp; node) {
+    node.<span class="fn">create_publisher</span>(pub_, <span class="lit">"/ctrl"</span>);
+    <span class="kw">return</span> ::nros::<span class="fn">bind_timer</span>&lt;Ctrl, &amp;Ctrl::on_tick&gt;(
+               node, timer_, <span class="lit">10</span>, <span class="kw">this</span>);
+}</pre>
+        </div>
+      </div>
+      <div class="note"><span class="tag">note</span><div>The node says <strong>nothing</strong> about priorities or threads. It only names a group. Where that group runs is a deployment decision — next slide.</div></div>
+    </div>
+  </section>
+
+  <!-- 4 · DECLARE TIERS -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">step 2 — deploy config</div>
+      <h2 class="mt">system.toml maps group → tier</h2>
+      <p class="sub">One manifest binds each node's group to a named tier, and defines each tier's priority + spin period. This is the deployment SSoT (RFC-0047).</p>
+      <div class="panel mt">
+        <div class="cap"><span>demo_bringup/system.toml</span><span class="lang">verbatim · ws-realtime-rust</span></div>
+<pre>[[component]]
+pkg = <span class="lit">"ctrl_pkg"</span>
+class = <span class="lit">"ctrl_pkg::Control"</span>
+name = <span class="lit">"control_node"</span>
+group_tiers = { <span class="hl">ctrl = "high"</span> }          <span class="cmt"># group → tier binding</span>
+
+[[component]]
+pkg = <span class="lit">"telem_pkg"</span>
+name = <span class="lit">"telem_node"</span>
+group_tiers = { <span class="hl">telem = "low"</span> }
+
+[tiers.high]
+spin_period_us = <span class="lit">1000</span>
+[tiers.high.posix]  priority = <span class="lit">80</span>
+[tiers.high.zephyr] priority = <span class="lit">5</span>       <span class="cmt"># lower = higher on Zephyr</span>
+[tiers.high.nuttx]  priority = <span class="lit">110</span>
+
+[tiers.low]
+spin_period_us = <span class="lit">10000</span>
+[tiers.low.posix]   priority = <span class="lit">10</span></pre>
+      </div>
+      <div class="note"><span class="tag">key idea</span><div>Tiers are declared <strong>per RTOS</strong> in sub-tables. Same nodes, same groups — retarget by picking which sub-table the codegen reads. (See the deploy slide.)</div></div>
+    </div>
+  </section>
+
+  <!-- 5 · ENTRY IS ONE LINE -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">step 3 — entry</div>
+      <h2 class="mt">The binary entry is one line</h2>
+      <p class="sub">Codegen reads the manifest, resolves the tier table, and emits <code>run_tiers</code>. The author writes only the launch reference.</p>
+      <div class="grid2 mt">
+        <div class="panel">
+          <div class="cap"><span>native_entry/src/main.rs</span><span class="lang">rust</span></div>
+<pre><span class="fn">nros::main!</span>(launch = <span class="lit">"demo_bringup"</span>);</pre>
+        </div>
+        <div class="panel">
+          <div class="cap"><span>native_entry/src/main.cpp</span><span class="lang">c++</span></div>
+<pre>#include &lt;nros/main.hpp&gt;
+
+<span class="fn">NROS_MAIN</span>(::nros::board::NativeBoard,
+          <span class="lit">"demo_bringup:system.launch.xml"</span>);</pre>
+        </div>
+      </div>
+      <div class="note"><span class="tag">what it expands to</span><div>Both macros resolve the 2-tier table and emit the multi-tier <code>run_tiers</code> entry — <strong>one priority task per tier</strong> — instead of the single-tier <code>run</code>. All-default-tier collapses back to one task = the shipped simple case.</div></div>
+    </div>
+  </section>
+
+  <!-- 6 · WHAT CODEGEN BUILDS -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">under the macro</div>
+      <h2 class="mt">Each tier is a TierSpec + a spin loop</h2>
+      <div class="grid2 mt">
+        <div class="panel">
+          <div class="cap"><span>nros-platform · board/tier.rs</span><span class="lang">real struct</span></div>
+<pre><span class="kw">pub struct</span> TierSpec&lt;<span class="lit">'a</span>&gt; {
+    <span class="kw">pub</span> name: &amp;<span class="lit">'a</span> str,        <span class="cmt">// [tiers.&lt;name&gt;]</span>
+    <span class="kw">pub</span> groups: &amp;<span class="lit">'a</span> [&amp;<span class="lit">'a</span> str], <span class="cmt">// active_groups; [] = wildcard</span>
+    <span class="kw">pub</span> priority: i64,          <span class="cmt">// raw per-RTOS spawn value</span>
+    <span class="kw">pub</span> stack_bytes: usize,
+    <span class="kw">pub</span> spin_period_us: u64,
+}</pre>
+        </div>
+        <div class="panel">
+          <div class="cap"><span>emitted per-tier task body</span><span class="lang">shape</span></div>
+<pre><span class="fn">run_tiers</span>(TIERS, setup) {
+  <span class="kw">let</span> shared = open_shared_session();   <span class="cmt">// once</span>
+  <span class="kw">for</span> tier <span class="kw">in</span> TIERS {
+    spawn(tier.priority, tier.stack, || {
+      <span class="kw">let mut</span> ex = Executor::<span class="fn">open_with_session</span>(shared);
+      ex.<span class="fn">set_active_groups</span>(tier.groups);  <span class="cmt">// gate</span>
+      <span class="fn">setup</span>(&amp;<span class="kw">mut</span> ex);                     <span class="cmt">// only its groups take</span>
+      <span class="kw">loop</span> { ex.<span class="fn">spin_once</span>(N); <span class="fn">platform_yield</span>(); }
+    });
+  }
+}</pre>
+        </div>
+      </div>
+      <div class="note"><span class="tag">inside spin_once</span><div>Single thread, non-preemptive, run-to-completion: pump transport once → set one readiness bit per callback with data → dispatch <strong>in registration order</strong>. One bitmap, no queue. Scheduling <em>policy</em> lives in user space.</div></div>
+    </div>
+  </section>
+
+  <!-- 7 · RTOS MAPPING -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">§ scheduler integration</div>
+      <h2 class="mt">A tier = one native RTOS task</h2>
+      <p class="sub">Same loop body everywhere; only the spawn call and yield primitive change. Priorities come straight from the <code>[tiers.*.&lt;rtos&gt;]</code> sub-table.</p>
+      <div class="tbl-wrap panel mt">
+        <table>
+          <thead><tr><th>Target</th><th>Spawn</th><th>Priority scale</th><th>Yield</th></tr></thead>
+          <tbody>
+            <tr><td class="rtos">POSIX</td><td><code>pthread_create</code> · SCHED_FIFO</td><td>1–99, higher wins</td><td><code>sched_yield()</code></td></tr>
+            <tr><td class="rtos">Zephyr</td><td><code>k_thread</code></td><td>coop..preempt, lower wins</td><td><code>k_yield()</code></td></tr>
+            <tr><td class="rtos">FreeRTOS</td><td><code>xTaskCreate</code></td><td>0–max, higher wins</td><td><code>vTaskDelay(1)</code></td></tr>
+            <tr><td class="rtos">ThreadX</td><td><code>tx_thread_create</code></td><td>0–31, lower wins</td><td><code>tx_thread_relinquish()</code></td></tr>
+            <tr><td class="rtos">NuttX</td><td><code>pthread</code> · SCHED_FIFO</td><td>1–255, higher wins</td><td><code>sched_yield()</code></td></tr>
+            <tr><td class="rtos">RTIC</td><td><code>#[task(priority=N)]</code></td><td>NVIC, compile-time</td><td><code>Mono::delay().await</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note"><span class="tag">one bringup, three deploys</span><div>The <em>same</em> nodes + <code>system.toml</code> ship to native, Zephyr, or NuttX by adding a <code>[tiers.*.&lt;rtos&gt;]</code> sub-table and switching the board — no node code changes.</div></div>
+    </div>
+  </section>
+
+  <!-- 8 · PREEMPTION -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">§ how it hits deadlines</div>
+      <h2 class="mt">Cooperative within · preemptive across</h2>
+      <p class="sub"><strong>Within</strong> a tier: run-to-completion, no mid-callback preemption (no per-callback stacks in <code>no_std</code>). <strong>Across</strong> tiers: the RTOS preempts a lower tier the instant a higher tier wakes. Real preemption from the kernel, not the executor.</p>
+      <div class="panel mt">
+        <div class="cap"><span>scheduler trace — high tier preempts, returns</span><span class="lang">illustrative</span></div>
+        <div class="trace">
+          <div class="trow"><div class="tl">high<span class="pr">prio 80 · 1 ms</span></div>
+            <div class="lane"><div class="blk high" style="left:180px;width:52px;">tick</div><div class="blk high" style="left:480px;width:52px;">tick</div></div></div>
+          <div class="trow"><div class="tl">low<span class="pr">prio 10 · /cmd</span></div>
+            <div class="lane"><div class="blk norm" style="left:60px;width:120px;">on_cmd</div><div class="blk norm pre" style="left:232px;width:56px;">·resume·</div><div class="blk norm" style="left:288px;width:192px;">on_cmd</div></div></div>
+          <div class="trow"><div class="tl">idle<span class="pr">telem/wfi</span></div>
+            <div class="lane"><div class="blk low pre" style="left:0;width:60px;">telem</div><div class="blk low" style="left:532px;width:120px;">telem</div></div></div>
+        </div>
+        <div class="tnote"><span><span class="sw high"></span> high preempts</span><span><span class="sw norm"></span> normal work</span><span><span class="sw low"></span> best-effort</span></div>
+      </div>
+      <div class="note amber"><span class="tag">the tradeoff</span><div>A 50 ms callback <em>will</em> block a 1 ms-deadline callback <strong>if they share a tier</strong>. Hard real-time ⇒ put them on different tiers and let the kernel preempt. Cost: a few OS priority slots — never one per callback.</div></div>
+    </div>
+  </section>
+
+  <!-- 9 · WHERE IT LIVES -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">§ where it lives</div>
+      <h2 class="mt">A workspace is nodes + bringup + entry</h2>
+      <div class="grid2 mt">
+        <div class="panel">
+          <div class="cap"><span>examples/workspaces/ws-realtime-rust/src</span><span class="lang">real tree</span></div>
+<pre class="tree"><span class="d">src/</span>
+├─ <span class="d">ctrl_pkg/</span>      <span class="c"># node · group "ctrl"</span>
+│   └─ src/lib.rs
+├─ <span class="d">telem_pkg/</span>     <span class="c"># node · group "telem"</span>
+│   └─ src/lib.rs
+├─ <span class="d">demo_bringup/</span>  <span class="c"># deploy config</span>
+│   ├─ <span class="t">system.toml</span>   <span class="c"># tiers + group_tiers</span>
+│   └─ launch/
+├─ <span class="d">native_entry/</span> <span class="c"># nros::main!(launch=…)</span>
+├─ <span class="d">zephyr_entry/</span> <span class="c"># same 1-liner, west build</span>
+└─ <span class="d">nuttx_entry/</span>  <span class="c"># same 1-liner, QEMU arm</span></pre>
+        </div>
+        <div class="panel">
+          <div class="cap"><span>packages/core · the engine</span><span class="lang">real crates</span></div>
+<pre class="tree"><span class="d">nros-macros/</span>
+└─ main_macro.rs   <span class="c"># nros::main! → run_tiers</span>
+<span class="d">nros-platform/</span>
+└─ board/<span class="a">tier.rs</span>    <span class="c"># TierSpec + prio mappers</span>
+   board/runtime.rs <span class="c"># run_tiers, spawn/yield</span>
+<span class="d">nros-node/</span>
+└─ executor/
+   ├─ <span class="t">spin.rs</span>        <span class="c"># spin_once, shared session</span>
+   ├─ arena.rs      <span class="c"># registered entities</span>
+   ├─ ready_set/    <span class="c"># readiness bitmap</span>
+   └─ dispatcher.rs
+<span class="d">nros-c/ · nros-cpp/</span>
+└─ include/nros/main.{h,hpp}  <span class="c"># mirrors</span></pre>
+        </div>
+      </div>
+      <div class="note"><span class="tag">portability</span><div>Three entry packages, <strong>one identical body</strong> per language. Node + bringup packages are shared verbatim across native / Zephyr / NuttX.</div></div>
+    </div>
+  </section>
+
+  <!-- 10 · RECAP -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">recap</div>
+      <h2 class="mt">Why Model 1</h2>
+      <div class="props mt">
+        <div><div class="n">portable</div><div class="t">One model, 3 languages, 5 RTOSes</div><div class="d">Rust / C / C++ nodes; POSIX · Zephyr · FreeRTOS · NuttX · ThreadX + bare-metal RTIC.</div></div>
+        <div><div class="n">cheap</div><div class="t">Policy in user space</div><div class="d">One readiness bit per callback; a few OS priority slots total — never one slot per callback.</div></div>
+        <div><div class="n">real-time</div><div class="t">Kernel does preemption</div><div class="d">Split hot paths across tiers → the RTOS fixed-priority scheduler enforces deadlines.</div></div>
+      </div>
+      <p class="sub mt">Author names a group → <code>system.toml</code> maps it to a tier → codegen emits one RTOS task per tier over one shared session, gated by <code>active_groups</code>. Proven native (C/C++/Rust, ctrl≈5.5× telem); boots on QEMU mps2-an385.</p>
+      <div class="note"><span class="tag">sources</span><div>RFC-0015 rt-orchestration · RFC-0002 rt-execution-model · RFC-0047 sched-context · examples/workspaces/ws-realtime-{rust,cpp,c}</div></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="bar">
+  <span class="brand"><b>nano-ros</b> · Model 1</span>
+  <button class="navbtn" id="prev" aria-label="Previous slide">‹</button>
+  <button class="navbtn" id="next" aria-label="Next slide">›</button>
+  <span class="count" id="count">01 / 10</span>
+  <div class="dots" id="dots"></div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const dotsWrap = document.getElementById('dots');
+  const count = document.getElementById('count');
+  const prev = document.getElementById('prev');
+  const next = document.getElementById('next');
+  let i = 0;
+  const pad = n => String(n).padStart(2,'0');
+
+  slides.forEach((_, k) => {
+    const b = document.createElement('button');
+    b.className = 'dot' + (k===0?' on':'');
+    b.setAttribute('aria-label', 'Go to slide ' + (k+1));
+    b.addEventListener('click', () => go(k));
+    dotsWrap.appendChild(b);
+  });
+  const dots = Array.from(dotsWrap.children);
+
+  function go(n){
+    i = Math.max(0, Math.min(slides.length-1, n));
+    slides.forEach((s,k)=>s.classList.toggle('active', k===i));
+    dots.forEach((d,k)=>d.classList.toggle('on', k===i));
+    count.textContent = pad(i+1) + ' / ' + pad(slides.length);
+    prev.disabled = i===0; next.disabled = i===slides.length-1;
+    slides[i].scrollTop = 0;
+  }
+  prev.addEventListener('click', ()=>go(i-1));
+  next.addEventListener('click', ()=>go(i+1));
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){ e.preventDefault(); go(i+1); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); go(i-1); }
+    else if(e.key==='Home'){ go(0); } else if(e.key==='End'){ go(slides.length-1); }
+  });
+  go(0);
+</script>
+</body>
+</html>

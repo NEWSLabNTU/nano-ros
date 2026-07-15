@@ -308,7 +308,7 @@ Steps (each a commit; CI between the riskier ones):
 > "Inherited from phase-241"). The text below is kept for context; the open items
 > are phase-249's.
 
-> **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md).**
+> **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md).**
 > One Rust staticlib per binary (the umbrella) ⇒ `std`/`compiler-builtins`
 > monomorphized once ⇒ `--allow-multiple-definition` removable for real. This
 > model **subsumes slice 4** below (the dedicated `nros-rmw-cffi-provider` +
@@ -328,7 +328,7 @@ Steps (each a commit; CI between the riskier ones):
 > main today there is **no `nros-rmw-cffi-provider` crate and no `external-registry`
 > feature**. The dedup motivation + the detailed slice-4 design are preserved in
 > git history; the current target is
-> [phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md) +
+> [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md) +
 > [phase-249](../phase-249-one-registration-trigger.md).
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
@@ -349,7 +349,7 @@ Steps (each a commit; CI between the riskier ones):
       exports — into ONE archive via a dedicated `nros-rmw-cffi-provider` +
       `nros_rmw_cffi_export!{}` macro, mirroring the platform-cffi split) is
       **SUPERSEDED**: the single shared runtime
-      ([phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md)) collapses to
+      ([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) collapses to
       one Rust staticlib per binary, so `REGISTRY` + the cffi C exports are defined
       once with plain `#[no_mangle]` — no provider/feature, flag removable
       directly. Flag removal lands with phase-249's NanoRosLink rework. (The full
