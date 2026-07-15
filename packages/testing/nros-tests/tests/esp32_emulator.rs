@@ -493,6 +493,12 @@ fn test_esp32_workspace_entry_e2e() {
             "NROS_LOCATOR",
             format!("tcp/127.0.0.1:{}", platform::ESP32.zenohd_port),
         )
+        // #190 — the workspace Entry's talker_pkg publishes std_msgs/Int32 on
+        // /chatter; the message type is baked into the wire keyexpr, so the
+        // listener's default String subscription matches NOTHING (pcap: the
+        // Entry declares `0/chatter/std_msgs::msg::dds_::Int32_/…`). The
+        // listener's own doc comment says the ws-entry E2E must set this.
+        .env("NROS_SUB_TYPE", "int32")
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");

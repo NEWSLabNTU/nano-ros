@@ -121,6 +121,8 @@ pub struct FreeListHeap<const N: usize> {
     slab: UnsafeCell<Aligned<SLAB_REGION_SIZE>>,
     /// Bitmap of free slab slots (bit set = free). Starts as 0xFF (all free).
     slab_free_bitmap: AtomicU8,
+    /// #190 — count of foreign-pointer `free`/`realloc` calls refused.
+    foreign_frees: AtomicUsize,
     #[cfg(feature = "stats")]
     used_bytes: AtomicUsize,
     #[cfg(feature = "stats")]
@@ -149,6 +151,7 @@ impl<const N: usize> FreeListHeap<N> {
             initialized: AtomicBool::new(false),
             slab: UnsafeCell::new(Aligned([0u8; SLAB_REGION_SIZE])),
             slab_free_bitmap: AtomicU8::new(0xFF), // all 8 slots free
+            foreign_frees: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
             used_bytes: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
@@ -194,6 +197,20 @@ impl<const N: usize> FreeListHeap<N> {
         let base = self.slab_base() as usize;
         let addr = ptr as usize;
         addr >= base && addr < base + SLAB_REGION_SIZE
+    }
+
+    /// Check if `ptr` points into the main heap region (#190 guard).
+    #[inline]
+    fn is_in_heap(&self, ptr: *mut u8) -> bool {
+        let base = self.heap.get() as usize;
+        let addr = ptr as usize;
+        addr >= base + HEADER_SIZE && addr < base + N
+    }
+
+    /// #190 — count of `free`/`realloc` calls that handed us a pointer
+    /// OUTSIDE this heap's arena (a cross-allocator free). Diagnostic.
+    pub fn foreign_free_count(&self) -> usize {
+        self.foreign_frees.load(Ordering::Relaxed)
     }
 
     /// Try to allocate from the slab. Returns null if no free slot or size too large.
@@ -333,6 +350,19 @@ impl<const N: usize> FreeListHeap<N> {
             return ptr::null_mut();
         }
 
+        // #190 — foreign old pointer (not from this heap): there is no header
+        // to read a size from, and `free` would corrupt live memory. Copy the
+        // requested size from the foreign block (its true length is unknown
+        // but ≥ what the caller is reallocating around) and leak it.
+        if !self.is_in_slab(old_ptr as *mut u8) && !self.is_in_heap(old_ptr as *mut u8) {
+            let n = self.foreign_frees.load(Ordering::Relaxed);
+            self.foreign_frees.store(n + 1, Ordering::Relaxed);
+            unsafe {
+                ptr::copy_nonoverlapping(old_ptr as *const u8, new_ptr as *mut u8, size);
+            }
+            return new_ptr;
+        }
+
         unsafe {
             // Determine old size: slab slots are fixed SLAB_SLOT_SIZE,
             // free-list blocks store size in the header.
@@ -362,6 +392,21 @@ impl<const N: usize> FreeListHeap<N> {
         // Slab fast-path
         if self.is_in_slab(ptr as *mut u8) {
             self.slab_free(ptr as *mut u8);
+            return;
+        }
+
+        // #190 hardening — refuse pointers outside this heap's arena. A
+        // cross-allocator free (a Rust-global-heap or static pointer handed
+        // to `z_free`) would be INSERTED into the free list as if `ptr - 8`
+        // were a block header; the next alloc/free would then write header
+        // words into that foreign memory. (Instrumented during the #190
+        // esp32-c3 triage: no such free actually occurs today —
+        // `foreign_free_count` stayed 0; the corruption there was a stack
+        // overflow into `.bss`. The guard stays: dropping a foreign pointer
+        // leaks at worst, corrupting live memory is never acceptable.)
+        if !self.is_in_heap(ptr as *mut u8) {
+            let n = self.foreign_frees.load(Ordering::Relaxed);
+            self.foreign_frees.store(n + 1, Ordering::Relaxed);
             return;
         }
 

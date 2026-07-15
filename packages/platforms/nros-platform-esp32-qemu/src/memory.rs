@@ -28,3 +28,8 @@ pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_vo
 pub fn dealloc(ptr: *mut core::ffi::c_void) {
     HEAP.free(ptr)
 }
+
+/// #190 diagnostic — number of foreign-pointer frees the guard refused.
+pub fn foreign_free_count() -> usize {
+    HEAP.foreign_free_count()
+}

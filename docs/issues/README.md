@@ -52,12 +52,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
-- **#190** — [esp32 QEMU e2e: boots, 0 delivery](0190-esp32-qemu-e2e-zero-delivery.md):
-  the #64-era 16 KB heap OOM'd every post-271 image (fixed: 96 KB; 128 overflows DRAM); the four
-  delivery lanes now hit the pre-documented esp32-c3 session-init memory corruption instead —
-  NEW hard evidence in the issue: the OpenSyn cookie is echoed with 8 bytes stomped by a
-  duplicated heap pointer (0x3fc89458 ×2 = free-list node) → router "Decoding cookie failed";
-  first-attempt, so the connect_with_retry re-entrancy lead is ruled out.
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
@@ -75,7 +69,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#171** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#190** — the esp32
+"session-init memory corruption" (incl. the old 0xffffffff residual) was a STACK OVERFLOW:
+`.stack` on esp32-c3 is the linker leftover after `.bss`, so the 96 KB heap fix left 18 KB of
+stack for a ≈98 KB-deep zenoh+smoltcp path — frames wrote into `.bss`, masquerading as heap/
+cookie corruption (allocator instrumented: zero foreign frees). Heap 48 KB = executor arena fits
+AND ~67 KB stack; plus the ws-entry test forgot `NROS_SUB_TYPE=int32` (Entry publishes Int32,
+type is in the keyexpr — String sub matches nothing). esp32 suite 8/8, baremetal 11/11. **#171** — the
 no-external-distribution umbrella closes: D1/D2 source-distribution bootstrap (phase-288), the
 RFC-0048 ament CMake shape + W9 Rust consumption (phase-287, complete), false claims all
 truth-fixed; the single live remainder (ESP-IDF registry execution) is #198. **#194** — the
