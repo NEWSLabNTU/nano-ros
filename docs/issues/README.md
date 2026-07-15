@@ -44,14 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#199** — [`just nuttx build-riscv-c` red: ffi image link fails with undefined
-  `std_msgs_msg_string_{init,serialize,get_type_support}`](0199-build-riscv-c-ffi-image-link-missing-generated-c-bindings.md):
-  the generated `std_msgs` C-binding TUs never reach the `nros-nuttx-riscv-ffi` image link.
-  Baseline-verified pre-existing (identical at HEAD with phase-285 W3–W6 stashed); the arm
-  `build-c` sibling is green, so the break is riscv-lane wiring. Blocks riscv C/C++ e2e + any
-  matrix promotion (see 0165's resolution).
-
-Recently resolved (see [`archived/`](archived/) for the full list): **#178** — the RTIC
+Recently resolved (see [`archived/`](archived/) for the full list): **#199** — the
+`build-riscv-c` ffi-link red (undefined `std_msgs_msg_string_*`) was the riscv board
+cmake overlay being a stale pre-phase-281 mirror of the arm one: the phase-281
+`INTERFACE_SOURCES` walk (generated C serdes `.c` → cc-rs → trailing `app_iface`
+archive), the phase-263 C2b component-source walk (+ `SOURCE_PKGS`), and the 0149
+component-lib descent were never ported. Ported verbatim; lane green, fixed talker
+boot-verified. Lesson: a link_app change in the arm nuttx overlay must port to the
+riscv twin in the same commit. **#178** — the RTIC
 lanes deliver (phase-289): six stacked layers — open-in-`#[init]` [pre-fixed], no `wfi` yield, no
 armed IRQ through RTIC's vector table (fixed: CMSDK TIMER0 + macro-emitted priority-2 `binds`
 tick + `on_interrupts_live` → `enable_wfi_idle`), `register_dispatch`-only wiring that never ran
