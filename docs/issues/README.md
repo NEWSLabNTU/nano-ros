@@ -45,9 +45,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 ## Open issues
 
 - **#198** — [ESP-IDF registry publish never executed, no CI](0198-esp-idf-registry-publish-unexecuted.md):
-  the one distribution surface left open by #171/phase-288 — the component manifest works via
-  path/git but the Espressif-registry publish needs maintainer credentials + a tag-triggered CI
-  lane. Carved out so the #171 umbrella could close.
+  the one distribution surface left open by #171/phase-288 — and a compote dry-run pack shows the
+  component is structurally unpublishable as laid out (3-file shell, `_nros_root=../..` escapes
+  the archive). Needs a layout decision (root manifest packing the tree vs wontfix) BEFORE the
+  maintainer credentials + CI lane; the doc's deprecated `idf.py upload-component` is fixed.
 - **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
   deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
   first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).

@@ -64,10 +64,20 @@ per IDF Component Manager docs.
 
 ```bash
 # Maintainer machine, after `git tag v0.X.Y` and a clean tree.
+# `idf.py upload-component` is DEPRECATED (IDF 5.3); compote is canonical.
 cd integrations/nano-ros
+compote component pack --project-dir . --name nano-ros          # dry-run: inspect the archive first
 IDF_COMPONENT_API_TOKEN=$TOKEN \
-    idf.py upload-component --name nano-ros --version 0.X.Y
+    compote component upload --project-dir . --name nano-ros --version 0.X.Y
 ```
+
+> **Structural blocker (verified 2026-07-15, issue #198).** A pack of
+> `integrations/nano-ros/` contains ONLY the three shell files — the shell's
+> `_nros_root = ${CMAKE_CURRENT_LIST_DIR}/../..` escapes the archive, so a
+> registry-installed copy resolves into the consumer's `managed_components/`
+> parent and breaks. Do NOT publish until #198's layout decision (pack the
+> whole source tree via a root manifest + `files:` filter, or wontfix the
+> registry route) is made. Path/git consumption is unaffected.
 
 **Verification.** `idf.py add-dependency "nano-ros/nano-ros^0.X.Y"`
 in a fresh ESP-IDF project should pull the component and let
