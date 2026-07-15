@@ -111,7 +111,7 @@ unstable). Keep it that way.
   accepted Shape-B path; the *linkme* deletion ("one registration path" for Rust) is
   [phase-249](../roadmap/phase-249-one-registration-trigger.md) **P4b**, deferred pending
   the P4b ↔ D7 reconciliation (issue 0062 R2/R3). → see
-  [phase-247](../roadmap/phase-247-weak-symbol-determinism.md).
+  [phase-247](../../roadmap/archived/phase-247-weak-symbol-determinism.md).
 
 ## Scope for the worker
 

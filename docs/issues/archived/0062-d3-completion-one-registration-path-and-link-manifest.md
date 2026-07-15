@@ -134,5 +134,5 @@ registration that lets the weak default die — apply directly.)
   bullet 3 done, 1+2 here.
 - [issue 0050](0050-weak-symbol-audit-and-checkers.md) W3.1 — the weak-default
   deletion R2 closes.
-- [phase-247](../roadmap/phase-247-weak-symbol-determinism.md) — the weak-symbol
+- [phase-247](../../roadmap/archived/phase-247-weak-symbol-determinism.md) — the weak-symbol
   gates that guard R2.

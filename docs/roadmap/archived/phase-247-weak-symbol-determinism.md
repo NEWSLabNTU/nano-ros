@@ -1,11 +1,15 @@
 # Phase 247 — Weak-symbol determinism: image-level checker, CI gating, reduction
 
-**Implements.** [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md).
-**Related.** RFC-0042 / [phase-241](archived/phase-241-platform-build-determinism.md) D3
+**Implements.** [issue 0050](../../issues/archived/0050-weak-symbol-audit-and-checkers.md).
+**Related.** RFC-0042 / [phase-241](phase-241-platform-build-determinism.md) D3
 (deterministic linking — rejected weak for the `nros-rmw-cffi` dedup in favour
-of a define-once export macro); [issue 0042](../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md).
+of a define-once export macro); [issue 0042](../../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md).
 
-**Status.** Planned (2026-06-13).
+**Status.** **COMPLETE — archived** (2026-07-16; work landed 2026-06-13→15).
+W1.1–W1.3 (image gate + coverage map + SSoT cross-check), W2 (`just check`
+wiring), W3.1 (resolved by phase-249 P4a — the weak `nros_app_register_backends`
+default deleted), W3.2/W3.3 all DONE; issue 0050 resolved + archived. See
+"Phase close" below — the header had simply never been flipped from Planned.
 
 ## Why
 
