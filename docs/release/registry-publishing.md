@@ -60,28 +60,28 @@ includes `version`, `description`, `url`, `license`,
 nano-ros maintainer with publish rights to the namespace. Rotation:
 per IDF Component Manager docs.
 
-**Reference command (do NOT run from shared shell):**
-
-```bash
-# Maintainer machine, after `git tag v0.X.Y` and a clean tree.
-# `idf.py upload-component` is DEPRECATED (IDF 5.3); compote is canonical.
-cd integrations/nano-ros
-compote component pack --project-dir . --name nano-ros          # dry-run: inspect the archive first
-IDF_COMPONENT_API_TOKEN=$TOKEN \
-    compote component upload --project-dir . --name nano-ros --version 0.X.Y
-```
-
-> **Structural blocker (verified 2026-07-15, issue #198).** A pack of
-> `integrations/nano-ros/` contains ONLY the three shell files — the shell's
-> `_nros_root = ${CMAKE_CURRENT_LIST_DIR}/../..` escapes the archive, so a
-> registry-installed copy resolves into the consumer's `managed_components/`
-> parent and breaks. Do NOT publish until #198's layout decision (pack the
-> whole source tree via a root manifest + `files:` filter, or wontfix the
-> registry route) is made. Path/git consumption is unaffected.
-
-**Verification.** `idf.py add-dependency "nano-ros/nano-ros^0.X.Y"`
-in a fresh ESP-IDF project should pull the component and let
-`idf.py build` succeed.
+> **Decision (2026-07-15, issue #198 — wontfix): the registry publish is NOT
+> performed.** Documented source consumption is the ESP-IDF contract: clone
+> nano-ros at a pinned tag, run `scripts/bootstrap.sh`, and point the consumer
+> `main/idf_component.yml` at
+> `path: "../components/nano-ros/integrations/nano-ros"` (the snippet in that
+> manifest's header; e2e-tested by `cli_bringup_esp_idf`).
+>
+> Why: (1) a pack of `integrations/nano-ros/` contains ONLY the three shell
+> files — its `_nros_root = ${CMAKE_CURRENT_LIST_DIR}/../..` escapes the
+> archive, so a registry-installed copy breaks unconditionally (verified with
+> `compote component pack`); (2) even a whole-tree pack cannot be turnkey —
+> the build needs a host Rust toolchain + the bootstrap-built `nros` CLI, and
+> message bindings are generated per-consumer; (3) a manifest `git:`
+> dependency would recurse all 23 submodules (the component manager's fetcher
+> hardcodes `with_submodules=True`), a multi-GB first fetch. Precedent:
+> micro-ROS's ESP-IDF component is git-consumed, not registry-published.
+>
+> Revisit if Espressif adds submodule filtering to git sources, or if
+> registry discoverability becomes a goal (then: a thin self-fetching shell —
+> see archived issue 0198). If a publish is ever attempted, note that
+> `idf.py upload-component` is DEPRECATED (IDF 5.3) — the canonical flow is
+> `compote component pack` (dry-run) / `compote component upload`.
 
 ## PlatformIO — PlatformIO Registry
 

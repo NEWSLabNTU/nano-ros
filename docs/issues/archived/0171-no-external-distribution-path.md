@@ -163,7 +163,7 @@ closes. Ledger:
 | P2 CLI installable | D1 executed — `scripts/bootstrap.sh` is the single front door (builds `nros` from source, no `just` prerequisite); phase-288 W2, **complete**. |
 | P3 publish runtime crates | Superseded by D2 (bundled source, no crates.io/prebuilt). Consumption UX landed as RFC-0048 W9: `nros sync` manages a central `nros-patch.toml` + one `include` line per Rust leaf. |
 | P4 C/C++ CMake story | D5 executed — RFC-0048 ament shape (`find_package(nano_ros REQUIRED)` + role verbs, deploy tuple in package.xml), every example/workspace/scaffold migrated; [phase-287](../roadmap/archived/phase-287-cmake-consumption-reshape.md) **COMPLETE**, old-shape surface retired (W8 + the post-287 `nano_ros_deploy` retirement). |
-| P5 registry publishes | D3 (Arduino) dropped, done. D4: PlatformIO deliberately unpublished (manifest stays in-tree). ESP-IDF publish execution + CI is the ONE live remainder — needs maintainer-held registry credentials, carved out as **[#198](0198-esp-idf-registry-publish-unexecuted.md)**. |
+| P5 registry publishes | D3 (Arduino) dropped, done. D4: PlatformIO deliberately unpublished (manifest stays in-tree). ESP-IDF publish execution + CI is the ONE live remainder — needs maintainer-held registry credentials, carved out as **[#198](0198-esp-idf-registry-publish-unexecuted.md)** (since resolved wontfix — documented source consumption is the contract). |
 | P6 BYO-board docs | D6 — already existed (`concepts/board-integration.md` matrix + porting pages); cross-link added. Done. |
 | D7 book hygiene | Done (no publish-status talk in `book/src/`). |
 | Cargo consumption UX (was "open, phase") | Decided (option E) + implemented in phase-287 W9. |

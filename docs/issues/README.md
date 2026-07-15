@@ -44,11 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#198** — [ESP-IDF registry publish never executed, no CI](0198-esp-idf-registry-publish-unexecuted.md):
-  the one distribution surface left open by #171/phase-288 — and a compote dry-run pack shows the
-  component is structurally unpublishable as laid out (3-file shell, `_nros_root=../..` escapes
-  the archive). Needs a layout decision (root manifest packing the tree vs wontfix) BEFORE the
-  maintainer credentials + CI lane; the doc's deprecated `idf.py upload-component` is fixed.
 - **#178** — [RTIC images never deliver — `Executor::open` blocks in `#[init]`](0178-rtic-executor-open-blocks-in-init.md):
   every `deploy = "rtic-*"` qemu-arm-baremetal image boots + brings up the network but hangs at
   `Executor::open` (the blocking zenoh connect) inside RTIC `#[init]`, where interrupts are masked →
@@ -63,7 +58,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#183** — declarative
+Recently resolved (see [`archived/`](archived/) for the full list): **#198** — wontfix
+(option B): documented source consumption IS the ESP-IDF contract (clone + bootstrap +
+path dependency, micro-ROS precedent); registry publish rejected on verified facts — the shell
+pack is runtime-less, a whole-tree pack can't be turnkey (Rust toolchain + nros CLI required,
+per-consumer codegen), and a manifest git: dep would recurse all 23 submodules. Revisit on
+Espressif submodule filtering or a discoverability mandate. **#183** — declarative
 ws-bridge 0-sample lanes were a fixture type mismatch, not a bridge bug: both ws-bridge demos
 forward `std_msgs/Int32` on `/chatter` while the shared talker/listener fixtures defaulted to
 String post-277-W4.b. Cyclone lane got the `NROS_PUB_TYPE`/`NROS_SUB_TYPE=int32` alignment on

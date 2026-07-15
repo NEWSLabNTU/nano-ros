@@ -1,7 +1,8 @@
 ---
 id: 198
 title: "ESP-IDF component-registry publish has never been executed and has no CI"
-status: open
+status: wontfix
+resolved_in: "decision 2026-07-15 — B-path: documented source consumption is the contract"
 type: enhancement
 area: release
 related: [issue-0171, phase-288]
@@ -66,3 +67,30 @@ Not a repo-mechanical fix — it needs release-owner action:
 
 - PlatformIO registry publish (#171 D4 — future work, manifest stays in-tree).
 - crates.io / prebuilt binaries (#171 D2 rules them out).
+
+## Resolution — wontfix (2026-07-15, option B)
+
+Decision: the **documented source consumption IS the ESP-IDF contract**; the
+registry publish is wontfixed. Rationale:
+
+- The registry can never be turnkey here: the component build requires a host
+  Rust toolchain (corrosion) AND the bootstrap-built `nros` CLI (its own
+  `find_program(nros)` codegen-system step), and message bindings are
+  generated per-consumer from THEIR package.xml — no closed prebuildable
+  artifact exists. A registry entry would only replace the `git clone` step.
+- The B-path flow is D2 (phase-288) made concrete, e2e-tested in CI
+  (`cli_bringup_esp_idf`), and matches the closest real-world precedent:
+  micro-ROS's `micro_ros_espidf_component` is git-consumed, not
+  registry-published.
+- The seductive alternatives fail on facts: a whole-tree pack is a 60–150 MB
+  archive + manifest split-brain for one saved clone (option A); a manifest
+  `git:` dependency is first-class in the component manager but its fetcher
+  hardcodes `with_submodules=True` with no filter — a consumer's first build
+  would recurse all 23 submodules incl. PX4/nuttx/qemu, multi-GB (option
+  B-git).
+
+**Revisit triggers** (reopen then): Espressif adds submodule filtering to git
+sources (→ B-git one-liner), or registry discoverability becomes a goal in
+itself (→ option C, a thin self-fetching shell). `docs/release/
+registry-publishing.md`'s ESP-IDF section now records the decision + the
+structural blocker so nobody publishes the 3-file shell by accident.
