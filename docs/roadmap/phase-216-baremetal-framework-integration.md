@@ -36,6 +36,16 @@ naming (see "Trait surface after 212.N.12 + 214.K.1" below).
   read from when it lands.
 * **216.E.1 / E.2 / E.3** remain explicitly deferred per spec.
 
+**Status update 2026-07-15.** The Track-B e2e gate (four
+`test_qemu_rtic_*_e2e` lanes) is still red at runtime: issue #178 found a
+three-layer RTIC ↔ blocking-connect mismatch (open-in-`#[init]` [fixed] →
+missing `wfi` idle-yield → no armed periodic IRQ through RTIC's vector
+table). The remaining fix (PAC-timer `binds` tick task + `RticBoardEntry`
+idle-yield hook) is designed and scheduled as
+[phase-289](phase-289-rtic-runtime-delivery.md) — that doc is the
+design-of-record for the tick/idle mechanism; this phase remains the
+design-of-record for the framework integration itself.
+
 **Status update 2026-06-06.** 216.B validation is emulator-first. The
 STM32F4 RTIC examples remain useful cross-compile portability coverage, but
 they cannot be the end-to-end gate because this project only has emulator

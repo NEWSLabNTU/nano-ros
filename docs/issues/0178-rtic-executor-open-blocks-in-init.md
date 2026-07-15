@@ -85,6 +85,15 @@ through RTIC's own mechanism.
 
 ## Fix direction (remaining — layers 2 + 3)
 
+> 2026-07-15 — design locked and scheduled as
+> [phase-289](../roadmap/phase-289-rtic-runtime-delivery.md): CMSDK
+> TIMER0 + `#[task(binds = TIMER0, priority = 2)]` tick (NOT
+> rtic-monotonics — `Mono::start` would need `SYST` split out of the
+> by-value `core: cortex_m::Peripherals` trait arg), plus a defaulted
+> `RticBoardEntry::on_interrupts_live()` hook that installs
+> `enable_wfi_idle()` at the top of `__nros_run`. The sketch below is the
+> original direction; phase-289 supersedes the rtic-monotonics variant.
+
 1. Give the generated `#[rtic::app]` a **monotonic** (`rtic-monotonics` Systick):
    add the dep to the RTIC examples, and have the macro emit
    `Mono::start(cx.core.SYST, <freq>)` in `#[init]`. This arms the periodic IRQ
