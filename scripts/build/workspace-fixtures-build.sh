@@ -135,7 +135,8 @@ build_workspace() {
             # runtime never functions — no transport, zero output;
             # `release` opt-level 3 works). Build the NuttX workspace
             # Entry with `--release` until that profile issue is root-caused.
-            if [ "$platform" = "nuttx" ]; then
+            # phase-285 W5 — nuttx-riscv rides the same release-profile dodge.
+            if [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
                 profile_args=(--release)
                 row_profile_dir="release"
             fi

@@ -104,28 +104,54 @@ tiers) + phase-130/#130 (nuttx entry eth0).
   Note: `start_nuttx_riscv` still has no test consumer — W6 adds the first.
 
 ### W3 — eth0 on the riscv entry path (#130 shape)
-- [ ] W3.a Add `configure_entry_eth0` / `entry_net_init` to the riscv board
-  (reusing `node.rs::apply_ip_config`), and decide via W2's pcap whether the
-  entry needs the `SIOCSIFADDR` push or the defconfig bring-up genuinely suffices
-  on rv-virt. Confirm empirically, not by comment.
+- [x] W3.a **DONE (2026-07-15).** `configure_entry_eth0` / `entry_net_init` added to
+  the riscv board's `entry_212n.rs`, delegating to the sole
+  `node.rs::init_hardware` (`SIOCSIFADDR` push + `/dev/urandom` re-seed). Slirp
+  defaults `10.0.2.15/24` via `10.0.2.2` — matching the rv-virt defconfig
+  `NETINIT` (note: arm uses `.30`). **Empirical verdict: the defconfig `NETINIT`
+  bring-up suffices for the default case** (pcap shows eth0 UP+RUNNING with the
+  baked IP before the entry runs); the push exists so `DeployOverlay`
+  ip/netmask/gateway overrides take effect on the entry path (sibling guests).
 
 ### W4 — `run_tiers` seam on `QemuRvVirt`
-- [ ] W4.a Add `#[cfg(target_os = "nuttx")] impl QemuRvVirt { pub fn run_tiers(...) }`
-  mirroring the arm seam — the eth0 push (W3) then
-  `nros_board_nuttx::run_tiers::<Self, _, _>(deploy.boot_config, tiers, setup)`.
+- [x] W4.a **DONE (2026-07-15).** `#[cfg(target_os = "nuttx")] impl QemuRvVirt {
+  pub fn run_tiers(...) }` mirroring the arm seam — `entry_net_init(Some(deploy))`
+  then `nros_board_nuttx::run_tiers::<Self, _, _>(deploy.boot_config, tiers, setup)`.
+  `nros-orchestration-ir::board_path_for` + `nros-macros` gained the
+  `nuttx-riscv` board key.
 
 ### W5 — a multi-tier riscv-nuttx example
-- [ ] W5.a There is only a lone C `talker`; `run_tiers` needs a 2-tier plan. Add a
-  `ws-realtime` riscv-nuttx twin (rust and/or C) — `demo_bringup/system.toml` with
-  `[tiers.high]`/`[tiers.low]` + `[tiers.*.nuttx]` priorities, mirroring the arm
-  `ws-realtime-{rust,c}` — so the macro emits `<QemuRvVirt>::run_tiers`.
+- [x] W5.a **DONE (2026-07-15) — Rust twin.** `ws-realtime-rust` gained
+  `src/riscv_nuttx_entry` (`deploy = "nuttx-riscv"`, locator
+  `tcp/10.0.2.2:17867`) sharing the existing `demo_bringup` 2-tier plan (the
+  `[tiers.*.nuttx]` table keys on the RTOS, so arm and riscv share it). Cross
+  lane: local `riscv32imac-unknown-nuttx-elf.json` spec + `-Z build-std` +
+  `--wrap=poll`, fixture `workspace-rust-nuttx-riscv-realtime` built by
+  `just nuttx build-riscv-rust` (self-provisions the rv-virt kernel; deliberately
+  NOT dependent on `build-riscv-c`, whose C half is red pre-existing — see the
+  as-landed notes). No `-lxx` on rv-virt (staging has no libxx); `-lboard` from
+  `arch/risc-v/src/board`.
 
 ### W6 — e2e + matrix decision
-- [ ] W6.a `realtime_tiers_{rust,c,cpp}_riscv_nuttx_e2e` using the W2 harness +
-  the deterministic per-tier max-value proof (#158 shape).
-- [ ] W6.b Decide: promote riscv-nuttx to `exec_model_matrix.rs` `PLATFORMS`
-  (then all three langs' riscv e2e are mandatory), OR keep it an explicitly
-  off-matrix board documented in the matrix file. Close #165.
+- [x] W6.a **DONE (2026-07-15) — Rust lane GREEN.**
+  `realtime_tiers_riscv_nuttx_e2e` (W2 harness `start_nuttx_riscv` + the #158
+  per-tier monotonic-counter proof, `ctrl_max ≥ 3× telem_max`) passes in ~12 s.
+  C/C++ riscv e2e siblings deferred with the C lane (pre-existing
+  `build-riscv-c` ffi-link red). Two riscv-only runtime fixes were needed:
+  - **`CONFIG_SYSTEM_TIME64=y`** added to the rv-virt defconfig (arm already had
+    it): the patched Rust libc fork hardcodes `time_t = i64`, so the 32-bit
+    kernel default made every `clock_gettime` read garbage → std panicked
+    `invalid timestamp` inside zenoh session bring-up (the abort landed before
+    the connect-retry loop, presenting as `Transport(ConnectionFailed)`).
+    Same ABI-mismatch class as #167's `--wrap=poll`.
+  - **`CONFIG_NETUTILS_TELNETD` dropped** from the rv-virt defconfig: the
+    empty-builtins stub (#18) makes `nsh_telnetstart`'s builtin lookup return
+    NULL → `strlcat(NULL)` → Load access fault at boot (arm's defconfig never
+    had telnetd).
+- [x] W6.b **Decision: riscv-nuttx stays an OFF-MATRIX board** documented in
+  `exec_model_matrix.rs` (the nuttx matrix cells are arm by design; riscv-nuttx
+  is proven by its own e2e, not a matrix cell). Promotion would make all three
+  langs' riscv e2e mandatory while the C lane is red pre-existing. #165 closed.
 
 ## Non-goals
 - Real hardware (rv-virt QEMU is the baseline).

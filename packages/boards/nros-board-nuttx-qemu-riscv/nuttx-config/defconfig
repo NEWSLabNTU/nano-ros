@@ -84,7 +84,6 @@ CONFIG_NETINIT_IPADDR=0x0a00020f
 CONFIG_NETINIT_NOMAC=y
 CONFIG_NETUTILS_CODECS=y
 CONFIG_NETUTILS_IPERF=y
-CONFIG_NETUTILS_TELNETD=y
 CONFIG_NETUTILS_TFTPC=y
 CONFIG_NETUTILS_WEBCLIENT=y
 CONFIG_NET_BROADCAST=y
@@ -143,3 +142,7 @@ CONFIG_TLS_NELEM=64
 CONFIG_DEV_URANDOM=y
 CONFIG_CRYPTO=y
 CONFIG_CRYPTO_RANDOM_POOL=y
+# phase-285 W6 — 64-bit time_t, matching the arm defconfig and the patched
+# Rust libc fork (time_t = i64); the 32-bit default makes std's clock_gettime
+# read garbage (panic "invalid timestamp") on the rust entry.
+CONFIG_SYSTEM_TIME64=y

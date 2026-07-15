@@ -306,6 +306,7 @@ static NUTTX_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::ne
 /// phase-281 W3-nuttx — cached path to the 2-tier **Rust** realtime NuttX entry
 /// (`ws-realtime-rust` nuttx_entry), run by `realtime_tiers_rust_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached paths to the C++ embedded workspace entries (threadx-linux host
 /// sim + FreeRTOS QEMU), the C++ siblings of the C2a/C2b C entries.
@@ -1726,6 +1727,27 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// (`target-fixtures/nuttx/armv7a-nuttx-eabihf/release/nuttx_entry`) at the
 /// `release` profile — the 177.8.c CGU-miscompile dodge the NuttX cargo lane forces.
 /// Built by `just nuttx build-examples` (→ `workspace-fixtures-build.sh nuttx rust`).
+/// phase-285 W6 (issue #165) — the rv-virt (riscv32) sibling of the arm entry
+/// above: `ws-realtime-rust/src/riscv_nuttx_entry`, built by the
+/// `workspace-rust-nuttx-riscv-realtime` fixture row (`just nuttx
+/// build-riscv-rust`).
+pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
+    NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            let fixture_id = "workspace-rust-nuttx-riscv-realtime";
+            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let target_dir = example_dir.join("target-fixtures/nuttx-riscv");
+            let binary_path =
+                target_dir.join("riscv32imac-unknown-nuttx-elf/release/riscv_nuttx_entry");
+            require_prebuilt_workspace_binary(
+                fixture_id,
+                &binary_path,
+                &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
     NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {

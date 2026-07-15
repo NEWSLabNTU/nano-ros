@@ -114,11 +114,19 @@ impl nros_platform::BoardExit for QemuRvVirt {
 /// `BoardInit` / `BoardPrint` / `BoardExit` impls above.
 #[cfg(target_os = "nuttx")]
 impl nros_platform::BoardEntry for QemuRvVirt {
+    /// Phase-285 W3 — like the arm sibling (issue #130), push the guest IP
+    /// into `eth0` before the family driver opens the executor; see
+    /// [`entry_net_init`]. rv-virt's defconfig `NETINIT` already brings the
+    /// interface up with the same slirp defaults at kernel boot, so with no
+    /// overlay this is an idempotent re-push — but it is what lets a
+    /// `DeployOverlay` (sibling guests with distinct IPs) actually take
+    /// effect on the entry path.
     fn run<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        entry_net_init(None);
         nros_board_nuttx::run_entry::<Self, F, E>(None, setup)
     }
 
@@ -133,6 +141,71 @@ impl nros_platform::BoardEntry for QemuRvVirt {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        entry_net_init(Some(deploy));
         nros_board_nuttx::run_entry::<Self, F, E>(deploy.boot_config, setup)
     }
+}
+
+/// Phase-285 W4 (RFC-0015 Model 1) — the multi-tier inherent entry the
+/// `nros::main!` generic OwnedSpin arm targets, mirroring
+/// `nros-board-nuttx-qemu-arm/src/entry_212n.rs` (phase-281 W3-nuttx): push
+/// the (overlay-merged) guest IP into `eth0`, then delegate to the NuttX
+/// family driver's [`nros_board_nuttx::run_tiers`], which opens the ONE
+/// session and runs one executor per tier over it (a `std::thread` per tier —
+/// NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
+#[cfg(target_os = "nuttx")]
+impl QemuRvVirt {
+    pub fn run_tiers<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        tiers: &[nros_platform::TierSpec<'_>],
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Sync,
+        E: core::fmt::Debug,
+    {
+        entry_net_init(Some(deploy));
+        nros_board_nuttx::run_tiers::<Self, F, E>(deploy.boot_config, tiers, setup)
+    }
+}
+
+/// Phase-285 W3 — the Entry-path twin of the legacy role path's
+/// [`crate::node::init_hardware`]: re-seed `/dev/urandom` from the guest IP and
+/// push it into `eth0` via `SIOCSIFADDR` (+ netmask/gateway). rv-virt's
+/// defconfig `NETINIT` (`IPADDR=10.0.2.15`, `DRIPADDR=10.0.2.2`) brings the
+/// interface up at kernel boot with these same defaults, so an un-overridden
+/// entry behaves identically with or without the push — the push exists so
+/// `[package.metadata.nros.deploy.*]` `ip`/`netmask`/`gateway` overrides work
+/// on the entry path (sibling guests need distinct IPs).
+#[cfg(target_os = "nuttx")]
+fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
+    let ip = deploy.and_then(|d| d.ip).unwrap_or(SLIRP_DEFAULT_IP);
+    let gateway = deploy.and_then(|d| d.gateway).unwrap_or(SLIRP_DEFAULT_GATEWAY);
+    let prefix = deploy
+        .and_then(|d| d.netmask)
+        .map(|m| u32::from_be_bytes(m).count_ones() as u8)
+        .unwrap_or(SLIRP_DEFAULT_PREFIX);
+    configure_entry_eth0(ip, prefix, gateway);
+}
+
+/// Slirp e2e defaults — matching the rv-virt defconfig `NETINIT` values
+/// (`10.0.2.15/24` via `10.0.2.2`; note the arm sibling uses `.30`).
+pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 15];
+pub const SLIRP_DEFAULT_GATEWAY: [u8; 4] = [10, 0, 2, 2];
+pub const SLIRP_DEFAULT_PREFIX: u8 = 24;
+
+/// Phase-285 W3 — the single public eth0-config entry point for the riscv
+/// NuttX Entry paths (Rust `nros::main!` via [`entry_net_init`]; a future C
+/// `nano_ros_entry LAUNCH` path would call it from the FFI `main`).
+/// Delegates to the sole [`crate::node::init_hardware`] implementation — no
+/// second `SIOCSIFADDR` call site.
+#[cfg(target_os = "nuttx")]
+pub fn configure_entry_eth0(ip: [u8; 4], prefix: u8, gateway: [u8; 4]) {
+    let cfg = crate::config::Config {
+        ip,
+        prefix,
+        gateway,
+        ..Default::default()
+    };
+    crate::node::init_hardware(&cfg);
 }

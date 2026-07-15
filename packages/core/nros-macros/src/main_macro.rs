@@ -2434,8 +2434,8 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 }
 
 fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32-qemu, zephyr, \
-     rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, stm32f4, embassy-stm32f4"
+    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, nuttx-riscv, esp32-qemu, \
+     zephyr, rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, stm32f4, embassy-stm32f4"
 }
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M

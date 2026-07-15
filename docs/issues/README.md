@@ -44,13 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#165** — [riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1)
-  seam](0165-riscv-nuttx-run-tiers-model1-seam-absent.md): `QemuRvVirt` wires only the
-  single-tier Entry path; the arm sibling's `impl { run_tiers }` (+ `entry_net_init` eth0 push)
-  has no riscv twin. The board + one C `talker` are **link-checked** in nightly CI
-  (`build-riscv-c`), but there is **no rv-virt NuttX boot harness** (`start_nuttx_virt` is
-  arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
-  (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
+- **#199** — [`just nuttx build-riscv-c` red: ffi image link fails with undefined
+  `std_msgs_msg_string_{init,serialize,get_type_support}`](0199-build-riscv-c-ffi-image-link-missing-generated-c-bindings.md):
+  the generated `std_msgs` C-binding TUs never reach the `nros-nuttx-riscv-ffi` image link.
+  Baseline-verified pre-existing (identical at HEAD with phase-285 W3–W6 stashed); the arm
+  `build-c` sibling is green, so the break is riscv-lane wiring. Blocks riscv C/C++ e2e + any
+  matrix promotion (see 0165's resolution).
 
 Recently resolved (see [`archived/`](archived/) for the full list): **#178** — the RTIC
 lanes deliver (phase-289): six stacked layers — open-in-`#[init]` [pre-fixed], no `wfi` yield, no
@@ -59,7 +58,17 @@ tick + `on_interrupts_live` → `enable_wfi_idle`), `register_dispatch`-only wir
 `Node::register` (no entities → nothing published; now the owned-spin `register()` seam inside
 `__nros_run`), no `nros_log::init` (#191 class), and service/action pairs baked onto four
 DIFFERENT router ports none matching the harness table + the service test grepping the retired
-4-call banner (#157 class). All four rtic lanes green — first proven green post-`Executor<'s>`. **#198** — wontfix
+4-call banner (#157 class). All four rtic lanes green — first proven green post-`Executor<'s>`.
+**#165** — phase-285
+W3–W6 landed the full riscv-nuttx Model-1 runtime: `QemuRvVirt::run_tiers` +
+`entry_net_init` eth0 push, the `nuttx-riscv` board key, a `ws-realtime-rust`
+riscv entry sharing the arm 2-tier plan, and `realtime_tiers_riscv_nuttx_e2e`
+GREEN (~12 s, #158 counter proof). Two defconfig fixes en route:
+`CONFIG_SYSTEM_TIME64=y` (Rust libc fork `time_t = i64` vs 32-bit kernel default →
+std `invalid timestamp` panic in session bring-up) and dropping
+`CONFIG_NETUTILS_TELNETD` (empty-builtins stub → `strlcat(NULL)` boot fault).
+riscv-nuttx stays an off-matrix board (documented in `exec_model_matrix.rs`) while
+#199 keeps the C lane red. **#198** — wontfix
 (option B): documented source consumption IS the ESP-IDF contract (clone + bootstrap +
 path dependency, micro-ROS precedent); registry publish rejected on verified facts — the shell
 pack is runtime-less, a whole-tree pack can't be turnkey (Rust toolchain + nros CLI required,

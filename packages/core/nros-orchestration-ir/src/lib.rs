@@ -64,6 +64,9 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
             "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
         }
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
+        // Phase-285 W4 — the rv-virt (riscv32) NuttX sibling. Same OwnedSpin
+        // framework routing as arm-nuttx (the board exports its own nsh_main).
+        "nuttx-riscv" | "qemu-riscv-nuttx" => "::nros_board_nuttx_qemu_riscv::QemuRvVirt",
         // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. Routed
         // through `Framework::Esp32` emit shape in the proc-macro.
         "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
@@ -669,6 +672,8 @@ mod tests {
             "qemu-riscv64-threadx",
             "nuttx",
             "qemu-arm-nuttx",
+            "nuttx-riscv",
+            "qemu-riscv-nuttx",
             "esp32-qemu",
             "qemu-esp32-baremetal",
             "zephyr",

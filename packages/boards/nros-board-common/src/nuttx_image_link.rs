@@ -97,6 +97,9 @@ pub fn run_image_link(builtins_stub: &Path) {
         .collect();
     let ld_script_rel = env::var("NUTTX_LD_SCRIPT")
         .unwrap_or_else(|_| "boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld".to_string());
+    // Phase-285 W4 — an EMPTY `NUTTX_VECTORTAB` means "this arch has no
+    // vector-table head object" (riscv rv-virt: the reset path lives in the
+    // kernel libs; only arm needs `arm_vectortab.o` at the archive head).
     let vectortab_rel =
         env::var("NUTTX_VECTORTAB").unwrap_or_else(|_| "arch/arm/src/arm_vectortab.o".to_string());
     let board_lib_rel =
@@ -104,13 +107,30 @@ pub fn run_image_link(builtins_stub: &Path) {
 
     let staging = nuttx_dir.join("staging");
     let linker_script = nuttx_dir.join(&ld_script_rel);
-    let vectortab = nuttx_dir.join(&vectortab_rel);
+    let vectortab = (!vectortab_rel.is_empty()).then(|| nuttx_dir.join(&vectortab_rel));
+    // Phase-285 W5 — a CONFIGURED vectortab that does not exist means this
+    // build is not the image-link lane for this arch (e.g. the riscv C lane
+    // compiles the riscv board crate with the helper's arm DEFAULT path
+    // against an rv-virt tree, and the C kernel link never consumes the boot
+    // archive). Skip the image link gracefully instead of failing `ar` on a
+    // missing member; the rust Entry lane sets the arch-correct env.
+    if let Some(vt) = &vectortab {
+        if !vt.exists() {
+            println!(
+                "cargo:warning=nuttx_image_link: vectortab {} absent — skipping image-link staging",
+                vt.display()
+            );
+            return;
+        }
+    }
     let board_lib_dir = nuttx_dir.join(&board_lib_rel);
     println!(
         "cargo:rerun-if-changed={}",
         staging.join("libc.a").display()
     );
-    println!("cargo:rerun-if-changed={}", vectortab.display());
+    if let Some(vt) = &vectortab {
+        println!("cargo:rerun-if-changed={}", vt.display());
+    }
     println!("cargo:rerun-if-changed={}", linker_script.display());
     println!("cargo:rerun-if-changed={}", builtins_stub.display());
     if !staging.join("libc.a").exists() {
@@ -163,10 +183,12 @@ pub fn run_image_link(builtins_stub: &Path) {
     // (3) Boot archive: vectortab (reset path head object) + builtins stub.
     let boot_lib = out_dir.join("libnros_nuttx_boot.a");
     let _ = std::fs::remove_file(&boot_lib);
-    let ar_status = Command::new(&nuttx_ar)
-        .arg("crs")
-        .arg(&boot_lib)
-        .arg(&vectortab)
+    let mut ar_cmd = Command::new(&nuttx_ar);
+    ar_cmd.arg("crs").arg(&boot_lib);
+    if let Some(vt) = &vectortab {
+        ar_cmd.arg(vt);
+    }
+    let ar_status = ar_cmd
         .arg(&stub_obj)
         .status()
         .unwrap_or_else(|e| panic!("failed to archive libnros_nuttx_boot.a ({nuttx_ar}): {e}"));

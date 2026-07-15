@@ -18,6 +18,11 @@ members = [
     # `target_os = "nuttx"`-gated); the fixture lane builds it `-p nuttx_entry
     # --target …`, never wholesale on host (same as `workspaces/rust`).
     "src/nuttx_entry",
+    # phase-285 W5 — the rv-virt (riscv32) sibling. Built ONLY with
+    # `--target riscv32imac-unknown-nuttx-elf.json` (its `QemuRvVirt::run_tiers`
+    # call is `target_os = "nuttx"`-gated); the fixture lane builds it
+    # `-p riscv_nuttx_entry --target …`, never wholesale on host.
+    "src/riscv_nuttx_entry",
 ]
 # `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W2) — excluded
 # so plain `cargo build` in the workspace never tries to link the RTOS app.

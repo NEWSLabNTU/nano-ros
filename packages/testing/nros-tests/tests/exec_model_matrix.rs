@@ -23,6 +23,13 @@ use std::path::PathBuf;
 /// The languages Model 1 must reach.
 const LANGS: &[&str] = &["rust", "c", "cpp"];
 /// The platforms with a multi-tier (`run_tiers`) path in scope.
+///
+/// The `nuttx` cells are **arm-virt by design**. riscv-nuttx (rv-virt,
+/// phase-285 / #165) is deliberately an OFF-MATRIX board: its Rust `run_tiers`
+/// path is proven by its own e2e (`realtime_tiers_riscv_nuttx_e2e`), but it is
+/// not a matrix axis — promoting it would make all three langs' riscv e2e
+/// mandatory while the riscv C lane (`just nuttx build-riscv-c`) has a
+/// pre-existing ffi-link red. Revisit if the C/C++ riscv lanes go green.
 const PLATFORMS: &[&str] = &["native", "freertos", "zephyr", "nuttx"];
 
 /// Cells proven by a named e2e. The `&str` is the test file (without `.rs`) in

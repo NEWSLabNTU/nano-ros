@@ -1,0 +1,67 @@
+# Entry pkg — boots the RT-tiers `demo_bringup` system on NuttX QEMU rv-virt
+# (riscv32 rv32imac + virtio-net).
+#
+# phase-285 W5 (RFC-0015 Model 1, issue #165) — the riscv-nuttx projection of
+# `ws-realtime-rust`: the SAME one-line `nros::main!(launch = ...)` entry as the
+# native / zephyr / arm-nuttx siblings, deployed as a NuttX flat-build kernel
+# image on the rv-virt board. `deploy = "nuttx-riscv"` routes the macro onto
+# `nros_board_nuttx_qemu_riscv::QemuRvVirt` (OwnedSpin); `system.toml`'s
+# `[tiers.*.nuttx]` priorities flip the generic multi-tier arm onto
+# `<QemuRvVirt>::run_tiers` — one `std::thread` per tier over ONE shared zenoh
+# session, exactly the arm seam mirrored (phase-281 W3-nuttx).
+#
+# Built via the cargo cross lane (`workspace-fixtures-build.sh nuttx-riscv
+# rust`): nightly + `-Z build-std=std,panic_abort` against the LOCAL
+# `riscv32imac-unknown-nuttx-elf.json` spec (workspace root; two deltas vs the
+# builtin triple — no eh-frame-header for xpack ld, panic=abort). The rv32imac
+# link flags + `#127` static image-link args come from the workspace
+# `.cargo/config.toml` `[target.riscv32imac-unknown-nuttx-elf]` block; the
+# dynamic pieces (processed rv-virt `ld.script`, the builtins-stub boot
+# archive — riscv has NO vectortab head object, `NUTTX_VECTORTAB=` empty —
+# and the `-L` search dirs) PROPAGATE from the board dep's build.rs. ZERO
+# entry build.rs.
+
+[package]
+name = "riscv_nuttx_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the RT-tiers system on NuttX QEMU rv-virt (riscv32)."
+
+[[bin]]
+name = "riscv_nuttx_entry"
+path = "src/main.rs"
+test = false
+bench = false
+
+# Entry pkg metadata — `deploy = "nuttx-riscv"` routes the `nros::main!()`
+# proc-macro onto the rv-virt board (`nros_board_nuttx_qemu_riscv::QemuRvVirt`,
+# OwnedSpin) and feeds `nros check`.
+[package.metadata.nros.entry]
+deploy = "nuttx-riscv"
+
+[package.metadata.nros.deploy.nuttx-riscv]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:17867"
+
+[dependencies]
+# Agnostic `nros`. NuttX ships `std`, so the ENTRY pins `std`; the board brings
+# the zenoh backend + `platform-nuttx`.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# NuttX QEMU rv-virt board crate — supplies `QemuRvVirt` (real-runtime
+# `BoardEntry` + `run_tiers`, gated `target_os = "nuttx"`) + the NuttX platform
+# shim. `rmw-zenoh` → the board links `nros-rmw-zenoh` and its
+# `run_{entry,tiers}` register it.
+nros-board-nuttx-qemu-riscv = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-riscv", features = ["rmw-zenoh"] }
+# Concrete platform impl — also pulled by the board; kept explicit for the link map.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
+
+# The launch-named Node pkgs (platform/RMW-agnostic) — `system.launch.xml` names
+# ctrl + telem, so the macro emits both `register` calls; the bin links both.
+ctrl_pkg = { path = "../ctrl_pkg", default-features = false }
+telem_pkg = { path = "../telem_pkg", default-features = false }

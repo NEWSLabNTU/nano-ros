@@ -450,6 +450,15 @@ retries = 2
 # NuttX arm-virt guest that dials the SAME slirp port 7452 as this group —
 # they must serialize with it, and the default 60 s kill is shorter than a
 # NuttX QEMU cold boot + zenoh discovery.
+# phase-285 W6 — the rv-virt RUST tiers e2e boots a riscv32 NuttX guest under
+# -icount; cold boot + zenoh discovery + the 5-sample slow-tier anchor exceed
+# the default 60 s kill. Own slirp port (17867), so no group serialization
+# needed against the arm-nuttx groups.
+[[profile.default.overrides]]
+filter = "binary(realtime_tiers_riscv_nuttx_e2e)"
+slow-timeout = { period = "150s", terminate-after = 2 }
+retries = 1
+
 [[profile.default.overrides]]
 filter = "binary(nuttx_qemu) or binary(rust_nuttx_entry_e2e) or binary(c_nuttx_entry_e2e) or (binary(rtos_e2e) and test(Platform__Nuttx))"
 test-group = "qemu-nuttx"

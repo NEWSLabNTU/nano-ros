@@ -1,7 +1,7 @@
 ---
 id: 165
 title: "riscv-nuttx board has no `run_tiers` (RFC-0015 Model-1) seam — unwired and unprovable (no qemu-riscv-nuttx runtime)"
-status: open
+status: resolved
 type: enhancement
 area: nuttx
 related: [rfc-0015, phase-281, phase-285]
@@ -107,3 +107,32 @@ compiled:
 5. Add `realtime_tiers_{rust,c,cpp}_riscv_nuttx_e2e` and, if riscv-nuttx is to
    be a first-class matrix axis, extend `exec_model_matrix.rs` `PLATFORMS`
    accordingly (else keep it an explicitly-documented off-matrix board).
+
+
+## Resolution (2026-07-15, phase-285 W3–W6)
+
+All five fix-direction items landed; the seam is **runtime-proven**, not just
+compiled:
+
+1. Harness: `QemuProcess::start_nuttx_riscv` (phase-285 W2, earlier).
+2. Example: `ws-realtime-rust/src/riscv_nuttx_entry` (`deploy = "nuttx-riscv"`,
+   fixture `workspace-rust-nuttx-riscv-realtime`, `just nuttx build-riscv-rust`)
+   sharing the arm example's `demo_bringup` 2-tier plan (the `[tiers.*.nuttx]`
+   table keys on the RTOS).
+3. Seam: `#[cfg(target_os = "nuttx")] impl QemuRvVirt { pub fn run_tiers(...) }`
+   in `entry_212n.rs`, + the `nuttx-riscv` board key in
+   `nros-orchestration-ir::board_path_for` / `nros-macros`.
+4. eth0: `entry_net_init` / `configure_entry_eth0` twin added (delegating to
+   `node.rs::init_hardware`). Empirical verdict: defconfig `NETINIT` suffices
+   for the default; the push is what makes `DeployOverlay` overrides real.
+5. e2e: `realtime_tiers_riscv_nuttx_e2e` GREEN (~12 s; #158 monotonic-counter
+   proof). Matrix decision: riscv-nuttx stays an **off-matrix board**, documented
+   in `exec_model_matrix.rs` (nuttx matrix cells are arm by design; the riscv
+   C lane is red pre-existing → #199). C/C++ riscv e2e deferred with that lane.
+
+Two riscv-only runtime fixes were required en route (both defconfig):
+`CONFIG_SYSTEM_TIME64=y` (Rust libc fork hardcodes `time_t = i64`; the 32-bit
+kernel default garbled every `clock_gettime` → std `invalid timestamp` panic
+inside session bring-up — #167's ABI-mismatch class) and dropping
+`CONFIG_NETUTILS_TELNETD` (empty-builtins stub #18 makes `nsh_telnetstart`
+`strlcat(NULL)` → boot Load access fault).

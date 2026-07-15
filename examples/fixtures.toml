@@ -408,6 +408,33 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std
 # the per-row `NROS_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
 # nightly + build-std + NUTTX_DIR recipe env. Consumed by
 # tests/realtime_tiers_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
+# phase-285 W5 (RFC-0015 Model 1, issue #165) — the rv-virt (riscv32) sibling of the
+# arm row above: `ws-realtime-rust/src/riscv_nuttx_entry`, deploy = "nuttx-riscv" →
+# `<QemuRvVirt>::run_tiers`. Built at `--release` (same 177.8.c-class opt-level dodge
+# as arm until proven otherwise) against the LOCAL riscv32imac-unknown-nuttx-elf.json
+# spec (ws root; resolved relative to the ws dir, needs -Z json-target-spec via env).
+# The NUTTX_* family points the shared board build.rs helpers (platform compile +
+# #127 image link) at the rv-virt export: riscv cross, rv32imac flags, the rv-virt
+# ld.script, EMPTY vectortab (riscv has no head object), the risc-v board-lib dir.
+# Locator port 17867 (arm uses 17866). `skip_probe` — same nightly+build-std env
+# reasoning as the arm row. Consumed by tests/realtime_tiers_riscv_nuttx_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-riscv-realtime"
+platform = "nuttx-riscv"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-rust"
+bringup = "src/demo_bringup"
+entry = "riscv_nuttx_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/nuttx-riscv"
+target = "riscv32imac-unknown-nuttx-elf.json"
+skip_probe = true
+# NOTE: the multi-word NUTTX_* env (PLATFORM_CFLAGS, ARCH_INCLUDES, …) is
+# exported by the `just nuttx build-riscv-rust` recipe — the lane's env
+# serialization is space-joined and cannot carry values with spaces.
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:17867", NROS_DOMAIN_ID = "0" }
+
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-realtime"
 platform = "nuttx"

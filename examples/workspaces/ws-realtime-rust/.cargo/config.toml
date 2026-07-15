@@ -28,7 +28,6 @@ rustflags = [
     "-C", "link-arg=-lc",
     "-C", "link-arg=-lmm",
     "-C", "link-arg=-larch",
-    "-C", "link-arg=-lxx",
     "-C", "link-arg=-lapps",
     "-C", "link-arg=-lnet",
     "-C", "link-arg=-lcrypto",
@@ -43,6 +42,54 @@ rustflags = [
 [env]
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
+CC_riscv32imac_unknown_nuttx_elf = "riscv-none-elf-gcc"
+CFLAGS_riscv32imac_unknown_nuttx_elf = "-march=rv32imac -mabi=ilp32"
+
+# phase-285 W5 — NuttX QEMU rv-virt (riscv32) Entry link flags. Only applies
+# when `--target riscv32imac-unknown-nuttx-elf.json` (the LOCAL spec at the
+# workspace root — two deltas vs the builtin triple: no eh-frame-header for
+# xpack ld, panic=abort) is selected by the `riscv_nuttx_entry` fixture row, so
+# it is inert for every other member. `-Z build-std` + the json-target-spec
+# unstable flag arrive per-row via env in fixtures.toml so this shared config
+# stays buildable on stable for the other members.
+#
+# #127 — STATIC image-link args only (SSoT shape: the arm block above /
+# nros-board-nuttx-qemu-riscv). The dynamic pieces (processed rv-virt
+# `ld.script` in the board OUT_DIR, the builtins-stub boot archive — riscv has
+# no vectortab head object — and the `-L` search dirs) PROPAGATE from the
+# board build.rs (`nros_board_common::nuttx_image_link`). ZERO entry build.rs.
+# `--wrap=poll` — #167: bridge Rust std's 8-byte POSIX `pollfd` to NuttX's
+# 24-byte kernel struct (the `__wrap_poll` shim lives in the patched libc fork
+# below).
+[target.riscv32imac-unknown-nuttx-elf]
+linker = "riscv-none-elf-gcc"
+rustflags = [
+    "-C", "link-arg=-march=rv32imac",
+    "-C", "link-arg=-mabi=ilp32",
+    "-C", "link-arg=-Tld.script",
+    "-C", "link-arg=--entry=__start",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-nodefaultlibs",
+    "-C", "link-arg=-Wl,--wrap=poll",
+    "-C", "link-arg=-Wl,--start-group",
+    "-C", "link-arg=-lsched",
+    "-C", "link-arg=-ldrivers",
+    "-C", "link-arg=-lboards",
+    "-C", "link-arg=-lc",
+    "-C", "link-arg=-lmm",
+    "-C", "link-arg=-larch",
+    "-C", "link-arg=-lapps",
+    "-C", "link-arg=-lnet",
+    "-C", "link-arg=-lcrypto",
+    "-C", "link-arg=-lfs",
+    "-C", "link-arg=-lbinfmt",
+    "-C", "link-arg=-laudio",
+    "-C", "link-arg=-lopenamp",
+    "-C", "link-arg=-lboard",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--end-group",
+]
+
 
 # phase-281 W3-nuttx — patched NuttX `libc` for `-Z build-std` (the pinned
 # nightly's `std` references `libc::_SC_HOST_NAME_MAX`, absent from crates.io

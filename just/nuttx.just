@@ -241,9 +241,44 @@ build-riscv-c:
     unset NROS_CMAKE_EXTRA_DEFS
     echo "NuttX riscv C examples built!"
 
+# phase-285 W5 — build the rv-virt RUST workspace Entry (ws-realtime-rust/
+# src/riscv_nuttx_entry). Provisions the rv-virt kernel export itself (same
+# reconfigure preamble as build-riscv-c) — deliberately NOT a dependency on
+# build-riscv-c: the rust Entry needs only the kernel/staging export, and the
+# C-talker half of that recipe is red independently (undefined generated
+# std_msgs bindings at the ffi image link — pre-existing, tracked separately).
+[group("full-matrix")]
+build-riscv-rust:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
+        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+    fi
+    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
+        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    fi
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    # Provision the rv-virt export (reconfigures the shared tree if it was arm).
+    NUTTX_DEFCONFIG="$rv_defconfig" \
+        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
+        bash scripts/nuttx/build-nuttx.sh
+    export NUTTX_DIR="$nuttx_dir"
+    # riscv values for the shared board build.rs helpers (platform compile +
+    # #127 image link). Recipe-level because the fixture-row env serialization
+    # cannot carry space-containing values.
+    export NUTTX_CROSS="riscv-none-elf-gcc"
+    export NUTTX_PLATFORM_CFLAGS="-march=rv32imac -mabi=ilp32"
+    export NUTTX_ARCH_INCLUDES="arch/risc-v/src/chip arch/risc-v/src/common"
+    export NUTTX_LD_SCRIPT="boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
+    export NUTTX_VECTORTAB=""
+    export NUTTX_BOARD_LIB_DIR="arch/risc-v/src/board"
+    NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx-riscv rust
+
 # Build every NuttX tier. `build-all-full` removed.
 [group("full-matrix")]
-build-all: build build-examples build-fixtures build-riscv-c
+build-all: build build-examples build-fixtures build-riscv-c build-riscv-rust
     @echo "NuttX build-all completed."
 
 # Run NuttX QEMU integration tests
