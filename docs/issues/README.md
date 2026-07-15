@@ -585,7 +585,7 @@ the now-redundant two-pass baremetal build loop. Also: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
 the `[patch.crates-io]` rewriter was a line scanner, not a TOML parser (duplicate table on
 the quoted `[patch."crates-io"]` form; dropped patches for explicit `[dependencies.<name>]`).
-Resolved at [phase-265](../roadmap/phase-265-ws-sync-config-patch-toml-edit.md) W4 — `nros sync`
+Resolved at [phase-265](../roadmap/archived/phase-265-ws-sync-config-patch-toml-edit.md) W4 — `nros sync`
 writes `[patch.crates-io]` to `.cargo/config.toml` via a `toml_edit` DOM, never editing a
 consumer `Cargo.toml`, so the entire A–F class is structurally impossible. Also: **#72** —
 safety-e2e CRC dead over zenoh (`nros/safety-e2e` didn't reach the backend's
