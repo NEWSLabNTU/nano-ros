@@ -1,10 +1,12 @@
 # Phase 256 — Config taxonomy tidy: retire the legacy config files, ground the option classes
 
-Status: **Design (2026-06-17, re-scoped 2026-06-17)** · Implements
-[RFC-0004 §3.1 + §9 tidy](../design/0004-configuration-and-transports.md) SSoT-per-concern ·
+Status: **COMPLETE — archived** (2026-07-16; waves landed 2026-06-17→18: W0/W1/W3/W3a/W4/W6/W7/W8/W9
+DONE, W2 disabled-by-decision, W5 dropped-by-decision; acceptance holds — the `nros.toml`
+overlay reader is retired, comment-only references remain) · Implements
+[RFC-0004 §3.1 + §9 tidy](../../design/0004-configuration-and-transports.md) SSoT-per-concern ·
 Follows [phase-254](phase-254-config-ssot-unify-codegen-paths.md) (capabilities)
 + [phase-255](phase-255-rmw-config-unify.md) (RMW) · Closes the bulk of
-[issue 0076 §A](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md).
+[issue 0076 §A](../../issues/archived/0076-followups-config-ssot-and-safety-e2e-arc.md).
 
 > **RE-SCOPED 2026-06-17 (grounded sweep).** Originally "retire the remaining `nros.toml`
 > overlay blocks." A sweep of `examples/**` found **0 `nros.toml` and 0 nano-ros `config.toml`

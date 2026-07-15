@@ -37,7 +37,7 @@ contradicts RFC-0004 (`nros.toml` is the embedded-runtime file only). It is bein
 not merely supplemented. phase-254 did the capability axes; the rest of §A finishes it.
 
 **§A is COMPLETE (2026-06-18) via
-[phase-256](../roadmap/phase-256-config-ssot-retire-overlay-blocks.md)** (the §3.1 endgame, same
+[phase-256](../../roadmap/archived/phase-256-config-ssot-retire-overlay-blocks.md)** (the §3.1 endgame, same
 pattern as phase-254/255) — all waves W0-W9 DONE. The block map (reader fn + typed-field status per
 concern) lives there. Two sub-concerns spun out: `[param_persistence]` disabled pending embedded
 backends (issue 0080), `[[shared_state]]` removed as out-of-scope (issue 0079). Remaining 0076
