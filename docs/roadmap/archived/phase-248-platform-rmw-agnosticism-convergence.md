@@ -498,6 +498,14 @@ residual reframed to the entry-macro principle.
 - [ ] `just ci` green (not run end-to-end this convergence; validated by scoped
       builds/tests + the embedded runtime smoke — see Status).
 
+> **Archived 2026-07-16.** This doc was left in the active roadmap after the
+> 2026-06-15 completion. Every residual it tracked has since closed: zephyr
+> smoke unblocked (#58/#59 archived; west/SDK builds green — e.g. the
+> phase-287-era FVP cyclone lane links), esp32 live-pubsub fixed (#190,
+> archived), the registration-trigger unification landed (phase-249,
+> archived), and the `just ci` box is superseded by the phase-287 W7
+> full-matrix sweeps. No open work remains.
+
 **PHASE COMPLETE (2026-06-15) — issue #60 closed + archived.** All clusters
 landed (C1 boards / C2 nros-node / C3.1+C3.2-via-D3 / C4 docs / C5a-c / C6+tail /
 C7); `nros`/`nros-c`/`nros-cpp` are RMW+platform-agnostic at the feature/dep/cfg
