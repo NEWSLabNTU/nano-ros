@@ -40,11 +40,14 @@ naming (see "Trait surface after 212.N.12 + 214.K.1" below).
 `test_qemu_rtic_*_e2e` lanes) is still red at runtime: issue #178 found a
 three-layer RTIC ↔ blocking-connect mismatch (open-in-`#[init]` [fixed] →
 missing `wfi` idle-yield → no armed periodic IRQ through RTIC's vector
-table). The remaining fix (PAC-timer `binds` tick task + `RticBoardEntry`
-idle-yield hook) is designed and scheduled as
-[phase-289](phase-289-rtic-runtime-delivery.md) — that doc is the
-design-of-record for the tick/idle mechanism; this phase remains the
-design-of-record for the framework integration itself.
+table). The fix landed as
+[phase-289](archived/phase-289-rtic-runtime-delivery.md) (COMPLETE
+2026-07-15): tick + wfi-yield per design, PLUS the B.3 "per-Node register
+wiring" follow-up this doc had deferred — `__nros_run` now runs each
+node_pkg's full `register()` through the owned-spin
+`ExecutorNodeRuntime` seam. All four `test_qemu_rtic_*_e2e` lanes are
+green (Track-B e2e gate closed); this phase remains the design-of-record
+for the framework integration itself.
 
 **Status update 2026-06-06.** 216.B validation is emulator-first. The
 STM32F4 RTIC examples remain useful cross-compile portability coverage, but
