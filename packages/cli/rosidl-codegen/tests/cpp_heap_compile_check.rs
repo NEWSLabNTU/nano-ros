@@ -65,6 +65,14 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 unsafe extern "C" {
     fn nros_cpp_publish_raw(h: *mut core::ffi::c_void, p: *const u8, n: usize) -> i32;
 }
+/// Mirrors `cmake/ffi_lib_rs.in`'s `fixed_str()` (the production FFI-crate
+/// lib.rs wrapper provides this helper; the generated per-message file calls
+/// it for every non-heap string field — including the fixed-capacity string
+/// ELEMENTS of a heap `string[]` sequence).
+fn fixed_str(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    core::str::from_utf8(&buf[..end]).unwrap_or("")
+}
 include!("ffi_gen.rs");
 "#,
     )

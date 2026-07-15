@@ -5,16 +5,21 @@ specified in **RFC-0033** — a `nros-codegen.toml` resolved once per codegen
 invocation into a single `CapacityResolver` that feeds the Rust, C, and C++
 generators identically, replacing the hardcoded `*_DEFAULT_SEQUENCE_CAPACITY` (64) /
 `*_DEFAULT_STRING_CAPACITY` (256) constants. Closed the configuration half of issue
-[0007-seq-capacity-64](../issues/archived/0007-seq-capacity-64.md); the `borrowed`
+[0007-seq-capacity-64](../../issues/archived/0007-seq-capacity-64.md); the `borrowed`
 storage mode (phase 3 below) closed the issue entirely (Rust borrowed + C/C++ heap;
-C/C++ borrowed views deferred to [issue 0021](../issues/0021-cpp-c-borrowed-views.md)).
+C/C++ borrowed views landed via phase-235, closing
+[issue 0021](../../issues/archived/0021-cpp-c-borrowed-views.md)).
 
-**Status.** In progress (2026-06-10). **`owned` is complete across all three
-languages (Rust/C/C++) with discovery + CLI/CMake wiring; `heap` (primitive
-sequences) is done + verified on all three (Rust `alloc::Vec`, C rclc-style
-malloc'd struct + `_fini`, C++ `nros::HeapSequence` + repr(C) FFI).** Remaining:
-heap strings / seq-of-string-or-nested (C/C++ follow-up) and `borrowed` (229.6 —
-its own multi-crate runtime effort, closes issue 0007). Design-of-record is RFC-0033.
+**Status.** COMPLETE (verified 2026-07-16). All six work items landed: `owned` +
+`heap` (incl. strings / seq-of-string / seq-of-nested) across Rust/C/C++, `borrowed`
+for Rust in 229.6, and the C/C++ borrowed span views via
+[phase-235](phase-235-c-cpp-borrowed-views.md) — full three-language parity
+for all three storage modes. Issues 0007 + 0021 resolved + archived; RFC-0033 is
+`Stable`. Re-verified at HEAD 2026-07-16: resolver + golden tests green, and the
+three `--ignored` compile checks (Rust/C/C++ heap) pass — the C++ one needed a test
+harness repair (its temp crate lacked the `fixed_str` shim the production
+`cmake/ffi_lib_rs.in` wrapper provides; emitter itself was correct).
+Design-of-record is RFC-0033.
 
 Landed on branch `phase-229-message-field-capacity-config`:
 `a6b30ca9` (1: config core) · `8f158447` (2: nros Rust) · `4b91423f` (3a: C) ·
@@ -217,8 +222,8 @@ sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
 allocator targets via `heap` (all 3 langs, 229.5), allocator-free targets via
 `borrowed` (Rust, this section). The **borrowed views for C/C++** (an alloc-free
 optimization; C/C++ already have `heap`) landed in
-[Phase 235](archived/phase-235-c-cpp-borrowed-views.md) — closing
-[issue 0021](../issues/archived/0021-cpp-c-borrowed-views.md). Borrowed is now full
+[Phase 235](phase-235-c-cpp-borrowed-views.md) — closing
+[issue 0021](../../issues/archived/0021-cpp-c-borrowed-views.md). Borrowed is now full
 parity across Rust, C, and C++.
 
 - ✅ **Runtime seam** (`670a62a4`): `nros_serdes::DeserializeBorrowed<'a>` +
@@ -237,10 +242,10 @@ parity across Rust, C, and C++.
 - ✅ **E2E** (`aeed3d4d`): owned-publish-wire → borrowed-subscribe through the
   MockSession executor `spin_once` — `ImageView` with `&[u8]` + `LeSliceView<f32>`
   decodes correctly.
-- ⬜ **C/C++ span views** (slice 5): `{const T* data; size_t size}` over the
-  existing raw `(data,len)` callback. Deferred to [issue 0021](../issues/0021-cpp-c-borrowed-views.md)
-  (alloc-free C/C++ optimization; issue 0007 already closed via Rust borrowed +
-  C/C++ heap).
+- ✅ **C/C++ span views** (slice 5): landed in
+  [phase-235](phase-235-c-cpp-borrowed-views.md), closing
+  [issue 0021](../../issues/archived/0021-cpp-c-borrowed-views.md) — full
+  three-language borrowed parity.
 
 Original design (the runtime seam was proven before codegen leaned on it):
 
@@ -269,8 +274,8 @@ Original design (the runtime seam was proven before codegen leaned on it):
    same callback — no new ABI, just generated views + a span-like C++ wrapper.
 
 - ✅ Done for Rust: issue 0007 set `status: resolved`, `resolved_in: Phase 229`,
-  moved to `docs/issues/archived/`. C/C++ borrowed views tracked separately as
-  [issue 0021](../issues/0021-cpp-c-borrowed-views.md).
+  moved to `docs/issues/archived/`. C/C++ borrowed views landed via phase-235
+  ([issue 0021](../../issues/archived/0021-cpp-c-borrowed-views.md), archived).
 - **Out of scope (by design):** `take()`/polling returning a borrowed message, storing
   a borrowed message past the callback, and any publish-side borrow (that is the
   Phase 124 `pub_loan` loan API).
