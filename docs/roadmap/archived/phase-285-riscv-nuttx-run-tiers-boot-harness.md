@@ -1,6 +1,6 @@
 # Phase 285 — riscv-nuttx runtime: boot harness + `run_tiers` seam (resolve #165)
 
-Status: **Draft — 2026-07-09** · Resolves issue #165 · Implements RFC-0015
+Status: **COMPLETE — 2026-07-15** (W1–W6 all landed; #165 resolved, riscv C lane red tracked as #199) · Resolves issue #165 · Implements RFC-0015
 (Model-1 tiers) for the riscv-nuttx board · Sibling of phase-281 (arm-nuttx
 tiers) + phase-130/#130 (nuttx entry eth0).
 
