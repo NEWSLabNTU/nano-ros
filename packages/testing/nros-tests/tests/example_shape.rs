@@ -735,6 +735,9 @@ fn standalone_leaves_use_ament_shape() {
         "NanoRosBootstrap.cmake",
         "nano_ros_entry(",
         "nano_ros_link(",
+        // Retired post-287 — the deploy/rmw tuple lives in package.xml
+        // `<export><nano_ros …/>` (RFC-0048 §4), never a cmake call.
+        "nano_ros_deploy(",
     ];
     let mut bad: Vec<String> = Vec::new();
     let mut checked = 0usize;

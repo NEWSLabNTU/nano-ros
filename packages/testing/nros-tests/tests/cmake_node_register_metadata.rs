@@ -59,4 +59,3 @@ fn nano_ros_node_register_accepts_c_language() -> nros_tests::TestResult<()> {
     );
     Ok(())
 }
-

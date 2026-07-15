@@ -80,14 +80,15 @@ domain_id = 0
 locator   = "tcp/10.0.2.2:7447"
 ```
 
-The C / C++ trees declare the same in their `CMakeLists.txt`:
+The C / C++ trees declare the same in their `package.xml` `<export>` tuple
+(RFC-0048 §4); the connect locator rides the build config
+(`-DNROS_ENTRY_LOCATOR` / the fixture row), not the tuple:
 
-```cmake
-nano_ros_deploy(
-    TARGET     freertos
-    RMW        ${NROS_RMW}
-    DOMAIN_ID  0
-    LOCATOR    "tcp/10.0.2.2:7447")
+```xml
+<export>
+  <build_type>ament_cmake</build_type>
+  <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
+</export>
 ```
 
 Task stacks / priorities come from the board crate's defaults (Cargo

@@ -108,13 +108,14 @@ rmw       = "zenoh"
 domain_id = 0
 ```
 
-The C / C++ variants declare the same in their `CMakeLists.txt`:
+The C / C++ variants declare the same in their `package.xml` `<export>`
+tuple (RFC-0048 §4):
 
-```cmake
-nano_ros_deploy(
-    TARGET     nuttx
-    RMW        ${NROS_RMW}
-    DOMAIN_ID  0)
+```xml
+<export>
+  <build_type>ament_cmake</build_type>
+  <nano_ros deploy="nuttx" board="nuttx-qemu-arm" rmw="zenoh"/>
+</export>
 ```
 
 The guest network shape (eth0 `10.0.2.30`, Slirp gateway `10.0.2.2`)
