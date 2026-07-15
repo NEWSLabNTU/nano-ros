@@ -94,10 +94,14 @@ tiers) + phase-130/#130 (nuttx entry eth0).
   boots the same image bare without panicking.** Ruled out by build+boot (4 config
   fixes failed): stack sizes, IOB config, full arm net-config mirror. The earlier
   "garbage vtable/ABI-mismatch" leads were transient heap reuse. Details in #167.
-- [ ] W2.b.3 **Fix #167 — DEFERRED (documented known limitation, 2026-07-09).** Needs
-  a vendored NuttX virtio-net/netdev IRQ-protection change (fork-branch workflow) OR a
-  boot/connect-sequencing redesign — a maintainer decision, not a defconfig edit.
-  **This crash gates W2.b → W3–W6; riscv-nuttx stays off-matrix (#165) until fixed.**
+- [x] W2.b.3 **Fix #167 — RESOLVED (2026-07-13, `d06d25fa4`).** The W2.b.2 "virtio-net
+  IRQ re-entrancy race" verdict was a red herring: the DEFINITIVE root cause is a
+  `struct pollfd` ABI mismatch (Rust std's 8-byte layout vs NuttX's 24-byte one —
+  `poll()` writes 6 fields per entry into the caller's array → 48-byte OOB smashes the
+  entry task's saved ra). Fix = a `--wrap=poll` shim bridging the layouts (libc fork
+  branch `nuttx-0.2` @ `adb4c592e`, wired via `nros-nuttx-ffi/.cargo/config.toml`
+  link-args). Boot-verified on rv-virt. **W2 is fully done; W3–W6 are UNBLOCKED.**
+  Note: `start_nuttx_riscv` still has no test consumer — W6 adds the first.
 
 ### W3 — eth0 on the riscv entry path (#130 shape)
 - [ ] W3.a Add `configure_entry_eth0` / `entry_net_init` to the riscv board

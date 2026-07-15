@@ -77,6 +77,14 @@ So porting the arm `run_tiers` block would be a **compile-only, e2e-unprovable**
 symmetry seam — an untested runtime claim, against the project's "prove it or
 defer it" culture. Deferred until an rv-virt NuttX **boot harness** lands.
 
+> **Update (2026-07-15): the gate is CLEARED.** Phase-285 W1+W2 landed the
+> harness (`QemuProcess::start_nuttx_riscv`), the boot exposed and #167
+> root-caused + fixed the rv-virt boot panic (`struct pollfd` ABI mismatch,
+> `--wrap=poll` shim, `d06d25fa4`, boot-verified). Remaining work = phase-285
+> W3–W6 (eth0 entry-path decision, the `run_tiers` seam, a multi-tier example,
+> e2e + the matrix decision). The harness still has no test consumer — W6's
+> e2e is the first.
+
 ## Fix direction
 
 The gating prerequisite is a **runtime**, so the seam can be proven, not just
