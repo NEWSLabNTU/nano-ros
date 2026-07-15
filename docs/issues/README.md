@@ -49,9 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   component is structurally unpublishable as laid out (3-file shell, `_nros_root=../..` escapes
   the archive). Needs a layout decision (root manifest packing the tree vs wontfix) BEFORE the
   maintainer credentials + CI lane; the doc's deprecated `idf.py upload-component` is fixed.
-- **#195** — [threadx-riscv64 cyclone two-qemu pubsub: boots, 0 delivery](0195-threadx-riscv64-cyclone-two-qemu-zero-delivery.md):
-  deterministic on fresh fixtures; delivery assert (not readiness) — check pair identity/domain
-  first (0161 class), then the riscv64 rebuild pitfalls (0131/0138/sizes-header race).
 - **#183** — [declarative ws-bridge lanes deliver 0 samples](0183-declarative-bridge-lanes-zero-samples.md):
   zenoh→cyclonedds (nano listener + nested-header) and zenoh→xrce; bridged-side listener prints
   NOTHING → entry likely never comes up. Imperative bridge + demo_nodes interop pass serialized.
@@ -69,7 +66,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   arm-only) — riscv-nuttx fixtures never run, so the seam is e2e-unprovable. Not a matrix axis
   (nuttx cells are arm-only by design). Tracked, not silent; blocked on a runtime boot harness.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#190** — the esp32
+Recently resolved (see [`archived/`](archived/) for the full list): **#195** — the
+threadx-riscv64 cyclone two-qemu zero-delivery: the descriptor-registration ctors never RAN —
+the flat bare-metal image walks no `.init_array` (orphan section, no bounds), so every
+reader/writer create failed -1. Fixed with lds `.init_array` bounds + a board ctor walk, atop a
+buildability stack (recipe now passes `-DNANO_ROS_PLATFORM=threadx_riscv64` post-287-W6; the
+cyclone `NROS_PLATFORM_THREADX` gate matches `^threadx`; the toolchain resolves a
+rv64gc libstdc++ + `-lnosys`). Pubsub passes 2/2 in ~6 s. **#190** — the esp32
 "session-init memory corruption" (incl. the old 0xffffffff residual) was a STACK OVERFLOW:
 `.stack` on esp32-c3 is the linker leftover after `.bss`, so the 96 KB heap fix left 18 KB of
 stack for a ≈98 KB-deep zenoh+smoltcp path — frames wrote into `.bss`, masquerading as heap/

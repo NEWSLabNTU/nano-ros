@@ -27,6 +27,21 @@ SECTIONS
     *(.rodata .rodata.*)
   }
 
+  /* Issue #195 — static-constructor table. The Cyclone message descriptors
+   * register via `__attribute__((constructor))` TUs (register_std_msgs_*);
+   * on this flat bare-metal image nothing walks .init_array unless the board
+   * does it explicitly (board_threadx_qemu_riscv64.c), and the walk needs
+   * these bounds. Previously the section landed as an ORPHAN (present in the
+   * ELF, no symbols, never run) — descriptors stayed unregistered and
+   * `nros_executor_register_subscription` failed -1 at reader creation. */
+  .init_array : {
+    . = ALIGN(8);
+    PROVIDE(__init_array_start = .);
+    KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+    KEEP(*(.init_array))
+    PROVIDE(__init_array_end = .);
+  }
+
   .data : {
     . = ALIGN(16);
     *(.sdata .sdata.*)
@@ -57,4 +72,9 @@ SECTIONS
   }
 
   PROVIDE(_end = .);
+  /* Issue #195 — newlib's canonical heap-base symbol. The Cyclone fixtures
+   * link the SDK (newlib-built) libstdc++ whose libnosys `_sbrk` stub
+   * references `end`; the stub never runs (picolibc + the ThreadX byte pool
+   * own allocation), but the symbol must resolve. */
+  PROVIDE(end = .);
 }

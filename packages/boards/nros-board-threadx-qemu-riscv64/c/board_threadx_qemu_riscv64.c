@@ -187,6 +187,23 @@ int nros_board_init_eth(void)
         return -1;
     }
 
+    /* Issue #195 — run the static constructors. This flat bare-metal image has
+     * no crt0/__libc_init_array, so nothing walks .init_array; the Cyclone
+     * message-descriptor registration TUs (`register_std_msgs_*`,
+     * `__attribute__((constructor))`) never ran and every reader/writer create
+     * failed (`nros_executor_register_subscription -> -1`). The bounds come
+     * from the board link.lds (.init_array KEEP block). Idempotence: this init
+     * runs once per boot, before the app thread starts. */
+    {
+        extern void (*__init_array_start[])(void);
+        extern void (*__init_array_end[])(void);
+        uart_puts("[board] Running .init_array constructors...\n");
+        for (void (**ctor)(void) = __init_array_start; ctor < __init_array_end;
+             ++ctor) {
+            (*ctor)();
+        }
+    }
+
     uart_puts("[board] Initializing NetX system...\n");
     nx_system_initialize();
 

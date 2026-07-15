@@ -142,7 +142,11 @@ if(DEFINED NANO_ROS_PLATFORM
     if(TARGET lwip)
         target_link_libraries(nros_rmw_cyclonedds PRIVATE lwip)
     endif()
-elseif(DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx")
+# `MATCHES "^threadx"` (not STREQUAL): the invocations pass the variant names
+# (`threadx_riscv64` / `threadx_linux` — the root CMakeLists maps them to the
+# threadx platform module the same way). Pre-287-W6 the leaves baked the bare
+# `set(NANO_ROS_PLATFORM threadx)`, which is why STREQUAL used to hold.
+elseif(DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM MATCHES "^threadx")
     target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_PLATFORM_THREADX)
     if(TARGET threadx_kernel)
         target_link_libraries(nros_rmw_cyclonedds PRIVATE threadx_kernel)

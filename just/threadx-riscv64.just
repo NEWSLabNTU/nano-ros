@@ -188,6 +188,7 @@ build-fixture-extras:
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
         THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
+            -DNANO_ROS_PLATFORM=threadx_riscv64 \
             -DNROS_RMW="$rmw" \
             ${_dom:+-DNROS_DOMAIN_ID=$_dom} \
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
@@ -208,7 +209,11 @@ build-fixture-extras:
     # IDLC / msg_to_idl defs are harmless for the zenoh pass.
     export THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir"
-    base_defs="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    # 287-W6 dropped the leaves' `set(NANO_ROS_PLATFORM threadx)` (ament shape);
+    # the platform must now come from the invocation (mirrors threadx-linux's
+    # recipe). Without it the root default "posix" configures
+    # nros-platform-posix under the riscv64 cross toolchain → FindThreads dies.
+    base_defs="-DNANO_ROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh

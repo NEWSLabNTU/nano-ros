@@ -69,6 +69,44 @@ if(EXISTS "${_riscv_threadx_cxx_compat}/cstdio")
         "${CMAKE_CXX_FLAGS_INIT} -isystem ${_riscv_threadx_cxx_compat}")
 endif()
 
+# Issue #195 — locate a rv64gc/lp64d `libstdc++.a` for the Cyclone DDS RMW
+# (NanoRosRmwDispatch adds `stdc++` to the cyclone link set: the wrapper is
+# C++ — operator new/delete, guards). The Debian
+# `gcc-riscv64-unknown-elf`/picolibc packages ship NO libstdc++, so resolve:
+#   1. the active compiler's own multilib (xpack-style toolchains have it),
+#   2. else the nros SDK `riscv-none-elf-gcc` multilib
+#      (rv64imafdc_zicsr = rv64gc, lp64d — provisioned by `nros setup`).
+# Zenoh-only builds never reference `-lstdc++`, so a miss here changes
+# nothing for them; the cyclone link fails loudly either way.
+execute_process(
+    COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d
+            --print-file-name=libstdc++.a
+    OUTPUT_VARIABLE _riscv_stdcxx OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
+    file(GLOB _riscv_sdk_stdcxx
+        "$ENV{HOME}/.nros/sdk/riscv-none-elf-gcc/*/riscv-none-elf/lib/rv64imafdc_zicsr/lp64d/libstdc++.a")
+    if(_riscv_sdk_stdcxx)
+        list(GET _riscv_sdk_stdcxx -1 _riscv_stdcxx)
+    else()
+        set(_riscv_stdcxx "")
+    endif()
+endif()
+if(_riscv_stdcxx)
+    get_filename_component(_riscv_stdcxx_dir "${_riscv_stdcxx}" DIRECTORY)
+    add_link_options("-L${_riscv_stdcxx_dir}")
+    # The SDK libstdc++ is newlib-built: its internals reference newlib reent
+    # objects whose syscalls (`_sbrk`/`_read`/`_kill`/…) nothing bare-metal
+    # provides. `libnosys.a` (same multilib dir) stubs them; appended at the
+    # END of the link line (STANDARD_LIBRARIES) so it only satisfies leftovers
+    # — the image's real malloc/IO (picolibc + the ThreadX platform) resolve
+    # first. Runtime-correct for Cyclone: transient samples go through
+    # ddsrt_{malloc,free} on the ThreadX byte pool, never these stubs.
+    if(EXISTS "${_riscv_stdcxx_dir}/libnosys.a")
+        set(CMAKE_C_STANDARD_LIBRARIES "-lnosys" CACHE STRING "" FORCE)
+        set(CMAKE_CXX_STANDARD_LIBRARIES "-lnosys" CACHE STRING "" FORCE)
+    endif()
+endif()
+
 # Rust target triple
 set(Rust_CARGO_TARGET "riscv64gc-unknown-none-elf" CACHE STRING "Rust target triple" FORCE)
 
