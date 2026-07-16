@@ -22,12 +22,14 @@ HOMES are `packages/platforms/<family>/` directories (config-only until
 phase-230 grows real crates there — the four existing chip-level crates
 coexist and can layer via `inherits`). W3.b LANDED (tri-state Kconfig forward on both
 zephyr consumers — cmake TUs + the cargo env bridge — and the
-kconfig_platform_default_drift mirror test). W5 flip ATTEMPTED and
-REVERTED: pristine defaults-on images broke the two zephyr action lanes
-deterministically (batch-only reproduces) — issue 0213 filed; the flip is
-5 lines once it closes. zephyr [capabilities] + the book platform-defaults
-section landed (table marks zephyr "flip pending 0213"). Remaining: W3.a
-board wiring, W4 explain/scaffold, W5 blocked on 0213.
+kconfig_platform_default_drift mirror test). W5 LANDED 2026-07-16:
+issue 0213 root-caused (batched declarations outran the server's readiness
+banner → immediately-fired queries missed) and fixed in the fork
+(01db9155 — declares always bypass the batch); zephyr defaults flipped
+(batch+split on, Kconfig mirrors the toml, drift-tested); PRISTINE
+defaults-on zephyr suite 46/46. Remaining: W3.a board wiring, W4
+explain/scaffold; W5.b bench re-measure rides the next manual bench pass
+(declares-express does not touch the steady-state tx path).
 
 **Implements.** [RFC-0049](../design/0049-hierarchical-platform-board-config.md)
 (design-of-record — read it first; this doc is the work breakdown only).
@@ -91,24 +93,24 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
   comments. Book page: "Porting nano-ros to a new RTOS" checklist
   (2 crates + 2 tomls, no central edits).
 
-### W5 — First tenant policy flip (the phase-282 promotion) — BLOCKED on issue 0213
+### W5 — First tenant policy flip (the phase-282 promotion) — LANDED
 
-> 2026-07-16 — flip attempted on pristine images: 44/46 zephyr lanes green
-> but both action roundtrips hang at `Sending goal` (batch-only reproduces).
-> Reverted to default-off; [issue 0213](../issues/0213-zephyr-tx-batch-breaks-action-roundtrip.md)
-> is the gate. Machinery (toml knob slot, Kconfig mirror + drift test,
-> tri-state forwards) all in place.
+> 2026-07-16 — first flip attempt exposed issue 0213 (batched declarations
+> vs readiness ordering); fixed in the fork (declares always express) and
+> the flip is LIVE: pristine batch+split defaults-on zephyr suite 46/46.
+> Full account in
+> [archived issue 0213](../issues/archived/0213-zephyr-tx-batch-breaks-action-roundtrip.md).
 
-- [ ] W5.a zephyr `nros-platform.toml`: `batch = true, split_lock = true,
+- [x] W5.a zephyr `nros-platform.toml`: `batch = true, split_lock = true,
   flush_ms = 50` + `[capabilities] per_fd_tx_ceiling = true`. All other
   platforms: knobs absent (off). Update the phase-282 archived doc's
   promotion table: decided — option C scoped to zephyr, via platform
   default.
-- [ ] W5.b Re-run the phase-282 benches on zephyr with defaults-on images
+- [~] W5.b (suite-level validation done — 46/46 pristine defaults-on; the streaming-bench re-measure rides the next manual bench pass) Re-run the phase-282 benches on zephyr with defaults-on images
   (streaming ≈180 msg/s expected; knob-off image byte-identical check);
   zephyr family e2e sweep green; release-note line: +flush_ms latency on
   non-express topics, `tx_express` escape.
-- [ ] W5.c Docs: tx-tuning book page gains the "platform defaults" section;
+- [x] W5.c Docs: tx-tuning book page gains the "platform defaults" section;
   control-tier examples demonstrate `tx_express`.
 
 ## Acceptance

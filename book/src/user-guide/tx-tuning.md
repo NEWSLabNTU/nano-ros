@@ -21,7 +21,7 @@ build-time setting (including an explicit `0` / `n`) always wins.
 
 | platform | batch | split_lock | flush_ms | rationale |
 | --- | --- | --- | --- | --- |
-| **Zephyr** | off (flip pending) | off | 50 | promotion decided (option C, 15–20× measured) but BLOCKED on issue 0213 (batching breaks the zephyr↔zephyr action roundtrip); until fixed, opt in per-app via `prj.conf`. `zephyr/Kconfig` defaults mirror the platform toml (drift-tested) |
+| **Zephyr** | **on** | **on** | 50 | the per-fd tx ceiling above; measured 15–20× streaming (phase-282). Requires the issue-0213 fork fix (declarations bypass the batch). `zephyr/Kconfig`'s `NROS_ZENOH_TX_*` defaults mirror this (drift-tested) — flip them per-app in `prj.conf` to opt out |
 | everything else | off | off | 50 | no per-fd ceiling (POSIX), no flush thread (ThreadX/bare-metal), or simply unmeasured (FreeRTOS/NuttX — flip is one line in their platform toml after a bench run) |
 
 With batching on, **non-express topics pay up to `flush_ms` of publish

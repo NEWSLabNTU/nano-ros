@@ -179,7 +179,7 @@ config NROS_ZENOH_SOCKET_TIMEOUT_MS
 
 config NROS_ZENOH_TX_BATCH
     bool "zenoh-pico tx batching (one send per executor spin)"
-    default n
+    default y
     help
       phase-279 (#145) — tx batching (ZPICO_TX_BATCH). Publishes queue
       in the transport write buffer and ship as ONE socket send per executor
@@ -188,17 +188,18 @@ config NROS_ZENOH_TX_BATCH
       window (the zsock per-fd-mutex ceiling above). Adds up to FLUSH_MS of
       publish latency; service/query requests and replies bypass the batch
       (express), as do publishers declared express (tx_express QoS).
-      phase-290 (RFC-0049) — the phase-282 promotion (default ON for
-      Zephyr, measured 15-20x streaming) is BLOCKED on issue 0213: batching
-      deterministically breaks the zephyr<->zephyr action roundtrip (goal
-      never completes; batch-only reproduces, split_lock not required).
-      Default stays n until 0213 is fixed. This default MUST mirror
+      phase-290 (RFC-0049) — DEFAULT ON for Zephyr: the phase-282 promotion
+      (option C), measured 15-20x streaming on the only platform with the
+      per-fd tx ceiling. Requires the issue-0213 fork fix (declarations
+      bypass the batch — otherwise a server's readiness banner outruns its
+      still-batched queryable declares and immediately-fired queries miss).
+      This default MUST mirror
       packages/platforms/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
       kconfig_platform_default_drift test asserts the mirror.
 
 config NROS_ZENOH_TX_SPLIT_LOCK
     bool "zenoh-pico split tx locking (append while sending)"
-    default n
+    default y
     depends on NROS_ZENOH_TX_BATCH
     help
       phase-282 (#145) — the batch flush steals the pending write buffer under
@@ -206,9 +207,8 @@ config NROS_ZENOH_TX_SPLIT_LOCK
       mutex, so publishers keep appending to the fresh batch while the (up to
       one recv-window) send is in flight. Wire order still equals SN order.
       Requires TX_BATCH. Costs a second wbuf (Z_BATCH_UNICAST_SIZE) of RAM
-      per session. phase-290 — default n (the promotion flip is blocked on
-      issue 0213); mirrors packages/platforms/zephyr/nros-platform.toml
-      (drift-tested).
+      per session. phase-290 — DEFAULT ON for Zephyr (promotion option C);
+      mirrors packages/platforms/zephyr/nros-platform.toml (drift-tested).
 
 config NROS_ZENOH_TX_BATCH_FLUSH_MS
     int "zenoh-pico tx batch flush cadence (ms)"

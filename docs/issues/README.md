@@ -44,12 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#213** — [zephyr tx-batch breaks the action roundtrip](0213-zephyr-tx-batch-breaks-action-roundtrip.md):
-  deterministic (3/3): batched zephyr↔zephyr action client hangs at `Sending goal`; batch-only
-  reproduces (split_lock not required); 44/46 other lanes green on the same images. First
-  exercise of batching+actions — BLOCKS the phase-282/290 zephyr default flip (reverted; all
-  RFC-0049 machinery in place, flip = 5 lines once fixed). Ops: zephyr `.config` is STICKY —
-  Kconfig default changes need a pristine wipe or they silently test nothing.
 - **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
   ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
   sibling of #203. (audit 2026-07-16)
@@ -72,7 +66,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#207** — zpico
+Recently resolved (see [`archived/`](archived/) for the full list): **#213** — batched
+DECLARATIONS outran the action server's readiness banner (router log: goal query "no matching
+queryables" 152 ms before the queryable declare landed); fork fix: declares always bypass the tx
+batch (control-plane, same as requests/replies). With it, the phase-282/290 zephyr flip is LIVE
+(batch+split default on): pristine zephyr suite 46/46. Manual-repro trap re-learned: unseeded
+native_sim pairs share a ZID (#157) — the harness seeds, hand runs must too. **#207** — zpico
 size-probe failure now HARD-FAILS on cross targets (panic naming the corrupt-ABI consequence)
 instead of silently shipping guessed socket/endpoint sizes; host-native keeps the warned
 fallback. **#208** — setup.bash/

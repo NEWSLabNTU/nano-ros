@@ -15,16 +15,21 @@
 threads = true
 per_fd_tx_ceiling = true
 
-# phase-290 W5 (the phase-282 promotion, option C scoped to zephyr —
-# batching measured 15-20x streaming on the only platform with the per-fd
-# ceiling) is BLOCKED on issue 0213: with TX_BATCH on, the zephyr<->zephyr
-# action roundtrip deterministically never completes (goal sent, no
-# result; batch-only reproduces, split_lock not required; first exercise
-# of the batching+actions combination — phase-282 validated benches +
-# pubsub, not the action lanes). Knobs stay ABSENT (= builtin off) until
-# 0213 is fixed; then re-add: batch = true, split_lock = true,
-# flush_ms = 50. zephyr/Kconfig's NROS_ZENOH_TX_* defaults MUST mirror
-# this file — asserted by nros-tests kconfig_platform_default_drift.
+# phase-290 W5 — the phase-282 promotion (option C, scoped to zephyr):
+# batching + split locking DEFAULT ON — measured 15-20x streaming
+# (~8.9 -> ~181 msg/s) on the only platform with the per-fd ceiling.
+# Cost: up to flush_ms publish latency on non-express topics (declare
+# publishers tx_express for low-rate latency-critical topics) + one
+# extra wbuf (Z_BATCH_UNICAST_SIZE) of RAM per session. Requires the
+# issue-0213 fork fix (declarations bypass the batch) — without it, a
+# server's readiness banner outruns its still-batched queryable declares
+# and immediately-fired queries miss. zephyr/Kconfig's NROS_ZENOH_TX_*
+# defaults MUST mirror these values — asserted by
+# nros-tests kconfig_platform_default_drift.
+[knobs.zenoh.tx]
+batch = true
+split_lock = true
+flush_ms = 50
 
 [build.zenoh]
 # Zephyr's build system compiles zenoh-pico itself; this block

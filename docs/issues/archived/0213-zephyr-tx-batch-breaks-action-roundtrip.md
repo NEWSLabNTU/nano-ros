@@ -1,7 +1,9 @@
 ---
 id: 213
 title: "zephyr↔zephyr action roundtrip never completes with TX batching on — blocks the phase-282/290 zephyr default flip"
-status: open
+status: resolved
+resolved_in: "2026-07-16 — fork 01db9155: declarations always bypass the tx batch; zephyr defaults-on suite 46/46"
+
 type: bug
 area: zpico
 related: [issue-0145, phase-282, phase-290, rfc-0049]
@@ -75,3 +77,38 @@ pristine configure — `just zephyr build-fixtures` over existing build dirs
 keeps the old values and the mtime/content staleness gate then correctly
 reports the binaries stale while the driver considers the leaves current.
 Wipe `zephyr-workspace/build-*` when changing Kconfig defaults.
+
+## RESOLVED (2026-07-16) — batched declarations outran the readiness banner
+
+Router-debug timeline (`ZENOHD_LOG=zenoh=debug` through the harness run)
+nailed it:
+
+```
+46.877  Face{3} Route query .../send_goal/...  → "no matching queryables"
+47.029  Face{2} Declare queryable .../send_goal/...   (152 ms LATER)
+```
+
+Under batching, the action server's `z_declare_queryable` returns after
+QUEUEING the declaration; the app then prints its readiness banner, the
+harness launches the client on that banner, and the client's goal query —
+express, so it hits the wire immediately — arrives at the router BEFORE
+the server's still-batched declaration flushes. The C action client has
+no #153-style retry, so the miss is terminal. Manual repros with sleeps
+always passed (declares flushed long before), which is why the failure
+looked harness-specific.
+
+Fix (fork `01db9155`, gitlink bumped): `_z_transport_tx_get_express_status`
+returns `true` for `_Z_N_DECLARE` — declarations (subscriber / queryable /
+liveliness tokens) ALWAYS bypass the batch, same treatment as requests and
+replies. Control-plane messages are rare and tiny; batching them buys no
+throughput and breaks readiness/discovery ordering for every consumer.
+
+Verified: both action lanes pass in ~6 s on batched images; full zephyr
+suite 46/46 on PRISTINE batch+split defaults-on images (the phase-290 W5
+flip, now live); drift test green.
+
+Red herrings recorded: an unseeded manual pair reproduced a DIFFERENT
+failure (identical ZIDs from native_sim's test entropy → the router
+refuses to route the query; the harness always seeds, so this never
+affects tests — but remember `--seed` in manual native_sim repros, the
+#157 lesson again).
