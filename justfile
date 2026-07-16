@@ -1431,6 +1431,7 @@ build-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude nros-build-profile \
         --exclude nros-build-helpers \
+        --exclude nros-zephyr-build \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
@@ -1493,6 +1494,7 @@ check-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude nros-build-profile \
         --exclude nros-build-helpers \
+        --exclude nros-zephyr-build \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \

@@ -1,0 +1,15 @@
+# phase-291 (#211) — the canonical zephyr-leaf Kconfig→rustc-env bake, shared
+# as a build-dependency by every zephyr rust example / workspace zephyr_entry.
+# ZERO dependencies by design: upstream `zephyr-build` resolves as a
+# west-module PATH dep only, so this crate must stay host-checkable without it
+# (the `export_kconfig_bool_options()` call stays in each leaf, which already
+# depends on `zephyr-build`).
+[package]
+name = "nros-zephyr-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Build-script helper baking nros Kconfig values into rustc-env for Zephyr Rust leaves"
+
+[dependencies]

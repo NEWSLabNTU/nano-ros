@@ -1,3 +1,4 @@
+include = ["../../../../../nros-patch.toml"]
 # Phase 97.4.zephyr-native_sim — pin SPDP unicast locator + mcast TX
 # iface for the Cyclone DDS RMW; harmless for zenoh/xrce (read only by
 # `nros-platform-zephyr`).
@@ -7,11 +8,9 @@ NROS_LOCAL_IPV4_BYTES = "127,0,0,10"
 
 [patch.crates-io]
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
-nros = { path = "../../../../packages/core/nros" }  # nros-managed
-nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
-nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
+nros-zephyr-build = { path = "../../../../packages/core/nros-zephyr-build" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed
 

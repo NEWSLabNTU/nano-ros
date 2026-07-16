@@ -2133,6 +2133,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-zephyr-build"
+version = "0.5.0"
+
+[[package]]
 name = "nros-zpico-build"
 version = "0.5.0"
 dependencies = [

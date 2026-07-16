@@ -53,6 +53,9 @@ example_interfaces = { version = "*", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"
+# phase-291 (#211) — shared Kconfig→rustc-env bake (locator/domain/XRCE);
+# resolved by the `nros sync` leaf-local patch.
+nros-zephyr-build = "*"
 
 # Phase 212.L.1 Component pkg metadata. `class` MUST match the
 # `<pkg-name>::<UserClass>` shape that `nros check` (L.4) enforces.

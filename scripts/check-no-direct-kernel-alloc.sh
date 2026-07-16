@@ -62,8 +62,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 # Collect every hit (path:line:text), drop excluded trees and comments.
+# `--exclude-dir` prunes build trees at TRAVERSAL time — the post-grep
+# EXCLUDE_RE alone still made grep READ them (phase-291: a 16 GiB
+# packages/cli/target from a CLI test sweep turned this gate into an
+# 80-minute disk crawl).
 mapfile -t hits < <(
-    grep -rInE "$SYMBOLS" $ROOTS 2>/dev/null \
+    grep -rInE --exclude-dir={target,target-fixtures,build,build-fixtures,node_modules,.git} \
+        "$SYMBOLS" $ROOTS 2>/dev/null \
         | grep -vE "$EXCLUDE_RE" \
         | grep -vE ':[[:space:]]*(//|\*|#)' \
         || true

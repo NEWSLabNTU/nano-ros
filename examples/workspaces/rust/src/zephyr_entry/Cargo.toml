@@ -111,6 +111,9 @@ listener_pkg = { path = "../listener_pkg", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"
+# phase-291 (#211) — shared Kconfig→rustc-env bake (locator/domain/XRCE);
+# resolved by the `nros sync` leaf-local patch.
+nros-zephyr-build = "*"
 
 [profile.release]
 opt-level = "s"

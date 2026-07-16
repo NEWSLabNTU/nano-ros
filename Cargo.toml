@@ -95,6 +95,8 @@ members = [
     "packages/core/nros-platform-api",
     "packages/core/nros-platform-cffi",
     "packages/core/nros-platform-critical-section",
+    # phase-291 (#211) — zephyr-leaf build.rs helper (zero-dep, host-checkable).
+    "packages/core/nros-zephyr-build",
     # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
     # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,
     # posix}) were deleted. The directories

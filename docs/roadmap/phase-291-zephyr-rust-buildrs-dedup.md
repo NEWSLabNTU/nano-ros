@@ -1,6 +1,6 @@
 # Phase 291 — `nros-zephyr-build`: dedupe the zephyr rust leaf `build.rs` (resolve #211)
 
-Status: **Draft — 2026-07-16** · Resolves issue #211 · Touches RFC-0048 (sync
+Status: **W1–W3 LANDED — 2026-07-16; W4 (retire/gate + resolve #211) open** · Resolves issue #211 · Touches RFC-0048 (sync
 patch table) · Sibling of the phase-287 W9 leaf-config work.
 
 > **Goal.** One canonical implementation of the zephyr leaf Kconfig→`rustc-env`
@@ -33,37 +33,47 @@ patch table) · Sibling of the phase-287 W9 leaf-config work.
 ## Waves
 
 ### W1 — the helper crate
-- [ ] W1.a `packages/core/nros-zephyr-build`: `pub fn bake_nros_config()` —
+- [x] W1.a `packages/core/nros-zephyr-build`: `pub fn bake_nros_config()` —
   the canonical copy of today's leaf logic: `CONFIG_NROS_ZENOH_LOCATOR` →
   `NROS_LOCATOR`, `CONFIG_NROS_DOMAIN_ID` → `NROS_DOMAIN_ID`, plus the
   issue-0163 XRCE agent-locator synthesis self-gated on
   `CONFIG_NROS_RMW_XRCE=y`. Zero deps; `version.workspace = true`; root
   workspace member. `rerun-if-env-changed=DOTCONFIG` + per-env lines kept.
-- [ ] W1.b Unit tests: temp `DOTCONFIG` fixtures → captured directive output
+- [x] W1.b Unit tests: temp `DOTCONFIG` fixtures → captured directive output
   (string/int bake, unset/empty no-ops, XRCE synthesis incl. addr/port
   defaults, XRCE absent ⇒ nothing).
-- [ ] W1.c Sync wiring: `nros_crate_path_lookup()` gains
+- [x] W1.c Sync wiring: `nros_crate_path_lookup()` gains
   `("nros-zephyr-build", "packages/core/nros-zephyr-build")` (+ its unit
   test row if the table has one); `just setup-cli` rebuild.
 
 ### W2 — migrate all 13 leaves
-- [ ] W2.a 6 standalone examples (`examples/zephyr/rust/{talker,listener,
+
+> As-landed note: the 13th leaf is `workspaces/rust/src/zephyr_entry_robot1`
+> (the multi-homing second entry) — the initial inventory double-counted
+> `workspaces/rust`. All 13 collapsed to the 4-line shape.
+- [x] W2.a 6 standalone examples (`examples/zephyr/rust/{talker,listener,
   service-server,service-client,action-server,action-client}`): `build.rs` →
   the 4-line shape; `[build-dependencies]` gains `nros-zephyr-build`
   (registry-style version so sync patches it).
-- [ ] W2.b 7 workspace entries (`workspaces/rust` + `ws-{lifecycle,params,
+- [x] W2.b 7 workspace entries (`workspaces/rust` + `ws-{lifecycle,params,
   qos,realtime,safety}-rust` `src/zephyr_entry`): same collapse. These GAIN
   the XRCE synthesis (drift fix) — inert for zenoh images (self-gated).
-- [ ] W2.c `nros sync` across the touched leaves → regenerated leaf-local
+- [x] W2.c `nros sync` across the touched leaves → regenerated leaf-local
   patch blocks + `Cargo.lock`s committed.
 
 ### W3 — prove it
-- [ ] W3.a `just zephyr build-fixtures` (west lane; fixture mtime treadmill —
+
+> As-landed note: full `binary(~zephyr)` sweep = 67 tests, all green on the
+> freshly rebuilt west fixtures (5 first-run reds were STALE NATIVE peer
+> fixtures — the mtime treadmill — green after `just native
+> build-fixture-rust`). XRCE example variants + the ws-entry realtime lane
+> included.
+- [x] W3.a `just zephyr build-fixtures` (west lane; fixture mtime treadmill —
   full rebuild, no stale binaries).
-- [ ] W3.b Zephyr e2e sweep: the zenoh pubsub/service/action lanes + one XRCE
+- [x] W3.b Zephyr e2e sweep: the zenoh pubsub/service/action lanes + one XRCE
   lane (standalone example) + the ws-entry realtime lane (proves the ws
   entries' new XRCE block is inert for zenoh images).
-- [ ] W3.c `just format` + `just check` green (CLI lane covers the sync table
+- [x] W3.c `just format` + `just check` green (CLI lane covers the sync table
   change).
 
 ### W4 — retire the old path (follow-up, after W3 soaks)
