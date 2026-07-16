@@ -1,6 +1,6 @@
 # Phase 282 — Zenoh tx-path optimization: the remaining levers, unified across platforms and languages
 
-Status: **W1–W4 done — 2026-07-08; #145 RESOLVED** (remaining: promotion decision — options below, deliberately not decided; successor axis = issue 0148) · Continues [phase-279](archived/phase-279-zephyr-tx-throughput-ceiling.md)
+Status: **COMPLETE — W1–W4 done 2026-07-08; #145 RESOLVED; promotion DECIDED 2026-07-16**: option C scoped to zephyr, expressed as a platform default under the RFC-0049 hierarchical config (platform packages own capability-justified defaults; other platforms stay off until measured). Implementation of the flip = [phase-290](../phase-290-hierarchical-config.md) W5. Successor axis = issue 0148 (resolved) · Continues [phase-279](phase-279-zephyr-tx-throughput-ceiling.md)
 (measure → batch → flush thread, 4× landed) · Implements the residual of issue
 #145 · Related [[issue-0135]] (shared-generated-config ABI rule), [[issue-0139]].
 
@@ -232,7 +232,7 @@ all three language APIs:
   the register NAMEs but missed these link lines; never caught because
   incremental fixture builds skip re-configure.
 
-### Promotion options (documented for the maintainer decision — knobs stay default-OFF until decided)
+### Promotion options (DECIDED 2026-07-16 — option C, zephyr-scoped, as an RFC-0049 platform default; kept for the record)
 
 All combinations keep knob-off builds byte-identical to pre-279 behavior;
 "promote" = flip a default in one front-end layer, no mechanism change.
