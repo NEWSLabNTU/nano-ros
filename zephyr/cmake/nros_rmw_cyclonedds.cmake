@@ -37,20 +37,23 @@ zephyr_include_directories(${NROS_ZEPHYR_DIR}/cyclonedds-config)
 # references it directly. Actual multicast joins go through the IGMP API
 # in nros-platform-zephyr/src/net.c.
 #
-# Phase 180.A — on Zephyr 4.x scope this to the nros library (where the
-# cyclonedds TUs live), NOT globally. A global zephyr_compile_options
-# force-include also lands on Zephyr's own heap_constants.c bootstrap TU,
-# whose 4.x kernel.h pulls the not-yet-generated <zephyr/heap_constants.h>
-# (chicken-and-egg: that TU is compiled to generate the header). 3.7's
-# kernel.h has no such include, so the global form is harmless there —
-# kept to avoid disturbing the LTS line.
+# Phase 180.A / phase-292 W2 (ASI wall #1) — scope the force-include to the
+# nros library (where the cyclonedds TUs live) on EVERY Zephyr version, never
+# globally:
+#   * 4.x: a global zephyr_compile_options force-include also lands on
+#     Zephyr's own heap_constants.c bootstrap TU, whose kernel.h pulls the
+#     not-yet-generated <zephyr/heap_constants.h> (chicken-and-egg).
+#   * 3.7: the global form poisons the GLOBAL interface with a genex whose
+#     `$<OR:...,...>` carries a top-level COMMA — Zephyr 3.7's
+#     llext-edk.cmake `$<JOIN:list,glue>` over the interface compile options
+#     then fails to find its glue argument ("requires 2 comma separated
+#     parameters, but got 1"), killing the GENERATE step for any consumer
+#     app (ASI phase-3 W2 pin bump was the first to hit it; the llext-edk
+#     custom command is evaluated even with CONFIG_LLEXT unset).
+# Only the cyclonedds TUs need the header, and they all live in `nros`.
 set(_nros_cdds_ipv4_compat
     "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:SHELL:-include ${NROS_ZEPHYR_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>")
-if(Zephyr_VERSION VERSION_GREATER_EQUAL 4.0)
-    target_compile_options(nros PRIVATE ${_nros_cdds_ipv4_compat})
-else()
-    zephyr_compile_options(${_nros_cdds_ipv4_compat})
-endif()
+target_compile_options(nros PRIVATE ${_nros_cdds_ipv4_compat})
 
 # Phase 11W.1 — Cyclone DDS atomics use unprefixed `asm
 # volatile` in `ddsrt/atomics/gcc.h`. Zephyr's default -std=c11

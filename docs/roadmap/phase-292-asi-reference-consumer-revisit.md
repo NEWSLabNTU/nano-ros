@@ -45,6 +45,18 @@ named reference consumer), 287 (ament verbs on zephyr).
 - [ ] W2.a Standing intake: each wall ASI's pin bump surfaces gets a repro +
   an issue here, fixed on main (the Phase-2.D precedent: 9 gaps in one
   round). Track the list in this doc as they arrive.
+
+  **Intake log:**
+  - [x] Wall #1 (2026-07-17, FIXED): phase-180.A left the cyclone
+    `zephyr_ipv4_compat.h` force-include GLOBAL on Zephyr 3.7
+    (`zephyr_compile_options`); the `$<OR:...,...>` genex's top-level comma
+    breaks Zephyr 3.7 llext-edk's `$<JOIN:list,glue>` over the global
+    interface options → CMake GENERATE fails for any consumer app
+    ("$<JOIN> expression requires 2 comma separated parameters, but got 1"
+    at zephyr/CMakeLists.txt:2145 ×3, evaluated even with CONFIG_LLEXT
+    unset). Fix: scope `target_compile_options(nros PRIVATE ...)` on every
+    Zephyr version — only the cyclonedds TUs need the header and they all
+    live in `nros`. (`zephyr/cmake/nros_rmw_cyclonedds.cmake`.)
 - [ ] W2.b Known suspects to pre-check: Cyclone-on-Zephyr with the 287 ament
   verbs (ASI is the first external cyclone+zephyr+workspace consumer);
   `NROS_CPP_STD=1` + std::string/vector param facade against the RFC-0044
