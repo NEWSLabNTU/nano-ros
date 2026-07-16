@@ -1682,6 +1682,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "serde",
+ "tempfile",
  "toml 0.8.23",
 ]
 

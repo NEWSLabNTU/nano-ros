@@ -1,0 +1,47 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+[build.zenoh]
+defines = ["ZENOH_GENERIC", "ZENOH_NUTTX"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
+include = ["system/common"]
+# Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
+# `ZENOH_NUTTX` to `system/platform/unix.h` (BY-VALUE 4-byte socket
+# struct). Pull `system/unix/network.c` so the upstream
+# `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` impls (matching
+# unix.h's shape) compile in. Paired with the
+# `NROS_ZENOH_PLATFORM_USES_UNIX` macro set in `build.rs` which
+# `#ifndef`-elides the alias TU's wrong-shape network section.
+# `unix/tls.c` is `#if Z_FEATURE_LINK_TLS == 1`-gated, so it
+# compiles to an empty TU on NuttX (no TLS feature flag set).
+extra_sources = [
+  { path = "{nros}/c/zpico/nuttx_clock.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+  { path = "{src}/system/unix/network.c" },
+]
+arch = "cortex-a7"
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+pic = false
+required_env = [
+  { name = "NUTTX_DIR", help = "NuttX OS source. just setup-nuttx; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
+]
+include_paths = [
+  "{nros}/c/include",
+  "{env:NUTTX_DIR}/include",
+  # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
+  # bare-metal/freertos-lwip blocks above.
+  "{nros}/../../core/nros-platform-api/include",
+]
+rerun_if_env_changed = ["NUTTX_DIR"]
+
+
+[arch.cortex-a7]
+target_match = "armv7a"
+cflags = ["-march=armv7-a"]

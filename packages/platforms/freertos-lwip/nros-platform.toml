@@ -1,0 +1,69 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+[build.zenoh]
+defines = ["ZENOH_GENERIC", "ZENOH_FREERTOS_LWIP"]
+# Phase 154 — `Z_FEATURE_LINK_UDP_MULTICAST = 0` disables the
+# vendor `_z_close_udp_multicast` codepath in
+# `system/freertos/lwip/network.c`, which has a vendor
+# `sockrecv->socket` typo (the struct field is `_socket`).
+# nano-ros doesn't use UDP multicast over zenoh-pico on
+# FreeRTOS (router is TCP-only on this slirp path), so the
+# feature loss is harmless and the typo stops mattering.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
+# Phase 154 — pull vendor's FreeRTOS+lwIP `system/freertos/lwip`
+# subtree + the top-level `system/freertos/system.c` so vendor's
+# native `_z_send_tcp` / `_z_read_tcp` / `_z_task_*` / `_z_mutex_*`
+# impls are compiled. Vendor's `system/common/platform.h`
+# dispatch picks `platform/freertos/freertos_plus_tcp.h`
+# (`{int _socket;}` struct) — having the matching network /
+# system impls in the same TU set keeps caller / callee ABI
+# coherent without needing the alias TU's opaque socket
+# (alias TU is gated off for FreeRTOS in build.rs).
+include = ["system/common", "system/freertos/lwip"]
+extra_sources = [
+  # Phase 154 — vendor `system/freertos/system.c` +
+  # `system/freertos/lwip/network.c` provide the matching
+  # `_z_sys_net_socket_t = { int _socket; }` ABI that the vendor
+  # `src/link/unicast/tcp.c` caller expects. The alias TU's 32-byte
+  # opaque socket would mismatch; vendor impls are the working
+  # path. build.rs skips the alias TU entirely on FreeRTOS via
+  # `if !use_freertos { ... alias_build.compile(...) }`.
+  { path = "{src}/system/freertos/system.c" },
+  { path = "{src}/system/freertos/lwip/network.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-m3"
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = [
+  { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
+  { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Example: export FREERTOS_PORT=GCC/ARM_CM3" },
+  { name = "LWIP_DIR", help = "lwIP source. just setup-freertos; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include" },
+  { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
+]
+include_paths = [
+  "{nros}/c/include",
+  "{env:FREERTOS_DIR}/include",
+  "{env:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}",
+  "{env:FREERTOS_CONFIG_DIR}",
+  "{env:LWIP_DIR}/src/include",
+  "{env:LWIP_DIR}/contrib/ports/freertos/include",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
+  # `zpico.c` includes it unconditionally.
+  "{nros}/../../core/nros-platform-api/include",
+]
+rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
+
+
+[arch.cortex-m3]
+target_match = "thumbv7m"
+target_exclude = "thumbv7em"
+cflags = ["-mcpu=cortex-m3", "-mthumb"]

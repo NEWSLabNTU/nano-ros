@@ -1,0 +1,92 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+[build.zenoh]
+# `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint
+# / task layouts from `nros_zenoh_generic_platform.h`. Must match the
+# layout the alias TU (`platform_aliases.c`) is compiled with — without
+# this define on the vendor build, `c/platform/zenoh_generic_platform.h`
+# falls through to `threadx/platform.h` (`{ int _fd; }`, 4 bytes), and
+# every `_z_send_tcp(*socket, ...)` call passes 4 bytes by value while
+# the alias TU's wrapper expects a 32-byte struct → caller passes fd as
+# the a0 register value, callee dereferences fd as a pointer → load
+# access fault at `mtval = fd`. Phase 154 doc claimed this was set; the
+# build.rs hookup was missing, fixed in this [build.zenoh] block directly.
+defines = [
+  "ZENOH_GENERIC", "ZENOH_THREADX", "NROS_PLATFORM_ALIASES",
+  "NX_BSD_ENABLE_NATIVE_API",
+  "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
+]
+defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
+defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" } }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/platform/threadx/task.c" },
+  { path = "{nros}/c/platform/threadx/log_uart.c", if_env = "NROS_ZPICO_LOG_TO_UART", with_define = ["ZENOH_LOG_PRINT", "zpico_log_print"] },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "riscv64gc"
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = [
+  { name = "THREADX_DIR", help = "ThreadX kernel source. just setup-threadx; export THREADX_DIR=$PWD/third-party/threadx/kernel", validate_subdir = "common/inc" },
+  { name = "THREADX_CONFIG_DIR", help = "Directory containing tx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
+  { name = "NETX_DIR", help = "NetX Duo source. just setup-threadx; export NETX_DIR=$PWD/third-party/threadx/netxduo", validate_subdir = "common/inc" },
+  { name = "NETX_CONFIG_DIR", help = "Directory containing nx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  # Phase 154 — `c/zpico/` exposes `nros_zenoh_generic_platform.h`
+  # (32-byte opaque socket / endpoint / task layouts the alias
+  # TU uses). `c/platform/zenoh_generic_platform.h` `#include`s
+  # it when `NROS_PLATFORM_ALIASES` is defined (now set on the
+  # vendor build; see build.rs). Without `c/zpico` on the
+  # include path the chain fails to resolve and vendor src
+  # falls back to the small `threadx/platform.h` socket struct,
+  # ABI-misaligning every `_z_send_tcp` / `_z_read_tcp` call
+  # into the alias TU.
+  "{nros}/c/zpico",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*`
+  # ABI + the `nros_platform_socket_get_fd` accessor used by
+  # `zpico.c::get_session_fd` to read peer fd without
+  # depending on the per-RTOS socket-struct layout).
+  "{nros}/../../core/nros-platform-api/include",
+  "{nros}/c/include",
+  "{env:THREADX_DIR}/common/inc",
+  "{env:THREADX_CONFIG_DIR}",
+  "{env:NETX_DIR}/common/inc",
+  "{env:NETX_DIR}/addons/BSD",
+  "{env:NETX_CONFIG_DIR}",
+]
+rerun_if_env_changed = [
+  "THREADX_DIR", "THREADX_CONFIG_DIR",
+  "NETX_DIR", "NETX_CONFIG_DIR",
+  "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
+]
+[[build.zenoh.include_paths_conditional]]
+path = "{env:THREADX_DIR}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
+[[build.zenoh.include_paths_conditional]]
+path = "{env:THREADX_DIR}/ports/risc-v64/gnu/inc"
+when = { target_match = "riscv64" }
+[[build.zenoh.include_paths_conditional]]
+path = "{env:NETX_DIR}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
+
+
+[arch.riscv64gc]
+target_match = "riscv64"
+cflags = ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany"]
+needs_picolibc = true
+needs_errno_override = true
+
+# ----------------------------------------------------------------
+# Platforms.
+# ----------------------------------------------------------------

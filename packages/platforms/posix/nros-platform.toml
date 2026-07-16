@@ -1,0 +1,55 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+[build.zenoh]
+defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]
+# Phase 156 — `Z_FEATURE_MULTI_THREAD = 1` so
+# `zp_start_read_task` / `zp_start_lease_task` actually spawn
+# pthreads via `_z_task_init` (rather than returning -1
+# unconditionally). POSIX always has pthreads available; the
+# missing flag was leftover from an era where the alias TU
+# was assumed to handle threading singleton-style. Other
+# platforms (freertos-lwip / nuttx / threadx) already set
+# it; POSIX should too.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
+include = ["system/common"]
+exclude = ["tests", "example"]
+extra_sources = [
+  # Phase 156 option B — compile zenoh-pico's upstream
+  # `system/unix/network.c` so the by-value socket TCP/UDP
+  # impls (using `unix.h`'s `_z_sys_net_socket_t = { int _fd; }`
+  # 4-byte struct) match the call-site ABI in `tx.c` /
+  # `link.c`. The alias TU's 32-byte opaque network
+  # functions are skipped on POSIX via the
+  # `NROS_ZENOH_PLATFORM_USES_UNIX` macro defined from
+  # `build.rs`. `unix/tls.c` already in extra_sources +
+  # calls `_z_open_tcp` etc. — now resolves against the
+  # native unix impls instead of the wrong-shape aliases.
+  { path = "{src}/system/unix/network.c" },
+  { path = "{src}/system/unix/tls.c" },
+]
+system_libs = ["pthread", "rt"]
+mbedtls = "pkg-config"
+# Phase 204.9 — POSIX zenoh-pico had no `compile` line, so it built
+# with no per-fn/data sections (every embedded platform sets them).
+# Add `-ffunction-sections`/`-fdata-sections` so a `--gc-sections`
+# link (204.8) can strip the unused zenoh-pico surface.
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+# Phase 154 — `nros-platform-api/include` carries
+# `<nros/platform_net.h>` which the zpico.c TU pulls in for
+# the multicast / UDP shim glue. Bare-metal already carries
+# this path; POSIX was missing it, so `cargo build` on
+# anything that consumes zpico-sys via cc-rs (e.g. the
+# bridge examples) failed with "platform_net.h: No such
+# file or directory". Phase 104.D.3.
+include_paths = [
+  "{nros}/../../core/nros-platform-api/include",
+]
+

@@ -1,0 +1,72 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+[build.zenoh]
+# `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`
+# (clock via `smoltcp_clock_now_ms`, RX via `zp_read` single-read drain,
+# init via `smoltcp_init`). Without it `zpico_spin_once` falls into the
+# generic single-threaded `#else` that calls POSIX `select()` +
+# `clock_gettime`, both unresolved at bare-metal link time. Phase 136.4
+# (build_c_shim → build_zenoh_pico_unified manifest migration) dropped
+# this define from the bare-metal path; the manifest had no opinion so
+# `ZPICO_SMOLTCP` was simply not emitted.
+#
+# #189 — the legacy `ZPICO_NO_SMOLTCP` env-based opt-out (Phase 132) IS
+# wired again, in the runner (Step 6 of `build_zenoh_pico_unified`): a
+# serial-only link set + `ZPICO_NO_SMOLTCP` swaps this define for
+# `ZPICO_SERIAL`. The serial-only boards were never hypothetical
+# (qemu-arm-baremetal serial-talker/-listener predate the migration),
+# and the smoltcp spin branch's clock is frozen without a smoltcp iface
+# — timers never fire on such firmware.
+defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+# Phase 148: bare-metal spans cortex-m3 (qemu-arm-baremetal,
+# stm32f4) AND riscv32imc (ESP32-C3). First arch whose `target_match`
+# hits is applied — see build.rs::build_zenoh_pico_unified Step 3.
+arch = ["cortex-m3", "riscv32imc"]
+# Phase 204.9 — size build (`-Os`): zenoh-pico is the biggest vendor C blob
+# on embedded; `-Os` saved ~8 KB .text on the bare-metal talker vs `-O2`.
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
+  # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
+  # unconditionally; without this on the bare-metal path
+  # `cargo check` against any `examples/qemu-arm-baremetal/...`
+  # example fails with `nros/platform_net.h: No such file or directory`.
+  "{nros}/../../core/nros-platform-api/include",
+]
+
+
+[arch.cortex-m3]
+target_match = "thumbv7m"
+target_exclude = "thumbv7em"
+cflags = ["-mcpu=cortex-m3", "-mthumb"]
+
+[arch.cortex-m4f]
+target_match = "thumbv7em"
+cflags = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
+
+[arch.riscv32imc]
+target_match = "riscv32imc"
+cflags = ["-march=rv32imc", "-mabi=ilp32"]
+needs_picolibc = true
+needs_errno_override = true
+needs_riscv_compiler = true
+
+[arch.riscv32gc]
+target_match = "riscv32gc"
+cflags = ["-march=rv32gc", "-mabi=ilp32d"]

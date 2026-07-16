@@ -336,7 +336,7 @@ where
 /// The multi-tier sibling of [`run_entry`]: opens the ONE RMW session, then
 /// runs one [`nros::Executor`] per [`nros_platform::TierSpec`] over that shared
 /// session. NuttX ships `std` and its zenoh-pico build sets
-/// `Z_FEATURE_MULTI_THREAD = 1` (`zpico-sys/zenoh_platforms.toml`
+/// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
 /// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
 /// mirrors the **native posix** [`nros_board_posix`] `run_tiers` (a scoped
 /// thread per tier over one session) rather than the FFI k_thread shim the

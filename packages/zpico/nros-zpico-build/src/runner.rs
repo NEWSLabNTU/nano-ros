@@ -13,7 +13,7 @@ use std::{
 // Phase 149.5 — shared manifest/policy parser moved to
 // `nros-board-common`. Re-import as local module aliases so every
 // `manifest::*` / `policy::*` reference below stays unchanged.
-use nros_board_common::{manifest, policy};
+use nros_board_common::{manifest, platform_config, policy};
 
 use policy::{LinkFeatures, LinkPolicy};
 
@@ -74,7 +74,17 @@ fn env_usize(name: &str, default: usize) -> usize {
 /// This replaces the hardcoded `zenoh_generic_config.h` with a generated version
 /// where `Z_FEATURE_LINK_*` values are derived from Cargo features and buffer
 /// sizes are read from environment variables with platform-appropriate defaults.
-fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBufferConfig) {
+/// phase-290 — tx flags arrive RESOLVED through the RFC-0049 ladder
+/// (builtin < platform toml < board toml < env) instead of raw env reads,
+/// so the platform default (e.g. zephyr batch-on) reaches the ABI-gating
+/// `Z_FEATURE_*` header while an explicit env `0` still wins.
+fn generate_config_header(
+    out_dir: &Path,
+    link: &LinkFeatures,
+    buf: &ZenohBufferConfig,
+    tx_batch: bool,
+    tx_split_lock: bool,
+) {
     let config_dir = out_dir.join("zenoh-config");
     std::fs::create_dir_all(&config_dir).unwrap();
     let target = std::env::var("TARGET").unwrap_or_default();
@@ -84,20 +94,8 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
         &target,
         env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok(),
         env::var("CARGO_FEATURE_ORIN_SPE").is_ok(),
-        // rerun-if-env already emitted by shim_config_from_env's env_usize.
-        env::var("ZPICO_TX_BATCH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(0)
-            != 0,
-        {
-            println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
-            env::var("ZPICO_TX_SPLIT_LOCK")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(0)
-                != 0
-        },
+        tx_batch,
+        tx_split_lock,
     );
     std::fs::write(config_dir.join("zenoh_generic_config.h"), header).unwrap();
 }
@@ -122,21 +120,47 @@ pub fn run() {
     // downstream boards. Empty value falls through to the canonical
     // in-tree manifest.
     println!("cargo:rerun-if-env-changed=ZPICO_PLATFORMS_TOML");
-    let platform_manifest_path = match env::var_os("ZPICO_PLATFORMS_TOML").filter(|v| !v.is_empty())
-    {
-        Some(path) => PathBuf::from(path),
-        None => manifest_dir.join("zenoh_platforms.toml"),
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORMS_DIR");
+    // phase-290 (RFC-0049) — the central `zenoh_platforms.toml` is retired.
+    // Each platform package directory carries `nros-platform.toml` with the
+    // `[build.zenoh]` block (keys verbatim) + `[capabilities]` + `[knobs]`.
+    // Precedence: `ZPICO_PLATFORMS_TOML` (legacy single-file override — the
+    // drift-gate test + out-of-tree hook) > `NROS_PLATFORMS_DIR` (tree
+    // override) > the in-tree `packages/platforms/` default.
+    let legacy_file = env::var_os("ZPICO_PLATFORMS_TOML")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
+    let platforms_root = env::var_os("NROS_PLATFORMS_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| manifest_dir.join("../../platforms"));
+    let (platform_manifest, platforms_tree) = match legacy_file {
+        Some(path) => {
+            println!("cargo:rerun-if-changed={}", path.display());
+            let m = manifest::PlatformManifest::load(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            (m, None)
+        }
+        None => {
+            let tree = platform_config::PlatformsTree::load(&platforms_root)
+                .unwrap_or_else(|e| panic!("{}: {e}", platforms_root.display()));
+            for name in tree.names() {
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    platforms_root
+                        .join(name)
+                        .join(platform_config::PLATFORM_CONFIG_FILENAME)
+                        .display()
+                );
+            }
+            let m = tree.as_platform_manifest();
+            (m, Some(tree))
+        }
     };
-    println!(
-        "cargo:rerun-if-changed={}",
-        platform_manifest_path.display()
-    );
-    let platform_manifest = manifest::PlatformManifest::load(&platform_manifest_path)
-        .unwrap_or_else(|e| panic!("zenoh_platforms.toml: {e}"));
     for name in platform_manifest.platform.keys() {
         platform_manifest
             .for_platform(name)
-            .unwrap_or_else(|e| panic!("zenoh_platforms.toml: resolve {name}: {e}"));
+            .unwrap_or_else(|e| panic!("nros-platform.toml: resolve {name}: {e}"));
     }
 
     // Phase 136.6 (partial) — source-list drift gate. For every
@@ -154,7 +178,7 @@ pub fn run() {
                 let dir = zenoh_pico_src.join(include);
                 if !dir.is_dir() {
                     panic!(
-                        "zenoh_platforms.toml: platform `{name}` `include = \"{include}\"` \
+                        "nros-platform.toml: platform `{name}` `include = \"{include}\"` \
                          does not resolve to a directory under zenoh-pico/src/ \
                          (expected: {})",
                         dir.display()
@@ -170,7 +194,7 @@ pub fn run() {
                     .unwrap_or(false);
                 if !has_c_file {
                     panic!(
-                        "zenoh_platforms.toml: platform `{name}` `include = \"{include}\"` \
+                        "nros-platform.toml: platform `{name}` `include = \"{include}\"` \
                          resolves to {} but contains no .c files or subdirs",
                         dir.display()
                     );
@@ -287,13 +311,94 @@ pub fn run() {
     // Generate C header from Rust FFI declarations
     generate_header(&manifest_dir, &include_dir);
 
+    // phase-290 — pick the manifest platform up front so the RFC-0049 knob
+    // ladder (builtin < platform toml < board toml < env) can resolve before
+    // the ABI-gating config header is generated.
+    let platform_name = if use_threadx {
+        Some("threadx")
+    } else if use_orin_spe {
+        Some("orin-spe")
+    } else if use_nuttx {
+        Some("nuttx")
+    } else if use_freertos {
+        Some("freertos-lwip")
+    } else if use_bare_metal {
+        Some("bare-metal")
+    } else if !is_embedded_target(&target) && !use_system {
+        Some("posix")
+    } else {
+        None
+    };
+
+    // phase-290 — resolve the zenoh.tx knob set through the ladder. Board
+    // deltas ride `NROS_BOARD_TOML` (a board package's nros-board.toml path,
+    // exported by the build orchestration when a board is in play). In
+    // legacy single-file mode (`ZPICO_PLATFORMS_TOML`) there is no knob
+    // layer — env-only, byte-identical to pre-290.
+    println!("cargo:rerun-if-env-changed=NROS_BOARD_TOML");
+    println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH");
+    println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
+    println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH_FLUSH_MS");
+    let env_get = |name: &str| env::var(name).ok().filter(|v| !v.is_empty());
+    let tx_knobs = match (&platforms_tree, platform_name) {
+        (Some(tree), Some(name)) => {
+            let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
+                let p = PathBuf::from(&path);
+                println!("cargo:rerun-if-changed={}", p.display());
+                platform_config::BoardKnobsFile::load(&p).unwrap_or_else(|e| panic!("{path}: {e}"))
+            });
+            let mut tx = tree
+                .resolve_tx(
+                    name,
+                    board_knobs.as_ref().map(|b| &b.knobs.zenoh.tx),
+                    &env_get,
+                )
+                .unwrap_or_else(|e| panic!("nros-platform.toml: {e}"));
+            for w in tree
+                .capability_check(name, &mut tx)
+                .unwrap_or_else(|e| panic!("nros-platform.toml: {e}"))
+            {
+                println!("cargo:warning={w}");
+            }
+            tx
+        }
+        _ => {
+            // Legacy / unknown-platform fallback: env-only ladder.
+            let b = env_get("ZPICO_TX_BATCH")
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|n| n != 0);
+            let sl = env_get("ZPICO_TX_SPLIT_LOCK")
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|n| n != 0);
+            let fm = env_get("ZPICO_TX_BATCH_FLUSH_MS").and_then(|v| v.parse::<u64>().ok());
+            platform_config::ResolvedTxKnobs {
+                batch: platform_config::Resolved {
+                    value: b.unwrap_or(platform_config::BUILTIN_TX_BATCH),
+                    source: platform_config::KnobSource::Env,
+                },
+                split_lock: platform_config::Resolved {
+                    value: sl.unwrap_or(platform_config::BUILTIN_TX_SPLIT_LOCK),
+                    source: platform_config::KnobSource::Env,
+                },
+                flush_ms: platform_config::Resolved {
+                    value: fm.unwrap_or(platform_config::BUILTIN_TX_FLUSH_MS),
+                    source: platform_config::KnobSource::Env,
+                },
+            }
+        }
+    };
+
     // Read buffer config with platform-appropriate defaults
     // NuttX is POSIX-compatible, use same defaults as posix.
     // ThreadX uses NetX Duo BSD sockets, treat as posix-like for buffer defaults.
     let buf_config = zenoh_buffer_config_from_env(use_posix || use_nuttx || use_threadx);
 
     // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
-    let shim_config = shim_config_from_env();
+    let mut shim_config = shim_config_from_env();
+    // phase-290 — the env reads inside shim_config_from_env are the raw
+    // top-rung values; overwrite the tx pair with the ladder-resolved ones.
+    shim_config.tx_batch = tx_knobs.batch.value;
+    shim_config.tx_batch_flush_ms = tx_knobs.flush_ms.value as usize;
     std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
 
     // Phase 134.3 — `zenoh_generic_config.h` is the single source of
@@ -325,7 +430,13 @@ pub fn run() {
         LinkPolicy::passthrough()
     };
     let link_features = link_features.apply(&link_policy);
-    generate_config_header(&out_dir, &link_features, &buf_config);
+    generate_config_header(
+        &out_dir,
+        &link_features,
+        &buf_config,
+        tx_knobs.batch.value,
+        tx_knobs.split_lock.value,
+    );
 
     // Phase 136.4 — manifest-driven unified consumer. The TOML
     // declares every per-platform datum (defines, required env
@@ -338,25 +449,11 @@ pub fn run() {
         out: &out_dir,
         src: &zenoh_pico_src.join("src"),
     };
-    let platform_name = if use_threadx {
-        Some("threadx")
-    } else if use_orin_spe {
-        Some("orin-spe")
-    } else if use_nuttx {
-        Some("nuttx")
-    } else if use_freertos {
-        Some("freertos-lwip")
-    } else if use_bare_metal {
-        Some("bare-metal")
-    } else if !is_embedded_target(&target) && !use_system {
-        Some("posix")
-    } else {
-        None
-    };
+    // phase-290 — platform_name computed above (knob resolution).
     if let Some(name) = platform_name {
         let resolved = platform_manifest
             .for_platform(name)
-            .unwrap_or_else(|e| panic!("zenoh_platforms.toml: {e}"));
+            .unwrap_or_else(|e| panic!("nros-platform.toml: {e}"));
         build_zenoh_pico_unified(
             &resolved,
             &platform_manifest.arch,
@@ -1088,7 +1185,7 @@ fn build_c_shim(
     if use_posix {
         #[cfg(target_os = "linux")]
         build.define("ZENOH_LINUX", None);
-        // Mirror `zenoh_platforms.toml [platform.posix] defines_kv` — the
+        // Mirror `posix nros-platform.toml [build.zenoh] defines_kv` — the
         // generated header's `#ifndef Z_FEATURE_MULTI_THREAD` fallback is 0,
         // so without this the shim would flip single-threaded while the
         // library runs multi-threaded (same ABI-divergence class as #135).
@@ -1161,7 +1258,7 @@ fn build_c_shim(
 }
 
 /// Phase 136.4 — unified zenoh-pico cc-rs builder, driven by the
-/// resolved `[platform.<name>]` block from `zenoh_platforms.toml`.
+/// resolved `[build.zenoh]` block from the platform package's `nros-platform.toml` (RFC-0049).
 /// Replaces the five per-RTOS functions (`build_zenoh_pico_{embedded,
 /// orin_spe, freertos, nuttx, threadx}`) and the POSIX
 /// `build_zenoh_pico_native` body. Per-platform deltas all come from

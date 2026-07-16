@@ -1,0 +1,43 @@
+# RFC-0049 / phase-290 — per-platform-package configuration.
+#
+# Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
+# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
+# zpico shim build block — keys documented in
+# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# profiles; may be duplicated across platform files only byte-identically).
+# Resolution ladder: builtin < platform (inherits chain) < board < env.
+# Schema + loader: nros-board-common/src/platform_config.rs.
+
+inherits = "generic"
+
+[build.zenoh]
+defines = ["ZENOH_GENERIC", "ZENOH_ORIN_SPE"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
+extra_sources = [
+  { path = "{src}/system/freertos/system.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+arch = "cortex-r5-softfp"
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+link = { tcp = false, udp_unicast = false, udp_multicast = false, serial = false, tls = false, ws = false, bluetooth = false, raweth = false, ivc = "feature", custom = "feature" }
+required_env = [
+  { name = "NV_SPE_FSP_DIR", help = "Staged SPE FSP install. sentinel `just orin_spe-bsp-stage` produces this under external/spe-fsp/install/. Required for FreeRTOS.h, portmacro.h, FreeRTOSConfig.h", validate_subdir = "include/freertos" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+  "{env:NV_SPE_FSP_DIR}/include/freertos",
+  "{env:NV_SPE_FSP_DIR}/include/freertos/portable/GCC/ARM_R5",
+  "{env:NV_SPE_FSP_DIR}/include",
+  # Phase 154 — `<nros/platform_net.h>` source.
+  "{nros}/../../core/nros-platform-api/include",
+]
+rerun_if_env_changed = ["NV_SPE_FSP_DIR"]
+
+[arch.cortex-r5-softfp]
+# AGX Orin SPE — softfp + vfpv3-d16 matches the FSP's CFLAGS.
+target_match = "armv7r"
+cflags = [
+  "-mcpu=cortex-r5", "-marm", "-mthumb-interwork",
+  "-mfloat-abi=softfp", "-mfpu=vfpv3-d16",
+]

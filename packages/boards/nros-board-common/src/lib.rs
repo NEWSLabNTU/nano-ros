@@ -44,6 +44,9 @@ pub mod nuttx_ffi_build;
 pub mod nuttx_image_link;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_platform_build;
+/// RFC-0049 / phase-290 — per-package platform/board knob configuration.
+#[cfg(feature = "build-helpers")]
+pub mod platform_config;
 #[cfg(feature = "build-helpers")]
 pub mod policy;
 #[cfg(feature = "build-helpers")]

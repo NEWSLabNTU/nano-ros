@@ -246,7 +246,7 @@ if(NOT TARGET threadx_glue)
         # collides with picolibc's `suseconds_t` typedef) to
         # `typedef LONG nx_bsd_suseconds_t` (native NetX type,
         # no collision). Same flag the Rust-side build sets via
-        # zenoh_platforms.toml; missing here because the cmake
+        # threadx nros-platform.toml; missing here because the cmake
         # glue compile defaulted to TX_INCLUDE_USER_DEFINE_FILE
         # alone. `NX_INCLUDE_USER_DEFINE_FILE` ditto so nx_user.h's
         # define block is honoured for the bare-metal C glue.

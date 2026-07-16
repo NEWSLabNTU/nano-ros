@@ -47,3 +47,7 @@ default = []
 # source helpers. Pulls serde + toml + cc transitively. Required
 # for crates that use these from a `build.rs`.
 build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths"]
+
+[dev-dependencies]
+# phase-290 — platform_config tree tests build sandboxed config trees.
+tempfile = "3"

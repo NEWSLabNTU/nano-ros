@@ -1,27 +1,27 @@
-//! Phase 136 E2E.3 — zenoh-pico source-list drift gate.
+//! Phase 136 E2E.3 / phase-290 — zenoh-pico source-list drift gate.
 //!
 //! `zpico-sys/build.rs` panics at build time if any
-//! `[platform.*] include` root in `zenoh_platforms.toml` no longer
-//! resolves to a real directory under `zenoh-pico/src/`. The check
-//! is the structural firewall against silent stale-source bugs
-//! when upstream zenoh-pico bumps rename `system/<plat>/` dirs.
+//! `[build.zenoh] include` root in a platform package's
+//! `nros-platform.toml` no longer resolves to a real directory under
+//! `zenoh-pico/src/`. The check is the structural firewall against
+//! silent stale-source bugs when upstream zenoh-pico bumps rename
+//! `system/<plat>/` dirs.
 //!
-//! This test guards the gate itself: it copies the manifest to a
-//! sandbox, corrupts one `include` entry, drives `cargo build
-//! -p zpico-sys` against the sandboxed manifest, and asserts the
-//! build script panic surfaces with the documented diagnostic. A
-//! second run restores the manifest and asserts the build passes.
+//! This test guards the gate itself: it copies the per-platform config
+//! tree (`packages/platforms/*/nros-platform.toml`, RFC-0049) to a
+//! sandbox, corrupts the posix file's `include` entry, drives
+//! `cargo build -p zpico-sys` against the sandboxed tree via
+//! `NROS_PLATFORMS_DIR`, and asserts the build-script panic surfaces
+//! with the documented diagnostic. A second run against the pristine
+//! sandbox asserts the build passes.
 //!
-//! Driven by the `ZPICO_PLATFORMS_TOML` env var (override hook
-//! introduced alongside 136.1). If the override is not honoured —
-//! e.g. someone deletes the env read in a future refactor — the
-//! test fails because the corrupted sandbox manifest is silently
-//! ignored. That's the second invariant: the override hook itself
-//! must keep working.
+//! Second invariant: the `NROS_PLATFORMS_DIR` override hook itself must
+//! keep working — if a future refactor drops the env read, the corrupted
+//! sandbox is silently ignored and the first assertion fails.
 
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -34,16 +34,32 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn canonical_manifest_path() -> PathBuf {
-    workspace_root().join("packages/zpico/zpico-sys/zenoh_platforms.toml")
+fn canonical_platforms_root() -> PathBuf {
+    workspace_root().join("packages/platforms")
 }
 
-/// Run `cargo build -p zpico-sys` with `ZPICO_PLATFORMS_TOML`
-/// pointed at `manifest_path`. Returns the combined stdout+stderr
-/// output and the exit status. Build is done in a dedicated
-/// `target-zpico-drift-gate/` dir so it doesn't poison other
+/// Copy every `<root>/*/nros-platform.toml` into `dst` preserving the
+/// per-directory layout the loader expects.
+fn copy_tree(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).expect("create sandbox tree root");
+    for entry in fs::read_dir(src).expect("read platforms root") {
+        let entry = entry.expect("dir entry");
+        let file = entry.path().join("nros-platform.toml");
+        if !file.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let ddir = dst.join(&name);
+        fs::create_dir_all(&ddir).expect("create sandbox platform dir");
+        fs::copy(&file, ddir.join("nros-platform.toml")).expect("copy platform toml");
+    }
+}
+
+/// Run `cargo build -p zpico-sys` with `NROS_PLATFORMS_DIR` pointed at
+/// `platforms_dir`. Returns combined stdout+stderr and the exit status.
+/// Dedicated `target-zpico-drift-gate/` dir so it doesn't poison other
 /// concurrent builds.
-fn run_build(manifest_path: &std::path::Path) -> (String, std::process::ExitStatus) {
+fn run_build(platforms_dir: &Path) -> (String, std::process::ExitStatus) {
     let root = workspace_root();
     let target_dir = root.join("target-zpico-drift-gate");
 
@@ -62,7 +78,7 @@ fn run_build(manifest_path: &std::path::Path) -> (String, std::process::ExitStat
             "--target-dir",
         ])
         .arg(&target_dir)
-        .env("ZPICO_PLATFORMS_TOML", manifest_path)
+        .env("NROS_PLATFORMS_DIR", platforms_dir)
         // Phase 134: keep CARGO_TARGET_DIR / RUSTUP_TOOLCHAIN intact
         // from the parent test process so the same toolchain that
         // built the test binary builds the sandbox crate.
@@ -79,57 +95,50 @@ fn run_build(manifest_path: &std::path::Path) -> (String, std::process::ExitStat
 #[test]
 fn zpico_drift_gate_fires_on_corrupted_include() {
     let root = workspace_root();
-    let canonical = canonical_manifest_path();
-    if !canonical.exists() {
+    let canonical_root = canonical_platforms_root();
+    let posix_toml = canonical_root.join("posix/nros-platform.toml");
+    if !posix_toml.exists() {
         panic!(
-            "[SKIPPED] zenoh_platforms.toml not present at {} — \
-             zpico-sys layout drifted from Phase 136",
-            canonical.display()
+            "[SKIPPED] {} not present — the phase-290 per-platform config \
+             layout drifted",
+            posix_toml.display()
         );
     }
-    // Skip if the override hook isn't wired yet — pre-136 builds
-    // hard-coded the manifest path and this test can't function.
-    let probe = std::env::temp_dir().join("zpico-drift-gate-probe.toml");
-    fs::copy(&canonical, &probe).expect("copy canonical manifest");
-    let (out, status) = run_build(&probe);
-    if !status.success() {
-        // The override hook may not exist yet — only fail the test
-        // if the failure is specifically about the override not
-        // working, otherwise re-raise.
-        if !out.contains("ZPICO_PLATFORMS_TOML") && !out.contains("zenoh_platforms.toml") {
-            panic!(
-                "[SKIPPED] cargo build failed with the canonical manifest in the sandbox; \
-                 either the ZPICO_PLATFORMS_TOML override hook is not implemented yet, or \
-                 the build environment is broken. Output:\n{out}"
-            );
-        }
-    }
-    let _ = fs::remove_file(&probe);
 
-    let canonical_body = fs::read_to_string(&canonical).expect("read canonical manifest");
-    if !canonical_body.contains("system/unix") {
+    let posix_body = fs::read_to_string(&posix_toml).expect("read posix platform toml");
+    if !posix_body.contains("system/unix") {
         panic!(
-            "[SKIPPED] manifest doesn't carry the expected `system/unix` include — \
-             test fixture assumption drifted; update the corruption pattern"
+            "[SKIPPED] posix nros-platform.toml doesn't carry the expected \
+             `system/unix` include — test fixture assumption drifted; update \
+             the corruption pattern"
         );
     }
-    let corrupted_body = canonical_body.replace(
+
+    // Sandbox 1 — pristine copy. Also proves the NROS_PLATFORMS_DIR
+    // override hook is honoured (a broken hook fails the corrupted run
+    // below instead).
+    let sandbox_root = root.join("target-zpico-drift-gate").join("platforms");
+    let pristine = sandbox_root.join("pristine");
+    let _ = fs::remove_dir_all(&sandbox_root);
+    copy_tree(&canonical_root, &pristine);
+
+    // Sandbox 2 — corrupted posix include.
+    let corrupted = sandbox_root.join("corrupted");
+    copy_tree(&canonical_root, &corrupted);
+    let corrupted_body = posix_body.replace(
         "system/unix",
         // A path that obviously doesn't exist under zenoh-pico/src/.
         // Keep it inside `system/` so the gate's path-resolution
         // logic actually traverses to it and fails.
         "system/_zpico_drift_gate_sentinel_does_not_exist",
     );
+    fs::write(corrupted.join("posix/nros-platform.toml"), corrupted_body)
+        .expect("write corrupted platform toml");
 
-    let sandbox = root.join("target-zpico-drift-gate").join("manifest");
-    fs::create_dir_all(&sandbox).expect("create sandbox dir");
-    let corrupted_path = sandbox.join("zenoh_platforms.toml");
-    fs::write(&corrupted_path, corrupted_body).expect("write corrupted manifest");
-
-    let (out, status) = run_build(&corrupted_path);
+    let (out, status) = run_build(&corrupted);
     assert!(
         !status.success(),
-        "expected cargo build to fail with the corrupted manifest, \
+        "expected cargo build to fail with the corrupted platform tree, \
          but it succeeded. Output:\n{out}"
     );
     assert!(
@@ -141,13 +150,11 @@ fn zpico_drift_gate_fires_on_corrupted_include() {
          drift message, but neither appears. Output:\n{out}"
     );
 
-    // Round-trip: restore the manifest and confirm the build is happy
-    // again, so future runs of this test stay deterministic.
-    let restored_path = sandbox.join("zenoh_platforms_restored.toml");
-    fs::write(&restored_path, &canonical_body).expect("write restored manifest");
-    let (out, status) = run_build(&restored_path);
+    // Round-trip: the pristine sandbox builds cleanly, so future runs of
+    // this test stay deterministic.
+    let (out, status) = run_build(&pristine);
     assert!(
         status.success(),
-        "restored manifest should build cleanly, but it failed. Output:\n{out}"
+        "pristine platform tree should build cleanly, but it failed. Output:\n{out}"
     );
 }
