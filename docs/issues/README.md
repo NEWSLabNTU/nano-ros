@@ -71,18 +71,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
   the `/audit` F3 static drift check. Runner-class work; shares #200's infrastructure.
-- **#203** — [mixed-workspace cpp codegen over-generates the interface set](0203-mixed-workspace-cpp-interface-overgeneration.md):
-  `nros_find_interfaces(LANGUAGE CPP)` under the mixed multi-pkg generation emits the full set
-  incl. `action_msgs`, whose cpp FFI crate can't see `builtin_interfaces` types — blocks
-  cross-LANGUAGE service pairs (mixed demo stays C+C). Deferred un-tracked since 263-A1; filed
-  by the phase-263 audit.
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#201** — option 2
+Recently resolved (see [`archived/`](archived/) for the full list): **#203** — the
+mixed-workspace cpp FFI compile failure no longer reproduces (fixed en route by the 263-A4
+idempotency + 269 header-mirror repairs; the "over-generation" was a misread —
+`example_interfaces` really depends on `action_msgs`). Landed the blocked demo: the mixed
+service pair is now genuinely cross-LANGUAGE (C server + C++ client), e2e-green; the cpp pkg in
+the mixed generation is the standing regression site. **#201** — option 2
 (real element lifetime): `HeapSequence` dtor/move-assign/`clear` run element destructors
 (pseudo-destructor loop, zero-cost for trivial `T`); `reserve` byte-relocates (documented
 trivially-relocatable element contract); placement-new `push_back` + new `emplace_back()` for

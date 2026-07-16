@@ -6,6 +6,6 @@
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <exec_depend>demo_bringup</exec_depend>
-  <exec_depend>c_add_client_pkg</exec_depend>
+  <exec_depend>cpp_add_client_pkg</exec_depend>
   <export><build_type>cmake</build_type></export>
 </package>

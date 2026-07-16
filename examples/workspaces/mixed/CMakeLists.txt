@@ -30,10 +30,13 @@ set(_ws_subdirs
 
 if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _ws_subdirs
-        # phase-263 A1 (services, MIXED) — cross-language AddTwoInts: C server + C client pkgs
-        # + their two single-node entries (cross-process, issue 0096). Pkgs before entries.
+        # phase-263 A1 (services, MIXED) — cross-LANGUAGE AddTwoInts: C server + C++
+        # client pkgs + their two single-node entries (cross-process, issue 0096).
+        # Pkgs before entries. The C++ pkg in the MIXED multi-pkg generation is the
+        # #203 regression site (the action_msgs cpp FFI over-generation used to fail
+        # here; resolved — the pair is now genuinely cross-language).
         src/c_add_server_pkg
-        src/c_add_client_pkg
+        src/cpp_add_client_pkg
         # phase-263 A4 (actions, MIXED) — Fibonacci C server + C client pkgs + their two
         # single-node entries (cross-process, issue 0096). Pkgs before entries.
         src/c_fib_server_pkg

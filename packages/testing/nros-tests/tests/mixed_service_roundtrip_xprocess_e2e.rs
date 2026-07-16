@@ -1,17 +1,18 @@
 //! phase-263 A1 (services, MIXED projection) — cross-process AddTwoInts service round-trip in the
-//! MIXED workspace (C server + C client). The MIXED sibling of the Rust `service_roundtrip_xprocess_e2e`.
+//! MIXED workspace (**C server + C++ client** — a genuinely cross-LANGUAGE pair since issue #203
+//! closed; it was C+C while the mixed cpp interface generation was broken). The MIXED sibling of
+//! the Rust `service_roundtrip_xprocess_e2e`.
 //!
 //! Issue 0096: an in-process (same-executor) service server+client can't talk, so the server
-//! (`c_add_server_pkg`) and client (`c_add_client_pkg`) run as TWO processes — one single-node
+//! (`c_add_server_pkg`) and client (`cpp_add_client_pkg`) run as TWO processes — one single-node
 //! entry each (`native_service_{server,client}_entry`, booting
 //! `service_{server,client}.launch.xml`). The client calls `/add_two_ints` each tick with
 //! `a = 0,1,2,…`, `b = 1`; the server computes `a + b` and replies; the client prints the
 //! server-computed sum it receives. Asserting on the client's stdout proves the FULL
 //! cross-process round-trip: request → (separate server process) compute → reply → client.
 //!
-//! C uses the POLL-model component service client (`nros_cpp_service_client_send_request` +
-//! `try_recv_reply`), not Rust's blocking `call_for_name` — a component callback must never
-//! block the executor.
+//! The client uses the POLL-model component service surface (`send_request` + `try_recv_reply`),
+//! not Rust's blocking `call_for_name` — a component callback must never block the executor.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test mixed_service_roundtrip_xprocess_e2e`
 

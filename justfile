@@ -2095,8 +2095,11 @@ setup-cli:
     # (phase-265 `nros sync` was "unrecognized" until a manual `cargo build`).
     # `target/`/`generated/` are pruned so the scan is fast; `-quit` stops at the
     # first newer source.
+    # `testing_workspaces`/`third-party` pruned too — cli-test fixtures and the
+    # vendored submodules are NOT nros build inputs, and a parallel session
+    # touching them shouldn't force a rebuild (or trip the cargo.sh #197 guard).
     stale_src="$(find "$root/packages/cli" \
-        \( -name target -o -name generated \) -prune -o \
+        \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
         \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) -newer "$bin" -print -quit 2>/dev/null)"
     if [ -x "$bin" ] && [ -z "$stale_src" ]; then
         # Quiet on no-op — `just setup` invokes us unconditionally.

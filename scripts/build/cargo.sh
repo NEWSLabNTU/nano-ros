@@ -230,8 +230,10 @@ nros_require_ws_sync() {
         # Same prune+quit scan setup-cli uses: first cli source newer than the
         # binary means a rebuild is owed (a new subcommand/parser, or the
         # post-rebase mtime treadmill — either way `just setup-cli` fixes it).
+        # `testing_workspaces`/`third-party` pruned (matches setup-cli): cli-test
+        # fixtures + vendored submodules are not nros build inputs.
         _src_newer="$(find "$_co_root/packages/cli" \
-            \( -name target -o -name generated \) -prune -o \
+            \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
             \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
             -newer "$_co_bin" -print -quit 2>/dev/null)"
         if [ -n "$_src_newer" ]; then
