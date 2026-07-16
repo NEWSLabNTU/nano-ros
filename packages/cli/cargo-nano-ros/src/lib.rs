@@ -493,14 +493,16 @@ fn replace_outside_strings(src: &str, old: &str, new: &str) -> String {
 /// Searches for the `interfaces/` directory relative to the cargo-nano-ros
 /// crate manifest, then falls back to checking relative to the binary location.
 fn bundled_interfaces_dir() -> Option<PathBuf> {
-    // Try relative to CARGO_MANIFEST_DIR (works during cargo build)
+    // Try relative to CARGO_MANIFEST_DIR (works during cargo build).
+    // cargo-nano-ros lives at packages/cli/cargo-nano-ros; the bundled share
+    // dirs at packages/cli/interfaces/. Gate on std_msgs so a sibling
+    // `interfaces/` dir of some other layout can't shadow it.
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let dir = PathBuf::from(manifest_dir)
             .parent()
-            .and_then(|p| p.parent())
             .map(|p| p.join(BUNDLED_INTERFACES_DIR));
         if let Some(ref d) = dir
-            && d.exists()
+            && d.join("std_msgs").is_dir()
         {
             return dir;
         }
@@ -508,11 +510,19 @@ fn bundled_interfaces_dir() -> Option<PathBuf> {
 
     // Try relative to the running binary
     if let Ok(exe) = std::env::current_exe() {
-        // Walk up from binary to find the interfaces directory
+        // Walk up from binary to find the interfaces directory. The nros
+        // binary lives at packages/cli/target/{release,debug}/nros; the
+        // bundled share dirs live at packages/cli/interfaces/ (post
+        // codegen-submodule retirement). Require the std_msgs share dir so
+        // a stray `interfaces/` dir elsewhere on the walk can't match.
         let mut path = exe.as_path();
         for _ in 0..6 {
             if let Some(parent) = path.parent() {
-                // New layout: packages/codegen/interfaces/
+                let candidate = parent.join(BUNDLED_INTERFACES_DIR);
+                if candidate.join("std_msgs").is_dir() {
+                    return Some(candidate);
+                }
+                // Retired layout: packages/codegen/interfaces/
                 let candidate = parent.join("packages/codegen").join(BUNDLED_INTERFACES_DIR);
                 if candidate.exists() {
                     return Some(candidate);
@@ -534,7 +544,9 @@ fn bundled_interfaces_dir() -> Option<PathBuf> {
 ///
 /// If a ROS 2 environment is sourced, the ament index takes precedence.
 /// Bundled interfaces (std_msgs, builtin_interfaces) fill in any gaps.
-fn load_index_with_fallback(verbose: bool) -> Result<AmentIndex> {
+/// Public: `nros sync` (nros-cli-core) resolves external msg deps through
+/// this too, so a host without ROS 2 still generates std_msgs (#204).
+pub fn load_index_with_fallback(verbose: bool) -> Result<AmentIndex> {
     // Try ament index first
     let mut index = match AmentIndex::from_env() {
         Ok(idx) => {

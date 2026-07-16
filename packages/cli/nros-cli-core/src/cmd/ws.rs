@@ -618,10 +618,14 @@ fn codegen_ament_deps_for(
     emitted: &mut HashSet<String>,
     verbose: bool,
 ) -> Result<()> {
-    // Pre-load ament index once per invocation.
+    // Pre-load the interface index once per invocation: the ament index
+    // (when a ROS 2 env is sourced) merged over the bundled share dirs at
+    // packages/cli/interfaces/ — so a host WITHOUT ROS 2 still resolves
+    // std_msgs/builtin_interfaces instead of letting cargo fall through to
+    // crates.io's yanked ROS crates (#204 probe finding).
     static AMENT_INDEX: std::sync::OnceLock<Option<rosidl_bindgen::ament::AmentIndex>> =
         std::sync::OnceLock::new();
-    let idx = AMENT_INDEX.get_or_init(|| rosidl_bindgen::ament::AmentIndex::from_env().ok());
+    let idx = AMENT_INDEX.get_or_init(|| cargo_nano_ros::load_index_with_fallback(false).ok());
     let Some(idx) = idx else { return Ok(()) };
 
     let in_workspace: HashSet<&str> = scan.iter().map(|p| p.name.as_str()).collect();
