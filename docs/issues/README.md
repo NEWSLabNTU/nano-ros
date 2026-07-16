@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#215** — [threadx-linux cyclone talker broken on fresh build](0215-threadx-linux-cyclone-participant-create-fails.md):
+  `dds_create_participant` -1 → `nros_support_init` -1 → silent exit (CHECK_LOG printf swallowed);
+  museum binary hid it since ~2026-07-08; `test_threadx_linux_cyclonedds_talker_to_native_listener`
+  red. Suspects: #205 boot-glue rework / #195 .init_array change. (2026-07-16)
 - **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
   ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
   sibling of #203. (audit 2026-07-16)
@@ -60,12 +64,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#206** — the
-`$NROS_LOCATOR`/`$ROS_DOMAIN_ID` overlay now lives once in the nros-c core
-(`nros_env_locator`/`nros_env_domain_id`, named `NROS_DOMAIN_ID_MAX`): the C API gained the
-same env fallback the C++ header had (explicit args still win), both C++ `init()` overloads
-dedup onto the shared helpers, and a malformed/out-of-range domain keeps the caller value
-instead of silently collapsing to 0. **#214** — the rust
+Recently resolved (see [`archived/`](archived/) for the full list): **#206** — the env
+overlay (`NROS_LOCATOR`/`ROS_DOMAIN_ID`/`NROS_NODE_NAME`) is now applied in ONE place —
+`ExecutorConfig::try_resolve` (RFC-0045 model A) — for Rust, C (which gains it), and C++
+(whose duplicated header blocks are deleted); malformed or >`DOMAIN_ID_MAX`(232)
+`ROS_DOMAIN_ID` is an init ERROR everywhere, never a silent domain-0. Model-A decision:
+hosted env overrides explicit init args, per ROS convention; domain 0 stays the unset
+sentinel — supersedes the same-day helper-based fix (a0061e36e), whose explicit-args-win
+semantics contradicted the maintainer's model-A decision. **#214** — the rust
 cyclone riscv64 lane is REAL now: new `test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub`
 (the resolver's first consumer) passes ~7.7 s. The actual wire identity on this path is the
 cmake-generated `NROS_APP_CONFIG` (10.0.2.x, applied by startup.c pre-kernel) — both images

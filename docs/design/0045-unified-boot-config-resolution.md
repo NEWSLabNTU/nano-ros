@@ -239,3 +239,15 @@ two follow-ons are additive rather than rework:
 - Issue #101 (boot config not unified) — tracked-by this RFC.
 - Issue #98 (component node name ignored) — resolved across all boards by this design.
 - Issue #80 (param persistence backends) — gates the deferred storage-backed override.
+
+## Changelog
+
+- 2026-07-16 — issue #206: env rung completed across languages. C++'s
+  parallel header implementation removed (both `init()` overloads);
+  `nros_cpp_init` and `nros_support_init[_named]` route through the new
+  fallible `ExecutorConfig::try_resolve`; `NROS_NODE_NAME` added to the
+  hosted env rung; validation unified (`DOMAIN_ID_MAX = 232`, malformed
+  `ROS_DOMAIN_ID` = error — never silent 0 / silent skip). Maintainer
+  decision recorded: model A applies to explicit init args too (env
+  overrides them on hosted, the ROS convention); `domain_id == 0` remains
+  the unset sentinel at the C/C++ ABI edge.

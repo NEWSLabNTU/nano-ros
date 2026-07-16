@@ -167,53 +167,59 @@ pub unsafe extern "C" fn nros_support_init_named(
         return NROS_RET_BAD_SEQUENCE;
     }
 
-    // Issue #206 — hosted env overlay, matching the C++ shim: a NULL locator
-    // falls back to `$NROS_LOCATOR`, a zero domain to `$ROS_DOMAIN_ID`
-    // (validated 0..=NROS_DOMAIN_ID_MAX; malformed input keeps the caller
-    // value). Explicit arguments always win, so C apps that already
-    // `getenv()` themselves are unaffected.
-    #[cfg(feature = "std")]
-    let (locator, domain_id) = {
-        let locator = if locator.is_null() {
-            nros_env_locator()
-        } else {
-            locator
-        };
-        let domain_id = if domain_id == 0 {
-            match nros_env_domain_id() {
-                d @ 0..=232 => d as u8,
-                _ => domain_id,
-            }
-        } else {
-            domain_id
-        };
-        (locator, domain_id)
+    // RFC-0045 / issue #206 — route locator + domain through the ONE
+    // boot-config resolver (precedence model A: hosted env > baked >
+    // default). This gives the C API the same NROS_LOCATOR/ROS_DOMAIN_ID
+    // env overlay Rust and C++ have (previously: none), with the same
+    // validation (malformed / > DOMAIN_ID_MAX ROS_DOMAIN_ID = error, never
+    // silent 0). The BAKED rung = the caller's explicit args, falling back
+    // to the historical per-backend default locator; domain_id 0 = the
+    // unset sentinel (ROS convention).
+    let baked_locator: Option<&str> = if !locator.is_null() {
+        match core::ffi::CStr::from_ptr(locator).to_str() {
+            Ok(s) => Some(s),
+            Err(_) => return NROS_RET_INVALID_ARGUMENT,
+        }
+    } else {
+        // Phase 115.K.2.5.2: rmw-cffi covers the C/C++-API XRCE C backend.
+        // Default agent locator for consumers that omit the locator —
+        // points at a local agent on `:2019`. Other cffi-* sub-backends
+        // (dds, zenoh, cyclonedds) ignore the locator and use their own
+        // discovery mechanisms.
+        #[cfg(feature = "rmw-cffi")]
+        {
+            Some("127.0.0.1:2019")
+        }
+        #[cfg(not(feature = "rmw-cffi"))]
+        {
+            None
+        }
+    };
+    let baked = nros_node::BootConfig {
+        node_name: None,
+        locator: baked_locator,
+        domain_id: (domain_id != 0).then_some(domain_id as u32),
+        namespace: None,
+    };
+    let resolved = match nros_node::ExecutorConfig::try_resolve(baked, true) {
+        Ok(cfg) => cfg,
+        Err(_) => return NROS_RET_INVALID_ARGUMENT,
     };
 
-    // Store domain ID
-    support.domain_id = domain_id;
+    // Store the RESOLVED domain ID (fits u8: try_resolve enforces
+    // DOMAIN_ID_MAX = 232).
+    support.domain_id = resolved.domain_id as u8;
 
-    // Copy locator string if provided (helper handles the null branch
-    // gracefully — but the legacy `else` branch installs a backend-default
-    // locator instead of leaving the field empty, so the explicit
-    // null-check stays).
-    if !locator.is_null() {
-        support.locator_len = crate::util::copy_cstr_into(locator, &mut support.locator);
-    } else {
-        // Phase 115.K.2.5.2: rmw-cffi covers the C/C++-API XRCE C
-        // backend. Default agent locator for consumers that omit
-        // the locator — points at a local agent on `:2019`. Other
-        // cffi-* sub-backends (dds, zenoh, cyclonedds) ignore the
-        // locator and use their own discovery mechanisms.
-        #[cfg(feature = "rmw-cffi")]
-        let default_locator = b"127.0.0.1:2019\0";
-        #[cfg(not(feature = "rmw-cffi"))]
-        let default_locator = b"\0";
-
-        let len = default_locator.len() - 1;
-        support.locator[..len].copy_from_slice(&default_locator[..len]);
-        support.locator[len] = 0;
-        support.locator_len = len;
+    // Store the RESOLVED locator.
+    {
+        let bytes = resolved.locator.as_bytes();
+        let cap = support.locator.len() - 1;
+        if bytes.len() > cap {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        support.locator[..bytes.len()].copy_from_slice(bytes);
+        support.locator[bytes.len()] = 0;
+        support.locator_len = bytes.len();
     }
 
     // Phase 128.C.2 — RMW-blind support init. Every linked backend
@@ -404,61 +410,5 @@ impl nros_support_t {
     /// Get the locator string
     pub(crate) fn get_locator(&self) -> &[u8] {
         &self.locator[..self.locator_len]
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Issue #206 — shared `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env overlay helpers.
-//
-// The env→locator/domain resolution used to live only in the C++ header
-// (`node.hpp`), duplicated across `init()` overloads, with a silent
-// "malformed or >232 becomes domain 0" failure mode — and the C API had no
-// env fallback at all, so C and C++ apps behaved differently under the same
-// environment. These two hosted-only entry points are the single source both
-// shims call; the Rust-native path (`nros::init`) already fail-louds via
-// `InitError::EnvParseFailed`.
-// ---------------------------------------------------------------------------
-
-/// ROS 2 domain-ID upper bound (the RTPS port-mapping ceiling both the C++
-/// header and the docs previously inlined as a bare `232`).
-pub const NROS_DOMAIN_ID_MAX: u8 = 232;
-
-/// `$NROS_LOCATOR` (non-empty), or NULL when unset/empty.
-///
-/// The returned pointer is a process-lifetime cached copy (first call wins;
-/// later env mutations are not observed — matching `option_env`-style
-/// read-once semantics for session setup).
-#[cfg(feature = "std")]
-#[unsafe(no_mangle)]
-pub extern "C" fn nros_env_locator() -> *const c_char {
-    use std::sync::OnceLock;
-    static LOCATOR: OnceLock<Option<std::ffi::CString>> = OnceLock::new();
-    match LOCATOR.get_or_init(|| {
-        std::env::var("NROS_LOCATOR")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .and_then(|s| std::ffi::CString::new(s).ok())
-    }) {
-        Some(c) => c.as_ptr(),
-        None => core::ptr::null(),
-    }
-}
-
-/// `$ROS_DOMAIN_ID` parsed and validated.
-///
-/// * `0..=232` — the parsed domain.
-/// * `-1` — unset / empty (caller keeps its value).
-/// * `-2` — set but malformed or out of range (caller keeps its value; a typo
-///   must NEVER silently move the node to domain 0 — the pre-#206 C++ inline
-///   parser did exactly that).
-#[cfg(feature = "std")]
-#[unsafe(no_mangle)]
-pub extern "C" fn nros_env_domain_id() -> i32 {
-    match std::env::var("ROS_DOMAIN_ID") {
-        Ok(s) if !s.is_empty() => match s.trim().parse::<u32>() {
-            Ok(v) if v <= NROS_DOMAIN_ID_MAX as u32 => v as i32,
-            _ => -2,
-        },
-        _ => -1,
     }
 }

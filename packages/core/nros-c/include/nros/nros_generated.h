@@ -160,12 +160,6 @@ struct nros_goal_uuid_t;
 #define NROS_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
- * ROS 2 domain-ID upper bound (the RTPS port-mapping ceiling both the C++
- * header and the docs previously inlined as a bare `232`).
- */
-#define NROS_DOMAIN_ID_MAX 232
-
-/**
  * Clock type enumeration.
  */
 typedef enum nros_clock_type_t {
@@ -5908,26 +5902,6 @@ NROS_PUBLIC nros_ret_t nros_support_fini(struct nros_support_t *support);
  * * `true` if valid, `false` if invalid or NULL
  */
 NROS_PUBLIC bool nros_support_is_valid(const struct nros_support_t *support);
-
-/**
- * `$NROS_LOCATOR` (non-empty), or NULL when unset/empty.
- *
- * The returned pointer is a process-lifetime cached copy (first call wins;
- * later env mutations are not observed — matching `option_env`-style
- * read-once semantics for session setup).
- */
-NROS_PUBLIC const char *nros_env_locator(void);
-
-/**
- * `$ROS_DOMAIN_ID` parsed and validated.
- *
- * * `0..=232` — the parsed domain.
- * * `-1` — unset / empty (caller keeps its value).
- * * `-2` — set but malformed or out of range (caller keeps its value; a typo
- *   must NEVER silently move the node to domain 0 — the pre-#206 C++ inline
- *   parser did exactly that).
- */
-NROS_PUBLIC int32_t nros_env_domain_id(void);
 
 /**
  * Get a zero-initialized timer.

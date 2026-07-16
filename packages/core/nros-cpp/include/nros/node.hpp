@@ -668,32 +668,6 @@ template <int N> bool Node::GlobalStorageHolder<N>::initialized = false;
 
 // -- Free function implementations --
 
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-// Issue #206 — the `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` overlay now lives in ONE
-// place: the nros-c core helpers (support.rs), shared by the C and C++ shims.
-// The parse is validated there (0..=NROS_DOMAIN_ID_MAX=232); a malformed or
-// out-of-range value keeps the caller's domain — the old inline parser here
-// silently collapsed a typo to domain 0. Declared inline (this header stays
-// standalone; nros_generated.h carries the canonical declarations).
-extern "C" const char* nros_env_locator(void);
-extern "C" int32_t nros_env_domain_id(void);
-
-namespace detail {
-inline void apply_env_overlay(const char*& locator, uint8_t& domain_id) {
-    if (locator == nullptr) {
-        locator = nros_env_locator();
-    }
-    if (domain_id == 0) {
-        const int32_t d = nros_env_domain_id();
-        if (d >= 0) {
-            domain_id = static_cast<uint8_t>(d);
-        }
-    }
-}
-} // namespace detail
-#endif
-
-
 inline Result init(const char* locator, uint8_t domain_id) {
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     // Phase 123.B.3 — on hosted builds, fall through to env vars
@@ -703,10 +677,15 @@ inline Result init(const char* locator, uint8_t domain_id) {
     // Phase-287 W6 — the hard "tcp/127.0.0.1:7447" fallback moved BELOW the
     // baked-macro check: threadx-linux is a HOSTED embedded target, and the
     // eager default here shadowed its baked `NROS_ENTRY_LOCATOR` port.
-    detail::apply_env_overlay(locator, domain_id);
+    // RFC-0045 / issue #206 — the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
+    // NROS_NODE_NAME) moved into the shared Rust resolver behind
+    // nros_cpp_init (precedence model A: hosted env > this baked chain >
+    // compiled default; malformed or >232 ROS_DOMAIN_ID is an init ERROR,
+    // never a silent domain 0). This header only assembles the baked rung.
 #endif
     // Baked compile-time locator (embedded gate) beats the local default but
-    // loses to an explicit arg / env (phase-287 W6; see the 3-arg overload).
+    // loses to an explicit arg; the hosted env rung (in the Rust resolver)
+    // overrides all of these (phase-287 W6 + #206; see the 3-arg overload).
 #ifdef NROS_ENTRY_LOCATOR
     if (locator == nullptr) {
         locator = NROS_ENTRY_LOCATOR;
@@ -736,14 +715,18 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // to the backend → TransportError / degraded session.
     // Phase-287 W6 — the hard local default moved BELOW the baked-macro check
     // (threadx-linux is hosted; the eager default shadowed its baked port).
-    detail::apply_env_overlay(locator, domain_id);
+    // RFC-0045 / issue #206 — the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
+    // NROS_NODE_NAME) moved into the shared Rust resolver behind
+    // nros_cpp_init (precedence model A: hosted env > this baked chain >
+    // compiled default; malformed or >232 ROS_DOMAIN_ID is an init ERROR,
+    // never a silent domain 0). This header only assembles the baked rung.
 #endif
     // Phase-287 W6 — compile-time connect defaults, so ONE portable source
     // works native + embedded. `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
     // are target compile definitions the embedded board gate bakes
     // (NanoRosEntry.cmake; Kconfig on Zephyr via <nros/main.hpp>); on native
-    // they are undefined and the env/arg resolution above stands. Precedence:
-    // explicit arg > env (hosted) > baked macro > backend default.
+    // they are undefined. Precedence (model A, RFC-0045/#206): env (hosted,
+    // applied in the Rust resolver) > explicit arg > baked macro > default.
 #ifdef NROS_ENTRY_LOCATOR
     if (locator == nullptr) {
         locator = NROS_ENTRY_LOCATOR;

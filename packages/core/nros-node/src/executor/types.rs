@@ -159,6 +159,39 @@ impl SpinOptions {
 #[cfg(feature = "std")]
 const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 
+/// RFC-0045 / issue #206 — maximum valid ROS 2 domain ID. The ROS 2 / DDS
+/// convention (RTPS port arithmetic) caps usable domains at 232; values
+/// above it are a configuration error in EVERY language front-end (never a
+/// silent clamp or silent 0). Mirrored into the generated C header — keep
+/// the mirror in sync (the #160 drift class).
+pub const DOMAIN_ID_MAX: u32 = 232;
+
+/// RFC-0045 / issue #206 — boot-config resolution error. Malformed or
+/// out-of-range identity input (env or baked) is an ERROR, never a silent
+/// fallback: a typo'd `ROS_DOMAIN_ID` must not invisibly move a node to
+/// domain 0 (the pre-#206 C++ behavior) or be silently ignored (the
+/// pre-#206 behavior of this resolver).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootConfigError {
+    /// `ROS_DOMAIN_ID` env var set but not a decimal integer.
+    DomainIdParse,
+    /// Domain ID (env or baked) exceeds [`DOMAIN_ID_MAX`].
+    DomainIdRange,
+}
+
+impl core::fmt::Display for BootConfigError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            BootConfigError::DomainIdParse => {
+                write!(f, "ROS_DOMAIN_ID is set but is not a decimal integer")
+            }
+            BootConfigError::DomainIdRange => {
+                write!(f, "domain id exceeds DOMAIN_ID_MAX ({DOMAIN_ID_MAX})")
+            }
+        }
+    }
+}
+
 // ============================================================================
 // ExecutorConfig
 // ============================================================================
@@ -265,6 +298,8 @@ struct EnvCache {
     locator: std::string::String,
     domain_id: u32,
     mode: SessionMode,
+    /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
+    node_name: std::string::String,
 }
 
 #[cfg(feature = "std")]
@@ -297,10 +332,12 @@ fn env_cache() -> &'static EnvCache {
             Some("peer") => SessionMode::Peer,
             _ => SessionMode::Client,
         };
+        let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
         EnvCache {
             locator,
             domain_id,
             mode,
+            node_name,
         }
     })
 }
@@ -389,6 +426,31 @@ impl<'a> ExecutorConfig<'a> {
     /// domain env var is added there, add the corresponding presence check
     /// here too.
     pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> {
+        match Self::try_resolve(baked, hosted_env) {
+            Ok(cfg) => cfg,
+            // Fail-loud (repo rule): invalid identity config at boot is a
+            // configuration error, never a silent domain-0 node. FFI shims
+            // that need an error code call `try_resolve` directly.
+            Err(e) => panic!("nros boot-config resolution failed: {e}"),
+        }
+    }
+
+    /// RFC-0045 / issue #206 — fallible resolve. Same precedence model A as
+    /// [`resolve`](Self::resolve); returns [`BootConfigError`] instead of
+    /// panicking on malformed / out-of-range identity input, so the C / C++
+    /// FFI shims can surface a return code. Validation is uniform across
+    /// languages:
+    ///
+    /// - `ROS_DOMAIN_ID` set but non-numeric → `DomainIdParse` (the pre-#206
+    ///   C++ header silently collapsed this to domain 0; this resolver
+    ///   silently ignored it — both were wrong).
+    /// - any resolved domain id > [`DOMAIN_ID_MAX`] → `DomainIdRange`
+    ///   (including a BAKED value — the DDS backend would only fail later).
+    /// - `NROS_NODE_NAME` joins the hosted env rung (model A parity).
+    pub fn try_resolve(
+        baked: BootConfig<'a>,
+        hosted_env: bool,
+    ) -> Result<ExecutorConfig<'a>, BootConfigError> {
         // ── hosted path (std only) ──────────────────────────────────────────
         #[cfg(feature = "std")]
         if hosted_env {
@@ -399,12 +461,34 @@ impl<'a> ExecutorConfig<'a> {
             // even when the OnceLock was pre-initialized by an earlier test.
             let locator_from_env =
                 std::env::var("NROS_LOCATOR").is_ok() || std::env::var("ZENOH_LOCATOR").is_ok();
-            let domain_id_from_env = std::env::var("ROS_DOMAIN_ID")
-                .ok()
-                .and_then(|s| s.parse::<u32>().ok())
-                .is_some();
+            let domain_id_from_env = match std::env::var("ROS_DOMAIN_ID") {
+                Ok(s) if !s.is_empty() => {
+                    // #206 — malformed is an ERROR, not a silent skip.
+                    let v = s
+                        .trim()
+                        .parse::<u32>()
+                        .map_err(|_| BootConfigError::DomainIdParse)?;
+                    if v > DOMAIN_ID_MAX {
+                        return Err(BootConfigError::DomainIdRange);
+                    }
+                    true
+                }
+                _ => false,
+            };
+            let node_name_from_env = std::env::var("NROS_NODE_NAME")
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
 
-            return ExecutorConfig {
+            let domain_id = if domain_id_from_env {
+                env.domain_id
+            } else {
+                baked.domain_id.unwrap_or(0)
+            };
+            if domain_id > DOMAIN_ID_MAX {
+                return Err(BootConfigError::DomainIdRange);
+            }
+
+            return Ok(ExecutorConfig {
                 locator: if locator_from_env {
                     // String value from cache (same source as from_env()).
                     env.locator.as_str()
@@ -415,27 +499,31 @@ impl<'a> ExecutorConfig<'a> {
                     DEFAULT_LOCATOR
                 },
                 mode: env.mode,
-                domain_id: if domain_id_from_env {
-                    env.domain_id
+                domain_id,
+                node_name: if node_name_from_env {
+                    env.node_name.as_str()
                 } else {
-                    baked.domain_id.unwrap_or(0)
+                    baked.node_name.unwrap_or("node")
                 },
-                node_name: baked.node_name.unwrap_or("node"),
                 namespace: baked.namespace.unwrap_or(""),
-            };
+            });
         }
 
         // ── embedded / hosted_env=false path (also compiles on no_std) ─────
         let _ = hosted_env; // suppress unused-var on no_std
-        ExecutorConfig {
+        let domain_id = baked.domain_id.unwrap_or(0);
+        if domain_id > DOMAIN_ID_MAX {
+            return Err(BootConfigError::DomainIdRange);
+        }
+        Ok(ExecutorConfig {
             locator: baked.locator.unwrap_or(""),
             mode: nros_rmw::SessionMode::Client,
-            domain_id: baked.domain_id.unwrap_or(0),
+            domain_id,
             node_name: baked.node_name.unwrap_or("node"),
             namespace: baked.namespace.unwrap_or(""),
             #[cfg(not(feature = "std"))]
             clock_us: None,
-        }
+        })
     }
 }
 
@@ -1307,6 +1395,107 @@ mod boot_config_tests {
         assert_eq!(
             resolved.node_name, "my_talker",
             "baked node_name must apply even when locator comes from env"
+        );
+    }
+    // ── #206 / RFC-0045 — try_resolve validation + env parity ──────────────
+
+    #[test]
+    fn try_resolve_malformed_domain_env_errors() {
+        let _l = env_lock().lock().unwrap();
+        let _g = EnvGuard::set("ROS_DOMAIN_ID", "not-a-number");
+        let err = match ExecutorConfig::try_resolve(BootConfig::default(), true) {
+            Err(e) => e,
+            Ok(_) => panic!("expected DomainIdParse error"),
+        };
+        assert_eq!(err, BootConfigError::DomainIdParse);
+    }
+
+    #[test]
+    fn try_resolve_domain_env_over_max_errors() {
+        let _l = env_lock().lock().unwrap();
+        let _g = EnvGuard::set("ROS_DOMAIN_ID", "233");
+        let err = match ExecutorConfig::try_resolve(BootConfig::default(), true) {
+            Err(e) => e,
+            Ok(_) => panic!("expected DomainIdRange error"),
+        };
+        assert_eq!(err, BootConfigError::DomainIdRange);
+    }
+
+    #[test]
+    fn try_resolve_baked_domain_over_max_errors_both_paths() {
+        let _l = env_lock().lock().unwrap();
+        let _g = EnvGuard::unset("ROS_DOMAIN_ID");
+        let baked = BootConfig {
+            domain_id: Some(DOMAIN_ID_MAX + 1),
+            ..BootConfig::default()
+        };
+        assert!(matches!(
+            ExecutorConfig::try_resolve(baked, true),
+            Err(BootConfigError::DomainIdRange)
+        ));
+        let baked = BootConfig {
+            domain_id: Some(DOMAIN_ID_MAX + 1),
+            ..BootConfig::default()
+        };
+        assert!(
+            matches!(
+                ExecutorConfig::try_resolve(baked, false),
+                Err(BootConfigError::DomainIdRange)
+            ),
+            "embedded path validates the baked value too"
+        );
+    }
+
+    #[test]
+    fn try_resolve_domain_max_is_valid() {
+        let _l = env_lock().lock().unwrap();
+        let _g = EnvGuard::unset("ROS_DOMAIN_ID");
+        let baked = BootConfig {
+            domain_id: Some(DOMAIN_ID_MAX),
+            ..BootConfig::default()
+        };
+        let cfg = match ExecutorConfig::try_resolve(baked, false) {
+            Ok(c) => c,
+            Err(e) => panic!("DOMAIN_ID_MAX must be valid: {e}"),
+        };
+        assert_eq!(cfg.domain_id, DOMAIN_ID_MAX);
+    }
+
+    #[test]
+    fn try_resolve_node_name_env_rung() {
+        let _l = env_lock().lock().unwrap();
+        // NOTE: env_cache() is a process-global OnceLock — in `cargo test`
+        // (shared process) another test may have initialized it before
+        // NROS_NODE_NAME was set, so only the PRESENCE gate is assertable
+        // process-independently. Under nextest (process per test) the value
+        // asserts exactly.
+        let _g = EnvGuard::set("NROS_NODE_NAME", "env_node");
+        let baked = BootConfig {
+            node_name: Some("baked_node"),
+            ..BootConfig::default()
+        };
+        let cfg = match ExecutorConfig::try_resolve(baked, true) {
+            Ok(c) => c,
+            Err(e) => panic!("resolve failed: {e}"),
+        };
+        assert_ne!(cfg.node_name, "baked_node", "env rung must override baked");
+    }
+
+    #[test]
+    fn try_resolve_env_overrides_baked_locator_model_a() {
+        let _l = env_lock().lock().unwrap();
+        let _g = EnvGuard::set("NROS_LOCATOR", "tcp/10.0.0.9:9999");
+        let baked = BootConfig {
+            locator: Some("tcp/1.2.3.4:1"),
+            ..BootConfig::default()
+        };
+        let cfg = match ExecutorConfig::try_resolve(baked, true) {
+            Ok(c) => c,
+            Err(e) => panic!("resolve failed: {e}"),
+        };
+        assert_ne!(
+            cfg.locator, "tcp/1.2.3.4:1",
+            "model A: hosted env overrides the baked/explicit value"
         );
     }
 }

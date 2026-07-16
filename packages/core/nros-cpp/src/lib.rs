@@ -493,18 +493,33 @@ pub unsafe extern "C" fn nros_cpp_init(
     };
 
     let locator_str = if locator.is_null() {
-        "tcp/127.0.0.1:7447"
+        None
     } else {
         match unsafe { cstr_to_str(locator) } {
-            Some(s) => s,
+            Some(s) => Some(s),
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
         }
     };
 
-    let config = nros_node::ExecutorConfig::new(locator_str)
-        .domain_id(domain_id as u32)
-        .node_name(node_name_str)
-        .namespace(ns_str);
+    // RFC-0045 / issue #206 — route through the ONE boot-config resolver
+    // (precedence model A: hosted env > baked overlay > compiled default).
+    // The header's arg/NROS_ENTRY_* chain arrives as the BAKED rung here;
+    // the env rung (NROS_LOCATOR/ROS_DOMAIN_ID/NROS_NODE_NAME, hosted only)
+    // and the domain validation (malformed / > DOMAIN_ID_MAX = error, never
+    // silent 0) now live in nros-node, identical for Rust, C, and C++.
+    // domain_id 0 = the unset sentinel (ROS convention; an explicit
+    // "domain 0" and "unset" are indistinguishable at this ABI edge).
+    let baked = nros_node::BootConfig {
+        node_name: Some(node_name_str),
+        locator: locator_str,
+        domain_id: (domain_id != 0).then_some(domain_id as u32),
+        namespace: Some(ns_str),
+    };
+    let config = match nros_node::ExecutorConfig::try_resolve(baked, true) {
+        Ok(cfg) => cfg,
+        Err(_) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let domain_id = config.domain_id as u8;
 
     // phase-271 — construct in place: carve the executor's per-entry backing from
     // the tail of the caller's `CppContext` buffer, then open the executor over
