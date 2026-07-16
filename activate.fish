@@ -61,8 +61,9 @@ end
 # Cross-compiler toolchains installed by `nros setup` (SDK store
 # ~/.nros/sdk/<tool>/<version>/bin). A cross-gcc MUST be on PATH for cargo's
 # `linker=` and NuttX/Zephyr `make` to find it (e.g. riscv-none-elf-gcc, Phase
-# 194.3c). Scoped to store bin dirs holding a `*-gcc` so qemu/zenohd stay off
-# PATH (resolved via build/<tool>). Mirror of the activate.sh block.
+# 194.3c). Scoped to a store-bin whitelist so qemu stays off
+# PATH (resolved via build/<tool>); zenohd is whitelisted for the book's
+# first-node flow (issue #204). Mirror of the activate.sh block.
 set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros/sdk)
 if test -d $_nros_sdk
     for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
@@ -70,7 +71,7 @@ if test -d $_nros_sdk
         # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
         # and sccache (issue #74) — RUSTC_WRAPPER + the zephyr CMake launcher
         # auto-use it once on PATH.
-        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; or test -x $_nros_tcbin/sccache; end
+        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; or test -x $_nros_tcbin/sccache; or test -x $_nros_tcbin/zenohd; end
             set -gx PATH $_nros_tcbin $PATH
         end
     end

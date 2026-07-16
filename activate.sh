@@ -87,13 +87,17 @@ if [ -x "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser
 fi
 
 # Cross-compiler toolchains installed by `nros setup` land in the SDK store
-# (~/.nros/sdk/<tool>/<version>/bin). Unlike qemu/zenohd — which the test
-# harness resolves via a build/<tool> prefix and deliberately keeps OFF the
-# global PATH — a cross-gcc MUST be on PATH for cargo's `linker=` and the
+# (~/.nros/sdk/<tool>/<version>/bin). Unlike qemu — which the test harness
+# resolves via a build/<tool> prefix and deliberately keeps OFF the global
+# PATH — a cross-gcc MUST be on PATH for cargo's `linker=` and the
 # NuttX/Zephyr `make` to find it (e.g. riscv-none-elf-gcc for the riscv NuttX
-# board, Phase 194.3c). Scope to store bin dirs that hold a `*-gcc` so the
-# build/<tool> convention for qemu/zenohd is preserved. A system cross-gcc
+# board, Phase 194.3c). Scope to store bin dirs that hold a whitelisted tool
+# so the build/<tool> convention for qemu is preserved. A system cross-gcc
 # (e.g. /usr/bin/arm-none-eabi-gcc) still resolves when the store has none.
+# zenohd joined the whitelist for the book's first-node flow (issue #204):
+# `nros setup native` installs it to the store and the book tells the user
+# to run `zenohd` — the harness is unaffected (it reads build/zenohd/zenohd
+# by explicit path).
 _nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
 if [ -d "$_nros_sdk" ]; then
     for _nros_tcbin in "$_nros_sdk"/*/*/bin "$_nros_sdk"/*/bin; do
@@ -104,7 +108,8 @@ if [ -d "$_nros_sdk" ]; then
         # fixture CMake launcher auto-use it once it's on PATH.
         if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1 \
             || [ -x "$_nros_tcbin/genromfs" ] \
-            || [ -x "$_nros_tcbin/sccache" ]; then
+            || [ -x "$_nros_tcbin/sccache" ] \
+            || [ -x "$_nros_tcbin/zenohd" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
     done
