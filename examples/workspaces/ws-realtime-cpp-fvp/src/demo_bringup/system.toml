@@ -47,20 +47,19 @@ priority = 10
 [tiers.low.nuttx]
 priority = 100
 
-[deploy.native]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
-
-# phase-281 W3b — the Zephyr (native_sim) embedded deploy target. Both [posix] and
-# [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded
-# Zephyr (this wave) by changing the BOARD cmake variable.
+# The entry's `DEPLOY zephyr` resolves this block; the BOARD itself comes
+# from `nano_ros_use_board(fvp-aemv8r-smp)` in the entry CMakeLists.
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
+board = "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"
 
-# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
-# `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
-# or embedded NuttX by changing the BOARD cmake variable.
-[deploy.nuttx]
-kind = "embedded"
-board = "nuttx-qemu-arm"
+# phase-292 W2.b — FVP deploy target, the exact shape the ASI reference
+# consumer declares (`kind = "zephyr"` + board cross-ref to the
+# nros-board-fvp-aemv8r-smp crate). Present here so the in-tree lane
+# exercises [deploy.<t>] resolution through the planner/codegen the way
+# ASI's pin bump will.
+[deploy.fvp]
+kind   = "zephyr"
+target = "fvp_baser_aemv8r_smp"
+board  = "fvp-aemv8r-smp"
+launch = "system.launch.xml"

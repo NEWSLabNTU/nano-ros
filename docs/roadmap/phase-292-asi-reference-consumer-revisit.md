@@ -75,11 +75,24 @@ named reference consumer), 287 (ament verbs on zephyr).
     unset). Fix: scope `target_compile_options(nros PRIVATE ...)` on every
     Zephyr version — only the cyclonedds TUs need the header and they all
     live in `nros`. (`zephyr/cmake/nros_rmw_cyclonedds.cmake`.)
-- [ ] W2.b Known suspects to pre-check: Cyclone-on-Zephyr with the 287 ament
-  verbs (ASI is the first external cyclone+zephyr+workspace consumer);
-  `NROS_CPP_STD=1` + std::string/vector param facade against the RFC-0044
-  hardening; `system.toml [deploy.fvp]` resolution through the current
-  planner.
+- [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
+  INTO the W1.a lane, which now carries the full ASI consumer profile:
+  1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.
+  2. `NROS_CPP_STD=1` (set on ctrl_pkg exactly like ASI's controller):
+     first attempt FAILED — `nros/timer.hpp` pulls `<functional>` under
+     `NROS_CPP_STD` and zephyr's default minimal libcpp has neither it
+     nor `<string>` (the issue-0112 class). The escape ASI already ships
+     is the libc trio `CONFIG_NEWLIB_LIBC=y + CONFIG_STD_CPP17=y +
+     CONFIG_GLIBCXX_LIBCPP=y`; the fvp_entry prj.conf now carries it and
+     the lane is green. CONTRACT to document for consumers: NROS_CPP_STD
+     on zephyr requires a real C++ stdlib — minimal libcpp cannot serve
+     the std facade (candidate hardening: a `#error` hint in
+     component_node.hpp/timer.hpp when NROS_CPP_STD is set without
+     `__has_include(<functional>)`).
+  3. `[deploy.fvp]` — the exact ASI block (`kind = "zephyr"`, `target`,
+     `board`, `launch`) added to the lane's system.toml; `nros check`
+     passes (2 components / 2 deploy targets) and the entry codegen +
+     build are unaffected.
 
 ### W3 — S32Z270 board crate (unblocks ASI W4; FVP-first, hardware-gated tail)
 - [x] W3.a (2026-07-17) The crate already existed as

@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
+
+# phase-292 W2.b — mirror the ASI controller: the std::string/std::vector
+# parameter facade (RFC-0044) compiled on ZEPHYR. ASI's controller_pkg sets
+# exactly this; the in-tree FVP lane pre-checks the combination so the ASI
+# pin bump doesn't discover it first (the issue-0112 class: <string> on a
+# -nostdinc++ / minimal-libcpp zephyr build).
+add_compile_definitions(NROS_CPP_STD=1)
 find_package(std_msgs REQUIRED)
 
 
