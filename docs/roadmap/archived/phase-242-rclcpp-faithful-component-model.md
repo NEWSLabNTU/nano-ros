@@ -10,13 +10,32 @@ blocked ASI's vendored Autoware `Controller` from migrating onto RFC-0043's
 sequences (`std::vector<double>`), (3) ctor-wired IS-A-node lifetime on the entry
 executor.
 
-**Status.** In progress (2026-06-13). **242.1–242.4 + 242.7 DONE + verified**
-(the rclcpp-faithful `ComponentNode` + typed member callbacks + `Seq` parameter
-storage + construct-with-handle codegen/carriers + the value-returning parameter
-facade). **242.5 (ASI migration) is the remaining consumer proof** — node-side
-maps 1:1; runtime FVP smoke (242.5.2) gated on a Zephyr-SDK + FVP host. 242.6
-(Rust parity) deferred. Driven by ASI phase-2.C — the reference consumer whose
-real rclcpp-shaped node surfaced every gap. Amends RFC-0043 Q1.
+**Status.** **CLOSED — in-tree Complete (2026-07-16).** 242.1–242.4 + 242.7
+all landed + verified (the rclcpp-faithful `ComponentNode`, typed member
+callbacks, `Seq` parameter storage, shape-branched codegen/carriers, and the
+value-returning parameter facade). The rclcpp shape is **runtime-proven** since
+this doc's acceptance list was written: phase-272 W3's
+`ws-realtime-cpp-rclcpp` runs two real `ComponentNode` subclasses (ctor-created
+publisher + timer) through the generated entry with live pub/sub + tier
+scheduling asserted (`realtime_tiers_cpp_rclcpp_e2e`; issue #124's
+rclcpp-tier-binding gap dissolved by 272 W1/W2), and the phase-281 native C++
+matrix cell explicitly covers "+rclcpp, +subnode". That closes the native half
+of acceptance item 1.
+
+Disposition of the remainder:
+
+- **242.5 ASI migration + FVP smoke → handed to phase-236** (its 236.C
+  acceptance — the same single external task phase-240 already handed there:
+  external `autoware-safety-island` sources + an FVP run). The Zephyr-runtime
+  half of acceptance item 1 is exactly that smoke; the carrier branch is landed
+  and the native proof de-risks the mechanism. Consumer plan:
+  `autoware-safety-island/docs/roadmap/phase-2-workspace-mode-migration.md`.
+- **242.6 Rust parity — deferred by design**, recorded as RFC-0044 Q5 (open);
+  explicitly non-gating. No in-repo work is held open for it.
+
+Original status (2026-06-13): In progress; driven by ASI phase-2.C — the
+reference consumer whose real rclcpp-shaped node surfaced every gap. Amends
+RFC-0043 Q1.
 
 **Priority.** P1 — the only path to ASI 2.C (a real Autoware node through the
 generated Entry on FVP) and to the stated "follow rclcpp composable-node
