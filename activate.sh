@@ -32,6 +32,18 @@ export NROS_REPO_DIR="$_nros_root"
 # setup` CMakePreset carries it).
 export nano_ros_ROOT="$_nros_root"
 
+# Rustup-managed toolchain: `scripts/bootstrap.sh` installs rustup, but only
+# FUTURE shells pick up `~/.cargo/bin` (rustup edits .bashrc/.profile). The
+# book's fresh-machine flow stays in the bootstrap shell, so wire it here —
+# otherwise `nros setup`'s source builds die with `cargo: not found`
+# (issue #204 probe finding).
+if [ -d "$HOME/.cargo/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.cargo/bin:"*) ;;
+        *) export PATH="$HOME/.cargo/bin:$PATH" ;;
+    esac
+fi
+
 # ROS 2 Humble — sourcing setup.bash exports AMENT_PREFIX_PATH,
 # CMAKE_PREFIX_PATH, ROS_DISTRO, etc. Required by `nros generate-rust`
 # (resolves .msg defs via rosidl_adapter) + the cyclonedds codegen +

@@ -29,6 +29,13 @@ else if test -f /opt/ros/humble/setup.bash
     echo "or use a bash subshell for ROS-dependent commands." >&2
 end
 
+# Rustup-managed toolchain (mirror of activate.sh): bootstrap.sh installs
+# rustup, but only future shells pick up ~/.cargo/bin — the shell that just
+# ran bootstrap needs it wired here (issue #204 probe finding).
+if test -d $HOME/.cargo/bin; and not contains $HOME/.cargo/bin $PATH
+    set -gx PATH $HOME/.cargo/bin $PATH
+end
+
 # `nros` CLI resolution: the in-tree per-checkout binary (mirror of
 # `activate.sh`). The pre-218 `~/.nros/bin/nros` curl install is
 # retired; `packages/cli/target/release/nros` is the sole source.
