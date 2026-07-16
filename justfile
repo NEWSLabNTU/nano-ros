@@ -357,9 +357,23 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp \
+    check-c check-cpp check-cli-tests \
     native::check
     @echo "Build checks passed!"
+
+# issue #202 — run the CLI sub-workspace's test suite (unit tests across
+# nros-cli-core / rosidl-* / nros-build + the plan-pipeline e2e). Before this
+# lane existed NOTHING ran `cargo test` on packages/cli — the orchestration
+# e2e suite sat 17/17 red for months without any lane noticing (the #181
+# silent-lane class). The metadata-mode tests compile tiny probe crates at
+# runtime BY DESIGN (the verb under test is a compile-driver; see
+# nros-cli-core/tests/plan_pipeline_e2e.rs).
+[private]
+check-cli-tests:
+    #!/usr/bin/env bash
+    set -e
+    cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
+    echo "CLI tests passed!"
 
 # Phase: crate-version lockstep — every workspace crate shares the release
 # version (the bump script edits them atomically). Mirrors the `check.yml`

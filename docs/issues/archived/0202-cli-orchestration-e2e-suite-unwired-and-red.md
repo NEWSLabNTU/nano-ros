@@ -1,7 +1,7 @@
 ---
 id: 202
 title: "nros-cli-core orchestration_e2e suite: 17/17 red (fixture paths predate the phase-218 in-tree move) and NO lane ever runs it"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [issue-0181, phase-218, phase-287]
@@ -72,3 +72,49 @@ cargo test --manifest-path packages/cli/Cargo.toml --test orchestration_e2e
 
 Found during the 2026-07-16 phase-229 completion audit (a full
 `packages/cli` `cargo test` sweep).
+
+
+## Resolution (2026-07-16) — re-triaged: retire the dead path, salvage the live one, wire the lane
+
+Re-triage first: 15 of the 17 red tests exercised
+`orchestration::build::build_generated_package` → `generate::generate_package`
+— the phase-172-era "generated standalone system package" deployment model
+whose CLI entry points (`nros build` / `nros run`) were REMOVED in phase-222
+(`5159d88f1`). Zero production callers since; the current design is
+`nros::main!` + `nros-build` (`planner::plan_system` → `run_plan.rs`) and the
+RFC-0048 workspace verbs. Repairing those tests would have revived museum
+coverage of an unreachable pipeline (they also ran cargo at runtime).
+
+What landed instead:
+
+1. **Dead path retired** (−9,346 lines): `tests/orchestration_e2e.rs`,
+   `tests/orchestration_generate.rs`, `orchestration/build.rs`,
+   `orchestration/generate.rs`. The two LIVE fns (`render_bridge_runtime_config`
+   / `render_bridge_entry_fns`, consumed by `cmd::ws` + `nros-build`) moved
+   verbatim with their helper cluster + 6 unit tests to
+   `orchestration/bridge_gen.rs`. `plan.rs` lost the dead `TierSched`.
+2. **Live path salvaged** as `tests/plan_pipeline_e2e.rs`: the
+   metadata→plan→check roundtrip + the two metadata-mode build tests, with the
+   root-cause path fix (the old helpers counted `ancestors()` from the crate's
+   pre-phase-218 location). Four live bugs surfaced and fixed while reviving
+   them — each rotted invisibly while nothing ran the suite:
+   - the generated metadata-probe `Cargo.toml` lacked `[workspace]` → captured
+     by any enclosing cargo workspace ("believes it's in a workspace");
+   - the harness template still called the retired `record_component_metadata`
+     (renamed `record_node_metadata`);
+   - the `demo_pkg` fixture implemented a pre-212.K `RosAction` (missing the
+     five wire-envelope assoc types);
+   - `orchestration_self_bringup_cargo_metadata`'s record encoded the
+     pre-M-F.17 `(package, executable)` pair (crate name; the α-bridge now
+     synthesises the component name for staticlib pkgs).
+   Assertions updated to the live recorder's id scheme (no more
+   `node_`/`pub_`/`timer_` prefixes).
+3. **Lane wired**: `just check-cli-tests` (private, in `check-build`) runs
+   `cargo test --manifest-path packages/cli/Cargo.toml --workspace` — the ~870
+   unit tests + the salvaged e2e now run on every `just check`. A cwd race in
+   `phase_212_f_bringup` (two `set_current_dir` tests, process-global cwd)
+   surfaced immediately and is serialized with a lock. 3× full sweeps green.
+
+The metadata-mode tests compile tiny probe crates at runtime BY DESIGN — the
+verb under test is a compile-driver; a prebuilt fixture would bypass exactly
+what it tests (noted in the suite header against the no-compile-in-tests rule).

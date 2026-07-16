@@ -85,6 +85,14 @@ pub mod talker {
         type Goal = StringMsg;
         type Result = StringMsg;
         type Feedback = StringMsg;
+        // Wire-envelope stand-ins (phase-212.K envelope types) — the metadata
+        // probe never serializes the action protocol, so the user-facing type
+        // doubles for all five envelopes.
+        type SendGoalRequest = StringMsg;
+        type SendGoalResponse = StringMsg;
+        type GetResultRequest = StringMsg;
+        type GetResultResponse = StringMsg;
+        type FeedbackMessage = StringMsg;
         const ACTION_NAME: &'static str = "nros_test::action::dds_::Echo_";
         const ACTION_HASH: &'static str = "nros_test/Echo";
     }
@@ -303,6 +311,14 @@ pub mod fib_server {
         type Goal = FibonacciGoal;
         type Result = FibonacciResult;
         type Feedback = FibonacciFeedback;
+        // Wire-envelope stand-ins (phase-212.K envelope types) — the metadata
+        // probe never serializes the action protocol; the user-facing types
+        // double for the envelopes.
+        type SendGoalRequest = FibonacciGoal;
+        type SendGoalResponse = FibonacciResult;
+        type GetResultRequest = FibonacciGoal;
+        type GetResultResponse = FibonacciResult;
+        type FeedbackMessage = FibonacciFeedback;
         const ACTION_NAME: &'static str = "example_interfaces::action::dds_::Fibonacci_";
         const ACTION_HASH: &'static str = "TypeHashNotSupported";
     }

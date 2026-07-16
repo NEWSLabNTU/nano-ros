@@ -743,24 +743,6 @@ pub struct PlanBuildOptions {
     /// baked-in board layout. `None` outside a generate run.
     #[serde(skip)]
     pub workspace_root: Option<std::path::PathBuf>,
-    /// Phase 256 W4.2 — scheduling resolved from `system.toml [tiers]` at generate
-    /// time (decision c, issue 0082). When `Some`, `render_generated_tables` emits
-    /// `SCHED_CONTEXTS` / `CALLBACK_BINDINGS` from this instead of `plan.sched_contexts`
-    /// (the dying overlay path). NOT part of the plan wire format. `None` ⇒ no tiers
-    /// declared (or outside a generate run) ⇒ the legacy path, byte-identical.
-    #[serde(skip)]
-    pub tier_sched: Option<TierSched>,
-}
-
-/// Phase 256 W4.2 — the generate-time tier-resolved scheduling: the rendered
-/// `SchedContextSpec` literals (one per tier) + the callback→context bindings
-/// (`callback_index`, `sched_context_index` with slot 0 = the default fallback).
-/// Precomputed in `generate_package` (where the fallible tier validation lives)
-/// so `render_generated_tables` stays infallible.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct TierSched {
-    pub contexts: Vec<String>,
-    pub bindings: Vec<(usize, usize)>,
 }
 
 /// Phase 204.15 (increment 2) — `[build.cargo]` per-layer override fields. Each

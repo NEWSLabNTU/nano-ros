@@ -63,8 +63,15 @@ fn default_new_args(
     }
 }
 
+/// Serialize the two `set_current_dir` tests — cwd is PROCESS-GLOBAL, so the
+/// default parallel libtest runner races them (one test's `set_current_dir`
+/// yanks the floor out from under the other's relative scaffold writes —
+/// surfaced when the #202 lane started running this suite routinely).
+static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn cli_nros_new_system_dispatches_and_scaffolds_bringup_pkg() {
+    let _cwd = CWD_LOCK.lock().unwrap();
     let root = temp_root("cli_new_system");
     write_workspace(&root);
     // Simulate user `cd`ing to the workspace root.
@@ -92,6 +99,7 @@ fn cli_nros_new_system_dispatches_and_scaffolds_bringup_pkg() {
 
 #[test]
 fn cli_nros_new_system_without_components_fails_clean() {
+    let _cwd = CWD_LOCK.lock().unwrap();
     let root = temp_root("cli_no_components");
     write_workspace(&root);
     let original = std::env::current_dir().unwrap();

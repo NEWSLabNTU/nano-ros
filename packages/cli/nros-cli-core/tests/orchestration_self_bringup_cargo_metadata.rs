@@ -106,12 +106,19 @@ default_namespace = "/demo"
 /// Write a precomputed `record.json` that names the same
 /// `(package, executable)` pair the α-bridge synthesises from
 /// `Cargo.toml`. Avoids depending on the external `play_launch_parser`
-/// binary — that path is exercised by `orchestration_e2e`.
+/// binary.
+///
+/// `executable` is the COMPONENT name (`talker`), not the crate name: for a
+/// staticlib component pkg (no `[[bin]]`) the α-bridge synthesises
+/// `executable = component_name` — the symbolic identity a launch
+/// `<node exec="…"/>` references (see `synthesise_summary` in
+/// `orchestration/workspace.rs`; the pre-change crate-name pair went stale
+/// while this suite was unwired — issue #202 triage).
 fn write_record(root: &Path) -> PathBuf {
     let record = serde_json::json!({
         "node": [{
             "package": "talker_pkg",
-            "executable": "talker_pkg",
+            "executable": "talker",
             "name": "talker",
             "namespace": "/demo"
         }]

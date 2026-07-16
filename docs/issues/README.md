@@ -44,11 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#202** — [cli orchestration_e2e: 17/17 red + unwired](0202-cli-orchestration-e2e-suite-unwired-and-red.md):
-  the nros-cli-core e2e suite still resolves fixtures at `packages/testing_workspaces/` (they
-  moved to `packages/cli/testing_workspaces/` in phase-218) + a second walk-up bug drops the
-  repo dir; dead since the move, and NO just/CI lane ever runs `packages/cli` tests (#181
-  silent-lane class) — every 287/288 orchestration change landed without this coverage.
 - **#201** — [C++ `HeapSequence<T>` skips element dtors](0201-cpp-heapsequence-nested-heap-leak.md):
   destructor/move-assign free only the outer array, and the FFI deserialize error path strands
   inner allocations — a heap-field nested type inside a heap sequence (two-level heap config,
@@ -60,7 +55,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#199** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#202** — re-triaged:
+15/17 red tests exercised the phase-172 "generated standalone system package" pipeline whose
+verbs were removed in phase-222 — retired the dead path (−9,346 lines; live bridge rendering
+moved to `orchestration/bridge_gen.rs`), salvaged the live plan/check/metadata coverage as
+`plan_pipeline_e2e.rs` (fixing 4 live bugs that rotted while nothing ran the suite: probe
+`[workspace]` capture, retired `record_component_metadata` name, pre-212.K fixture `RosAction`,
+pre-M-F.17 record pair), and wired `just check-cli-tests` into `check-build` (~870 CLI tests
+now run on every `just check`; a cwd race in `phase_212_f_bringup` surfaced immediately,
+serialized). **#199** — the
 `build-riscv-c` ffi-link red (undefined `std_msgs_msg_string_*`) was the riscv board
 cmake overlay being a stale pre-phase-281 mirror of the arm one: the phase-281
 `INTERFACE_SOURCES` walk (generated C serdes `.c` → cc-rs → trailing `app_iface`

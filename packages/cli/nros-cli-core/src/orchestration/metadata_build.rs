@@ -55,12 +55,18 @@ fn crate_name(component_id: &str) -> Option<&str> {
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
     let krate = crate_name(&o.component_id)
         .ok_or_else(|| eyre!("component id '{}' has no crate segment", o.component_id))?;
+    // `[workspace]` — the harness is generated into an arbitrary scratch dir;
+    // without its own (empty) workspace table cargo walks up and captures it
+    // into whatever workspace encloses that dir ("current package believes
+    // it's in a workspace when it's not") — e.g. a user running `nros
+    // metadata --build` anywhere under a cargo workspace (issue #202 triage).
     Ok(format!(
         "[package]\n\
          name = \"nros-metadata-probe\"\n\
          version = \"0.0.0\"\n\
          edition = \"2024\"\n\
          publish = false\n\n\
+         [workspace]\n\n\
          [[bin]]\n\
          name = \"probe\"\n\
          path = \"src/main.rs\"\n\n\
@@ -95,7 +101,7 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          fn main() {{\n\
          \x20   // Bare type ⇒ default capacity const-params.\n\
          \x20   let mut recorder: nros::MetadataRecorder = nros::MetadataRecorder::default();\n\
-         \x20   nros::record_component_metadata::<{type_path}>(&mut recorder)\n\
+         \x20   nros::record_node_metadata::<{type_path}>(&mut recorder)\n\
          \x20       .expect(\"component register (metadata mode)\");\n\
          \x20   let export = nros::SourceMetadataExport::new({pkg:?}, {comp:?}){exe}{sym};\n\
          \x20   let json = recorder\n\
@@ -193,7 +199,7 @@ mod tests {
     #[test]
     fn harness_main_calls_record_and_serialize() {
         let main = render_harness_main(&opts()).unwrap();
-        assert!(main.contains("record_component_metadata::<demo_pkg::talker::Component>"));
+        assert!(main.contains("record_node_metadata::<demo_pkg::talker::Component>"));
         assert!(main.contains("SourceMetadataExport::new(\"demo_pkg\", \"talker\")"));
         assert!(main.contains(".executable(\"talker\")"));
         assert!(main.contains(".exported_symbol(\"nros_component_talker\")"));
