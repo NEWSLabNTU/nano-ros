@@ -50,9 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#211** — [zephyr rust build.rs duplication](0211-zephyr-rust-buildrs-duplication.md):
   the Kconfig→rustc-env locator-bake workaround is copy-pasted into every zephyr rust example +
   workspace zephyr_entry — wants a `nros-zephyr-build` helper crate. (audit 2026-07-16)
-- **#206** — [C++-only env overlay, silent domain-0](0206-cpp-env-overlay-divergence.md):
-  ROS_DOMAIN_ID/NROS_LOCATOR resolution lives in node.hpp only (C diverges), duplicated across
-  overloads, malformed input silently collapses to domain 0. (audit 2026-07-16)
 - **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
@@ -63,7 +60,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#214** — the rust
+Recently resolved (see [`archived/`](archived/) for the full list): **#206** — the
+`$NROS_LOCATOR`/`$ROS_DOMAIN_ID` overlay now lives once in the nros-c core
+(`nros_env_locator`/`nros_env_domain_id`, named `NROS_DOMAIN_ID_MAX`): the C API gained the
+same env fallback the C++ header had (explicit args still win), both C++ `init()` overloads
+dedup onto the shared helpers, and a malformed/out-of-range domain keeps the caller value
+instead of silently collapsing to 0. **#214** — the rust
 cyclone riscv64 lane is REAL now: new `test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub`
 (the resolver's first consumer) passes ~7.7 s. The actual wire identity on this path is the
 cmake-generated `NROS_APP_CONFIG` (10.0.2.x, applied by startup.c pre-kernel) — both images

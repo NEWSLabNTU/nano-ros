@@ -668,6 +668,32 @@ template <int N> bool Node::GlobalStorageHolder<N>::initialized = false;
 
 // -- Free function implementations --
 
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+// Issue #206 — the `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` overlay now lives in ONE
+// place: the nros-c core helpers (support.rs), shared by the C and C++ shims.
+// The parse is validated there (0..=NROS_DOMAIN_ID_MAX=232); a malformed or
+// out-of-range value keeps the caller's domain — the old inline parser here
+// silently collapsed a typo to domain 0. Declared inline (this header stays
+// standalone; nros_generated.h carries the canonical declarations).
+extern "C" const char* nros_env_locator(void);
+extern "C" int32_t nros_env_domain_id(void);
+
+namespace detail {
+inline void apply_env_overlay(const char*& locator, uint8_t& domain_id) {
+    if (locator == nullptr) {
+        locator = nros_env_locator();
+    }
+    if (domain_id == 0) {
+        const int32_t d = nros_env_domain_id();
+        if (d >= 0) {
+            domain_id = static_cast<uint8_t>(d);
+        }
+    }
+}
+} // namespace detail
+#endif
+
+
 inline Result init(const char* locator, uint8_t domain_id) {
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     // Phase 123.B.3 — on hosted builds, fall through to env vars
@@ -677,31 +703,7 @@ inline Result init(const char* locator, uint8_t domain_id) {
     // Phase-287 W6 — the hard "tcp/127.0.0.1:7447" fallback moved BELOW the
     // baked-macro check: threadx-linux is a HOSTED embedded target, and the
     // eager default here shadowed its baked `NROS_ENTRY_LOCATOR` port.
-    if (locator == nullptr) {
-        const char* env_loc = ::std::getenv("NROS_LOCATOR");
-        if (env_loc != nullptr && env_loc[0] != '\0') {
-            locator = env_loc;
-        }
-    }
-    if (domain_id == 0) {
-        const char* env_dom = ::std::getenv("ROS_DOMAIN_ID");
-        if (env_dom != nullptr && env_dom[0] != '\0') {
-            // Parse decimal digits inline — no <cstdlib> dep.
-            unsigned acc = 0;
-            for (const char* p = env_dom; *p; ++p) {
-                if (*p < '0' || *p > '9') {
-                    acc = 0;
-                    break;
-                }
-                acc = acc * 10 + static_cast<unsigned>(*p - '0');
-                if (acc > 232) {
-                    acc = 0;
-                    break;
-                }
-            }
-            domain_id = static_cast<uint8_t>(acc);
-        }
-    }
+    detail::apply_env_overlay(locator, domain_id);
 #endif
     // Baked compile-time locator (embedded gate) beats the local default but
     // loses to an explicit arg / env (phase-287 W6; see the 3-arg overload).
@@ -734,30 +736,7 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // to the backend → TransportError / degraded session.
     // Phase-287 W6 — the hard local default moved BELOW the baked-macro check
     // (threadx-linux is hosted; the eager default shadowed its baked port).
-    if (locator == nullptr) {
-        const char* env_loc = ::std::getenv("NROS_LOCATOR");
-        if (env_loc != nullptr && env_loc[0] != '\0') {
-            locator = env_loc;
-        }
-    }
-    if (domain_id == 0) {
-        const char* env_dom = ::std::getenv("ROS_DOMAIN_ID");
-        if (env_dom != nullptr && env_dom[0] != '\0') {
-            unsigned acc = 0;
-            for (const char* p = env_dom; *p; ++p) {
-                if (*p < '0' || *p > '9') {
-                    acc = 0;
-                    break;
-                }
-                acc = acc * 10 + static_cast<unsigned>(*p - '0');
-                if (acc > 232) {
-                    acc = 0;
-                    break;
-                }
-            }
-            domain_id = static_cast<uint8_t>(acc);
-        }
-    }
+    detail::apply_env_overlay(locator, domain_id);
 #endif
     // Phase-287 W6 — compile-time connect defaults, so ONE portable source
     // works native + embedded. `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
