@@ -47,9 +47,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
   ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
   sibling of #203. (audit 2026-07-16)
-- **#211** — [zephyr rust build.rs duplication](0211-zephyr-rust-buildrs-duplication.md):
-  the Kconfig→rustc-env locator-bake workaround is copy-pasted into every zephyr rust example +
-  workspace zephyr_entry — wants a `nros-zephyr-build` helper crate. (audit 2026-07-16)
+- **#216** — [`build-fvp-aemv8r-cyclonedds-rust` red: E0463 no `core` for the aarch64 zephyr
+  target](0216-fvp-aemv8r-cyclonedds-rust-lane-e0463.md): the lane's rust patching no longer
+  yields a resolvable target/std setup; baseline-verified pre-existing (found by the phase-291
+  W4 grep-gate exercising the 14th bake leaf); cpp sibling green; lane is in no sweep, so it
+  rotted silently.
 - **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
@@ -60,7 +62,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#215** — RETRACTED as
+Recently resolved (see [`archived/`](archived/) for the full list): **#211** — phase-291:
+`nros-zephyr-build` owns the canonical zephyr-leaf Kconfig→rustc-env bake (zero-dep; upstream
+`zephyr-build` is west-path-only so its call stays in the leaf); all **14** leaves collapsed to a
+4-line `build.rs` (the W4 grep-gate `example_shape::zephyr_leaf_buildrs_uses_shared_bake`
+immediately found the 14th — `cyclonedds/talker-aemv8r`, which had NO bake: the 0161
+silent-domain-0 class); ws entries gained the drifted-away XRCE synthesis; 67-test zephyr sweep
+green on rebuilt fixtures. **#215** — RETRACTED as
 filed: the "broken fresh threadx-linux cyclone talker" was an orphaned pre-287-W6 museum binary
 (`threadx_c_talker`; W6 renamed the target `c_talker` and the test kept the old hardcoded path —
 `exists()` happily executed the orphan). Fresh `c_talker` publishes fine; one-line test fix.

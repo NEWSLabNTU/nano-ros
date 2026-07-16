@@ -789,3 +789,58 @@ fn standalone_leaves_use_ament_shape() {
         "expected >=27 migrated standalone leaves, walked only {checked} — layout moved?"
     );
 }
+
+/// phase-291 W4 (#211) — the zephyr-leaf Kconfig→`rustc-env` bake has ONE
+/// implementation (`nros-zephyr-build`). Guard both directions:
+///
+/// - NO `examples/**/build.rs` may carry a copy of the retired ~81-line bake
+///   (`bake_kconfig_str(` / `bake_kconfig_int(` / a local `fn kconfig_line` —
+///   the copy markers of the pre-291 file), else the 13-way duplication (and
+///   the XRCE-block drift it caused) creeps back with the next copy-paste.
+/// - EVERY zephyr rust leaf build.rs (under `examples/zephyr/rust/` or a
+///   `zephyr_entry*` pkg) must call the shared `bake_nros_config()` — a leaf
+///   that drops the call silently regresses to the known-issue #17 empty
+///   locator (multicast scouting, no `connect()` on native_sim NSOS).
+#[test]
+fn zephyr_leaf_buildrs_uses_shared_bake() {
+    const COPY_MARKERS: &[&str] = &["bake_kconfig_str(", "bake_kconfig_int(", "fn kconfig_line"];
+    let mut copies = Vec::new();
+    let mut missing_call = Vec::new();
+    let mut zephyr_leaves = 0usize;
+    walk(&examples_dir(), |dir| {
+        let build_rs = dir.join("build.rs");
+        let Ok(body) = fs::read_to_string(&build_rs) else {
+            return;
+        };
+        let rel = rel_to_project(&build_rs);
+        for marker in COPY_MARKERS {
+            if body.contains(marker) {
+                copies.push(format!("{} (contains `{marker}`)", rel.display()));
+            }
+        }
+        let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let is_zephyr_leaf =
+            rel.starts_with("examples/zephyr/rust") || dir_name.starts_with("zephyr_entry");
+        if is_zephyr_leaf {
+            zephyr_leaves += 1;
+            if !body.contains("nros_zephyr_build::bake_nros_config()") {
+                missing_call.push(rel.display().to_string());
+            }
+        }
+    });
+    assert!(
+        copies.is_empty(),
+        "pre-291 bake copies under examples/ (use nros_zephyr_build::bake_nros_config()):\n  {}",
+        copies.join("\n  ")
+    );
+    assert!(
+        missing_call.is_empty(),
+        "zephyr rust leaf build.rs missing the shared bake call:\n  {}",
+        missing_call.join("\n  ")
+    );
+    // Guard a silent-empty pass: all 13 phase-291 leaves must be walked.
+    assert!(
+        zephyr_leaves >= 13,
+        "expected >=13 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+    );
+}

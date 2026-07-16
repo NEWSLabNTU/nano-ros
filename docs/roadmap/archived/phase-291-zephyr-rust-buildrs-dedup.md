@@ -1,6 +1,6 @@
 # Phase 291 — `nros-zephyr-build`: dedupe the zephyr rust leaf `build.rs` (resolve #211)
 
-Status: **W1–W3 LANDED — 2026-07-16; W4 (retire/gate + resolve #211) open** · Resolves issue #211 · Touches RFC-0048 (sync
+Status: **COMPLETE — 2026-07-16** (W1–W4 landed; #211 resolved) · Resolves issue #211 · Touches RFC-0048 (sync
 patch table) · Sibling of the phase-287 W9 leaf-config work.
 
 > **Goal.** One canonical implementation of the zephyr leaf Kconfig→`rustc-env`
@@ -77,10 +77,19 @@ patch table) · Sibling of the phase-287 W9 leaf-config work.
   change).
 
 ### W4 — retire the old path (follow-up, after W3 soaks)
-- [ ] W4.a Grep-gate: no `bake_kconfig_str(` / `bake_kconfig_int(` copies left
+
+> As-landed note: the gate lives as
+> `example_shape::zephyr_leaf_buildrs_uses_shared_bake` (content grep — the
+> file-name FORBIDDEN lists don't fit a content ban) and immediately found a
+> 14TH leaf the inventory missed (`cyclonedds/talker-aemv8r`, no bake at all —
+> the 0161 silent-domain-0 class); migrated. Its FVP-rust lane is RED at
+> BASELINE (pre-existing E0463 toolchain rot, filed as #216) — the migration
+> is proven by the gate + the identical 13-leaf pattern, not that lane.
+> No AGENTS.md pointer needed — the gate + issue resolution carry the lesson.
+- [x] W4.a Grep-gate: no `bake_kconfig_str(` / `bake_kconfig_int(` copies left
   under `examples/` (add to `check-example-shape` FORBIDDEN list or the
   string-conventions gate, whichever fits).
-- [ ] W4.b Resolve + archive issue #211; one-line pointer in AGENTS.md
+- [x] W4.b Resolve + archive issue #211; one-line pointer in AGENTS.md
   practices if a durable lesson emerged.
 
 ## Non-goals
