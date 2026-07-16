@@ -9,7 +9,19 @@ four-rung ladder with native lane front-ends, `nros config explain`, the
 promotion decision (zephyr batch+split on, everywhere else off until
 measured) ships as platform defaults.
 
-**Status.** Planned (design locked 2026-07-16, RFC-0049 Draft).
+**Status.** W1 + W2 LANDED 2026-07-16 (`aea28a164`): schema + ladder +
+provenance + capability check (8 unit tests); `zenoh_platforms.toml` retired
+into `packages/platforms/<name>/nros-platform.toml` (split verified
+Debug-equal before deletion); runner resolves the tx ladder before the
+ABI-gating config header; drift gate migrated to `NROS_PLATFORMS_DIR`
+tree sandboxing. No `[knobs]` set anywhere yet → byte-identical behavior.
+Note one deviation from the RFC draft: the schema/loader home is
+`nros-board-common::platform_config` (build-time, next to the manifest
+parser) rather than the no_std `nros-platform` runtime crate; and platform
+HOMES are `packages/platforms/<family>/` directories (config-only until
+phase-230 grows real crates there — the four existing chip-level crates
+coexist and can layer via `inherits`). Remaining: W3 board wiring +
+Kconfig tri-state, W4 explain/scaffold, W5 zephyr flip + re-measure.
 
 **Implements.** [RFC-0049](../design/0049-hierarchical-platform-board-config.md)
 (design-of-record — read it first; this doc is the work breakdown only).
@@ -22,30 +34,30 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
 
 ### W1 — Schema + loader (no behavior change)
 
-- [ ] W1.a `nros-platform` crate: knob schema + built-in defaults as code
+- [x] W1.a `nros-platform` crate: knob schema + built-in defaults as code
   (typed; `deny_unknown_fields` on the toml side). Tables: `[capabilities]`,
   `[knobs.zenoh.tx]` (first tenant), `[build.zenoh]`.
-- [ ] W1.b Loader: given (board dir, platform dir) — the explicit two-hop
+- [x] W1.b Loader: given (board dir, platform dir) — the explicit two-hop
   chain from the deploy key — parse + ladder-resolve
   `builtin < platform < board < env/-D`. Explicit-off semantics: a set
   front-end value always wins, including `0`.
-- [ ] W1.c Capability cross-check: knob-vs-capability contradictions →
+- [x] W1.c Capability cross-check: knob-vs-capability contradictions →
   build-time warning + downgrade, naming both files.
-- [ ] W1.d Unit tests: ladder order, explicit-off override, unknown-key
+- [x] W1.d Unit tests: ladder order, explicit-off override, unknown-key
   rejection, empty/absent tomls == builtins (byte-identity guard input).
 
 ### W2 — `[build.zenoh]` relocation; retire `zenoh_platforms.toml`
 
-- [ ] W2.a Move each `[platform.X]` block verbatim (RFC-0049 open question 1:
+- [x] W2.a Move each `[platform.X]` block verbatim (RFC-0049 open question 1:
   keys unchanged) into the platform package's `nros-platform.toml`;
   `nros-zpico-build` + the cmake glue read the per-package file through the
   loader. Delete `zenoh_platforms.toml`; grep for stragglers (docs,
   CLAUDE.md pitfall index line, build comments).
-- [ ] W2.b The resolved knob set feeds the SAME generated config header /
+- [x] W2.b The resolved knob set feeds the SAME generated config header /
   `-D` emission as today (issue-0135 ABI rule untouched). ZPICO_SERIAL /
   ZPICO_NO_SMOLTCP runner special-cases keep working (#189 regression
   guard: serial + xrce baremetal lanes).
-- [ ] W2.c Default-off byte-identity regression: with no toml `[knobs]`
+- [~] W2.c (header-generation inputs verified identical — builtins equal the historical env defaults and no `[knobs]` exist; the full fixture-rebuild sweep rides the next `just test-all` pass) Default-off byte-identity regression: with no toml `[knobs]`
   entries and no env, the generated config header is byte-identical to
   pre-phase-290 for every platform. Full fixture rebuild + the emulator /
   rtos_e2e sweeps green.
