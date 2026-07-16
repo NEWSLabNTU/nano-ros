@@ -57,10 +57,17 @@ verdict).**
   current; no duplicate `#[no_mangle]` symbols (the E0428 class).
 - **B3 `unwrap()`/`expect()`/`panic!` in non-test runtime** on embedded paths.
 - **B4 Dead code.** `#[allow(dead_code)]` sprawl, `_unused` without comment.
-- **B5 std → no_std.** Code pulling `std` (or `alloc` needlessly) that could be
-  `no_std`/stack-only on an embedded path. Detect: `grep -rn 'use std::' packages/`
-  in crates meant to be `no_std`; check `#![no_std]` presence + `std` feature
-  gating. Embedded crates must compile `no_std`.
+- **B5 no_std cleanliness — Rust AND C/C++.** Rust: code pulling `std` (or
+  `alloc` needlessly) that could be `no_std`/stack-only on an embedded path;
+  `#![no_std]` presence + `std` feature gating; embedded crates must compile
+  `no_std`. Detect: `grep -rn 'use std::' packages/` in crates meant to be
+  `no_std`. C/C++: headers stay freestanding-compatible — hosted-only
+  includes (`<string>`, `<vector>`, `<cstdio>` beyond the gated uses) behind
+  `NROS_CPP_STD` (NOT `__STDC_HOSTED__` alone — the 0112 pitfall), no
+  heap/libc calls on paths embedded builds compile, no exceptions/RTTI.
+  Detect: `grep -rn '#include <(string|vector|map|iostream|functional)>'
+  packages/core/nros-cpp/include packages/core/nros-c/include` then confirm
+  each is `NROS_CPP_STD`-gated.
 - **B6 Magic numbers.** Hardcoded sizes/caps/timeouts (stack sizes, buffer
   lengths like `char buf[128]`, retry counts, ms delays, port numbers) instead
   of a named const / Kconfig / board-metadata / config knob. **No magic
@@ -90,6 +97,43 @@ verdict).**
   baked into board files), no bypass of the resolution order, no new ad-hoc
   config channel beside it. Check `cmake/board/`, `packages/boards/*/config/`,
   `packages/platforms/`, per-example `config.toml` handling.
+- **C5 Axis-agnostic core + C-ABI bridges (cargo-feature discipline).** The
+  RMW and platform axes are selected via env → cargo-feature / `-D` lowering
+  (one consistent mechanism across Rust/C/C++ — RFC-0031/ARCHITECTURE §2),
+  and both axes cross into the core ONLY through their stable C-ABI vtable
+  bridges (`nros-rmw-cffi`, `nros_platform_*`). Flag: core crates (`nros`,
+  `nros-node`, `nros-c`, `nros-cpp`, `nros-core`) carrying
+  backend/platform-specific code or `cfg(feature = "rmw-…"/"platform-…")`
+  branches beyond the sanctioned registration seams; low-level backend types
+  or boilerplate leaking through the bridge into agnostic code; a new knob
+  selected any way other than the env/feature lowering. Detect:
+  `rg -n 'cfg\(feature = "(rmw|platform)-' packages/core/` then judge each
+  hit against the registration-seam allowlist; `rg -n 'zenoh|cyclonedds|xrce'
+  packages/core/nros-node/src packages/core/nros/src` (names of concrete
+  backends appearing in agnostic layers).
+- **C6 User-API shape follows standard ROS conventions.** The C, C++, and
+  Rust user surfaces mirror rclc / rclcpp / rclrs respectively (RFC-0018/0019
+  + RFC-0044's rclcpp-faithful component model), and the CMake surface
+  mirrors ament (`find_package(nano_ros)`, `nano_ros_add_node` ~
+  `rosidl_generate_interfaces`-era shapes — RFC-0048). Flag: an entity/verb
+  whose NAME or call shape diverges from the standard counterpart without
+  being a documented nano-ros ADDITION (additions are fine; renames or
+  reshapes of standard concepts are drift); signature drift between the three
+  language surfaces for the same concept; cmake verbs that require
+  nano-ros-specific ceremony where the ament shape exists. Sample:
+  `packages/core/nros-cpp/include/nros/*.hpp` vs rclcpp class list,
+  `nros-c/include/nros/*.h` vs rclc, `nros`/`nros-node` pub API vs rclrs,
+  `cmake/NanoRosVerbs.cmake` vs ament verbs.
+- **C7 RMW vtable API mirrors rmw.h.** `nros-rmw` / `nros-rmw-cffi`'s vtable
+  is our analogue of the official `rmw.h` entry-point set — same concept
+  coverage, naming derivable from the rmw counterpart, same ownership/
+  lifecycle semantics; ours differs by being a vtable (registration +
+  dispatch) rather than link-time symbols. Flag: vtable entries with no
+  rmw.h counterpart and no documented rationale; rmw.h concepts we cover via
+  a different-shaped seam without a note; backend-specific parameters or
+  types in the vtable signature (belongs behind the backend); semantics
+  drift (e.g. an entry that blocks where rmw's is non-blocking). Sample:
+  `packages/core/nros-rmw*/src/` vtable defs vs the rmw.h function list.
 
 ## D. Codegen / interfaces
 
@@ -99,15 +143,34 @@ verdict).**
 
 ## E. Testing
 
-- **E1 No compile inside tests.** No `cargo`/`cmake`/`idf.py`/`west build` at
-  RUN time — compile in the build stage, consume the fixture (CLAUDE.md).
-  Detect: `grep -rnE 'Command::new\("(cargo|cmake|west|idf.py)"' packages/testing/`.
+- **E1 No compile inside tests; env/staleness checks instead.** Fixtures are
+  built BEFORE the test run (`just build-test-fixtures` / platform recipes);
+  tests never `cargo`/`cmake`/`idf.py`/`west build` at RUN time — they
+  resolve the prebuilt binary, run the env-prerequisite gates
+  (`is_*_available` version probes are fine) and the STALENESS probe
+  (`require_prebuilt_binary` + `rust-fixture-stale.sh`/
+  `cmake-fixture-stale.sh` class), and error toward the build recipe when
+  the artifact is missing or stale. Flag BOTH directions: a test that
+  compiles, AND a fixture consumer that skips the staleness check (museum-
+  binary trap, issues 0148/0164/0196/#215). Detect:
+  `grep -rnE 'Command::new\("(cargo|cmake|west|idf.py)"' packages/testing/`
+  (each hit must be a version probe or a documented compile-check-fixture
+  cell); `rg -L 'require_prebuilt|stale' <new fixture resolvers>`.
 - **E2 Pass-on-unmet-precondition.** Bare `eprintln!`+`return` reports PASS;
   must `assert!`/`bail!`/`nros_tests::skip!`. Detect in test bodies.
 - **E3 Phase-numbered test names** (`phase212_n9_…`) — forbidden; name by
   behavior (CLAUDE.md). Detect: `grep -rnE 'fn .*phase[0-9]' packages/`.
 - **E4 Skipped / ignored / flaky** (`#[ignore]`, issue 0035 native_sim);
   fixture-orchestration gaps (phase 226).
+- **E5 Coverage matrix: RMW × language × platform.** Every supported cell of
+  the three axes has a runtime test lane (or a documented carve-out — e.g.
+  "nuttx cells are arm-only by design", experimental gating). Cross-read
+  `examples/fixtures.toml` + the `examples/README.md` coverage matrix + the
+  `rtos_e2e` / convergence-matrix parametrization against the supported-axis
+  claims in ARCHITECTURE §2. Flag: a claimed-supported combination no test
+  exercises; a lane that exists for one language but silently not its
+  siblings on the same platform/RMW; carve-outs that live only in tribal
+  memory rather than a doc/issue.
 
 ## F. CLI / developer UX
 

@@ -36,9 +36,13 @@ Design + decisions: `docs/superpowers/specs/2026-07-16-audit-skill-design.md`.
 **quick** — for each selected category, run the checklist's detection greps
 (where given) and scan the named directories. Spawn a small number of
 parallel Explore agents (one per 2–3 categories) to READ each grep hit and
-confirm or kill it — the grep is the net, not the verdict. Judgment-only
-categories with no grep (C, H, J, F3) get one reader each over their named
-surfaces.
+confirm or kill it — the grep is the net, not the verdict. Judgment-heavy
+categories (C — incl. the C5 axis-agnosticism, C6 user-API-shape-vs-rclc/
+rclcpp/rclrs/ament, and C7 rmw.h-vtable-mirror conformance reads — plus H,
+J, F3, and E5's coverage-matrix cross-read) get one reader each over their
+named surfaces; the API-shape items compare against the upstream ROS
+convention, so brief the reader to name the standard counterpart for every
+flagged divergence.
 
 **deep** — orchestrate with the Workflow tool: one agent per selected
 category, each briefed with that category's checklist text verbatim plus the
