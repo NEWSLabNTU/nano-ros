@@ -479,7 +479,7 @@ endfunction()
 # `cyclonedds_app_main!(register)` macro emits it).
 # ---------------------------------------------------------------------------
 function(nros_threadx_rv64_rust_cyclone_app target)
-    cmake_parse_arguments(_A "" "CRATE" "LINK" ${ARGN})
+    cmake_parse_arguments(_A "" "CRATE;DOMAIN" "LINK" ${ARGN})
     if(NOT _A_CRATE)
         message(FATAL_ERROR
             "nros_threadx_rv64_rust_cyclone_app(${target}): CRATE <cargo-package> is required.")
@@ -492,6 +492,19 @@ function(nros_threadx_rv64_rust_cyclone_app target)
         CRATE_TYPES staticlib
         NO_DEFAULT_FEATURES
         FEATURES rmw-cyclonedds)
+
+    # Issue #214 — DOMAIN bake for the Rust `Config::default()` (drives the
+    # Executor/Cyclone participant; mirrors the C fixtures' `-DNROS_DOMAIN_ID`).
+    # Reaches `option_env!("NROS_DOMAIN_ID")` via corrosion build env; falls
+    # back to the configure's `-DNROS_DOMAIN_ID` cache var. The NetX wire
+    # identity is NOT set here — it comes from the `NROS_APP_NET_{IP,MAC}_LAST`
+    # cache vars (set them BEFORE `add_subdirectory(<nano-ros>)`; they feed the
+    # generated `NROS_APP_CONFIG` TU that startup.c applies pre-kernel).
+    if(DEFINED _A_DOMAIN)
+        corrosion_set_env_vars(${_crate_target} "NROS_DOMAIN_ID=${_A_DOMAIN}")
+    elseif(DEFINED NROS_DOMAIN_ID)
+        corrosion_set_env_vars(${_crate_target} "NROS_DOMAIN_ID=${NROS_DOMAIN_ID}")
+    endif()
 
     # Empty TU so the executable has a C compilation unit for the link driver;
     # the real entry is the Rust staticlib's `app_main`.

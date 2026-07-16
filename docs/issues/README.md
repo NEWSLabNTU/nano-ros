@@ -53,10 +53,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#206** — [C++-only env overlay, silent domain-0](0206-cpp-env-overlay-divergence.md):
   ROS_DOMAIN_ID/NROS_LOCATOR resolution lives in node.hpp only (C diverges), duplicated across
   overloads, malformed input silently collapses to domain 0. (audit 2026-07-16)
-- **#214** — [riscv64-threadx rust cyclone lane untested](0214-riscv64-threadx-rust-cyclone-lane-untested.md):
-  no test consumer (the resolver is uncalled — #181 silent-lane class), the deploy blocks bake
-  domain 0 (C pair runs 62), and the pair shares the board-default firmware MAC — the lane
-  builds + boots but can never pass a pair e2e. Carved from #205.
 - **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
@@ -67,7 +63,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#205** — all four
+Recently resolved (see [`archived/`](archived/) for the full list): **#214** — the rust
+cyclone riscv64 lane is REAL now: new `test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub`
+(the resolver's first consumer) passes ~7.7 s. The actual wire identity on this path is the
+cmake-generated `NROS_APP_CONFIG` (10.0.2.x, applied by startup.c pre-kernel) — both images
+booted .40/:56; the second-node examples now set `NROS_APP_NET_{IP,MAC}_LAST` cache vars in the
+CMakeLists preamble, and `Config::default()` bakes `NROS_DOMAIN_ID` (corrosion env via the #205
+seam) so the images join the fixture's domain 62. The cyclone boot path also prints an
+`[app] MAC/IP/domain` banner now — the silent identity is what hid the collapse. **#205** — all four
 riscv64-threadx rust boilerplate classes retired: the hand cyclone-descriptor shims (redundant
 since #195's `.init_array` walk), the `app_main` FFI trampolines (now the board's
 `cyclonedds_app_main!` macro), the per-example critical-section dep+anchor (moved into the

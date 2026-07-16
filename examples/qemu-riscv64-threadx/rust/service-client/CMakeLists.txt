@@ -29,6 +29,12 @@ endif()
 set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
     "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
+# Issue #214 — second-node wire identity: distinct trailing IP/MAC octets so a
+# two-QEMU pair on one L2 link discovers (the first-node role keeps the
+# .40/:56 defaults). Feeds the cmake-generated NROS_APP_CONFIG TU that
+# startup.c applies before the kernel — must be set BEFORE add_subdirectory.
+set(NROS_APP_NET_IP_LAST 41 CACHE STRING "" FORCE)
+set(NROS_APP_NET_MAC_LAST "0x57" CACHE STRING "" FORCE)
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
 include("${NANO_ROS_ROOT}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 

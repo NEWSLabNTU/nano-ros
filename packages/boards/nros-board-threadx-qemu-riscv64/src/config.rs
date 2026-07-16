@@ -28,13 +28,25 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // Issue #214 — build-env DOMAIN bake. The CMake/CycloneDDS path boots
+        // via `run_app_thread(Config::default(), ...)` with NO deploy overlay,
+        // so this domain drives the Executor/Cyclone participant; the NetX
+        // wire identity (IP/MAC) on that path comes from the cmake-generated
+        // `NROS_APP_CONFIG` (`NROS_APP_NET_{IP,MAC}_LAST` cache vars applied
+        // by startup.c BEFORE the kernel), not from this struct. `NROS_DOMAIN_ID`
+        // is set per-build by `nros_threadx_rv64_rust_cyclone_app` (corrosion
+        // env), matching the C fixtures' `-DNROS_DOMAIN_ID` bake. The zenoh
+        // path is unaffected: its deploy overlay overrides after `default()`.
+        let domain_id = option_env!("NROS_DOMAIN_ID")
+            .and_then(parse_u32)
+            .unwrap_or(0);
         Self {
             mac: [0x52, 0x54, 0x00, 0x12, 0x34, 0x56],
             ip: [192, 0, 3, 10],
             netmask: [255, 255, 255, 0],
             gateway: [192, 0, 3, 1],
             zenoh_locator: "tcp/192.0.3.1:7447",
-            domain_id: 0,
+            domain_id,
         }
     }
 }

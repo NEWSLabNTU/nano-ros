@@ -193,3 +193,112 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         }
     }
 }
+
+// =============================================================================
+// CycloneDDS two-QEMU peer interop — RUST examples (issue #214)
+// =============================================================================
+
+/// Two ThreadX RISC-V64 QEMU nodes running the RUST CycloneDDS talker and
+/// listener exchange `std_msgs/String` on `/chatter` — the rust sibling of
+/// `test_threadx_riscv64_cyclonedds_two_qemu_pubsub`. Closes the #214 gap:
+/// the rust cyclone fixtures previously had NO test consumer, the deploy-less
+/// `run_app_thread(Config::default())` boot ran every image with the same
+/// MAC/IP/domain (identity collapse), and the domain never matched the
+/// fixture bake. `Config::default()` now applies the build-env identity
+/// (`NROS_APP_NET_{IP,MAC}_LAST`, `NROS_DOMAIN_ID` — set per-example by
+/// `nros_threadx_rv64_rust_cyclone_app`), so the pair boots as
+/// 192.0.3.10/:56 (talker) + 192.0.3.11/:57 (listener) on the fixture domain.
+///
+/// The QEMU device MACs mirror the firmware bake (same convention as the C
+/// test). Descriptors register via the board `.init_array` walk (#195/#205).
+#[test]
+fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
+    use nros_tests::fixtures::{Rmw, build_threadx_rv64_rust_example_rmw};
+
+    if !require_threadx_riscv64() {
+        nros_tests::skip!("require_threadx_riscv64 check failed");
+    }
+    if !is_qemu_riscv64_available() {
+        nros_tests::skip!("qemu-system-riscv64 not found");
+    }
+
+    let talker_bin = build_threadx_rv64_rust_example_rmw(
+        "talker",
+        "riscv64_threadx_rust_talker_cyclonedds",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "rust cyclone talker fixture missing (just threadx_riscv64 build-fixtures): {e:?}"
+        )
+    });
+    let listener_bin = build_threadx_rv64_rust_example_rmw(
+        "listener",
+        "riscv64_threadx_rust_listener_cyclonedds",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "rust cyclone listener fixture missing (just threadx_riscv64 build-fixtures): {e:?}"
+        )
+    });
+
+    const TALKER_MAC: &str = "52:54:00:12:34:56";
+    const LISTENER_MAC: &str = "52:54:00:12:34:57";
+
+    // Subscriber first (SPDP re-announces cover the rest); both transports put
+    // the two nodes on one L2 link — same shapes as the C sibling.
+    let (mut listener, _talker) = if qemu_riscv64_supports_dgram_unix() {
+        let root = nros_tests::project_root();
+        let sock_dir = root.join("tmp");
+        std::fs::create_dir_all(&sock_dir).expect("create tmp dir");
+        let sock_talker = sock_dir.join("tx_rv64_cyc_rs_talker.sock");
+        let sock_listener = sock_dir.join("tx_rv64_cyc_rs_listener.sock");
+        let _ = std::fs::remove_file(&sock_talker);
+        let _ = std::fs::remove_file(&sock_listener);
+        let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
+        let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
+
+        let listener = QemuProcess::start_riscv64_virt_dgram(
+            &listener_bin,
+            sock_listener,
+            sock_talker,
+            LISTENER_MAC,
+        )
+        .expect("start listener QEMU (dgram)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_dgram(
+            &talker_bin,
+            sock_talker,
+            sock_listener,
+            TALKER_MAC,
+        )
+        .expect("start talker QEMU (dgram)");
+        (listener, talker)
+    } else {
+        // Dedicated mcast group — distinct from the C test's so the two can
+        // run concurrently within the serialized qemu group.
+        const MCAST: &str = "230.0.0.7:11701";
+        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+            .expect("start listener QEMU (socket,mcast)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
+            .expect("start talker QEMU (socket,mcast)");
+        (listener, talker)
+    };
+
+    let result = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(90),
+    );
+    listener.kill();
+
+    match result {
+        Ok(output) => {
+            nros_tests::output::assert_listener(&output, 1);
+        }
+        Err(e) => panic!(
+            "rust listener never received a CycloneDDS sample from the peer ThreadX node: {e:?}"
+        ),
+    }
+}

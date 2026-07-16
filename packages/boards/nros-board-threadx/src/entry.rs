@@ -45,8 +45,10 @@
 //! family-side helper. The legacy [`crate::run`] coexists during the
 //! 212.N transition.
 
-use core::ffi::c_void;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ffi::c_void,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use nros_board_common::ThreadxConfig;
 use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
@@ -199,6 +201,28 @@ where
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // Issue #214 — echo the effective identity/domain so a two-node QEMU
+    // pair failure is diagnosable from the console (the `run_entry` path
+    // prints an equivalent banner; this path had none).
+    {
+        let mac = config.mac();
+        let ip = config.ip();
+        B::println(format_args!(
+            "[app] MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}  IP {}.{}.{}.{}  domain {}",
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5],
+            ip[0],
+            ip[1],
+            ip[2],
+            ip[3],
+            config.domain_id()
+        ));
+    }
+
     // Network stabilisation delay. Ticks at TX_TIMER_TICKS_PER_SECOND
     // (100 by default) — 200 ticks ≈ 2 s, matching the legacy per-
     // overlay wait in `node::app_task_entry`.
