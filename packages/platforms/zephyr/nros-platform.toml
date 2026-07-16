@@ -8,6 +8,24 @@
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
 
+[capabilities]
+# Zephyr's zsock serializes send/recv on a per-fd mutex, so total tx
+# throughput without batching is capped at ~one send per recv window —
+# the fact that justifies the batch/split defaults below (phase-279/282).
+threads = true
+per_fd_tx_ceiling = true
+
+# phase-290 W5 (the phase-282 promotion, option C scoped to zephyr —
+# batching measured 15-20x streaming on the only platform with the per-fd
+# ceiling) is BLOCKED on issue 0213: with TX_BATCH on, the zephyr<->zephyr
+# action roundtrip deterministically never completes (goal sent, no
+# result; batch-only reproduces, split_lock not required; first exercise
+# of the batching+actions combination — phase-282 validated benches +
+# pubsub, not the action lanes). Knobs stay ABSENT (= builtin off) until
+# 0213 is fixed; then re-add: batch = true, split_lock = true,
+# flush_ms = 50. zephyr/Kconfig's NROS_ZENOH_TX_* defaults MUST mirror
+# this file — asserted by nros-tests kconfig_platform_default_drift.
+
 [build.zenoh]
 # Zephyr's build system compiles zenoh-pico itself; this block
 # exists so the drift gate has a manifest entry but no cc-rs

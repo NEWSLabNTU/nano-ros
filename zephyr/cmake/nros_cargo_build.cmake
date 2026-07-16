@@ -87,6 +87,24 @@ function(nros_set_cargo_env_from_kconfig)
         set(ENV{ZPICO_FRAG_MAX_SIZE} "${CONFIG_NROS_FRAG_MAX_SIZE}")
         set(ENV{ZPICO_BATCH_UNICAST_SIZE} "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 
+        # phase-290 (RFC-0049) — tx knob trio, tri-state: always exported
+        # (0|1) so the cargo-built zpico config header agrees with the
+        # zephyr cmake TUs (issue-0135) and an explicit Kconfig `n`
+        # overrides the zephyr platform toml's on-default.
+        if(CONFIG_NROS_ZENOH_TX_BATCH)
+            set(ENV{ZPICO_TX_BATCH} "1")
+        else()
+            set(ENV{ZPICO_TX_BATCH} "0")
+        endif()
+        if(CONFIG_NROS_ZENOH_TX_SPLIT_LOCK)
+            set(ENV{ZPICO_TX_SPLIT_LOCK} "1")
+        else()
+            set(ENV{ZPICO_TX_SPLIT_LOCK} "0")
+        endif()
+        if(CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS)
+            set(ENV{ZPICO_TX_BATCH_FLUSH_MS} "${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS}")
+        endif()
+
         # Buffer sizing (nros-rmw-zenoh build.rs)
         set(ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE} "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
         set(ENV{ZPICO_SERVICE_BUFFER_SIZE} "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")

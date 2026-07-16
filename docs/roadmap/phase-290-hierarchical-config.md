@@ -20,8 +20,14 @@ Note one deviation from the RFC draft: the schema/loader home is
 parser) rather than the no_std `nros-platform` runtime crate; and platform
 HOMES are `packages/platforms/<family>/` directories (config-only until
 phase-230 grows real crates there — the four existing chip-level crates
-coexist and can layer via `inherits`). Remaining: W3 board wiring +
-Kconfig tri-state, W4 explain/scaffold, W5 zephyr flip + re-measure.
+coexist and can layer via `inherits`). W3.b LANDED (tri-state Kconfig forward on both
+zephyr consumers — cmake TUs + the cargo env bridge — and the
+kconfig_platform_default_drift mirror test). W5 flip ATTEMPTED and
+REVERTED: pristine defaults-on images broke the two zephyr action lanes
+deterministically (batch-only reproduces) — issue 0213 filed; the flip is
+5 lines once it closes. zephyr [capabilities] + the book platform-defaults
+section landed (table marks zephyr "flip pending 0213"). Remaining: W3.a
+board wiring, W4 explain/scaffold, W5 blocked on 0213.
 
 **Implements.** [RFC-0049](../design/0049-hierarchical-platform-board-config.md)
 (design-of-record — read it first; this doc is the work breakdown only).
@@ -68,7 +74,7 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
   `[knobs.*]` (additive; existing descriptor fields untouched). Confirm the
   phase-201 out-of-tree path serves the cmake lane too (RFC-0049 open
   question 3).
-- [ ] W3.b Zephyr Kconfig forward → tri-state: always pass
+- [x] W3.b Zephyr Kconfig forward → tri-state: always pass
   `-DZPICO_TX_BATCH=0|1` (+ split/flush) from Kconfig; fragment `default`
   lines mirror the zephyr platform toml; add the **drift test** asserting
   the mirror. NuttX / ESP-IDF fragments: same pattern where those
@@ -85,7 +91,13 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
   comments. Book page: "Porting nano-ros to a new RTOS" checklist
   (2 crates + 2 tomls, no central edits).
 
-### W5 — First tenant policy flip (the phase-282 promotion)
+### W5 — First tenant policy flip (the phase-282 promotion) — BLOCKED on issue 0213
+
+> 2026-07-16 — flip attempted on pristine images: 44/46 zephyr lanes green
+> but both action roundtrips hang at `Sending goal` (batch-only reproduces).
+> Reverted to default-off; [issue 0213](../issues/0213-zephyr-tx-batch-breaks-action-roundtrip.md)
+> is the gate. Machinery (toml knob slot, Kconfig mirror + drift test,
+> tri-state forwards) all in place.
 
 - [ ] W5.a zephyr `nros-platform.toml`: `batch = true, split_lock = true,
   flush_ms = 50` + `[capabilities] per_fd_tx_ceiling = true`. All other

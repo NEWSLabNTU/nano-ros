@@ -68,9 +68,10 @@ if(CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS)
     zephyr_compile_definitions(Z_CONFIG_SOCKET_TIMEOUT=${CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS})
 endif()
 
-# phase-279 (#145) — opt-in tx batching: one send per executor spin instead of
-# one send per put. Forwards the Kconfig to zpico.c's ZPICO_TX_BATCH gate
-# (zp_batch_start at open + zp_batch_flush at the top of zpico_spin_once).
+# phase-279 (#145) / phase-290 (RFC-0049) — tx batching: one send per executor
+# spin instead of one send per put. TRI-STATE forward: the definition is
+# ALWAYS emitted (0 or 1) so an explicit Kconfig `n` can override an
+# on-default anywhere below it, and every TU sees the same definite value.
 if(CONFIG_NROS_ZENOH_TX_BATCH)
     zephyr_compile_definitions(ZPICO_TX_BATCH=1)
     # phase-282 (#145) — flush cadence: period of the dedicated tx-flush
@@ -79,12 +80,17 @@ if(CONFIG_NROS_ZENOH_TX_BATCH)
         zephyr_compile_definitions(
             ZPICO_TX_BATCH_FLUSH_MS=${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS})
     endif()
+else()
+    zephyr_compile_definitions(ZPICO_TX_BATCH=0)
 endif()
 
 # phase-282 (#145) — split tx locking (steal batch under tx mutex, send under a
-# link-write mutex). Gates transport-struct fields: applied to ALL zephyr TUs.
+# link-write mutex). Gates transport-struct fields: applied to ALL zephyr TUs
+# (issue-0135 ABI rule) — always defined, 0 or 1.
 if(CONFIG_NROS_ZENOH_TX_SPLIT_LOCK)
     zephyr_compile_definitions(Z_FEATURE_TX_SPLIT_LOCK=1)
+else()
+    zephyr_compile_definitions(Z_FEATURE_TX_SPLIT_LOCK=0)
 endif()
 
 # Intra-image topic delivery (RFC-0015 Model 1): every node in the image

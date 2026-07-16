@@ -181,13 +181,20 @@ config NROS_ZENOH_TX_BATCH
     bool "zenoh-pico tx batching (one send per executor spin)"
     default n
     help
-      phase-279 (#145) — opt-in tx batching (ZPICO_TX_BATCH). Publishes queue
+      phase-279 (#145) — tx batching (ZPICO_TX_BATCH). Publishes queue
       in the transport write buffer and ship as ONE socket send per executor
       spin (zpico_spin_once flush), so total tx throughput scales with
       messages-per-flush instead of being capped at ~1 send per socket recv
-      window (the zsock per-fd-mutex ceiling above). Adds up to one spin
-      period of publish latency; service/query requests and replies bypass
-      the batch (express), as do publishers declared express. Off by default.
+      window (the zsock per-fd-mutex ceiling above). Adds up to FLUSH_MS of
+      publish latency; service/query requests and replies bypass the batch
+      (express), as do publishers declared express (tx_express QoS).
+      phase-290 (RFC-0049) — the phase-282 promotion (default ON for
+      Zephyr, measured 15-20x streaming) is BLOCKED on issue 0213: batching
+      deterministically breaks the zephyr<->zephyr action roundtrip (goal
+      never completes; batch-only reproduces, split_lock not required).
+      Default stays n until 0213 is fixed. This default MUST mirror
+      packages/platforms/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
+      kconfig_platform_default_drift test asserts the mirror.
 
 config NROS_ZENOH_TX_SPLIT_LOCK
     bool "zenoh-pico split tx locking (append while sending)"
@@ -198,7 +205,10 @@ config NROS_ZENOH_TX_SPLIT_LOCK
       the tx mutex and performs the socket write under a separate link-write
       mutex, so publishers keep appending to the fresh batch while the (up to
       one recv-window) send is in flight. Wire order still equals SN order.
-      Requires TX_BATCH. Off by default until promoted.
+      Requires TX_BATCH. Costs a second wbuf (Z_BATCH_UNICAST_SIZE) of RAM
+      per session. phase-290 — default n (the promotion flip is blocked on
+      issue 0213); mirrors packages/platforms/zephyr/nros-platform.toml
+      (drift-tested).
 
 config NROS_ZENOH_TX_BATCH_FLUSH_MS
     int "zenoh-pico tx batch flush cadence (ms)"

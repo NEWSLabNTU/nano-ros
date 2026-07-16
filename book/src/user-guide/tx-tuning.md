@@ -12,6 +12,24 @@ total image tx throughput is capped at roughly one socket send per window —
 about 9 msg/s at the default**, regardless of how many publishers the image
 runs or how fast they publish.
 
+## Platform defaults (phase-290 / RFC-0049)
+
+Since phase-290, per-platform defaults for these knobs live in each platform
+package's `nros-platform.toml` (`[knobs.zenoh.tx]`), resolved through the
+fixed ladder `builtin < platform < board < env/Kconfig` — an explicit
+build-time setting (including an explicit `0` / `n`) always wins.
+
+| platform | batch | split_lock | flush_ms | rationale |
+| --- | --- | --- | --- | --- |
+| **Zephyr** | off (flip pending) | off | 50 | promotion decided (option C, 15–20× measured) but BLOCKED on issue 0213 (batching breaks the zephyr↔zephyr action roundtrip); until fixed, opt in per-app via `prj.conf`. `zephyr/Kconfig` defaults mirror the platform toml (drift-tested) |
+| everything else | off | off | 50 | no per-fd ceiling (POSIX), no flush thread (ThreadX/bare-metal), or simply unmeasured (FreeRTOS/NuttX — flip is one line in their platform toml after a bench run) |
+
+With batching on, **non-express topics pay up to `flush_ms` of publish
+latency** — declare low-rate latency-critical publishers `tx_express`
+(below) to bypass the batch. Timer-paced low-rate systems that want the
+old behavior image-wide: set `CONFIG_NROS_ZENOH_TX_BATCH=n` (Zephyr) /
+`ZPICO_TX_BATCH=0` (cargo/cmake lanes).
+
 ## The decision tree
 
 ```text
