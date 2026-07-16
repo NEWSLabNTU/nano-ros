@@ -73,3 +73,14 @@ west build -t run            # native_sim; `west flash` for hardware
 
 See the book's [Entry packages → Running on Zephyr](../../book/src/getting-started/workspace-entry-pkg.md)
 for the full flow.
+
+## FVP board-crate Entry (ws-realtime-cpp-fvp)
+
+`ws-realtime-cpp-fvp/src/fvp_entry/` (phase-292 W1.a) is the board-crate
+variant of the Zephyr Entry: instead of `west build -b <board>` the entry's
+CMakeLists calls `nano_ros_use_board(fvp-aemv8r-smp)` BEFORE
+`find_package(Zephyr)`, and the board id / base config / DTS overlay /
+default RMW (cyclonedds) / runner all flow from
+`packages/boards/nros-board-fvp-aemv8r-smp/`. This is the Autoware Safety
+Island reference-consumer Entry shape. Build via
+`just zephyr build-fvp-ws-entry` (part of `just zephyr build-fvp-all`).

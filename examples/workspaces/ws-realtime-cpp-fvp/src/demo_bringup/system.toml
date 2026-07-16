@@ -1,0 +1,66 @@
+[system]
+name = "realtime_cpp_demo"
+rmw = "cyclonedds"
+domain_id = 0
+
+# Phase 269 W4 (RFC-0015 §4.2) — C++ two-tier realtime demo.
+# The ctrl node publishes /ctrl every 10 ms (high tier);
+# the telem node publishes /telem every 100 ms (low tier).
+# Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
+# [[component]].group_tiers (deployment config, not package manifest).
+# CALLBACK_GROUPS in cmake declares the group IDs; group_tiers here assigns
+# them to the named tiers. nros codegen emits NodeBuilder::sched() calls so
+# each node binds to its posix-priority sched context.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+group_tiers = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tiers = { telem = "low" }
+
+[tiers.high]
+spin_period_us = 10000
+[tiers.high.posix]
+priority = 80
+# phase-281 W3b — RAW Zephyr priority (preemptive; lower number = higher priority).
+# Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the codegen onto
+# ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
+[tiers.high.zephyr]
+priority = 5
+# phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
+# priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
+# C++ codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+[tiers.high.nuttx]
+priority = 110
+
+[tiers.low]
+spin_period_us = 100000
+[tiers.low.posix]
+priority = 10
+[tiers.low.zephyr]
+priority = 10
+[tiers.low.nuttx]
+priority = 100
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+
+# phase-281 W3b — the Zephyr (native_sim) embedded deploy target. Both [posix] and
+# [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded
+# Zephyr (this wave) by changing the BOARD cmake variable.
+[deploy.zephyr]
+kind = "embedded"
+board = "native_sim/native/64"
+
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
+# `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
+# or embedded NuttX by changing the BOARD cmake variable.
+[deploy.nuttx]
+kind = "embedded"
+board = "nuttx-qemu-arm"

@@ -94,7 +94,50 @@ doctor:
 # purpose is covered by the cyclonedds-rust lane. Phase-292 W1.a adds the
 # workspace-Entry FVP lane here when it lands.)
 [group("examples")]
-build-fvp-all: build-fvp-aemv8r-cyclonedds build-fvp-aemv8r-cyclonedds-rust
+build-fvp-all: build-fvp-aemv8r-cyclonedds build-fvp-aemv8r-cyclonedds-rust build-fvp-ws-entry
+
+# phase-292 W1.a — the FVP WORKSPACE C++ RT-tiers Entry
+# (examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry): proves the ASI
+# reference consumer's exact shape in-tree — `nano_ros_use_board(fvp-aemv8r-smp)`
+# + `find_package(nano_ros)` (287-W6 verbs) + one
+# `nano_ros_add_executable(BOARD zephyr LAUNCH … TYPED)` in a single west
+# configure. NO `-b` flag: the board id comes from the board crate. Skips
+# identically to the other FVP lanes.
+[group("examples")]
+build-fvp-ws-entry:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-ws-entry skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-ws-entry skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
+        echo "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    echo "  → host nros-codegen (cargo)"
+    source scripts/build/cargo.sh
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    export NROS_REPO_DIR="$nros_root"
+    echo "Building examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry (board from nano_ros_use_board)..."
+    west build \
+        -d build-fvp-ws-entry -p auto \
+        "$nros_root/examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry" \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+    echo "phase-292 W1.a FVP AEMv8-R workspace-Entry (cpp/cyclonedds) build smoke OK"
 
 # Phase 117.14 — Zephyr build smoke for the AEMv8-R Cortex-A SMP
 # nros C++ pub/sub example. Validates the Zephyr build of the
