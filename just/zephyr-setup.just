@@ -84,6 +84,16 @@ doctor:
     # native_sim uses NSOS (host loopback) — no TAP bridge required.
     exit $fail
 
+# Issue #216 — aggregate FVP build sweep. The individual FVP lanes are
+# manual-only (no CI consumer; each skips cleanly when west / the Zephyr
+# workspace / the aarch64 SDK is missing), which is exactly how the rust
+# lane rotted silently to E0463 for weeks. One verb for a periodic local
+# sweep: `just zephyr build-fvp-all`. `build-fvp-aemv8r` is NOT included —
+# it has been unbuildable since phase-221 dropped its west source arg and
+# its original app (`rust/dds/talker`) was retired (issue #217).
+[group("examples")]
+build-fvp-all: build-fvp-aemv8r-cyclonedds build-fvp-aemv8r-cyclonedds-rust
+
 # Phase 117.13 — Zephyr build smoke for the FVP Base_RevC AEMv8-R
 # Cortex-A SMP target (Phase 117.10's reference platform). Reuses
 # fixture — no new app required just to prove the toolchain +

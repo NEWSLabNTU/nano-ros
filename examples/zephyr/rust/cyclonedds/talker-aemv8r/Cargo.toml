@@ -32,6 +32,12 @@ default = ["rmw-cyclonedds"]
 # marker, kept so EXTRA_CARGO_ARGS `--features rmw-cyclonedds` still resolves;
 # it no longer forwards `nros rmw-*`. (#60 T5)
 rmw-cyclonedds = []
+# Issue #216 — inert rows so `zephyr_component_main!`'s cfg checks on the
+# other RMW features pass rustc's check-cfg (the macro cfg-gates a direct
+# `register()` per backend; a missing feature DECLARATION is a hard error
+# under `-D warnings`). Cyclone-only image: these link nothing.
+rmw-zenoh = []
+rmw-xrce = []
 
 [dependencies]
 zephyr = "0.1.0"

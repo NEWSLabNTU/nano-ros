@@ -12,4 +12,7 @@ channel = "nightly-2026-04-11"
 # user crate via the `run_rust_clippy` CMake target (zephyr-lang-rust). Without
 # it `west build` aborts: "cargo-clippy is not installed for the toolchain".
 components = ["rust-src", "rustfmt", "clippy"]
-targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf"]
+# aarch64-unknown-none — the FVP AEMv8-R lane (issue #216: the lane rotted
+# to E0463 "can't find crate for `core`" because this pin lacked the target;
+# rustup auto-installs the targets listed here on first use).
+targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf", "aarch64-unknown-none"]

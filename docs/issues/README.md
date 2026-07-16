@@ -47,18 +47,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
   ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
   sibling of #203. (audit 2026-07-16)
-- **#216** — [`build-fvp-aemv8r-cyclonedds-rust` red: E0463 no `core` for the aarch64 zephyr
-  target](0216-fvp-aemv8r-cyclonedds-rust-lane-e0463.md): the lane's rust patching no longer
-  yields a resolvable target/std setup; baseline-verified pre-existing (found by the phase-291
-  W4 grep-gate exercising the 14th bake leaf); cpp sibling green; lane is in no sweep, so it
-  rotted silently.
+- **#217** — [`build-fvp-aemv8r` base lane unbuildable](0217-build-fvp-aemv8r-base-lane-sourceless.md):
+  phase-221 dropped the `west build` source arg and the original app (`rust/dds/talker`) is
+  retired; the modern zenoh rust talker can't re-point onto it (board conf lacks POSIX for
+  zenoh-pico). Decide: retire (redundant with the #216 lane) vs port. (2026-07-16)
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#204** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#216** — the FVP
+AEMv8-R cyclone RUST lane is green again; three rot layers: the `examples/zephyr` nightly pin
+never listed `aarch64-unknown-none` in `targets` (E0463 — a hand-added target on an older
+nightly was lost in a pin bump; now declarative), missing inert `rmw-zenoh`/`rmw-xrce` feature
+rows (0163-era `zephyr_component_main!` check-cfg), and a newer-nightly doc-list lint. New
+`just zephyr build-fvp-all` sweep verb guards the rot. **#204** — the
 clean-system bootstrap probe exists: `just probe bootstrap` runs the book's `probe=NN`-tagged
 setup blocks verbatim (extracted, never hand-mirrored) on a pristine `ubuntu:24.04` container
 and asserts the first-node readiness signal; nightly `bootstrap-probe` job on the 07:00 cron.

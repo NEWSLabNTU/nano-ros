@@ -7,8 +7,8 @@
 //! covers both languages from a single peer.
 //!
 //! Node-pkg shape mirrors `examples/zephyr/rust/talker/src/lib.rs`
-//! (Phase 212.M.3 / 212.L Component pkg). `register` declares the node
-//! + publisher + 1 Hz timer; `ExecutableNode::on_callback` runs the
+//! (Phase 212.M.3 / 212.L Component pkg). `register` declares the node,
+//! publisher, and 1 Hz timer; `ExecutableNode::on_callback` runs the
 //! timer body (bump counter, publish). `nros::zephyr_component_main!(Talker)`
 //! owns executor open, node registration, and the spin loop for this
 //! self-package Rust application.
