@@ -7,10 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(nano_ros REQUIRED)
 find_package(custom_msgs REQUIRED)
 
-# Raw-CDR typed component (RFC-0043): the publisher carries the workspace-local
-# type name (`custom_msgs::msg::dds_::Reading_`) as a string and hand-encodes the
-# CDR payload (see src/ReadingTalker.cpp) — identical wire shape to the committed
-# C `reading_talker_pkg`, just expressed in C++. No `nros_find_interfaces`, so NO
-# generated interface archive is linked: the raw-CDR path dodges any cpp codegen
-# edge AND the double-`builtin_interfaces`-glue a typed cpp interface link can hit.
+# Typed component (RFC-0043) publishing the GENERATED
+# `custom_msgs::msg::Reading` (phase-293 / issue #212 — the raw hand-encoded
+# CDR shape is retired; the historical "double-builtin_interfaces glue" edge
+# this pkg used to dodge died with the #203 idempotency/header-mirror repairs).
 nano_ros_add_node(reading_talker CLASS reading_talker_pkg::ReadingTalker src/ReadingTalker.cpp)

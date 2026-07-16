@@ -44,20 +44,26 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
-  ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
-  sibling of #203. (audit 2026-07-16)
 - **#217** — [`build-fvp-aemv8r` base lane unbuildable](0217-build-fvp-aemv8r-base-lane-sourceless.md):
   phase-221 dropped the `west build` source arg and the original app (`rust/dds/talker`) is
   retired; the modern zenoh rust talker can't re-point onto it (board conf lacks POSIX for
   zenoh-pico). Decide: retire (redundant with the #216 lane) vs port. (2026-07-16)
+- **#218** — [std_msgs raw-CDR C components remain](0218-std-msgs-raw-cdr-components-remain.md):
+  phase-293 retired hand-rolled CDR for custom msgs (#212), but the phase-257 raw-component
+  convention still hand-encodes std_msgs wire bytes in workspaces/c, ws-qos-*, ws-realtime-* C
+  pkgs and the mixed templates — same fix shape, ~8 pkgs. (2026-07-16)
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#216** — the FVP
+Recently resolved (see [`archived/`](archived/) for the full list): **#212** — workspace
+custom msgs get GENERATED C/C++ typesupport (phase-293): resolve-deps gained the
+`NROS_INTERFACE_SEARCH_PATH` workspace layer + cmake threads it to the CLI child; all three
+ws-custom-msg workspaces rewritten off hand-rolled CDR onto generated bindings (the feared cpp
+double-builtin_interfaces glue edge is dead); custom-msg lanes 10/10. Residual std_msgs raw
+components → #218. **#216** — the FVP
 AEMv8-R cyclone RUST lane is green again; three rot layers: the `examples/zephyr` nightly pin
 never listed `aarch64-unknown-none` in `targets` (E0463 — a hand-added target on an older
 nightly was lost in a pin bump; now declarative), missing inert `rmw-zenoh`/`rmw-xrce` feature

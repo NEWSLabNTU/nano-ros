@@ -373,9 +373,22 @@ function(nros_find_interfaces)
 
     # 1. Resolve the transitive interface closure (configure time). Emits a cmake
     #    script setting `_NROS_RESOLVED_PACKAGES` + per-pkg `_NROS_RESOLVED_<pkg>_FILES`.
+    #    Phase 293 / issue #212 — thread the workspace interface search path
+    #    (a cmake VAR at the workspace root; the CLI reads the ENV) into the
+    #    child so `resolve-deps` sees workspace-local msg packages exactly like
+    #    the cmake smart-stub does. A caller-exported ENV wins (matches the
+    #    stub's env-beats-nothing layering): only inject when no env is set.
+    set(_resolve_env_prefix "")
+    if(NOT DEFINED ENV{NROS_INTERFACE_SEARCH_PATH}
+       AND DEFINED NROS_INTERFACE_SEARCH_PATH
+       AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
+        string(REPLACE ";" ":" _resolve_search_path "${NROS_INTERFACE_SEARCH_PATH}")
+        set(_resolve_env_prefix ${CMAKE_COMMAND} -E env
+            "NROS_INTERFACE_SEARCH_PATH=${_resolve_search_path}")
+    endif()
     set(_resolve_output "${CMAKE_CURRENT_BINARY_DIR}/_nros_resolved_deps.cmake")
     execute_process(
-        COMMAND "${_codegen_tool}" codegen resolve-deps
+        COMMAND ${_resolve_env_prefix} "${_codegen_tool}" codegen resolve-deps
                 --package-xml "${_ARG_PACKAGE_XML}"
                 --output-cmake "${_resolve_output}"
         RESULT_VARIABLE _result

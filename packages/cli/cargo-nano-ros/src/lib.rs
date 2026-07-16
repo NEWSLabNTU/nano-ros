@@ -547,21 +547,58 @@ fn bundled_interfaces_dir() -> Option<PathBuf> {
 /// Public: `nros sync` (nros-cli-core) resolves external msg deps through
 /// this too, so a host without ROS 2 still generates std_msgs (#204).
 pub fn load_index_with_fallback(verbose: bool) -> Result<AmentIndex> {
-    // Try ament index first
-    let mut index = match AmentIndex::from_env() {
+    // Phase 293 / issue #212 — workspace-local interface packages. Mirror the
+    // cmake smart-stub layering (`_NrosFindRosMsgPackage.cmake`): entries of
+    // `NROS_INTERFACE_SEARCH_PATH` (colon/semicolon-separated colcon-`src/`
+    // roots) take precedence over the ament env index, which takes precedence
+    // over the bundled interfaces. Without this layer, `resolve-deps` on a
+    // node whose package.xml depends on a sibling workspace msg pkg resolved
+    // nothing, so the C/C++ verbs never generated typed bindings for it.
+    let mut index = AmentIndex::from_path_string("")?;
+    if let Ok(search_path) = std::env::var("NROS_INTERFACE_SEARCH_PATH") {
+        for root in search_path
+            .split([':', ';'])
+            .filter(|s| !s.is_empty())
+            .map(std::path::Path::new)
+        {
+            match AmentIndex::from_directory(root) {
+                Ok(ws_index) => {
+                    if verbose && ws_index.package_count() > 0 {
+                        println!(
+                            "Loaded {} workspace interface package(s) from {}",
+                            ws_index.package_count(),
+                            root.display()
+                        );
+                    }
+                    index.merge(ws_index);
+                }
+                Err(e) => {
+                    if verbose {
+                        eprintln!(
+                            "Warning: failed to scan NROS_INTERFACE_SEARCH_PATH entry {}: {}",
+                            root.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Ament env index next (workspace packages shadow it).
+    match AmentIndex::from_env() {
         Ok(idx) => {
             if verbose {
                 println!("Loaded ament index ({} packages)", idx.package_count());
             }
-            idx
+            index.merge(idx);
         }
         Err(_) => {
             if verbose {
                 println!("No ROS 2 environment detected, using bundled interfaces only");
             }
-            AmentIndex::from_path_string("")?
         }
-    };
+    }
 
     // Merge bundled interfaces (ament packages take precedence)
     if let Some(bundled_dir) = bundled_interfaces_dir() {
