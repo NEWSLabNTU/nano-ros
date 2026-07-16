@@ -44,13 +44,33 @@ named surfaces; the API-shape items compare against the upstream ROS
 convention, so brief the reader to name the standard counterpart for every
 flagged divergence.
 
-**deep** — orchestrate with the Workflow tool: one agent per selected
-category, each briefed with that category's checklist text verbatim plus the
-severity rubric, returning structured findings
-(`category, file, line, severity, summary, fix_sketch`). Then an adversarial
-verify stage: for each finding, an independent agent tries to REFUTE it
-(wrong reading? already fixed? by-design per an RFC/CLAUDE.md?); majority-
-refuted findings are dropped. Pipeline categories → verify (no barrier).
+**deep** — orchestrate with the Workflow tool. Economy principles: the MAIN
+loop runs every detection grep first and hands each agent a pre-scoped brief
+(hit list + exact paths — agents read and judge, never locate); categories
+bundle by SURFACE so each file is read once; verification is tiered, single-
+refuter (no vote panels). Finder lanes, models, and efforts:
+
+| lane | categories | surface | model | effort |
+| --- | --- | --- | --- | --- |
+| cmake | A, C4, G2-cmake | `cmake/`, board/platform tomls | sonnet | low |
+| core-code | B1/B3/B5/B6/B7, C5, I3/I5 | `packages/core` (pre-filtered) | sonnet | medium |
+| API-shape | C1/C2, C6, C7, D | C/C++/Rust public API + vtable vs rclc/rclcpp/rclrs/rmw.h/ament | inherit | high |
+| testing | E1–E5 | `packages/testing`, `fixtures.toml`, coverage matrix | sonnet | low |
+| docs/UX | F, H | book, justfile, activate | haiku | low |
+| examples | J, I1/I2 | `examples/` sample | sonnet | medium |
+
+Rules: never pay the flagship for locating, only for judging (API-shape is
+the one comparison-against-external-convention task — it gets inherit+high);
+haiku only where a wrong answer is cheap to catch on read (doc drift);
+effort=low for mechanical confirmation lanes.
+
+Each finder returns structured findings
+(`category, file, line, severity, summary, fix_sketch, confidence`).
+Verify stage, pipelined per finding (no barrier), ONE refuter each:
+P1 → always refute (model inherit, effort low); P2 → refute only when the
+finder's confidence is low or the fix sketch is expensive (sonnet, low);
+P3 → report-only, unverified. A refuted finding is dropped with its
+refutation noted in the report.
 
 Both depths: every reported finding needs `file:line`, severity (P1–P3 per
 the checklist rubric), a one-line statement, and a fix sketch.
