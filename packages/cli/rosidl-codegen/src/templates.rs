@@ -559,6 +559,9 @@ pub struct CppFfiField {
     pub nested_serialize_fn: String,
     /// Nested deserialize function name
     pub nested_deserialize_fn: String,
+    /// Nested teardown function name (issue #201 — recursive heap free for
+    /// the deserializers' error paths; empty for non-nested fields)
+    pub nested_teardown_fn: String,
     /// String capacity (for string fields — used in deserialization)
     pub string_capacity: usize,
     /// Element string capacity (for arrays/sequences of strings)
@@ -662,6 +665,9 @@ pub struct MessageCppFfiTemplate<'a> {
     pub ffi_deserialize_fn: String,
     pub serialize_fn: String,
     pub deserialize_fn: String,
+    /// issue #201 — recursive heap-teardown fn name (the `_fini` analog),
+    /// emitted unconditionally (empty body when the message owns no heap).
+    pub teardown_fn: String,
     pub fields: Vec<CppFfiField>,
     pub sequence_structs: Vec<SequenceStructDef>,
     pub has_fields: bool,

@@ -49,18 +49,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   incl. `action_msgs`, whose cpp FFI crate can't see `builtin_interfaces` types — blocks
   cross-LANGUAGE service pairs (mixed demo stays C+C). Deferred un-tracked since 263-A1; filed
   by the phase-263 audit.
-- **#201** — [C++ `HeapSequence<T>` skips element dtors](0201-cpp-heapsequence-nested-heap-leak.md):
-  destructor/move-assign free only the outer array, and the FFI deserialize error path strands
-  inner allocations — a heap-field nested type inside a heap sequence (two-level heap config,
-  nothing rejects it) leaks on C++ only (C `_fini` recurses; Rust `Vec` drops). Recommended:
-  reject the combination at codegen now, real dtor support if a use case arrives.
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#202** — re-triaged:
+Recently resolved (see [`archived/`](archived/) for the full list): **#201** — option 2
+(real element lifetime): `HeapSequence` dtor/move-assign/`clear` run element destructors
+(pseudo-destructor loop, zero-cost for trivial `T`); `reserve` byte-relocates (documented
+trivially-relocatable element contract); placement-new `push_back` + new `emplace_back()` for
+owning elements. Generated FFI gained a recursive `teardown_*_fields` (the `_fini` analog) +
+zero-inited nested element buffers, so deserializer error paths tear down partial elements.
+Runtime lifetime probe (counting allocator) runs in `check-cpp`. **#202** — re-triaged:
 15/17 red tests exercised the phase-172 "generated standalone system package" pipeline whose
 verbs were removed in phase-222 — retired the dead path (−9,346 lines; live bridge rendering
 moved to `orchestration/bridge_gen.rs`), salvaged the live plan/check/metadata coverage as

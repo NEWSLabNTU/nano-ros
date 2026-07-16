@@ -1535,6 +1535,78 @@ mod tests {
             "ffi heap nested-seq elem repr:\n{}",
             pkg.ffi_rs
         );
+        // issue #201 — the heap nested-seq deserializer zero-inits the element
+        // buffer and tears elements down on a mid-loop error (both deserialize
+        // bodies), so nested heap allocations can't strand.
+        assert!(
+            pkg.ffi_rs.contains("core::ptr::write_bytes"),
+            "ffi heap nested-seq missing zero-init:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(
+            pkg.ffi_rs
+                .contains("teardown_geometry_msgs_msg_point_fields(unsafe { &mut *data.add(j) })"),
+            "ffi heap nested-seq error path missing element teardown:\n{}",
+            pkg.ffi_rs
+        );
+    }
+
+    /// issue #201 — every generated FFI module carries a recursive heap
+    /// teardown fn (the `_fini` analog): heap strings and heap sequences are
+    /// freed + nulled, nested-element heap sequences recurse into the
+    /// element's teardown, and plain nested fields recurse unconditionally
+    /// (empty teardowns inline away).
+    #[test]
+    fn test_cpp_ffi_teardown_fn() {
+        let msg =
+            parse_message("geometry_msgs/Point[] pts\nstring label\nuint8[] pixels\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.pts" = { cap = 0, mode = "heap" }
+            "my_msgs/M.label" = { cap = 0, mode = "heap" }
+            "my_msgs/M.pixels" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.ffi_rs.contains("pub fn teardown_my_msgs_msg_m_fields"),
+            "teardown fn missing:\n{}",
+            pkg.ffi_rs
+        );
+        // Heap string: freed + nulled.
+        assert!(
+            pkg.ffi_rs.contains("msg.label.data = core::ptr::null_mut()"),
+            "heap string not nulled:\n{}",
+            pkg.ffi_rs
+        );
+        // Heap nested seq: recurse into the element teardown before the free.
+        assert!(
+            pkg.ffi_rs
+                .contains("teardown_geometry_msgs_msg_point_fields(unsafe { &mut *msg.pts.data.add(i) })"),
+            "nested-element teardown recursion missing:\n{}",
+            pkg.ffi_rs
+        );
+        // Heap primitive seq: freed + nulled, no recursion.
+        assert!(
+            pkg.ffi_rs.contains("msg.pixels.data = core::ptr::null_mut()"),
+            "heap primitive seq not nulled:\n{}",
+            pkg.ffi_rs
+        );
+        // A heap-free message still gets an (empty) teardown fn.
+        let plain = parse_message("int32 x\n").unwrap();
+        let plain_resolver = crate::config::CapacityResolver::from_toml_str("").unwrap();
+        let plain_pkg =
+            generate_cpp_message_package("my_msgs", "Plain", &plain, "h", &plain_resolver)
+                .unwrap();
+        assert!(
+            plain_pkg
+                .ffi_rs
+                .contains("pub fn teardown_my_msgs_msg_plain_fields"),
+            "heap-free message missing empty teardown fn:\n{}",
+            plain_pkg.ffi_rs
+        );
     }
 
     #[test]

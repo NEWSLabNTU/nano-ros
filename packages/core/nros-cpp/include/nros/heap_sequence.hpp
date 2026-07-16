@@ -23,6 +23,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <new> // placement new (precedent: component_node.hpp factories)
 
 #include <nros/platform.h>
 
@@ -34,11 +35,30 @@ namespace nros {
 /// with the runtime and the Rust FFI mirror. Owns its buffer (freed in the
 /// destructor via `nros_platform_free`); non-copyable, movable.
 ///
+/// **Element lifetime (issue #201).** Destruction paths (destructor,
+/// move-assign, `clear()`) run each element's destructor before freeing the
+/// buffer, so elements that OWN heap memory (`nros::HeapString`, a nested
+/// `HeapSequence`, generated message structs containing either) are torn down
+/// recursively — a two-level `mode = "heap"` config no longer leaks. The
+/// pseudo-destructor call compiles to nothing for trivially destructible
+/// element types.
+///
+/// **Element relocation contract.** `reserve()` moves elements to the grown
+/// buffer by byte copy WITHOUT running destructors on the old slots
+/// (ownership relocates). Every permitted element type is trivially
+/// relocatable: standard-layout, self-contained owning pointers, no
+/// self-references — the same contract the C runtime's
+/// `rosidl_runtime_c__*__Sequence` realloc path assumes.
+///
 /// Usage:
 /// ```cpp
 /// nros::HeapSequence<uint8_t> pixels;
 /// pixels.push_back(0xAB);
 /// for (size_t i = 0; i < pixels.length(); ++i) { use(pixels[i]); }
+///
+/// // Owning (non-copyable) element types are built in place:
+/// nros::HeapSequence<pkg::msg::DiagnosticStatus> statuses;
+/// if (auto* s = statuses.emplace_back()) { s->name.assign("motor", 5); }
 /// ```
 template <typename T> struct HeapSequence {
     T* data;
@@ -46,7 +66,10 @@ template <typename T> struct HeapSequence {
     size_t capacity;
 
     HeapSequence() : data(nullptr), size(0), capacity(0) {}
-    ~HeapSequence() { nros_platform_free(data); }
+    ~HeapSequence() {
+        destroy_elements();
+        nros_platform_free(data);
+    }
 
     // Owns memory → non-copyable, movable.
     HeapSequence(const HeapSequence&) = delete;
@@ -58,6 +81,7 @@ template <typename T> struct HeapSequence {
     }
     HeapSequence& operator=(HeapSequence&& o) noexcept {
         if (this != &o) {
+            destroy_elements();
             nros_platform_free(data);
             data = o.data;
             size = o.size;
@@ -70,30 +94,56 @@ template <typename T> struct HeapSequence {
     }
 
     /// Ensure capacity for at least `n` elements. Returns false on alloc failure.
+    ///
+    /// Grows by BYTE RELOCATION (see the element-relocation contract above):
+    /// live elements move to the new buffer without destructor/constructor
+    /// pairs, so owning element types stay valid across growth.
     bool reserve(size_t n) {
         if (n <= capacity) return true;
         T* fresh = static_cast<T*>(nros_platform_malloc(n * sizeof(T)));
         if (fresh == nullptr) return false;
-        for (size_t i = 0; i < size; ++i)
-            fresh[i] = data[i];
+        const unsigned char* src = reinterpret_cast<const unsigned char*>(data);
+        unsigned char* dst = reinterpret_cast<unsigned char*>(fresh);
+        for (size_t b = 0; b < size * sizeof(T); ++b)
+            dst[b] = src[b];
         nros_platform_free(data);
         data = fresh;
         capacity = n;
         return true;
     }
 
-    /// Append an element. Returns false on alloc failure.
+    /// Append a copy of `val`. Returns false on alloc failure. Placement-new
+    /// copy-constructs into the (uninitialized) slot — assignment would invoke
+    /// `operator=` on garbage, which is UB for owning element types. Only
+    /// available for copy-constructible `T`; owning (non-copyable) element
+    /// types use [`emplace_back`].
     bool push_back(const T& val) {
         if (size >= capacity) {
             size_t next = capacity == 0 ? 4 : capacity * 2;
             if (!reserve(next)) return false;
         }
-        data[size++] = val;
+        new (data + size) T(val);
+        ++size;
         return true;
     }
 
-    /// Drop all elements and release the buffer.
+    /// Append a default-constructed element in place and return it, or
+    /// `nullptr` on alloc failure. The way to BUILD sequences of owning
+    /// (non-copyable) element types: fill the returned element through its
+    /// own mutators (issue #201 — the two-level heap use case).
+    T* emplace_back() {
+        if (size >= capacity) {
+            size_t next = capacity == 0 ? 4 : capacity * 2;
+            if (!reserve(next)) return nullptr;
+        }
+        T* slot = new (data + size) T();
+        ++size;
+        return slot;
+    }
+
+    /// Drop all elements (running their destructors) and release the buffer.
     void clear() {
+        destroy_elements();
         nros_platform_free(data);
         data = nullptr;
         size = 0;
@@ -102,6 +152,14 @@ template <typename T> struct HeapSequence {
 
     T& operator[](size_t i) { return data[i]; }
     const T& operator[](size_t i) const { return data[i]; }
+
+    /// Run every live element's destructor (issue #201). A pseudo-destructor
+    /// call is valid for scalar `T` too and compiles to nothing when `T` is
+    /// trivially destructible — no `<type_traits>` needed.
+    void destroy_elements() {
+        for (size_t i = 0; i < size; ++i)
+            data[i].~T();
+    }
 
     /// Current number of elements.
     size_t length() const { return size; }

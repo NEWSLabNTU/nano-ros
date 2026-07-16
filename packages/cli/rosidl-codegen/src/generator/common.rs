@@ -937,8 +937,23 @@ pub(super) fn build_cpp_ffi_field(
         String::new()
     };
 
+    // issue #201 — recursive heap teardown (the Rust-glue analog of the C
+    // `_fini` recursion): frees + nulls a message's heap allocations so the
+    // deserializers' error paths can tear down locally-allocated element
+    // buffers whose nested elements own heap memory.
+    let nested_teardown_fn = if let FieldType::NamespacedType { package, name: n } = field_type {
+        let pkg = package.as_deref().or(current_package).unwrap_or("unknown");
+        format!(
+            "teardown_{}_msg_{}_fields",
+            to_c_package_name(pkg),
+            to_snake_case(n)
+        )
+    } else {
+        String::new()
+    };
+
     // Element nested function names (for arrays/sequences of nested types)
-    let (elem_nested_ser, elem_nested_deser) =
+    let (elem_nested_ser, elem_nested_deser, elem_nested_teardown) =
         if let Some(FieldType::NamespacedType { package, name: n }) = element_type {
             let pkg = package.as_deref().or(current_package).unwrap_or("unknown");
             (
@@ -952,9 +967,14 @@ pub(super) fn build_cpp_ffi_field(
                     to_c_package_name(pkg),
                     to_snake_case(n)
                 ),
+                format!(
+                    "teardown_{}_msg_{}_fields",
+                    to_c_package_name(pkg),
+                    to_snake_case(n)
+                ),
             )
         } else {
-            (String::new(), String::new())
+            (String::new(), String::new(), String::new())
         };
 
     // Compute repr(C) type
@@ -1023,6 +1043,11 @@ pub(super) fn build_cpp_ffi_field(
     } else {
         elem_nested_deser
     };
+    let final_nested_teardown = if is_nested {
+        nested_teardown_fn
+    } else {
+        elem_nested_teardown
+    };
 
     // String capacity for deserialization (resolved for unbounded strings).
     let string_capacity = match field_type {
@@ -1058,6 +1083,7 @@ pub(super) fn build_cpp_ffi_field(
         sequence_capacity,
         nested_serialize_fn: final_nested_ser,
         nested_deserialize_fn: final_nested_deser,
+        nested_teardown_fn: final_nested_teardown,
         string_capacity,
         element_string_capacity,
         is_primitive,

@@ -1760,6 +1760,18 @@ check-cpp: check-cpp-fmt
         -Ipackages/core/nros-c/include \
         -Ipackages/core/nros-platform-api/include \
         packages/core/nros-cpp/tests/compile/bind_service.cpp
+    # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
+    # executed (counting allocator in the TU; asserts zero live allocations
+    # across dtor / move-assign / clear / reserve-relocation of a two-level
+    # heap element shape).
+    echo "  - HeapSequence element-lifetime runtime probe (c++14)"
+    mkdir -p target/nros-cpp-tests
+    c++ -std=c++14 -fno-exceptions -fno-rtti \
+        -Ipackages/core/nros-cpp/include \
+        -Ipackages/core/nros-platform-api/include \
+        -o target/nros-cpp-tests/heap_sequence_lifetime \
+        packages/core/nros-cpp/tests/compile/heap_sequence_lifetime.cpp
+    ./target/nros-cpp-tests/heap_sequence_lifetime
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
     cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"

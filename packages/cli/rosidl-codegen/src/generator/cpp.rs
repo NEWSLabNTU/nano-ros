@@ -239,6 +239,10 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
         ffi_deserialize_fn: spec.ffi_deserialize_fn.to_string(),
         serialize_fn: spec.serialize_fn.to_string(),
         deserialize_fn: spec.deserialize_fn.to_string(),
+        // issue #201 — same stem as the field-deserializer (`deserialize_…`
+        // → `teardown_…`), so nested references resolve uniformly across
+        // messages AND service/action request/response parts.
+        teardown_fn: spec.deserialize_fn.replacen("deserialize_", "teardown_", 1),
         fields: spec.ffi_fields.to_vec(),
         sequence_structs: spec.seq_structs.to_vec(),
         has_fields,

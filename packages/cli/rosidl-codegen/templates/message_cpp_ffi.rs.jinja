@@ -178,6 +178,12 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
             if p.is_null() {
                 return Err(DeserError::CapacityExceeded);
             }
+{%- if !field.is_primitive_element && !field.is_string_element %}
+            // issue #201 — zero the element buffer so a mid-loop error can
+            // tear down PARTIALLY deserialized elements: untouched heap
+            // pointers inside them read as null, which teardown skips.
+            unsafe { core::ptr::write_bytes(p as *mut u8, 0, len * core::mem::size_of::<{{ field.element_repr_type }}>()); }
+{%- endif %}
             p
         } else {
             core::ptr::null_mut()
@@ -207,6 +213,12 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
             }
 {%- else %}
             if let Err(e) = {{ field.nested_deserialize_fn }}(reader, unsafe { &mut *data.add(i) }) {
+                // issue #201 — tear down every already-deserialized element
+                // (and the zero-inited partial one) before freeing the outer
+                // buffer, else their nested heap allocations strand.
+                for j in 0..=i {
+                    {{ field.nested_teardown_fn }}(unsafe { &mut *data.add(j) });
+                }
                 unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
                 return Err(e);
             }
@@ -336,6 +348,12 @@ pub fn {{ deserialize_borrowed_fn }}(reader: &mut CdrReader, out: &mut {{ view_r
             if p.is_null() {
                 return Err(DeserError::CapacityExceeded);
             }
+{%- if !field.is_primitive_element && !field.is_string_element %}
+            // issue #201 — zero the element buffer so a mid-loop error can
+            // tear down PARTIALLY deserialized elements: untouched heap
+            // pointers inside them read as null, which teardown skips.
+            unsafe { core::ptr::write_bytes(p as *mut u8, 0, len * core::mem::size_of::<{{ field.element_repr_type }}>()); }
+{%- endif %}
             p
         } else {
             core::ptr::null_mut()
@@ -365,6 +383,12 @@ pub fn {{ deserialize_borrowed_fn }}(reader: &mut CdrReader, out: &mut {{ view_r
             }
 {%- else %}
             if let Err(e) = {{ field.nested_deserialize_fn }}(reader, unsafe { &mut *data.add(i) }) {
+                // issue #201 — tear down every already-deserialized element
+                // (and the zero-inited partial one) before freeing the outer
+                // buffer, else their nested heap allocations strand.
+                for j in 0..=i {
+                    {{ field.nested_teardown_fn }}(unsafe { &mut *data.add(j) });
+                }
                 unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
                 return Err(e);
             }
@@ -426,6 +450,51 @@ pub unsafe extern "C" fn {{ ffi_deserialize_borrowed_fn }}(
     0
 }
 {%- endif %}
+
+/// Tear down a {{ message_name }}'s heap allocations (issue #201) — the
+/// Rust-glue analog of the C `_fini` recursion. Frees every heap string /
+/// heap sequence this message owns (recursing into nested messages) and
+/// NULLS the freed pointers, so a second teardown — or the C++ destructor —
+/// is a no-op on them. Called by the deserializers' error paths to tear down
+/// locally-allocated element buffers before freeing them; safe on partially
+/// deserialized values as long as untouched heap pointers are zeroed (the
+/// heap-sequence deserializer zero-inits nested element buffers for exactly
+/// this reason). Empty (and inlined away) for messages without heap content.
+#[allow(unused_variables, clippy::missing_const_for_fn)]
+pub fn {{ teardown_fn }}(msg: &mut {{ repr_c_struct_name }}) {
+{%- for field in fields %}
+{%- if field.is_string && field.is_heap %}
+    if !msg.{{ field.name }}.data.is_null() {
+        unsafe { nros_platform_free(msg.{{ field.name }}.data as *mut core::ffi::c_void); }
+        msg.{{ field.name }}.data = core::ptr::null_mut();
+        msg.{{ field.name }}.size = 0;
+        msg.{{ field.name }}.capacity = 0;
+    }
+{%- else if field.is_sequence && field.is_heap %}
+    if !msg.{{ field.name }}.data.is_null() {
+{%- if !field.is_primitive_element && !field.is_string_element %}
+        for i in 0..msg.{{ field.name }}.size {
+            {{ field.nested_teardown_fn }}(unsafe { &mut *msg.{{ field.name }}.data.add(i) });
+        }
+{%- endif %}
+        unsafe { nros_platform_free(msg.{{ field.name }}.data as *mut core::ffi::c_void); }
+        msg.{{ field.name }}.data = core::ptr::null_mut();
+        msg.{{ field.name }}.size = 0;
+        msg.{{ field.name }}.capacity = 0;
+    }
+{%- else if field.is_sequence && !field.is_primitive_element && !field.is_string_element %}
+    for i in 0..msg.{{ field.name }}.size as usize {
+        {{ field.nested_teardown_fn }}(&mut msg.{{ field.name }}.data[i]);
+    }
+{%- else if field.is_array && !field.is_primitive_element && !field.is_string_element %}
+    for i in 0..{{ field.array_size }} {
+        {{ field.nested_teardown_fn }}(&mut msg.{{ field.name }}[i]);
+    }
+{%- else if field.is_nested %}
+    {{ field.nested_teardown_fn }}(&mut msg.{{ field.name }});
+{%- endif %}
+{%- endfor %}
+}
 
 /// Serialize a {{ message_name }} message to a CDR buffer
 ///
