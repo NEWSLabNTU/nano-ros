@@ -1,7 +1,27 @@
 # Phase 263 — Complete the workspace examples (feature demos + tests)
 
-Status: **Planned (2026-06-19)** · Informs RFC-0024 (multi-node layout), RFC-0026
-(examples), RFC-0027 (ROS 2 user workflow) · Book: `getting-started/workspace-*.md`.
+Status: **COMPLETE — archived** (2026-07-16 audit) · Informs RFC-0024 (multi-node layout),
+RFC-0026 (examples), RFC-0027 (ROS 2 user workflow) · Book: `getting-started/workspace-*.md`.
+
+> Close-out (2026-07-16 audit — the doc's running log stops at 2026-06-29, before
+> the last waves landed):
+> - **Track A** — A1 services, A4 actions, A5 logging: rust + c/cpp/mixed DONE
+>   (in-doc). A2 parameters + A3 lifecycle: rust DONE (in-doc); the c/cpp
+>   projections were unblocked and DELIVERED by **phase-269** (#116/#117 —
+>   `ws-params-{c,cpp}`, `ws-lifecycle-{c,cpp}`).
+> - **Track B** — all advanced workspaces exist for rust + c/cpp (safety/tiers via
+>   phase-269 #118/#119: `ws-safety-{c,cpp}`, `ws-realtime-{c,cpp}`; qos +
+>   custom-msg incl. mixed variants; bridge/launch lang-agnostic).
+> - **Track C** — C1 multihost + C2 embedded entries COMPLETE (in-doc, 11 green).
+> - **Track D** — a runtime e2e exists per feature × language; re-verified
+>   2026-07-16 on fresh fixtures: `cpp_c_param_live_read` (2),
+>   `cpp_c_lifecycle_autostart` (2), `cpp_c_safety_integrity` (2),
+>   `realtime_tiers_{c,cpp}` (2) — 8/8 PASS.
+> - **Residuals** (tracked, not phase-blocking): **#203** (filed by this audit) —
+>   the mixed-workspace cpp interface over-generation that blocks cross-LANGUAGE
+>   service pairs and, with it, cpp-pkg mixed variants of the phase-269 feature
+>   demos; the mixed A2/A3 demo variants are deferred to #203's orbit (the
+>   feature mechanism itself is lang-uniform per entry, proven by the c/cpp e2e).
 
 > **Goal.** Turn the four product-shaped workspaces (`examples/workspaces/{rust,c,
 > cpp,mixed}`) from pub/sub-only connectivity baselines into (a) polished **starters**

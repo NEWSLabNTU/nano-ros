@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#203** — [mixed-workspace cpp codegen over-generates the interface set](0203-mixed-workspace-cpp-interface-overgeneration.md):
+  `nros_find_interfaces(LANGUAGE CPP)` under the mixed multi-pkg generation emits the full set
+  incl. `action_msgs`, whose cpp FFI crate can't see `builtin_interfaces` types — blocks
+  cross-LANGUAGE service pairs (mixed demo stays C+C). Deferred un-tracked since 263-A1; filed
+  by the phase-263 audit.
 - **#201** — [C++ `HeapSequence<T>` skips element dtors](0201-cpp-heapsequence-nested-heap-leak.md):
   destructor/move-assign free only the outer array, and the FFI deserialize error path strands
   inner allocations — a heap-field nested type inside a heap sequence (two-level heap config,
