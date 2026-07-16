@@ -44,6 +44,29 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
+  ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
+  sibling of #203. (audit 2026-07-16)
+- **#211** — [zephyr rust build.rs duplication](0211-zephyr-rust-buildrs-duplication.md):
+  the Kconfig→rustc-env locator-bake workaround is copy-pasted into every zephyr rust example +
+  workspace zephyr_entry — wants a `nros-zephyr-build` helper crate. (audit 2026-07-16)
+- **#210** — [packages/cli/CLAUDE.md is the retired colcon-cargo-ros2 guide](0210-cli-claude-md-wrong-project.md):
+  describes a different project; misleads every CLI-touching agent session. (audit 2026-07-16)
+- **#209** — [book/CLI drift: phantom `esp32` board id + undocumented `nros init`](0209-book-cli-reference-drift.md):
+  documented `nros setup esp32` fails (index has only qemu-esp32-baremetal); `nros init` has no
+  reference section. (audit 2026-07-16)
+- **#208** — [stale setup.bash beside activate.sh](0208-retire-setup-bash.md):
+  divergent env contract (`NROS_ROOT` vs `NROS_REPO_DIR`), still advertised by `just setup` and
+  3 book pages — retire + repoint. (audit 2026-07-16)
+- **#207** — [zpico size_probe silent ABI fallback](0207-zpico-size-probe-silent-abi-fallback.md):
+  probe failure warn-and-continues with guessed socket/endpoint sizes → silent pass-by-value ABI
+  skew on cross targets (0135 class, dynamic). (audit 2026-07-16)
+- **#206** — [C++-only env overlay, silent domain-0](0206-cpp-env-overlay-divergence.md):
+  ROS_DOMAIN_ID/NROS_LOCATOR resolution lives in node.hpp only (C diverges), duplicated across
+  overloads, malformed input silently collapses to domain 0. (audit 2026-07-16)
+- **#205** — [riscv64-threadx rust examples carry framework boilerplate](0205-riscv64-threadx-rust-example-ffi-boilerplate.md):
+  hand-written cyclonedds_app.c (likely retirable post-#195), app_main FFI shim, full CMake
+  wiring, link anchors — all 6 copy-out examples. (audit 2026-07-16)
 - **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
