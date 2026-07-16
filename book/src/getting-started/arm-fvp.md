@@ -8,8 +8,8 @@ that follow the same `hwv2` Zephyr shape; pair this chapter with
 the [Zephyr (west module)](./integration-zephyr.md) starter for
 the build half.
 
-> **Phase 217.** The build half (`just zephyr build-fvp-aemv8r{,-cyclonedds}`)
-> shipped in Phase 117.13–117.14; the run half — invoking
+> **Phase 217.** The build half (`just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`)
+> shipped in Phase 117.14 / 217.D; the run half — invoking
 > `FVP_BaseR_AEMv8R` and piping UART 0–3 to stdout — landed as
 > Phase 217.A on 2026-06-03. See
 > [`docs/roadmap/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-217-arm-fvp-local-runtime.md).
@@ -81,29 +81,31 @@ policy.
 hard-fails — gated) when the FVP can't be resolved via
 `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, `PATH`, or the canonical
 `~/.nros/sdks/arm-fvp/current/FVP_BaseR_AEMv8R` landing path. The
-`just zephyr run-fvp-aemv8r{,-cyclonedds}` recipes do the
+`just zephyr run-fvp-aemv8r-cyclonedds{,-rust}` recipes do the
 equivalent inline via `scripts/zephyr/resolve-fvp-bin.sh` and
 skip with a clear hint when the binary can't be found.
 
 ## Build
 
-The build half is unchanged from Phase 117.13 / 117.14:
+Two build lanes cover both languages over Cyclone DDS (the wire-compat
+reference for the safety-island slice); `just zephyr build-fvp-all` runs
+both. (The historical Zephyr-only `build-fvp-aemv8r` talker lane was
+retired — issue #217.)
 
 ```bash
-# Phase 117.13 — Zephyr-only talker.
-just zephyr build-fvp-aemv8r
-
-# Phase 117.14 — C++ pub/sub over Cyclone DDS, the wire-compat
-# reference for the safety-island slice.
+# Phase 117.14 — C++ pub/sub over Cyclone DDS.
 just zephyr build-fvp-aemv8r-cyclonedds
+
+# Phase 217.D — Rust talker over Cyclone DDS.
+just zephyr build-fvp-aemv8r-cyclonedds-rust
 ```
 
 Each recipe shells `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`
 inside the `zephyr-workspace/` directory and produces
 `zephyr.elf` at one of:
 
-- `zephyr-workspace/build-fvp-aemv8r-talker/zephyr/zephyr.elf`
 - `zephyr-workspace/build-aemv8r-cyclonedds-talker/zephyr/zephyr.elf`
+- `zephyr-workspace/build-fvp-aemv8r-cyclonedds-rust-talker/zephyr/zephyr.elf`
 
 ## Run
 
@@ -111,11 +113,11 @@ Once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are in
 place:
 
 ```bash
-# Boot the Phase 117.13 talker.
-just zephyr run-fvp-aemv8r
-
 # Boot the Phase 117.14 cpp/cyclonedds talker.
 just zephyr run-fvp-aemv8r-cyclonedds
+
+# Boot the Phase 217.D rust/cyclonedds talker.
+just zephyr run-fvp-aemv8r-cyclonedds-rust
 ```
 
 Under the hood the recipe:

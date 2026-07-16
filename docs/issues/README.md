@@ -44,17 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#217** — [`build-fvp-aemv8r` base lane unbuildable](0217-build-fvp-aemv8r-base-lane-sourceless.md):
-  phase-221 dropped the `west build` source arg and the original app (`rust/dds/talker`) is
-  retired; the modern zenoh rust talker can't re-point onto it (board conf lacks POSIX for
-  zenoh-pico). Decide: retire (redundant with the #216 lane) vs port. (2026-07-16)
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#218** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#217** — RETIRED:
+`build-fvp-aemv8r`/`run-fvp-aemv8r` deleted (unbuildable since phase-221 dropped the west src
+arg; purpose covered by the cyclonedds-rust lane, which matches the ASI consumer's RMW);
+phase-292 W1.a's workspace-Entry FVP lane is the modern replacement. **#218** — the
 std_msgs raw-CDR components are gone: 15 files across workspaces/c, ws-qos-*, and 5 templates
 migrated onto generated bindings (C `_serialize`/`_deserialize`, cpp typed `bind_subscription`
 member callbacks); all six workspaces build, lanes green incl. the NuttX cross-process entry.

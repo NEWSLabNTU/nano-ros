@@ -1,7 +1,8 @@
 ---
 id: 217
 title: "`just zephyr build-fvp-aemv8r` unbuildable: phase-221 dropped the west source arg and the original app (rust/dds/talker) is retired"
-status: open
+status: resolved
+resolved_in: "2026-07-17 — maintainer decision: RETIRE. build-fvp-aemv8r + run-fvp-aemv8r recipes deleted; book page updated; the AArch64-rust-compiles purpose is covered by build-fvp-aemv8r-cyclonedds-rust (in build-fvp-all). A zenoh-on-FVP lane, if ever wanted, is new work (board conf lacks POSIX for zenoh-pico)."
 type: bug
 severity: low
 area: zephyr
@@ -45,3 +46,13 @@ Decide the lane's identity first:
 
 `build-fvp-all` (added by #216) deliberately excludes this lane until the
 decision lands.
+
+## RESOLVED (2026-07-17) — retired
+
+Maintainer chose retire (2026-07-17): the lane's only surviving purpose
+("rust compiles for AArch64") is covered by the green
+`build-fvp-aemv8r-cyclonedds-rust` lane, which is also the shape the ASI
+reference consumer actually uses (cyclone RMW). Deleted `build-fvp-aemv8r`
+and `run-fvp-aemv8r`, updated the `build-fvp-all` comment and the book's
+ARM-FVP page. Phase-292 W1.a will add the FVP *workspace-Entry* lane —
+the modern replacement for what this smoke once proved.

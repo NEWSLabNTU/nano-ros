@@ -29,8 +29,9 @@ named reference consumer), 287 (ament verbs on zephyr).
 ## Waves
 
 ### W1 — FVP entry-path parity proof
-- [ ] W1.a The in-tree FVP lanes (`just zephyr build-fvp-aemv8r*`) build the
-  pre-workspace single-app talkers. Add an FVP variant of the canonical
+- [ ] W1.a The in-tree FVP lanes (`just zephyr build-fvp-all` =
+  `build-fvp-aemv8r-cyclonedds{,-rust}`; the sourceless base lane was
+  retired by #217) build the pre-workspace single-app talkers. Add an FVP variant of the canonical
   workspace C++ Entry (`ws-realtime-cpp`-shaped: `nano_ros_add_executable`
   + `nano_ros_use_board(fvp-aemv8r-smp)` coexisting in one configure) so the
   exact shape ASI W2.b adopts is proven in-tree BEFORE ASI hits it. Zenoh or
