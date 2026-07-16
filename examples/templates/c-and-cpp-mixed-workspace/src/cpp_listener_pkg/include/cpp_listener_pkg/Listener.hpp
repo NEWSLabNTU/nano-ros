@@ -11,12 +11,12 @@
 namespace cpp_listener_pkg {
 
 /// Listener — a stateful component (RFC-0043). `configure` binds the member
-/// `on_raw` (by identity, no name) as a raw zero-copy subscription on
+/// `on_msg` (by identity, no name) as a TYPED member subscription on
 /// `/chatter`. Mirrors the pure-C++ workspace's typed component.
 class Listener {
     int recv_ = 0;
 
-    void on_raw(const uint8_t* data, size_t len); // real body; bound by identity
+    void on_msg(const ::std_msgs::msg::Int32& msg); // typed member callback
 
   public:
     ::nros::Result configure(::nros::Node& node);

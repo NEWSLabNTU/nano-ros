@@ -48,17 +48,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   phase-221 dropped the `west build` source arg and the original app (`rust/dds/talker`) is
   retired; the modern zenoh rust talker can't re-point onto it (board conf lacks POSIX for
   zenoh-pico). Decide: retire (redundant with the #216 lane) vs port. (2026-07-16)
-- **#218** — [std_msgs raw-CDR C components remain](0218-std-msgs-raw-cdr-components-remain.md):
-  phase-293 retired hand-rolled CDR for custom msgs (#212), but the phase-257 raw-component
-  convention still hand-encodes std_msgs wire bytes in workspaces/c, ws-qos-*, ws-realtime-* C
-  pkgs and the mixed templates — same fix shape, ~8 pkgs. (2026-07-16)
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#212** — workspace
+Recently resolved (see [`archived/`](archived/) for the full list): **#218** — the
+std_msgs raw-CDR components are gone: 15 files across workspaces/c, ws-qos-*, and 5 templates
+migrated onto generated bindings (C `_serialize`/`_deserialize`, cpp typed `bind_subscription`
+member callbacks); all six workspaces build, lanes green incl. the NuttX cross-process entry.
+Raw-path demos (zephyr srv/action CDR, component-poc, custom-platform) deliberately kept. **#212** — workspace
 custom msgs get GENERATED C/C++ typesupport (phase-293): resolve-deps gained the
 `NROS_INTERFACE_SEARCH_PATH` workspace layer + cmake threads it to the CLI child; all three
 ws-custom-msg workspaces rewritten off hand-rolled CDR onto generated bindings (the feared cpp

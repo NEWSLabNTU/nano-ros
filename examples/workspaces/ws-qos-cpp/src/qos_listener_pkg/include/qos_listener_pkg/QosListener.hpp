@@ -11,7 +11,7 @@
 namespace qos_listener_pkg {
 
 /// QosListener — a stateful typed component (RFC-0043). `configure` binds the
-/// member `on_raw` as a raw zero-copy subscription on `/chatter` with a QoS
+/// member `on_msg` as a typed subscription on `/chatter` with a QoS
 /// profile that MATCHES the talker's publisher (RELIABLE + TRANSIENT_LOCAL +
 /// KEEP_LAST(10), built via the `nros::QoS` builder). Matching the per-entity QoS
 /// contract is what lets the QoS-tagged endpoints connect. The member decodes the
@@ -19,7 +19,7 @@ namespace qos_listener_pkg {
 class QosListener {
     int recv_ = 0;
 
-    void on_raw(const uint8_t* data, size_t len); // real body; bound by identity
+    void on_msg(const ::std_msgs::msg::Int32& msg); // typed member callback
 
   public:
     ::nros::Result configure(::nros::Node& node);

@@ -1,4 +1,5 @@
-// Listener — typed component (RFC-0043). Real `on_raw` body bound by identity.
+// Listener — typed component (RFC-0043). Typed member callback on the generated
+// `std_msgs::msg::Int32` (issue #218).
 
 #include "cpp_listener_pkg/Listener.hpp"
 
@@ -6,24 +7,17 @@
 
 namespace cpp_listener_pkg {
 
-void Listener::on_raw(const uint8_t* data, size_t len) {
-    // CDR-encoded std_msgs/Int32: 4-byte encapsulation header, then the LE i32.
-    int32_t v = 0;
-    if (len >= 8) {
-        v = static_cast<int32_t>(
-            static_cast<uint32_t>(data[4]) | (static_cast<uint32_t>(data[5]) << 8) |
-            (static_cast<uint32_t>(data[6]) << 16) | (static_cast<uint32_t>(data[7]) << 24));
-    }
-    std::printf("Received: %d\n", v);
+void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
+    std::printf("Received: %d\n", static_cast<int>(msg.data));
     ++recv_;
 }
 
 ::nros::Result Listener::configure(::nros::Node& node) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    // The typed `Publisher<Int32>` registers the DDS-mangled keyexpr, so the
-    // raw sub must match on `Int32::TYPE_NAME` (240.1 finding).
-    return ::nros::bind_subscription_raw<Listener, &Listener::on_raw>(
-        node, "/chatter", std_msgs::msg::Int32::TYPE_NAME, this);
+    // Typed member binding (RFC-0044): keyexpr + deserialize come from the
+    // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
+    return ::nros::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
+        node, "/chatter", this);
 }
 
 } // namespace cpp_listener_pkg

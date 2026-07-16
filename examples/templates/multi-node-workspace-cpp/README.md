@@ -9,7 +9,7 @@ the same Node pkg / Bringup pkg / Entry pkg shape, built with CMake.
 - `src/talker_pkg/`, `src/listener_pkg/` — typed components (RFC-0043):
   `Result configure(nros::Node&)`; the talker binds a 500 ms `bind_timer`
   publishing `std_msgs/Int32` on `/chatter`; the listener uses
-  `bind_subscription_raw` and decodes the CDR.
+  `bind_subscription` (typed member callback on the generated `std_msgs::msg::Int32`).
 - `src/demo_bringup/` — `package.xml` + `system.toml` + `launch/`
   (the launch XML also shows a per-topic QoS override:
   `qos_overrides./chatter.publisher.reliability = best_effort`).

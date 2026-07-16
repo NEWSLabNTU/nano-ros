@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <std_msgs/std_msgs.h>
 #include <nros/component.h>
 
 typedef struct {
@@ -34,13 +35,11 @@ static nros_cpp_qos_t qos_profile(void) {
 
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     qos_listener_t* self = (qos_listener_t*)ctx;
-    /* CDR-encoded std_msgs/Int32: 4-byte encapsulation header, then LE i32. */
-    int32_t v = 0;
-    if (len >= 8) {
-        v = (int32_t)((uint32_t)data[4] | ((uint32_t)data[5] << 8) | ((uint32_t)data[6] << 16) |
-                      ((uint32_t)data[7] << 24));
+    std_msgs_msg_int32 msg;
+    if (std_msgs_msg_int32_deserialize(&msg, data, len) != 0) {
+        return;
     }
-    printf("Received: %d\n", (int)v);
+    printf("Received: %d\n", (int)msg.data);
     self->recv++;
 }
 
@@ -52,10 +51,10 @@ static nros_ret_t qos_listener_configure(const nros_cpp_node_t* node, void* exec
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->recv = 0;
     size_t handle;
-    int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                                qos_profile(), on_raw, self,
-                                                /*sched_context=*/0, &handle,
-                                                /*callback_group=*/NULL);
+    int32_t rc = nros_cpp_subscription_register(
+        node, "/chatter", std_msgs_msg_int32_get_type_name(), "", qos_profile(), on_raw, self,
+        /*sched_context=*/0, &handle,
+        /*callback_group=*/NULL);
     if (rc == 0) {
         printf("Waiting for messages\n");
     }

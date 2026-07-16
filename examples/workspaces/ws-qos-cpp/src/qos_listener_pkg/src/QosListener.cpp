@@ -11,15 +11,8 @@
 
 namespace qos_listener_pkg {
 
-void QosListener::on_raw(const uint8_t* data, size_t len) {
-    // CDR-encoded std_msgs/Int32: 4-byte encapsulation header, then the LE i32.
-    int32_t v = 0;
-    if (len >= 8) {
-        v = static_cast<int32_t>(
-            static_cast<uint32_t>(data[4]) | (static_cast<uint32_t>(data[5]) << 8) |
-            (static_cast<uint32_t>(data[6]) << 16) | (static_cast<uint32_t>(data[7]) << 24));
-    }
-    std::printf("Received: %d\n", v);
+void QosListener::on_msg(const ::std_msgs::msg::Int32& msg) {
+    std::printf("Received: %d\n", static_cast<int>(msg.data));
     ++recv_;
 }
 
@@ -30,10 +23,10 @@ void QosListener::on_raw(const uint8_t* data, size_t len) {
     // RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(10) contract to connect.
     const ::nros::QoS qos =
         ::nros::QoS::default_profile().reliable().transient_local().keep_last(10);
-    // The typed `Publisher<Int32>` registers the DDS-mangled keyexpr, so the raw
-    // sub must match on `Int32::TYPE_NAME` (240.1 finding).
-    return ::nros::bind_subscription_raw<QosListener, &QosListener::on_raw>(
-        node, "/chatter", std_msgs::msg::Int32::TYPE_NAME, this, qos);
+    // Typed member binding (RFC-0044): keyexpr + deserialize come from the
+    // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
+    return ::nros::bind_subscription<::std_msgs::msg::Int32, QosListener, &QosListener::on_msg>(
+        node, "/chatter", this, qos);
 }
 
 } // namespace qos_listener_pkg
