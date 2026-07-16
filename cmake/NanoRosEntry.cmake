@@ -49,6 +49,8 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # (it predates this module). The include is guarded inside that file,
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
+# Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -545,33 +547,15 @@ function(_nros_entry_invoke_codegen)
         "ARGS_LIST"
         ${ARGN})
 
-    # Resolve the nros CLI binary. Allow override via NROS_CLI_BIN
-    # cache var / env var, honor the shared codegen-tool cache, then
-    # prefer PATH (activate.sh puts the in-tree CLI first) before the
-    # transitional ~/.nros/bin fallback.
+    # Resolve the nros CLI binary: NROS_CLI_BIN cache override, else the
+    # shared resolver (issue #219 — env NROS_CLI, the shared codegen-tool
+    # cache, then PATH before the provisioned-store fallback; FATAL with the
+    # setup-cli guidance when absent).
     set(_nros_bin "")
     if(NROS_CLI_BIN)
         set(_nros_bin "${NROS_CLI_BIN}")
-    elseif(DEFINED ENV{NROS_CLI})
-        set(_nros_bin "$ENV{NROS_CLI}")
-    elseif(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
-           AND _NANO_ROS_CODEGEN_TOOL
-           AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
-        set(_nros_bin "${_NANO_ROS_CODEGEN_TOOL}")
     else()
-        find_program(_nros_path nros
-            PATHS
-              "$ENV{NROS_HOME}/bin"
-              "$ENV{HOME}/.nros/bin")
-        if(_nros_path)
-            set(_nros_bin "${_nros_path}")
-        endif()
-    endif()
-    if(NOT _nros_bin)
-        message(FATAL_ERROR
-            "nano_ros_entry(LAUNCH …): could not find a `nros` CLI binary.\n"
-            "  Tried: `-DNROS_CLI_BIN=…`, `$NROS_CLI`, `~/.nros/bin/nros`,\n"
-            "  and `PATH`. Run `scripts/install-nros.sh` or set the var.")
+        nros_resolve_cli(_nros_bin CONTEXT "nano_ros_entry(LAUNCH …)")
     endif()
 
     # Workspace root: walk up from the Entry-pkg dir until we hit a

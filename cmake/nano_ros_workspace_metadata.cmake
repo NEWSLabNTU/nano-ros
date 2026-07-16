@@ -9,6 +9,9 @@
 # Usage:
 #   nano_ros_workspace_metadata(SYSTEM <bringup-pkg> [WORKSPACE_ROOT <dir>])
 
+# Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+
 function(nano_ros_workspace_metadata)
     cmake_parse_arguments(_NRW "" "SYSTEM;WORKSPACE_ROOT" "" ${ARGN})
     if(NOT _NRW_SYSTEM)
@@ -18,18 +21,11 @@ function(nano_ros_workspace_metadata)
         set(_NRW_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}")
     endif()
 
-    # Locate nros binary: NROS_BIN cache → NROS_CLI env → PATH (incl in-tree
-    # `packages/cli/target/release/` via activate.sh) → ~/.nros/bin (transitional).
+    # Locate the nros binary: NROS_BIN cache override, else the shared
+    # resolver (issue #219 — this used to be a bespoke find_program whose
+    # HINTS searched a stale ~/.nros/bin BEFORE the activate.sh-wired PATH).
     if(NOT NROS_BIN)
-        find_program(NROS_BIN nros
-            HINTS ENV NROS_CLI ENV NROS_HOME
-            PATHS "$ENV{HOME}/.nros/bin"
-        )
-    endif()
-    if(NOT NROS_BIN)
-        message(FATAL_ERROR
-            "nano_ros_workspace_metadata: `nros` binary not found. "
-            "Build it in-tree via `just setup-cli` + `source ./activate.sh` (Phase 218).")
+        nros_resolve_cli(NROS_BIN CONTEXT "nano_ros_workspace_metadata")
     endif()
 
     # Locate the bringup pkg dir: prefer colcon-style `src/<system>/`

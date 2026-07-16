@@ -29,25 +29,16 @@
 # Resolve the `nros` CLI binary. Priority: NROS_CLI env, PATH (incl
 # `packages/cli/target/release/` via `activate.sh`), NROS_HOME/bin,
 # ~/.nros/bin (transitional). Matches scripts/build/cargo.sh::nros_cli_bin.
+# issue #219 — thin shim over the shared resolver in NanoRosCodegenCore
+# (which owns the PATHS-not-HINTS rule this function's comment used to
+# document: a stale provisioned ~/.nros/bin/nros must never shadow the
+# activate.sh-wired in-tree CLI — the museum binary bakes the retired
+# pre-258 shape and every nros_system_generate fixture goes red).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
 function(_nros_system_resolve_cli outvar)
-    if(DEFINED ENV{NROS_CLI} AND EXISTS "$ENV{NROS_CLI}")
-        set(${outvar} "$ENV{NROS_CLI}" PARENT_SCOPE)
-        return()
-    endif()
-    set(_hints)
-    if(DEFINED ENV{NROS_HOME})
-        list(APPEND _hints "$ENV{NROS_HOME}/bin")
-    endif()
-    list(APPEND _hints "$ENV{HOME}/.nros/bin")
-    # PATHS, not HINTS: hints are searched BEFORE the environment PATH, so a
-    # stale provisioned ~/.nros/bin/nros would shadow the activate.sh-wired
-    # in-tree CLI (sweep contract: activate.sh is the PATH SSoT). A museum
-    # binary here bakes the retired pre-258 shape (system_main.c, no
-    # system_config.cmake) and every nros_system_generate fixture goes red.
-    find_program(_nros_cli_found NAMES nros PATHS ${_hints}
-        DOC "nros CLI binary (Phase 212.E codegen-system)")
-    if(_nros_cli_found)
-        set(${outvar} "${_nros_cli_found}" PARENT_SCOPE)
+    nros_resolve_cli(_cli OPTIONAL)
+    if(_cli)
+        set(${outvar} "${_cli}" PARENT_SCOPE)
     else()
         set(${outvar} "NROS_CLI-NOTFOUND" PARENT_SCOPE)
     endif()

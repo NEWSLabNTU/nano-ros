@@ -62,15 +62,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
 - **#220** — [book/CLI drift round 2](0220-book-cli-reference-drift-round-2.md):
   esp32.md kept the phantom board id past #209; cli.md missing 4 verbs + 3 subcommands. (deep audit 2026-07-17)
-- **#219** — [nros CLI resolved by 4 divergent cmake implementations](0219-cmake-nros-cli-resolver-fragmentation.md):
-  one searches stale ~/.nros/bin BEFORE PATH — the shadowing its sibling's comment warns against. (deep audit 2026-07-17)
-- **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#217** — RETIRED:
+Recently resolved (see [`archived/`](archived/) for the full list): **#219** — one shared
+`nros_resolve_cli` (NanoRosCodegenCore) replaces the four divergent cmake resolvers; PATH-wired
+in-tree CLI always beats the provisioned store (PATHS never HINTS), `$NROS_CLI` overrides,
+stale caches re-detect. Precedence proven by direct tests. **#217** — RETIRED:
 `build-fvp-aemv8r`/`run-fvp-aemv8r` deleted (unbuildable since phase-221 dropped the west src
 arg; purpose covered by the cyclonedds-rust lane, which matches the ASI consumer's RMW);
 phase-292 W1.a's workspace-Entry FVP lane is the modern replacement. **#218** — the

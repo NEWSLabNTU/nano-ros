@@ -242,6 +242,69 @@ function(_nros_ffi_cargo_args _out)
     set(${_out} "${_args}" PARENT_SCOPE)
 endfunction()
 
+
+# nros_resolve_cli(<out_var> [CONTEXT <caller-label>] [OPTIONAL])
+#
+# THE shared resolver for the `nros` CLI binary — issue #219 retired the four
+# divergent hand-written copies (NanoRosEntry, nano_ros_workspace_metadata,
+# zephyr nros_system_generate, and the find half of
+# `_nros_resolve_codegen_tool` below). One documented precedence order:
+#
+#   1. `$ENV{NROS_CLI}` — explicit per-invocation override (must EXIST).
+#   2. An already-resolved shared codegen-tool cache var
+#      (`_NANO_ROS_CODEGEN_TOOL`, then `_NROS_ZEPHYR_CODEGEN_TOOL`) when it
+#      holds a real path — one configure resolves the CLI once.
+#   3. `find_program`: the environment PATH first (activate.sh wires the
+#      in-tree CLI — the sweep-contract SSoT), THEN the provisioned store
+#      (`$NROS_HOME/bin`, `~/.nros/bin`) as PATHS fallbacks. PATHS, never
+#      HINTS: hints are searched BEFORE PATH, so a stale provisioned
+#      `~/.nros/bin/nros` would shadow the in-tree CLI (the museum-CLI trap
+#      the zephyr resolver's comment documented — now enforced everywhere).
+#
+# FATAL when absent unless OPTIONAL (then <out_var> = NOTFOUND). The
+# find_program result is cached (`_NROS_CLI_RESOLVED`); a cached path that no
+# longer exists is dropped and re-detected.
+function(nros_resolve_cli _out)
+    cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
+    if(NOT _RC_CONTEXT)
+        set(_RC_CONTEXT "nano-ros")
+    endif()
+    if(DEFINED ENV{NROS_CLI} AND EXISTS "$ENV{NROS_CLI}")
+        set(${_out} "$ENV{NROS_CLI}" PARENT_SCOPE)
+        return()
+    endif()
+    foreach(_cv _NANO_ROS_CODEGEN_TOOL _NROS_ZEPHYR_CODEGEN_TOOL)
+        if(DEFINED CACHE{${_cv}} AND ${_cv}
+           AND NOT "${${_cv}}" MATCHES "^\\$<" AND EXISTS "${${_cv}}")
+            set(${_out} "${${_cv}}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    if(_NROS_CLI_RESOLVED AND NOT EXISTS "${_NROS_CLI_RESOLVED}")
+        message(STATUS "Cached nros CLI no longer exists: ${_NROS_CLI_RESOLVED}; re-detecting")
+        unset(_NROS_CLI_RESOLVED CACHE)
+    endif()
+    set(_paths "$ENV{HOME}/.nros/bin")
+    if(DEFINED ENV{NROS_HOME})
+        list(PREPEND _paths "$ENV{NROS_HOME}/bin")
+    endif()
+    find_program(_NROS_CLI_RESOLVED NAMES nros PATHS ${_paths}
+        DOC "nros CLI (shared resolver — issue #219)")
+    if(_NROS_CLI_RESOLVED)
+        set(${_out} "${_NROS_CLI_RESOLVED}" PARENT_SCOPE)
+        return()
+    endif()
+    if(_RC_OPTIONAL)
+        set(${_out} "NOTFOUND" PARENT_SCOPE)
+        return()
+    endif()
+    message(FATAL_ERROR
+        "${_RC_CONTEXT}: `nros` CLI not found on PATH or in the provisioned "
+        "store. nano-ros builds it in-tree from packages/cli/ (Phase 218):\n"
+        "  just setup-cli && source ./activate.sh\n"
+        "or set $NROS_CLI to an explicit binary.")
+endfunction()
+
 # _nros_resolve_codegen_tool(<cache_var_name>)
 #
 # Ensure the named cache var holds a valid path to the `nros` CLI (the codegen
@@ -261,8 +324,12 @@ function(_nros_resolve_codegen_tool _cv)
         unset(${_cv})
     endif()
     if(NOT ${_cv})
-        find_program(${_cv} nros
-            PATHS "$ENV{NROS_HOME}/bin" "$ENV{HOME}/.nros/bin")
+        # issue #219 — delegate the search to the shared resolver (OPTIONAL:
+        # this function owns the richer FATAL text with the -D/Kconfig hints).
+        nros_resolve_cli(_found OPTIONAL)
+        if(_found)
+            set(${_cv} "${_found}")
+        endif()
         if(NOT ${_cv})
             message(FATAL_ERROR
                 "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros "
