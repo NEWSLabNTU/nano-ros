@@ -62,7 +62,10 @@ tools/*
 # XRCE agent stdout/stderr captured by nros-tests fixture (per port).
 /xrce-agent-*.log
 # Claude Code session/agent state.
-/.claude/
+# ignore .claude contents EXCEPT repo-shared agent skills (/audit etc.) —
+# `/.claude/` (whole dir) would stop git descending, so ignore children instead
+/.claude/*
+!/.claude/skills/
 /external/
 /third-party/make/
 /third-party/ninja/

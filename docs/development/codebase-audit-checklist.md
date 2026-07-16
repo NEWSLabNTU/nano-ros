@@ -84,6 +84,12 @@ verdict).**
   no lower layer reaching up; `packages/drivers/` category split (RFC-0012).
 - **C3 Generated-vs-handwritten boundary.** No hand edits to
   `*/generated/`; messages only via codegen (CLAUDE.md).
+- **C4 Configuration-hierarchy conformance (RFC-0049).** Platform/board/app
+  configuration resolves through the RFC-0049 hierarchy — no config fact
+  living at the wrong layer (board data hardcoded in platform code, app knobs
+  baked into board files), no bypass of the resolution order, no new ad-hoc
+  config channel beside it. Check `cmake/board/`, `packages/boards/*/config/`,
+  `packages/platforms/`, per-example `config.toml` handling.
 
 ## D. Codegen / interfaces
 
@@ -112,6 +118,12 @@ verdict).**
 - **F2 Bootstrap / activate friction.** Sweep contract (`source ./activate.sh`
   + `just doctor`); idempotent provisioning; clear failure on missing prereq
   (never sudo — instruct).
+- **F3 Bootstrap-doc drift (static).** The book's setup/prereq pages
+  (bootstrap + per-platform) cross-read against reality: `activate.sh` /
+  `activate.fish`, `justfile` setup recipes, `nros-sdk-index.toml`, RFC-0014
+  provisioning. Every documented command/env var/package must still exist and
+  match; every required step must be documented. (A REAL clean-system run of
+  those steps is issue #204 — a containerized probe, out of audit scope.)
 
 ## G. Repo hygiene & self-containment
 
@@ -155,6 +167,19 @@ verdict).**
   One source, derived everywhere else.
 - **I5 Platform `#ifdef` thickets** — sprawling per-platform conditionals that
   should be a capability/trait seam.
+
+## J. Copy-out examples
+
+- **J1 Examples are boilerplate-free.** `examples/**` are copy-out user
+  projects (RFC-0026): they must contain ONLY what a user should copy — no
+  low-level platform scaffolding, macro plumbing, FFI shims, register glue,
+  or build workarounds that belong in the board/platform crates, the codegen,
+  or the cmake modules. If an example needs it, the framework has a gap: file
+  the gap, don't bless the boilerplate. (Successor to issue 0049's
+  example-source cleanliness sweep.) Detect: read each example's `src/` +
+  `CMakeLists.txt` for anything a ROS 2 user wouldn't recognize from the
+  rclcpp/rclpy equivalent; grep examples for `#[no_mangle]`, `extern "C"`,
+  `unsafe`, `__nros_`, raw linker flags.
 
 ---
 

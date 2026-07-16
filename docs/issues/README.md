@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+- **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
+  the book's setup steps are never executed on a pristine host — a containerized probe (fresh
+  image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
+  the `/audit` F3 static drift check. Runner-class work; shares #200's infrastructure.
 - **#203** — [mixed-workspace cpp codegen over-generates the interface set](0203-mixed-workspace-cpp-interface-overgeneration.md):
   `nros_find_interfaces(LANGUAGE CPP)` under the mixed multi-pkg generation emits the full set
   incl. `action_msgs`, whose cpp FFI crate can't see `builtin_interfaces` types — blocks
