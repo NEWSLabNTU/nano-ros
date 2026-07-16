@@ -1144,8 +1144,12 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     // Phase 186.6.4 — the build/install gate is obsolete: threadx-linux Cyclone
     // self-provisions from source (no host install), so the fixture binary's
     // presence is the real precondition.
+    // 287-W6 renamed the output binary `threadx_c_talker` -> `c_talker` (ament
+    // shape). Issue #215: this path kept the OLD name and an orphaned museum
+    // binary in the never-wiped build dir satisfied the existence check while
+    // silently broken — keep the name in sync with the CMake target.
     let talker_bin = nros_tests::project_root()
-        .join("examples/threadx-linux/c/talker/build-cyclonedds/threadx_c_talker");
+        .join("examples/threadx-linux/c/talker/build-cyclonedds/c_talker");
     if !talker_bin.exists() {
         nros_tests::skip!(
             "threadx-linux CycloneDDS talker missing; build with: \

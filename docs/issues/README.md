@@ -44,10 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#215** — [threadx-linux cyclone talker broken on fresh build](0215-threadx-linux-cyclone-participant-create-fails.md):
-  `dds_create_participant` -1 → `nros_support_init` -1 → silent exit (CHECK_LOG printf swallowed);
-  museum binary hid it since ~2026-07-08; `test_threadx_linux_cyclonedds_talker_to_native_listener`
-  red. Suspects: #205 boot-glue rework / #195 .init_array change. (2026-07-16)
 - **#212** — [no generated C typesupport for workspace custom msgs](0212-c-custom-msg-hand-rolled-cdr.md):
   ws-custom-msg C examples hand-roll CDR (fixed offsets + hand-typed DDS type name); codegen gap,
   sibling of #203. (audit 2026-07-16)
@@ -64,7 +60,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#206** — the env
+Recently resolved (see [`archived/`](archived/) for the full list): **#215** — RETRACTED as
+filed: the "broken fresh threadx-linux cyclone talker" was an orphaned pre-287-W6 museum binary
+(`threadx_c_talker`; W6 renamed the target `c_talker` and the test kept the old hardcoded path —
+`exists()` happily executed the orphan). Fresh `c_talker` publishes fine; one-line test fix.
+Lesson: target renames must grep tests for hardcoded binary paths, and gdb `finish` retvals are
+garbage under the tx-linux signal scheduler (use `NROS_RMW_TRACE_OPEN=1`). **#206** — the env
 overlay (`NROS_LOCATOR`/`ROS_DOMAIN_ID`/`NROS_NODE_NAME`) is now applied in ONE place —
 `ExecutorConfig::try_resolve` (RFC-0045 model A) — for Rust, C (which gains it), and C++
 (whose duplicated header blocks are deleted); malformed or >`DOMAIN_ID_MAX`(232)
