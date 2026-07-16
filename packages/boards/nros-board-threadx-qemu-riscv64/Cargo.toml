@@ -14,6 +14,10 @@ name = "nros_board_threadx_qemu_riscv64"
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator"] }
 # Phase 88 — Rust binding for `nros_platform_register_log_writer`.
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", default-features = false }
+# Issue #205 step 4 — the board owns the global `critical_section::Impl`
+# (ThreadX `tx_interrupt_control` port); consumer apps no longer carry their
+# own dep + staticlib-DCE anchor.
+nros-platform-critical-section = { path = "../../core/nros-platform-critical-section" }
 # Phase 152.2.B — `BoardInit` / `BoardPrint` / `BoardExit` trait
 # impls so this overlay fits the canonical overlay shape (same
 # pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`

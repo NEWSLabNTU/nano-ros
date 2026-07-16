@@ -53,9 +53,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#206** — [C++-only env overlay, silent domain-0](0206-cpp-env-overlay-divergence.md):
   ROS_DOMAIN_ID/NROS_LOCATOR resolution lives in node.hpp only (C diverges), duplicated across
   overloads, malformed input silently collapses to domain 0. (audit 2026-07-16)
-- **#205** — [riscv64-threadx rust examples carry framework boilerplate](0205-riscv64-threadx-rust-example-ffi-boilerplate.md):
-  hand-written cyclonedds_app.c (likely retirable post-#195), app_main FFI shim, full CMake
-  wiring, link anchors — all 6 copy-out examples. (audit 2026-07-16)
+- **#214** — [riscv64-threadx rust cyclone lane untested](0214-riscv64-threadx-rust-cyclone-lane-untested.md):
+  no test consumer (the resolver is uncalled — #181 silent-lane class), the deploy blocks bake
+  domain 0 (C pair runs 62), and the pair shares the board-default firmware MAC — the lane
+  builds + boots but can never pass a pair e2e. Carved from #205.
 - **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
   the book's setup steps are never executed on a pristine host — a containerized probe (fresh
   image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
@@ -66,7 +67,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#213** — batched
+Recently resolved (see [`archived/`](archived/) for the full list): **#205** — all four
+riscv64-threadx rust boilerplate classes retired: the hand cyclone-descriptor shims (redundant
+since #195's `.init_array` walk), the `app_main` FFI trampolines (now the board's
+`cyclonedds_app_main!` macro), the per-example critical-section dep+anchor (moved into the
+board crate), and the CMake tail (new `nros_threadx_rv64_rust_cyclone_app()` board-overlay
+seam; `cyclonedds_app.c` deleted from all 6). Cyclone + zenoh builds green; the macro image
+boots and publishes. Lane-wiring residuals → #214. **#213** — batched
 DECLARATIONS outran the action server's readiness banner (router log: goal query "no matching
 queryables" 152 ms before the queryable declare landed); fork fix: declares always bypass the tx
 batch (control-plane, same as requests/replies). With it, the phase-282/290 zephyr flip is LIVE

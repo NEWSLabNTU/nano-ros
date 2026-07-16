@@ -54,7 +54,6 @@ log = "0.4"
 
 nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = true }
-nros-platform-critical-section = { version = "*" }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

@@ -38,17 +38,10 @@ nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C
 # reference `NROS_APP_CONFIG`, so the generated app_config.h was dead
 # weight + dropped along with the source-of-truth toml.
 
-corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-    CRATES qemu-riscv64-threadx-action-client
-    CRATE_TYPES staticlib
-    NO_DEFAULT_FEATURES
-    FEATURES rmw-cyclonedds)
-
-add_executable(riscv64_threadx_rust_action_client_cyclonedds src/cyclonedds_app.c)
-target_link_libraries(riscv64_threadx_rust_action_client_cyclonedds PRIVATE
-    qemu_riscv64_threadx_action_client
-    example_interfaces__nano_ros_c
-    NanoRos::NanoRos)
-nros_platform_link_app(riscv64_threadx_rust_action_client_cyclonedds)
-nano_ros_link_rmw(riscv64_threadx_rust_action_client_cyclonedds RMW "${NROS_RMW}")
+# Issue #205 step 3 — the corrosion import, generated link-anchor TU,
+# executable, and platform/RMW link calls collapse into the board-overlay
+# seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
+# `cyclonedds_app_main!(register)` (board macro) provides `app_main`.
+nros_threadx_rv64_rust_cyclone_app(riscv64_threadx_rust_action_client_cyclonedds
+    CRATE qemu-riscv64-threadx-action-client
+    LINK  example_interfaces__nano_ros_c)

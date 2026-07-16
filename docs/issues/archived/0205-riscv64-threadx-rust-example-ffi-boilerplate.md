@@ -1,7 +1,7 @@
 ---
 id: 205
 title: "qemu-riscv64-threadx rust examples carry framework boilerplate: hand-written cyclonedds_app.c, app_main FFI shim, full CMake wiring, link anchors"
-status: open
+status: resolved
 type: tech-debt
 area: examples
 related: [issue-0195, rfc-0026]
@@ -60,3 +60,29 @@ made real.
 
 Steps 2–4 (app_main trampoline → board crate/macro; link anchors; shared
 CMake seam) remain open.
+
+## Steps 2–4 DONE (2026-07-16) — RESOLVED
+
+- **Step 2 (app_main trampoline):** the board crate now exports
+  `cyclonedds_app_main!(register)`, emitting the C-ABI `app_main` →
+  `run_app_thread($register)`; all 6 examples' hand-written
+  `#[unsafe(no_mangle)]` trampolines replaced with the one-line macro.
+- **Step 4 (link anchors):** `nros-board-threadx-qemu-riscv64` carries the
+  `nros-platform-critical-section` dep + anchor itself; the 6 examples drop
+  their per-crate dep + `extern crate … as _` anchor (the board anchor stays,
+  documented — the zenoh staticlib path still needs the panic handler linked).
+- **Step 3 (CMake seam):** new `nros_threadx_rv64_rust_cyclone_app(<target>
+  CRATE <pkg> LINK <iface-libs>)` in the riscv64-qemu board overlay collapses
+  the corrosion import + link-anchor TU (now GENERATED into the build dir) +
+  executable + `nros_platform_link_app`/`nano_ros_link_rmw` calls; each
+  example CMakeLists shrinks to the copy-out preamble + interface gen + one
+  call, and `src/cyclonedds_app.c` is deleted from all 6.
+
+Verified: talker + action-server cyclone builds green through the new seam
+(both `nros_generate_interfaces` and `nros_find_interfaces` variants); the
+talker zenoh cargo build green (anchor changes); the macro-built cyclone
+talker boots in QEMU, runs the ctor walk, and publishes 31 samples.
+
+The lane-quality residuals found during step 1 (no test consumer, domain-0
+deploy bake, shared firmware MAC) are carved out to **#214** — they are lane
+wiring, not example boilerplate.

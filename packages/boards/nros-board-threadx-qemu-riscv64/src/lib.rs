@@ -18,6 +18,12 @@
 // `alloc` through the ThreadX C platform byte pool.
 extern crate nros_platform as _;
 
+// Issue #205 step 4 — the board carries the global `critical_section::Impl`
+// (backed by the ThreadX `tx_interrupt_control` C port) so every consumer app
+// gets it by depending on the board alone. Examples used to each carry their
+// own `extern crate nros_platform_critical_section as _;` staticlib-DCE anchor.
+extern crate nros_platform_critical_section as _;
+
 mod config;
 mod node;
 
@@ -236,6 +242,32 @@ where
         None,
         setup,
     )
+}
+
+/// Issue #205 step 2 — emit the C-ABI `app_main` entry for the CMake/CycloneDDS
+/// firmware path, so app crates don't hand-write the `#[no_mangle]` FFI
+/// trampoline. The C `startup.c::main` boots the ThreadX kernel and dispatches
+/// to `app_main` inside the app thread; the expansion forwards to
+/// [`run_app_thread`] with the given register fn (typically the
+/// `nros::node!()`-emitted `register`).
+///
+/// ```ignore
+/// nros::node!(Talker);
+/// nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(register);
+/// ```
+///
+/// The zenoh/cargo path uses `src/main.rs`'s `nros::main!()` instead and never
+/// compiles this symbol. Invoking the macro also keeps this board crate (panic
+/// handler + allocator + critical-section impl) linked into the staticlib — no
+/// separate `extern crate` anchor needed.
+#[macro_export]
+macro_rules! cyclonedds_app_main {
+    ($register:path) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> ! {
+            $crate::run_app_thread($register)
+        }
+    };
 }
 
 /// Phase 245 B0 — overlay the `nros::main!()` deploy block onto `Config::default()`.

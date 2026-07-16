@@ -13,15 +13,12 @@
 
 #![no_std]
 
-// Keep the board crate linked into the `staticlib`/`rlib` firmware artifact even
-// when no path explicitly names it (the zenoh/cargo path enters through
-// `main.rs`'s `nros::main!()`, not this lib). The board owns the `#[panic_handler]`
-// + global allocator; without this `extern crate`, the standalone `staticlib`
-// target has no panic handler and fails to compile.
-extern crate nros_board_threadx_qemu_riscv64 as _;
-
 extern crate alloc;
-extern crate nros_platform_critical_section as _;
+// Keep the board crate (panic handler + allocator + critical-section impl)
+// linked into the standalone `staticlib` even on the zenoh/cargo path, where
+// only `main.rs`'s `nros::main!()` names it (issue #205 — the per-example
+// critical-section anchor moved into the board crate).
+extern crate nros_board_threadx_qemu_riscv64 as _;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
@@ -103,7 +100,4 @@ nros::node!(FibonacciClient);
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the FibonacciClient. No manual `Executor::open` /
 // `register_rmw` / spin loop / hardcoded locator in the example.
-#[unsafe(no_mangle)]
-pub extern "C" fn app_main() -> ! {
-    nros_board_threadx_qemu_riscv64::run_app_thread(register)
-}
+nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(register);
