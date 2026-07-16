@@ -2235,7 +2235,7 @@ setup target="" tier="":
           "" \
           "After setup:" \
           "" \
-          "  source ./setup.bash          # get nano-ros binaries on PATH"
+          "  source ./activate.sh         # get nano-ros binaries on PATH"
         exit 0
     fi
     if [[ -n "$target" ]]; then
@@ -2270,8 +2270,8 @@ setup target="" tier="":
     echo "✅ nano-ros setup complete."
     echo "   Activate this shell with the shipped binaries on PATH:"
     echo ""
-    echo "     source ./setup.bash      # bash / zsh"
-    echo "     source ./setup.fish      # fish"
+    echo "     source ./activate.sh     # bash / zsh"
+    echo "     source ./activate.fish   # fish"
     echo ""
 
 # Focused platform setup. Equivalent to `just <platform> setup`.

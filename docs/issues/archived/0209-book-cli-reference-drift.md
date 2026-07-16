@@ -1,7 +1,7 @@
 ---
 id: 209
 title: "book/CLI reference drift: phantom `esp32` board id (setup fails), `nros init` verb undocumented"
-status: open
+status: resolved
 type: bug
 severity: low
 area: docs
@@ -23,3 +23,10 @@ related: []
 Rename the doc references to `qemu-esp32-baremetal` (or add an `esp32`
 alias in the index if the short id is wanted); add a `### nros init`
 reference section.
+
+## Resolution (2026-07-16)
+
+installation.md row now reads `nros setup qemu-esp32-baremetal`; cli.md
+board-name list drops the phantom `esp32`; added the missing `### nros init`
+reference section (CMakePresets generator, RFC-0048 §6) with a usage
+example.

@@ -61,8 +61,23 @@ nros setup zephyr                        # Zephyr west workspace + SDK bits
 
 Board names: `native`, `posix`, `qemu-arm-baremetal`, `mps2-an385`,
 `stm32f4`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-riscv64-threadx`,
-`threadx-linux`, `esp32`, `qemu-esp32-baremetal`, `zephyr`, and more —
+`threadx-linux`, `qemu-esp32-baremetal`, `zephyr`, and more —
 run `nros setup --list` or `nros setup <board> --dry-run`.
+
+### `nros init [<dir>]`
+
+Generate a project `CMakePresets.json` (into `<dir>`, default the current
+directory) that `include`s the per-board preset fragments `nros setup
+<board>` wrote under `~/.nros/presets/` (RFC-0048 §6). After it,
+`cmake --preset <board>` cross-configures a nano-ros ament package with no
+hand-set `-DCMAKE_TOOLCHAIN_FILE` / `-Dnano_ros_ROOT`. Idempotent — re-run
+after provisioning a new board to pick up its fragment.
+
+```sh
+nros setup qemu-arm-nuttx
+nros init                 # writes ./CMakePresets.json
+cmake --preset qemu-arm-nuttx
+```
 
 ### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--force]`
 

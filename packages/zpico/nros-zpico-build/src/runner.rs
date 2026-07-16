@@ -954,25 +954,36 @@ fn probe_net_type_sizes(
     // C standard library headers, e.g. RISC-V without picolibc)
     build.cargo_metadata(false); // Don't emit link flags
     if let Err(e) = build.try_compile("size_probe") {
-        // Fallback: emit default sizes (16/8) when probe fails.
+        // Probe failure means the `_z_sys_net_socket_t` /
+        // `_z_sys_net_endpoint_t` sizes are UNKNOWN. Guessing them skews the
+        // pass-by-value FFI ABI (the Rust shim reads its opaque buffer from
+        // the wrong call-site registers) and the runtime failure mode is a
+        // silent `Transport(ConnectionFailed)` at session open (zero-length
+        // send, no read) — the issue-0135 mismatched-TU class, reintroduced
+        // dynamically. Issue #207: on CROSS targets there is no defensible
+        // guess, so fail the build loudly instead of shipping a corrupt ABI.
         //
-        // This is a known foot-gun: the fallback silently skews the
-        // `_z_sys_net_socket_t` / `_z_sys_net_endpoint_t` pass-by-value
-        // ABI when the Rust shim reads its opaque buffer from the
-        // wrong call-site register. If you see this warning and the
-        // target is cross-compiled (FreeRTOS / NuttX / ThreadX /
-        // bare-metal), the runtime failure mode is a silent
-        // `Transport(ConnectionFailed)` at session open (zero-length
-        // send, no read).
-        //
-        // To diagnose: rerun `cargo build` with `-vv` to see the
-        // underlying `cc::try_compile` error, and add the missing
-        // include path to `probe_net_type_sizes` for that backend.
+        // To diagnose: rerun `cargo build` with `-vv` to see the underlying
+        // `cc::try_compile` error, and add the missing include path to
+        // `probe_net_type_sizes` for that backend.
+        let target = env::var("TARGET").unwrap_or_default();
+        let host = env::var("HOST").unwrap_or_default();
+        if target != host {
+            panic!(
+                "zpico-sys size_probe failed for cross target {target} ({e}); \
+                 the _z_sys_net_socket_t/_z_sys_net_endpoint_t sizes cannot be \
+                 guessed — a wrong size silently corrupts the pass-by-value \
+                 FFI ABI (Transport(ConnectionFailed) at session open). \
+                 Rerun with `cargo build -vv` for the compiler error and fix \
+                 the probe's include paths for this backend."
+            );
+        }
+        // Host-native fallback only: the historical defaults match the
+        // glibc/macOS layouts the probe was derived from; keep the warning
+        // so a host layout change is still visible.
         println!(
-            "cargo:warning=zpico-sys size_probe failed ({e}); \
-             falling back to SOCKET_SIZE=16 / ENDPOINT_SIZE=8 — \
-             pass-by-value ABI for _z_sys_net_socket_t will corrupt \
-             if the real struct size differs"
+            "cargo:warning=zpico-sys size_probe failed on host target ({e}); \
+             falling back to SOCKET_SIZE=16 / ENDPOINT_SIZE=8"
         );
         println!("cargo:SOCKET_SIZE=16");
         println!("cargo:ENDPOINT_SIZE=8");

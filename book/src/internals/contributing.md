@@ -11,7 +11,7 @@ native development; `all` prepares the full `test-all` matrix:
 just setup               # print setup choices
 just setup base          # workspace tools + zenohd
 just setup all           # all supported SDKs/services
-source ./setup.bash
+source ./activate.sh
 ```
 
 Build the entire workspace including examples:

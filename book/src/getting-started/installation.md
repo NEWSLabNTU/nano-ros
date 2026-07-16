@@ -179,7 +179,7 @@ RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
 | `nros setup qemu-arm-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
 | `nros setup qemu-riscv64-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
 | `nros setup threadx-linux` | ThreadX POSIX-sim sources |
-| `nros setup esp32` | the Espressif toolchain bits the esp-hal path needs |
+| `nros setup qemu-esp32-baremetal` | the ESP32-C3 QEMU + bare-metal (esp-hal) toolchain bits |
 | `nros setup zephyr` | the Zephyr west workspace + Zephyr SDK bits |
 | `nros setup mps2-an385` / `stm32f4` / `qemu-arm-baremetal` | bare-metal `arm-none-eabi-gcc` + qemu |
 

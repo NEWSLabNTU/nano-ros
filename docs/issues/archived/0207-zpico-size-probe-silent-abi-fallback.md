@@ -1,7 +1,7 @@
 ---
 id: 207
 title: "zpico size_probe failure warn-and-continues with guessed SOCKET_SIZE/ENDPOINT_SIZE — silent pass-by-value ABI skew on cross targets"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: zpico
@@ -22,3 +22,13 @@ cross targets (the 0135 mismatched-TU class, reintroduced dynamically).
 Hard-fail when the target is embedded/cross (real struct size unknowable
 from the host); the host-native fallback may keep the warning path if the
 sizes are actually derivable there.
+
+## Resolution (2026-07-16)
+
+`probe_net_type_sizes` now panics (build failure with a diagnostic naming
+the corrupt-ABI consequence + the `-vv` triage step) when the size probe
+fails and TARGET != HOST; the 16/8 fallback survives only for host-native
+builds, still warned. Verified: host `cargo check -p zpico-sys` (probe
+success) and a thumbv7m-none-eabi cross build of the qemu-arm-baremetal
+talker (cross probe success) both green — the panic path fires only on the
+previously-silent failure case.

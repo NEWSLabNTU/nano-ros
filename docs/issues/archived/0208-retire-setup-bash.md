@@ -1,7 +1,7 @@
 ---
 id: 208
 title: "stale setup.bash survives beside activate.sh — divergent env SSoT, still advertised by `just setup` and 3 book pages"
-status: open
+status: resolved
 type: tech-debt
 area: ux
 related: []
@@ -23,3 +23,12 @@ Phase-218.C made `activate.sh`/`activate.fish` the activation SSoT, but:
 
 Make setup.bash a one-line `source ./activate.sh` shim (or delete it),
 repoint the justfile hints and the 3 book pages at activate.sh.
+
+## Resolution (2026-07-16)
+
+setup.bash + setup.fish are now thin deprecated shims that source
+activate.sh / activate.fish (keeping the legacy NROS_ROOT export for
+back-compat), the `just setup` menu + post-setup hint point at activate,
+and the 3 book pages (zephyr, contributing, build-commands) are repointed.
+Verified: sourcing either shim yields NROS_REPO_DIR + NROS_ROOT + nros on
+PATH in bash and fish.

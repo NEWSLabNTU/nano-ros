@@ -69,7 +69,7 @@ need ROS 2 installed.
 
 ```bash
 nros setup zephyr --rmw zenoh      # --rmw defaults to zenoh; xrce | cyclonedds also valid
-source ./setup.bash
+source ./activate.sh
 ```
 
 This provisions:

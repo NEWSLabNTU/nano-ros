@@ -50,17 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 - **#211** — [zephyr rust build.rs duplication](0211-zephyr-rust-buildrs-duplication.md):
   the Kconfig→rustc-env locator-bake workaround is copy-pasted into every zephyr rust example +
   workspace zephyr_entry — wants a `nros-zephyr-build` helper crate. (audit 2026-07-16)
-- **#210** — [packages/cli/CLAUDE.md is the retired colcon-cargo-ros2 guide](0210-cli-claude-md-wrong-project.md):
-  describes a different project; misleads every CLI-touching agent session. (audit 2026-07-16)
-- **#209** — [book/CLI drift: phantom `esp32` board id + undocumented `nros init`](0209-book-cli-reference-drift.md):
-  documented `nros setup esp32` fails (index has only qemu-esp32-baremetal); `nros init` has no
-  reference section. (audit 2026-07-16)
-- **#208** — [stale setup.bash beside activate.sh](0208-retire-setup-bash.md):
-  divergent env contract (`NROS_ROOT` vs `NROS_REPO_DIR`), still advertised by `just setup` and
-  3 book pages — retire + repoint. (audit 2026-07-16)
-- **#207** — [zpico size_probe silent ABI fallback](0207-zpico-size-probe-silent-abi-fallback.md):
-  probe failure warn-and-continues with guessed socket/endpoint sizes → silent pass-by-value ABI
-  skew on cross targets (0135 class, dynamic). (audit 2026-07-16)
 - **#206** — [C++-only env overlay, silent domain-0](0206-cpp-env-overlay-divergence.md):
   ROS_DOMAIN_ID/NROS_LOCATOR resolution lives in node.hpp only (C diverges), duplicated across
   overloads, malformed input silently collapses to domain 0. (audit 2026-07-16)
@@ -77,7 +66,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#203** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#207** — zpico
+size-probe failure now HARD-FAILS on cross targets (panic naming the corrupt-ABI consequence)
+instead of silently shipping guessed socket/endpoint sizes; host-native keeps the warned
+fallback. **#208** — setup.bash/
+setup.fish are now deprecated shims sourcing activate.sh/activate.fish (legacy NROS_ROOT kept);
+justfile hints + 3 book pages repointed. **#209** — book's phantom `esp32` board id →
+`qemu-esp32-baremetal`; `nros init` got its missing CLI-reference section. **#210** —
+packages/cli/CLAUDE.md rewritten for the in-tree sub-workspace (was the retired
+colcon-cargo-ros2 guide). **#203** — the
 mixed-workspace cpp FFI compile failure no longer reproduces (fixed en route by the 263-A4
 idempotency + 269 header-mirror repairs; the "over-generation" was a misread —
 `example_interfaces` really depends on `action_msgs`). Landed the blocked demo: the mixed

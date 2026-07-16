@@ -1,7 +1,7 @@
 ---
 id: 210
 title: "packages/cli/CLAUDE.md is the retired colcon-cargo-ros2 guide — describes a different project"
-status: open
+status: resolved
 type: tech-debt
 area: docs
 related: []
@@ -19,3 +19,10 @@ session that touches the CLI loads misleading instructions.
 
 Rewrite for the actual sub-workspace: build via `just setup-cli`, the three
 crates' roles, the nested submodules, codegen/orchestration entry points.
+
+## Resolution (2026-07-16)
+
+Rewrote packages/cli/CLAUDE.md for the in-tree sub-workspace: build via
+`just setup-cli` + stale-shadow warning, fixture-staleness coupling, version
+lockstep, crate map (all 11 members + the colcon extension + nested
+submodules), and the "nros is a generic tool / index-driven" design rules.

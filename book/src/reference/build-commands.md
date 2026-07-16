@@ -92,7 +92,7 @@ archive instead.
 ```bash
 # Base setup builds/checks the in-tree zenoh router.
 just setup base
-source ./setup.bash
+source ./activate.sh
 
 # Terminal 1: Router
 zenohd --listen tcp/127.0.0.1:7447
