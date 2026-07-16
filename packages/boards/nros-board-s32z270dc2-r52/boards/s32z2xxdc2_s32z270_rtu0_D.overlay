@@ -11,7 +11,19 @@
  */
 
 / {
+	soc {
+		/* phase-292 W3.a (from the ASI deployment, hardware-validated):
+		 * the RTU dts default sram is ~1 MiB — too small for a Cyclone
+		 * image. The S32Z270 CRAM at 0x32100000 gives 7 MiB; move
+		 * zephyr,sram there like the ASI zephyr-s32z platform does. */
+		sram2: memory@32100000 {
+			compatible = "mmio-sram";
+			reg = <0x32100000 DT_SIZE_M(7)>;
+		};
+	};
+
 	chosen {
+		zephyr,sram = &sram2;
 		zephyr,console = &uart0;
 		zephyr,shell-uart = &uart0;
 	};
@@ -23,6 +35,10 @@
 };
 
 &uart0 {
+	/* nxp,s32-linflexd marks pinctrl-0 required; the SoC dtsi leaves the
+	 * node unpinned (the stock board dts only pins the uarts it enables). */
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-names = "default";
 	status = "okay";
 	current-speed = <115200>;
 };

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>board_import_s32z</name>
+  <version>0.1.0</version>
+  <description>Phase 215.E.1 fixture — minimal ASI-shaped Zephyr consumer that imports a nano-ros board crate via nano_ros_use_board().</description>
+  <maintainer email="noreply@example.com">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+  <export><build_type>ament_nros</build_type></export>
+</package>

@@ -373,80 +373,50 @@ run-fvp-board-import:
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-board-import
 
-# Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
-# RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
-# cleanly when west / Zephyr workspace / arm-zephyr-eabi SDK aren't
-# available.
+# phase-292 W3.a — S32Z270-DC RTU0 board-crate IMPORT smoke: builds the
+# minimal `board_import_s32z` fixture via `nano_ros_use_board(s32z270dc2-r52)`
+# (the ASI zephyr-s32z consumption surface). Sibling of
+# `build-fvp-board-import`. Skips when west / workspace / arm-zephyr-eabi
+# SDK are missing.
 [group("examples")]
-build-s32z:
+build-s32z-board-import:
     #!/usr/bin/env bash
     set -e
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/S32Z skip: west not found"; exit 0
+        echo "Zephyr/S32Z board-import skip: west not found"; exit 0
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/S32Z skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+        echo "Zephyr/S32Z board-import skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
     fi
     sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     if [ ! -x "$sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; then
-        echo "Zephyr/S32Z skip: arm-zephyr-eabi toolchain missing in $sdk"
+        echo "Zephyr/S32Z board-import skip: arm-zephyr-eabi toolchain missing"
         exit 0
     fi
-    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
-    bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
-    bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
+    source scripts/build/cargo.sh
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     make_bin="$nros_root/third-party/make/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    extra="$nros_root/packages/boards/nros-board-s32z270dc2-r52/boards/s32z2xxdc2_s32z270_rtu0_D.conf"
+    src="$nros_root/packages/testing/nros-tests/fixtures/board_import_s32z"
     cd "$workspace"
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
-    # Use the zenoh talker rather than the DDS one — the eval board
-    # has only 1 MiB SRAM, which Rust core overflows by
-    # ~100 KiB. zenoh-pico's footprint fits and exercises the same
-    # toolchain + nros module + Rust API path the build smoke needs
-    # to validate. Real Cyclone DDS deployments live on devices with
-    # 4+ MiB SRAM (or LPDDR-backed regions) — out of scope for a
-    # build-only Phase 117.13 gate.
-    # Best-effort: validates the Rust + nros toolchain integration
-    # for the Cortex-R52 target (Phase 117.11/13). Two pre-existing
-    # issues block a clean full-link build, both outside Phase
-    # 117.11's scope:
-    #
-    #   1. The S32Z RTU0 has only 1 MiB SRAM (post-XIP=n) so the
-    #      full nros + zenoh-pico image overflows at link time.
-    #   2. zpico-sys's cbindgen-generated `uintptr_t` mismatches the
-    #      `size_t` in `zpico.c` under arm-zephyr-eabi picolibc (a
-    #      cbindgen-config issue tracked separately).
-    #
-    # Both gates fall after Cargo successfully compiles the Rust
-    # application + nros + zpico-sys for `armv7r-none-eabihf` — which
-    # is the actual Phase 117.13 acceptance bar (toolchain plumbing
-    # works for the new board target).
-    set +e
-    # Unified log dir (test-logs/) instead of a repo-root scatter.
-    mkdir -p "$nros_root/test-logs"
-    s32z_log="$nros_root/test-logs/s32z-build.log"
-    west build -b "s32z2xxdc2@D/s32z270/rtu0" \
-        -d build-s32z-talker -p auto \
-        -- -DEXTRA_CONF_FILE="$extra" -DMAKE="$make_bin" \
-        > "$s32z_log" 2>&1
-    rc=$?
-    set -e
-    rust_release="$workspace/build-s32z-talker/rust/target/armv7r-none-eabihf/release/librustapp.a"
-    rust_debug="$workspace/build-s32z-talker/rust/target/armv7r-none-eabihf/debug/librustapp.a"
-    if [ "$rc" -eq 0 ]; then
-        echo "S32Z R52 build smoke OK (full link succeeded)"
-    elif [ -f "$rust_release" ] || [ -f "$rust_debug" ]; then
-        echo "S32Z R52 build smoke OK (Rust + nros compile path verified;"
-        echo "  full link is best-effort — pre-existing SRAM overflow +"
-        echo "  zpico-sys cbindgen typedef issue, see Phase 117 docs)."
-    else
-        echo "S32Z R52 build smoke FAILED — Rust + nros compile path broken"
-        echo "  Build log: $s32z_log"
-        exit 1
-    fi
+    export NROS_REPO_DIR="$nros_root"
+    echo "Building board-import fixture via nano_ros_use_board(s32z270dc2-r52)..."
+    west build \
+        -d build-s32z-board-import -p auto \
+        "$src" \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+    echo "phase-292 W3.a S32Z board-import fixture build OK"
+
+# phase-292 W3.a — the historical `build-s32z` rust-talker smoke was RETIRED
+# here: it was sourceless since phase-221 (the #217 class — `west build` with
+# no app arg, alive only on museum build-dir caches), its original app is
+# gone, and the board's reference consumer (ASI) is C++-only
+# (NROS_BOARD_REQUIRES_RUST=n). `build-s32z-board-import` above is the
+# canonical S32Z build proof.

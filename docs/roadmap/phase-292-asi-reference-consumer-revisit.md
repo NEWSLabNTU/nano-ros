@@ -82,11 +82,29 @@ named reference consumer), 287 (ament verbs on zephyr).
   planner.
 
 ### W3 — S32Z270 board crate (unblocks ASI W4; FVP-first, hardware-gated tail)
-- [ ] W3.a `packages/boards/nros-board-s32z270dc2-rtu0-r52` (board.cmake +
-  confs + the DTC overlay ASI currently hand-glues), phase-215 shape, so
-  `nano_ros_use_board(s32z270dc2-rtu0-r52)` works. Build-proof against the
-  Zephyr 3.7 board id `s32z270dc2_rtu0_r52@D`; runtime proof stays with ASI
-  hardware.
+- [x] W3.a (2026-07-17) The crate already existed as
+  `nros-board-s32z270dc2-r52` (kept that name) but had NO board.cmake —
+  `nano_ros_use_board()` couldn't consume it. Added the phase-215 sidecar
+  + a `board_import_s32z` fixture and `just zephyr build-s32z-board-import`
+  smoke: green, Cyclone-RMW ELF for `s32z2xxdc2@D/s32z270/rtu0`. Findings:
+  (1) **the Zephyr 3.7 board id is `s32z2xxdc2@D/s32z270/rtu0`** — the
+  `s32z270dc2_rtu0_r52@D` name this doc (and ASI's build.sh target list)
+  carries is the 3.5-era name and does NOT resolve on 3.7; ASI must update
+  at the pin bump. (2) `NROS_BOARD_DEFAULT_RMW` is ADVISORY-only — it sets
+  the `NANO_ROS_RMW` cmake var, which the zephyr module's
+  `CONFIG_NROS_RMW_*` Kconfig choice never reads; the crate now carries
+  `CONFIG_NROS_RMW_CYCLONEDDS=y` in its board fragment instead (candidate
+  follow-up: make use_board forward the default into Kconfig).
+  (3) `NROS_RMW_CYCLONEDDS` depends on `NET_SOCKETS && POSIX_API && CPP` —
+  a fragment setting the RMW without `CONFIG_CPP=y` is SILENTLY dropped
+  and the choice falls back to zenoh (the crate fragment now sets both).
+  (4) Folded in ASI's hardware-validated memory map (7 MiB `sram2` CRAM —
+  without it Cyclone can't fit the RTU's ~1 MiB default sram) + the
+  LinFlexD pinctrl the binding requires. (5) Applied the W1.a
+  language-neutrality lesson: rust rows split out of the crate prj.conf
+  into `prj-rust.conf`; the sourceless (#217-class) `build-s32z` rust
+  smoke retired in favor of the import smoke. Runtime proof stays with
+  ASI hardware (ASI phase-3 W4).
 
 ### W4 — FreeRTOS-POSIX platform scoping (for ASI W5; scoping only, no impl)
 - [x] W4.a nano-ros's freertos platform targets QEMU MPS2 (lwIP); ASI's
