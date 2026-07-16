@@ -52,17 +52,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   yields a resolvable target/std setup; baseline-verified pre-existing (found by the phase-291
   W4 grep-gate exercising the 14th bake leaf); cpp sibling green; lane is in no sweep, so it
   rotted silently.
-- **#204** — [no automated clean-system bootstrap verification](0204-clean-system-bootstrap-probe.md):
-  the book's setup steps are never executed on a pristine host — a containerized probe (fresh
-  image, steps extracted from the book, `just doctor` + one cheap lane) is the dynamic half of
-  the `/audit` F3 static drift check. Runner-class work; shares #200's infrastructure.
 - **#200** — [fixture-build timing campaign — needs a big-disk CI runner](0200-fixture-build-timing-campaign-needs-ci-runner.md):
   phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
   jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
   native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
   Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#211** — phase-291:
+Recently resolved (see [`archived/`](archived/) for the full list): **#204** — the
+clean-system bootstrap probe exists: `just probe bootstrap` runs the book's `probe=NN`-tagged
+setup blocks verbatim (extracted, never hand-mirrored) on a pristine `ubuntu:24.04` container
+and asserts the first-node readiness signal; nightly `bootstrap-probe` job on the 07:00 cron.
+Its first run caught four real fresh-host regressions (cargo PATH, lost bundled
+std_msgs/builtin_interfaces, zenohd off PATH, missing `nros sync` step in the book) — all
+fixed. **#211** — phase-291:
 `nros-zephyr-build` owns the canonical zephyr-leaf Kconfig→rustc-env bake (zero-dep; upstream
 `zephyr-build` is west-path-only so its call stays in the leaf); all **14** leaves collapsed to a
 4-line `build.rs` (the W4 grep-gate `example_shape::zephyr_leaf_buildrs_uses_shared_bake`

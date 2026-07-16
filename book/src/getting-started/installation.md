@@ -6,12 +6,24 @@ and built in-tree via `add_subdirectory(nano-ros)`. There is no binary
 tarball, no system-wide install step, no `find_package(NanoRos)`, and
 no prebuilt `nros` CLI.
 
+## Host prerequisites (Ubuntu/Debian)
+
+Everything toolchain-shaped — rustup, cross-compilers, emulators, the
+zenoh router — is provisioned by the steps below. The host itself only
+needs the basics:
+
+```sh probe=10
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates build-essential \
+    pkg-config python3
+```
+
 ## The whole flow, end to end
 
 Four steps take a bare machine to a building project; each is detailed
 in a section below.
 
-```sh
+```sh probe=20
 # 1. Pull the source at a pinned version (or `main` for latest):
 git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros

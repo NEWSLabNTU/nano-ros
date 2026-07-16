@@ -72,6 +72,7 @@ mod px4 'just/px4.just'
 mod orin_spe 'just/orin-spe.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod platformio 'just/platformio.just'
+mod probe 'just/probe.just'
 
 # =============================================================================
 # Recipe organization (convention — keep new recipes consistent)

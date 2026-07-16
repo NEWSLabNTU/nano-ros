@@ -133,8 +133,10 @@ No config file on native. Embedded targets bake these from
 
 ## Build
 
-```bash
+```bash probe=30
 cd examples/native/rust/talker
+nros sync             # once per checkout location: writes the generated/
+                      # message bindings + the [patch.crates-io] table
 cargo build           # or: cargo build --release
 ```
 

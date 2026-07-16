@@ -440,3 +440,41 @@ jobs:
 
       - name: Copy-out build check
         run: source /opt/ros/humble/setup.bash && just zephyr check-copy-out c/talker zenoh
+
+  # Clean-system bootstrap probe (issue #204): execute the book's documented
+  # setup steps VERBATIM in a pristine ubuntu:24.04 container (steps are
+  # extracted from the `probe=NN`-tagged book blocks — scripts/probe/ — so
+  # the probe cannot drift from what users read) and assert the first-node
+  # chapter's documented outcome (talker prints `Publishing: 'Hello World: 1'`).
+  # 07:00 cron + dispatch only — NOT per-PR (cold bootstrap builds the nros
+  # CLI + the talker from source inside the container, ~45 min).
+  bootstrap-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      group: nightly-bootstrap-probe-${{ github.ref }}-${{ github.event_name }}
+    permissions:
+      contents: read
+    steps:
+      # Full history: the probe container clones from this checkout
+      # (mounted read-only), and cloning from a shallow repo fails.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Hosted runners leave ~14 GB free; the in-container rustup + CLI +
+      # talker builds need more. Drop the preinstalled SDK bloat.
+      - name: Reclaim host disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      # actions/checkout leaves a detached HEAD; the probe clones by branch.
+      - name: Name the commit under test
+        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
+
+      - name: Run bootstrap probe
+        run: PROBE_BRANCH=probe-under-test ./scripts/probe/run-bootstrap-probe.sh

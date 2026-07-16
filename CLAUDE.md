@@ -34,6 +34,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
 | Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
 | Profile a build's time (passive, read-only) | `just profile <dir>` → `nros-build-profile` (phase-251); [book](book/src/user-guide/build-profiling.md) |
+| Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204) |
 
 ## Naming
 - **nano-ros** — project name (prose, docs)
