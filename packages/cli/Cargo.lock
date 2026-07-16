@@ -814,6 +814,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-common"
+version = "0.5.0"
+dependencies = [
+ "cc",
+ "nros-build-paths",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "nros-build"
 version = "0.5.0"
 dependencies = [
@@ -823,6 +833,10 @@ dependencies = [
  "serde_json",
  "tempfile",
 ]
+
+[[package]]
+name = "nros-build-paths"
+version = "0.5.0"
 
 [[package]]
 name = "nros-cli"
@@ -843,6 +857,7 @@ dependencies = [
  "clap",
  "eyre",
  "libc",
+ "nros-board-common",
  "nros-launch-parser",
  "nros-msg-to-idl",
  "nros-orchestration-ir",

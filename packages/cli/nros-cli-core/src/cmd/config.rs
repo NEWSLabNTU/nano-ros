@@ -17,6 +17,10 @@ pub enum Args {
     /// Print the resolved effective config for a bringup system (from its typed
     /// `system.toml`) with per-value provenance.
     Show(ShowArgs),
+    /// phase-290 (RFC-0049) — print the resolved BUILD-time knob ladder for a
+    /// platform: every knob's final value plus the rung that set it
+    /// (builtin / platform / board / env).
+    Explain(ExplainArgs),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -34,6 +38,126 @@ pub struct ShowArgs {
 pub fn run(args: Args) -> Result<()> {
     match args {
         Args::Show(args) => show(args),
+        Args::Explain(args) => explain(args),
+    }
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ExplainArgs {
+    /// Platform name (a directory under the platforms root, e.g. `zephyr`,
+    /// `bare-metal`, `freertos-lwip`).
+    #[arg(long)]
+    pub platform: String,
+
+    /// Optional board package `nros-board.toml` supplying `[knobs]` deltas
+    /// (the ladder's board rung). Explicit path; registry-name resolution is
+    /// a follow-up.
+    #[arg(long)]
+    pub board_toml: Option<PathBuf>,
+
+    /// Platforms root (default: `$NROS_PLATFORMS_DIR`, else
+    /// `<repo>/packages/platforms` located by walking up from cwd).
+    #[arg(long)]
+    pub platforms_dir: Option<PathBuf>,
+}
+
+/// phase-290 (RFC-0049) — the porter's debugging surface: every knob, its
+/// final value, and WHICH ladder rung set it. Reads the same loader +
+/// resolver the build scripts use (`nros_board_common::platform_config`),
+/// including live env overrides, so the printout matches what the next
+/// build will bake.
+fn explain(args: ExplainArgs) -> Result<()> {
+    use nros_board_common::platform_config::{BoardKnobsFile, PlatformsTree};
+
+    let root = match args.platforms_dir {
+        Some(d) => d,
+        None => match std::env::var_os("NROS_PLATFORMS_DIR").filter(|v| !v.is_empty()) {
+            Some(d) => PathBuf::from(d),
+            None => find_platforms_root()?,
+        },
+    };
+    let tree = PlatformsTree::load(&root)
+        .map_err(|e| eyre!("load platforms tree at {}: {e}", root.display()))?;
+
+    let board = match &args.board_toml {
+        Some(p) => Some(BoardKnobsFile::load(p).map_err(|e| eyre!("{}: {e}", p.display()))?),
+        None => None,
+    };
+
+    let env_get = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let mut tx = tree
+        .resolve_tx(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.zenoh.tx),
+            &env_get,
+        )
+        .map_err(|e| eyre!("{e}"))?;
+    let warnings = tree
+        .capability_check(&args.platform, &mut tx)
+        .map_err(|e| eyre!("{e}"))?;
+
+    println!(
+        "platform: {}   (platforms root: {})",
+        args.platform,
+        root.display()
+    );
+    if let Some(p) = &args.board_toml {
+        println!("board:    {}", p.display());
+    }
+    let caps = tree
+        .capabilities(&args.platform)
+        .map_err(|e| eyre!("{e}"))?;
+    if !caps.is_empty() {
+        let caps_str: Vec<String> = caps.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        println!("capabilities: {}", caps_str.join(", "));
+    }
+    println!();
+    println!("{:<24} {:<10} {}", "knob", "value", "set by");
+    println!("{:<24} {:<10} {}", "----", "-----", "------");
+    println!(
+        "{:<24} {:<10} {}",
+        "zenoh.tx.batch",
+        tx.batch.value,
+        tx.batch.source.as_str()
+    );
+    println!(
+        "{:<24} {:<10} {}",
+        "zenoh.tx.split_lock",
+        tx.split_lock.value,
+        tx.split_lock.source.as_str()
+    );
+    println!(
+        "{:<24} {:<10} {}",
+        "zenoh.tx.flush_ms",
+        tx.flush_ms.value,
+        tx.flush_ms.source.as_str()
+    );
+    for w in warnings {
+        println!("warning: {w}");
+    }
+    Ok(())
+}
+
+/// Walk up from cwd to the repo root (marked by `nros-sdk-index.toml`, the
+/// same sentinel the cmake glue uses) and return `packages/platforms`.
+fn find_platforms_root() -> Result<PathBuf> {
+    let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
+    loop {
+        if dir.join("nros-sdk-index.toml").exists() {
+            let root = dir.join("packages/platforms");
+            if root.is_dir() {
+                return Ok(root);
+            }
+            return Err(eyre!(
+                "found repo root at {} but packages/platforms is missing",
+                dir.display()
+            ));
+        }
+        if !dir.pop() {
+            return Err(eyre!(
+                "not inside a nano-ros checkout (no nros-sdk-index.toml sentinel) —                  pass --platforms-dir or set NROS_PLATFORMS_DIR"
+            ));
+        }
     }
 }
 

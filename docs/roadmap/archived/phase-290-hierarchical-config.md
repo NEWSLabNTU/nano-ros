@@ -31,7 +31,7 @@ defaults-on zephyr suite 46/46. Remaining: W3.a board wiring, W4
 explain/scaffold; W5.b bench re-measure rides the next manual bench pass
 (declares-express does not touch the steady-state tx path).
 
-**Implements.** [RFC-0049](../design/0049-hierarchical-platform-board-config.md)
+**Implements.** [RFC-0049](../../design/0049-hierarchical-platform-board-config.md)
 (design-of-record — read it first; this doc is the work breakdown only).
 
 **Depends on.** RFC-0042 (`nros-board.toml` descriptor), RFC-0014/phase-201
@@ -72,7 +72,7 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
 
 ### W3 — Board layer + front-end completion
 
-- [ ] W3.a Extend `nros-board.toml` parsing with `[capabilities]` /
+- [x] W3.a (BoardKnobsFile parse + NROS_BOARD_TOML runner hook + --board-toml on explain; auto-export from orchestration deferred until a board carries a [knobs] delta) Extend `nros-board.toml` parsing with `[capabilities]` /
   `[knobs.*]` (additive; existing descriptor fields untouched). Confirm the
   phase-201 out-of-tree path serves the cmake lane too (RFC-0049 open
   question 3).
@@ -85,10 +85,10 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
 
 ### W4 — Porter UX
 
-- [ ] W4.a `nros config explain --board <b>`: every knob — final value +
+- [x] W4.a (per-knob `why` string: DECIDED no — the capabilities line + platform-file comments carry the rationale; RFC-0049 open question 2 closed) `nros config explain --board <b>`: every knob — final value +
   the rung that set it. (Optional per-knob `why` string: RFC-0049 open
   question 2 — decide here.)
-- [ ] W4.b `nros new platform <name>` / `nros new board <name>
+- [x] W4.b `nros new platform <name>` / `nros new board <name>
   --platform <p>`: scaffold crate skeletons + tomls with the schema as
   comments. Book page: "Porting nano-ros to a new RTOS" checklist
   (2 crates + 2 tomls, no central edits).
@@ -99,7 +99,7 @@ issue 0135 (shared-config ABI rule the emitter must preserve).
 > vs readiness ordering); fixed in the fork (declares always express) and
 > the flip is LIVE: pristine batch+split defaults-on zephyr suite 46/46.
 > Full account in
-> [archived issue 0213](../issues/archived/0213-zephyr-tx-batch-breaks-action-roundtrip.md).
+> [archived issue 0213](../../issues/archived/0213-zephyr-tx-batch-breaks-action-roundtrip.md).
 
 - [x] W5.a zephyr `nros-platform.toml`: `batch = true, split_lock = true,
   flush_ms = 50` + `[capabilities] per_fd_tx_ceiling = true`. All other

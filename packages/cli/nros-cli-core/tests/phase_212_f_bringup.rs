@@ -40,6 +40,7 @@ fn default_new_args(
 ) -> NewArgs {
     NewArgs {
         name: Some(name),
+        for_platform: None,
         system_name,
         components,
         component_name: Vec::new(),

@@ -1,7 +1,7 @@
 ---
 rfc: 0049
 title: "Hierarchical platform/board configuration"
-status: Draft
+status: Stable
 since: 2026-07
 last-reviewed: 2026-07-16
 implements-tracked-by: [phase-290]
@@ -198,20 +198,26 @@ for non-express topics.
 - Phase-282 (the TX knobs + promotion options this RFC's policy resolves);
   phase-279 (the measured baselines).
 
-## Open questions
+## Open questions (all resolved by phase-290)
 
-1. `[build.zenoh]` key layout: keep the `zenoh_platforms.toml` keys
-   verbatim (cheapest migration) or normalize names while relocating?
-   Leaning verbatim for a mechanical, diffable move.
-2. Whether `nros config explain` should also print the *capability
-   justification* line for each platform default (nice for docs; slight
-   schema growth: an optional per-knob `why` string).
-3. Board-level `[knobs]` in USER board packages: resolved through
-   phase-201 provisioning — confirm that path handles a board toml outside
-   the repo for the cmake lane too (cargo lane is straightforward).
+1. ~~`[build.zenoh]` key layout~~ — **verbatim relocation** (mechanical,
+   verified Debug-equal before the central file was deleted).
+2. ~~per-knob `why` string in `explain`~~ — **no**: `explain` prints the
+   `[capabilities]` line and the platform files carry rationale comments;
+   a schema field would duplicate them.
+3. ~~out-of-tree board toml on the cmake lane~~ — the board rung enters
+   via the `NROS_BOARD_TOML` env hook (works from any lane that can set
+   an env var, which all cmake lanes do); automatic export from the
+   phase-201 registry is deferred until an in-tree board carries a
+   `[knobs]` delta.
 
 ## Changelog
 
+- 2026-07-16 — implemented by phase-290 (schema/loader, relocation +
+  central-file retirement, tri-state Kconfig front-end + drift test,
+  explain/scaffolders, the zephyr flip incl. the issue-0213
+  declares-express fork fix); flipped to Stable with all open questions
+  resolved.
 - 2026-07-16 — created (Draft) from the phase-282 promotion discussion;
   design iterated against the out-of-tree porter UX (self-contained
   platform packages, explicit chain, `config explain`, scaffolders) and

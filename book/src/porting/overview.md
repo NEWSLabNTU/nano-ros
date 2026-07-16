@@ -12,6 +12,37 @@ nano-ros is designed for customization at three independent levels: **RMW** (tra
 
 Most porting work falls into the second or third category. Adding a new RMW backend is rare and substantially more involved.
 
+## Quickstart — 2 crates + 2 tomls (RFC-0049)
+
+A port never edits a central file in the nano-ros tree. Scaffold the two
+packages, fill in the TODOs, done:
+
+```sh
+nros new platform myrtos                       # nros-platform-myrtos/ + nros-platform.toml
+nros new board myboard --for-platform myrtos   # nros-board-myboard/  + nros-board.toml
+```
+
+- **`nros-platform.toml`** (platform package) — software-stack facts
+  (`[capabilities]`), knob defaults (`[knobs.*]`, only flip what you
+  measured), and the zenoh-pico system-layer build block (`[build.zenoh]`).
+  An empty file is valid: built-in defaults always produce a working build.
+- **`nros-board.toml`** (board package) — the RFC-0042 hardware descriptor
+  plus per-board `[capabilities]`/`[knobs]` deltas.
+- Values resolve through a fixed ladder — `builtin < platform < board <
+  env/Kconfig/-D` — and an explicit build-time setting (including an
+  explicit `0`/`n`) always wins. Debug any knob with:
+
+```sh
+nros config explain --platform myrtos [--board-toml path/to/nros-board.toml]
+# knob                     value      set by
+# zenoh.tx.batch           false      builtin
+```
+
+Kconfig appears only where the host framework is Kconfig-native
+(Zephyr / NuttX / ESP-IDF packagings) — a hand-wired fragment whose
+defaults mirror the platform toml (drift-tested). A port to a
+non-Kconfig RTOS never touches it.
+
 ## What stays untouched
 
 The following core packages define the interfaces you implement. They compile and work without modification for any new target.

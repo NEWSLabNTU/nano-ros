@@ -26,6 +26,7 @@ pub mod generate_px4;
 pub mod init;
 pub mod metadata;
 pub mod new;
+pub mod new_platform;
 pub mod new_system;
 pub mod plan;
 pub mod scaffold_deploy;

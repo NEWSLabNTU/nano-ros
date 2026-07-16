@@ -29,7 +29,15 @@ pub struct Args {
 
     /// Phase 212.F bringup-scaffold mode — the bringup package directory.
     /// Only consumed when the first positional is the literal `system`.
+    /// phase-290 W4.b — also the <name> when the first positional is the
+    /// literal `platform` or `board` (package-scaffold modes).
     pub system_name: Option<PathBuf>,
+
+    /// phase-290 W4.b — the platform a `nros new board <name>` targets
+    /// (a platform directory name, e.g. `zephyr`, `bare-metal`, or one
+    /// scaffolded via `nros new platform`).
+    #[arg(long = "for-platform")]
+    pub for_platform: Option<String>,
 
     /// Phase 212.F — comma-separated component package names for
     /// `nros new system <bringup> --components <list>`.
@@ -120,6 +128,31 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
+    // `nros new board <name> --for-platform <p>`.
+    let keyword = args.name.as_ref().and_then(|p| p.to_str());
+    if keyword == Some("platform") || keyword == Some("board") {
+        let pkg_name = args
+            .system_name
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .ok_or_else(|| eyre::eyre!("`nros new {} <name>` requires a name", keyword.unwrap()))?
+            .to_string();
+        let into = args
+            .into
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(std::env::current_dir)?;
+        return if keyword == Some("platform") {
+            crate::cmd::new_platform::scaffold_platform(&pkg_name, &into)
+        } else {
+            let platform = args.for_platform.clone().ok_or_else(|| {
+                eyre::eyre!("`nros new board <name>` requires --for-platform <platform>")
+            })?;
+            crate::cmd::new_platform::scaffold_board(&pkg_name, &platform, &into)
+        };
+    }
+
     // Phase 212.F — system / bringup mode: `nros new system <name>_bringup
     // --components <list>`. The literal `system` keyword as the first
     // positional dispatches here.
