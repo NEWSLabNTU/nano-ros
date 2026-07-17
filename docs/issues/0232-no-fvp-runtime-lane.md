@@ -43,22 +43,29 @@ STACK of gaps behind the false green, peeled in order:
    recipe-level: `build-fvp-aemv8r-cyclonedds` now layers the snippet conf via
    `-DEXTRA_CONF_FILE=zephyr/snippets/nros-cyclonedds/cyclonedds.conf`
    (mutex=1024, stacks=32K/4K, socketpair). No more SMP-4 crash.
-3. **[OPEN — last blocker to green] the talker cannot create a participant on
-   the FVP's default SLIRP networking.** `ddsi_udp_create_conn: failed to
-   bind to ANY:0` → `dds_create_participant returned -1`. The example ships no
-   IP config; under `bp.hostbridge.userNetworking=1` (what `armfvp.cmake`
-   auto-adds for `CONFIG_ETH_SMSC91X`) the guest has no routable address, so
-   the getifaddrs walk (wall #5) finds none and bind fails. The ASI image
-   published because its tap profile assigned a static `192.168.10.x`
-   (`CONFIG_NET_CONFIG_MY_IPV4_ADDR`). The talker example needs the same — a
-   static IP (or `CONFIG_NET_DHCPV4=y`, since SLIRP runs a DHCP server) — for
-   the runtime lane to reach `Publishing:`.
+3. **[OPEN — last blocker to green] the talker creates its participant before
+   the network interface is up.** `ddsi_udp_create_conn: failed to bind to
+   ANY:0` → `dds_create_participant returned -1`, always at ~15 ms. Adding a
+   static IP to the example (`CONFIG_NET_CONFIG_MY_IPV4_ADDR="10.0.2.15"` +
+   netmask/gw matching the SLIRP `10.0.2.0/24` subnet, `NEED_IPV4=y`) did
+   NOT fix it — the bind still fails at 15 ms, i.e. the participant is created
+   before `net_config` has brought the interface up and applied the address.
+   The ASI image published because its boot sequence explicitly WAITS for the
+   interface ("Waiting interface 1 to be up") before opening the DDS session;
+   the talker example's typed carrier opens it immediately at boot. So the fix
+   is two-part: (a) an IP config (static or `CONFIG_NET_DHCPV4=y`), AND (b) the
+   example must block on the interface being up (or on
+   `CONFIG_NET_CONFIG_INIT_TIMEOUT` with `NET_CONFIG_NEED_IPV4`) before the
+   first `nros::init`/participant create. This is net-stack init ordering,
+   distinct from every wall above.
 
 ## Remaining fix direction
 
-- Give the talker example a network config so it gets a routable IP on the
-  FVP (static addr + the smsc overlay, or DHCPv4 for SLIRP). Then the
-  existing `fvp_runtime.rs` publish assertion passes.
+- Give the talker example a network config (static addr matching the SLIRP
+  `10.0.2.0/24` subnet, or `CONFIG_NET_DHCPV4=y`) AND make it wait for the
+  interface to be up before the first participant create (finding #3 above —
+  a static IP alone did not suffice; bind still raced net_config at 15 ms).
+  Then the existing `fvp_runtime.rs` publish assertion passes.
 - Raise `fvp_runtime_rust.rs` from the boot-banner pattern to
   `nros_tests::output::TALKER_LOG_PREFIX` (`"Publishing:"`) — parity with the
   cpp lane (the rust talker already logs `Publishing:`).
