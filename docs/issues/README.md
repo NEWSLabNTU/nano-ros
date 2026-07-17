@@ -65,7 +65,12 @@ SMP-4 validation. See `0230-smp-spurious-component-failure-print.md`.
 error misreporting class, found during the phase-292 ASI FVP bring-up. See
 `0229-c-cpp-ret-code-enums-disagree.md`.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#229** — the
+Recently resolved (see [`archived/`](archived/) for the full list): **#230** — the SMP
+spurious "ComponentNode failed at ? (code=0)" boot line: the state was `ok_=true` (needs a
+store; pre-ctor BSS-zero read as not-ok on a cross-core reader). Inverted to a zero-default
+`has_error_` — healthy is the universally-visible zero state, failures release/acquire-published
+(closes the miss-a-real-failure direction too); `__atomic` builtins, no `<atomic>`, zero
+template changes. Native rclcpp poc healthy, 0 FATAL lines; live FVP-SMP gated on #232. **#229** — the
 C `nros_ret_t`, C++ `nros::ErrorCode`, and `nros_cpp_ret_t` FFI codes now share ONE numbering
 (C++ aligned to the canonical C side; a raw `-5` no longer misreads `ALREADY_EXISTS` as
 `Full`); static_assert pin tables in result.hpp/parameter.hpp/node.hpp fail the build on any

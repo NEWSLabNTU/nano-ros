@@ -201,12 +201,31 @@ class ComponentNode {
     /// `true` while no entity/param creation has failed. The codegen Entry /
     /// single-node carrier checks this immediately after construction and halts
     /// boot (naming this node) when it is `false`.
-    bool ok() const { return ok_; }
+    ///
+    /// Issue #230 — SMP safety. The failure state is tracked as a
+    /// `has_error_` flag whose HEALTHY value is the zero-initialized default
+    /// (no error), so a reader on a different core than the constructing one
+    /// (ASI FVP SMP-4) always sees a correct "ok" even before the ctor's
+    /// stores propagate — no spurious "failed at ? (code=0)" boot line. A
+    /// real failure is published with a **release** store and read here with
+    /// an **acquire** load, so the dangerous direction (silently MISSING a
+    /// failure) is closed too: any core that observes the object post-failure
+    /// sees the error and the recorded `error_what_`/`error_code_` (written
+    /// before the release, hence visible via the acquire's happens-before).
+    bool ok() const { return !__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE); }
     /// The site of the first failure (`"create_publisher"`, `"node create"`, …),
     /// or `nullptr` when `ok()`. For the boot diagnostic.
-    const char* error_what() const { return error_what_; }
+    const char* error_what() const {
+        // Acquire-fence on the flag so a standalone call (not preceded by
+        // ok()) still sees the released `error_what_` write (issue #230).
+        (void)__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE);
+        return error_what_;
+    }
     /// The raw error code of the first failure, or `0` when `ok()`.
-    int32_t error_code() const { return error_code_; }
+    int32_t error_code() const {
+        (void)__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE);
+        return error_code_;
+    }
 
     // -- Accessors -------------------------------------------------------
 
@@ -486,10 +505,15 @@ class ComponentNode {
     /// the hosted `stderr` line so a failure is visible even before the entry's
     /// post-construct `ok()` check halts boot.
     void set_error(const char* what, int32_t code) {
-        if (ok_) {
-            ok_ = false;
+        // Relaxed read for the first-failure guard: set_error only runs during
+        // construction, on the constructing thread, never concurrently with a
+        // reader (issue #230).
+        if (!__atomic_load_n(&has_error_, __ATOMIC_RELAXED)) {
             error_what_ = what;
             error_code_ = code;
+            // RELEASE publishes the two plain writes above: a reader that
+            // acquire-observes has_error_ == true is guaranteed to see them.
+            __atomic_store_n(&has_error_, true, __ATOMIC_RELEASE);
             detail::report_component_failure(node_.get_name(), what, code);
         }
     }
@@ -502,7 +526,12 @@ class ComponentNode {
     ParameterServer<NROS_COMPONENT_MAX_PARAMS, NROS_COMPONENT_MAX_SEQ_PARAMS,
                     NROS_COMPONENT_SEQ_POOL_BYTES>
         params_;
-    bool ok_ = true;
+    // Issue #230 — inverted flag: the HEALTHY value is the zero-init default,
+    // so a cross-core reader sees "ok" without waiting for any store. Accessed
+    // via __atomic builtins (release on set_error, acquire in ok()/error_*) —
+    // NOT `<atomic>`, which the Zephyr `-nostdinc++` minimal libcpp may lack
+    // (issue 0112 class). All three fields are zero-init-safe.
+    bool has_error_ = false;
     const char* error_what_ = nullptr;
     int32_t error_code_ = 0;
 };
