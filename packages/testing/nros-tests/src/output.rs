@@ -71,6 +71,20 @@ pub fn int32_talker_line(n: impl std::fmt::Display) -> String {
     format!("{INT32_TALKER_LOG_PREFIX} {n}")
 }
 
+/// Readiness marker of the `int32-sink` fixture bin: it prints
+/// `"Waiting for Int32 messages on <topic>..."` once its subscription is
+/// live (its boot banner also contains `"Listener"`, but this line is the
+/// post-subscribe signal every observer spawn should key on).
+pub const INT32_SINK_READY_MARKER: &str = "Waiting for Int32";
+
+/// FreeRTOS realtime-tier workspace nodes (`ws-realtime-{c,cpp}-mps2`)
+/// print `"[<tier>] tick=N"` on the QEMU serial console **only when the
+/// tier's publish succeeds** — the marker doubles as a delivery proof for
+/// lanes observed via serial output instead of host-side subscribers.
+pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
+    format!("[{tier}] tick=")
+}
+
 /// The exact talker log line for sequence value `n`
 /// (`"Publishing: 'Hello World: N'"`).
 pub fn talker_line(n: impl std::fmt::Display) -> String {

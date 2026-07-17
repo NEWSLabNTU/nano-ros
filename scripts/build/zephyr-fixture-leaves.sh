@@ -681,7 +681,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # ZephyrBoard::run_tiers — one k_thread per tier over ONE shared session
     # (RFC-0015 Model 1); ctrl (10 ms) + telem (100 ms) publish /ctrl +
     # /telem. Distinct zenohd port (17855). Consumed by
-    # tests/realtime_tiers_zephyr_entry_e2e.rs.
+    # tests/realtime_tiers_e2e.rs (zephyr_rust cell).
     wst_board="native_sim/native/64"
     wst_lang="rust"
     wst_lang_tag="rs"
@@ -732,7 +732,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
     # high) publishes /ctrl, telem (100 ms, low) publishes /telem. CONFIG_NROS_CPP_API
     # (prj.conf) compiles the W3a seam. Distinct zenohd port (17857). Consumed by
-    # tests/realtime_tiers_cpp_zephyr_e2e.rs.
+    # tests/realtime_tiers_e2e.rs (zephyr_cpp cell).
     wscpprt_board="native_sim/native/64"
     wscpprt_lang="cpp"
     wscpprt_lang_tag="cpp"
@@ -783,7 +783,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms, high)
     # publishes /ctrl, telem (100 ms, low) publishes /telem. CONFIG_NROS_C_API (prj.conf)
     # compiles the W3a seam. Distinct zenohd port (17859). Consumed by
-    # tests/realtime_tiers_c_zephyr_e2e.rs.
+    # tests/realtime_tiers_e2e.rs (zephyr_c cell).
     wscrt_board="native_sim/native/64"
     wscrt_lang="c"
     wscrt_lang_tag="c"

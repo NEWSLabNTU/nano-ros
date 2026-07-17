@@ -95,7 +95,7 @@ build-examples:
     # tests/c_nuttx_entry_e2e.rs (cross-process /chatter delivery, baked slirp locator 17861).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
     # phase-281 W3-nuttx — the C++ realtime tiers workspace (ws-realtime-cpp nuttx entry),
-    # consumed by realtime_tiers_cpp_nuttx_e2e. Was previously built by no verb (only its
+    # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
     # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx cpp
     echo "NuttX QEMU examples built!"
@@ -188,7 +188,7 @@ build-fixtures:
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
     # issue #149 residual — the workspace nuttx-realtime lanes (ws-realtime-{rust,c,cpp}
-    # nuttx entries) are consumed as PREBUILT fixtures by realtime_tiers_{rust,c,cpp}_nuttx_e2e
+    # nuttx entries) are consumed as PREBUILT fixtures by realtime_tiers_e2e (nuttx_arm_* cells)
     # (`require_prebuilt_workspace_binary`), but were only built by `build-examples`, so a clean
     # `build-test-fixtures` (which calls THIS recipe per-platform) never produced them → the e2e
     # skipped for lack of a fixture. Build them here too (idempotent via the inputsig stamp; a

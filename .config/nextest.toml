@@ -450,13 +450,18 @@ retries = 2
 # NuttX arm-virt guest that dials the SAME slirp port 7452 as this group —
 # they must serialize with it, and the default 60 s kill is shorter than a
 # NuttX QEMU cold boot + zenoh discovery.
-# phase-285 W6 — the rv-virt RUST tiers e2e boots a riscv32 NuttX guest under
-# -icount; cold boot + zenoh discovery + the 5-sample slow-tier anchor exceed
-# the default 60 s kill. Own slirp port (17867), so no group serialization
-# needed against the arm-nuttx groups. The #199-follow-up C talker e2e
-# (c_riscv_nuttx_e2e, port 17868) has the same boot profile.
+# phase-285 W6 — the rv-virt realtime-tiers e2e cells boot a riscv32 NuttX
+# guest under -icount; cold boot + zenoh discovery + the 5-sample slow-tier
+# anchor exceed the default 60 s kill. Each cell has its own slirp port
+# (17867/17869/17870 — mirrored in the realtime_tiers_e2e cell table until
+# the phase-295 W4 re-bake), so no group serialization needed against the
+# arm-nuttx groups. The #199-follow-up C talker e2e (c_riscv_nuttx_e2e,
+# port 17868) has the same boot profile.
+# phase-295 W3.b — the 15 per-cell realtime_tiers_* binaries consolidated
+# into binary(realtime_tiers_e2e); the riscv cells are selected by their
+# `nuttx_riscv_*` case names.
 [[profile.default.overrides]]
-filter = "binary(realtime_tiers_riscv_nuttx_e2e) | binary(c_riscv_nuttx_e2e) | binary(realtime_tiers_c_riscv_nuttx_e2e) | binary(realtime_tiers_cpp_riscv_nuttx_e2e)"
+filter = "binary(c_riscv_nuttx_e2e) | (binary(realtime_tiers_e2e) & test(nuttx_riscv))"
 slow-timeout = { period = "150s", terminate-after = 2 }
 retries = 1
 
