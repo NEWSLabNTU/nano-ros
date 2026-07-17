@@ -1075,7 +1075,7 @@ pub fn build_native_workspace_rust_service_server_entry() -> TestResult<&'static
 
 /// phase-263 A1 (Track D) — the client half of the cross-process AddTwoInts
 /// service demo (cached). `add_client` calls the server entry and republishes
-/// the server-computed sum on /sum; `service_roundtrip_xprocess_e2e` asserts it.
+/// the server-computed sum on /sum; the `roundtrip_xprocess_e2e` native_rust_service cell asserts it.
 pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1121,7 +1121,7 @@ pub fn build_native_workspace_rust_action_server_entry() -> TestResult<&'static 
 
 /// phase-263 A4 (Track D) — the client half of the cross-process Fibonacci action
 /// demo (cached). Sends a goal and republishes the result's last element on
-/// `/fib_result`, which `action_roundtrip_xprocess_e2e` asserts.
+/// `/fib_result`, which the `roundtrip_xprocess_e2e` native_rust_action cell asserts.
 pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1295,7 +1295,7 @@ pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
 }
 
 /// phase-263 A1 (services, C) — the AddTwoInts service SERVER single-node entry (cached).
-/// Cross-process round-trip (issue 0096); consumed by tests/c_service_roundtrip_xprocess_e2e.rs.
+/// Cross-process round-trip (issue 0096); consumed by tests/roundtrip_xprocess_e2e.rs (native_c_service cell).
 pub fn build_native_workspace_c_service_server_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SERVICE_SERVER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1323,7 +1323,7 @@ pub fn build_native_workspace_c_service_client_entry() -> TestResult<&'static Pa
 }
 
 /// phase-263 A4 (actions, C) — the Fibonacci action SERVER single-node entry (cached).
-/// Cross-process round-trip (issue 0096); consumed by tests/c_action_roundtrip_xprocess_e2e.rs.
+/// Cross-process round-trip (issue 0096); consumed by tests/roundtrip_xprocess_e2e.rs (native_c_action cell).
 pub fn build_native_workspace_c_action_server_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ACTION_SERVER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1552,7 +1552,7 @@ pub fn build_native_workspace_cpp_service_client_entry() -> TestResult<&'static 
 }
 
 /// phase-263 A4 (actions, C++) — the Fibonacci action SERVER single-node entry (cached).
-/// Cross-process round-trip (issue 0096); consumed by tests/cpp_action_roundtrip_xprocess_e2e.rs.
+/// Cross-process round-trip (issue 0096); consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_action cell).
 pub fn build_native_workspace_cpp_action_server_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ACTION_SERVER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -2792,7 +2792,7 @@ pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
 /// slice of the multi-host launch — the talker. Paired with the NATIVE robot2
 /// (listener) per-host entry so `/chatter` crosses hosts. Built by the west lane
 /// into `<zephyr-build-root>/build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/multihost_zephyr_entry_e2e.rs`.
+/// consumed by `tests/multihost_e2e.rs` (zephyr_rust cell).
 pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe");

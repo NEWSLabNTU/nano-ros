@@ -92,6 +92,48 @@ pub fn talker_line(n: impl std::fmt::Display) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace entry-pkg wording (phase-295 W3.b consolidation).
+//
+// Markers printed by the `examples/workspaces/*` demo packages and the
+// `nros::main!` hosted spin — consumed by the multihost / roundtrip matrix
+// files. Single source, same one-file-flip rationale as the demo constants.
+// ---------------------------------------------------------------------------
+
+/// `nros::main!` env-gated hosted spin exit marker: the entry prints a
+/// `"nros: hosted spin complete …"` line (with its callback counters) once
+/// its `NROS_ENTRY_SPIN_MS` budget elapses.
+pub const HOSTED_SPIN_COMPLETE_MARKER: &str = "hosted spin complete";
+
+/// Counter key inside the hosted-spin exit line (`"message_callbacks=N"`) —
+/// N is how many subscription callbacks fired during the spin.
+pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
+
+/// Readiness marker of the C workspace listener component
+/// (`"Waiting for messages"`); the C++ workspace listener prints NO ready
+/// marker (its observers settle on a fixed delay instead).
+pub const WS_C_LISTENER_READY_MARKER: &str = "Waiting for messages";
+
+/// Readiness marker of the C/C++ workspace service + action SERVER
+/// components (`"server ready"`).
+pub const WS_SERVER_READY_MARKER: &str = "server ready";
+
+/// Per-reply prefix of the C/C++ workspace service CLIENT component
+/// (`"sum: N"` for each server-computed AddTwoInts reply).
+pub const WS_SERVICE_CLIENT_SUM_PREFIX: &str = "sum:";
+
+/// The exact C/C++ workspace service-client reply line for `sum`
+/// (`"sum: N"`).
+pub fn ws_service_client_sum_line(sum: impl std::fmt::Display) -> String {
+    format!("{WS_SERVICE_CLIENT_SUM_PREFIX} {sum}")
+}
+
+/// The C/C++ workspace action CLIENT result line for the last sequence
+/// element (`"result last=N"` — 55 for a Fibonacci goal of order 10).
+pub fn ws_action_result_last_line(n: impl std::fmt::Display) -> String {
+    format!("result last={n}")
+}
+
+// ---------------------------------------------------------------------------
 // Service (AddTwoInts) demo wording — phase-277 W5.
 //
 // Single source of truth for the standalone service-server / service-client

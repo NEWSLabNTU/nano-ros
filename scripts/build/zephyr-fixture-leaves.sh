@@ -632,7 +632,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # "demo_bringup:multihost.launch.xml", host = "robot1")` bakes only the
     # robot1 slice (the talker); the robot2 listener is a native per-host
     # entry in the paired e2e, so /chatter crosses hosts. Distinct zenohd
-    # port (17853). Consumed by tests/multihost_zephyr_entry_e2e.rs.
+    # port (17853). Consumed by tests/multihost_e2e.rs (zephyr_rust cell).
     wsm_board="native_sim/native/64"
     wsm_lang="rust"
     wsm_lang_tag="rs"

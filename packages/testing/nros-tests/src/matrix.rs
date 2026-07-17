@@ -482,10 +482,24 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxArm,   Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(NuttxRiscv, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(Native, Rust,  Zenoh, Multihost, Workspace, Runtime),
     cell(Native, C,     Zenoh, Multihost, Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Multihost, Workspace, Runtime),
     cell(Native, Mixed, Zenoh, Multihost, Workspace, Runtime),
-    cell(ZephyrNativeSim, Cpp, Zenoh, Multihost, Workspace, Runtime),
+    // The embedded multihost lane is the RUST robot1 zephyr image (276 W6);
+    // corrected from Cpp during the phase-295 W3.b consolidation.
+    cell(ZephyrNativeSim, Rust, Zenoh, Multihost, Workspace, Runtime),
+
+    // Cross-process service/action roundtrips (phase-263 A1/A4; issue 0096
+    // forces the two-process topology) — tests/roundtrip_xprocess_e2e.rs.
+    cell(Native, Rust,  Zenoh, Service, Workspace, Runtime),
+    cell(Native, C,     Zenoh, Service, Workspace, Runtime),
+    cell(Native, Cpp,   Zenoh, Service, Workspace, Runtime),
+    cell(Native, Mixed, Zenoh, Service, Workspace, Runtime),
+    cell(Native, Rust,  Zenoh, Action,  Workspace, Runtime),
+    cell(Native, C,     Zenoh, Action,  Workspace, Runtime),
+    cell(Native, Cpp,   Zenoh, Action,  Workspace, Runtime),
+    cell(Native, Mixed, Zenoh, Action,  Workspace, Runtime),
 
     // Workspace RMW variants (thin today: 80/82 rows are zenoh — W6).
     cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),

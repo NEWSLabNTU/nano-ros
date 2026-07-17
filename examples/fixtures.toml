@@ -125,7 +125,7 @@ target_dir = "target-fixtures"
 # server-computed sum on /sum). Each entry is under the default `MAX_CBS = 4` (server: 1
 # service; client: service-client + timer), so no `NROS_EXECUTOR_MAX_CBS` bump (cf. issue
 # 0095) and they share the default `target-fixtures`. Consumed by
-# tests/service_roundtrip_xprocess_e2e.rs: boot both + a /sum subscriber, assert the
+# tests/roundtrip_xprocess_e2e.rs (native_rust_service cell): boot both + a /sum subscriber, assert the
 # server-computed sums 1,2,3.
 [[workspace_fixture]]
 id = "workspace-rust-native-service-server"
@@ -175,7 +175,7 @@ target_dir = "target-fixtures"
 # server and client as two pure-cargo `nros::main!` entries booting one-node launches:
 # `native_action_server_entry` (the /fibonacci server) + `native_action_client_entry`
 # (sends a goal, republishes the result's last sequence element — 55 — on /fib_result).
-# Consumed by tests/action_roundtrip_xprocess_e2e.rs.
+# Consumed by tests/roundtrip_xprocess_e2e.rs (native_rust_action cell).
 [[workspace_fixture]]
 id = "workspace-rust-native-action-server"
 platform = "native"
@@ -259,7 +259,7 @@ target_dir = "target-fixtures"
 
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
-# `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which
+# `workspace-rust-native`; consumed by tests/multihost_e2e.rs (native_rust cell) which
 # boots both as two processes and asserts cross-host /chatter delivery.
 [[workspace_fixture]]
 id = "workspace-rust-native-robot1"
@@ -461,7 +461,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A1 (services, C) — the AddTwoInts cross-process round-trip (issue 0096): the
-# server + client run as TWO entries. Consumed by tests/c_service_roundtrip_xprocess_e2e.rs
+# server + client run as TWO entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_c_service cell)
 # (the client prints the server-computed sums it receives over the wire).
 [[workspace_fixture]]
 id = "workspace-c-native-service-server"
@@ -486,7 +486,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A4 (actions, C) — the Fibonacci action cross-process round-trip (issue 0096): the
-# server + client run as TWO entries. Consumed by tests/c_action_roundtrip_xprocess_e2e.rs
+# server + client run as TWO entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_c_action cell)
 # (the client prints the server-computed result sequence's last element it receives).
 [[workspace_fixture]]
 id = "workspace-c-native-action-server"
@@ -513,7 +513,7 @@ build_subdir = "build-workspace-fixtures"
 # phase-263 Track C — per-host C entries for the multihost demo. `native_entry_robot1`
 # bakes the talker, `native_entry_robot2` the listener, via the `nano_ros_entry(HOST
 # <id> …)` codegen partition of `multihost.launch.xml` (C parity with the Rust
-# robot1/2 entries). Consumed by tests/c_multihost_e2e.rs (two processes, cross-host
+# robot1/2 entries). Consumed by tests/multihost_e2e.rs (native_c cell) (two processes, cross-host
 # /chatter delivery).
 [[workspace_fixture]]
 id = "workspace-c-native-robot1"
@@ -832,7 +832,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A1 (services, C++) — the AddTwoInts cross-process round-trip (issue 0096): server +
-# client as two entries. Consumed by tests/cpp_service_roundtrip_xprocess_e2e.rs.
+# client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_service cell).
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-server"
 platform = "native"
@@ -856,7 +856,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A4 (actions, C++) — the Fibonacci action cross-process round-trip (issue 0096): server
-# + client as two entries. Consumed by tests/cpp_action_roundtrip_xprocess_e2e.rs (the client
+# + client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_action cell) (the client
 # prints the server-computed result sequence's last element it receives).
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-server"
@@ -881,7 +881,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 Track C — per-host C++ entries for the multihost demo (HOST partition of
-# multihost.launch.xml). Consumed by tests/cpp_multihost_e2e.rs.
+# multihost.launch.xml). Consumed by tests/multihost_e2e.rs (native_cpp cell).
 [[workspace_fixture]]
 id = "workspace-cpp-native-robot1"
 platform = "native"
@@ -1209,7 +1209,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A1 (services, MIXED) — cross-language AddTwoInts round-trip: a C server + a C++
-# client, as two entries (issue 0096). Consumed by tests/mixed_service_roundtrip_xprocess_e2e.rs.
+# client, as two entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_service cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-service-server"
 platform = "native"
@@ -1233,7 +1233,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 A4 (actions, MIXED) — Fibonacci action round-trip: a C server + a C client, as two
-# entries (issue 0096). Consumed by tests/mixed_action_roundtrip_xprocess_e2e.rs.
+# entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_action cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-action-server"
 platform = "native"
@@ -1258,7 +1258,7 @@ build_subdir = "build-workspace-fixtures"
 
 # phase-263 Track C — per-host mixed entries for the multihost demo. robot1 bakes the C
 # talker + Rust heartbeat, robot2 the C++ listener (HOST partition of
-# multihost.launch.xml). Consumed by tests/mixed_multihost_e2e.rs.
+# multihost.launch.xml). Consumed by tests/multihost_e2e.rs (native_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-native-robot1"
 platform = "native"
