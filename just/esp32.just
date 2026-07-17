@@ -252,9 +252,9 @@ listener: build-qemu
         -drive "file=build/esp32-qemu/esp32-qemu-listener.bin,if=mtd,format=raw" \
         -nic user,model=open_eth
 
-# Start zenohd router for ESP32 QEMU examples (port 7454)
+# Start zenohd router for ESP32 QEMU examples (allocator rust-pubsub port 9800)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7454 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:9800 --no-multicast-scouting

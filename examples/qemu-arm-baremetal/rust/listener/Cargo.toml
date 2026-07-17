@@ -31,7 +31,7 @@ dispatch = "deferred"
 # the board applies it in `run_with_deploy`. Mirrors the old listener Config
 # (ip 10.0.2.11, prefix 24 → netmask 255.255.255.0).
 [package.metadata.nros.deploy.qemu-mps2-an385]
-locator = "tcp/10.0.2.2:7450"
+locator = "tcp/10.0.2.2:10500"
 ip = "10.0.2.11"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

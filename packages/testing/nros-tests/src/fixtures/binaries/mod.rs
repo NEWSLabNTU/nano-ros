@@ -1813,7 +1813,7 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
 ///
 /// #199 follow-up — the first riscv-nuttx C-lane RUNTIME fixture: the
 /// standalone `examples/qemu-riscv-nuttx/c/talker` cmake example, built by
-/// `just nuttx build-riscv-c` with the baked `tcp/10.0.2.2:17868` locator
+/// `just nuttx build-riscv-c` with the baked `tcp/10.0.2.2:8700` locator
 /// (see its `examples/fixtures.toml` row). Consumed by `c_riscv_nuttx_e2e`.
 pub fn build_nuttx_riscv_c_talker() -> TestResult<&'static Path> {
     static NUTTX_RISCV_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();

@@ -31,7 +31,7 @@ dispatch = "deferred"
 # `qemu_config`. This listener must NOT share its ip with the talker on the
 # QEMU slirp net (carried over verbatim from the old hand-written `Config`).
 [package.metadata.nros.deploy.rtic-mps2-an385]
-locator = "tcp/10.0.2.2:7450"
+locator = "tcp/10.0.2.2:10510"
 ip = "10.0.2.11"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

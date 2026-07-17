@@ -126,15 +126,17 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
     bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
     if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
-        # Phase 177.38 — bake this platform's Cyclone role-set onto domain 61
-        # (C/C++ → cmake -DNROS_DOMAIN_ID via NanoRosConfig.cmake) so its host
-        # RTPS ports stay disjoint from other host Cyclone fixtures. Only the
-        # cyclonedds pass gets it; zenoh keeps the config.toml default. The paired
-        # native listener spawns at domain 61 in native_api.rs's
+        # phase-295 W4 (ex Phase 177.38) — bake each Cyclone lang pass onto its
+        # ALLOCATOR domain (nros_tests::alloc::domain_of(ThreadxLinux, lang,
+        # Pubsub): c=107, cpp=108; C/C++ → cmake -DNROS_DOMAIN_ID via
+        # NanoRosConfig.cmake) so its host RTPS ports stay disjoint from every
+        # other baked Cyclone fixture. Only the cyclonedds pass gets it; zenoh
+        # keeps the config.toml default. The paired native listener spawns at
+        # domain 107 in native_api.rs's
         # test_threadx_linux_cyclonedds_talker_to_native_listener.
-        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=61" \
+        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=107" \
             bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
-        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=61" \
+        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=108" \
             bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
         echo "  → threadx-linux c/cpp cyclonedds skipped (idlc not found on PATH — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE)"
@@ -236,12 +238,12 @@ action-server: (_run "action-server")
 # Run ThreadX Linux action client
 action-client: (_run "action-client")
 
-# Start zenohd router for ThreadX Linux examples (port 7455, bridge-networked)
+# Start zenohd router for ThreadX Linux examples (allocator rust-pubsub port 9000, bridge-networked)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7455 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:9000 --no-multicast-scouting
 
 # Clean ThreadX Linux build artifacts
 [group("main")]

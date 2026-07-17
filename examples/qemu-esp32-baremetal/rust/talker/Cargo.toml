@@ -38,7 +38,7 @@ rmw = "zenoh"
 domain_id = 0
 ip = "10.0.2.50"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7454"
+locator = "tcp/10.0.2.2:9800"
 
 [dependencies]
 # Board crate — ESP32-C3 QEMU + OpenETH + zenoh. Provides the

@@ -18,6 +18,7 @@
 //! - Networked E2E: + zenohd (slirp networking, no TAP/bridge setup needed)
 
 use nros_tests::{
+    alloc::port_of,
     count_pattern,
     esp32::*,
     fixtures::{
@@ -84,16 +85,16 @@ fn test_esp32_qemu_talker_boots() {
 //
 // These tests require:
 // - qemu-system-riscv32, espflash, nightly toolchain
-// - zenohd listening on port 7448
+// - zenohd on the allocator's esp32 pubsub port (`platform::ESP32.zenohd_port`)
 //
 // Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
-// Firmware connects to zenohd via slirp gateway 10.0.2.2:7448 → host 127.0.0.1:7448.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:<port> → host loopback.
 // No TAP bridge setup is needed.
 //
 // ESP32 examples use IPs 10.0.2.50 (talker) and 10.0.2.51 (listener).
 //
 // Ordering:
-//   1. Start zenohd, verify reachable on localhost:7448
+//   1. Start zenohd, verify reachable on the host loopback
 //   2. Start listener, wait for subscription
 //   3. Start talker, wait for publish completion
 //   4. Verify listener received messages
@@ -137,7 +138,7 @@ fn require_esp32_networked() -> bool {
 /// - Talker:   IP 10.0.2.50
 /// - Listener: IP 10.0.2.51
 ///
-/// Both connect to zenohd via slirp gateway 10.0.2.2:7448 → host localhost:7448.
+/// Both connect to zenohd via the slirp gateway on the baked pubsub port.
 ///
 /// KNOWN-RED (re-diagnosed 2026-06-15). The old "OpenETH smoltcp never emits
 /// the final ACK / handshake stalls" note is STALE: the listener now reaches
@@ -178,7 +179,7 @@ fn test_esp32_talker_listener_e2e() {
 
     let (talker_bin, listener_bin) = build_esp32_flash_images();
 
-    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
         ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
@@ -250,9 +251,10 @@ fn test_esp32_talker_listener_e2e() {
 // These tests verify that ESP32 QEMU examples can communicate with native
 // nros examples via CDR-encoded Int32 on the /chatter ROS 2 topic.
 //
-// Both ESP32 and native processes connect to the same zenohd on port 7448:
-// - ESP32 via slirp gateway at 10.0.2.2:7448 → host localhost:7448
-// - Native via localhost at 127.0.0.1:7448
+// Both ESP32 and native processes connect to the same zenohd on the baked
+// pubsub port:
+// - ESP32 via the slirp gateway at 10.0.2.2:<port> → host loopback
+// - Native via 127.0.0.1:<port>
 
 /// Helper: build ESP32 talker flash image only
 fn build_esp32_talker_flash() -> std::path::PathBuf {
@@ -288,7 +290,7 @@ fn test_esp32_to_native() {
     let talker_bin = build_esp32_talker_flash();
     let native_listener = build_native_listener().expect("Failed to build native listener");
 
-    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
         ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
@@ -367,7 +369,7 @@ fn test_native_to_esp32() {
     let listener_bin = build_esp32_listener_flash();
     let native_talker = build_native_talker().expect("Failed to build native talker");
 
-    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
         ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
 
@@ -445,7 +447,10 @@ fn test_native_to_esp32() {
 // `nros::main!(launch = "demo_bringup:system.launch.xml")`. Built by the
 // 225.O workspace lane and resolved here through
 // `get_prebuilt_esp32_qemu_workspace_entry()` (tests run prebuilt
-// workspace fixtures, never build them in-body).
+// workspace fixtures, never build them in-body). Since the phase-295 W4
+// re-bake the Entry bakes its OWN allocator slot
+// (`alloc::port_of(Esp32Qemu, Rust, EntryPubsub)`), so this e2e no longer
+// shares a router with the talker/listener pubsub lanes.
 //
 // Single-session caveat: zenoh does NOT loop a session's own publications
 // back to a subscriber in that same session, so the Entry's in-process
@@ -454,7 +459,16 @@ fn test_native_to_esp32() {
 // Zephyr workspace Entry E2E — which is a real cross-process pub/sub
 // observation of `std_msgs/Int32` on `/chatter`. The Entry's baked
 // locator, the external listener's `NROS_LOCATOR`, and the zenohd router
-// all use the ESP32 slirp port (7454).
+// all use the allocator's esp32 EntryPubsub slot.
+
+/// The allocator's (esp32, rust, EntryPubsub) slot — the ws Entry's baked
+/// locator port (`examples/workspaces/rust/src/esp32_entry` deploy
+/// metadata bakes the same number).
+const ESP32_WS_ENTRY_PORT: u16 = port_of(
+    nros_tests::matrix::PlatformId::Esp32Qemu,
+    nros_tests::matrix::Lang::Rust,
+    nros_tests::matrix::Workload::EntryPubsub,
+);
 
 /// ESP32-C3 QEMU workspace Entry boots, brings up its launch node set
 /// (talker + listener in one image), and its `/chatter` publications are
@@ -474,13 +488,12 @@ fn test_esp32_workspace_entry_e2e() {
     create_esp32_flash_image(&entry_elf, &entry_bin)
         .expect("Failed to create workspace Entry flash image");
 
-    // zenohd on the ESP32 port; the Entry's baked locator points here.
-    let _router =
-        ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
+    // zenohd on the Entry's own allocator slot; its baked locator points here.
+    let _router = ZenohRouter::start_slirp(ESP32_WS_ENTRY_PORT).expect("Failed to start zenohd");
     assert!(
-        wait_for_port(platform::ESP32.zenohd_port, Duration::from_secs(10)),
+        wait_for_port(ESP32_WS_ENTRY_PORT, Duration::from_secs(10)),
         "zenohd not reachable on localhost:{}",
-        platform::ESP32.zenohd_port
+        ESP32_WS_ENTRY_PORT
     );
 
     // External native listener — the observable delivery endpoint (the
@@ -491,7 +504,7 @@ fn test_esp32_workspace_entry_e2e() {
     listener_cmd
         .env(
             "NROS_LOCATOR",
-            format!("tcp/127.0.0.1:{}", platform::ESP32.zenohd_port),
+            format!("tcp/127.0.0.1:{}", ESP32_WS_ENTRY_PORT),
         )
         // #190 — the workspace Entry's talker_pkg publishes std_msgs/Int32 on
         // /chatter; the message type is baked into the wire keyexpr, so the

@@ -270,12 +270,14 @@ fn test_arm_toolchain_detection() {
 ///
 /// Both MPS2-AN385 instances run with `-nic user,model=lan9118` (slirp): each
 /// gets an isolated `10.0.2.0/24`, but both reach the host zenohd via the slirp
-/// gateway `10.0.2.2:7450` → `127.0.0.1:7450`, so zenohd is the rendezvous (the
-/// BSP example locator is baked to `tcp/10.0.2.2:7450`). Replaces the former
-/// `test_qemu_bsp_{talker,listener}_starts` blanket-skips with a real run; gates
-/// cleanly (skip with reason) when the ARM toolchain / qemu / zenoh-pico-arm /
-/// fixtures are absent. Port 7450 is shared, so this lives in the
-/// `qemu-baremetal-shared` (max-threads=1) nextest group.
+/// gateway → the host, so zenohd is the rendezvous (the BSP example locator
+/// is baked to the allocator's `BAREMETAL_BSP_PORT` aux slot — phase-295 W4:
+/// the BSP pair owns its own router, so this test no longer serializes with
+/// the RTIC / mixed-priority / large-msg lanes; the former
+/// `qemu-baremetal-shared` group is retired). Replaces the former
+/// `test_qemu_bsp_{talker,listener}_starts` blanket-skips with a real run;
+/// gates cleanly (skip with reason) when the ARM toolchain / qemu /
+/// zenoh-pico-arm / fixtures are absent.
 #[test]
 fn test_qemu_bsp_pubsub_e2e() {
     require_arm_toolchain();
@@ -284,7 +286,7 @@ fn test_qemu_bsp_pubsub_e2e() {
         nros_tests::skip!("zenoh-pico arm build not available");
     }
 
-    let port = platform::BAREMETAL.zenohd_port; // 7450 — the baked BSP locator port
+    let port = nros_tests::alloc::BAREMETAL_BSP_PORT; // the baked BSP locator port
     let talker_bin = build_qemu_bsp_talker().expect("Failed to build qemu-bsp-talker");
     let listener_bin = build_qemu_bsp_listener().expect("Failed to build qemu-bsp-listener");
 
@@ -780,13 +782,18 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     let listener_bin =
         build_qemu_rtic_mixed_listener().expect("Failed to build rtic-mixed-listener");
 
-    // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd =
-        ZenohRouter::start_slirp(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+    // Start zenohd (firmware connects via slirp gateway to host). The mixed
+    // pair bakes its own allocator aux slot (phase-295 W4) — no sharing with
+    // the plain RTIC / BSP / large-msg lanes.
+    let _zenohd = ZenohRouter::start_slirp(nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT)
+        .expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        wait_for_port(
+            nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT,
+            Duration::from_secs(5)
+        ),
         "zenohd not reachable on platform port"
     );
 

@@ -37,7 +37,7 @@ deploy = "esp32-qemu"
 [package.metadata.nros.deploy.esp32-qemu]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7454"
+locator = "tcp/10.0.2.2:9830"
 
 [dependencies]
 # Phase 248 C6a (#60 T5) — agnostic `nros` (alloc + rmw-cffi vtable + ROS

@@ -30,16 +30,18 @@
 //! Zephyr native_sim image of the SAME per-host entry — one embedded host +
 //! one native host meeting at zenohd.
 //!
-//! NOTE (phase-295 W4): the `port` column mirrors the locator bake in the
-//! west lane (`scripts/build/zephyr-fixture-leaves.sh`,
-//! `CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:17853"`) until W4 re-bakes it
-//! through the matrix allocator. `None` = native ephemeral isolation.
+//! Isolation (phase-295 W4): the zephyr cell's `port` is the ONE
+//! allocator's `Multihost` number (`nros_tests::alloc::port_of`) — the
+//! SAME formula the west lane bakes into `CONFIG_NROS_ZENOH_LOCATOR`
+//! (`scripts/build/zephyr-fixture-leaves.sh`). `None` = native ephemeral
+//! isolation.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test multihost_e2e`
 //! (filter one cell: `-E 'binary(multihost_e2e) and test(native_mixed)'`).
 
 use nros_tests::{
     TestResult,
+    alloc::port_of,
     fixtures::{
         ManagedProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_native_workspace_c_entry_robot1, build_native_workspace_c_entry_robot2,
@@ -48,6 +50,7 @@ use nros_tests::{
         build_native_workspace_rust_entry_robot1, build_native_workspace_rust_entry_robot2,
         build_zephyr_workspace_rust_multihost_robot1_entry, require_zenohd,
     },
+    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -100,8 +103,8 @@ struct Cell {
     lang: &'static str,
     robot1: Resolver,
     robot2: Resolver,
-    /// Baked router port (mirrors the west-lane locator bake until the
-    /// phase-295 W4 allocator re-bake). `None` = ephemeral (native).
+    /// Baked router port — the allocator's number (matches the west-lane
+    /// locator bake). `None` = ephemeral (native).
     port: Option<u16>,
     boot: Boot,
     proof: Proof,
@@ -206,7 +209,8 @@ fn spawn_native_entry(
     platform: "zephyr", lang: "rust",
     robot1: build_zephyr_workspace_rust_multihost_robot1_entry,
     robot2: || build_native_workspace_rust_entry_robot2().map(|p| p.to_path_buf()),
-    port: Some(17853), boot: Boot::ZephyrNativeSim,
+    port: Some(port_of(MP::ZephyrNativeSim, ML::Rust, MW::Multihost)),
+    boot: Boot::ZephyrNativeSim,
     proof: Proof::HostedSpinCallbacks, ready: Robot2Ready::None,
     note: "phase-276 W6 / #102 H1: multihost-on-embedded — the robot1 talker baked \
            into a Zephyr native_sim image, delivering to the native robot2 listener",

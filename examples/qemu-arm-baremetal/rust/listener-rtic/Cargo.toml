@@ -32,7 +32,7 @@ dispatch = "deferred"
 # talker-rtic (10.0.2.10) + listener-rtic pair do NOT share an ip on the
 # shared QEMU slirp network.
 [package.metadata.nros.deploy.rtic-mps2-an385]
-locator = "tcp/10.0.2.2:7450"
+locator = "tcp/10.0.2.2:10200"
 ip = "10.0.2.11"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

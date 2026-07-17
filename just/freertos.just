@@ -293,7 +293,7 @@ clean:
 # Usage:
 #   just freertos trace talker    # single example
 #   # For a pair, start zenohd first, then run in separate terminals:
-#   #   terminal 1: zenohd -l tcp/127.0.0.1:7451 --no-multicast-scouting
+#   #   terminal 1: zenohd -l tcp/127.0.0.1:7800 --no-multicast-scouting
 #   #   terminal 2: just freertos trace talker
 #   #   terminal 3: just freertos trace listener
 #
@@ -411,9 +411,9 @@ action-server: (_run-qemu "action-server" "qemu-freertos-action-server")
 # Run FreeRTOS action client on QEMU
 action-client: (_run-qemu "action-client" "qemu-freertos-action-client")
 
-# Start zenohd router for FreeRTOS QEMU examples (port 7451)
+# Start zenohd router for FreeRTOS QEMU examples (allocator rust-pubsub port 7800)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7451 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7800 --no-multicast-scouting

@@ -29,7 +29,7 @@ domain_id = 0
 # `Config` via `BoardEntry::run_with_deploy` (the block was inert before).
 ip = "10.0.2.15"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7451"
+locator = "tcp/10.0.2.2:7800"
 [dependencies]
 freertos_rs_talker = { path = "../talker" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.

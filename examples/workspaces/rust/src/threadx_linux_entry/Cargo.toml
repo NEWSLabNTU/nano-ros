@@ -15,7 +15,7 @@ deploy = "threadx-linux"
 [package.metadata.nros.deploy.threadx-linux]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/127.0.0.1:7455"
+locator = "tcp/127.0.0.1:9030"
 
 [dependencies]
 # Phase 248 C6a (#60 T5) — agnostic `nros`. ThreadX-Linux is a hosted std

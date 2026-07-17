@@ -31,7 +31,7 @@ domain_id = 0
 # same split as the C leaves' NROS_ENTRY_IP_LAST 10/11).
 ip = "10.0.2.16"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7461"
+locator = "tcp/10.0.2.2:7810"
 [dependencies]
 freertos_rs_service_client = { path = "../service-client" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.

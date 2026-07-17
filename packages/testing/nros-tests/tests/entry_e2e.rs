@@ -38,17 +38,20 @@
 //! zenohd up front (their router-start skip covers it) and the lifecycle
 //! cell gates on ROS 2 instead.
 //!
-//! NOTE (phase-295 W4): the `port` column below mirrors the locator bakes in
-//! `examples/fixtures.toml` (`NROS_ENTRY_LOCATOR` cmake_defs) and the west
-//! lane (`scripts/build/zephyr-fixture-leaves.sh`
-//! `-DCONFIG_NROS_ZENOH_LOCATOR` bakes). W4 re-bakes them through the matrix
-//! allocator; until then this table is the mirror, not the source of truth.
+//! Isolation (phase-295 W4): every cell's `port` is the ONE allocator's
+//! number (`nros_tests::alloc::port_of`) — the SAME formula the fixture
+//! bakers use (`examples/fixtures.toml` `NROS_ENTRY_LOCATOR` cmake_defs,
+//! the Cargo deploy metadata, and the west lane
+//! `scripts/build/zephyr-fixture-leaves.sh` `-DCONFIG_NROS_ZENOH_LOCATOR`
+//! bakes), so the router the test starts and the locator the image dials
+//! can never disagree by hand.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test entry_e2e`
 //! (filter one platform: `-E 'binary(entry_e2e) and test(zephyr)'`).
 
 use nros_tests::{
     TestResult,
+    alloc::port_of,
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_entry, build_freertos_workspace_cpp_entry,
@@ -62,6 +65,7 @@ use nros_tests::{
         is_qemu_available, nuttx, require_zenohd,
         threadx_linux::{is_nsos_netx_available, is_threadx_available},
     },
+    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
 };
 use rstest::rstest;
@@ -126,9 +130,9 @@ struct Cell {
     lang: &'static str,
     workload: &'static str,
     resolver: Resolver,
-    /// Baked router port (mirrors the fixture's locator bake until the
-    /// phase-295 W4 allocator re-bake) — verified against
-    /// `examples/fixtures.toml` / `zephyr-fixture-leaves.sh`.
+    /// Baked router port — the allocator's number for the cell's
+    /// coordinate (`alloc::port_of`), which is also what the fixture
+    /// bakes (fixtures.toml / Cargo deploy metadata / the west lane).
     port: u16,
     boot: Boot,
     proof: Proof,
@@ -390,21 +394,21 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // ThreadxBoard::run_components → nros::init(baked locator) → spin.
 #[case::threadx_linux_c(Cell {
     platform: "threadx-linux", lang: "c", workload: "entry_pubsub",
-    resolver: threadx_c_entry, port: 17553, boot: Boot::ThreadxLinux,
+    resolver: threadx_c_entry, port: port_of(MP::ThreadxLinux, ML::C, MW::EntryPubsub), boot: Boot::ThreadxLinux,
     proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
     note: "phase-263 C2a: codegen emits nros_app_main (NOT int main — would double-main \
            the ThreadX startup.c); nsos-netx forwards nx_bsd_connect to a host connect()",
 })]
 #[case::threadx_linux_cpp(Cell {
     platform: "threadx-linux", lang: "cpp", workload: "entry_pubsub",
-    resolver: threadx_cpp_entry, port: 17803, boot: Boot::ThreadxLinux,
+    resolver: threadx_cpp_entry, port: port_of(MP::ThreadxLinux, ML::Cpp, MW::EntryPubsub), boot: Boot::ThreadxLinux,
     proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
     note: "phase-263 C2c: C2a's per-board wiring (locator bake, header-mirror ordering) \
            reused verbatim through the C++ emitter",
 })]
 #[case::threadx_linux_mixed(Cell {
     platform: "threadx-linux", lang: "mixed", workload: "entry_pubsub",
-    resolver: threadx_mixed_entry, port: 17821, boot: Boot::ThreadxLinux,
+    resolver: threadx_mixed_entry, port: port_of(MP::ThreadxLinux, ML::Mixed, MW::EntryPubsub), boot: Boot::ThreadxLinux,
     proof: Proof::ChatterToCListener { observer_spin_ms: 15000, window_secs: 20 },
     note: "phase-263 C2c: C talker + C++ listener + Rust heartbeat in ONE image; the \
            nros_ws_runtime umbrella targets the host triple (ThreadX sim = pthreads)",
@@ -413,20 +417,20 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // embedded entries; static 192.0.3.x lwIP, board-matching slirp net).
 #[case::freertos_c(Cell {
     platform: "freertos", lang: "c", workload: "entry_pubsub",
-    resolver: freertos_c_entry, port: 17601, boot: Boot::FreertosMps2,
+    resolver: freertos_c_entry, port: port_of(MP::FreertosMps2, ML::C, MW::EntryPubsub), boot: Boot::FreertosMps2,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2b: nros_app_main + FreertosBoard::run_components; startup.c _start \
            spawns the app task, brings up netif + zenoh/poll tasks, dispatches app_main",
 })]
 #[case::freertos_cpp(Cell {
     platform: "freertos", lang: "cpp", workload: "entry_pubsub",
-    resolver: freertos_cpp_entry, port: 17811, boot: Boot::FreertosMps2,
+    resolver: freertos_cpp_entry, port: port_of(MP::FreertosMps2, ML::Cpp, MW::EntryPubsub), boot: Boot::FreertosMps2,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2c: C2b's per-board wiring reused verbatim through the C++ emitter",
 })]
 #[case::freertos_mixed(Cell {
     platform: "freertos", lang: "mixed", workload: "entry_pubsub",
-    resolver: freertos_mixed_entry, port: 17841, boot: Boot::FreertosMps2,
+    resolver: freertos_mixed_entry, port: port_of(MP::FreertosMps2, ML::Mixed, MW::EntryPubsub), boot: Boot::FreertosMps2,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2c: GENUINELY-no_std cross target (thumbv7m) — the umbrella selects \
            the board's alloc;panic-halt tier and Corrosion cross-compiles it",
@@ -436,14 +440,16 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // zephyr-lang-rust's rust_cargo_application; CONFIG_NROS_ZENOH_LOCATOR bake).
 #[case::zephyr_c(Cell {
     platform: "zephyr", lang: "c", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_c_entry, port: 17831, boot: Boot::ZephyrNativeSim,
+    resolver: build_zephyr_workspace_c_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::C, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2d: generated int main driving ZephyrBoard::run_components, \
            whole-archived into `app` (strong main)",
 })]
 #[case::zephyr_cpp(Cell {
     platform: "zephyr", lang: "cpp", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_cpp_entry, port: 17833, boot: Boot::ZephyrNativeSim,
+    resolver: build_zephyr_workspace_cpp_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2c: TYPED std_msgs::msg::Int32 nodes — idempotent interface \
            generator, ::setvbuf (std::setvbuf absent on picolibc), if(TARGET)-guarded \
@@ -451,7 +457,8 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 })]
 #[case::zephyr_mixed(Cell {
     platform: "zephyr", lang: "mixed", workload: "entry_pubsub",
-    resolver: build_zephyr_workspace_mixed_entry, port: 17843, boot: Boot::ZephyrNativeSim,
+    resolver: build_zephyr_workspace_mixed_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Mixed, MW::EntryPubsub), boot: Boot::ZephyrNativeSim,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2c-zephyr: NROS_WS_RUST_NODE_DIRS before find_package(Zephyr) → the \
            module synthesises the nros_ws_runtime umbrella (single-runtime invariant: one \
@@ -460,7 +467,7 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // NuttX QEMU arm-virt (kernel-linked entries; slirp gateway 10.0.2.2).
 #[case::nuttx_arm_c(Cell {
     platform: "nuttx-arm", lang: "c", workload: "entry_pubsub",
-    resolver: nuttx_c_entry, port: 17861, boot: Boot::NuttxArm,
+    resolver: nuttx_c_entry, port: port_of(MP::NuttxArm, ML::C, MW::EntryPubsub), boot: Boot::NuttxArm,
     proof: Proof::ChatterToCListener { observer_spin_ms: 60000, window_secs: 90 },
     note: "phase-263 C2b (last C2 gap): NROS_ENTRY_LOCATOR must be set BEFORE the board's \
            nros_platform_link_app (ferried into the cc-rs entry-TU compile at CONFIGURE \
@@ -468,7 +475,7 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 })]
 #[case::nuttx_arm_rust(Cell {
     platform: "nuttx-arm", lang: "rust", workload: "entry_pubsub",
-    resolver: nuttx_rust_entry, port: 7452, boot: Boot::NuttxArm,
+    resolver: nuttx_rust_entry, port: port_of(MP::NuttxArm, ML::Rust, MW::Pubsub), boot: Boot::NuttxArm,
     proof: Proof::ChatterToRustListener { window_secs: 90 },
     note: "#130 / phase-280 W3 (commit 703e840dd): the Rust entry path's entry_net_init \
            pushes the guest IP into eth0 via SIOCSIFADDR before Executor::open — without \
@@ -477,7 +484,8 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 // Zephyr feature-workspace entries (phase-276 #102 H1 — the rust ws-* cells).
 #[case::zephyr_rust_params(Cell {
     platform: "zephyr", lang: "rust", workload: "params",
-    resolver: build_zephyr_workspace_rust_params_entry, port: 17845,
+    resolver: build_zephyr_workspace_rust_params_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Params),
     boot: Boot::ZephyrNativeSim,
     proof: Proof::SinkValueLine { value: 250 },
     note: "phase-276 W1 / #128: the Framework::Zephyr emit arm gained apply_param_services \
@@ -487,17 +495,19 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 })]
 #[case::zephyr_rust_qos(Cell {
     platform: "zephyr", lang: "rust", workload: "qos",
-    resolver: build_zephyr_workspace_rust_qos_entry, port: 17849,
+    resolver: build_zephyr_workspace_rust_qos_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Qos),
     boot: Boot::ZephyrNativeSim,
     proof: Proof::SinkCount { topic: "/qos_ok" },
     note: "phase-276 W5 (RFC-0041): per-entity reliable+transient_local declared IN NODE \
            CODE on both on-target endpoints; in-image delivery rides \
-           Z_FEATURE_LOCAL_SUBSCRIBER. Port 17849 shared with qos_zephyr_ros2_interop_e2e \
+           Z_FEATURE_LOCAL_SUBSCRIBER. The baked qos port is shared with qos_zephyr_ros2_interop_e2e \
            (issue #141 — the zephyr-qos-port nextest group serializes them)",
 })]
 #[case::zephyr_rust_lifecycle(Cell {
     platform: "zephyr", lang: "rust", workload: "lifecycle",
-    resolver: build_zephyr_workspace_rust_lifecycle_entry, port: 17847,
+    resolver: build_zephyr_workspace_rust_lifecycle_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle),
     boot: Boot::ZephyrNativeSim,
     proof: Proof::LifecycleActive,
     note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
@@ -505,7 +515,8 @@ fn first_lifecycle_node(nodes_out: &str) -> Option<String> {
 })]
 #[case::zephyr_rust_safety(Cell {
     platform: "zephyr", lang: "rust", workload: "safety",
-    resolver: build_zephyr_workspace_rust_safety_entry, port: 17851,
+    resolver: build_zephyr_workspace_rust_safety_entry,
+    port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Safety),
     boot: Boot::ZephyrNativeSim,
     proof: Proof::SinkCount { topic: "/safe_ok" },
     note: "phase-276 W4 (RFC-0028): [system].features = [\"safety\"] lowers to the \

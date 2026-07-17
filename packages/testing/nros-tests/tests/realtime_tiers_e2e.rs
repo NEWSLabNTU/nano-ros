@@ -35,16 +35,18 @@
 //! Tier *priority* preemption is advisory on native — the assertions prove
 //! per-tier scheduling at the declared periods, not preemption.
 //!
-//! NOTE (phase-295 W4): the `port` column below mirrors the locator bakes
-//! in `examples/fixtures.toml` / the west+nuttx fixture lanes. W4 re-bakes
-//! them through the matrix allocator; until then this table is the mirror,
-//! not the source of truth. `None` = native ephemeral isolation.
+//! Isolation (phase-295 W4): every embedded cell's `port` is the ONE
+//! allocator's `RealtimeTiers` number (`nros_tests::alloc::port_of`) — the
+//! SAME formula the fixture bakers use (`examples/fixtures.toml` rows, the
+//! west lane) — so router and baked locator can never disagree by hand.
+//! `None` = native ephemeral isolation.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test realtime_tiers_e2e`
 //! (filter one platform: `-E 'binary(realtime_tiers_e2e) and test(zephyr)'`).
 
 use nros_tests::{
     TestResult,
+    alloc::port_of,
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
@@ -58,6 +60,7 @@ use nros_tests::{
         build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_cpp_realtime_entry,
         build_zephyr_workspace_rust_realtime_entry, freertos, is_qemu_available, require_zenohd,
     },
+    matrix::{Lang as ML, PlatformId as MP, Workload as MW},
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -109,8 +112,9 @@ struct Cell {
     platform: &'static str,
     lang: &'static str,
     resolver: Resolver,
-    /// Baked router port (mirrors the fixture's locator bake until the
-    /// phase-295 W4 allocator re-bake). `None` = ephemeral (native).
+    /// Baked router port — the allocator's number for the cell's
+    /// coordinate (matches the fixture's baked locator). `None` =
+    /// ephemeral (native).
     port: Option<u16>,
     boot: Boot,
     proof: Proof,
@@ -291,56 +295,60 @@ fn anchor_timeout(boot: Boot) -> Duration {
 // Zephyr native_sim (west lane; ZephyrBoard::run_tiers, one k_thread/tier).
 #[case::zephyr_rust(Cell {
     platform: "zephyr", lang: "rust", resolver: build_zephyr_workspace_rust_realtime_entry,
-    port: Some(17855), boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
+    port: Some(port_of(MP::ZephyrNativeSim, ML::Rust, MW::RealtimeTiers)),
+    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
     note: "phase-276 W2 / #128 half 2: ZephyrBoard::run_tiers (RFC-0015 Model 1)",
 })]
 #[case::zephyr_cpp(Cell {
     platform: "zephyr", lang: "cpp", resolver: build_zephyr_workspace_cpp_realtime_entry,
-    port: Some(17857), boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
+    port: Some(port_of(MP::ZephyrNativeSim, ML::Cpp, MW::RealtimeTiers)),
+    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
     note: "phase-281 W3b: first full west link + runtime proof of the run_tiers seam",
 })]
 #[case::zephyr_c(Cell {
     platform: "zephyr", lang: "c", resolver: build_zephyr_workspace_c_realtime_entry,
-    port: Some(17859), boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
+    port: Some(port_of(MP::ZephyrNativeSim, ML::C, MW::RealtimeTiers)),
+    boot: Boot::ZephyrNativeSim, proof: Proof::CountStrict,
     note: "phase-281 W3c: C nodes over the shared ZephyrBoard::run_tiers glue",
 })]
 // NuttX QEMU arm-virt (NuttxBoard::run_tiers, one SCHED_FIFO pthread/tier).
 #[case::nuttx_arm_cpp(Cell {
     platform: "nuttx-arm", lang: "cpp", resolver: nuttx_cpp_entry,
-    port: Some(17863), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxArm, ML::Cpp, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
     note: "phase-281 W3-nuttx: NuttxBoard::run_tiers (commit 37cfaf728)",
 })]
 #[case::nuttx_arm_c(Cell {
     platform: "nuttx-arm", lang: "c", resolver: nuttx_c_entry,
-    port: Some(17864), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxArm, ML::C, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
     note: "phase-281 W3-nuttx: pure-C lane over NuttxBoard::run_tiers",
 })]
 #[case::nuttx_arm_rust(Cell {
     platform: "nuttx-arm", lang: "rust", resolver: nuttx_rust_entry,
-    port: Some(17866), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxArm, ML::Rust, MW::RealtimeTiers)), boot: Boot::NuttxArm, proof: Proof::CounterRatio3x,
     note: "phase-281 W3-nuttx: QemuArmVirt::run_tiers (std::thread per tier), \
            the cell that completed the 12-cell Model-1 matrix",
 })]
 // NuttX QEMU rv-virt riscv32 (#199 follow-ups; -icount boot profile).
 #[case::nuttx_riscv_rust(Cell {
     platform: "nuttx-riscv", lang: "rust", resolver: nuttx_riscv_rust_entry,
-    port: Some(17867), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxRiscv, ML::Rust, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
     note: "phase-285 W6 / #165: QemuRvVirt::run_tiers",
 })]
 #[case::nuttx_riscv_c(Cell {
     platform: "nuttx-riscv", lang: "c", resolver: nuttx_riscv_c_entry,
-    port: Some(17869), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxRiscv, ML::C, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
     note: "#199 follow-up: C riscv_nuttx_entry over NuttxBoard::run_tiers",
 })]
 #[case::nuttx_riscv_cpp(Cell {
     platform: "nuttx-riscv", lang: "cpp", resolver: nuttx_riscv_cpp_entry,
-    port: Some(17870), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
+    port: Some(port_of(MP::NuttxRiscv, ML::Cpp, MW::RealtimeTiers)), boot: Boot::NuttxRiscv, proof: Proof::CounterRatio3x,
     note: "#199 follow-up: C++ riscv_nuttx_entry over NuttxBoard::run_tiers",
 })]
 // FreeRTOS QEMU mps2-an385 (FreertosBoard::run_tiers; serial-tick proof).
 #[case::freertos_cpp(Cell {
     platform: "freertos", lang: "cpp", resolver: freertos_cpp_entry,
-    port: Some(17851), boot: Boot::FreertosMps2,
+    port: Some(port_of(MP::FreertosMps2, ML::Cpp, MW::RealtimeTiers)),
+    boot: Boot::FreertosMps2,
     // THREE tiers — [aux] (50 ms, spawned BY a spawned tier) is the #144
     // chained-spawn regression signal: under the pre-fix loop-spawn race
     // two tiers declared concurrently and aux's publisher write filter
@@ -350,7 +358,8 @@ fn anchor_timeout(boot: Boot) -> Duration {
 })]
 #[case::freertos_c(Cell {
     platform: "freertos", lang: "c", resolver: freertos_c_entry,
-    port: Some(17871), boot: Boot::FreertosMps2,
+    port: Some(port_of(MP::FreertosMps2, ML::C, MW::RealtimeTiers)),
+    boot: Boot::FreertosMps2,
     proof: Proof::SerialTicks(&["ctrl", "telem"]),
     note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_tiers glue \
            (codegen routes embedded-C via the C++ emitter + NROS_C_COMPONENT seam)",

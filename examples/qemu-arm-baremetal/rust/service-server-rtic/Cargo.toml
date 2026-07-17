@@ -35,7 +35,7 @@ dispatch = "deferred"
 # Phase 289 (#178) — MUST match the harness router port
 # `platform::BAREMETAL.zenohd_port_for(<variant>, Rust)` (7450 + variant offset):
 # both pair images share ONE router; per-image ports made the pair unroutable.
-locator = "tcp/10.0.2.2:7460"
+locator = "tcp/10.0.2.2:10210"
 ip = "10.0.2.14"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

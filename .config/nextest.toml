@@ -23,13 +23,15 @@ store-failure-output = true
 
 # Per-platform groups for QEMU + bridge-networked tests.
 #
-# Each platform has a fixed zenohd port in `nros_tests::platform`
-# (baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453,
-# esp32=7454, threadx-linux=7455, zephyr=7456) so cross-platform
-# runs can't collide on the router port. Within a platform the
-# zenohd fixture re-uses the same fixed port, so same-platform
-# tests must stay serial (one QEMU/native-sim instance + one
-# zenohd per test).
+# phase-295 W4 — port/domain isolation comes from the ONE allocator
+# (`nros_tests::alloc`, RFC-0051 §3): every baked image owns a unique
+# (platform × workload × lang) router port / agent port / DDS domain
+# (windows: zephyr 7400+, freertos 7800+, nuttx-arm 8200+, nuttx-riscv
+# 8600+, threadx-linux 9000+, threadx-riscv64 9400+, esp32 9800+,
+# baremetal 10200+). Groups therefore no longer exist to keep shared
+# ports apart — each surviving group names the GENUINELY EXCLUSIVE
+# resource it guards (an FVP license seat, the ros2 daemon, a
+# multi-test shared baked image, or a QEMU host-load throttle).
 #
 # `rtos_e2e` is parametrised across all 4 RTOSes in one binary;
 # individual `#[rstest]` cases are routed to their platform group
@@ -37,113 +39,59 @@ store-failure-output = true
 # rstest emits `platform_N_Platform__<Variant>` in each case's test
 # name, which nextest's `test(...)` substring predicate matches.
 #
-# Phase 89.Baremetal — service/action use per-variant host ports
-# (`BAREMETAL.zenohd_port + 10/20`), so they can run concurrently
-# with pubsub. The basic pubsub e2e, the mixed-priority pubsub
-# e2e, and the `large_msg` binary all keep port 7450 and share
-# the serial `qemu-baremetal-shared` sub-group. Overall cap = 3
-# (service || action || one-of-the-three-port-7450 tests).
+# Resource: QEMU host-load throttle (each test boots 1–2 MPS2 guests).
+# Ports are per-image since W4 (rtic pair 10200, service 10210, action
+# 10220; bsp/mixed/large-msg on the 10500/10510/10520 aux slots), so
+# the old serial `qemu-baremetal-shared` sub-group is retired.
 [test-groups.qemu-baremetal]
 max-threads = 3
 
-[test-groups.qemu-baremetal-shared]
-max-threads = 1
-
-# issue #141 — the qos zephyr entry image + its baked router port (17849) are
-# shared by the sink-based capability e2e and the ros2-echo interop e2e;
-# serialize them so the routers never collide.
+# issue #141 — RESOURCE: one baked image serves two tests. The qos zephyr
+# entry image + its baked router port (allocator 7460) are shared by the
+# sink-based capability e2e (entry_e2e::zephyr_rust_qos) and the ros2-echo
+# interop e2e; serialize them so the routers never collide.
 [test-groups.zephyr-qos-port]
 max-threads = 1
 
-# Phase 89.10 — slirp-isolated QEMU platforms can run the three rtos_e2e
-# cases (pubsub/service/action) concurrently because (a) slirp gives each
-# QEMU instance a fully isolated 10.0.2.0/24 so guest IPs can't collide
-# across concurrent tests, and (b) each case targets a different host
-# zenohd port (base + 0/10/20) so the host routers don't collide either.
-# `max-threads = 3` caps at the three cases.
-#
-# Phase 89.12 #15-17 — same-variant-different-language tests (e.g., pubsub
-# Rust/C/C++) used to share the SAME host zenohd port (keyed off variant
-# only), forcing max-threads=1 within a variant via dedicated sub-groups.
-#
-# Phase 89.13 — FreeRTOS migrated to per-(variant, lang) host ports
-# (`PlatformConfig::lang_stride = 100`). C gets Rust+100, C++ gets
-# Rust+200, so no two same-variant tests share a port. Lifting
-# `qemu-freertos-{pubsub,service,action}` to `max-threads = 3` enables
-# true 9-way parallelism (3 variants × 3 languages). Other RTOS variants
-# remain on `lang_stride = 0` and keep their per-variant max-threads=1
-# until migrated.
+# Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
+# test). Ports are allocator-unique per (variant, lang) since phase-89.13/
+# W4, so the per-variant `qemu-freertos-{pubsub,service,action}` sub-groups
+# (which only re-stated the outer cap) are retired.
 [test-groups.qemu-freertos]
 max-threads = 9
 
-[test-groups.qemu-freertos-pubsub]
-max-threads = 3
-
-[test-groups.qemu-freertos-service]
-max-threads = 3
-
-[test-groups.qemu-freertos-action]
-max-threads = 3
-
-# Phase 212.O.1 — the per-Entry-pkg boot+connected gates in
-# `freertos_run_plan_runtime.rs` all share the `tcp/10.0.2.2:7451` deploy locator
-# (one host zenohd per test) and a QEMU MPS2-AN385 slirp instance, so they must
-# run one-at-a-time.
+# Resource: shared baked images. The per-Entry-pkg boot+connected gates in
+# `freertos_run_plan_runtime.rs` consume the SAME `*-entry` images (and
+# thus deploy-locator ports 7800/7810/7820) as rtos_e2e's freertos rust
+# lanes, plus a QEMU MPS2-AN385 slirp guest each — keep them
+# one-at-a-time so their routers never fight a concurrent rtos_e2e lane's.
 [test-groups.qemu-freertos-entry]
 max-threads = 1
 
-# Phase 89.13 — NuttX / ThreadX-RISC-V migrated to per-(variant, lang) host
-# ports (`lang_stride = 100`). Each (variant, lang) pair now owns a unique
-# zenohd port, so same-variant Rust/C/C++ tests no longer need serialization.
-# Outer cap of 9 = 3 variants × 3 languages.
+# Resource: QEMU host-load throttle (arm-virt cold boots are heavy). Ports
+# are allocator-unique per (variant, lang); the per-variant sub-groups are
+# retired (W4).
 [test-groups.qemu-nuttx]
 max-threads = 9
 
-[test-groups.qemu-nuttx-pubsub]
-max-threads = 3
-
-[test-groups.qemu-nuttx-service]
-max-threads = 3
-
-[test-groups.qemu-nuttx-action]
-max-threads = 3
-
+# Resource: QEMU host-load throttle (riscv64 virt). Allocator-unique ports;
+# per-variant sub-groups retired (W4).
 [test-groups.qemu-threadx-riscv]
 max-threads = 9
 
-[test-groups.qemu-threadx-riscv-pubsub]
-max-threads = 3
-
-[test-groups.qemu-threadx-riscv-service]
-max-threads = 3
-
-[test-groups.qemu-threadx-riscv-action]
-max-threads = 3
-
-# ESP32 examples are pubsub-only today (no service/action variants), so the
-# per-variant port split doesn't help — keep serial until service/action
-# examples land.
-[test-groups.qemu-esp32]
+# Resource: one baked image pair serves three tests. The esp32 pubsub
+# talker/listener images bake ONE allocator port (9800), and the
+# esp32↔esp32 e2e + the two esp32↔native interop tests all start a router
+# on it — serialize just those three (the boot smoke + the ws-entry e2e
+# have their own/no port and run free; the blanket serial `qemu-esp32`
+# group is retired — W4).
+[test-groups.qemu-esp32-pubsub-port]
 max-threads = 1
 
-# Phase 89.9 — ThreadX Linux is native-process + nsos-netx (NSOS offloads
-# BSD sockets straight to host kernel, ignoring the legacy `interface`/
-# `ip` fields), so per-case port splitting is sufficient for concurrent
-# pubsub/service/action runs.
-#
-# Phase 89.13 — migrated to per-(variant, lang) ports (`lang_stride = 100`).
-# NSOS ignores the veth interface, so language-level parallelism is safe.
+# Resource: host-load throttle (native-process ThreadX sim + NSOS; no
+# QEMU). Allocator-unique ports; per-variant sub-groups retired (W4).
 [test-groups.threadx-linux]
 max-threads = 9
-
-[test-groups.threadx-linux-pubsub]
-max-threads = 3
-
-[test-groups.threadx-linux-service]
-max-threads = 3
-
-[test-groups.threadx-linux-action]
-max-threads = 3
 
 # Phase 89.Zephyr — Zephyr native_sim uses NSOS (Phase 81) which offloads BSD
 # sockets to the host kernel, so per-variant host zenohd ports (base + 0/10/20)
@@ -208,9 +156,10 @@ max-threads = 2
 [test-groups.qemu-zephyr-action-cpp]
 max-threads = 2
 
-# Each XRCE cell starts its Agent on a (variant, lang)-specific
-# UDP port (see `ZEPHYR.xrce_agent_port_for` in nros-tests/platform.rs
-# + the matching `xrce_port` column in just/zephyr.just). With distinct
+# Resource: none (distinct allocator agent ports) — this group is a
+# host-load cap. Each XRCE cell starts its Agent on a (variant,
+# lang)-specific UDP port (`ZEPHYR.xrce_agent_port_for`, matching the
+# west-lane `CONFIG_NROS_XRCE_AGENT_PORT` bake). With distinct
 # ports per (variant, lang), the 9 XRCE e2e cells run in parallel; the two
 # port-less `xrce_cpp_*_boots` smokes ride along (phase-295 W3.c).
 [test-groups.qemu-zephyr-xrce]
@@ -220,7 +169,7 @@ max-threads = 9
 # consolidated the ex-zephyr_cyclonedds_native_sim_e2e tests in here; its
 # `zephyr-native-cyclonedds` group is retired). Each fixture BAKES a distinct
 # ROS_DOMAIN_ID per communicating role-set: build-fixtures passes
-# -DCONFIG_NROS_DOMAIN_ID per (lang, variant) (domains 50..58), so a
+# -DCONFIG_NROS_DOMAIN_ID per (variant, lang) (allocator domains 22..30), so a
 # talker+listener / server+client pair shares one domain and unrelated sets
 # differ. Cyclone derives its RTPS ports from the domain (7400 + 250*domain),
 # so concurrent tests no longer collide on the old domain-0 ports (issue 0161
@@ -277,20 +226,10 @@ max-threads = 1
 # matching platform group. Slow-timeout + retries stay identical to
 # the former single `qemu-serial` block.
 
-# QEMU bare-metal (MPS2-AN385).
-#
-# Port-7450 sharers: basic pubsub e2e, mixed-priority pubsub e2e, and
-# the `large_msg` binary all keep the base port. This override comes
-# BEFORE the generic `binary(emulator) or binary(large_msg)` rule so
-# nextest's first-match-wins routing assigns them to the serial
-# `qemu-baremetal-shared` group. Service/action use offset ports
-# (7460/7470) and stay in the parallel `qemu-baremetal` group.
-[[profile.default.overrides]]
-filter = "(binary(emulator) and (test(rtic_pubsub_e2e) or test(mixed_priority_pubsub_e2e) or test(qemu_bsp_pubsub_e2e))) or binary(large_msg)"
-test-group = "qemu-baremetal-shared"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
+# QEMU bare-metal (MPS2-AN385). Every image owns an allocator port since
+# W4 (rtic 10200/10210/10220; bsp 10500, mixed 10510, large-msg 10520) —
+# the former serial `qemu-baremetal-shared` sub-group is retired and the
+# platform group is purely the QEMU host-load throttle.
 [[profile.default.overrides]]
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"
@@ -342,117 +281,41 @@ filter = """
 slow-timeout = { period = "120s", terminate-after = 4 }
 
 # Phase 169.4 — bare-metal Rust DDS E2E binary removed.
+# W4 — the 12 per-variant rtos_e2e serialization overrides (Phase 89.12's
+# same-variant shared-port workaround) are retired: every (variant, lang)
+# image owns an allocator port, so the generic per-platform host-load
+# groups below are the only routing rtos_e2e needs.
 
-# Phase 89.12 #15-17 — Per-variant serialization for rtos_e2e. These overrides
-# MUST come before the generic per-platform rules so nextest's first-match-wins
-# routing picks them up first. The three pubsub/service/action language cases
-# share a zenohd port (keyed off variant only), so same-variant tests cannot run
-# concurrently without `ZenohRouter::start_on` killing each other's router.
-
-# FreeRTOS per-variant — must come before qemu-freertos.
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_1_Platform__Freertos)"
-test-group = "qemu-freertos-pubsub"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_1_Platform__Freertos)"
-test-group = "qemu-freertos-service"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_1_Platform__Freertos)"
-test-group = "qemu-freertos-action"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# Phase 212.O.1 — per-Entry-pkg boot+connected gates: serialize (shared port 7451
-# + QEMU slirp) and give cold release-build + QEMU-boot + connect headroom.
+# Per-Entry-pkg boot+connected gates: serialize (see the
+# qemu-freertos-entry group comment — shared images with rtos_e2e's rust
+# lanes + QEMU slirp) and give cold QEMU-boot + connect headroom.
 [[profile.default.overrides]]
 filter = "binary(freertos_run_plan_runtime)"
 test-group = "qemu-freertos-entry"
 slow-timeout = { period = "180s", terminate-after = 4 }
 retries = 1
 
-# NuttX per-variant — must come before qemu-nuttx.
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_2_Platform__Nuttx)"
-test-group = "qemu-nuttx-pubsub"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_2_Platform__Nuttx)"
-test-group = "qemu-nuttx-service"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_2_Platform__Nuttx)"
-test-group = "qemu-nuttx-action"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# ThreadX-RISC-V per-variant — must come before qemu-threadx-riscv.
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64)"
-test-group = "qemu-threadx-riscv-pubsub"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_4_Platform__ThreadxRiscv64)"
-test-group = "qemu-threadx-riscv-service"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_4_Platform__ThreadxRiscv64)"
-test-group = "qemu-threadx-riscv-action"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# ThreadX-Linux per-variant — must come before threadx-linux.
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux)"
-test-group = "threadx-linux-pubsub"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_service_e2e::platform_3_Platform__ThreadxLinux)"
-test-group = "threadx-linux-service"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-[[profile.default.overrides]]
-filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_3_Platform__ThreadxLinux)"
-test-group = "threadx-linux-action"
-slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
-
-# FreeRTOS QEMU (MPS2-AN385 + FreeRTOS kernel) — port 7451.
+# FreeRTOS QEMU (MPS2-AN385 + FreeRTOS kernel) — allocator window 7800+.
 [[profile.default.overrides]]
 filter = "binary(freertos_qemu) or (binary(rtos_e2e) and test(Platform__Freertos))"
 test-group = "qemu-freertos"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# NuttX QEMU — port 7452. Includes the entry-image e2e cells (issues
+# NuttX QEMU — allocator window 8200+. Includes the entry-image e2e cells (issues
 # #130/0152; phase-295 W3.b folded rust_nuttx_entry_e2e / c_nuttx_entry_e2e
 # into binary(entry_e2e)'s `nuttx_arm_*` cases): they boot a NuttX arm-virt
-# guest that dials the SAME slirp port 7452 as this group (the rust cell) —
+# guest that dials the SAME allocator slirp port as this group (the rust
+# cell reuses rtos_e2e's talker image/port 8200) —
 # they must serialize with it, and the default 60 s kill is shorter than a
 # NuttX QEMU cold boot + zenoh discovery.
 # phase-285 W6 — the rv-virt realtime-tiers e2e cells boot a riscv32 NuttX
 # guest under -icount; cold boot + zenoh discovery + the 5-sample slow-tier
 # anchor exceed the default 60 s kill. Each cell has its own slirp port
-# (17867/17869/17870 — mirrored in the realtime_tiers_e2e cell table until
-# the phase-295 W4 re-bake), so no group serialization needed against the
+# (allocator 8691/8791/8891, derived in the realtime_tiers_e2e cell table
+# via `alloc::port_of`), so no group serialization needed against the
 # arm-nuttx groups. The #199-follow-up C talker e2e (c_riscv_nuttx_e2e,
-# port 17868) has the same boot profile.
+# allocator port 8700) has the same boot profile.
 # phase-295 W3.b — the 15 per-cell realtime_tiers_* binaries consolidated
 # into binary(realtime_tiers_e2e); the riscv cells are selected by their
 # `nuttx_riscv_*` case names.
@@ -467,7 +330,7 @@ test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ThreadX QEMU RISC-V — port 7453. Match only the RV64 rtos_e2e
+# ThreadX QEMU RISC-V — allocator window 9400+. Match only the RV64 rtos_e2e
 # slice, not `ThreadxLinux`, by using the trailing-underscore-free
 # `Platform__ThreadxRiscv64` marker.
 [[profile.default.overrides]]
@@ -476,21 +339,29 @@ test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ESP32 QEMU (Espressif RISC-V fork) — port 7454.
+# ESP32 QEMU (Espressif RISC-V fork) — allocator window 9800+. The three
+# tests that dial the shared pubsub-pair image port (9800) serialize in
+# qemu-esp32-pubsub-port; everything else (boot smoke, ws-entry e2e on its
+# own 9830 bake, detection probes) runs with the default scheduler.
 [[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
-test-group = "qemu-esp32"
+filter = "binary(esp32_emulator) and (test(test_esp32_talker_listener_e2e) or test(test_esp32_to_native) or test(test_native_to_esp32))"
+test-group = "qemu-esp32-pubsub-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ThreadX Linux sim (veth bridge) — port 7455.
+[[profile.default.overrides]]
+filter = "binary(esp32_emulator)"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# ThreadX Linux sim (veth bridge) — allocator window 9000+.
 [[profile.default.overrides]]
 filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# Zephyr native_sim (NSOS, Phase 81) — base port 7456, lang_stride = 100.
+# Zephyr native_sim (NSOS, Phase 81) — allocator window 7400+, lang_stride = 100.
 #
 # phase-295 W3.c — zephyr.rs is now the parametrized example matrix consumer:
 # the (rmw × lang × workload) cells are rstest cases named
@@ -500,7 +371,7 @@ retries = 2
 # of the full test id).
 #
 # XRCE cells start their Agent on a per-(variant, lang) baked UDP port
-# (`xrce_agent_port_for` — 2018/2028/2038 ± 100 per language), so the 9 e2e
+# (`xrce_agent_port_for` — 2400/2410/2420 ± 100 per language), so the 9 e2e
 # cells run in parallel; the two `xrce_cpp_*_boots` smokes need no port.
 # This override comes BEFORE the generic `binary(zephyr)` rule so nextest's
 # first-match-wins routing assigns them to `qemu-zephyr-xrce`.
@@ -563,8 +434,8 @@ test-group = "qemu-zephyr-pubsub-rust"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# Fall-through: the C zenoh cells (distinct baked per-variant ports
-# 7556/7566/7576 — parallel-safe), the zenoh boot smokes, and the
+# Fall-through: the C zenoh cells (distinct baked per-variant allocator
+# ports 7500/7510/7520 — parallel-safe), the zenoh boot smokes, and the
 # availability check. These only consume prebuilt fixtures or inspect
 # setup state.
 [[profile.default.overrides]]
@@ -730,12 +601,13 @@ fail-fast = true
 # https://github.com/nextest-rs/nextest/pull/3273.
 #
 # Groups currently excluded from the fast path:
-#   * qemu-baremetal       — MPS2-AN385, service/action variants
-#   * qemu-baremetal-shared — MPS2-AN385 port-7450 sharers (basic pubsub, mixed-priority pubsub, large_msg)
+#   * qemu-baremetal       — MPS2-AN385 (all lanes; W4 retired the shared sub-group)
 #   * qemu-freertos        — FreeRTOS on MPS2-AN385
 #   * qemu-nuttx           — NuttX on MPS2-AN385
 #   * qemu-threadx-riscv   — ThreadX on QEMU RV64
-#   * qemu-esp32           — ESP32-C3 on Espressif QEMU
+#   * (esp32 lanes are excluded by `binary(esp32_emulator)` — the blanket
+#     qemu-esp32 group died in W4; only the shared-pubsub-image trio keeps
+#     a group)
 #   * threadx-linux        — ThreadX Linux sim + veth bridge
 #   * qemu-zephyr          — Zephyr native_sim (NSOS), zenoh variants
 #   * qemu-zephyr-xrce     — Zephyr native_sim, XRCE variant (shared Agent port)

@@ -31,7 +31,7 @@ dispatch = "deferred"
 # qemu_config by `RticBoardEntry::init_hardware_with_deploy`. talker and
 # listener must NOT share an ip on the QEMU network.
 [package.metadata.nros.deploy.rtic-mps2-an385]
-locator = "tcp/10.0.2.2:7450"
+locator = "tcp/10.0.2.2:10200"
 ip = "10.0.2.10"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

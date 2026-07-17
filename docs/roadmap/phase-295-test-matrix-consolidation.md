@@ -66,16 +66,64 @@ Status: **Draft — 2026-07-17** · Implements
   a behavior-named gate; the rest are deleted with a line in this doc.
 
 ### W4 — isolation migration (parallelism unlock)
-- [ ] W4.a Re-bake fixtures.toml locators/domains from the allocator
-  (mechanical; matrix-gen emits the diff). Includes the zephyr cyclone
-  50–58 band, threadx 61/62, the 175xx band — all onto the formula.
-- [ ] W4.b Migrate baremetal + esp32 off `lang_stride = 0`; retire the
-  `qemu-baremetal-shared` / `qemu-esp32` serialization groups.
-- [ ] W4.c nextest.toml groups reduced to genuinely exclusive resources
-  (fvp license, ros2 daemon, host-load throttles); document each survivor
-  with the resource it guards.
-- [ ] W4.d Full-parallel sweep proof: `just test-all` wall-clock before /
-  after recorded here.
+
+> As-landed (2026-07-17): EVERY baked port/domain now comes from
+> `nros_tests::alloc` (`port_of` / `xrce_agent_port_of` / `domain_of` —
+> `7000 + platform*400 + workload_offset + lang*100`; agents 2000+;
+> domains `1 + platform*21 + slot*3 + lang`). `legacy_port` deleted;
+> `platform.rs` bases are now DERIVED (`alloc::platform_port_base`) with
+> `lang_stride = 100` everywhere. Window map: zephyr 7400/2400/dom 22–30,
+> freertos 7800, nuttx-arm 8200, nuttx-riscv 8600, threadx-linux 9000
+> (cyclone dom 107/108, ex 61), threadx-riscv64 9400 (dom 127/128/129, ex
+> 62), esp32 9800, baremetal 10200, fvp 11000+. Re-baked sides:
+> fixtures.toml (74 locator/domain values), per-example Cargo deploy
+> metadata (~40 crates incl. baremetal/esp32), zephyr-fixture-leaves.sh
+> (example formula + 12 ws-entry literals), just/threadx-*.just domains,
+> large-msg firmware; consumers (entry_e2e / realtime_tiers_e2e /
+> multihost_e2e / c_riscv_nuttx_e2e / qos_zephyr_ros2_interop_e2e /
+> freertos_run_plan_runtime / emulator / large_msg / esp32_emulator /
+> native_api) now CALL the allocator instead of mirroring literals. This
+> killed the 17851 overlap (safety-zephyr 7490 vs freertos-cpp tiers
+> 8091) and the whole hand-mirrored 175xx band. The matrix gained the
+> 5 RealtimeTiers Runtime cells the consumer always ran but the seed
+> table never modeled (nuttx-arm c/rust, nuttx-riscv rust/c, freertos c).
+> A `#[test]` emitter (`alloc::tests::print_bake_table`) prints the full
+> bake table for future re-bakes. Multi-image demo sets that outnumber
+> the workload axis (baremetal BSP / RTIC-mixed / large-msg) take named
+> `alloc::aux_port` slots 10500/10510/10520, asserted collision-free by
+> the injectivity test.
+
+- [x] W4.a Re-bake fixtures.toml locators/domains from the allocator —
+  zephyr cyclone 50–58 → 22–30, threadx 61/62 → 107/108 + 127/128/129,
+  the 175xx band and every 745x/75xx/76xx base onto the formula (see the
+  as-landed note).
+- [x] W4.b baremetal + esp32 off `lang_stride = 0` (both now 100; rtic
+  pair 10200/10210/10220, bsp/mixed/large-msg aux 10500/10510/10520;
+  esp32 pubsub/service/action 9800/9810/9820, ws-entry 9830). The
+  `qemu-baremetal-shared` group + its override are retired; the blanket
+  serial `qemu-esp32` group is retired — only the three tests dialing the
+  SAME baked pubsub-pair image keep a serial `qemu-esp32-pubsub-port`
+  group (one image, three tests — a genuinely exclusive resource; the
+  boot smoke + ws-entry e2e run free; `just test`'s fast-path filter now
+  excludes esp32 by `binary(esp32_emulator)`).
+- [x] W4.c nextest groups reduced: the 12 per-variant rtos_e2e overrides
+  + the 12 per-variant sub-groups (`qemu-{freertos,nuttx,threadx-riscv}-
+  {pubsub,service,action}`, `threadx-linux-*`) are gone. Survivors each
+  name their resource: `zephyr-fvp` (node-locked FVP license + fixed
+  UART telnet ports), `ros2-interop` (singleton ros2 daemon),
+  `host-dds-ros2-interop` (shared 232-slot DDS domain space),
+  `zephyr-qos-port` + `qemu-esp32-pubsub-port` + `qemu-freertos-entry`
+  (one baked image serving several tests), and the per-platform
+  `qemu-*`/`threadx-linux` groups (QEMU/host-load throttles only).
+- [x] W4.d Fresh rebuild of native / threadx-linux / freertos / nuttx /
+  threadx-riscv64 / zephyr (+ baremetal, esp32) fixture families on the
+  new bakes + consumer sweep — results below. No `just test-all`
+  before/after pair was captured: the pre-W4 tree's fixtures were already
+  stale against W1–W3 (a "before" number would have been a museum-binary
+  measurement — the 0148 lesson), so the wall-clock recorded here is the
+  after-only baseline for the next phase to compare against.
+  <!-- W4.d-results -->
+
 
 ### W5 — launch via framework runner metadata
 - [ ] W5.a Zephyr: interpret `runners.yaml` from the prebuilt build dir

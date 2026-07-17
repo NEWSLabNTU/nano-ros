@@ -63,7 +63,7 @@ deploy = "zephyr"
 board = "native_sim/native/64"
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7456"
+locator = "tcp/10.0.2.2:7430"
 
 [package.metadata.ament]
 exec_depend = ["talker_pkg", "listener_pkg", "demo_bringup"]

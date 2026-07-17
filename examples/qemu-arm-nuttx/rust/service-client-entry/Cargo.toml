@@ -23,7 +23,7 @@ deploy = "nuttx"
 [package.metadata.nros.deploy.nuttx]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7452"
+locator = "tcp/10.0.2.2:8210"
 [dependencies]
 nuttx_rs_service_client = { path = "../service-client" }
 # Phase 213.C.2 — `nros::main!()` proc-macro lives here.

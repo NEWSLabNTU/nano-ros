@@ -28,7 +28,7 @@ domain_id = 0
 # `BoardEntry::run_with_deploy`. Mirrors talker_entry.
 ip = "10.0.2.15"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7461"
+locator = "tcp/10.0.2.2:7810"
 [dependencies]
 freertos_rs_service_server = { path = "../service-server" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.

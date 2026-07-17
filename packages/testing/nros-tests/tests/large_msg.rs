@@ -658,8 +658,6 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 /// Requires qemu-system-arm + zenoh-pico-arm + QEMU slirp (user-mode) networking.
 #[rstest]
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
-    use nros_tests::platform;
-
     // This test uses QEMU slirp (user-mode) networking with port forwarding.
     // No TAP devices, bridge interfaces, or sudo required.
     // Skip if QEMU is not available.
@@ -671,8 +669,11 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         nros_tests::skip!("qemu-system-arm not found");
     }
 
-    let _zenohd =
-        ZenohRouter::start_slirp(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+    // The bench firmware bakes its own allocator aux slot (phase-295 W4) —
+    // nothing else shares this router, so the test runs parallel to the
+    // other bare-metal QEMU lanes.
+    let _zenohd = ZenohRouter::start_slirp(nros_tests::alloc::BAREMETAL_LARGE_MSG_PORT)
+        .expect("Failed to start zenohd");
 
     let mut cmd = nros_tests::qemu::qemu_system_arm_cmd();
     cmd.args([

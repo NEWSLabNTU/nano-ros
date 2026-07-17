@@ -56,7 +56,7 @@ fn main() -> ! {
     // the pre-212 `Config::from_toml(include_str!(...))` sidecar.
     // Transcribed verbatim from the retired `nros.toml` (ip
     // 10.0.2.10/24, mac 02:00:00:00:00:00, gateway 10.0.2.2,
-    // locator tcp/10.0.2.2:7450, domain_id 0). Bench fixtures are
+    // locator tcp/10.0.2.2:10520, domain_id 0). Bench fixtures are
     // static — no runtime parameter sweep — so the `Config { ... }`
     // literal matches the §M.10 native example pattern (ref:
     // commit `e6f4cb346`).
@@ -65,7 +65,7 @@ fn main() -> ! {
         ip: [10, 0, 2, 10],
         prefix: 24,
         gateway: [10, 0, 2, 2],
-        zenoh_locator: "tcp/10.0.2.2:7450",
+        zenoh_locator: "tcp/10.0.2.2:10520",
         domain_id: 0,
     };
     run(config, |config| {

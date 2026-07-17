@@ -22,7 +22,9 @@
 //! Run with: `cargo nextest run -p nros-tests --test qos_zephyr_ros2_interop_e2e`
 
 use nros_tests::{
+    alloc::port_of,
     fixtures::{ZenohRouter, ZephyrPlatform, ZephyrProcess, build_zephyr_workspace_rust_qos_entry},
+    matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
     skip,
 };
@@ -31,9 +33,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// The router port baked into the qos zephyr entry (the west lane's
-/// `-DCONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:17849"`).
-const QOS_ZEPHYR_ENTRY_PORT: u16 = 17849;
+/// The router port baked into the qos zephyr entry — the allocator's
+/// (zephyr, rust, qos) number, matching the west lane's
+/// `-DCONFIG_NROS_ZENOH_LOCATOR` bake.
+const QOS_ZEPHYR_ENTRY_PORT: u16 = port_of(PlatformId::ZephyrNativeSim, Lang::Rust, Workload::Qos);
 
 #[test]
 fn nros_zephyr_publisher_reaches_ros2_topic_echo() {

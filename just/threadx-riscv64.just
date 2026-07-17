@@ -162,12 +162,13 @@ build-fixture-extras:
         local rmw="$2"
         local build_dir="$3"
         echo "  → $dir (-DNROS_RMW=$rmw, $build_dir/)"
-        # Phase 177.38 — Cyclone fixtures bake domain 62 (env for the
-        # Rust/Corrosion build + -D for the C/C++ glue); fold it into the cache
-        # sig so a domain change forces a rebuild. Empty for non-Cyclone (keeps
-        # the config.toml default).
+        # phase-295 W4 (ex Phase 177.38) — Cyclone RUST role builds bake the
+        # allocator domain (nros_tests::alloc::domain_of(ThreadxRiscv64, Rust,
+        # Pubsub) = 127; env for the Rust/Corrosion build + -D for the C/C++
+        # glue); fold it into the cache sig so a domain change forces a
+        # rebuild. Empty for non-Cyclone (keeps the config.toml default).
         local _dom=""
-        [ "$rmw" = "cyclonedds" ] && _dom="62"
+        [ "$rmw" = "cyclonedds" ] && _dom="127"
         local sig
         sig="$(printf '%s\n' \
           "platform=threadx_riscv64" \
@@ -254,11 +255,14 @@ build-fixture-extras:
             echo "     or put an idlc on PATH (e.g. a ROS 2 / CycloneDDS install),"
             echo "     or set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 to skip Cyclone fixtures entirely."
         else
-            # Phase 177.38 — ThreadX-RV64 Cyclone role-set on domain 62
-            # (talker+listener share). C/C++ get it via cmake -DNROS_DOMAIN_ID;
-            # the rust/talker cell via the helper's env + -D.
-            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=62"
+            # phase-295 W4 (ex Phase 177.38) — each ThreadX-RV64 Cyclone lang
+            # pass bakes ITS allocator domain (alloc::domain_of(ThreadxRiscv64,
+            # lang, Pubsub): c=128, cpp=129; rust roles get 127 via the
+            # helper's env + -D). A pair (talker+listener) shares its lang's
+            # domain; different langs stay SPDP-disjoint.
+            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=128"
             bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
+            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=129"
             bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
             for _rc in talker listener service-server service-client action-server action-client; do
                 if [ -d "examples/qemu-riscv64-threadx/rust/$_rc" ]; then
@@ -357,12 +361,12 @@ action-server: (_run-qemu "action-server" "qemu-riscv64-threadx-action-server" "
 # Run ThreadX RISC-V action client on QEMU
 action-client: (_run-qemu "action-client" "qemu-riscv64-threadx-action-client" "1")
 
-# Start zenohd router for ThreadX RISC-V examples (port 7453)
+# Start zenohd router for ThreadX RISC-V examples (allocator rust-pubsub port 9400)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:7453 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:9400 --no-multicast-scouting
 
 # Clean ThreadX RISC-V build artifacts
 [group("main")]

@@ -15,7 +15,7 @@ deploy = "freertos"
 [package.metadata.nros.deploy.freertos]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7451"
+locator = "tcp/10.0.2.2:7830"
 
 [dependencies]
 # Phase 248 C6a (#60 T5) — agnostic `nros` (alloc + rmw-cffi vtable + ROS

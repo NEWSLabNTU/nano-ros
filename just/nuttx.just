@@ -92,7 +92,7 @@ build-examples:
     NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
     # phase-263 C2b — the multi-node C workspace Entry (talker + listener linked into the NuttX
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
-    # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 17861).
+    # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 8330).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
     # phase-281 W3-nuttx — the C++ realtime tiers workspace (ws-realtime-cpp nuttx entry),
     # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
@@ -509,13 +509,13 @@ action-server: (_run-qemu "action-server" "nuttx-rs-action-server")
 # Run NuttX action client on QEMU
 action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 
-# Start zenohd router for NuttX QEMU examples (port 7452)
+# Start zenohd router for NuttX QEMU examples (allocator rust-pubsub port 8200)
 # Must listen on 0.0.0.0 for virtio-net-device + slirp gateway (10.0.2.2)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7452 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:8200 --no-multicast-scouting
 
 # Phase 127.B.5 — one-time host setup for NuttX DDS cross-QEMU mcast.
 #

@@ -47,7 +47,7 @@ deploy = "nuttx"
 [package.metadata.nros.deploy.nuttx]
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/10.0.2.2:7452"
+locator = "tcp/10.0.2.2:8230"
 
 [dependencies]
 # Phase 248 C6a (#60 T5) — agnostic `nros`. NuttX ships `std`, so the ENTRY

@@ -516,9 +516,9 @@ async-service-client:
     cd "$WORKSPACE"
     ./build-async-service-client/zephyr/zephyr.exe
 
-# Start zenohd router for Zephyr examples (port 7456, all interfaces)
+# Start zenohd router for Zephyr examples (allocator rust-pubsub port 7400, all interfaces)
 zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:7400 --no-multicast-scouting

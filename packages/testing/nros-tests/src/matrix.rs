@@ -297,7 +297,8 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Cpp,  Xrce,       Action,  Example, Runtime),
 
     // Zephyr native_sim — zenoh + cyclone + xrce, all three langs
-    // (the zephyr.rs families; cyclone domains 50–58, xrce agents 2018+).
+    // (the zephyr.rs families; W4 bakes: cyclone domains 22–30, xrce
+    // agents 2400+ — `alloc::{domain_of,xrce_agent_port_of}`).
     cell(ZephyrNativeSim, Rust, Zenoh,      Pubsub,  Example, Runtime),
     cell(ZephyrNativeSim, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(ZephyrNativeSim, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
@@ -438,8 +439,8 @@ pub const CELLS: &[Cell] = &[
     // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub
     // rows `Runtime`, but no EntryPubsub fixture or lane exists at those
     // coordinates — the only nuttx workspace rows besides the C arm entry
-    // (17861) are the REALTIME-TIERS entries (fixtures.toml 17863/17864/
-    // 17869/17870 + workspace-rust-nuttx-riscv-realtime), which satisfied
+    // are the REALTIME-TIERS entries (the fixtures.toml realtime rows +
+    // workspace-rust-nuttx-riscv-realtime), which satisfied
     // the (platform, lang) coverage gate and masked the gap. The riscv C
     // runtime proof that exists is the STANDALONE talker example
     // (c_riscv_nuttx_e2e — the `(NuttxRiscv, C, Pubsub, Example)` cell).
@@ -518,9 +519,20 @@ pub const CELLS: &[Cell] = &[
     cell(ZephyrNativeSim, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(ZephyrNativeSim, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
-    cell(NuttxArm,   Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
-    cell(NuttxRiscv, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
+    // Corrected during the phase-295 W4 re-bake: the realtime_tiers_e2e
+    // consumer has ALWAYS run nuttx-arm {c,rust}, nuttx-riscv {rust,c} and
+    // freertos c cells (fixtures.toml rows existed for each), but the seed
+    // table only modeled the cpp rows — the (platform, lang) coverage gate
+    // was satisfied by other workspace rows and masked the gap. Modeled so
+    // the allocator derives every baked realtime port.
+    cell(NuttxArm,   Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(NuttxArm,   C,    Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(NuttxArm,   Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(NuttxRiscv, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(NuttxRiscv, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(NuttxRiscv, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
+    cell(FreertosMps2, C,   Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(Native, Rust,  Zenoh, Multihost, Workspace, Runtime),
     cell(Native, C,     Zenoh, Multihost, Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Multihost, Workspace, Runtime),

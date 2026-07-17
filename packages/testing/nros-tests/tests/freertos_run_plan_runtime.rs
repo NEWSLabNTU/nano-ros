@@ -84,10 +84,23 @@ use nros_tests::{
     project_root,
 };
 
-/// The `talker_entry` deploy overlay points the firmware at
-/// `tcp/10.0.2.2:7451` (the slirp host alias). The host router must listen on
-/// this port so `Executor::open` connects instead of hanging.
-const ENTRY_ZENOHD_PORT: u16 = 7451;
+/// Each Entry's deploy overlay points the firmware at
+/// `tcp/10.0.2.2:<allocator port>` (the slirp host alias) — the freertos
+/// rust (variant) slot from `nros_tests::alloc` (pubsub 7800, service
+/// 7810, action 7820; the same images/ports rtos_e2e's freertos rust
+/// lanes use). The host router must listen on that port so
+/// `Executor::open` connects instead of hanging.
+fn entry_zenohd_port(entry: &str) -> u16 {
+    use nros_tests::platform::{FREERTOS, TestLang, TestVariant};
+    let variant = if entry.starts_with("service") {
+        TestVariant::Service
+    } else if entry.starts_with("action") {
+        TestVariant::Action
+    } else {
+        TestVariant::Pubsub
+    };
+    FREERTOS.zenohd_port_for(variant, TestLang::Rust)
+}
 
 /// FreeRTOS Entry pkg fixture dir for `<entry>` (e.g. `talker_entry`).
 fn entry_dir(entry: &str) -> PathBuf {
@@ -158,11 +171,12 @@ fn locate_entry_binary(dir: &Path, bin_name: &str) -> Option<PathBuf> {
 
 /// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
 /// share the `Mps2An385` board, `nros::main!()` self-bringup, the
-/// `tcp/10.0.2.2:7451` deploy locator + `10.0.2.15` deploy ip/gateway, and the
+/// per-variant allocator deploy locator + `10.0.2.15` deploy ip/gateway, and the
 /// release-profile build, so the #45 (panic/crate-type/linker), #46 (stack/heap),
 /// and #48 (deploy-thread + zenoh-backend-link) fixes that unblocked the talker
 /// unblock the siblings; these prove it per pkg. Serialized via the
-/// `qemu-freertos-entry` nextest group (shared port 7451 + QEMU slirp).
+/// `qemu-freertos-entry` nextest group (they reuse the SAME images/ports as
+/// rtos_e2e's freertos rust lanes + a QEMU slirp guest each).
 fn boot_and_connect(entry: &str, bin_name: &str) {
     if let Some(reason) = require_freertos_qemu_prereqs() {
         nros_tests::skip!("{reason}");
@@ -193,10 +207,11 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
         ),
     };
 
-    // Host router on 0.0.0.0:7451 — the deploy overlay points the firmware at
-    // `tcp/10.0.2.2:7451` (slirp host alias), so `Executor::open` connects here
-    // instead of hanging on an unreachable locator (#46/#48).
-    let _router = ZenohRouter::start_slirp(ENTRY_ZENOHD_PORT)
+    // Host router on the entry's allocator port — the deploy overlay points
+    // the firmware at `tcp/10.0.2.2:<port>` (slirp host alias), so
+    // `Executor::open` connects here instead of hanging on an unreachable
+    // locator (#46/#48).
+    let _router = ZenohRouter::start_slirp(entry_zenohd_port(entry))
         .expect("start slirp zenohd router for the FreeRTOS Entry pkg");
 
     // Spawn under QEMU MPS2-AN385 with slirp LAN9118 networking — same
@@ -214,7 +229,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     // The post-network connected run goes through `Executor::open`. #48 (both
     // causes) is fixed, so it now establishes: the zenoh RMW backend is linked +
     // registered (cause 2) AND the deploy overlay threads the reachable slirp
-    // locator/ip (`tcp/10.0.2.2:7451` on guest `10.0.2.15`) into the firmware
+    // locator/ip (the baked slirp locator on guest `10.0.2.15`) into the firmware
     // (cause 1), so the firmware connects to the host zenohd above and the
     // run-plan closure returns `Ok` ("Application setup complete").
     let extra = qemu
@@ -262,7 +277,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
 }
 
 // One boot+connected gate per qemu-arm-freertos Entry pkg. Serialized via the
-// `qemu-freertos-entry` nextest group (shared port 7451 + QEMU slirp).
+// `qemu-freertos-entry` nextest group (see boot_and_connect's doc).
 
 #[test]
 fn freertos_board_run_executes_run_plan() {

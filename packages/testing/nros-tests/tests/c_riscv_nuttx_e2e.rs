@@ -6,8 +6,8 @@
 //! lane was link-checked only (see archived issues 0165/0199).
 //!
 //! The guest dials the router through the QEMU slirp gateway (10.0.2.2 → host)
-//! at the baked port 17868 (the fixture row's `NROS_ENTRY_LOCATOR`; the rust
-//! realtime riscv entry uses 17867); the observer dials 127.0.0.1:17868.
+//! at the baked allocator port (`alloc::port_of(NuttxRiscv, C, Pubsub)`, the
+//! fixture row's `NROS_ENTRY_LOCATOR`); the observer dials it on loopback.
 //! No TAP/bridge/root.
 //!
 //! The fixture is built by `just nuttx build-riscv-c`; this test skips cleanly
@@ -15,15 +15,20 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test c_riscv_nuttx_e2e`
 
-use nros_tests::fixtures::{
-    ManagedProcess, QemuProcess, ZenohRouter, build_native_listener, build_nuttx_riscv_c_talker,
-    require_zenohd,
+use nros_tests::{
+    alloc::port_of,
+    fixtures::{
+        ManagedProcess, QemuProcess, ZenohRouter, build_native_listener,
+        build_nuttx_riscv_c_talker, require_zenohd,
+    },
+    matrix::{Lang, PlatformId, Workload},
 };
 use std::{process::Command, time::Duration};
 
-/// The router port baked into the riscv C talker's locator (see the
-/// `qemu-riscv-nuttx/c/talker` fixture row's `NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17868"`).
-const C_RISCV_NUTTX_TALKER_PORT: u16 = 17868;
+/// The router port baked into the riscv C talker's locator — the allocator's
+/// (nuttx-riscv, c, pubsub) number, matching the `qemu-riscv-nuttx/c/talker`
+/// fixture row's `NROS_ENTRY_LOCATOR` bake.
+const C_RISCV_NUTTX_TALKER_PORT: u16 = port_of(PlatformId::NuttxRiscv, Lang::C, Workload::Pubsub);
 
 #[test]
 fn c_riscv_nuttx_talker_delivers_cross_process() {

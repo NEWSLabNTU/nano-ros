@@ -1,27 +1,31 @@
 //! Per-platform configuration constants for test isolation.
 //!
-//! Each QEMU platform uses a fixed zenohd port so that platforms can run in
-//! parallel (each with its own zenohd instance).
+//! Since the phase-295 W4 re-bake, every base here is DERIVED from the ONE
+//! allocator ([`crate::alloc`], RFC-0051): a platform's zenohd base is
+//! `alloc::platform_port_base(PlatformId)` and the per-(variant, lang)
+//! split is the allocator's `workload.port_offset() + lang * 100` formula.
+//! `PlatformConfig` survives as the QEMU-harness-facing VIEW of the
+//! allocator (the harness APIs speak [`TestVariant`]/[`TestLang`]);
+//! `zenohd_port_for(variant, lang)` returns exactly
+//! `alloc::port_of(platform, lang, variant-workload)`.
 //!
-//! Phase 89.9/89.10: to also allow **within-platform** parallelism for the
-//! three test variants (pubsub / service / action), each variant gets its
-//! own derived port: `zenohd_port + 0` for pubsub, `+ 10` for service,
-//! `+ 20` for action. Ports 7450–7479 are all in the IANA unassigned
-//! range.
-//!
-//! Phase 89.13 (pilot on FreeRTOS): further split each (variant) port by
-//! language, so same-variant Rust / C / C++ tests can also run in parallel.
-//! The per-language offset is controlled by `PlatformConfig::lang_stride`:
-//! platforms that have had their example `config.toml` files migrated set
-//! `lang_stride = 100` (Rust=+0, C=+100, C++=+200); un-migrated platforms
-//! keep `lang_stride = 0` so all three language binaries still target the
-//! Rust port (and must stay serialized via per-variant nextest sub-groups).
+//! Historical layout (phase 89.9–89.13): pubsub/service/action get
+//! `base + 0/10/20`, languages get `+ lang * 100` (Rust/C/C++ =
+//! +0/+100/+200). The pre-W4 745x bases (with `lang_stride = 0` islands on
+//! baremetal/esp32) are gone — every platform is on the formula with
+//! `lang_stride = 100`, so every (variant, lang) image pair owns a unique
+//! host port and same-platform lanes parallelize.
 //!
 //! Slirp-networked QEMU platforms (FreeRTOS, NuttX, ThreadX-RV64, ESP32)
 //! isolate guest IPs per QEMU instance automatically — only the shared
 //! host port matters. Bridge-networked platforms (ThreadX Linux sim)
 //! also need per-variant guest IPs and interface names; those are encoded
 //! in the per-example `config.toml`, not here.
+
+use crate::{
+    alloc::{platform_port_base, platform_xrce_base},
+    matrix::PlatformId,
+};
 
 /// Which of the three rtos_e2e test variants a port is for.
 ///
@@ -50,7 +54,7 @@ impl TestVariant {
 
 /// Language binding of the example under test. Used together with
 /// [`PlatformConfig::lang_stride`] to derive a unique host zenohd port
-/// per (variant × language) combination on migrated platforms.
+/// per (variant × language) combination.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TestLang {
     /// Rust example (lang multiplier 0).
@@ -73,27 +77,24 @@ impl TestLang {
     }
 }
 
-/// Per-platform test configuration.
+/// Per-platform test configuration (the allocator's QEMU-harness view).
 pub struct PlatformConfig {
     pub name: &'static str,
-    /// Base port for pubsub / Rust tests. Service tests use `zenohd_port + 10`,
-    /// action tests use `zenohd_port + 20` (see [`TestVariant`]). Non-Rust
-    /// languages add `TestLang::index() * lang_stride` on top — see
-    /// [`Self::zenohd_port_for`].
+    /// Base port for pubsub / Rust tests — `alloc::platform_port_base`.
+    /// Service tests use `zenohd_port + 10`, action tests `+ 20` (see
+    /// [`TestVariant`]). Non-Rust languages add `TestLang::index() *
+    /// lang_stride` on top — see [`Self::zenohd_port_for`].
     pub zenohd_port: u16,
-    /// Stride between per-language ports within the same variant. `0`
-    /// means the platform hasn't had its example `config.toml` files
-    /// migrated to the (variant, lang) scheme yet — all three languages
-    /// share the Rust port (and must stay serialized at the test-group
-    /// level). Migrated platforms use `100` so C = Rust+100, C++ = Rust+200.
+    /// Stride between per-language ports within the same variant — 100 on
+    /// every platform since the phase-295 W4 re-bake (the allocator's lang
+    /// column width).
     pub lang_stride: u16,
-    /// Base port for the XRCE-DDS Agent on this platform. Same per-(variant,
-    /// lang) split as `zenohd_port` (variant offset = 10 / 20, lang stride =
-    /// `xrce_lang_stride`). `0` means the platform doesn't run any XRCE
-    /// tests (no agent port reserved).
+    /// Base port for the XRCE-DDS Agent on this platform —
+    /// `alloc::platform_xrce_base`. Same per-(variant, lang) split as
+    /// `zenohd_port`. `0` means the platform doesn't run any XRCE tests
+    /// (no agent port reserved).
     pub xrce_agent_port: u16,
-    /// Stride for `xrce_agent_port_for`. `0` collapses every (variant, lang)
-    /// onto the base port (legacy serialized mode).
+    /// Stride for `xrce_agent_port_for` (100 where XRCE runs).
     pub xrce_lang_stride: u16,
 }
 
@@ -119,27 +120,37 @@ impl PlatformConfig {
     }
 }
 
-/// Bare-metal QEMU ARM (MPS2-AN385, RTIC).
+/// Bare-metal QEMU ARM (MPS2-AN385, RTIC demo set).
+///
+/// | Variant | Rust  |
+/// |---------|-------|
+/// | Pubsub  | 10200 |
+/// | Service | 10210 |
+/// | Action  | 10220 |
+///
+/// The extra bare-metal image pairs that outnumber the workload axis (BSP
+/// pair, RTIC mixed-priority pair, large-msg bench) take the named
+/// `alloc::BAREMETAL_*_PORT` aux slots (10500/10510/10520) — nothing
+/// shares a router anymore (the pre-W4 `qemu-baremetal-shared` group is
+/// retired).
 pub const BAREMETAL: PlatformConfig = PlatformConfig {
     name: "baremetal",
-    zenohd_port: 7450,
-    lang_stride: 0,
+    zenohd_port: platform_port_base(PlatformId::QemuBaremetal),
+    lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
 };
 
 /// FreeRTOS QEMU ARM (MPS2-AN385, lwIP).
 ///
-/// Phase 89.13 pilot: migrated to per-(variant, lang) ports. The 9 slots are:
-///
 /// | Variant | Rust | C    | C++  |
 /// |---------|------|------|------|
-/// | Pubsub  | 7451 | 7551 | 7651 |
-/// | Service | 7461 | 7561 | 7661 |
-/// | Action  | 7471 | 7571 | 7671 |
+/// | Pubsub  | 7800 | 7900 | 8000 |
+/// | Service | 7810 | 7910 | 8010 |
+/// | Action  | 7820 | 7920 | 8020 |
 pub const FREERTOS: PlatformConfig = PlatformConfig {
     name: "freertos",
-    zenohd_port: 7451,
+    zenohd_port: platform_port_base(PlatformId::FreertosMps2),
     lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
@@ -147,16 +158,14 @@ pub const FREERTOS: PlatformConfig = PlatformConfig {
 
 /// NuttX QEMU ARM (virt, Cortex-A7).
 ///
-/// Phase 89.13: migrated to per-(variant, lang) ports.
-///
 /// | Variant | Rust | C    | C++  |
 /// |---------|------|------|------|
-/// | Pubsub  | 7452 | 7552 | 7652 |
-/// | Service | 7462 | 7562 | 7662 |
-/// | Action  | 7472 | 7572 | 7672 |
+/// | Pubsub  | 8200 | 8300 | 8400 |
+/// | Service | 8210 | 8310 | 8410 |
+/// | Action  | 8220 | 8320 | 8420 |
 pub const NUTTX: PlatformConfig = PlatformConfig {
     name: "nuttx",
-    zenohd_port: 7452,
+    zenohd_port: platform_port_base(PlatformId::NuttxArm),
     lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
@@ -164,48 +173,51 @@ pub const NUTTX: PlatformConfig = PlatformConfig {
 
 /// ThreadX QEMU RISC-V 64 (virt, virtio-net).
 ///
-/// Phase 89.13: migrated to per-(variant, lang) ports.
-///
 /// | Variant | Rust | C    | C++  |
 /// |---------|------|------|------|
-/// | Pubsub  | 7453 | 7553 | 7653 |
-/// | Service | 7463 | 7563 | 7663 |
-/// | Action  | 7473 | 7573 | 7673 |
+/// | Pubsub  | 9400 | 9500 | 9600 |
+/// | Service | 9410 | 9510 | 9610 |
+/// | Action  | 9420 | 9520 | 9620 |
 ///
 /// C++ service/action are skipped — examples not implemented — but the
 /// port slots remain reserved for future use.
 pub const THREADX_RISCV: PlatformConfig = PlatformConfig {
     name: "threadx-riscv",
-    zenohd_port: 7453,
+    zenohd_port: platform_port_base(PlatformId::ThreadxRiscv64),
     lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
 };
 
 /// ESP32-C3 QEMU (Espressif fork, open_eth).
+///
+/// | Variant | Rust |
+/// |---------|------|
+/// | Pubsub  | 9800 |
+/// | Service | 9810 |
+/// | Action  | 9820 |
+///
+/// The workspace Entry image takes the `EntryPubsub` slot (9830) — see
+/// `alloc::port_of` — so the ws-entry e2e no longer shares the pubsub
+/// pair's router (the pre-W4 `qemu-esp32` serial group is retired).
 pub const ESP32: PlatformConfig = PlatformConfig {
     name: "esp32",
-    zenohd_port: 7454,
-    lang_stride: 0,
+    zenohd_port: platform_port_base(PlatformId::Esp32Qemu),
+    lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
 };
 
-/// ThreadX Linux simulation (veth pairs).
-///
-/// Phase 89.13: migrated to per-(variant, lang) ports. NSOS offloads BSD
-/// sockets to the host kernel (bypassing the legacy veth `interface`/`ip`
-/// fields in `config.toml`), so only the zenohd port matters for
-/// cross-test isolation.
+/// ThreadX Linux simulation (veth pairs / NSOS host sockets).
 ///
 /// | Variant | Rust | C    | C++  |
 /// |---------|------|------|------|
-/// | Pubsub  | 7455 | 7555 | 7655 |
-/// | Service | 7465 | 7565 | 7665 |
-/// | Action  | 7475 | 7575 | 7675 |
+/// | Pubsub  | 9000 | 9100 | 9200 |
+/// | Service | 9010 | 9110 | 9210 |
+/// | Action  | 9020 | 9120 | 9220 |
 pub const THREADX_LINUX: PlatformConfig = PlatformConfig {
     name: "threadx-linux",
-    zenohd_port: 7455,
+    zenohd_port: platform_port_base(PlatformId::ThreadxLinux),
     lang_stride: 100,
     xrce_agent_port: 0,
     xrce_lang_stride: 0,
@@ -213,33 +225,29 @@ pub const THREADX_LINUX: PlatformConfig = PlatformConfig {
 
 /// Zephyr (native_sim or QEMU).
 ///
-/// Phase 89.13: migrated to per-(variant, lang) ports.
+/// | Variant | Rust | C    | C++  |
+/// |---------|------|------|------|
+/// | Pubsub  | 7400 | 7500 | 7600 |
+/// | Service | 7410 | 7510 | 7610 |
+/// | Action  | 7420 | 7520 | 7620 |
+///
+/// XRCE-DDS Agent ports follow the same per-(variant, lang) split in the
+/// allocator's agent band:
 ///
 /// | Variant | Rust | C    | C++  |
 /// |---------|------|------|------|
-/// | Pubsub  | 7456 | 7556 | 7656 |
-/// | Service | 7466 | 7566 | 7666 |
-/// | Action  | 7476 | 7576 | 7676 |
+/// | Pubsub  | 2400 | 2500 | 2600 |
+/// | Service | 2410 | 2510 | 2610 |
+/// | Action  | 2420 | 2520 | 2620 |
 ///
-/// Only Rust + C++ zenoh tests currently exist on Zephyr; the C column
-/// is reserved for future zenoh-backed C examples.
-///
-/// XRCE-DDS Agent ports follow the same per-(variant, lang) split via
-/// `xrce_agent_port` / `xrce_lang_stride` so cpp/xrce/c-xrce/rust-xrce
-/// tests can run in parallel:
-///
-/// | Variant | Rust | C    | C++  |
-/// |---------|------|------|------|
-/// | Pubsub  | 2018 | 2118 | 2218 |
-/// | Service | 2028 | 2128 | 2228 |
-/// | Action  | 2038 | 2138 | 2238 |
-///
-/// The compile-time `CONFIG_NROS_XRCE_AGENT_PORT` Kconfig is overridden
-/// at `west build` time per (variant, lang) — see `just/zephyr.just`.
+/// The compile-time `CONFIG_NROS_XRCE_AGENT_PORT` /
+/// `CONFIG_NROS_ZENOH_LOCATOR` Kconfigs are baked at `west build` time per
+/// (variant, lang) — see `scripts/build/zephyr-fixture-leaves.sh`, which
+/// computes the SAME formula.
 pub const ZEPHYR: PlatformConfig = PlatformConfig {
     name: "zephyr",
-    zenohd_port: 7456,
+    zenohd_port: platform_port_base(PlatformId::ZephyrNativeSim),
     lang_stride: 100,
-    xrce_agent_port: 2018,
+    xrce_agent_port: platform_xrce_base(PlatformId::ZephyrNativeSim),
     xrce_lang_stride: 100,
 };

@@ -395,7 +395,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
 
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
 # arm-virt) Entry (`ws-realtime-rust/src/nuttx_entry`): `system.toml` declares two
@@ -404,7 +404,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std
 # session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
 # high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
 # cargo lane at the `release` profile (177.8.c CGU-miscompile dodge); the connect
-# locator (`tcp/10.0.2.2:17866`, dialed through the QEMU slirp gateway) is baked via
+# locator (`tcp/10.0.2.2:8291`, dialed through the QEMU slirp gateway) is baked via
 # the per-row `NROS_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
 # nightly + build-std + NUTTX_DIR recipe env. Consumed by
 # tests/realtime_tiers_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
@@ -416,7 +416,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std
 # The NUTTX_* family points the shared board build.rs helpers (platform compile +
 # #127 image link) at the rv-virt export: riscv cross, rv32imac flags, the rv-virt
 # ld.script, EMPTY vectortab (riscv has no head object), the risc-v board-lib dir.
-# Locator port 17867 (arm uses 17866). `skip_probe` — same nightly+build-std env
+# Locator port 8691 (arm uses 8291). `skip_probe` — same nightly+build-std env
 # reasoning as the arm row. Consumed by tests/realtime_tiers_riscv_nuttx_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-riscv-realtime"
@@ -433,7 +433,7 @@ skip_probe = true
 # NOTE: the multi-word NUTTX_* env (PLATFORM_CFLAGS, ARCH_INCLUDES, …) is
 # exported by the `just nuttx build-riscv-rust` recipe — the lane's env
 # serialization is space-joined and cannot carry values with spaces.
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:17867", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-realtime"
@@ -447,7 +447,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:17866", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-c-native"
@@ -715,7 +715,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 entry = "native_threadx_entry"
 build_subdir = "build-workspace-fixtures-threadx"
-cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17553" }
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
 
 # phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
 # `nano_ros_entry(BOARD mps2-an385-freertos LAUNCH …)`, the FreeRTOS sibling to the C2a
@@ -734,12 +734,12 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17601" }
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
 # 10.0.2.2; the baked NROS_ENTRY_LOCATOR is ferried into the cc-rs entry-TU compile via the
-# board overlay's COMPILE_DEFINITIONS pass. Consumed by tests/entry_e2e.rs (nuttx_arm_c cell) (port 17861).
+# board overlay's COMPILE_DEFINITIONS pass. Consumed by tests/entry_e2e.rs (nuttx_arm_c cell) (port 8330).
 [[workspace_fixture]]
 id = "workspace-c-nuttx"
 platform = "nuttx"
@@ -749,7 +749,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17861" }
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
 # (`ws-realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
@@ -758,7 +758,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", N
 # sibling of both workspace-c-nuttx and the Zephyr workspace-realtime-entry-cpp. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the baked
 # port. Own build_subdir (one board per CMake configure). Consumed by
-# tests/realtime_tiers_cpp_nuttx_e2e.rs (port 17863).
+# tests/realtime_tiers_cpp_nuttx_e2e.rs (port 8491).
 [[workspace_fixture]]
 id = "workspace-cpp-nuttx-realtime"
 platform = "nuttx"
@@ -768,12 +768,12 @@ dir = "examples/workspaces/ws-realtime-cpp"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17863" }
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
 # #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
 # riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
 # plan). Built by `just nuttx build-riscv-c-workspaces`. Consumed by
-# tests/realtime_tiers_cpp_riscv_nuttx_e2e.rs (port 17870).
+# tests/realtime_tiers_cpp_riscv_nuttx_e2e.rs (port 8891).
 [[workspace_fixture]]
 id = "workspace-cpp-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
@@ -783,7 +783,7 @@ dir = "examples/workspaces/ws-realtime-cpp"
 bringup = "src/demo_bringup"
 entry = "riscv_nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx-riscv"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17870" }
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
 # (`ws-realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
@@ -791,7 +791,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv",
 # sibling of workspace-cpp-nuttx-realtime and of the pure-C workspace-c-nuttx. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the
 # baked port. Own build_subdir (one board per CMake configure). Consumed by
-# tests/realtime_tiers_c_nuttx_e2e.rs (port 17864).
+# tests/realtime_tiers_c_nuttx_e2e.rs (port 8391).
 [[workspace_fixture]]
 id = "workspace-c-nuttx-realtime"
 platform = "nuttx"
@@ -801,14 +801,14 @@ dir = "examples/workspaces/ws-realtime-c"
 bringup = "src/demo_bringup"
 entry = "nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17864" }
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
 # #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
 # sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
 # `[tiers.*.nuttx]` table keys on the RTOS). Built by `just nuttx
 # build-riscv-c-workspaces` (provisions the rv-virt kernel; the recipe exports
 # NUTTX_DIR + the riscv CC). Own build_subdir (one board per CMake configure).
-# Consumed by tests/realtime_tiers_c_riscv_nuttx_e2e.rs (port 17869).
+# Consumed by tests/realtime_tiers_c_riscv_nuttx_e2e.rs (port 8791).
 [[workspace_fixture]]
 id = "workspace-c-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
@@ -818,7 +818,7 @@ dir = "examples/workspaces/ws-realtime-c"
 bringup = "src/demo_bringup"
 entry = "riscv_nuttx_entry"
 build_subdir = "build-workspace-fixtures-nuttx-riscv"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17869" }
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"
@@ -1143,7 +1143,7 @@ dir = "examples/workspaces/ws-realtime-cpp-mps2"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17851", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
 # fixture builds release for the same reason.
@@ -1165,7 +1165,7 @@ dir = "examples/workspaces/ws-realtime-c-mps2"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17871", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the C++ tiers
 # fixture builds release for the same reason.
@@ -1184,7 +1184,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 entry = "threadx_entry"
 build_subdir = "build-workspace-fixtures-threadx"
-cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17803" }
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9230" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-freertos"
@@ -1195,7 +1195,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17811" }
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8030" }
 
 [[workspace_fixture]]
 id = "workspace-mixed-native"
@@ -1295,13 +1295,13 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 entry = "threadx_entry"
 build_subdir = "build-workspace-fixtures-threadx"
-cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17821" }
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9330" }
 
 # phase-263 C2c — the MIXED (C + C++ + no_std Rust) entry on FreeRTOS QEMU. Unlike the
 # threadx-linux host triple, FreeRTOS is a genuine thumbv7m-none-eabi no_std cross target, so
 # the Rust heartbeat node compiles no_std (`#![no_std]`, alloc-only) and the nros_ws_runtime
 # umbrella cross-compiles + re-points NanoRosCpp for the embedded board. Own build_subdir;
-# board-matching slirp net + baked tcp/192.0.3.1:17841. Consumed by
+# board-matching slirp net + baked tcp/192.0.3.1:8130. Consumed by
 # tests/entry_e2e.rs (freertos_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-freertos"
@@ -1312,7 +1312,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17841" }
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
 
 # ===========================================================================
 # native — Rust (host, profile nros-fast-release)
@@ -2052,7 +2052,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/talker-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2060,7 +2060,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/listener-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2068,7 +2068,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/service-server-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7462", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2076,7 +2076,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/service-client-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7462", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2084,7 +2084,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/action-server-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7472", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2092,7 +2092,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/rust/action-client-entry"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:7472", NROS_DOMAIN_ID = "0" }
+env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,
@@ -2646,84 +2646,84 @@ platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7551" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7551" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7561" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7561" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7571" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/c/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7571" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7651" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7651" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7661" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7661" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7671" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/cpp/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7671" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
 
 # ===========================================================================
 # nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).
@@ -2735,84 +2735,84 @@ platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7552" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7552" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7562" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7562" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7572" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7572" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7652" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7652" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7662" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7662" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7672" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7672" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
 
 # ===========================================================================
 # qemu-riscv-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).
@@ -2828,8 +2828,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv-nuttx/c/talker"
 # #199 follow-up — dedicated e2e port (the rust riscv realtime entry uses
-# 17867): the guest dials the host router through the QEMU slirp gateway.
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:17868" }
+# 8691): the guest dials the host router through the QEMU slirp gateway.
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8700" }
 
 # ===========================================================================
 # threadx-linux — C / C++ (cmake). Zenoh here; Cyclone cells stay gated inline.
@@ -2841,84 +2841,84 @@ platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7555" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9100" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7555" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9100" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7565" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9110" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7565" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9110" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7575" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9120" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7575" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9120" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7655" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9200" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7655" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9200" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7665" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9210" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7665" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9210" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7675" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9220" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:7675" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9220" }
 
 # ===========================================================================
 # threadx-riscv64 — C / C++ (cmake). Zenoh here; experimental Cyclone gated inline.
@@ -2930,84 +2930,84 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7553" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/listener"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7553" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7563" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/service-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7563" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7573" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/action-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7573" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7653" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/listener"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7653" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7663" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/service-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7663" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7673" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/cpp/action-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7673" }
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).

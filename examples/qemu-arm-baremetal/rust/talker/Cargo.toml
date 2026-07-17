@@ -31,7 +31,7 @@ dispatch = "deferred"
 # run_with_deploy` overlays them onto the board boot Config. `netmask` replaces
 # the old `prefix = 24`.
 [package.metadata.nros.deploy.qemu-mps2-an385]
-locator = "tcp/10.0.2.2:7450"
+locator = "tcp/10.0.2.2:10500"
 ip = "10.0.2.10"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

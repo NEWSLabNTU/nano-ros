@@ -19,15 +19,16 @@
 //!   override) — fully parallel.
 //! - **Baked zenohd port**: C zenoh cells (+ the rust service cell) bake
 //!   their router port at `west build` time —
-//!   `PlatformConfig::zenohd_port_for(variant, lang)` (7456 + variant
-//!   offset + lang stride; see `just/zephyr.just`). Until W4.
+//!   `PlatformConfig::zenohd_port_for(variant, lang)` (the allocator's
+//!   7400-window with variant offset and lang stride since the phase-295
+//!   W4 re-bake; the west lane computes the SAME formula).
 //! - **Baked XRCE Agent port**: xrce cells start a MicroXRCEAgent on
-//!   `xrce_agent_port_for(variant, lang)` (2018 + offsets), matching the
-//!   `CONFIG_NROS_XRCE_AGENT_PORT` bake. Until W4.
+//!   `xrce_agent_port_for(variant, lang)` (2400 + offsets), matching the
+//!   `CONFIG_NROS_XRCE_AGENT_PORT` bake.
 //! - **Baked Cyclone domain**: cyclonedds cells need no router/agent — SPDP
-//!   multicast discovery on the per-(lang, variant) `CONFIG_NROS_DOMAIN_ID`
-//!   bake (domains 50–58; pairs share, sets differ → distinct RTPS ports).
-//!   Until W4.
+//!   multicast discovery on the per-(variant, lang) `CONFIG_NROS_DOMAIN_ID`
+//!   bake (`alloc::domain_of` — domains 22–30; pairs share, sets differ →
+//!   distinct RTPS ports).
 //!
 //! Skip semantics are identical to the per-cell tests: no zephyr workspace /
 //! missing or STALE west image (`just zephyr build-fixtures`) / missing XRCE
@@ -163,13 +164,13 @@ enum Iso {
     /// `-testargs --nros-locator` (#166 / phase-286 W1).
     EphemeralZenohd,
     /// zenohd on the image's compile-time-baked port —
-    /// `ZEPHYR.zenohd_port_for(variant, lang)` (until W4).
+    /// `ZEPHYR.zenohd_port_for(variant, lang)` (the allocator's number).
     BakedZenohd,
     /// MicroXRCEAgent on the image's baked UDP port —
-    /// `ZEPHYR.xrce_agent_port_for(variant, lang)` (until W4).
+    /// `ZEPHYR.xrce_agent_port_for(variant, lang)` (the allocator's number).
     BakedXrceAgent,
     /// Nothing to spawn: Cyclone SPDP multicast on the baked
-    /// per-(lang, variant) `CONFIG_NROS_DOMAIN_ID` (50–58, until W4).
+    /// per-(variant, lang) `CONFIG_NROS_DOMAIN_ID` (allocator domains 22–30).
     BakedCycloneDomain,
 }
 
@@ -249,15 +250,15 @@ fn setup_isolation(cell: &Cell) -> (IsoGuard, Option<String>) {
             (IsoGuard::Router(router), Some(locator))
         }
         Iso::BakedZenohd => {
-            // Baked router port (mirrors the fixture's locator bake until
-            // the phase-295 W4 allocator re-bake).
+            // Baked router port — the allocator's number, which is also
+            // the fixture's locator bake.
             let port = platform::ZEPHYR.zenohd_port_for(variant, lang);
             let router = ZenohRouter::start(port).expect("Failed to start zenohd");
             eprintln!("[{}] zenohd on baked port {port}", cell.id());
             (IsoGuard::Router(router), None)
         }
         Iso::BakedXrceAgent => {
-            // Baked Agent port (mirrors the `CONFIG_NROS_XRCE_AGENT_PORT`
+            // Baked Agent port (matches the `CONFIG_NROS_XRCE_AGENT_PORT`
             // west bake — `just/zephyr.just` — until the W4 re-bake).
             let port = platform::ZEPHYR.xrce_agent_port_for(variant, lang);
             let agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
@@ -265,8 +266,8 @@ fn setup_isolation(cell: &Cell) -> (IsoGuard, Option<String>) {
             (IsoGuard::Agent(agent), None)
         }
         Iso::BakedCycloneDomain => {
-            // Cyclone SPDP multicast on the baked per-(lang, variant)
-            // domain (50–58) — nothing to spawn (until the W4 re-bake).
+            // Cyclone SPDP multicast on the baked per-(variant, lang)
+            // allocator domain (22–30) — nothing to spawn.
             (IsoGuard::None, None)
         }
     }
@@ -369,7 +370,7 @@ fn start_image(bin: &Path, locator: &Option<String>, what: &str) -> ZephyrProces
     note: "ex test_zephyr_cpp_action_server_to_client_e2e — client needs ~25 s to reach \
            send_goal (3 service-client declarations, Phase 160.C)",
 })]
-// ── cyclonedds (SPDP multicast; baked domains 50–58) ─────────────────────
+// ── cyclonedds (SPDP multicast; baked allocator domains 22–30) ───────────
 #[case::cyclonedds_rust_pubsub_e2e(Cell {
     rmw: Rmw::Cyclonedds, lang: Lang::Rust, workload: Workload::Pubsub,
     iso: Iso::BakedCycloneDomain,
@@ -1268,7 +1269,7 @@ fn test_native_server_zephyr_client() {
             "Zephyr service E2E failed — client did not connect to zenohd.\n\
              Verify:\n\
              - Zephyr binary up to date: run `just zephyr build-fixtures`\n\
-             - zenohd reachable on tcp/127.0.0.1:7456 (NSOS forwards sockets to host loopback)"
+             - zenohd reachable on the baked allocator port (NSOS forwards sockets to host loopback)"
         );
     } else {
         panic!(
