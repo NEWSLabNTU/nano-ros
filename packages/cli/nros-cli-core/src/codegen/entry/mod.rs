@@ -555,6 +555,154 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
     })
 }
 
+/// R1-N2 (RFC-0052 / phase-296 W4.1) — build a [`Plan`] from a resolved
+/// SystemModel instead of parsing a launch file. The model is the
+/// canonical artifact: structure supplies the node list (params included
+/// — the embedded image has no record.json), execution supplies tiers,
+/// group bindings, capability features, and per-node deploy facts.
+///
+/// Board slice: with deploy entries present, `board == "native"/"posix"`
+/// keeps `linux`-targeted nodes and any other board key keeps
+/// `mcu:<that board>` nodes; a model WITHOUT deploy entries deploys every
+/// node (single-image case). An empty slice is a hard error — a bake for
+/// a board no node targets is a placement bug, not an empty entry.
+pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
+    use crate::orchestration::model_ingest;
+    use ros_launch_manifest_model::{ParamValue, Target};
+
+    let model = model_ingest::load_model(model_path)?;
+    let board = board.unwrap_or_else(|| "native".to_string());
+    let target_rtos = board_to_rtos(&board).to_string();
+
+    let keep = |fqn: &str| -> bool {
+        let Some(dep) = model.execution.deploy.get(fqn) else {
+            return model.execution.deploy.is_empty();
+        };
+        match (&dep.target, board.as_str()) {
+            (Target::Linux, "native" | "posix") => true,
+            (Target::Mcu { board: b }, key) => b == key,
+            _ => false,
+        }
+    };
+
+    let mut nodes: Vec<PlanNode> = Vec::new();
+    for (fqn, inst) in &model.structure.nodes {
+        if !keep(fqn) {
+            continue;
+        }
+        let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
+        let namespace = {
+            let ns = &fqn[..fqn.len() - bare.len()];
+            let ns = ns.trim_end_matches('/');
+            if ns.is_empty() {
+                "/".to_string()
+            } else {
+                ns.to_string()
+            }
+        };
+        let exec = inst
+            .exec
+            .clone()
+            .or_else(|| {
+                // Library-component node: the plugin (class) names it; the
+                // typed emitters resolve the real class/header from cmake
+                // metadata by (pkg, exec/name) as usual.
+                inst.plugin
+                    .as_deref()
+                    .map(|p| p.rsplit("::").next().unwrap_or(p).to_string())
+            })
+            .ok_or_else(|| eyre::eyre!("model node '{fqn}' has neither exec nor plugin"))?;
+        let params: Vec<(String, String)> = inst
+            .params
+            .iter()
+            .map(|(k, v)| {
+                let s = match v {
+                    ParamValue::Bool(b) => b.to_string(),
+                    ParamValue::Int(i) => i.to_string(),
+                    ParamValue::Float(f) => f.to_string(),
+                    ParamValue::Str(s) => s.clone(),
+                    ParamValue::StrList(l) => l.join(","),
+                };
+                (k.clone(), s)
+            })
+            .collect();
+        // Group→tier from the model's resolved bindings (`<fqn>/<group>`).
+        let mut group_tiers: BTreeMap<String, String> = BTreeMap::new();
+        let prefix = format!("{fqn}/");
+        for (key, tier) in &model.execution.bindings {
+            if let Some(group) = key.strip_prefix(&prefix) {
+                group_tiers.insert(group.to_string(), tier.clone());
+            }
+        }
+        nodes.push(PlanNode {
+            pkg: inst.pkg.clone().unwrap_or_default(),
+            exec,
+            name: Some(bare),
+            namespace: Some(namespace),
+            class_name: None,
+            class_header: None,
+            lang: None,
+            shape: None,
+            host: model.execution.deploy.get(fqn).and_then(|d| d.host.clone()),
+            qos_overrides: Vec::new(),
+            params,
+            callback_groups: Vec::new(),
+            sched_context: None,
+            group_tiers,
+        });
+    }
+    if nodes.is_empty() {
+        bail!(
+            "SystemModel `{}` places no nodes on board `{board}` — check \
+             execution.deploy targets",
+            model_path.display()
+        );
+    }
+
+    let tiers: BTreeMap<String, TierDef> = model
+        .execution
+        .tiers
+        .iter()
+        .map(|(name, t)| {
+            (
+                name.clone(),
+                crate::orchestration::model_ingest::tier_from_model(t, &target_rtos),
+            )
+        })
+        .collect();
+
+    let lifecycle = model
+        .structure
+        .nodes
+        .values()
+        .find_map(|n| n.lifecycle_autostart)
+        .map(|a| {
+            match a {
+                ros_launch_manifest_model::Autostart::None => "none",
+                ros_launch_manifest_model::Autostart::Configure => "configure",
+                ros_launch_manifest_model::Autostart::Active => "active",
+            }
+            .to_string()
+        });
+    let features = &model.execution.features;
+    let param_services = features.iter().any(|f| f == "param_services");
+    let safety = features.iter().any(|f| f == "safety").then_some(true);
+
+    Ok(Plan {
+        board,
+        nodes,
+        depfile_paths: vec![model_path.to_path_buf()],
+        bringup: "system-model".to_string(),
+        launch_file: model_path.to_path_buf(),
+        lifecycle,
+        param_services,
+        safety,
+        tiers,
+        node_overrides: Vec::new(),
+        resolved_tiers: None,
+    })
+}
+
 /// Phase 269 (W4) — derive the RTOS key recognised by [`resolve_tiers`] from a
 /// board deploy key. The mapping mirrors the `rtos_spec` function in
 /// `nros-orchestration-ir` (`"posix" | "native"`, `"freertos"`, …).

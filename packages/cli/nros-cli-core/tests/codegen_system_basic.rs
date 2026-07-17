@@ -475,3 +475,72 @@ execution: {}
             .contains("\"monitors\"")
     );
 }
+
+/// R1-N2 — `plan_from_model`: a model with deploy placement, params,
+/// bindings, and features produces a Plan sliced per board with all the
+/// legacy-path fields populated.
+#[test]
+fn plan_from_model_slices_and_populates() {
+    use nros_cli_core::codegen::entry::plan_from_model;
+    let tmp = temp_root("model-plan");
+    let model_path = tmp.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure:
+  nodes:
+    /demo/talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      params:
+        rate_hz: 10
+        label: fast
+    /sensing/imu:
+      scope: /
+      pkg: imu_pkg
+      exec: imu
+execution:
+  deploy:
+    /demo/talker:
+      target: linux
+    /sensing/imu:
+      target: mcu:stm32f4
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+  bindings:
+    /demo/talker/ctrl: high
+  features:
+    - safety
+    - param_services
+"#,
+    )
+    .unwrap();
+
+    let plan = plan_from_model(&model_path, None).expect("native plan");
+    assert_eq!(plan.nodes.len(), 1, "linux slice only");
+    let n = &plan.nodes[0];
+    assert_eq!(n.pkg, "talker_pkg");
+    assert_eq!(n.exec, "talker");
+    assert_eq!(n.name.as_deref(), Some("talker"));
+    assert_eq!(n.namespace.as_deref(), Some("/demo"));
+    assert!(
+        n.params
+            .contains(&("rate_hz".to_string(), "10".to_string()))
+    );
+    assert_eq!(n.group_tiers.get("ctrl").map(String::as_str), Some("high"));
+    assert!(plan.param_services);
+    assert_eq!(plan.safety, Some(true));
+    assert_eq!(plan.tiers["high"].spin_period_us, Some(1000));
+
+    let mcu = plan_from_model(&model_path, Some("stm32f4".to_string())).expect("mcu plan");
+    assert_eq!(mcu.nodes.len(), 1);
+    assert_eq!(mcu.nodes[0].exec, "imu");
+
+    let err = plan_from_model(&model_path, Some("zephyr".to_string())).unwrap_err();
+    assert!(err.to_string().contains("places no nodes"), "{err}");
+}

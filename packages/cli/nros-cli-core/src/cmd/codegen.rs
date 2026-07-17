@@ -88,8 +88,14 @@ pub struct EntryArgs {
     pub workspace: PathBuf,
 
     /// `"<bringup_pkg>"` or `"<bringup_pkg>:<file>.launch.xml"`.
-    #[arg(long)]
-    pub launch: String,
+    /// Omit when `--model` is given.
+    #[arg(long, conflicts_with = "model")]
+    pub launch: Option<String>,
+
+    /// R1-N2 (RFC-0052 W4.1) — build the entry plan from a resolved
+    /// SystemModel instead of a launch file (canonical path).
+    #[arg(long, value_name = "system_model.yaml")]
+    pub model: Option<PathBuf>,
 
     /// Board key (`native`, `freertos`, …). Defaults to `native` — the
     /// only Entry-pkg target the C/C++ surface supports today
@@ -221,13 +227,20 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             .join(&args.workspace)
     };
 
-    let input = entry_codegen::PlanInput {
-        workspace: workspace.as_path(),
-        launch_spec: args.launch.as_str(),
-        board: args.board.clone(),
-        arg_overrides,
+    let mut plan = if let Some(model_path) = &args.model {
+        entry_codegen::plan_from_model(model_path, args.board.clone())?
+    } else {
+        let Some(launch) = args.launch.as_deref() else {
+            bail!("codegen entry: pass --launch <pkg[:file]> or --model <system_model.yaml>");
+        };
+        let input = entry_codegen::PlanInput {
+            workspace: workspace.as_path(),
+            launch_spec: launch,
+            board: args.board.clone(),
+            arg_overrides,
+        };
+        entry_codegen::plan_from_launch(input)?
     };
-    let mut plan = entry_codegen::plan_from_launch(input)?;
 
     // Phase 211.F — partition for a single target host when `--host` is given.
     if let Some(host) = args.host.as_deref() {
