@@ -160,6 +160,15 @@ struct nros_goal_uuid_t;
 #define NROS_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
+ * Issue #227 — pass this as `domain_id` to `nros_support_init[_named]` to
+ * request an EXPLICIT domain 0. Plain `0` is the UNSET sentinel (defers to
+ * `ROS_DOMAIN_ID` env on hosted, then the baked/default rungs — the #206
+ * model-A ladder). Valid domains cap at 232, so 255 is unambiguous. Hosted
+ * env still overrides it, like every explicit argument under model A.
+ */
+#define NROS_DOMAIN_ID_EXPLICIT_ZERO 255
+
+/**
  * Clock type enumeration.
  */
 typedef enum nros_clock_type_t {

@@ -51,6 +51,13 @@ fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
     }
 }
 
+/// Issue #227 — pass this as `domain_id` to `nros_support_init[_named]` to
+/// request an EXPLICIT domain 0. Plain `0` is the UNSET sentinel (defers to
+/// `ROS_DOMAIN_ID` env on hosted, then the baked/default rungs — the #206
+/// model-A ladder). Valid domains cap at 232, so 255 is unambiguous. Hosted
+/// env still overrides it, like every explicit argument under model A.
+pub const NROS_DOMAIN_ID_EXPLICIT_ZERO: u8 = 255;
+
 /// Support context state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,7 +205,10 @@ pub unsafe extern "C" fn nros_support_init_named(
     let baked = nros_node::BootConfig {
         node_name: None,
         locator: baked_locator,
-        domain_id: (domain_id != 0).then_some(domain_id as u32),
+        // Issue #227 — NROS_DOMAIN_ID_EXPLICIT_ZERO (255) = explicit domain 0;
+        // 0 stays the unset sentinel (model A / ROS convention); 233..=254
+        // flow to the resolver's range check and fail loudly.
+        domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: None,
     };
     let resolved = match nros_node::ExecutorConfig::try_resolve(baked, true) {

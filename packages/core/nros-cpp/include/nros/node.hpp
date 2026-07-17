@@ -81,13 +81,24 @@ template <typename A> class PollingActionClient;
 // (the same private-create pattern `Executor` / `NodeBuilder` already use).
 class ComponentNode;
 
+/// Issue #227 — pass as `domain_id` to request an EXPLICIT domain 0. Plain
+/// `0` is the UNSET sentinel (defers to `ROS_DOMAIN_ID` env on hosted, then
+/// the baked `NROS_ENTRY_DOMAIN_ID` macro, then the default — the #206
+/// model-A ladder), so a literal domain 0 is otherwise unreachable once the
+/// image bakes a nonzero domain. Valid domains cap at 232, so 255 is
+/// unambiguous. Mirrors `NROS_DOMAIN_ID_EXPLICIT_ZERO` in the C API
+/// (nros_generated.h); hosted env still overrides it under model A.
+inline constexpr uint8_t kDomainIdExplicitZero = 255;
+
 /// Initialize an nros session.
 ///
 /// Opens a middleware connection. Must be called before creating nodes.
 /// Call `shutdown()` to clean up.
 ///
 /// @param locator  Middleware locator (e.g., "tcp/127.0.0.1:7447"), or nullptr for default.
-/// @param domain_id  ROS domain ID (0-232).
+/// @param domain_id  ROS domain ID (0-232). `0` = unset (env > baked macro >
+///                   default decide); `nros::kDomainIdExplicitZero` (255) =
+///                   explicitly domain 0 (issue #227).
 /// @return Result indicating success or failure.
 inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 
@@ -106,7 +117,8 @@ inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 /// `"talker"`, `"listener"`).
 ///
 /// @param locator       Middleware locator, or nullptr for default.
-/// @param domain_id     ROS domain ID (0-232).
+/// @param domain_id     ROS domain ID (0-232); `0` = unset,
+///                      `nros::kDomainIdExplicitZero` = explicit domain 0.
 /// @param session_name  Per-process session identifier. Must not be nullptr.
 /// @return Result indicating success or failure.
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
@@ -733,6 +745,9 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     }
 #endif
 #ifdef NROS_ENTRY_DOMAIN_ID
+    // Only the UNSET sentinel (0) folds the baked macro in; an explicit
+    // argument — including kDomainIdExplicitZero (255) for a literal
+    // domain 0 (issue #227) — passes through untouched.
     if (domain_id == 0) {
         domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
     }

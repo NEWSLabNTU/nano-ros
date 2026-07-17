@@ -46,12 +46,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 - **#228** — [generated C serialize conventions split](0228-c-serialize-return-convention-split.md):
   messages return 0/-1 + out-param, services return byte-count — same concept, two ABIs. (deep audit 2026-07-17)
-- **#227** — [domain_id==0 sentinel blocks explicit domain 0](0227-domain-zero-sentinel-blocks-explicit-domain0.md):
-  baked nonzero NROS_ENTRY_DOMAIN_ID makes domain 0 unreachable; plus uint8 vs u32 domain type drift. (deep audit 2026-07-17)
 - **#221** — [stm32f4 rtic action examples panic on hardware](0221-stm32f4-rtic-action-examples-panic-on-hardware.md):
   README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#226** — the C++
+Recently resolved (see [`archived/`](archived/) for the full list): **#227** — explicit
+domain 0 is reachable from C/C++: `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255) /
+`nros::kDomainIdExplicitZero` maps to a baked `Some(0)` through the one resolver (0 stays the
+unset sentinel per the #206 model-A decision; hosted env still overrides); u8→u32 domain type
+unification recorded for the next ABI window. **#226** — the C++
 ParameterServer sequence engine is gone: bytes stay in the inline pool (the stable owner the
 borrow-FFI requires, capacity-header-prefixed), records moved into the C/Rust server via the
 existing array FFI — no parallel name table, and sequence params are now visible to the param

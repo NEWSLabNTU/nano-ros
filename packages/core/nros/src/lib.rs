@@ -623,11 +623,11 @@ pub mod internals {
 // Re-export types that don't depend on RMW (always available)
 pub use nros_node::{
     BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
-    BootConfig, BootConfigError, DOMAIN_ID_MAX, ExecutorConfig, ExecutorSemantics,
-    GuardConditionHandle, HandleId, HandleSet, InvocationMode, NROS_BOOT_CONFIG_MAGIC,
-    NROS_BOOT_CONFIG_VERSION, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger,
+    BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, ExecutorConfig,
+    ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
+    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawCancelCallback,
+    RawGoalCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
+    SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
 };
 
 // Re-export RMW-dependent types (require an active transport backend)

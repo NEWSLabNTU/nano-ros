@@ -512,7 +512,10 @@ pub unsafe extern "C" fn nros_cpp_init(
     let baked = nros_node::BootConfig {
         node_name: Some(node_name_str),
         locator: locator_str,
-        domain_id: (domain_id != 0).then_some(domain_id as u32),
+        // Issue #227 — 255 (NROS_DOMAIN_ID_EXPLICIT_ZERO) = explicit domain 0;
+        // 0 stays the unset sentinel; 233..=254 flow to the resolver's range
+        // check and fail loudly.
+        domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: Some(ns_str),
     };
     let config = match nros_node::ExecutorConfig::try_resolve(baked, true) {

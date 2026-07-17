@@ -166,6 +166,33 @@ const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 /// the mirror in sync (the #160 drift class).
 pub const DOMAIN_ID_MAX: u32 = 232;
 
+/// Issue #227 — C/C++-ABI escape for an EXPLICIT domain 0.
+///
+/// The C/C++ init surface carries `domain_id` as a `u8` where `0` is the
+/// UNSET sentinel (the #206 model-A / ROS-convention decision: unset defers
+/// to env > baked macro > default). That makes a literal domain 0
+/// unreachable once an image bakes a nonzero `NROS_ENTRY_DOMAIN_ID`. Since
+/// valid domains cap at [`DOMAIN_ID_MAX`] (232), the value 255 is free:
+/// passing it means "explicitly domain 0 — do NOT treat as unset". Hosted
+/// env still overrides it (model A), like every other explicit argument.
+pub const DOMAIN_ID_EXPLICIT_ZERO_C_ABI: u8 = 255;
+
+/// Map the C/C++ ABI's `u8` domain argument onto the resolver's baked rung.
+///
+/// `0` → `None` (unset; the ladder decides), 255
+/// ([`DOMAIN_ID_EXPLICIT_ZERO_C_ABI`]) → `Some(0)` (explicit zero), anything
+/// else → `Some(n)`. Values in `233..=254` pass through so
+/// [`ExecutorConfig::try_resolve`] rejects them loudly
+/// ([`BootConfigError::DomainIdRange`]) instead of this edge inventing its
+/// own validation.
+pub fn baked_domain_from_c_abi(raw: u8) -> Option<u32> {
+    match raw {
+        0 => None,
+        DOMAIN_ID_EXPLICIT_ZERO_C_ABI => Some(0),
+        n => Some(n as u32),
+    }
+}
+
 /// RFC-0045 / issue #206 — boot-config resolution error. Malformed or
 /// out-of-range identity input (env or baked) is an ERROR, never a silent
 /// fallback: a typo'd `ROS_DOMAIN_ID` must not invisibly move a node to
@@ -1444,6 +1471,42 @@ mod boot_config_tests {
             ),
             "embedded path validates the baked value too"
         );
+    }
+
+    /// Issue #227 — the C-ABI mapping: 0 = unset, 255 = explicit zero,
+    /// everything else passes through (233..=254 reach the resolver's range
+    /// check and fail there, not here).
+    #[test]
+    fn baked_domain_from_c_abi_mapping() {
+        assert_eq!(baked_domain_from_c_abi(0), None);
+        assert_eq!(
+            baked_domain_from_c_abi(DOMAIN_ID_EXPLICIT_ZERO_C_ABI),
+            Some(0)
+        );
+        assert_eq!(baked_domain_from_c_abi(61), Some(61));
+        assert_eq!(baked_domain_from_c_abi(232), Some(232));
+        // Free-range values above DOMAIN_ID_MAX are NOT swallowed…
+        assert_eq!(baked_domain_from_c_abi(233), Some(233));
+        // …and the resolver rejects them loudly.
+        let baked = BootConfig {
+            domain_id: baked_domain_from_c_abi(233),
+            ..BootConfig::default()
+        };
+        assert!(matches!(
+            ExecutorConfig::try_resolve(baked, false),
+            Err(BootConfigError::DomainIdRange)
+        ));
+        // Explicit zero resolves to domain 0 even on the embedded path
+        // (no env rung to save it).
+        let baked = BootConfig {
+            domain_id: baked_domain_from_c_abi(DOMAIN_ID_EXPLICIT_ZERO_C_ABI),
+            ..BootConfig::default()
+        };
+        let cfg = match ExecutorConfig::try_resolve(baked, false) {
+            Ok(c) => c,
+            Err(e) => panic!("explicit zero must resolve: {e}"),
+        };
+        assert_eq!(cfg.domain_id, 0);
     }
 
     #[test]

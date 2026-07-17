@@ -251,3 +251,8 @@ two follow-ons are additive rather than rework:
   decision recorded: model A applies to explicit init args too (env
   overrides them on hosted, the ROS convention); `domain_id == 0` remains
   the unset sentinel at the C/C++ ABI edge.
+
+- 2026-07-17 — issue #227: `DOMAIN_ID_EXPLICIT_ZERO_C_ABI` (255) +
+  `baked_domain_from_c_abi` give the u8 C/C++ init surface an explicit-zero
+  escape (0 remains the unset sentinel per the #206 model-A decision).
+  u8→u32 domain type unification deferred to the next ABI window.
