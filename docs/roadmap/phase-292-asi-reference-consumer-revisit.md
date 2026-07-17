@@ -93,6 +93,18 @@ named reference consumer), 287 (ament verbs on zephyr).
     `msr DAIFSet, #15`, ELR = the reset vector — looks like a boot bug,
     is a stack overflow). First ASI FVP boot hit it 53 ms in. Fix: pair
     every `NET_TCP=y` with `CONFIG_NET_TCP_WORKQ_STACK_SIZE=4096`.
+  - [x] Wall #4 (2026-07-17, FIXED): board-crate consumers on Zephyr 3.7
+    never receive the RMW-common Kconfig — the `-S nros-<rmw>` snippet is
+    4.x-only and `nano_ros_use_board()` merged only the board confs, so
+    Cyclone's pthread workers ran on the 2 KiB
+    `CONFIG_DYNAMIC_THREAD_STACK_SIZE` default (snippet value: 32 KiB) and
+    overflowed into a wild jump past `z_mapped_end` inside
+    `dds_create_participant` (`ddsi_config_init`/`set_defaults` in the
+    register dump, garbage ESR, "idle" as current thread). Fix:
+    `nano_ros_use_board()` step 7b globs
+    `zephyr/snippets/nros-${NANO_ROS_RMW}/*.conf` onto `EXTRA_CONF_FILE`
+    on every Zephyr version — the snippet confs are plain fragments, and
+    double-merging with a 4.x `-S` pass is harmless (identical values).
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.

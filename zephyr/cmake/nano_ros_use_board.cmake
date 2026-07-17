@@ -95,6 +95,22 @@ function(nano_ros_use_board NAME)
             "nano-ros RMW backend (default from nros-board-${NAME})")
     endif()
 
+    # 7b. RMW-common Kconfig — phase-292 W2 (ASI wall #4). On Zephyr 4.x the
+    # `-S nros-<rmw>` snippet carries the RMW-common conf (worker stacks,
+    # net buffers, TLS...); 3.7 has no snippet support and board-crate
+    # consumers got NONE of it — Cyclone's pthread workers then run on the
+    # 2 KiB CONFIG_DYNAMIC_THREAD_STACK_SIZE default and overflow into a
+    # wild jump past z_mapped_end during dds_create_participant. The
+    # snippet .conf files are plain Kconfig fragments, so merge them here
+    # for every Zephyr version; a consumer merging the snippet too is
+    # harmless (identical values).
+    file(GLOB _nros_rmw_common_conf
+        "${NROS_REPO_DIR}/zephyr/snippets/nros-${NANO_ROS_RMW}/*.conf")
+    if(_nros_rmw_common_conf)
+        list(APPEND EXTRA_CONF_FILE ${_nros_rmw_common_conf})
+        set(EXTRA_CONF_FILE "${EXTRA_CONF_FILE}" PARENT_SCOPE)
+    endif()
+
     # 8. Cache the runner so `west fvp run` reads it from CMakeCache.txt
     # (Phase 215.D).
     set(NROS_BOARD_RUNNER "${NROS_BOARD_RUNNER}" CACHE STRING
