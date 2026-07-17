@@ -423,3 +423,55 @@ execution:
         "got: {err}"
     );
 }
+
+/// R1-N1 — a model with publisher rate contracts bakes the monitor table
+/// (`system_monitors.rs` + plan `monitors` section); an uncontracted model
+/// bakes neither (legacy byte-identity).
+#[test]
+fn codegen_system_model_mode_emits_monitor_table() {
+    let ws = temp_root("model-mon");
+    write_fixture(&ws);
+    let model_path = ws.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure:
+  topics:
+    /demo/chatter:
+      type: std_msgs/msg/String
+      pub:
+        - /demo/talker/chatter
+contracts:
+  pub_endpoints:
+    /demo/talker/chatter:
+      min_rate_hz: 10.0
+execution: {}
+"#,
+    )
+    .unwrap();
+    let out = temp_root("model-mon-out");
+    let mut a = args(&ws, &out);
+    a.model = Some(model_path);
+    codegen_system::run(a).expect("bake");
+
+    let mon = fs::read_to_string(out.join("nros-system/system_monitors.rs")).expect("table baked");
+    assert!(mon.contains("min_rate_hz_milli: 10000u32"), "{mon}");
+    assert!(mon.contains("fqn: \"/demo/talker/chatter\""), "{mon}");
+    let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
+    assert!(plan.contains("\"monitors\""), "{plan}");
+
+    // Uncontracted model: no table file, no plan section.
+    let model2 = ws.join("m2.yaml");
+    fs::write(&model2, "meta:\n  version: 1\nstructure: {}\n").unwrap();
+    let out2 = temp_root("model-mon-out2");
+    let mut a2 = args(&ws, &out2);
+    a2.model = Some(model2);
+    codegen_system::run(a2).expect("bake2");
+    assert!(!out2.join("nros-system/system_monitors.rs").exists());
+    assert!(
+        !fs::read_to_string(out2.join("nros-system/nros-plan.json"))
+            .unwrap()
+            .contains("\"monitors\"")
+    );
+}

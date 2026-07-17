@@ -144,8 +144,11 @@ pub fn run(args: Args) -> Result<()> {
     // borrow into `cfg`; model mode clones the entry so the substitution
     // stays local to this bake.
     let bringup_owned;
+    let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
     let bringup = if let Some(model_path) = &args.model {
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        // R1-N1 — contracted-publisher monitors ride the bake.
+        model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
             &mut owned.system,
@@ -215,6 +218,7 @@ pub fn run(args: Args) -> Result<()> {
         args.rmw.as_deref(),
         resolved_launch.as_deref(),
         &tier_table,
+        model_monitors,
     )?;
 
     if let Some(mode) = args.ahead_of_vendor {
@@ -421,6 +425,7 @@ fn emit_bake_tree(
     cli_rmw: Option<&str>,
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
+    monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
         .with_context(|| format!("create bake dir {}", bake_dir.display()))?;
@@ -464,6 +469,15 @@ fn emit_bake_tree(
         }
     }
 
+    // R1-N1 — baked monitor table (model mode; empty rows write nothing,
+    // keeping legacy bakes byte-identical).
+    if !monitors.is_empty() {
+        write_if_changed(
+            &bake_dir.join("system_monitors.rs"),
+            &crate::orchestration::model_ingest::render_monitor_rs(&monitors),
+        )?;
+    }
+
     write_if_changed(
         &bake_dir.join("nros-plan.json"),
         &render_plan_json(
@@ -472,6 +486,7 @@ fn emit_bake_tree(
             target,
             resolved_launch,
             tier_table,
+            monitors,
         )?,
     )?;
 
@@ -643,6 +658,10 @@ struct PlanDoc<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     launch_file: Option<&'a str>,
     components: Vec<PlanComponent<'a>>,
+    /// R1-N1 — contracted-publisher rate monitors (model mode only;
+    /// empty/omitted otherwise so legacy plans stay byte-identical).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
     /// Phase 228.B — resolved per-tier table. Omitted in the single-tier
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -690,6 +709,7 @@ fn render_plan_json(
     target: Option<&str>,
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
+    monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
 ) -> Result<String> {
     let launch_file: Option<String> = resolved_launch
         .map(|s| s.to_string())
@@ -766,6 +786,7 @@ fn render_plan_json(
         target,
         launch_file: launch_file.as_deref(),
         components,
+        monitors,
         tiers,
     };
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
@@ -918,7 +939,7 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
         .unwrap_or(ResolvedTierTable { tiers: Vec::new() });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
-        &render_plan_json(bringup, &kinds, Some("px4"), None, &px4_tiers)?,
+        &render_plan_json(bringup, &kinds, Some("px4"), None, &px4_tiers, Vec::new())?,
     )?;
 
     Ok(())

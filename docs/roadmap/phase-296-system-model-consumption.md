@@ -218,11 +218,15 @@ parity. Ordered gates (each verifiable before the next):
     mapper-DERIVED sched path stays per-target (synthesized tiers carry
     only the resolve target's placement); declared tiers are
     target-complete.
-  - **N (nano-ros):** N1 monitor-table emission from model contracts
-    (W3b.4 tail); N2 `codegen entry --model` (W4.1) incl. the
-    plugin=class mapping + resolved-wiring remap verification; N3
-    boot/transport bake reads `execution.transports` instead of
-    `[[transport]]`.
+  - **N (nano-ros):** N1 **LANDED** — `codegen-system --model` bakes
+    `system_monitors.rs` (one PubMonitorCell static per contracted
+    publisher + the MonitorSpec table + installer fn; empty = nothing,
+    legacy byte-identical) and a `monitors` plan section; orphan
+    contracts (endpoint with no owning topic) refuse the bake. N2
+    `codegen entry --model` (W4.1) incl. the plugin=class mapping +
+    resolved-wiring remap verification, and the entry calling
+    `nros_install_monitors` + `set_monitors`; N3 boot/transport bake
+    reads `execution.transports` instead of `[[transport]]`.
 - R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
   (`ws-realtime-rust` first) build from resolved models; book chapters
   switch to the resolve→bake flow.
