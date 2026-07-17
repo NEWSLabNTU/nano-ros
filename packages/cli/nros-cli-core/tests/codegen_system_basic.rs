@@ -612,3 +612,45 @@ execution:
     let err = plan_from_model(&model_path, Some("zephyr".to_string())).unwrap_err();
     assert!(err.to_string().contains("places no nodes"), "{err}");
 }
+
+/// W4.3 — an Mcu deploy naming a CONCRETE board ("fvp-aemv8r-smp") still
+/// slices under the entry codegen's board-FAMILY key ("zephyr") via the
+/// integrator's `[deploy.<t>] kind` (carried in `extra.kind`).
+#[test]
+fn plan_from_model_matches_deploy_kind_family() {
+    use nros_cli_core::codegen::entry::plan_from_model;
+    let tmp = temp_root("model-plan-kind");
+    let model_path = tmp.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure:
+  nodes:
+    /controller:
+      scope: /
+      pkg: controller_pkg
+      exec: controller
+execution:
+  deploy:
+    /controller:
+      target: mcu:fvp-aemv8r-smp
+      rmw: cyclonedds
+      extra:
+        kind: zephyr
+        deploy_name: fvp
+"#,
+    )
+    .unwrap();
+
+    let plan = plan_from_model(&model_path, Some("zephyr".to_string())).expect("family slice");
+    assert_eq!(plan.nodes.len(), 1);
+    assert_eq!(plan.nodes[0].exec, "controller");
+    // Exact concrete key still works too.
+    let exact =
+        plan_from_model(&model_path, Some("fvp-aemv8r-smp".to_string())).expect("exact slice");
+    assert_eq!(exact.nodes.len(), 1);
+    // Unrelated family: empty slice refuses.
+    let err = plan_from_model(&model_path, Some("freertos".to_string())).unwrap_err();
+    assert!(err.to_string().contains("places no nodes"), "{err}");
+}

@@ -580,7 +580,18 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         };
         match (&dep.target, board.as_str()) {
             (Target::Linux, "native" | "posix") => true,
-            (Target::Mcu { board: b }, key) => b == key,
+            // Exact board key, or the deploy's platform kind (the
+            // integrator's `[deploy.<t>] kind = "zephyr"`, carried in
+            // `extra.kind`) — the entry codegen key is the board FAMILY
+            // ("zephyr") while deploys name the concrete board
+            // ("fvp-aemv8r-smp"), so both spellings must slice.
+            (Target::Mcu { board: b }, key) => {
+                b == key
+                    || matches!(
+                        dep.extra.get("kind"),
+                        Some(ros_launch_manifest_model::ExtraValue::Str(k)) if k == key
+                    )
+            }
             _ => false,
         }
     };
