@@ -10,6 +10,7 @@
  */
 #include <stdint.h>
 #include <string.h>
+#include <zephyr/net/net_if.h>
 #include <zephyr/net/socket.h>
 
 #include "dds/ddsrt/heap.h"
@@ -114,6 +115,51 @@ dds_return_t ddsrt_getifaddrs(ddsrt_ifaddrs_t **ifap, const int *afs) {
      * unicast bind but Linux can't join multicast on lo. */
     struct nsos_mid_ifaddr hostif;
     int have_hostif = (nsos_adapt_getifaddrs(&hostif) == 0);
+
+    /* phase-292 W2 (ASI wall #5) — on real Zephyr-IP-stack targets (FVP,
+     * S32Z, ...) there is no NSOS trampoline, and the loopback fallback
+     * below made Cyclone advertise AND bind 127.0.0.1, which the native
+     * stack rejects with ENOENT (no loopback address) — every
+     * dds_create_participant failed. Enumerate the kernel's own net_if
+     * table instead: first UP, non-loopback interface with a usable IPv4
+     * unicast address wins. */
+    if (!have_hostif) {
+        for (int idx = 1; ; idx++) {
+            struct net_if *iface = net_if_get_by_index(idx);
+            if (iface == NULL) {
+                break;
+            }
+#if defined(CONFIG_NET_NATIVE_IPV4)
+            struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+            if (ipv4 == NULL) {
+                continue;
+            }
+            for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+                const struct net_if_addr *ua = &ipv4->unicast[i].ipv4;
+                if (!ua->is_used || ua->address.family != AF_INET) {
+                    continue;
+                }
+                /* Skip unspecified and loopback (127/8) addresses — the
+                 * whole point is a routable own-IP for SPDP. */
+                uint32_t haddr = ntohl(ua->address.in_addr.s_addr);
+                if (haddr == 0 || (haddr >> 24) == 127) {
+                    continue;
+                }
+                hostif.addr = ua->address.in_addr.s_addr;
+                hostif.netmask = ipv4->unicast[i].netmask.s_addr;
+                hostif.flags = 0;
+                hostif.ifindex = (unsigned int)idx;
+                strncpy(hostif.name, "zeth", sizeof(hostif.name) - 1);
+                hostif.name[sizeof(hostif.name) - 1] = '\0';
+                have_hostif = 1;
+                break;
+            }
+            if (have_hostif) {
+                break;
+            }
+#endif /* CONFIG_NET_NATIVE_IPV4 */
+        }
+    }
 
     ddsrt_ifaddrs_t *ifa = ddsrt_calloc(1, sizeof(*ifa));
     struct sockaddr_in *addr = ddsrt_calloc(1, sizeof(*addr));

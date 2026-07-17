@@ -105,6 +105,38 @@ named reference consumer), 287 (ament verbs on zephyr).
     `zephyr/snippets/nros-${NANO_ROS_RMW}/*.conf` onto `EXTRA_CONF_FILE`
     on every Zephyr version — the snippet confs are plain fragments, and
     double-merging with a 4.x `-S` pass is harmless (identical values).
+  - [x] Wall #5 (2026-07-17, FIXED — first cyclone participant EVER on the
+    real FVP model): cyclone-on-Zephyr-native-IP-stack had never run (the
+    `build-fvp-aemv8r-cyclonedds` recipe is a BUILD smoke; runtime was
+    native_sim/NSOS-only). Two NSOS-shaped assumptions broke on hardware:
+    1. `ddsrt_getifaddrs` (zephyr/cyclonedds-zephyr/link_stubs.c) fell
+       back to a synthetic loopback 127.0.0.1 when the NSOS host
+       trampoline is absent → Cyclone advertised AND bound loopback →
+       `bind: ENOENT` (native stack ships no loopback address) → every
+       `dds_create_participant` returned -1. Fix: enumerate the kernel's
+       own `net_if` table (first UP iface with a routable IPv4 unicast
+       addr) between the NSOS path and the loopback fallback.
+    2. The recv-thread waitset self-pipe (`q_sockwaitset.c` make_pipe,
+       Zephyr branch) is a TCP-loopback socket pair — same missing-
+       loopback failure ("can't allocate sock waitset"). Fix (cyclonedds
+       fork commit 4aa337b0, PENDING fork push): AF_UNIX `socketpair()`
+       when sockets are NOT offloaded; NSOS keeps the TCP pair. Snippet
+       now carries `CONFIG_NET_SOCKETPAIR=y`.
+    Verified single-core: `dds_create_participant` returns a positive
+    handle on FVP_BaseR_AEMv8R 11.31.28 ("tid in use" warnings = the
+    known-benign class). Follow-ups now visible behind it, tracked
+    below: multicast join error -1 (IGMP; unicast-only fallback engages),
+    ComponentNode `declare_parameter` code -5 (issue-0116 projection
+    class), and wall #6.
+  - [ ] Wall #6 (2026-07-17, OPEN): SMP-4 images crash in newlib
+    `_free_r((void*)0xffffffff)` (alignment abort, FAR 0xfffffff7) within
+    the first few `printf` calls from `main` — single-core images are
+    immune. Newlib malloc/stdio under Zephyr arm64 SMP suspect
+    (retargeted `__malloc_lock` vs SMP?). Also in the same class: the
+    RTPS-failure error path crashes through a garbage pointer
+    (PC-alignment fault to 0x13 from picolibc `cbputc`) instead of
+    halting cleanly — only reproducible while a boot-failure
+    diagnostic is being printed.
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.
