@@ -90,9 +90,11 @@ endfunction()
 
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
+    # R1 / W4.2 — MODEL <system_model.yaml>: the canonical resolved-model
+    # input (RFC-0052); mutually exclusive with LAUNCH.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG;HOST;LOCATOR"
+        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR"
         "SOURCES;DEPLOY;ARGS"
         ${ARGN})
     foreach(_req NAME DEPLOY)
@@ -104,7 +106,7 @@ function(nano_ros_entry)
     # SOURCES becomes optional when LAUNCH present — the generated TU
     # carries `int main()`. Standalone single-Node entry still needs
     # SOURCES (the caller provides their own `main`).
-    if(NOT _NRA_LAUNCH AND NOT _NRA_SOURCES)
+    if(NOT _NRA_LAUNCH AND NOT _NRA_MODEL AND NOT _NRA_SOURCES)
         message(FATAL_ERROR
             "nano_ros_entry: SOURCES required when LAUNCH is absent "
             "(single-Node self-bringup mode).")
@@ -168,7 +170,10 @@ function(nano_ros_entry)
     # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
-    if(_NRA_LAUNCH)
+    if(_NRA_LAUNCH OR _NRA_MODEL)
+        if(_NRA_LAUNCH AND _NRA_MODEL)
+            message(FATAL_ERROR "nano_ros_entry: LAUNCH and MODEL are mutually exclusive")
+        endif()
         if(NOT _NRA_LANG)
             set(_NRA_LANG cpp)
         endif()
@@ -189,6 +194,7 @@ function(nano_ros_entry)
             NAME      "${_NRA_NAME}"
             LANG      "${_NRA_LANG}"
             LAUNCH    "${_NRA_LAUNCH}"
+            MODEL     "${_NRA_MODEL}"
             BOARD     "${_NRA_BOARD}"
             HOST      "${_NRA_HOST}"
             ARGS_LIST "${_NRA_ARGS}"
@@ -543,7 +549,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;BOARD;HOST;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;MODEL;BOARD;HOST;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -598,10 +604,18 @@ function(_nros_entry_invoke_codegen)
         codegen entry
         --lang "${_NRX_LANG}"
         --workspace "${_ws_root}"
-        --launch "${_NRX_LAUNCH}"
         --out "${_gen_path}"
         --depfile "${_depfile_path}"
         --emit-link-libs "${_NRX_NAME}=${_link_libs_path}")
+    # R1-N2 / W4.2 — MODEL (resolved SystemModel) is the canonical input;
+    # LAUNCH stays the transitional path. Exactly one must be given.
+    if(_NRX_MODEL)
+        list(APPEND _cli_args --model "${_NRX_MODEL}")
+    elseif(_NRX_LAUNCH)
+        list(APPEND _cli_args --launch "${_NRX_LAUNCH}")
+    else()
+        message(FATAL_ERROR "nano_ros_entry codegen: LAUNCH or MODEL required")
+    endif()
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
     endif()

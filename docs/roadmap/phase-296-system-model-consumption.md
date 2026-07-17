@@ -157,14 +157,12 @@ from model contracts + the native parity fixture vs play_launch.
 
 ### W4 — CMake + ASI pilot
 
-- W4.1 — `nros codegen entry --model`: build the entry plan from the
-  model's STRUCTURE layer (nodes/pkg/class from `[[component]]`-shaped
-  metadata; the launch parser is bypassed — the model IS the resolved
-  launch). Blocked-on nothing; the scoping fact from W3a is that the
-  `LAUNCH` keyword drives `codegen entry`, not codegen-system.
-- W4.2 — `nano_ros_add_executable(... MODEL <path>)` keyword: mutually
-  exclusive with LAUNCH; passes `--model` to BOTH `codegen entry`
-  (W4.1) and `codegen-system` (landed W1) invocations.
+- W4.1 — LANDED (= R1-N2): `nros codegen entry --model`.
+- W4.2 — LANDED: `nano_ros_add_executable(... MODEL <path>)` /
+  `nano_ros_entry(... MODEL <path>)` keyword, mutually exclusive with
+  LAUNCH, passing `--model` to the codegen-entry invocation
+  (codegen-system --model landed W1; wiring both into one configure
+  flow is the ASI pilot's job).
 - W4.3 — ASI pilot: replace `controller_pkg:system.launch.xml` with a
   play_launch-resolved model on the zephyr-fvp lane; validate on AVH.
   Needs the model resolved for `--target zephyr` (play_launch side is
@@ -223,10 +221,15 @@ parity. Ordered gates (each verifiable before the next):
     publisher + the MonitorSpec table + installer fn; empty = nothing,
     legacy byte-identical) and a `monitors` plan section; orphan
     contracts (endpoint with no owning topic) refuse the bake. N2
-    `codegen entry --model` (W4.1) incl. the plugin=class mapping +
-    resolved-wiring remap verification, and the entry calling
-    `nros_install_monitors` + `set_monitors`; N3 boot/transport bake
-    reads `execution.transports` instead of `[[transport]]`.
+    **LANDED** — `codegen entry --model` (plan_from_model: board slice,
+    params, group_tiers from bindings, features/lifecycle; plugin nodes
+    take their class's bare name as exec, typed metadata enrichment
+    unchanged) + W4.2 CMake `MODEL` keyword on nano_ros_add_executable /
+    nano_ros_entry (mutually exclusive with LAUNCH). Remaining in N2:
+    the generated entries calling `nros_install_monitors` +
+    `set_monitors` (needs the emitters to include the baked table). N3
+    boot/transport bake reads `execution.transports` instead of
+    `[[transport]]`.
 - R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
   (`ws-realtime-rust` first) build from resolved models; book chapters
   switch to the resolve→bake flow.

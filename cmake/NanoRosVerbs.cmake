@@ -77,9 +77,9 @@ endfunction()
 # `nano_ros_entry(...)` call.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_executable name)
-    cmake_parse_arguments(_NRE "TYPED" "BOARD;LAUNCH;HOST;LOCATOR;LANG" "DEPLOY;SOURCES;ARGS" ${ARGN})
+    cmake_parse_arguments(_NRE "TYPED" "BOARD;LAUNCH;MODEL;HOST;LOCATOR;LANG" "DEPLOY;SOURCES;ARGS" ${ARGN})
     set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
-    if(NOT _srcs AND NOT _NRE_LAUNCH)
+    if(NOT _srcs AND NOT _NRE_LAUNCH AND NOT _NRE_MODEL)
         message(FATAL_ERROR
             "nano_ros_add_executable(${name}): no sources given "
             "(a LAUNCH-generated entry may omit sources; anything else "
@@ -114,6 +114,10 @@ function(nano_ros_add_executable name)
     set(_entry_extra "")
     if(_NRE_LAUNCH)
         list(APPEND _entry_extra LAUNCH ${_NRE_LAUNCH})
+    endif()
+    # R1 / W4.2 — the canonical resolved-model input (RFC-0052).
+    if(_NRE_MODEL)
+        list(APPEND _entry_extra MODEL ${_NRE_MODEL})
     endif()
     if(_NRE_TYPED)
         list(APPEND _entry_extra TYPED)
