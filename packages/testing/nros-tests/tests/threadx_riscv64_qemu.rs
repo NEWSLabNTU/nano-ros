@@ -302,3 +302,96 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
         ),
     }
 }
+
+// =============================================================================
+// CycloneDDS two-QEMU peer interop — C++ examples (issue #235)
+// =============================================================================
+
+/// Two ThreadX RISC-V64 QEMU nodes running the **C++** CycloneDDS talker and
+/// listener exchange `std_msgs/String` on `/chatter` — the C++ sibling of
+/// `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` (C) and `..._rust_pubsub`
+/// (#214). Closes issue #235: the C++ cyclone riscv64 fixtures already built
+/// (talker .40/0x56, listener .41/0x57, domain 129 — distinct identity per
+/// node) but had no runtime consumer, leaving the matrix cell BuildOnly. The
+/// C++ cyclone code path itself is proven on threadx-linux
+/// (`test_threadx_linux_cyclonedds_cpp_talker_to_native_listener`).
+#[test]
+fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
+    if !require_threadx_riscv64() {
+        nros_tests::skip!("require_threadx_riscv64 check failed");
+    }
+    if !is_qemu_riscv64_available() {
+        nros_tests::skip!("qemu-system-riscv64 not found");
+    }
+
+    let root = nros_tests::project_root();
+    let talker_bin =
+        root.join("examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds/cpp_talker");
+    let listener_bin =
+        root.join("examples/qemu-riscv64-threadx/cpp/listener/build-cyclonedds/cpp_listener");
+    if !talker_bin.exists() || !listener_bin.exists() {
+        nros_tests::skip!(
+            "CycloneDDS ThreadX C++ fixtures missing; build with: \
+             just threadx_riscv64 build-fixtures (or just build-all). They build \
+             by default — was NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 set?"
+        );
+    }
+
+    // MACs match each C++ node's baked identity (talker 0x56, listener 0x57).
+    const TALKER_MAC: &str = "52:54:00:12:34:56";
+    const LISTENER_MAC: &str = "52:54:00:12:34:57";
+
+    let (mut listener, _talker) = if qemu_riscv64_supports_dgram_unix() {
+        let sock_dir = root.join("tmp");
+        std::fs::create_dir_all(&sock_dir).expect("create tmp dir");
+        let sock_talker = sock_dir.join("tx_rv64_cyc_cpp_talker.sock");
+        let sock_listener = sock_dir.join("tx_rv64_cyc_cpp_listener.sock");
+        let _ = std::fs::remove_file(&sock_talker);
+        let _ = std::fs::remove_file(&sock_listener);
+        let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
+        let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
+
+        let listener = QemuProcess::start_riscv64_virt_dgram(
+            &listener_bin,
+            sock_listener,
+            sock_talker,
+            LISTENER_MAC,
+        )
+        .expect("start C++ listener QEMU (dgram)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_dgram(
+            &talker_bin,
+            sock_talker,
+            sock_listener,
+            TALKER_MAC,
+        )
+        .expect("start C++ talker QEMU (dgram)");
+        (listener, talker)
+    } else {
+        // Distinct mcast group from the C (11700) / rust lanes so the segments
+        // never cross-talk; threadx lanes are serialized in their nextest group
+        // regardless.
+        const MCAST: &str = "230.0.0.8:11701";
+        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+            .expect("start C++ listener QEMU (socket,mcast)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
+            .expect("start C++ talker QEMU (socket,mcast)");
+        (listener, talker)
+    };
+
+    let result = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(90),
+    );
+    listener.kill();
+
+    match result {
+        Ok(output) => {
+            nros_tests::output::assert_listener(&output, 1);
+        }
+        Err(e) => panic!(
+            "C++ listener never received a CycloneDDS sample from the peer ThreadX node: {e:?}"
+        ),
+    }
+}

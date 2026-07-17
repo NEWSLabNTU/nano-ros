@@ -394,8 +394,10 @@ pub const CELLS: &[Cell] = &[
          CarveOut("action examples not implemented on threadx-riscv64 (example set is pubsub+service); reserved slots in platform.rs")),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
-    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example,
-         BuildOnly("no cpp cyclone riscv64 fixture yet — needs build variant + QEMU pair, issue #235")),
+    // issue #235 — the cpp cyclone riscv64 fixtures existed (distinct
+    // identity per node); the two-QEMU lane
+    // (test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub) now consumes them.
+    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, Runtime),
 
     // NuttX riscv — C/C++/rust runtime lanes (phase #199 follow-up).
     cell(NuttxRiscv, C,    Zenoh, Pubsub, Example, Runtime),

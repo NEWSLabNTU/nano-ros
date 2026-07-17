@@ -44,14 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved: **#231** — Zephyr multicast join fixed (fork 1d794c0a:
+Recently resolved: **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 `struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
-
-**#235** — threadx-riscv64 C++ cyclone pubsub has no runtime lane: the riscv64 example set
-builds C + rust cyclone two-QEMU (#214) but no C++ variant; needs a cpp cyclone build config +
-a two-QEMU lane. Carved from #233. See `0235-threadx-riscv64-cpp-cyclone-pubsub-lane.md`.
 
 **#234** — native rust cyclone action fails at creation (`ActionCreationFailed`): the
 typed-action-descriptor path C/C++'s descriptors.cpp fills has no pure-rust equivalent (#67

@@ -1,7 +1,8 @@
 ---
 id: 235
 title: "threadx-riscv64 C++ CycloneDDS pubsub has no runtime lane — the riscv64 example set builds C + rust cyclone, not C++"
-status: open
+status: resolved
+resolved_in: "2026-07-18 — the cpp cyclone riscv64 fixtures already existed with distinct per-node identity; only the two-QEMU runtime lane was missing. Added test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub; cell flipped to Runtime."
 type: enhancement
 area: testing
 related: [issue-0233, issue-0214]
@@ -38,3 +39,19 @@ pass. The C++ cyclone code path itself is proven on threadx-LINUX
 (`test_threadx_linux_cyclonedds_cpp_talker_to_native_listener`, #233), so
 the risk is confined to the riscv64 build config + QEMU pairing, not the
 RMW.
+
+## RESOLVED (2026-07-18) — the premise was wrong; only the lane was missing
+
+Investigation corrected the finding: the `just threadx_riscv64
+build-fixtures` recipe ALREADY builds the C++ cyclone talker/listener
+(`fixtures-build.sh threadx-riscv64 cpp cyclonedds`, domain 129), the
+fixtures.toml rows exist, the resolver (`build_rv64_cpp_*`) exists, and the
+images carry DISTINCT per-node identity (talker IP .40 / MAC 0x56,
+listener .41 / 0x57) — everything the #214 identity fix required. The ONLY
+missing piece was the two-QEMU runtime consumer.
+
+Added `test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub`
+(threadx_riscv64_qemu.rs), the C++ sibling of the C/rust two-QEMU lanes:
+two riscv64 QEMU guests over the virtual L2 (dgram-unix or socket,mcast
+group 230.0.0.8:11701, distinct from the C/rust groups), MACs matching the
+firmware bake. Passes (~5 s). Matrix cell flipped BuildOnly → Runtime.

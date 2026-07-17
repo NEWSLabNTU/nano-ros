@@ -43,9 +43,9 @@ the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
 4. threadx-linux C++ cyclonedds pubsub — **DONE (2026-07-18)**:
    `test_threadx_linux_cyclonedds_cpp_talker_to_native_listener` (the C++
    sibling of the #215 C lane); cell flipped to Runtime.
-5. **threadx-riscv64 C++ cyclonedds pubsub** — carved out to **#235**:
-   needs a new cpp cyclone build variant + a two-QEMU lane (the riscv64 set
-   builds only C + rust cyclone today, #214). Fixture-creation work.
+5. ~~threadx-riscv64 C++ cyclonedds pubsub~~ **DONE (#235, 2026-07-18)** —
+   the cpp cyclone fixture already existed with distinct per-node identity;
+   only the two-QEMU lane was missing. Now Runtime.
 
 ## Firm CarveOuts (recorded in the matrix, NOT this issue's scope)
 
