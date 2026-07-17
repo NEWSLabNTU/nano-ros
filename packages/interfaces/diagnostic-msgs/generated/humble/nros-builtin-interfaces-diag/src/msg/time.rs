@@ -2,8 +2,8 @@
 // Package: builtin_interfaces
 // Message: Time
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Time message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -51,5 +51,5 @@ impl ::nros_serdes::Message for Time {
             ty: ::nros_serdes::FieldType::Uint32,
             offset: ::core::mem::offset_of!(Time, nanosec),
         },
-];
+    ];
 }

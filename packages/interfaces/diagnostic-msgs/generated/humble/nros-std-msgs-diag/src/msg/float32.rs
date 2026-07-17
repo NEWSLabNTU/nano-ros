@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: Float32
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Float32 message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,11 +37,9 @@ impl RosMessage for Float32 {
 
 impl ::nros_serdes::Message for Float32 {
     const TYPE_NAME: &'static str = "std_msgs/msg/Float32";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::Float32,
-            offset: ::core::mem::offset_of!(Float32, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::Float32,
+        offset: ::core::mem::offset_of!(Float32, data),
+    }];
 }

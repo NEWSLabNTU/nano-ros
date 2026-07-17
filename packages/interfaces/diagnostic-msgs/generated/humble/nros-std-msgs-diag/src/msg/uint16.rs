@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: UInt16
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// UInt16 message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,11 +37,9 @@ impl RosMessage for UInt16 {
 
 impl ::nros_serdes::Message for UInt16 {
     const TYPE_NAME: &'static str = "std_msgs/msg/UInt16";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::Uint16,
-            offset: ::core::mem::offset_of!(UInt16, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::Uint16,
+        offset: ::core::mem::offset_of!(UInt16, data),
+    }];
 }

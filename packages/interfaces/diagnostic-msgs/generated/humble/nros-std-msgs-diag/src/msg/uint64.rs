@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: UInt64
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// UInt64 message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,11 +37,9 @@ impl RosMessage for UInt64 {
 
 impl ::nros_serdes::Message for UInt64 {
     const TYPE_NAME: &'static str = "std_msgs/msg/UInt64";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::Uint64,
-            offset: ::core::mem::offset_of!(UInt64, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::Uint64,
+        offset: ::core::mem::offset_of!(UInt64, data),
+    }];
 }

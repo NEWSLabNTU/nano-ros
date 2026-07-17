@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: MultiArrayDimension
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// MultiArrayDimension message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -62,5 +62,5 @@ impl ::nros_serdes::Message for MultiArrayDimension {
             ty: ::nros_serdes::FieldType::Uint32,
             offset: ::core::mem::offset_of!(MultiArrayDimension, stride),
         },
-];
+    ];
 }

@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: MultiArrayLayout
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// MultiArrayLayout message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -30,7 +30,8 @@ impl Deserialize for MultiArrayLayout {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(Deserialize::deserialize(reader)?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -68,5 +69,5 @@ impl ::nros_serdes::Message for MultiArrayLayout {
             ty: ::nros_serdes::FieldType::Uint32,
             offset: ::core::mem::offset_of!(MultiArrayLayout, data_offset),
         },
-];
+    ];
 }

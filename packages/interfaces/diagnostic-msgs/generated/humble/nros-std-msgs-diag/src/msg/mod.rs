@@ -89,4 +89,3 @@ pub use uint8::UInt8;
 
 mod uint8multi_array;
 pub use uint8multi_array::UInt8MultiArray;
-

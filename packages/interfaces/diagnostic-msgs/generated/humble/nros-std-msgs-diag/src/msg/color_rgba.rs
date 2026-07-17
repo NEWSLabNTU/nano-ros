@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: ColorRGBA
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// ColorRGBA message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -67,5 +67,5 @@ impl ::nros_serdes::Message for ColorRGBA {
             ty: ::nros_serdes::FieldType::Float32,
             offset: ::core::mem::offset_of!(ColorRGBA, a),
         },
-];
+    ];
 }

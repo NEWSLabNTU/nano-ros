@@ -2,13 +2,12 @@
 // Package: diagnostic_msgs
 // Service: SelfTest
 
-use nros_core::{RosMessage, RosService, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// SelfTest request message
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SelfTestRequest {
-}
+pub struct SelfTestRequest {}
 
 impl Serialize for SelfTestRequest {
     // Empty request - no fields to serialize
@@ -35,8 +34,7 @@ impl RosMessage for SelfTestRequest {
 
 impl ::nros_serdes::Message for SelfTestRequest {
     const TYPE_NAME: &'static str = "diagnostic_msgs/srv/SelfTest_Request";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[];
 }
 
 /// SelfTest response message
@@ -71,7 +69,8 @@ impl Deserialize for SelfTestResponse {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(Deserialize::deserialize(reader)?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -92,7 +91,8 @@ pub const RESP_NESTED_STATUS: ::nros_serdes::NestedType = ::nros_serdes::NestedT
     fields: <crate::msg::DiagnosticStatus as ::nros_serdes::Message>::FIELDS,
 };
 #[allow(non_upper_case_globals)]
-pub const RESP_FT_STATUS_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Nested(&RESP_NESTED_STATUS);
+pub const RESP_FT_STATUS_ELEM: ::nros_serdes::FieldType =
+    ::nros_serdes::FieldType::Nested(&RESP_NESTED_STATUS);
 impl ::nros_serdes::Message for SelfTestResponse {
     const TYPE_NAME: &'static str = "diagnostic_msgs/srv/SelfTest_Response";
     const FIELDS: &'static [::nros_serdes::Field] = &[
@@ -111,7 +111,7 @@ impl ::nros_serdes::Message for SelfTestResponse {
             ty: ::nros_serdes::FieldType::Sequence(&RESP_FT_STATUS_ELEM),
             offset: ::core::mem::offset_of!(SelfTestResponse, status),
         },
-];
+    ];
 }
 
 /// SelfTest service definition

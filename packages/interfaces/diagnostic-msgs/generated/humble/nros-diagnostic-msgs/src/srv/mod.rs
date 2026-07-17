@@ -5,4 +5,3 @@ pub use add_diagnostics::{AddDiagnostics, AddDiagnosticsRequest, AddDiagnosticsR
 
 mod self_test;
 pub use self_test::{SelfTest, SelfTestRequest, SelfTestResponse};
-

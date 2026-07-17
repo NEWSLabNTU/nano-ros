@@ -2,8 +2,8 @@
 // Package: diagnostic_msgs
 // Message: DiagnosticStatus
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub const OK: u8 = 0;
 pub const WARN: u8 = 1;
 pub const ERROR: u8 = 2;
@@ -53,7 +53,8 @@ impl Deserialize for DiagnosticStatus {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(Deserialize::deserialize(reader)?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -76,7 +77,8 @@ pub const NESTED_VALUES: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
     fields: <crate::msg::KeyValue as ::nros_serdes::Message>::FIELDS,
 };
 #[allow(non_upper_case_globals)]
-pub const FT_VALUES_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Nested(&NESTED_VALUES);
+pub const FT_VALUES_ELEM: ::nros_serdes::FieldType =
+    ::nros_serdes::FieldType::Nested(&NESTED_VALUES);
 impl ::nros_serdes::Message for DiagnosticStatus {
     const TYPE_NAME: &'static str = "diagnostic_msgs/msg/DiagnosticStatus";
     const FIELDS: &'static [::nros_serdes::Field] = &[
@@ -105,5 +107,5 @@ impl ::nros_serdes::Message for DiagnosticStatus {
             ty: ::nros_serdes::FieldType::Sequence(&FT_VALUES_ELEM),
             offset: ::core::mem::offset_of!(DiagnosticStatus, values),
         },
-];
+    ];
 }

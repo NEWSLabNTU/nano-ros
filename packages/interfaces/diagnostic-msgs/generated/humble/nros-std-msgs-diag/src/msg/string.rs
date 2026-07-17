@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: String
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// String message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -40,11 +40,9 @@ impl RosMessage for String {
 
 impl ::nros_serdes::Message for String {
     const TYPE_NAME: &'static str = "std_msgs/msg/String";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::String,
-            offset: ::core::mem::offset_of!(String, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::String,
+        offset: ::core::mem::offset_of!(String, data),
+    }];
 }

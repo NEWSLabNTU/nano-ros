@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: Int16
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Int16 message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,11 +37,9 @@ impl RosMessage for Int16 {
 
 impl ::nros_serdes::Message for Int16 {
     const TYPE_NAME: &'static str = "std_msgs/msg/Int16";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::Int16,
-            offset: ::core::mem::offset_of!(Int16, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::Int16,
+        offset: ::core::mem::offset_of!(Int16, data),
+    }];
 }

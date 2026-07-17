@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: ByteMultiArray
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// ByteMultiArray message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -31,7 +31,8 @@ impl Deserialize for ByteMultiArray {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(reader.read_u8()?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(reader.read_u8()?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -68,5 +69,5 @@ impl ::nros_serdes::Message for ByteMultiArray {
             ty: ::nros_serdes::FieldType::Sequence(&FT_DATA_ELEM),
             offset: ::core::mem::offset_of!(ByteMultiArray, data),
         },
-];
+    ];
 }

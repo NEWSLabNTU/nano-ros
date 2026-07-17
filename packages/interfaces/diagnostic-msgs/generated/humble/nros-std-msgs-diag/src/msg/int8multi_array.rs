@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: Int8MultiArray
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Int8MultiArray message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -31,7 +31,8 @@ impl Deserialize for Int8MultiArray {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(reader.read_i8()?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(reader.read_i8()?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -68,5 +69,5 @@ impl ::nros_serdes::Message for Int8MultiArray {
             ty: ::nros_serdes::FieldType::Sequence(&FT_DATA_ELEM),
             offset: ::core::mem::offset_of!(Int8MultiArray, data),
         },
-];
+    ];
 }

@@ -2,8 +2,8 @@
 // Package: diagnostic_msgs
 // Message: DiagnosticArray
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// DiagnosticArray message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -31,7 +31,8 @@ impl Deserialize for DiagnosticArray {
                 let len = reader.read_u32()? as usize;
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
-                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(Deserialize::deserialize(reader)?)
+                        .map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
@@ -62,7 +63,8 @@ pub const NESTED_STATUS: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
     fields: <crate::msg::DiagnosticStatus as ::nros_serdes::Message>::FIELDS,
 };
 #[allow(non_upper_case_globals)]
-pub const FT_STATUS_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Nested(&NESTED_STATUS);
+pub const FT_STATUS_ELEM: ::nros_serdes::FieldType =
+    ::nros_serdes::FieldType::Nested(&NESTED_STATUS);
 impl ::nros_serdes::Message for DiagnosticArray {
     const TYPE_NAME: &'static str = "diagnostic_msgs/msg/DiagnosticArray";
     const FIELDS: &'static [::nros_serdes::Field] = &[
@@ -76,5 +78,5 @@ impl ::nros_serdes::Message for DiagnosticArray {
             ty: ::nros_serdes::FieldType::Sequence(&FT_STATUS_ELEM),
             offset: ::core::mem::offset_of!(DiagnosticArray, status),
         },
-];
+    ];
 }

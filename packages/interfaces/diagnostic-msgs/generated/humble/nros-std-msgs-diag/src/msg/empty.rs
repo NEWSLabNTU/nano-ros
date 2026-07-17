@@ -2,13 +2,12 @@
 // Package: std_msgs
 // Message: Empty
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Empty message type
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Empty {
-}
+pub struct Empty {}
 
 impl Serialize for Empty {
     // Empty message - no fields to serialize
@@ -35,6 +34,5 @@ impl RosMessage for Empty {
 
 impl ::nros_serdes::Message for Empty {
     const TYPE_NAME: &'static str = "std_msgs/msg/Empty";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[];
 }

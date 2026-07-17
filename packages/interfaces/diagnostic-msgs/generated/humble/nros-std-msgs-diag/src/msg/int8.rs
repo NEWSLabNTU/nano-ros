@@ -2,8 +2,8 @@
 // Package: std_msgs
 // Message: Int8
 
-use nros_core::{RosMessage, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// Int8 message type
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,11 +37,9 @@ impl RosMessage for Int8 {
 
 impl ::nros_serdes::Message for Int8 {
     const TYPE_NAME: &'static str = "std_msgs/msg/Int8";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "data",
-            ty: ::nros_serdes::FieldType::Int8,
-            offset: ::core::mem::offset_of!(Int8, data),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "data",
+        ty: ::nros_serdes::FieldType::Int8,
+        offset: ::core::mem::offset_of!(Int8, data),
+    }];
 }

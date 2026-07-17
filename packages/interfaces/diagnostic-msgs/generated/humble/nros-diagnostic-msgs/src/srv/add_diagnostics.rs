@@ -2,8 +2,8 @@
 // Package: diagnostic_msgs
 // Service: AddDiagnostics
 
-use nros_core::{RosMessage, RosService, Serialize, Deserialize};
-use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// AddDiagnostics request message
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -40,13 +40,11 @@ impl RosMessage for AddDiagnosticsRequest {
 
 impl ::nros_serdes::Message for AddDiagnosticsRequest {
     const TYPE_NAME: &'static str = "diagnostic_msgs/srv/AddDiagnostics_Request";
-    const FIELDS: &'static [::nros_serdes::Field] = &[
-        ::nros_serdes::Field {
-            name: "load_namespace",
-            ty: ::nros_serdes::FieldType::String,
-            offset: ::core::mem::offset_of!(AddDiagnosticsRequest, load_namespace),
-        },
-];
+    const FIELDS: &'static [::nros_serdes::Field] = &[::nros_serdes::Field {
+        name: "load_namespace",
+        ty: ::nros_serdes::FieldType::String,
+        offset: ::core::mem::offset_of!(AddDiagnosticsRequest, load_namespace),
+    }];
 }
 
 /// AddDiagnostics response message
@@ -96,7 +94,7 @@ impl ::nros_serdes::Message for AddDiagnosticsResponse {
             ty: ::nros_serdes::FieldType::String,
             offset: ::core::mem::offset_of!(AddDiagnosticsResponse, message),
         },
-];
+    ];
 }
 
 /// AddDiagnostics service definition
