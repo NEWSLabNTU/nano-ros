@@ -190,15 +190,21 @@ Landed (2026-07-17):
   LAUNCH, passing `--model` to the codegen-entry invocation
   (codegen-system --model landed W1; wiring both into one configure
   flow is the ASI pilot's job).
-- W4.3 — ASI pilot: replace `controller_pkg:system.launch.xml` with a
-  play_launch-resolved model on the zephyr-fvp lane; validate on AVH.
-  Needs the model resolved for `--target zephyr` (play_launch side is
-  target-generic already).
-- ASI pilot: replace `controller_pkg:system.launch.xml` with a
-  play_launch-resolved `system_model.yaml` for the zephyr-fvp lane;
-  validate on AVH.
-- **Done when:** the ASI actuation image builds from a resolved model and
-  the FVP/AVH smoke passes.
+- W4.3 — ASI pilot (WIRED 2026-07-17; FVP smoke pending): ASI
+  `controller_bringup` commits the resolved artifact
+  (`config/system_model.yaml`, `play_launch resolve launch/… --system
+  system.toml`) and the entry switched `LAUNCH` → `MODEL` (ASI 52d6ce7,
+  nano-ros pin 4ea1f4a2e in its west.yml). Two cross-repo fixes fell
+  out: play_launch `model_builder` now FILLS `NodeInstance.params`
+  from the record (R1-M4 producer gap — params never rode the model;
+  play_launch d1df358), and `plan_from_model` board slicing accepts
+  the deploy's `kind` (extra.kind = "zephyr") so a concrete-board
+  deploy (`mcu:fvp-aemv8r-smp`) matches the entry codegen's FAMILY
+  key — covered by `plan_from_model_matches_deploy_kind_family`,
+  which mirrors ASI's exact model shape.
+- **Done when:** the ASI actuation image builds from the resolved model
+  and the FVP/AVH smoke passes (needs the ASI dev container / AVH lane —
+  not runnable on this host; ASI phase-3 §W3.b tracks the checkbox).
 
 ## Notes / risks
 
