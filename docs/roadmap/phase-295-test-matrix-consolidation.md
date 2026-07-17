@@ -1,6 +1,6 @@
 # Phase 295 — test-matrix consolidation (RFC-0051)
 
-Status: **Draft — 2026-07-17** · Implements
+Status: **Complete — 2026-07-18** (Draft 2026-07-17) · Implements
 [RFC-0051](../design/0051-test-matrix-architecture.md) · Touches the whole
 `packages/testing/nros-tests` surface, `examples/fixtures.toml`,
 `.config/nextest.toml`, `docs/development/codebase-audit-checklist.md`.
@@ -253,3 +253,19 @@ Status: **Draft — 2026-07-17** · Implements
   every carve-out has a reason string in the table.
 - `just test-all` parallel wall-clock improvement recorded.
 - Audit checklist E6–E9 live; `/audit quick E` exercises them.
+
+## Outcome (2026-07-18)
+
+All waves landed. `packages/testing/nros-tests/tests/` 193 → ~120 files;
+every runtime lane is now a cell of `nros_tests::matrix` consumed by a
+parametrized file (example_e2e in rtos_e2e/zephyr, entry_e2e,
+workspace_features_e2e, realtime_tiers_e2e, roundtrip_xprocess_e2e,
+multihost_e2e, interop_e2e); one `checker::assert_delivery` + `output.rs`
+markers (marker-literal gate live); one injective `alloc` port/domain
+formula (fixtures + tests derive from it — the 175xx hand-mirroring and the
+17851 overlap gone; qemu-baremetal-shared + qemu-esp32 serialization groups
+retired); launches read framework runner metadata (zephyr runners.yaml, IDF
+flasher_args.json); the fixtures⊆⊇matrix + injectivity + marker gates keep
+it honest. RMW-runtime debt is visible as reasoned BuildOnly/CarveOut cells
+(#233 tracks the implement-worthy ones). Audit §E6–E9 + the skill's E1–E9
+testing lane landed with the RFC.
