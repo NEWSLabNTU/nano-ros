@@ -23,7 +23,11 @@
 //!   SchedContext's `deadline_us`; what ELSE happens is the tier's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::Ordering;
+// portable-atomic: RMW ops (fetch_add/fetch_max/swap) exist even on
+// riscv32imc / Cortex-M0+ that lack native CAS (same choice as
+// `SporadicState` / `AtomicSporadicState` in sched_context.rs).
+use portable_atomic::AtomicU32;
 
 /// One contracted publisher's counters. Baked as a `static` by codegen
 /// (or declared by the fixture); the publisher handle bumps `count` on

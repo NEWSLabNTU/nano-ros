@@ -1377,6 +1377,9 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
         budget_us: OptUs::from_us(cfg.budget_us),
         deadline_us: OptUs::from_us(cfg.deadline_us),
         os_pri: cfg.os_pri,
+        // W3b.5 — no C++ surface for the deadline-miss action yet
+        // (Rust-only until a consumer exists; phase-296 W3b.5 note).
+        deadline_action: Default::default(),
         tt_window_offset_us: OptUs::from_us(cfg.tt_window_offset_us),
         tt_window_duration_us: OptUs::from_us(cfg.tt_window_duration_us),
     };

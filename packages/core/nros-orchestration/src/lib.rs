@@ -123,6 +123,9 @@ impl SchedContextSpec {
             deadline_us: opt_us(self.deadline_us),
             deadline_policy: self.deadline_policy.into(),
             os_pri: self.os_pri,
+            // W3b.5 — miss action rides the tier spec string, lowered by
+            // the board glue (apply_tier_sched), not this mirror.
+            deadline_action: Default::default(),
             tt_window_offset_us: opt_us(self.tt_window_offset_us),
             tt_window_duration_us: opt_us(self.tt_window_duration_us),
         }
