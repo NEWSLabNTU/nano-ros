@@ -1865,7 +1865,7 @@ impl<'s> Executor<'s> {
     /// Backs `node.publisher(t).typed::<M>().build()` on the
     /// executor-borrowing [`NodeCtx`](super::node::NodeCtx); the returned
     /// handle is owned and outlives the `NodeCtx`.
-    pub fn create_publisher_on<M: crate::cyclonedds_register::MessageForRmw>(
+    pub fn create_publisher_on<M: crate::rmw_type_registry::MessageForRmw>(
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
@@ -1873,7 +1873,7 @@ impl<'s> Executor<'s> {
     ) -> Result<crate::executor::handles::EmbeddedPublisher<M>, NodeError> {
         // Phase 212.K.7.6.b — register `M`'s cyclonedds descriptor before
         // creating the underlying publisher handle. No-op for other RMWs.
-        crate::cyclonedds_register::register_type::<M>()?;
+        crate::rmw_type_registry::register_type::<M>()?;
         let handle = self.create_raw_publisher_handle_on(
             node_id,
             topic_name,
@@ -2657,13 +2657,13 @@ impl<'s> Executor<'s> {
         group: Option<&str>,
     ) -> Result<HandleId, NodeError>
     where
-        M: crate::cyclonedds_register::MessageForRmw + 'static,
+        M: crate::rmw_type_registry::MessageForRmw + 'static,
         F: FnMut(&M) + 'static,
     {
         type Entry<M, F> = SubBufferedEntry<M, F>;
 
         // Phase 212.K.7.6.b — see `create_publisher_on`.
-        crate::cyclonedds_register::register_type::<M>()?;
+        crate::rmw_type_registry::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = {
@@ -3147,13 +3147,13 @@ impl<'s> Executor<'s> {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: crate::cyclonedds_register::MessageForRmw + 'static,
+        M: crate::rmw_type_registry::MessageForRmw + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
         type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
 
         // Phase 212.K.7.6.b — see `create_publisher_on`.
-        crate::cyclonedds_register::register_type::<M>()?;
+        crate::rmw_type_registry::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -3223,13 +3223,13 @@ impl<'s> Executor<'s> {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: crate::cyclonedds_register::MessageForRmw + 'static,
+        M: crate::rmw_type_registry::MessageForRmw + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
         type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
 
         // Phase 212.K.7.6.b — see `create_publisher_on`.
-        crate::cyclonedds_register::register_type::<M>()?;
+        crate::rmw_type_registry::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -3300,8 +3300,8 @@ impl<'s> Executor<'s> {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.register_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
@@ -3315,8 +3315,8 @@ impl<'s> Executor<'s> {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
@@ -3324,8 +3324,8 @@ impl<'s> Executor<'s> {
         // Phase 212.K.7.7.b — register both halves of the service round-trip
         // under cyclonedds. No-op for other RMWs. Mirrors the K.7.6.b hook
         // on `Node::create_service_sized`.
-        crate::cyclonedds_register::register_type::<Svc::Request>()?;
-        crate::cyclonedds_register::register_type::<Svc::Reply>()?;
+        crate::rmw_type_registry::register_type::<Svc::Request>()?;
+        crate::rmw_type_registry::register_type::<Svc::Reply>()?;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -3381,15 +3381,15 @@ impl<'s> Executor<'s> {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
 
         // Phase 212.K.7.7.b — see `register_service_sized`.
-        crate::cyclonedds_register::register_type::<Svc::Request>()?;
-        crate::cyclonedds_register::register_type::<Svc::Reply>()?;
+        crate::rmw_type_registry::register_type::<Svc::Request>()?;
+        crate::rmw_type_registry::register_type::<Svc::Reply>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = {
@@ -3456,8 +3456,8 @@ impl<'s> Executor<'s> {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.register_service_sized_on::<

@@ -1,5 +1,9 @@
 //! Per-type descriptor registration — generic seam (Phase 248 C2).
 //!
+//! (issue #225 — formerly `cyclonedds_register`: the seam was already
+//! backend-agnostic in behavior; the module/cfg names now match. Cyclone DDS
+//! is simply the first descriptor-needing tenant, named only in prose.)
+//!
 //! Some RMW backends (Cyclone DDS) resolve topic-type descriptors via a
 //! runtime registry instead of a static-init table. Each `nros-node`
 //! typed creator (`create_publisher`, `create_subscription`,
@@ -23,7 +27,7 @@
 //! # cfg gating (auto-detected, not feature-gated)
 //!
 //! This module's schema-passing body compiles to a no-op unless
-//! `cfg(rmw_cyclonedds_present)` is on. The cfg is emitted by
+//! `cfg(rmw_needs_type_descriptors)` is on. The cfg is emitted by
 //! `nros-node/build.rs` from the private internal `__cyclonedds-link`
 //! marker feature (no dep edge), which the umbrella `nros/rmw-cyclonedds`
 //! activates alongside its own `dep:nros-rmw-cyclonedds-sys`. Callers
@@ -48,7 +52,7 @@
 //! Compromise: introduce a helper trait [`MessageForRmw`] that is **the
 //! bound the typed creators use** in place of bare `M: RosMessage`. It is
 //! a blanket impl over `RosMessage` whose extra requirement is `Message`
-//! when `cfg(rmw_cyclonedds_present)` is on, and just `RosMessage` when
+//! when `cfg(rmw_needs_type_descriptors)` is on, and just `RosMessage` when
 //! off.
 //!
 //! Net effect: a msg crate that impls `RosMessage` works as-is for zenoh
@@ -69,20 +73,20 @@ use nros_core::RosMessage;
 
 /// Bound used in place of bare `RosMessage` on typed creators.
 ///
-/// Equivalent to `RosMessage` without `cfg(rmw_cyclonedds_present)`;
+/// Equivalent to `RosMessage` without `cfg(rmw_needs_type_descriptors)`;
 /// equal to `RosMessage + nros_serdes::schema::Message` with it.
 ///
 /// See module-level docs for the rationale.
-#[cfg(rmw_cyclonedds_present)]
+#[cfg(rmw_needs_type_descriptors)]
 pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
 
-#[cfg(rmw_cyclonedds_present)]
+#[cfg(rmw_needs_type_descriptors)]
 impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
 
-#[cfg(not(rmw_cyclonedds_present))]
+#[cfg(not(rmw_needs_type_descriptors))]
 pub trait MessageForRmw: RosMessage {}
 
-#[cfg(not(rmw_cyclonedds_present))]
+#[cfg(not(rmw_needs_type_descriptors))]
 impl<T> MessageForRmw for T where T: RosMessage {}
 
 // ============================================================================
@@ -92,7 +96,7 @@ impl<T> MessageForRmw for T where T: RosMessage {}
 /// Register `M`'s topic-type descriptor with whichever RMW backend
 /// installed the generic descriptor seam (`nros_rmw::register_type_descriptor`).
 ///
-/// No-op when `cfg(rmw_cyclonedds_present)` is off (zenoh / xrce builds
+/// No-op when `cfg(rmw_needs_type_descriptors)` is off (zenoh / xrce builds
 /// never compile the schema-passing body). With the cfg on, flattens
 /// `M`'s static schema (`TYPE_NAME` + `FIELDS`) and forwards it to the
 /// installed [`nros_rmw::TypeDescriptorRegistrar`] — Cyclone DDS installs
@@ -108,10 +112,10 @@ impl<T> MessageForRmw for T where T: RosMessage {}
 #[allow(unused_variables)] // M unused without the cfg
 #[inline]
 pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
-    #[cfg(rmw_cyclonedds_present)]
+    #[cfg(rmw_needs_type_descriptors)]
     {
         // SAFETY-OF-INPUT: `M: Message` is enforced by the `MessageForRmw`
-        // bound under `rmw_cyclonedds_present`, so `TYPE_NAME` / `FIELDS`
+        // bound under `rmw_needs_type_descriptors`, so `TYPE_NAME` / `FIELDS`
         // are available and the registrar receives the schema it expects.
         nros_rmw::register_type_descriptor(
             <M as nros_serdes::schema::Message>::TYPE_NAME,

@@ -5,7 +5,7 @@ path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
 ethernet). For the ESP-IDF component path (C / C++ apps), see
 [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 
-> **Prereqs.** `nros setup esp32` is the single command that
+> **Prereqs.** `nros setup qemu-esp32-baremetal` is the single command that
 > prepares your machine. It fetches a prebuilt esp-hal toolchain and
 > the chosen RMW host daemon from a pinned index into the shared
 > store at `~/.nros/sdk` — you do not hand-install cross-compilers,
@@ -23,7 +23,7 @@ just setup-cli              # builds packages/cli/target/release/nros
 Provision the board (and RMW):
 
 ```bash
-nros setup esp32 --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
+nros setup qemu-esp32-baremetal --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
 ```
 
 This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls

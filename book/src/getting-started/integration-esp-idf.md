@@ -16,7 +16,7 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    ```bash
 >    source ./activate.sh        # OR: direnv allow / source ./activate.fish
 >    just setup-cli              # builds packages/cli/target/release/nros (Phase 218)
->    nros setup esp32 --rmw zenoh     # lands the RMW host daemon
+>    nros setup qemu-esp32-baremetal --rmw zenoh     # lands the RMW host daemon
 >                                     # (zenohd for zenoh, the
 >                                     # Micro-XRCE-DDS agent for xrce)
 >                                     # in ${NROS_HOME:-~/.nros}/sdk, AND clones the

@@ -2092,10 +2092,8 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         // token yet when our query arrives, the router replies "no
         // matching tokens" and the query terminates. We loop, re-issuing
         // shorter probes until either a matching token is observed or the
-        // outer wall-clock budget expires. 1 s per probe balances "see
-        // freshly-declared tokens quickly" against "burn fewer FFI
-        // round-trips on a healthy network".
-        const PROBE_TIMEOUT_MS: u32 = 1000;
+        // outer wall-clock budget expires (issue #224 — shared cadence).
+        const PROBE_TIMEOUT_MS: u32 = crate::SERVER_DISCOVERY_PROBE_TIMEOUT_MS;
         loop {
             self.handle
                 .start_server_discovery(PROBE_TIMEOUT_MS)
@@ -2708,7 +2706,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         // and terminates; we loop with shorter per-probe timeouts so the
         // outer budget covers servers that come up after we start
         // waiting.
-        const PROBE_TIMEOUT_MS: u32 = 1000;
+        const PROBE_TIMEOUT_MS: u32 = crate::SERVER_DISCOVERY_PROBE_TIMEOUT_MS; // issue #224
         loop {
             self.core
                 .send_goal_client
@@ -2988,30 +2986,73 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 }
 
 /// Parse a goal acceptance response (bool).
+///
+/// Issue #223 — CDR read failures PROPAGATE: a truncated/corrupt frame used
+/// to collapse to `accepted = false` via `unwrap_or(0)`, silently reporting
+/// "goal rejected" for a wire error. Same rule in the two parsers below.
 fn parse_goal_accepted(data: &[u8]) -> Result<bool, NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
-    let accepted = reader.read_u8().unwrap_or(0) != 0;
+    let accepted = reader
+        .read_u8()
+        .map_err(|_| NodeError::ServiceRequestFailed)?
+        != 0;
     Ok(accepted)
 }
 
-/// Parse a cancel response.
+/// Parse a cancel response (issue #223 — read errors propagate; an
+/// out-of-range enum value is still mapped through `from_i8`'s default,
+/// which is a PROTOCOL value question, not a truncation).
 fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelResponse, NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
-    let return_code = reader.read_i8().unwrap_or(2);
+    let return_code = reader
+        .read_i8()
+        .map_err(|_| NodeError::ServiceRequestFailed)?;
     Ok(nros_core::CancelResponse::from_i8(return_code).unwrap_or_default())
 }
 
-/// Parse an action result response (status + result).
+/// Parse an action result response (status + result; issue #223 — read
+/// errors propagate).
 fn parse_result_response<A: RosAction>(
     data: &[u8],
 ) -> Result<(nros_core::GoalStatus, A::Result), NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
-    let status_code = reader.read_i8().unwrap_or(0);
+    let status_code = reader
+        .read_i8()
+        .map_err(|_| NodeError::ServiceRequestFailed)?;
     let status = nros_core::GoalStatus::from_i8(status_code).unwrap_or_default();
     let result =
         A::Result::deserialize(&mut reader).map_err(|_| NodeError::ServiceRequestFailed)?;
     Ok((status, result))
+}
+
+#[cfg(test)]
+mod parse_response_tests {
+    // Issue #223 — truncated action-response frames must ERROR, not collapse
+    // to plausible defaults ("goal rejected" / CancelResponse::default()).
+    use super::{parse_cancel_response, parse_goal_accepted};
+
+    /// A valid 4-byte CDR encapsulation header with NO payload — the
+    /// truncation case the pre-#223 parsers silently defaulted on.
+    const HEADER_ONLY: &[u8] = &[0x00, 0x01, 0x00, 0x00];
+
+    #[test]
+    fn truncated_goal_accepted_errors() {
+        assert!(parse_goal_accepted(HEADER_ONLY).is_err());
+    }
+
+    #[test]
+    fn truncated_cancel_response_errors() {
+        assert!(parse_cancel_response(HEADER_ONLY).is_err());
+    }
+
+    #[test]
+    fn valid_goal_accepted_still_parses() {
+        let frame = [0x00, 0x01, 0x00, 0x00, 0x01];
+        assert_eq!(parse_goal_accepted(&frame).unwrap(), true);
+        let frame0 = [0x00, 0x01, 0x00, 0x00, 0x00];
+        assert_eq!(parse_goal_accepted(&frame0).unwrap(), false);
+    }
 }

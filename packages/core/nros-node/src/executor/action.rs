@@ -6,7 +6,7 @@ use nros_core::RosAction;
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
 #[allow(unused_imports)]
-use crate::cyclonedds_register::{MessageForRmw, register_type};
+use crate::rmw_type_registry::{MessageForRmw, register_type};
 
 use super::{
     action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},

@@ -6,7 +6,7 @@ use nros_core::{RosAction, RosMessage, RosService};
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session as _, TopicInfo, TransportError};
 
 use crate::{
-    cyclonedds_register::{MessageForRmw, register_type},
+    rmw_type_registry::{MessageForRmw, register_type},
     session,
 };
 
@@ -1699,8 +1699,8 @@ impl<'e, 's> NodeCtx<'e, 's> {
     ) -> Result<super::types::HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.executor.register_service_sized_on::<
@@ -1730,8 +1730,8 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
     pub fn build<Svc, F>(self, callback: F) -> Result<super::types::HandleId, NodeError>
     where
         Svc: RosService + 'static,
-        Svc::Request: crate::cyclonedds_register::MessageForRmw,
-        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.ctx.executor.register_service_sized_on::<
@@ -2248,7 +2248,7 @@ mod builder_tests {
     // bound AND the runtime register call succeeds. `DescriptorBuilder`
     // rejects empty `FIELDS` with `BuildError::EmptySchema`; pretend
     // there's one byte so the bridge stub returns a non-NULL pointer.
-    #[cfg(rmw_cyclonedds_present)]
+    #[cfg(rmw_needs_type_descriptors)]
     impl nros_serdes::schema::Message for TestMsg {
         const TYPE_NAME: &'static str = "test/msg/TestMsg";
         const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {

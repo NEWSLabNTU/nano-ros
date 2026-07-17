@@ -58,10 +58,10 @@
 
 // Phase 248 (C2) — `nros-rmw-cyclonedds[-sys]` deps removed (issue #60,
 // Tier 1). Per-type descriptor registration is now the generic
-// `nros_rmw::register_type_descriptor` seam (see `cyclonedds_register`);
+// `nros_rmw::register_type_descriptor` seam (see `rmw_type_registry`);
 // the Cyclone backend installs its registrar from its own crate. The
 // `__cyclonedds-link` marker feature (no dep edge) still emits
-// `cfg(rmw_cyclonedds_present)` to compile the schema-passing body +
+// `cfg(rmw_needs_type_descriptors)` to compile the schema-passing body +
 // `M: Message` bound for builds where a descriptor-needing backend is
 // linked by the umbrella.
 
@@ -74,7 +74,14 @@ extern crate alloc;
 pub mod c_waker;
 pub mod config;
 /// Phase 212.K.7.6.b — runtime cyclonedds type-descriptor registry hook.
-pub mod cyclonedds_register;
+pub mod rmw_type_registry;
+
+/// Server-discovery probe cadence (issue #224 — one shared constant; was
+/// independently defined at four call sites across nros-node and nros-c).
+/// One probe per second balances "see freshly-declared tokens quickly"
+/// against "burn fewer FFI round-trips on a healthy network"; the outer
+/// wall-clock budget is the caller's.
+pub const SERVER_DISCOVERY_PROBE_TIMEOUT_MS: u32 = 1000;
 pub mod executor;
 pub mod lifecycle;
 pub mod limits;

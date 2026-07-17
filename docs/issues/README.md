@@ -50,24 +50,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   baked nonzero NROS_ENTRY_DOMAIN_ID makes domain 0 unreachable; plus uint8 vs u32 domain type drift. (deep audit 2026-07-17)
 - **#226** — [C++ ParameterServer seq storage engine lives in the header](0226-cpp-parameter-seq-storage-in-header.md):
   C1 thin-wrapper violation — behavior the Rust core doesn't own; promote or document the carve-out. (deep audit 2026-07-17)
-- **#225** — [cyclonedds_register name in the agnostic core](0225-cyclonedds-register-name-in-agnostic-core.md):
-  behaviorally agnostic seam wearing one backend's name through node/spin/action call sites; mechanical rename. (deep audit 2026-07-17)
-- **#224** — [PROBE_TIMEOUT_MS defined 4×](0224-probe-timeout-const-duplicated.md):
-  cadence can drift between Rust and C probe paths; hoist one const. (deep audit 2026-07-17)
-- **#223** — [action response parsers swallow CDR errors](0223-action-response-cdr-silent-fallback.md):
-  unwrap_or turns truncated frames into plausible values (goal rejected / default status). (deep audit 2026-07-17)
 - **#222** — [rtos fixture resolvers skip freshness](0222-rtos-fixture-resolvers-skip-freshness.md):
   freertos/nuttx/threadx use existence-only checks — the #215 museum-binary trap still open on 4 platforms; zpico_drift_gate also compiles in-test unsanctioned. (deep audit 2026-07-17)
 - **#221** — [stm32f4 rtic action examples panic on hardware](0221-stm32f4-rtic-action-examples-panic-on-hardware.md):
   README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
-- **#220** — [book/CLI drift round 2](0220-book-cli-reference-drift-round-2.md):
-  esp32.md kept the phantom board id past #209; cli.md missing 4 verbs + 3 subcommands. (deep audit 2026-07-17)
-  phase-226 validation residue (the phase itself is complete + archived): clean-build timings,
-  jobserver-vs-fallback comparison, and CPU-utilization capture for the fixture matrix; a timed
-  native build alone ate ~52 GiB on the maintainer host, so the campaign needs ≥200 GiB scratch.
-  Hardware-gated measurement, not implementation work.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#219** — one shared
+Recently resolved (see [`archived/`](archived/) for the full list): **#223** — action
+goal/cancel/result parsers propagate CDR read errors (truncated frame ≠ "goal rejected"); unit
+tests added. **#224** — one shared SERVER_DISCOVERY_PROBE_TIMEOUT_MS. **#225** —
+`cyclonedds_register` → `rmw_type_registry`, cfg → `rmw_needs_type_descriptors`; backend names
+survive only in prose + the backend's own C symbols. **#220** — last phantom `esp32` board ids
+fixed; the "missing verbs" half was a haiku-lane false positive (`nros release` is hidden by
+design). **#219** — one shared
 `nros_resolve_cli` (NanoRosCodegenCore) replaces the four divergent cmake resolvers; PATH-wired
 in-tree CLI always beats the provisioned store (PATHS never HINTS), `$NROS_CLI` overrides,
 stale caches re-detect. Precedence proven by direct tests. **#217** — RETIRED:

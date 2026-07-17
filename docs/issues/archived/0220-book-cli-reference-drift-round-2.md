@@ -1,7 +1,7 @@
 ---
 id: 220
 title: "book/CLI drift round 2: esp32.md still uses the phantom board id; CLI reference missing 4 verbs + 3 subcommands"
-status: open
+status: resolved
 type: bug
 severity: low
 area: docs
@@ -22,3 +22,13 @@ Sweep ALL book pages for the phantom id (`rg 'nros setup esp32' book/`);
 diff the cli.md section list against the cmd enum and fill the gaps. Add the
 "every documented board id exists in nros-sdk-index.toml" assertion to the
 audit F3 grep so page-by-page misses stop recurring.
+
+## Resolution (2026-07-17)
+
+All three phantom `nros setup esp32` instances fixed (esp32.md ×2,
+integration-esp-idf.md). The "4 missing verbs + 3 subcommands" half was a
+FALSE POSITIVE from the haiku docs lane: the only undocumented top-level
+verb is `nros release`, which is feature-gated maintainer-only and hidden
+from help BY DESIGN; the user-facing verb list matches the book. (Good
+calibration data for the deep-audit model table — exactly the
+wrong-answer-cheap-to-catch case haiku was budgeted for.)

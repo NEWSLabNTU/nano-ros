@@ -350,7 +350,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
             }
         }
 
-        const PROBE_TIMEOUT_MS: u32 = 1000;
+        const PROBE_TIMEOUT_MS: u32 = nros_node::SERVER_DISCOVERY_PROBE_TIMEOUT_MS; // issue #224
         let start_ns = crate::platform::get_time_ns();
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {

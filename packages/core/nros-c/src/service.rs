@@ -1590,7 +1590,7 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
 
         // Per-probe / outer budget. Mirrors `Client::wait_for_service` in
         // packages/core/nros-node/src/executor/handles.rs.
-        const PROBE_TIMEOUT_MS: u32 = 1000;
+        const PROBE_TIMEOUT_MS: u32 = nros_node::SERVER_DISCOVERY_PROBE_TIMEOUT_MS; // issue #224
         let start_ns = crate::platform::get_time_ns();
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {

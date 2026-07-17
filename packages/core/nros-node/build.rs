@@ -19,7 +19,7 @@ fn main() {
     // backend itself is brought into the link graph by the umbrella's
     // own `dep:nros-rmw-cyclonedds-sys`; the agnostic core only flips
     // this presence cfg.
-    println!("cargo:rustc-check-cfg=cfg(rmw_cyclonedds_present)");
+    println!("cargo:rustc-check-cfg=cfg(rmw_needs_type_descriptors)");
 
     // Emit `has_rmw` cfg when any RMW backend feature is active, or
     // when compiling for tests (unit tests use MockSession).
@@ -41,7 +41,7 @@ fn main() {
     // (`nros_rmw::register_type_descriptor`); the Cyclone backend
     // installs its registrar at init from its own crate.
     if env::var("CARGO_FEATURE___CYCLONEDDS_LINK").is_ok() {
-        println!("cargo:rustc-cfg=rmw_cyclonedds_present");
+        println!("cargo:rustc-cfg=rmw_needs_type_descriptors");
     }
 
     // --- Primary user-facing knobs ---
