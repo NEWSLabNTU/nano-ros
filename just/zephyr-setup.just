@@ -175,10 +175,19 @@ build-fvp-aemv8r-cyclonedds:
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    # phase-292 W2 — this example uses `find_package(Zephyr)` + `-b` directly
+    # (the module-verb path, not `nano_ros_use_board`), so it never received
+    # the cyclone RMW snippet Kconfig. Its image then built with no cyclone
+    # worker-thread stacks / pthread pools / waitset socketpair and crashed on
+    # SMP-4 inside dds_create_participant (invisible while the FVP runtime lane
+    # was skip-only). Layer the snippet conf on via EXTRA_CONF_FILE — same
+    # fragments `nano_ros_use_board` merges for the workspace/rust lanes, no
+    # duplication, no disturbance to the module-verb `nros_generate_interfaces`.
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
         nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
+        -DEXTRA_CONF_FILE="$nros_root/zephyr/snippets/nros-cyclonedds/cyclonedds.conf"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
 # Phase 217.D.2 — Zephyr build smoke for the FVP AEMv8-R Cortex-A SMP
