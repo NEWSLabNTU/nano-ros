@@ -251,11 +251,16 @@ use Rmw::*;
 use Tier::*;
 use Workload::*;
 
-/// W6-triage placeholder reasons (kept as consts so the strings stay
-/// greppable and each W6 decision replaces exactly one const use).
-const W6_CYCLONE_RTOS: &str =
-    "cyclone links on this platform; no runtime lane yet — phase-295 W6 triage";
-const W6_XRCE_RTOS: &str = "no XRCE agent-locator bake on this platform yet — phase-295 W6 triage";
+/// W6 (2026-07-18) decided each cyclone/xrce-on-RTOS gap cell. Implement-
+/// worthy cells (native rust cyclone service/action; threadx C cyclone
+/// service/action; threadx C++ cyclone pubsub) are tracked in issue #233
+/// and stay BuildOnly until wired; the rest are firm CarveOuts.
+const CYCLONE_RTOS_TODO: &str =
+    "cyclone links here; no runtime lane yet — tracked in issue #233 (RMW coverage backlog)";
+const CYCLONE_RUST_RTOS_CARVE: &str =
+    "cyclone-on-RTOS is C/C++ only; pure-rust image has no cyclone backend symbol (#163 class)";
+const XRCE_RTOS_CARVE: &str =
+    "no XRCE agent-locator bake off Zephyr; rust-XRCE-on-bare-RTOS is not a shipped config";
 
 /// The seed table (phase-295 W1): codifies the 2026-07-17 survey's REAL
 /// coverage. Every pre-295 runtime lane appears as a `Runtime` cell;
@@ -281,11 +286,11 @@ pub const CELLS: &[Cell] = &[
     cell(Native, C,    Cyclonedds, Service, Example, Runtime),
     cell(Native, Cpp,  Cyclonedds, Service, Example, Runtime),
     cell(Native, Rust, Cyclonedds, Service, Example,
-         BuildOnly("native rust cyclone service pair not wired — W6")),
+         BuildOnly("native rust cyclone service pair unproven — issue #233")),
     cell(Native, C,    Cyclonedds, Action,  Example, Runtime),
     cell(Native, Cpp,  Cyclonedds, Action,  Example, Runtime),
     cell(Native, Rust, Cyclonedds, Action,  Example,
-         BuildOnly("native rust cyclone action pair not wired — W6")),
+         BuildOnly("native rust cyclone action pair unproven — issue #233")),
     cell(Native, C,    Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Rust, Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Cpp,  Xrce,       Pubsub,  Example, Runtime),
@@ -340,8 +345,8 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Rust, Cyclonedds, Pubsub, Example,
          BuildOnly("fixture retired in phase-220.C (cmake-bridge removed); \
                     freertos_qemu.rs lanes #[ignore]d pending the 214.S.5.b \
-                    pure-cargo BSP gate — W6 decides restore-vs-carve")),
-    cell(FreertosMps2, Rust, Xrce,       Pubsub, Example, CarveOut(W6_XRCE_RTOS)),
+                    pure-cargo BSP gate — issue #233 tracks restore-vs-carve")),
+    cell(FreertosMps2, Rust, Xrce,       Pubsub, Example, CarveOut(XRCE_RTOS_CARVE)),
 
     cell(NuttxArm, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(NuttxArm, C,    Zenoh, Pubsub,  Example, Runtime),
@@ -352,8 +357,8 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxArm, Rust, Zenoh, Action,  Example, Runtime),
     cell(NuttxArm, C,    Zenoh, Action,  Example, Runtime),
     cell(NuttxArm, Cpp,  Zenoh, Action,  Example, Runtime),
-    cell(NuttxArm, Rust, Cyclonedds, Pubsub, Example, CarveOut(W6_CYCLONE_RTOS)),
-    cell(NuttxArm, Rust, Xrce,       Pubsub, Example, CarveOut(W6_XRCE_RTOS)),
+    cell(NuttxArm, Rust, Cyclonedds, Pubsub, Example, CarveOut(CYCLONE_RUST_RTOS_CARVE)),
+    cell(NuttxArm, Rust, Xrce,       Pubsub, Example, CarveOut(XRCE_RTOS_CARVE)),
 
     cell(ThreadxLinux, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(ThreadxLinux, C,    Zenoh, Pubsub,  Example, Runtime),
@@ -367,9 +372,9 @@ pub const CELLS: &[Cell] = &[
     // threadx-linux cyclone: C pubsub pair proven (native_api #215 lane);
     // service/action fixtures build but have no runtime lane.
     cell(ThreadxLinux, C,   Cyclonedds, Pubsub,  Example, Runtime),
-    cell(ThreadxLinux, C,   Cyclonedds, Service, Example, BuildOnly(W6_CYCLONE_RTOS)),
-    cell(ThreadxLinux, C,   Cyclonedds, Action,  Example, BuildOnly(W6_CYCLONE_RTOS)),
-    cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, BuildOnly(W6_CYCLONE_RTOS)),
+    cell(ThreadxLinux, C,   Cyclonedds, Service, Example, BuildOnly(CYCLONE_RTOS_TODO)),
+    cell(ThreadxLinux, C,   Cyclonedds, Action,  Example, BuildOnly(CYCLONE_RTOS_TODO)),
+    cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, BuildOnly(CYCLONE_RTOS_TODO)),
 
     // ThreadX riscv64 — pubsub + service runtime; action examples absent;
     // cyclone two-QEMU pubsub pairs proven (#214).
@@ -381,10 +386,10 @@ pub const CELLS: &[Cell] = &[
     cell(ThreadxRiscv64, Cpp,  Zenoh, Service, Example,
          CarveOut("cpp service/action examples not implemented; port slots reserved (platform.rs)")),
     cell(ThreadxRiscv64, Rust, Zenoh, Action, Example,
-         CarveOut("action examples not implemented on threadx-riscv64 — W6 decides implement-vs-keep")),
+         CarveOut("action examples not implemented on threadx-riscv64 (example set is pubsub+service); reserved slots in platform.rs")),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
-    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, BuildOnly(W6_CYCLONE_RTOS)),
+    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, BuildOnly(CYCLONE_RTOS_TODO)),
 
     // NuttX riscv — C/C++/rust runtime lanes (phase #199 follow-up).
     cell(NuttxRiscv, C,    Zenoh, Pubsub, Example, Runtime),
@@ -479,7 +484,7 @@ pub const CELLS: &[Cell] = &[
     // described the WORKSPACE, not a lane; ws-qos-rust's only runtime lane
     // is the zephyr image). Single-entry natives also hit issue 0096
     // (in-process pub→sub never delivers), so wiring them needs split
-    // talker/listener entries first — W6.
+    // talker/listener entries first — issue #233.
     cell(Native, Rust,  Zenoh, CustomMsg, Workspace,
          BuildOnly("ws-custom-msg-rust native_entry has no fixture row or runtime lane \
                     (needs an 0096 two-entry split) — phase-295 W3.b finding, W6 wires it")),
@@ -552,7 +557,7 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Cpp,   Zenoh, Action,  Workspace, Runtime),
     cell(Native, Mixed, Zenoh, Action,  Workspace, Runtime),
 
-    // Workspace RMW variants (thin today: 80/82 rows are zenoh — W6).
+    // Workspace RMW variants (thin today: 80/82 rows are zenoh — issue #233).
     cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(Native, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
 

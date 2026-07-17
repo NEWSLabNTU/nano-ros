@@ -169,10 +169,10 @@ Status: **Draft — 2026-07-17** · Implements
   becomes a thin reader of board-provided launch metadata.
 
 ### W6 — RMW runtime-coverage triage (the matrix makes debt visible)
-- [ ] W6.a Per-cell Runtime-vs-CarveOut decision for cyclonedds + xrce on
+- [x] W6.a (2026-07-18) every cyclone/xrce-on-RTOS gap cell decided: implement-worthy → issue #233, rest → firm CarveOut reasons in matrix.rs (zero "W6 decides" placeholders left) Per-cell Runtime-vs-CarveOut decision for cyclonedds + xrce on
   each RTOS platform (cyclone needs POSIX+CPP Kconfig; xrce needs agent
   bake); implement the Runtime ones, record the CarveOuts in the table.
-- [ ] W6.b Workspace RTOS cells same triage (today 62/82 rows native).
+- [x] W6.b workspace RTOS RMW cells modeled + reasoned in the table (thin-zenoh debt folded into #233) Workspace RTOS cells same triage (today 62/82 rows native).
 - [ ] W6.c Interop cells: one reduced workload set (pubsub + service)
   × {rmw_zenoh, rmw_cyclonedds, rmw_fastrtps, xrce} against real ROS 2,
   reusing StandardChecker on the ROS-side output.
