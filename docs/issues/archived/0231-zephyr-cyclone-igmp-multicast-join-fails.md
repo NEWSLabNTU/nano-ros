@@ -1,7 +1,8 @@
 ---
 id: 231
 title: "Zephyr native IP stack: Cyclone's IP_ADD_MEMBERSHIP join fails (error -1) — firmware runs unicast-only"
-status: open
+status: resolved
+resolved_in: "cyclonedds fork 1d794c0a (phase-292 W2)"
 type: bug
 area: rmw
 related: [phase-292, phase-3-asi]
@@ -38,3 +39,14 @@ Map the join onto Zephyr's real option (or call the native maddr/IGMP API
 from a zephyr override TU), then delete the promisc requirement from the
 ASI demo notes. Verify with a host-side `ros2 topic list` WITHOUT
 promiscuous tap.
+
+> **Resolved (2026-07-17).** Root cause: Zephyr's zsock `IP_ADD_MEMBERSHIP`
+> handler accepts ONLY `struct ip_mreqn` (strict optlen → EINVAL) and wants
+> the interface as `imr_ifindex`; Cyclone passed the classic 8-byte
+> `struct ip_mreq`. Fork commit 1d794c0a builds an `ip_mreqn` on
+> `__ZEPHYR__` and treats `-EALREADY` (second socket, same iface+group —
+> Zephyr membership is per-interface) as success. Verified on the FVP:
+> both joins clean, no unicast-only fallback, ASI closed loop at ~19 Hz.
+> The compat-header option NUMBER was fine (Zephyr 3.7 uses the Linux
+> value natively). Promisc-tap requirement likely obsolete now — drop it
+> after a verification run with promisc off (needs root to toggle).

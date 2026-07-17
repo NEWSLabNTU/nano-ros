@@ -44,17 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#231** — Zephyr multicast join fixed (fork 1d794c0a:
+`struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
+classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
+~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
+
 **#232** — no FVP runtime lane: the fvp-aemv8r recipe is a build smoke, so
 cyclone-on-Zephyr-hardware regressions (phase-292 walls #4/#5/#8/#9) shipped
 invisible until the ASI consumer hit them. Wanted: a model-gated
 `run-fvp-talker` lane asserting participant creation. See
 `0232-no-fvp-runtime-lane.md`.
-
-**#231** — Zephyr native stack: Cyclone `IP_ADD_MEMBERSHIP` join fails
-(error -1) → firmware unicast-only; demo works via SPDP TX + promisc tap but
-RX multicast discovery is dead (compat-header Linux option numbering / IGMP
-path suspects; ThreadX twin was byte-order). See
-`0231-zephyr-cyclone-igmp-multicast-join-fails.md`.
 
 **#230** — SMP: spurious `ComponentNode failed at ? (code=0)` FATAL print on a
 healthy boot (cross-CPU visibility race on the ok-flag; single-core never
