@@ -140,6 +140,7 @@ impl<'s> Executor<'s> {
         #[cfg(not(feature = "std"))]
         {
             executor.clock_us_fn = config.clock_us;
+            executor.epoch_us_fn = config.epoch_us;
             executor.last_spin_end_us = config.clock_us.map(|clock| clock());
         }
         executor.set_node_identity(config.node_name, config.namespace);
@@ -342,6 +343,7 @@ impl<'s> Executor<'s> {
         #[cfg(not(feature = "std"))]
         {
             executor.clock_us_fn = config.clock_us;
+            executor.epoch_us_fn = config.epoch_us;
             executor.last_spin_end_us = config.clock_us.map(|clock| clock());
         }
         executor.set_node_identity(config.node_name, config.namespace);
@@ -1147,6 +1149,8 @@ pub struct Executor<'s> {
     /// Optional platform clock hook supplied by `ExecutorConfig`.
     #[cfg(not(feature = "std"))]
     pub(crate) clock_us_fn: Option<fn() -> u64>,
+    /// RFC-0052 W3b.2 — wall-clock (epoch µs) source for age monitors.
+    pub(crate) epoch_us_fn: Option<fn() -> u64>,
 }
 
 impl<'s> Executor<'s> {
@@ -1251,6 +1255,7 @@ impl<'s> Executor<'s> {
             last_spin_end_us: None,
             #[cfg(not(feature = "std"))]
             clock_us_fn: None,
+            epoch_us_fn: None,
         }
     }
 
@@ -1623,6 +1628,14 @@ impl<'s> Executor<'s> {
             }
         }
         Err(NodeError::NoSchedContextSlot)
+    }
+
+    /// RFC-0052 W3b.2 — wall-clock µs since the UNIX epoch, when this
+    /// target has an epoch source (config `epoch_us`, defaulted from
+    /// `SystemTime` on hosted configs). `None` = no wall clock; age
+    /// monitors must not have been baked (the emitter refuses).
+    pub fn epoch_now_us(&self) -> Option<u64> {
+        self.epoch_us_fn.map(|f| f())
     }
 
     /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context

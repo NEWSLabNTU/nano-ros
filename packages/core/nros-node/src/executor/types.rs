@@ -253,6 +253,14 @@ pub struct ExecutorConfig<'a> {
     /// Monotonic microsecond clock for no_std timer accounting.
     #[cfg(not(feature = "std"))]
     pub clock_us: Option<fn() -> u64>,
+    /// RFC-0052 / phase-296 W3b.2 — wall-clock µs since the UNIX epoch,
+    /// for `now - header.stamp` age monitors. Distinct from the monotonic
+    /// `clock_us`: `header.stamp` is ROS (wall) time. `None` = no epoch
+    /// source on this target — a baked `max_age_ms` contract with no
+    /// epoch source is a BAKE-time error (fail-loud, never a
+    /// silently-dead monitor). On `std` targets the executor falls back
+    /// to `SystemTime::now()` when unset.
+    pub epoch_us: Option<fn() -> u64>,
 }
 
 impl<'a> ExecutorConfig<'a> {
@@ -268,6 +276,7 @@ impl<'a> ExecutorConfig<'a> {
             namespace: "",
             #[cfg(not(feature = "std"))]
             clock_us: None,
+            epoch_us: None,
         }
     }
 
@@ -309,6 +318,12 @@ impl<'a> ExecutorConfig<'a> {
     /// Set the session mode.
     pub const fn mode(mut self, mode: SessionMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// RFC-0052 W3b.2 — set the wall-clock (epoch µs) source.
+    pub const fn epoch_us(mut self, epoch: fn() -> u64) -> Self {
+        self.epoch_us = Some(epoch);
         self
     }
 
@@ -392,6 +407,7 @@ impl ExecutorConfig<'static> {
             domain_id: cache.domain_id,
             node_name: "node",
             namespace: "",
+            epoch_us: Some(std_epoch_us),
         }
     }
 }
@@ -533,6 +549,7 @@ impl<'a> ExecutorConfig<'a> {
                     baked.node_name.unwrap_or("node")
                 },
                 namespace: baked.namespace.unwrap_or(""),
+                epoch_us: Some(std_epoch_us),
             });
         }
 
@@ -550,6 +567,7 @@ impl<'a> ExecutorConfig<'a> {
             namespace: baked.namespace.unwrap_or(""),
             #[cfg(not(feature = "std"))]
             clock_us: None,
+            epoch_us: None,
         })
     }
 }
@@ -1223,6 +1241,23 @@ impl<'a> BootConfig<'a> {
 // ============================================================================
 // BootConfig / resolve unit tests (std only)
 // ============================================================================
+
+/// RFC-0052 W3b.3 — split epoch-µs into the `builtin_interfaces/Time`
+/// field pair `(sec, nanosec)` for `header.stamp` population. Types-free
+/// (each workspace has its own generated `Time`); assign the tuple to the
+/// struct's fields.
+pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
+    ((us / 1_000_000) as i32, ((us % 1_000_000) * 1_000) as u32)
+}
+
+/// RFC-0052 W3b.2 — hosted wall-clock source: µs since the UNIX epoch.
+#[cfg(feature = "std")]
+pub fn std_epoch_us() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
+}
 
 #[cfg(test)]
 mod boot_config_tests {
