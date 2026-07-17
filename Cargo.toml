@@ -85,6 +85,10 @@ members = [
     "packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces",
     "packages/interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces",
     "packages/interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs",
+    "packages/interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs",
+    "packages/interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag",
+    "packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag",
+    "packages/core/nros-diagnostics",
     # C function table adapter for third-party RMW backends
     "packages/core/nros-rmw-cffi",
     # Phase 115.L.2 — zenoh-pico via C vtable

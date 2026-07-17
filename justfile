@@ -2154,6 +2154,24 @@ generate-rcl-interfaces:
         --rename rcl_interfaces=nros-rcl-interfaces
     echo "✓ rcl-interfaces regenerated"
 
+# Regenerate diagnostic-msgs bindings (RFC-0052 W3b.1; capacities from its
+# nros-codegen.toml — keep /diagnostics entries small and embeddable)
+[private]
+generate-diagnostic-msgs:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)"
+    echo "Regenerating diagnostic-msgs bindings..."
+    cd packages/interfaces/diagnostic-msgs
+    rm -rf generated/humble
+    $NROS generate-rust --force -o generated/humble --codegen-config nros-codegen.toml \
+        --rename diagnostic_msgs=nros-diagnostic-msgs \
+        --rename std_msgs=nros-std-msgs-diag \
+        --rename builtin_interfaces=nros-builtin-interfaces-diag
+    rm -rf generated/humble/geometry_msgs
+    echo "✓ diagnostic-msgs regenerated"
+
 # Regenerate lifecycle-msgs bindings (workspace member with nros- prefix)
 [private]
 generate-lifecycle-msgs:

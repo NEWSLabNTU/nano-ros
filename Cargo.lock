@@ -1750,6 +1750,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-builtin-interfaces-diag"
+version = "1.2.2"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-c"
 version = "0.5.0"
 dependencies = [
@@ -1794,6 +1803,24 @@ dependencies = [
  "nros-rmw-zenoh",
  "panic-halt",
  "zpico-alloc",
+]
+
+[[package]]
+name = "nros-diagnostic-msgs"
+version = "4.9.1"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-core",
+ "nros-serdes",
+ "nros-std-msgs-diag",
+]
+
+[[package]]
+name = "nros-diagnostics"
+version = "0.5.0"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-diagnostic-msgs",
 ]
 
 [[package]]
@@ -2102,6 +2129,16 @@ dependencies = [
  "nros-platform-api",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-std-msgs-diag"
+version = "4.9.1"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-builtin-interfaces-diag",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]

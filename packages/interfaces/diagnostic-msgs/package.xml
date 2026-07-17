@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>diagnostic_msgs_bindings</name>
+  <version>0.1.0</version>
+  <description>Generated diagnostic_msgs bindings for the nros-diagnostics reporter (RFC-0052 W3b.1)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- ROS interface dependencies -->
+  <depend>diagnostic_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

@@ -1,0 +1,12 @@
+# RFC-0033 capacities for the in-tree diagnostics bindings (RFC-0052 W3b.1).
+# The reporter emits ONE status per array with a handful of key/values; the
+# generated defaults (64-element sequences of 256-byte strings) put multi-MB
+# structs on the stack. Keep /diagnostics entries small and embeddable.
+[fields]
+"diagnostic_msgs/DiagnosticArray.status" = 4
+"diagnostic_msgs/DiagnosticStatus.values" = 8
+"diagnostic_msgs/DiagnosticStatus.name" = 64
+"diagnostic_msgs/DiagnosticStatus.message" = 128
+"diagnostic_msgs/DiagnosticStatus.hardware_id" = 96
+"diagnostic_msgs/KeyValue.key" = 32
+"diagnostic_msgs/KeyValue.value" = 64
