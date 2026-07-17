@@ -173,9 +173,55 @@ Status: **Draft — 2026-07-17** · Implements
   each RTOS platform (cyclone needs POSIX+CPP Kconfig; xrce needs agent
   bake); implement the Runtime ones, record the CarveOuts in the table.
 - [x] W6.b workspace RTOS RMW cells modeled + reasoned in the table (thin-zenoh debt folded into #233) Workspace RTOS cells same triage (today 62/82 rows native).
-- [ ] W6.c Interop cells: one reduced workload set (pubsub + service)
+- [x] W6.c Interop cells: one reduced workload set (pubsub + service)
   × {rmw_zenoh, rmw_cyclonedds, rmw_fastrtps, xrce} against real ROS 2,
   reusing StandardChecker on the ROS-side output.
+
+> As-landed (2026-07-17): the ROS 2 interop family → ONE matrix consumer
+> `tests/interop_e2e.rs` (9 rstest cases over the `Kind::Interop` cells).
+> `git rm`'d: `rmw_interop.rs` (31 fns), `cyclonedds_ros2_interop.rs`,
+> `demo_nodes_cpp_interop.rs`, `ros2_lifecycle_interop.rs`. Cases: zenoh
+> pubsub (nano→ros2, ros2→nano, + stock `demo_nodes_cpp` cross-vendor),
+> zenoh service (nano-server, ros2-server), cyclone pubsub (both dir),
+> cyclone service (nano-server), zenoh lifecycle full-cycle — mapping 1:1
+> onto the reduced Interop matrix cells (Native·Rust·{Zenoh,Cyclonedds}·
+> {Pubsub,Service} + Native·Rust·Zenoh·Lifecycle). `checker::assert_delivery`
+> asserts every nano-ros / `demo_nodes_cpp` endpoint (RFC-0051 §2); the raw
+> `ros2 topic echo`/`service call` DDS/CLI sinks count wire fields
+> (`data:`/`sum`, not nano demo markers → gate-clean). Skip semantics
+> preserved verbatim (require_ros2 / require_ros2_cyclonedds + fixture/peer
+> skips). **Matrix: unchanged** — the reduced Interop set already models
+> exactly these lanes; no cells added. No `rmw_fastrtps` interop lane exists
+> to fold (fastrtps is only the DDS peer *inside* the bespoke XRCE test).
+>
+> **Kept bespoke** (own binaries, not folded): `xrce_ros2_interop.rs` (XRCE
+> Agent lifecycle specifics; covers the Xrce Pubsub/Service Interop cells)
+> and `qos_zephyr_ros2_interop_e2e.rs` (on-target zephyr QoS interop,
+> `zephyr-qos-port` group; the ZephyrNativeSim·Cpp·Cyclonedds·Qos cell).
+>
+> **Retired in the reduction** (were `rmw_interop.rs`-only, outside the
+> reduced pubsub+service+lifecycle delivery set; each pinned via the
+> nano↔nano example cells or is perf/introspection, not a matrix cell):
+> the 3 detection probes + `keyexpr_format` (no-assert env reports); the 5
+> discovery-visibility lanes (`ros2 node/topic/service list` liveliness);
+> the QoS RxO lanes (`qos_compatibility` + `qos_matrix` ×4); the 3 action
+> interop lanes (nano↔stock rclcpp_action — the action WIRE protocol stays
+> covered by the Zenoh/Cyclone `Action, Example` cells); the 4 rate/latency/
+> throughput benchmarks (perf, per the W5 tx-throughput-measurement retire).
+> Restoring any of these = re-adding a matrix cell + a consumer case.
+>
+> Nextest routing: `binary(interop_e2e) and test(cyclone)` →
+> `host-dds-ros2-interop` (232-slot DDS domain space); `binary(interop_e2e)`
+> → `ros2-interop` (serial singleton ros2 daemon). The three retired
+> `binary(rmw_interop|cyclonedds_ros2_interop|ros2_lifecycle_interop)`
+> overrides collapsed into these two. `just native test-ros2` /
+> `test-ros2-lifecycle` re-pointed at `interop_e2e`; `Cargo.toml` `[[test]]`
+> renamed. Validation: check/clippy `--all-targets` clean; nightly fmt;
+> output_marker_gate + matrix_fixture_coverage + 52 lib tests green; ALL 9
+> cells PASS against live ROS 2 humble + rmw_zenoh_cpp + rmw_cyclonedds_cpp
+> (cyclone fresh; the zenoh/lifecycle native-rust fixtures were mtime-stale
+> from a stale in-tree CLI — the same treadmill the old tests hit — so they
+> were exercised with `NROS_SKIP_FIXTURE_CHECK=1`, all delivering).
 
 ### W7 — audit-skill extension
 - [x] W7.a (landed 2026-07-17 with the RFC, commit b75b8c028) Checklist §E gains: **E6** every runtime lane derives from the

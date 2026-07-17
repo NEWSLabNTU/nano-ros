@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Concurrent Fibonacci action-server fixture (extracted from the examples/native/rust/action-server `NROS_ACTION_CONCURRENT` escape hatch in phase-277 W5, when the example slimmed to the official single-goal demo). Accepts and advances several goals at once, draining get_result every spin so multiple early get_result requests are held (deferred) simultaneously — exercises the backends' seq-keyed reply tables under real concurrent load. Consumed by tests/rmw_interop.rs and tests/xrce_ros2_interop.rs concurrent action tests."
+description = "Concurrent Fibonacci action-server fixture (extracted from the examples/native/rust/action-server `NROS_ACTION_CONCURRENT` escape hatch in phase-277 W5, when the example slimmed to the official single-goal demo). Accepts and advances several goals at once, draining get_result every spin so multiple early get_result requests are held (deferred) simultaneously — exercises the backends' seq-keyed reply tables under real concurrent load. Consumed by tests/interop_e2e.rs (ex-rmw_interop) and tests/xrce_ros2_interop.rs concurrent action tests."
 
 [[bin]]
 name = "action-server-concurrent"

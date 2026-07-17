@@ -173,8 +173,8 @@ name = "platform"
 path = "tests/platform.rs"
 
 [[test]]
-name = "rmw_interop"
-path = "tests/rmw_interop.rs"
+name = "interop_e2e"
+path = "tests/interop_e2e.rs"
 
 [[test]]
 name = "zephyr"

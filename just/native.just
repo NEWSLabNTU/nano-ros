@@ -617,7 +617,7 @@ test-ros2 verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
-    args=(-p nros-tests --test rmw_interop --no-fail-fast)
+    args=(-p nros-tests --test interop_e2e --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -647,7 +647,7 @@ test-ros2-lifecycle verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
-    args=(-p nros-tests --test ros2_lifecycle_interop --no-fail-fast)
+    args=(-p nros-tests --test interop_e2e -E 'test(lifecycle)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
