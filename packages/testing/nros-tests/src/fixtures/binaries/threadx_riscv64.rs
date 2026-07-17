@@ -75,7 +75,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         "target-zenoh/riscv64gc-unknown-none-elf/nros-fast-release/{}",
         binary_name
     ));
-    super::require_prebuilt_binary(&binary_path)
+    super::require_prebuilt_binary_fresh(&binary_path)
 }
 
 pub fn build_threadx_rv64_talker() -> TestResult<&'static Path> {
@@ -153,7 +153,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
     let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
-    super::require_prebuilt_binary(&binary_path)
+    super::require_prebuilt_binary_fresh_cmake(&binary_path)
 }
 
 pub fn build_rv64_c_talker() -> TestResult<&'static Path> {

@@ -114,14 +114,14 @@ pub fn run_image_link(builtins_stub: &Path) {
     // against an rv-virt tree, and the C kernel link never consumes the boot
     // archive). Skip the image link gracefully instead of failing `ar` on a
     // missing member; the rust Entry lane sets the arch-correct env.
-    if let Some(vt) = &vectortab {
-        if !vt.exists() {
-            println!(
-                "cargo:warning=nuttx_image_link: vectortab {} absent — skipping image-link staging",
-                vt.display()
-            );
-            return;
-        }
+    if let Some(vt) = &vectortab
+        && !vt.exists()
+    {
+        println!(
+            "cargo:warning=nuttx_image_link: vectortab {} absent — skipping image-link staging",
+            vt.display()
+        );
+        return;
     }
     let board_lib_dir = nuttx_dir.join(&board_lib_rel);
     println!(

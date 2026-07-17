@@ -123,7 +123,7 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
     let bin_path = dir.join(format!(
         "target/x86_64-unknown-linux-gnu/nros-fast-release/{bin}"
     ));
-    super::require_prebuilt_binary(&bin_path)
+    super::require_prebuilt_binary_fresh(&bin_path)
 }
 
 // =============================================================================
@@ -166,7 +166,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
     let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
-    super::require_prebuilt_binary(&binary_path)
+    super::require_prebuilt_binary_fresh_cmake(&binary_path)
 }
 
 pub fn build_threadx_cpp_talker() -> TestResult<&'static Path> {

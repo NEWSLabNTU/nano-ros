@@ -430,11 +430,11 @@ impl PlatformsTree {
             split = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
             split_src = KnobSource::Env;
         }
-        if let Some(v) = env("ZPICO_TX_BATCH_FLUSH_MS") {
-            if let Ok(n) = v.trim().parse::<u64>() {
-                flush = n;
-                flush_src = KnobSource::Env;
-            }
+        if let Some(v) = env("ZPICO_TX_BATCH_FLUSH_MS")
+            && let Ok(n) = v.trim().parse::<u64>()
+        {
+            flush = n;
+            flush_src = KnobSource::Env;
         }
 
         Ok(ResolvedTxKnobs {

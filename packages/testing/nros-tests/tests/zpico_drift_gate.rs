@@ -18,6 +18,16 @@
 //! Second invariant: the `NROS_PLATFORMS_DIR` override hook itself must
 //! keep working — if a future refactor drops the env read, the corrupted
 //! sandbox is silently ignored and the first assertion fails.
+//!
+//! SANCTIONED compile-in-test exception (issue #222 / AGENTS.md "no
+//! compilation inside tests"): this test's SUBJECT is build-script behavior
+//! — the drift gate fires (or doesn't) inside `zpico-sys/build.rs`, so the
+//! only way to observe it is to run a real `cargo build` against the
+//! sandboxed platform tree. It cannot be a prebuilt fixture: the corrupted
+//! run must FAIL to build by design, and both runs need the sandbox path
+//! injected at configure time. Cost is bounded: a dedicated
+//! `target-zpico-drift-gate/` dir keeps the two builds incremental and
+//! isolated from every other lane.
 
 use std::{
     fs,

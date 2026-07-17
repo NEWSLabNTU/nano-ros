@@ -25,10 +25,8 @@ fn kconfig_default(kconfig: &str, name: &str) -> String {
             in_block = rest.trim() == name;
             continue;
         }
-        if in_block {
-            if let Some(v) = t.strip_prefix("default ") {
-                return v.trim().to_string();
-            }
+        if in_block && let Some(v) = t.strip_prefix("default ") {
+            return v.trim().to_string();
         }
     }
     panic!("no `default` line for `config {name}` in zephyr/Kconfig");

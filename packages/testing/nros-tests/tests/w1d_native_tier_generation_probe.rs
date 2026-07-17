@@ -12,7 +12,9 @@
 //!   - `(max_value + 1) / window`  ≈ PUBLISHED rate (the counter is 0-indexed, so
 //!     the highest value seen means `max + 1` were minted).
 //!   - `count / window`            ≈ DELIVERED rate.
+//!
 //! Verdict:
+//!
 //!   - `max ≈ count` (both ~40/s)  → GENERATION-limited: the timer only fired
 //!     ~40×/s; tx is not the bottleneck (W1.d confirmed).
 //!   - `max ≫ count` (max ~100/s, count ~40/s) → TX-limited: the timer fired
@@ -35,17 +37,11 @@ fn max_and_count(out: &str) -> (i64, usize) {
     let mut max = 0i64;
     let mut count = 0usize;
     for line in out.lines() {
-        if let Some(rest) = line.split("Received:").nth(1) {
-            if let Ok(v) = rest
-                .trim()
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .parse::<i64>()
-            {
-                max = max.max(v);
-                count += 1;
-            }
+        if let Some(rest) = line.split("Received:").nth(1)
+            && let Ok(v) = rest.split_whitespace().next().unwrap_or("").parse::<i64>()
+        {
+            max = max.max(v);
+            count += 1;
         }
     }
     (max, count)

@@ -50,12 +50,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   baked nonzero NROS_ENTRY_DOMAIN_ID makes domain 0 unreachable; plus uint8 vs u32 domain type drift. (deep audit 2026-07-17)
 - **#226** — [C++ ParameterServer seq storage engine lives in the header](0226-cpp-parameter-seq-storage-in-header.md):
   C1 thin-wrapper violation — behavior the Rust core doesn't own; promote or document the carve-out. (deep audit 2026-07-17)
-- **#222** — [rtos fixture resolvers skip freshness](0222-rtos-fixture-resolvers-skip-freshness.md):
-  freertos/nuttx/threadx use existence-only checks — the #215 museum-binary trap still open on 4 platforms; zpico_drift_gate also compiles in-test unsanctioned. (deep audit 2026-07-17)
 - **#221** — [stm32f4 rtic action examples panic on hardware](0221-stm32f4-rtic-action-examples-panic-on-hardware.md):
   README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#223** — action
+Recently resolved (see [`archived/`](archived/) for the full list): **#222** — the four
+rtos fixture resolvers now hard-fail STALE instead of running museum binaries (the #215 trap
+closed on freertos/nuttx/threadx×2); found + fixed the deeper flaw en route: regenerated-in-place
+cbindgen headers (nros_generated.h / nros_cpp_ffi.h / zpico.h) must be EXCLUDED from dep-graph
+freshness — their mtimes are build side-effects that ping-pong across feature-variant families
+(false-stale treadmill); zpico_drift_gate's compile-in-test is now a documented sanctioned
+exception. **#223** — action
 goal/cancel/result parsers propagate CDR read errors (truncated frame ≠ "goal rejected"); unit
 tests added. **#224** — one shared SERVER_DISCOVERY_PROBE_TIMEOUT_MS. **#225** —
 `cyclonedds_register` → `rmw_type_registry`, cfg → `rmw_needs_type_descriptors`; backend names

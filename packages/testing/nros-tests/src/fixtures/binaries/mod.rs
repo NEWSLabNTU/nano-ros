@@ -474,6 +474,25 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
     dep_file_newer_than(&binary_path.with_extension("d"), bin_mtime)
 }
 
+/// Committed-but-REGENERATED headers (cbindgen writes them in place inside
+/// the source tree). Their mtimes are build side-effects, not edit events:
+/// two fixture families built with different feature sets ping-pong the same
+/// header path between content variants, so "header newer than my binary"
+/// says nothing about MY inputs (issue #222's cross-family false-stale). The
+/// real signal is already covered — any semantic change to these headers
+/// implies an edited `.rs` source, and those sources ARE in the dep graph.
+const REGENERATED_INPLACE_HEADERS: &[&str] = &[
+    "packages/core/nros-c/include/nros/nros_generated.h",
+    "packages/core/nros-cpp/include/nros/nros_cpp_ffi.h",
+    "packages/zpico/zpico-sys/c/include/zpico.h",
+];
+
+fn is_regenerated_inplace_header(path: &Path) -> bool {
+    REGENERATED_INPLACE_HEADERS
+        .iter()
+        .any(|suffix| path.ends_with(suffix))
+}
+
 /// Return the first dependency listed in a make-style `.d` dep-info file whose
 /// mtime is newer than `reference`. Shared by the direct-cargo probe
 /// ([`dep_info_newer_source`], `.d` next to the binary) and the Zephyr probe
@@ -487,6 +506,9 @@ fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Opt
         };
         for dep in split_dep_info_line(deps) {
             let dep_path = PathBuf::from(&dep);
+            if is_regenerated_inplace_header(&dep_path) {
+                continue;
+            }
             if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
                 && dep_mtime > reference
             {
@@ -726,6 +748,9 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
         let dep_path = PathBuf::from(dep);
         // Only repo-local sources — skip /usr system headers.
         if !dep_path.starts_with(&root) {
+            continue;
+        }
+        if is_regenerated_inplace_header(&dep_path) {
             continue;
         }
         if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
