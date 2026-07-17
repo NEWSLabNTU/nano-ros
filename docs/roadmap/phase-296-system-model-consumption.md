@@ -194,7 +194,10 @@ parity. Ordered gates (each verifiable before the next):
 
 - R1 — model parity (gap inventory: RFC-0052 §Parity gap analysis).
   Concrete items, dependency-ordered:
-  - **M (shared model schema, ros-launch-manifest):**
+  - **M (shared model schema, ros-launch-manifest): LANDED (b44465d,
+    2026-07-17)** — all six additive, golden-fixture + round-trip
+    covered; play_launch builder fills the new fields with defaults
+    until P1 lands.
     M1 `Deploy{domain, locator, rmw}` + `Deploy.extra` open map;
     M2 `execution.transports` (typed PlanTransport equivalent: ip/mac/
     gateway/interfaces/ssid/psk/device/baud + per-transport rmw/locator/
