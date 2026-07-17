@@ -569,6 +569,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             let name_lit = tier.name.replace('\\', "\\\\").replace('"', "\\\"");
             let priority = tier.priority;
             let spin_period_us = tier.spin_period_us.unwrap_or(0);
+            // RFC-0052 W2 — stack_bytes now propagates (the pre-W2 literal
+            // hardcoded 0, so [tiers.*.freertos].stack_bytes never reached
+            // the task-create call); core rides as core+1 (0 = unpinned),
+            // preempt_threshold as -1 = unset.
+            let stack_bytes = tier.stack_bytes.unwrap_or(0);
+            let core_plus1 = tier.core.map(|c| c + 1).unwrap_or(0);
+            let preempt = tier.preempt_threshold.unwrap_or(-1);
             let groups = &tier_groups_vecs[ti];
             let (groups_expr, n_groups_val) = if groups.is_empty() {
                 ("nullptr".to_string(), 0usize)
@@ -578,7 +585,8 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             let _ = writeln!(
                 out,
                 "    {{ \"{name_lit}\", {groups_expr}, {n_groups_val}u, \
-                 {priority}LL, 0u, {spin_period_us}ull, &__nros_entry_setup_tier_{ti} }},"
+                 {priority}LL, {stack_bytes}u, {spin_period_us}ull, \
+                 &__nros_entry_setup_tier_{ti}, {core_plus1}u, {preempt}LL }},"
             );
         }
         out.push_str("};\n\n");

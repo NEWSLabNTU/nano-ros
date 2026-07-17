@@ -416,6 +416,60 @@ fn default_tier(members: Vec<(String, String)>) -> ResolvedTier {
     }
 }
 
+// =============================================================================
+// platform-applicability validation (RFC-0052 / phase-296 W2)
+// =============================================================================
+
+/// Reject tier knobs the SELECTED target cannot honor — a bake-time error,
+/// never a silent ignore (the domain-0 lesson). Shared by the CLI codegen
+/// path and the `nros::main!` proc-macro so both bakes agree.
+///
+/// Rules (RFC-0052 rejection table):
+/// - `preempt_threshold` in the selected sub-table → ThreadX only.
+/// - `sched_class` in the selected sub-table → POSIX-family targets only
+///   (`posix`/`native`/`nuttx`).
+/// - `class = "interrupt"` → rejected (v1).
+/// - `class = "time_triggered"` without `period_us` → rejected.
+pub fn validate_tier_platform_applicability(
+    table: &ResolvedTierTable,
+    target_rtos: &str,
+) -> Result<(), String> {
+    let posix_family = matches!(target_rtos, "posix" | "native" | "nuttx");
+    for t in &table.tiers {
+        if t.preempt_threshold.is_some() && target_rtos != "threadx" {
+            return Err(format!(
+                "tier '{}': preempt_threshold is ThreadX-only, but the selected \
+                 target is '{target_rtos}' — remove it from [tiers.{}.{target_rtos}] \
+                 (other platforms' sub-tables may keep theirs)",
+                t.name, t.name
+            ));
+        }
+        if t.sched_class.is_some() && !posix_family {
+            return Err(format!(
+                "tier '{}': sched_class applies to POSIX-family targets only, \
+                 but the selected target is '{target_rtos}'",
+                t.name
+            ));
+        }
+        match t.class.as_deref() {
+            Some("interrupt") => {
+                return Err(format!(
+                    "tier '{}': class = \"interrupt\" is not supported (RFC-0052 v1)",
+                    t.name
+                ));
+            }
+            Some("time_triggered") if t.period_us.is_none() => {
+                return Err(format!(
+                    "tier '{}': class = \"time_triggered\" requires period_us",
+                    t.name
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -723,5 +777,63 @@ mod tests {
             path.contains("ZephyrBoard"),
             "zephyr resolved to {path:?} — expected ZephyrBoard"
         );
+    }
+}
+
+#[cfg(test)]
+mod applicability_tests {
+    use super::*;
+
+    fn table(t: ResolvedTier) -> ResolvedTierTable {
+        ResolvedTierTable { tiers: vec![t] }
+    }
+
+    fn base() -> ResolvedTier {
+        ResolvedTier {
+            name: "rt".into(),
+            priority: 5,
+            stack_bytes: None,
+            spin_period_us: None,
+            preempt_threshold: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![],
+        }
+    }
+
+    #[test]
+    fn preempt_threshold_rejected_off_threadx() {
+        let mut t = base();
+        t.preempt_threshold = Some(4);
+        assert!(validate_tier_platform_applicability(&table(t.clone()), "threadx").is_ok());
+        let err = validate_tier_platform_applicability(&table(t), "zephyr").unwrap_err();
+        assert!(err.contains("ThreadX-only"), "{err}");
+    }
+
+    #[test]
+    fn sched_class_posix_family_only() {
+        let mut t = base();
+        t.sched_class = Some("SCHED_FIFO".into());
+        for ok in ["posix", "native", "nuttx"] {
+            assert!(validate_tier_platform_applicability(&table(t.clone()), ok).is_ok());
+        }
+        assert!(validate_tier_platform_applicability(&table(t), "freertos").is_err());
+    }
+
+    #[test]
+    fn interrupt_class_and_periodless_tt_rejected() {
+        let mut t = base();
+        t.class = Some("interrupt".into());
+        assert!(validate_tier_platform_applicability(&table(t), "posix").is_err());
+        let mut t2 = base();
+        t2.class = Some("time_triggered".into());
+        assert!(validate_tier_platform_applicability(&table(t2.clone()), "posix").is_err());
+        t2.period_us = Some(1000);
+        assert!(validate_tier_platform_applicability(&table(t2), "posix").is_ok());
     }
 }

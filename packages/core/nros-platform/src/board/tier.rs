@@ -44,6 +44,29 @@ pub struct TierSpec<'a> {
     pub stack_bytes: usize,
     /// Spin period for this tier's `spin_once` loop, in microseconds.
     pub spin_period_us: u64,
+    // -- RFC-0052 / phase-296 W2 — the previously-dropped tier fields ride
+    // -- the spec end-to-end. Boards consume what their kernel offers; the
+    // -- bake already rejected platform-inapplicable knobs (fail-loud), so
+    // -- an unconsumed Some(..) here is a board TODO, not a silent config
+    // -- loss.
+    /// CPU core to pin the tier task to (SMP boards); `None` = unpinned.
+    pub core: Option<u32>,
+    /// ThreadX preemption threshold (ThreadX targets only; bake-validated).
+    pub preempt_threshold: Option<i64>,
+    /// Scheduling class: `"best_effort"` | `"real_time"` |
+    /// `"time_triggered"` (bake rejects `"interrupt"`); `None` = plain
+    /// priority tier.
+    pub class: Option<&'a str>,
+    /// Callback period (µs) — `time_triggered` window period / sporadic
+    /// replenishment period.
+    pub period_us: Option<u64>,
+    /// Execution-time budget (µs) — sporadic-server budget (W3 wires it
+    /// into the executor's `SchedContext`).
+    pub budget_us: Option<u64>,
+    /// Relative deadline (µs) for the deadline monitor (W3).
+    pub deadline_us: Option<u64>,
+    /// On deadline miss: `"ignore"` | `"warn"` | `"skip"` | `"fault"`.
+    pub deadline_policy: Option<&'a str>,
 }
 
 impl<'a> TierSpec<'a> {
@@ -56,6 +79,13 @@ impl<'a> TierSpec<'a> {
             priority: 0,
             stack_bytes: 0,
             spin_period_us: 1_000,
+            core: None,
+            preempt_threshold: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
         }
     }
 }

@@ -1699,6 +1699,11 @@ pub struct NativeTierSpecC {
     pub stack_bytes: usize,
     pub spin_period_us: u64,
     pub setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    /// RFC-0052 W2 — CPU pin + 1; 0 = unpinned (advisory on native v1:
+    /// recorded for parity, pinning lands with the W3 executor work).
+    pub core_plus1: u32,
+    /// ThreadX-only (bake-validated); -1 = unset. Never consumed on native.
+    pub preempt_threshold: i64,
 }
 
 /// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one

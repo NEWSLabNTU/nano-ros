@@ -75,7 +75,9 @@ extern void nros_platform_dealloc(void* ptr);
  *   offset 28: [pad 4 B]
  *   offset 32: spin_period_us (uint64_t, 8 B)
  *   offset 40: setup (fn ptr, 4 B)
- *   total: 44 B (struct-padded to 48 B) */
+ *   offset 44: core_plus1 (uint32_t, 4 B)
+ *   offset 48: preempt_threshold (int64_t, 8 B)
+ *   total: 56 B */
 typedef int32_t (*nros_tier_setup_fn_t)(void* executor);
 
 typedef struct {
@@ -86,6 +88,12 @@ typedef struct {
     size_t stack_bytes;
     uint64_t spin_period_us;
     nros_tier_setup_fn_t setup;
+    /* RFC-0052 W2 — appended (ABI append-only): CPU pin + 1 (0 = unpinned)
+     * and the ThreadX preemption threshold (-1 = unset; bake-validated
+     * ThreadX-only, so this mirror never consumes it). Keep the offset
+     * comment above in sync when appending further. */
+    uint32_t core_plus1;
+    int64_t preempt_threshold;
 } nros_tier_spec_t;
 
 /* --- Per-tier task context ---
@@ -234,9 +242,9 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
      * 256 KiB the firmware runs the full run_tiers path with no fault under
      * QEMU mps2-an385. The boot tier keeps the 512 KiB app_task stack.
-     * NOTE: `[tiers.*.freertos].stack_bytes` does NOT yet propagate through
-     * emit_cpp into NativeTierSpec (t->stack_bytes is 0 today), so this
-     * default is the live value; the config-driven path needs an emitter fix. */
+     * RFC-0052 W2: `[tiers.*.freertos].stack_bytes` now propagates through
+     * emit_cpp (the pre-W2 literal hardcoded 0), so a configured stack is
+     * honored; this default covers unset specs. */
     uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
 
     /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
@@ -247,12 +255,26 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                                : (int64_t)(configMAX_PRIORITIES - 1u))
                            : (UBaseType_t)1u;
 
+    TaskHandle_t task = NULL;
     BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
-                                 stack_words, ctx, prio, NULL);
+                                 stack_words, ctx, prio, &task);
     if (ret != pdPASS) {
         nros_platform_dealloc(ctx);
         nros_platform_dealloc(tier_exec);
         return -1;
+    }
+    /* RFC-0052 W2 — core pin (core_plus1: 0 = unpinned). Only SMP builds
+     * expose the affinity API; on uniprocessor configs a configured pin is
+     * noted and ignored (RFC-0052 mapping table). */
+    if (t->core_plus1 > 0u) {
+#if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
+        vTaskCoreAffinitySet(task, (UBaseType_t)1u << (t->core_plus1 - 1u));
+#else
+        /* Uniprocessor build: pin noted-and-ignored (RFC-0052 mapping table;
+         * the bake keeps `core` legal everywhere because SMP-ness is a
+         * board-config property, not a platform property). */
+        (void)task;
+#endif
     }
     return 0;
 }

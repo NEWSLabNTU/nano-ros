@@ -6,7 +6,7 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: W1 landed (2026-07-17); W2-W4 planned.
+Status: W1+W2 landed (2026-07-17); W3-W4 planned.
 
 ## Waves
 
@@ -47,6 +47,16 @@ Status: W1 landed (2026-07-17); W2-W4 planned.
 - **Done when:** per-platform fixture builds assert the new fields reach
   the task-creation calls (FreeRTOS stack regression test included), and
   a `preempt_threshold` on a zephyr sub-table fails the bake loudly.
+- Landed: full pipe widened (PlanTierDoc, Rust TierSpec + macro tokens,
+  the C ABI append across nros_native_tier_spec_t / NativeTierSpec /
+  NativeTierSpecC / 4 board mirrors — core_plus1 + preempt_threshold,
+  offsets documented), FreeRTOS stack drop fixed + SMP core pin
+  (configUSE_CORE_AFFINITY-gated), shared
+  `validate_tier_platform_applicability` in orchestration-ir called from
+  BOTH the CLI bake and `nros::main!`. Follow-ups: zephyr/nuttx core-pin
+  consumers need shim-API changes (transport complete, consumers
+  pending); budget/period→SchedContext + TT-window binding moved to W3
+  (one coherent executor wave with the monitors).
 
 ### W3 — on-target contract monitors (layer 2)
 

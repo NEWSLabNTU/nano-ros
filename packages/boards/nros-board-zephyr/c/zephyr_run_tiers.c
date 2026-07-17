@@ -105,6 +105,12 @@ typedef struct {
     size_t stack_bytes;
     uint64_t spin_period_us;
     nros_tier_setup_fn_t setup;
+    /* RFC-0052 W2 — appended (ABI append-only): CPU pin + 1 (0 = unpinned)
+     * and the ThreadX preemption threshold (-1 = unset; bake-validated
+     * ThreadX-only, so this mirror never consumes it). Keep the offset
+     * comment above in sync when appending further. */
+    uint32_t core_plus1;
+    int64_t preempt_threshold;
 } nros_tier_spec_t;
 
 /* --- Per-tier task context ---

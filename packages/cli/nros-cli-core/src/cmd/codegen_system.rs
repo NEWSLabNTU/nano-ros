@@ -166,6 +166,9 @@ pub fn run(args: Args) -> Result<()> {
     };
     let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)
         .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
+    // RFC-0052 W2 — bake-time reject for knobs the selected target can't honor.
+    nros_orchestration_ir::validate_tier_platform_applicability(&tier_table, &target_rtos)
+        .map_err(|e| eyre::eyre!(e))?;
 
     // Phase 212.L.6 — resolve the launch input. For a Path A bringup
     // pkg (no Cargo.toml, no CMakeLists.txt) we surface the resolver's
@@ -654,6 +657,24 @@ struct PlanTierDoc<'a> {
     stack_bytes: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     spin_period_us: Option<u64>,
+    // RFC-0052 / phase-296 W2 — the full tier surface rides the plan (the
+    // pre-W2 doc silently dropped everything below).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    core: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preempt_threshold: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sched_class: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    class: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    period_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    budget_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deadline_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deadline_policy: Option<&'a str>,
     members: Vec<PlanTierMember<'a>>,
 }
 
@@ -716,6 +737,14 @@ fn render_plan_json(
                 priority: t.priority,
                 stack_bytes: t.stack_bytes,
                 spin_period_us: t.spin_period_us,
+                core: t.core,
+                preempt_threshold: t.preempt_threshold,
+                sched_class: t.sched_class.as_deref(),
+                class: t.class.as_deref(),
+                period_us: t.period_us,
+                budget_us: t.budget_us,
+                deadline_us: t.deadline_us,
+                deadline_policy: t.deadline_policy.as_deref(),
                 members: t
                     .members
                     .iter()

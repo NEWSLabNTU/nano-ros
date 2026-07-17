@@ -156,6 +156,8 @@ void nros_board_network_wait(void);
 /// `spin_period_us` — sleep between `spin_once` calls; 0 → 1 ms floor.
 /// `setup`          — called once on the tier thread (after `set_active_groups`)
 ///                    with the tier executor handle; returns 0 on success.
+/// `core_plus1` — RFC-0052 W2: CPU pin + 1; 0 = unpinned.
+/// `preempt_threshold` — ThreadX-only (bake-validated); -1 = unset.
 struct NativeTierSpec {
     const char* name;
     const char** groups;
@@ -164,6 +166,8 @@ struct NativeTierSpec {
     size_t stack_bytes;
     uint64_t spin_period_us;
     int32_t (*setup)(void* executor);
+    uint32_t core_plus1;
+    int64_t preempt_threshold;
 };
 
 class NativeBoard {

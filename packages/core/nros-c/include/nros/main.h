@@ -63,7 +63,12 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_n
  * `spin_period_us` — sleep between spin_once calls; 0 uses a 1 ms floor.
  * `setup`          — called once on the tier thread (after set_active_groups)
  *                    with the tier executor handle; returns 0 on success or
- *                    NULL to skip setup (tier receives no nodes of its own). */
+ *                    NULL to skip setup (tier receives no nodes of its own).
+ * `core_plus1`     — RFC-0052 W2: CPU pin + 1; 0 = unpinned. Consumed where
+ *                    the kernel offers affinity (SMP builds); ignored with a
+ *                    note on uniprocessor targets.
+ * `preempt_threshold` — ThreadX preemption threshold; -1 = unset. Bake-time
+ *                    validated ThreadX-only (other targets never see it). */
 typedef struct {
     const char* name;
     const char* const* groups;
@@ -72,6 +77,8 @@ typedef struct {
     size_t stack_bytes;
     uint64_t spin_period_us;
     nros_c_entry_setup_fn setup;
+    uint32_t core_plus1;
+    int64_t preempt_threshold;
 } nros_native_tier_spec_t;
 
 /* Phase 274.W2 (RFC-0015 Model 1) — run a multi-tier native entry over one

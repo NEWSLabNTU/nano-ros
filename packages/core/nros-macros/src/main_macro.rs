@@ -688,6 +688,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             format!("nros::main!: tier resolution: {e}"),
                         )
                     })?;
+                    // RFC-0052 W2 — reject platform-inapplicable tier knobs at
+                    // compile time (same shared check the CLI bake runs).
+                    nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+                        .map_err(|e| {
+                            syn::Error::new(launch_lit.span(), format!("nros::main!: {e}"))
+                        })?;
                     resolved_tiers = Some(table);
                 }
             }
@@ -2408,6 +2414,29 @@ fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
         let priority = t.priority;
         let stack_bytes = t.stack_bytes.unwrap_or(0) as usize;
         let spin_period_us = t.spin_period_us.unwrap_or(1000);
+        let opt_u32 = |v: Option<u32>| match v {
+            Some(x) => quote! { Some(#x) },
+            None => quote! { None },
+        };
+        let opt_i64 = |v: Option<i64>| match v {
+            Some(x) => quote! { Some(#x) },
+            None => quote! { None },
+        };
+        let opt_u64 = |v: Option<u64>| match v {
+            Some(x) => quote! { Some(#x) },
+            None => quote! { None },
+        };
+        let opt_str = |v: Option<&str>| match v {
+            Some(x) => quote! { Some(#x) },
+            None => quote! { None },
+        };
+        let core = opt_u32(t.core);
+        let preempt_threshold = opt_i64(t.preempt_threshold);
+        let class = opt_str(t.class.as_deref());
+        let period_us = opt_u64(t.period_us);
+        let budget_us = opt_u64(t.budget_us);
+        let deadline_us = opt_u64(t.deadline_us);
+        let deadline_policy = opt_str(t.deadline_policy.as_deref());
         quote! {
             ::nros::__macro_support::nros_platform::TierSpec {
                 name: #name,
@@ -2415,6 +2444,13 @@ fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
                 priority: #priority,
                 stack_bytes: #stack_bytes,
                 spin_period_us: #spin_period_us,
+                core: #core,
+                preempt_threshold: #preempt_threshold,
+                class: #class,
+                period_us: #period_us,
+                budget_us: #budget_us,
+                deadline_us: #deadline_us,
+                deadline_policy: #deadline_policy,
             }
         }
     });
