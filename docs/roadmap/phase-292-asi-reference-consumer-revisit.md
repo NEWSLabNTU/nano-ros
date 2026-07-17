@@ -84,6 +84,15 @@ named reference consumer), 287 (ament verbs on zephyr).
     app-overlay convention (`boards/<board>.overlay`, `app.overlay`) before
     appending the board-crate overlay, when the consumer hasn't curated the
     list. (`zephyr/cmake/nano_ros_use_board.cmake`.)
+  - [x] Wall #3 (2026-07-17, FIXED): every conf we ship that enables
+    `CONFIG_NET_TCP=y` (the three RMW snippets + the fvp/s32z board-crate
+    prj.confs) left `CONFIG_NET_TCP_WORKQ_STACK_SIZE` at Zephyr's 1024 B
+    default — on arm64 the `tcp_work` thread overflows that during early
+    net-stack init, corrupting its context into a wild ERET to `__start`
+    at EL0 (`ZEPHYR FATAL ERROR: CPU exception`, ESR EC 0x18 trapped
+    `msr DAIFSet, #15`, ELR = the reset vector — looks like a boot bug,
+    is a stack overflow). First ASI FVP boot hit it 53 ms in. Fix: pair
+    every `NET_TCP=y` with `CONFIG_NET_TCP_WORKQ_STACK_SIZE=4096`.
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.
