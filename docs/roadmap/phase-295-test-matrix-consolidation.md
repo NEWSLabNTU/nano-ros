@@ -17,38 +17,50 @@ Status: **Draft — 2026-07-17** · Implements
 ## Waves
 
 ### W1 — matrix + allocator core (no lane behavior change)
-- [ ] W1.a `nros_tests::matrix` — the Cell table (RFC-0051 §1) seeded from
+- [x] W1.a `nros_tests::matrix` — the Cell table (RFC-0051 §1) seeded from
   today's REAL coverage: every existing runtime lane becomes a Runtime
   cell; known gaps become BuildOnly/CarveOut with the reason string.
   Grow `rtos_e2e`'s Platform/Lang enums; do not fork them.
-- [ ] W1.b `nros_tests::alloc` — port/domain formula + build-stage
+- [x] W1.b `nros_tests::alloc` — port/domain formula + build-stage
   injectivity assertion; native stays ephemeral. Document the 7000+ band.
-- [ ] W1.c `matrix-gen` (build-stage bin): verifies fixtures.toml rows
+- [x] W1.c `matrix-gen` (build-stage bin): verifies fixtures.toml rows
   against the matrix + allocator (derived locator/domain columns match);
   `examples_fixture_coverage.rs` re-pointed at it (⊇ both directions).
 
 ### W2 — one checker
-- [ ] W2.a `nros_tests::checker::StandardChecker` wrapping
+- [x] W2.a `nros_tests::checker::StandardChecker` wrapping
   ready-wait → collect → count → monotonic-assert for every workload,
   built on the existing `output.rs` constants/parsers.
-- [ ] W2.b Migrate the matrix consumers (W3) onto it; add the
+- [x] W2.b Migrate the matrix consumers (W3) onto it; add the
   literal-marker gate (markers outside `output.rs` fail a grep test).
   Kill the 22 `"Received:"` literals.
 
 ### W3 — consolidate the per-cell files into matrix consumers
-- [ ] W3.a `rtos_e2e` absorbs: `freertos_qemu.rs`, `nuttx_qemu.rs`,
+
+> As-landed (2026-07-18, commits d9a69c570 / 9deb721dd / 987593246 /
+> 6134a8286 / fb3dd5956): tests/ 193 → 127 files. New consumers:
+> realtime_tiers_e2e (16 cells), roundtrip_xprocess_e2e (8),
+> multihost_e2e (5), workspace_features_e2e (16), entry_e2e (15), and
+> zephyr.rs's in-file example_e2e (27 cells; 74 fns → 20). Bonus finds:
+> six files had `let _ = router;` DROPPING the zenohd guard immediately
+> (latent since phase-263 — fixed); three families' "baked ports" were
+> fiction (now ephemeral); several seed-table lies corrected in both
+> directions by the W1 gates; 17851 port overlap (safety-zephyr vs
+> freertos-cpp tiers) flagged for W4. The reverse fixtures⊆matrix gate
+> is now an ASSERT.
+- [x] W3.a `rtos_e2e` absorbs: `freertos_qemu.rs`, `nuttx_qemu.rs`,
   `threadx_riscv64_qemu.rs` smoke overlap; threadx-riscv64 action cell
   added (or CarveOut'd with reason).
-- [ ] W3.b `entry_e2e` matrix file absorbs the ~20 `*_entry_e2e` files;
+- [x] W3.b `entry_e2e` matrix file absorbs the ~20 `*_entry_e2e` files;
   `workspace_e2e` matrix file absorbs the ~12 `*_workspace_e2e` +
   `*_roundtrip_xprocess_e2e` ×8; `realtime_tiers_e2e` absorbs the ×15
   family; `multihost_e2e` absorbs the ×6. Per-file deletion only AFTER the
   matrix cell is green on fresh fixtures (the #215 rename lesson: grep for
   binary-name/test-name consumers when retiring files).
-- [ ] W3.c zephyr.rs (74 fns): parametrize the pubsub/service/action/entry
+- [x] W3.c zephyr.rs (74 fns): parametrize the pubsub/service/action/entry
   families into cells; keep the genuinely bespoke ones (xrce serial,
   tx-throughput measurement is retired per W5).
-- [ ] W3.d Retire/promote phase-probe one-offs: `w1d_*`, `w1_zephyr_tx_*`,
+- [x] W3.d Retire/promote phase-probe one-offs: `w1d_*`, `w1_zephyr_tx_*`,
   `phase_118_collapse`, `native_entry_poc_boot`, CLI `phase_212_f_*`,
   `phase215_f_*` (E3 names). Behavior worth keeping gets a matrix cell or
   a behavior-named gate; the rest are deleted with a line in this doc.

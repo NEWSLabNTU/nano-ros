@@ -149,10 +149,11 @@ fn every_runtime_cell_has_a_fixture_row() {
     );
 }
 
-/// Reverse: report fixture coordinates the matrix doesn't model yet.
-/// Flips to an assert when phase-295 W3 lands (tracked in the phase doc).
+/// Reverse (ASSERTED since W3-end): every fixture coordinate maps onto a
+/// matrix cell — an unmodeled row is either debt the table must model or
+/// an orphan to delete.
 #[test]
-fn report_fixture_rows_outside_matrix() {
+fn fixture_rows_all_modeled_by_matrix() {
     let (coords, unmapped) = fixture_coords();
     let cell_keys: BTreeSet<_> = CELLS
         .iter()
@@ -166,16 +167,9 @@ fn report_fixture_rows_outside_matrix() {
         })
         .collect();
     let orphans: Vec<_> = coords.difference(&cell_keys).collect();
-    eprintln!(
-        "[matrix-coverage] fixture coordinates not yet modeled by the matrix: {} \
-         (W3 flips this to an assert); unmapped platform strings: {}",
-        orphans.len(),
-        unmapped.len()
+    assert!(
+        orphans.is_empty() && unmapped.is_empty(),
+        "fixtures.toml coordinates outside the matrix (model them or delete the rows):\n\
+         orphan (platform_idx, lang_idx, rmw_idx, is_ws): {orphans:?}\nunmapped rows: {unmapped:?}"
     );
-    for o in &orphans {
-        eprintln!("  orphan coord (platform_idx, lang_idx, rmw_idx, is_ws): {o:?}");
-    }
-    for u in &unmapped {
-        eprintln!("  unmapped row: {u}");
-    }
 }
