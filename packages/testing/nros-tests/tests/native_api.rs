@@ -1189,6 +1189,46 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     );
 }
 
+/// issue #233 cell 4 — threadx-linux **C++** CycloneDDS pubsub: the embedded
+/// ThreadX C++ talker feeds a native POSIX C++ listener over Cyclone (the C++
+/// sibling of the #215 C pubsub lane; the C++ cyclone image linked BuildOnly).
+#[test]
+fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let talker_bin = nros_tests::project_root()
+        .join("examples/threadx-linux/cpp/talker/build-cyclonedds/cpp_talker");
+    if !talker_bin.exists() {
+        nros_tests::skip!(
+            "threadx-linux CycloneDDS C++ talker missing; build with: \
+             just threadx_linux build-fixtures"
+        );
+    }
+    let listener_bin = cyclone_listener_binary(Language::Cpp);
+
+    let mut listener = spawn_cyclone_binary(&listener_bin, "native-cpp-cyclonedds-listener", "107");
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("native C++ cyclonedds listener did not become ready");
+
+    let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-cpp-cyclonedds-talker", "107");
+    std::thread::sleep(Duration::from_secs(8));
+    talker.kill();
+
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    eprintln!("Native C++ listener output (threadx-linux C++ talker):\n{listener_output}");
+
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    assert!(
+        received >= 2,
+        "Expected ≥2 CycloneDDS samples from the threadx-linux C++ talker, got {received}.\n\
+         Output:\n{listener_output}"
+    );
+}
+
 /// issue #233 cell 3 — threadx-linux C CycloneDDS **service**: an embedded
 /// ThreadX server (NetX Duo over NSOS) answers a native POSIX client over the
 /// same Cyclone backend, mirroring the #215 pubsub interop lane. The

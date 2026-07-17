@@ -14,8 +14,12 @@ long-standing RMW-runtime-coverage debt VISIBLE for the first time: runtime
 e2e is ~entirely zenoh, while cyclonedds/xrce on the RTOS platforms sit as
 `Tier::BuildOnly` (fixture links, no runtime lane) or `Tier::CarveOut`.
 W6's decision pass triaged every gap cell. This issue tracks the cells
-judged **worth implementing** (the CarveOuts below are firm design
-decisions, NOT tracked here).
+judged **worth implementing**. As of 2026-07-18 the fixture-wireable cells
+are all done (native rust cyclone service; threadx-linux C cyclone
+service+action; threadx-linux C++ cyclone pubsub). What remains needs real
+code or a new fixture: the rust cyclone ACTION creation gap (#2) and the
+threadx-riscv64 C++ cyclone build variant (#5). The CarveOuts below are
+firm design decisions, NOT tracked here.
 
 ## Worth-implementing cells (BuildOnly → Runtime)
 
@@ -39,9 +43,15 @@ the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
    C server drives a native POSIX client over Cyclone (service → result 5;
    action → full order-10 Fibonacci), mirroring the #215 pubsub interop
    lane. Both matrix cells flipped to Runtime.
-4. **threadx-linux C++ cyclonedds pubsub** and **threadx-riscv64 C++
-   cyclonedds pubsub.** C++ cyclone example images link; no runtime lane.
-   riscv64 mirrors the #214 C/rust two-QEMU pattern.
+4. threadx-linux C++ cyclonedds pubsub — **DONE (2026-07-18)**:
+   `test_threadx_linux_cyclonedds_cpp_talker_to_native_listener` (the C++
+   sibling of the #215 C lane); cell flipped to Runtime.
+5. **threadx-riscv64 C++ cyclonedds pubsub** — remaining. Unlike the
+   others this has NO fixture yet (the riscv64 example set builds C + rust
+   cyclone two-QEMU pubsub, #214, but not C++). Needs a cpp cyclone build
+   variant added to the `just threadx_riscv64` recipe + a two-QEMU lane
+   mirroring `test_threadx_riscv64_cyclonedds_two_qemu_{pubsub,rust_pubsub}`.
+   Fixture-creation work, not just wiring.
 
 ## Firm CarveOuts (recorded in the matrix, NOT this issue's scope)
 

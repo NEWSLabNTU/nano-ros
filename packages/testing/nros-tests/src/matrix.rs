@@ -380,7 +380,8 @@ pub const CELLS: &[Cell] = &[
     cell(ThreadxLinux, C,   Cyclonedds, Service, Example, Runtime),
     // issue #233 cell 3 — threadx C cyclone action proven (test_threadx_linux_cyclonedds_action).
     cell(ThreadxLinux, C,   Cyclonedds, Action,  Example, Runtime),
-    cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, BuildOnly(CYCLONE_RTOS_TODO)),
+    // issue #233 cell 4 — threadx C++ cyclone pubsub proven (test_threadx_linux_cyclonedds_cpp_talker_to_native_listener).
+    cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, Runtime),
 
     // ThreadX riscv64 — pubsub + service runtime; action examples absent;
     // cyclone two-QEMU pubsub pairs proven (#214).
