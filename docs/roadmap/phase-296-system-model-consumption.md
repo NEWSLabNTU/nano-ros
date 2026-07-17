@@ -186,3 +186,22 @@ from model contracts + the native parity fixture vs play_launch.
   the offset math.
 - Runtime monitors must respect the no-heap discipline (`heapless`
   counters, fixed-size EWMA state per endpoint).
+
+## Retirement trajectory (canonical-path decision, 2026-07-17)
+
+The SystemModel is canonical; nano-ros's custom resolution retires at
+parity. Ordered gates (each verifiable before the next):
+
+- R1 — model parity: W3b tail + W4.1/.2 land (monitor tables, entry
+  codegen `--model`, CMake `MODEL`), plus play_launch-side gaps:
+  `Deploy{domain, locator}` schema fields and `resolve` reading
+  `system.toml [deploy]` (file these in play_launch when starting R1).
+- R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
+  (`ws-realtime-rust` first) build from resolved models; book chapters
+  switch to the resolve→bake flow.
+- R3 — deprecation: `codegen-system` WITHOUT `--model` and `nros plan`'s
+  launch-XML path warn; `launch_synth` marked deprecated. One release of
+  overlap.
+- R4 — retirement: legacy path removed; `nros codegen-system` requires a
+  model (or is folded into a slimmer `nros bake`). RFC-0004/0015/0032
+  updated to point at the model pipeline; superseded sections archived.

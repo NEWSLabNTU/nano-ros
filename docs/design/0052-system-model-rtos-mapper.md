@@ -148,13 +148,29 @@ supported; deprecation is a later decision.
 
 - `interrupt` tier class (v1 rejects).
 - On-target scope-path/drop monitoring (Linux side owns E2E).
-- Replacing `system.toml` for pure-nano-ros projects — the model is an
-  ALTERNATIVE input (produced by play_launch resolve); `system.toml`
-  remains the native authoring surface and the `[deploy]` SSoT that
-  resolve consumes (closing RFC-0050's open question: the deploy section
-  lives in `system.toml`, play_launch reads it as its system-config
-  input).
+- Retiring `system.toml` — it survives as the integrator's AUTHORING
+  input (`[deploy]`/tiers) that play_launch `resolve` consumes (closing
+  RFC-0050's open question). What retires is nano-ros's OWN
+  resolution/bake path — see §Canonical path below.
 - Dynamic model reload — baked images are one variant by construction.
+
+## Canonical path (maintainer decision, 2026-07-17)
+
+The SystemModel is the **canonical** configuration path. nano-ros's own
+resolution machinery — `launch_synth`, `nros plan`'s launch-XML parsing,
+`codegen-system`'s direct system.toml+launch consumption — is
+**transitional** and retires once model parity lands. Consequences:
+
+- New configuration features land model-side (play_launch resolve or the
+  shared ros-launch-manifest crates), never in the legacy bake path.
+- play_launch is improved along the way as nano-ros needs surface:
+  `Deploy{domain, locator}` schema fields, `resolve` reading the
+  integrator's `system.toml [deploy]`, per-target resolves for
+  multi-target systems.
+- Even embedded-only projects run `play_launch resolve` at BUILD time
+  (build hosts are Linux); the target never parses anything — it gets
+  the baked slice, as today.
+- Retirement trajectory staged in phase-296 (§Retirement).
 
 ## Open questions
 
