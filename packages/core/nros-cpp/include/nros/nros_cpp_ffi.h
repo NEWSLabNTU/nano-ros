@@ -460,39 +460,74 @@ typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
 #define NROS_CPP_RET_INVALID_ARGUMENT -3
 
 /**
- * Not initialized.
+ * Entity not found (topic, parameter, service…).
  */
-#define NROS_CPP_RET_NOT_INIT -4
+#define NROS_CPP_RET_NOT_FOUND -4
+
+/**
+ * Already exists (duplicate declare/register).
+ */
+#define NROS_CPP_RET_ALREADY_EXISTS -5
 
 /**
  * Resource limit reached.
  */
-#define NROS_CPP_RET_FULL -5
+#define NROS_CPP_RET_FULL -6
+
+/**
+ * Not initialized.
+ */
+#define NROS_CPP_RET_NOT_INIT -7
+
+/**
+ * Operation invalid in the current state (bad call sequence).
+ */
+#define NROS_CPP_RET_BAD_SEQUENCE -8
+
+/**
+ * Service request/reply failed.
+ */
+#define NROS_CPP_RET_SERVICE_FAILED -9
+
+/**
+ * Publish failed.
+ */
+#define NROS_CPP_RET_PUBLISH_FAILED -10
+
+/**
+ * Subscription create/take failed.
+ */
+#define NROS_CPP_RET_SUBSCRIPTION_FAILED -11
+
+/**
+ * Operation not allowed for this entity/backend.
+ */
+#define NROS_CPP_RET_NOT_ALLOWED -12
+
+/**
+ * Rejected (QoS/ABI incompatibility).
+ */
+#define NROS_CPP_RET_REJECTED -13
 
 /**
  * Try again — operation not ready yet.
  */
-#define NROS_CPP_RET_TRY_AGAIN -6
+#define NROS_CPP_RET_TRY_AGAIN -14
 
 /**
  * Reentrant call detected — executor is already spinning.
  */
-#define NROS_CPP_RET_REENTRANT -7
-
-/**
- * Parameter not found in the executor's store.
- */
-#define NROS_CPP_RET_NOT_FOUND -8
-
-/**
- * Transport / connection error.
- */
-#define NROS_CPP_RET_TRANSPORT_ERROR -100
+#define NROS_CPP_RET_REENTRANT -15
 
 /**
  * Phase 108 — operation not implemented by the active backend.
  */
 #define NROS_CPP_RET_UNSUPPORTED -16
+
+/**
+ * Transport / connection error (C++-space extension; nros_ret_t stops at -16).
+ */
+#define NROS_CPP_RET_TRANSPORT_ERROR -100
 
 #ifdef __cplusplus
 extern "C" {

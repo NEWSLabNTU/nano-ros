@@ -23,6 +23,10 @@ namespace nros {
 /// Error codes returned by nros-cpp functions.
 ///
 /// Values match the C `nros_cpp_ret_t` enum in `<nros/nros_cpp_generated.h>`.
+/// Issue #229 — value-identical to the C `NROS_RET_*` codes AND the
+/// `NROS_CPP_RET_*` FFI codes (one numbering across all three spaces), so
+/// `Result(<any C-ABI return>)` is correct by identity. The static_assert
+/// pin tables below and in parameter.hpp fail the build on re-divergence.
 enum class ErrorCode : int32_t {
     /// Success.
     Ok = 0,
@@ -32,18 +36,49 @@ enum class ErrorCode : int32_t {
     Timeout = -2,
     /// Null pointer, empty topic name, or out-of-range value.
     InvalidArgument = -3,
+    /// Entity not found (topic, parameter, service…).
+    NotFound = -4,
+    /// Already exists (duplicate declare/register).
+    AlreadyExists = -5,
+    /// Static pool exhausted (executor slots, subscription buffers, …).
+    Full = -6,
     /// `nros::init()` was never called or the entity is in a default
     /// state. See `is_valid()` on entity classes.
-    NotInitialized = -4,
-    /// Static pool exhausted (executor slots, subscription buffers, …).
-    Full = -5,
+    NotInitialized = -7,
+    /// Operation invalid in the current state (bad call sequence).
+    BadSequence = -8,
+    /// Service request/reply failed.
+    ServiceFailed = -9,
+    /// Publish failed.
+    PublishFailed = -10,
+    /// Subscription create/take failed.
+    SubscriptionFailed = -11,
+    /// Operation not allowed for this entity/backend.
+    NotAllowed = -12,
+    /// Rejected (QoS/ABI incompatibility).
+    Rejected = -13,
     /// Transient — no data ready yet (non-blocking take). Retry later.
-    TryAgain = -6,
+    TryAgain = -14,
     /// A blocking call was made from inside a callback.
-    Reentrant = -7,
+    Reentrant = -15,
+    /// Operation not implemented by the active backend.
+    Unsupported = -16,
     /// Underlying zenoh-pico / DDS transport rejected the operation.
     TransportError = -100,
 };
+
+// Issue #229 pin (self-consistency half): the values above ARE the shared
+// numbering. The cross-space asserts against the real C constants live in
+// parameter.hpp (vs NROS_RET_*) and node.hpp (vs NROS_CPP_RET_*), where
+// those headers are visible.
+static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
+                  static_cast<int32_t>(ErrorCode::AlreadyExists) == -5 &&
+                  static_cast<int32_t>(ErrorCode::Full) == -6 &&
+                  static_cast<int32_t>(ErrorCode::NotInitialized) == -7 &&
+                  static_cast<int32_t>(ErrorCode::TryAgain) == -14 &&
+                  static_cast<int32_t>(ErrorCode::Reentrant) == -15 &&
+                  static_cast<int32_t>(ErrorCode::Unsupported) == -16,
+              "ErrorCode numbering must match nros_ret_t (issue #229)");
 
 /// Result type for fallible operations.
 ///

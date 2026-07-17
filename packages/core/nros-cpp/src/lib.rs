@@ -183,6 +183,13 @@ mod tick_ctx;
 /// Return type for nros C++ FFI functions.
 pub type nros_cpp_ret_t = c_int;
 
+// Issue #229 — ONE return-code numbering across all three spaces: these
+// constants are value-identical to nros-c's `NROS_RET_*` (and to C++
+// `nros::ErrorCode`); `Result(any C code)` is correct by identity. The
+// static_assert pin tables in nros-cpp's result.hpp / parameter.hpp fail
+// the build on any re-divergence. (Pre-#229 this space numbered -4..-8
+// differently from nros_ret_t — a raw -5 read as "Full" when the C side
+// meant ALREADY_EXISTS.)
 /// Success.
 pub const NROS_CPP_RET_OK: nros_cpp_ret_t = 0;
 /// Generic error.
@@ -191,21 +198,34 @@ pub const NROS_CPP_RET_ERROR: nros_cpp_ret_t = -1;
 pub const NROS_CPP_RET_TIMEOUT: nros_cpp_ret_t = -2;
 /// Invalid argument.
 pub const NROS_CPP_RET_INVALID_ARGUMENT: nros_cpp_ret_t = -3;
-/// Not initialized.
-pub const NROS_CPP_RET_NOT_INIT: nros_cpp_ret_t = -4;
+/// Entity not found (topic, parameter, service…).
+pub const NROS_CPP_RET_NOT_FOUND: nros_cpp_ret_t = -4;
+/// Already exists (duplicate declare/register).
+pub const NROS_CPP_RET_ALREADY_EXISTS: nros_cpp_ret_t = -5;
 /// Resource limit reached.
-pub const NROS_CPP_RET_FULL: nros_cpp_ret_t = -5;
+pub const NROS_CPP_RET_FULL: nros_cpp_ret_t = -6;
+/// Not initialized.
+pub const NROS_CPP_RET_NOT_INIT: nros_cpp_ret_t = -7;
+/// Operation invalid in the current state (bad call sequence).
+pub const NROS_CPP_RET_BAD_SEQUENCE: nros_cpp_ret_t = -8;
+/// Service request/reply failed.
+pub const NROS_CPP_RET_SERVICE_FAILED: nros_cpp_ret_t = -9;
+/// Publish failed.
+pub const NROS_CPP_RET_PUBLISH_FAILED: nros_cpp_ret_t = -10;
+/// Subscription create/take failed.
+pub const NROS_CPP_RET_SUBSCRIPTION_FAILED: nros_cpp_ret_t = -11;
+/// Operation not allowed for this entity/backend.
+pub const NROS_CPP_RET_NOT_ALLOWED: nros_cpp_ret_t = -12;
+/// Rejected (QoS/ABI incompatibility).
+pub const NROS_CPP_RET_REJECTED: nros_cpp_ret_t = -13;
 /// Try again — operation not ready yet.
-pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -6;
+pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -14;
 /// Reentrant call detected — executor is already spinning.
-pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -7;
-/// Parameter not found in the executor's store.
-pub const NROS_CPP_RET_NOT_FOUND: nros_cpp_ret_t = -8;
-/// Transport / connection error.
-pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
-
+pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -15;
 /// Phase 108 — operation not implemented by the active backend.
 pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
+/// Transport / connection error (C++-space extension; nros_ret_t stops at -16).
+pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 
 // ============================================================================
 // Inline opaque storage sizes (in u64 units)

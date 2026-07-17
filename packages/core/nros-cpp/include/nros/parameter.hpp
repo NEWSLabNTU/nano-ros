@@ -88,6 +88,21 @@ nros_ret_t nros_param_set_bool_array(nros_param_server_t* server, const char* na
                                      const bool* data, size_t len);
 } // extern "C"
 
+// Issue #229 pin (cross-space, C half): ErrorCode must stay value-identical
+// to the C nros_ret_t codes this header feeds straight into Result().
+// Guarded: the NROS_RET_* macros arrive via the generated C header, which
+// some include orders pull in after us.
+#ifdef NROS_RET_ALREADY_EXISTS
+static_assert(static_cast<int32_t>(::nros::ErrorCode::NotFound) == NROS_RET_NOT_FOUND &&
+                  static_cast<int32_t>(::nros::ErrorCode::AlreadyExists) ==
+                      NROS_RET_ALREADY_EXISTS &&
+                  static_cast<int32_t>(::nros::ErrorCode::Full) == NROS_RET_FULL &&
+                  static_cast<int32_t>(::nros::ErrorCode::NotInitialized) == NROS_RET_NOT_INIT &&
+                  static_cast<int32_t>(::nros::ErrorCode::TryAgain) == NROS_RET_TRY_AGAIN &&
+                  static_cast<int32_t>(::nros::ErrorCode::Unsupported) == NROS_RET_UNSUPPORTED,
+              "ErrorCode diverged from nros_ret_t (issue #229)");
+#endif
+
 namespace nros {
 
 /// Fixed-capacity, inline sequence value — the `no_std` stand-in for

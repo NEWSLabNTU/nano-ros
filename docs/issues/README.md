@@ -65,7 +65,11 @@ SMP-4 validation. See `0230-smp-spurious-component-failure-print.md`.
 error misreporting class, found during the phase-292 ASI FVP bring-up. See
 `0229-c-cpp-ret-code-enums-disagree.md`.
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#228** — one C
+Recently resolved (see [`archived/`](archived/) for the full list): **#229** — the
+C `nros_ret_t`, C++ `nros::ErrorCode`, and `nros_cpp_ret_t` FFI codes now share ONE numbering
+(C++ aligned to the canonical C side; a raw `-5` no longer misreads `ALREADY_EXISTS` as
+`Full`); static_assert pin tables in result.hpp/parameter.hpp/node.hpp fail the build on any
+re-divergence (proven live). **#228** — one C
 serialize convention (phase-294): services + actions joined the message shape (0/-1 +
 size_t* out-param, 5 emitters); 28 consumers migrated; all five platforms' service/action
 lanes 37/37 on regenerated typesupport. **#221** — stale-docs

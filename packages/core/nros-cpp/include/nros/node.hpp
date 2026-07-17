@@ -60,6 +60,15 @@ extern "C" int32_t nros_rmw_zenoh_register(void);
 extern "C" int32_t nros_rmw_uorb_register(void);
 #endif
 
+// Issue #229 pin (cross-space, C++-FFI half): ErrorCode must stay
+// value-identical to the NROS_CPP_RET_* codes (nros_cpp_ffi.h, included
+// above) that every shim below feeds into Result().
+static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 &&
+                  NROS_CPP_RET_FULL == -6 && NROS_CPP_RET_NOT_INIT == -7 &&
+                  NROS_CPP_RET_TRY_AGAIN == -14 && NROS_CPP_RET_REENTRANT == -15 &&
+                  NROS_CPP_RET_UNSUPPORTED == -16,
+              "nros_cpp_ret_t diverged from the shared numbering (issue #229)");
+
 namespace nros {
 
 // Phase 84.G8: forward declarations of the heavy entity class
