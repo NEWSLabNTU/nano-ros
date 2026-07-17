@@ -98,7 +98,7 @@ Status: **Draft — 2026-07-17** · Implements
   reusing StandardChecker on the ROS-side output.
 
 ### W7 — audit-skill extension
-- [ ] W7.a Checklist §E gains: **E6** every runtime lane derives from the
+- [x] W7.a (landed 2026-07-17 with the RFC, commit b75b8c028) Checklist §E gains: **E6** every runtime lane derives from the
   matrix SSoT (no hand-written cell files; detect: new `tests/*_e2e.rs`
   not consuming `matrix::CELLS`); **E7** output-marker discipline (all
   literals live in `output.rs`; the W2.b gate is the detector); **E8**
@@ -107,7 +107,7 @@ Status: **Draft — 2026-07-17** · Implements
   **E9** launch-convention conformance (runner metadata, not hand-rolled
   emulator lines outside `qemu.rs`) + micro-test budget (phase-named test
   files = automatic finding; tests/ file-count trend recorded per audit).
-- [ ] W7.b `.claude/skills/audit/SKILL.md`: test-system audit named as a
+- [x] W7.b (same commit — testing lane widened to E1–E9) `.claude/skills/audit/SKILL.md`: test-system audit named as a
   first-class category pass (E, with the E6–E9 additions), so `/audit
   quick E` runs the test-system sweep standalone.
 
