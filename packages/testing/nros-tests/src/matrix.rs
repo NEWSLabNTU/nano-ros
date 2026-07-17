@@ -336,7 +336,10 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Rust, Zenoh, Action,  Example, Runtime),
     cell(FreertosMps2, C,    Zenoh, Action,  Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Action,  Example, Runtime),
-    cell(FreertosMps2, Rust, Cyclonedds, Pubsub, Example, BuildOnly(W6_CYCLONE_RTOS)),
+    cell(FreertosMps2, Rust, Cyclonedds, Pubsub, Example,
+         BuildOnly("fixture retired in phase-220.C (cmake-bridge removed); \
+                    freertos_qemu.rs lanes #[ignore]d pending the 214.S.5.b \
+                    pure-cargo BSP gate — W6 decides restore-vs-carve")),
     cell(FreertosMps2, Rust, Xrce,       Pubsub, Example, CarveOut(W6_XRCE_RTOS)),
 
     cell(NuttxArm, Rust, Zenoh, Pubsub,  Example, Runtime),

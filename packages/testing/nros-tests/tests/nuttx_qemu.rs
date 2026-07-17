@@ -27,11 +27,7 @@
 use nros_tests::fixtures::{
     QemuProcess, is_qemu_available, is_zenohd_available,
     nuttx::{
-        build_nuttx_c_action_client, build_nuttx_c_action_server, build_nuttx_c_listener,
-        build_nuttx_c_service_client, build_nuttx_c_service_server, build_nuttx_c_talker,
-        build_nuttx_cpp_action_client, build_nuttx_cpp_action_server, build_nuttx_cpp_listener,
-        build_nuttx_cpp_service_client, build_nuttx_cpp_service_server, build_nuttx_cpp_talker,
-        is_arm_gcc_available, is_cmake_available, is_nuttx_available, is_nuttx_configured,
+        is_arm_gcc_available, is_nuttx_available, is_nuttx_configured,
         is_nuttx_toolchain_available, nuttx_kernel_path,
     },
 };
@@ -40,46 +36,6 @@ use std::time::Duration;
 // =============================================================================
 // Prerequisite checks
 // =============================================================================
-
-/// Skip test if NuttX build prerequisites are not available
-fn require_nuttx() -> bool {
-    if !is_nuttx_available() {
-        eprintln!("Skipping test: NUTTX_DIR not set or invalid");
-        eprintln!("Run: just nuttx setup, then load .envrc or set NUTTX_DIR");
-        return false;
-    }
-    if !is_nuttx_configured() {
-        eprintln!(
-            "Skipping test: NuttX not configured ($NUTTX_DIR/include/nuttx/config.h missing)"
-        );
-        eprintln!("Run: scripts/nuttx/build-nuttx.sh");
-        return false;
-    }
-    if !is_arm_gcc_available() {
-        eprintln!("Skipping test: arm-none-eabi-gcc not found");
-        eprintln!("Install: sudo apt install gcc-arm-none-eabi");
-        return false;
-    }
-    if !is_nuttx_toolchain_available() {
-        eprintln!("Skipping test: nightly toolchain missing rust-src for armv7a-nuttx-eabihf");
-        eprintln!(
-            "Run: rustup toolchain install nightly && rustup component add rust-src --toolchain nightly"
-        );
-        return false;
-    }
-    true
-}
-
-fn require_nuttx_cpp() -> bool {
-    if !require_nuttx() {
-        return false;
-    }
-    if !is_cmake_available() {
-        eprintln!("Skipping test: cmake not found");
-        return false;
-    }
-    true
-}
 
 // =============================================================================
 // Prerequisite detection tests (always run)
@@ -182,68 +138,6 @@ fn test_nuttx_kernel_boots() {
 // rtos_e2e `Nuttx × Cpp` E2E cases need listener-side observability — both
 // deferred (see docs/roadmap/phase-238-nuttx-cpp-e2e-enablement.md).
 
-#[test]
-fn test_nuttx_cpp_talker_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_cpp_talker().expect("Failed to build nuttx_cpp_talker");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_talker at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_cpp_listener_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_cpp_listener().expect("Failed to build nuttx_cpp_listener");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_listener at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_cpp_service_server_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary =
-        build_nuttx_cpp_service_server().expect("Failed to build nuttx_cpp_service_server");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_service_server at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_cpp_service_client_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary =
-        build_nuttx_cpp_service_client().expect("Failed to build nuttx_cpp_service_client");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_service_client at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_cpp_action_server_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_cpp_action_server().expect("Failed to build nuttx_cpp_action_server");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_action_server at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_cpp_action_client_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_cpp_action_client().expect("Failed to build nuttx_cpp_action_client");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_cpp_action_client at {}", binary.display());
-}
-
 // =============================================================================
 // C build tests (Phase 238.C — bootable-ELF carrier wired for LANGUAGE C)
 // =============================================================================
@@ -256,63 +150,3 @@ fn test_nuttx_cpp_action_client_builds() {
 // pub/sub pair is proven to boot + exchange `/chatter` Int32 over zenoh
 // (Published/Received with matching values); service/action build + boot +
 // register but do not execute (interpreter limit — see phase-238).
-
-#[test]
-fn test_nuttx_c_talker_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_talker().expect("Failed to build nuttx_c_talker");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_talker at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_c_listener_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_listener().expect("Failed to build nuttx_c_listener");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_listener at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_c_service_server_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_service_server().expect("Failed to build nuttx_c_service_server");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_service_server at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_c_service_client_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_service_client().expect("Failed to build nuttx_c_service_client");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_service_client at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_c_action_server_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_action_server().expect("Failed to build nuttx_c_action_server");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_action_server at {}", binary.display());
-}
-
-#[test]
-fn test_nuttx_c_action_client_builds() {
-    if !require_nuttx_cpp() {
-        nros_tests::skip!("require_nuttx_cpp check failed");
-    }
-    let binary = build_nuttx_c_action_client().expect("Failed to build nuttx_c_action_client");
-    assert!(binary.exists());
-    eprintln!("SUCCESS: nuttx_c_action_client at {}", binary.display());
-}

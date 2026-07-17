@@ -339,7 +339,7 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 # fixture (issue 0034 — it becomes a fast artifact check, no in-test cargo), it
 # is removed from this list; it no longer needs the headroom AND nextest errors
 # on a `binary()` that matches nothing. Converted so far: phase216_b →
-# stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_poc_boot.
+# stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_boot.
 filter = """
   binary(native_orchestration_misuse) \
   or binary(native_main_macro_misuse) \
@@ -590,12 +590,13 @@ slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1
 
 # Phase 11W.12 — serialize the native_sim Cyclone DDS boot + pub/sub
-# E2E tests (in phase_118_collapse). They spawn host native_sim
+# E2E tests (in zephyr_cyclonedds_native_sim_e2e; renamed from the E3-violating
+# phase_118_collapse in phase-295 W3). They spawn host native_sim
 # processes that bind the fixed SPDP multicast port; concurrent runs
 # collide (NSOS doesn't forward SO_REUSEADDR). The `*_variant_exists`
 # tests only check file presence and stay in the parallel default.
 [[profile.default.overrides]]
-filter = "binary(phase_118_collapse) and test(cyclonedds) and (test(_boot) or test(_e2e))"
+filter = "binary(zephyr_cyclonedds_native_sim_e2e) and test(cyclonedds) and (test(_boot) or test(_e2e))"
 test-group = "zephyr-native-cyclonedds"
 slow-timeout = { period = "120s", terminate-after = 3 }
 # Phase 177.37 baked distinct per-role-set domains so these run parallel

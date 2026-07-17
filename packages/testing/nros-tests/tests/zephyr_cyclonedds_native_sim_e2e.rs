@@ -1,5 +1,9 @@
 //! Zephyr Cyclone DDS native_sim runtime E2E suite.
 //!
+//! (phase-295 W3: renamed from `phase_118_collapse.rs` — the E3 rule says
+//! files/tests are named by behavior, and this file's surviving content is
+//! the zephyr cyclone runtime suite, not a phase artifact.)
+//!
 //! History: this file began as Phase 118.A.2's collapsed-shape, per-RMW
 //! **binary presence/name** matrices (`*_rmw_variant_exists`). Those were
 //! build-only smokes — they asserted a prebuilt fixture binary existed with
