@@ -209,6 +209,7 @@ pub fn generate_nros_message_package(
         .collect();
 
     let type_hash = edition.type_hash();
+    let stamp_offset = stamp_offset_for(message);
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
@@ -218,6 +219,7 @@ pub fn generate_nros_message_package(
         package_name,
         message_name,
         type_hash,
+        stamp_offset,
         fields,
         constants,
         has_fields,
@@ -267,6 +269,7 @@ pub fn generate_nros_inline_message(
         .collect();
 
     let type_hash = edition.type_hash();
+    let stamp_offset = stamp_offset_for(message);
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
     let has_borrowed = fields.iter().any(|f| f.is_borrowed);
@@ -275,6 +278,7 @@ pub fn generate_nros_inline_message(
     let template = MessageNrosTemplate {
         package_name,
         message_name,
+        stamp_offset: stamp_offset_for(message),
         type_hash,
         fields,
         constants,
@@ -434,4 +438,91 @@ pub fn generate_c_message_package(
         header_name,
         source_name,
     })
+}
+
+/// RFC-0052 W3a — static stamp-offset predicate: a message whose FIRST
+/// field is `std_msgs/Header` (or a bare `builtin_interfaces/Time`, which
+/// includes `Header` itself) carries `stamp.sec` at CDR byte 4 (after the
+/// 4-byte encapsulation header; `Time` is `{ i32 sec; u32 nanosec }`,
+/// 4-byte aligned, no preceding fields). Everything else: `None`.
+fn stamp_offset_for(message: &rosidl_parser::ast::Message) -> Option<usize> {
+    use rosidl_parser::ast::FieldType;
+    let first = message.fields.first()?;
+    match &first.field_type {
+        FieldType::NamespacedType { package, name } => {
+            let pkg = package.as_deref();
+            let is_header = name == "Header" && matches!(pkg, Some("std_msgs") | None);
+            let is_time = name == "Time" && matches!(pkg, Some("builtin_interfaces") | None);
+            if is_header || is_time { Some(4) } else { None }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod stamp_offset_tests {
+    use super::*;
+    use rosidl_parser::ast::{Field, FieldType, Message};
+
+    fn msg(fields: Vec<Field>) -> Message {
+        Message {
+            fields,
+            constants: vec![],
+        }
+    }
+
+    fn field(name: &str, field_type: FieldType) -> Field {
+        Field {
+            name: name.to_string(),
+            field_type,
+            default_value: None,
+        }
+    }
+
+    #[test]
+    fn header_leading_gets_offset_4() {
+        let m = msg(vec![
+            field(
+                "header",
+                FieldType::NamespacedType {
+                    package: Some("std_msgs".to_string()),
+                    name: "Header".to_string(),
+                },
+            ),
+            field(
+                "x",
+                FieldType::Primitive(rosidl_parser::ast::PrimitiveType::Float64),
+            ),
+        ]);
+        assert_eq!(stamp_offset_for(&m), Some(4));
+    }
+
+    #[test]
+    fn time_leading_gets_offset_4_and_others_none() {
+        let t = msg(vec![field(
+            "stamp",
+            FieldType::NamespacedType {
+                package: Some("builtin_interfaces".to_string()),
+                name: "Time".to_string(),
+            },
+        )]);
+        assert_eq!(stamp_offset_for(&t), Some(4));
+        let plain = msg(vec![field("data", FieldType::String)]);
+        assert_eq!(stamp_offset_for(&plain), None);
+        // Header NOT first — no offset (peek would be wrong).
+        let trailing = msg(vec![
+            field(
+                "x",
+                FieldType::Primitive(rosidl_parser::ast::PrimitiveType::Int32),
+            ),
+            field(
+                "header",
+                FieldType::NamespacedType {
+                    package: Some("std_msgs".to_string()),
+                    name: "Header".to_string(),
+                },
+            ),
+        ]);
+        assert_eq!(stamp_offset_for(&trailing), None);
+    }
 }

@@ -387,6 +387,38 @@ impl PosixBoard {
     }
 }
 
+/// RFC-0052 / phase-296 W3a — lower a tier's RTOS-agnostic scheduling
+/// policy onto the tier executor's DEFAULT scheduling context. One
+/// Executor per tier means "the tier's policy" == "this executor's
+/// default SC"; per-group/per-handle bindings still take precedence.
+///
+/// v1 lowers the sporadic-budget shape (`class = "real_time"` with
+/// `budget_us` + `period_us` → `SchedClass::Sporadic`) and `best_effort`;
+/// `time_triggered` window registration is W3b (needs the major-frame
+/// dispatcher wired at this altitude too). A tier with no class/budget
+/// leaves the default Fifo SC untouched — byte-identical pre-W3 behavior.
+fn apply_tier_sched(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'_>) {
+    use ::nros::{OptUs, SchedClass, SchedContext};
+    let sporadic =
+        tier.class == Some("real_time") && tier.budget_us.is_some() && tier.period_us.is_some();
+    let best_effort = tier.class == Some("best_effort");
+    if !sporadic && !best_effort && tier.deadline_us.is_none() {
+        return;
+    }
+    let mut sc = SchedContext::default();
+    if sporadic {
+        sc.class = SchedClass::Sporadic;
+        sc.budget_us = OptUs::from_us(tier.budget_us.unwrap_or(0).min(u32::MAX as u64) as u32);
+        sc.period_us = OptUs::from_us(tier.period_us.unwrap_or(0).min(u32::MAX as u64) as u32);
+    } else if best_effort {
+        sc.class = SchedClass::BestEffort;
+    }
+    if let Some(d) = tier.deadline_us {
+        sc.deadline_us = OptUs::from_us(d.min(u32::MAX as u64) as u32);
+    }
+    crt.executor_mut().set_default_sched_context(sc);
+}
+
 /// Register + spin one tier on a freshly-opened borrowed-session
 /// executor (spawned-tier path).
 fn run_one_tier<B, F, E>(exec: ::nros::Executor<'static>, tier: &TierSpec<'_>, setup: &F)
@@ -397,6 +429,7 @@ where
 {
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
+    apply_tier_sched(&mut crt, tier);
     {
         let mut ctx = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
@@ -421,6 +454,7 @@ fn run_boot_tier<B, F, E>(
     E: core::fmt::Debug,
 {
     crt.executor_mut().set_active_groups(tier.groups);
+    apply_tier_sched(crt, tier);
     {
         let mut ctx = RuntimeCtx::with_runtime(crt);
         if let Err(e) = setup(&mut ctx) {

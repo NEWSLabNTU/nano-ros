@@ -183,6 +183,11 @@ impl Deserialize for {{ message_name }} {
 impl RosMessage for {{ message_name }} {
     const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
     const TYPE_HASH: &'static str = "{{ type_hash }}";
+{%- if let Some(off) = stamp_offset %}
+    // RFC-0052 W3a — Header/Time-leading type: `stamp.sec` at CDR byte
+    // {{ off }} (raw-buffer peek for on-target max_age monitors).
+    const STAMP_OFFSET: Option<usize> = Some({{ off }});
+{%- endif %}
 }
 {%- if has_borrowed %}
 

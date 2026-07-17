@@ -6,7 +6,7 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: W1+W2 landed (2026-07-17); W3-W4 planned.
+Status: W1+W2+W3a landed (2026-07-17); W3b-W4 planned.
 
 ## Waves
 
@@ -58,18 +58,43 @@ Status: W1+W2 landed (2026-07-17); W3-W4 planned.
   pending); budget/period→SchedContext + TT-window binding moved to W3
   (one coherent executor wave with the monitors).
 
-### W3 — on-target contract monitors (layer 2)
+### W3a — LANDED: sched-context wiring + stamp-offset codegen
 
-- Stamp extraction: codegen emits per-type `stamp_offset` const for
-  Header-leading types; take path computes `now - stamp` when the baked
-  monitor table declares `max_age_ms`.
-- Publish rate/jitter accounting per endpoint, checked on spin ticks;
-  node-path latency via the sched-context monotonic clock.
-- Violations → `nros-diagnostic-updater`, play_launch rule-id vocabulary
-  (`max-age-runtime`, `rate-hierarchy-runtime`, `max-latency-runtime`),
-  assumption/guarantee tagged.
-- Zero-cost when uncontracted (empty const table → DCE); measure flash
-  delta on mps2-an385 to prove it.
+- `Executor::set_default_sched_context` (slot-0 replacement incl. the
+  sporadic sibling state): the run_tiers model is one executor per tier,
+  so the tier policy IS the default SC. Posix/native `run_tiers` lowers
+  `class = "real_time"` + budget/period → Sporadic, `best_effort` →
+  BestEffort, `deadline_us` → SC deadline, at both tier-run sites.
+- `RosMessage::STAMP_OFFSET: Option<usize>` (trait default None) +
+  rosidl-codegen emission: `Some(4)` for Header/Time-LEADING types only
+  (CDR LE, 4-byte encapsulation, Time 4-byte aligned) — the raw-buffer
+  peek constant the max_age monitor will use. Predicate unit-tested
+  (Header-first, Time-first, header-not-first → None).
+
+### W3b — on-target contract monitors (layer 2)
+
+Exploration (2026-07-17) found three blockers, in dependency order:
+1. **No Rust diagnostics surface exists** — nros-diagnostic-updater is a
+   C++ header only; no diagnostic_msgs in-tree. The monitors have
+   nothing to report through. Build first: generate diagnostic_msgs +
+   a minimal Rust DiagnosticArray publisher on /diagnostics.
+2. **No epoch clock on embedded** — `ExecutorConfig.clock_us` is
+   monotonic; `now - header.stamp` needs a wall-clock hook beside it.
+3. **Examples never stamp `header.stamp`** — the parity fixture must
+   stamp on publish.
+Recommended first slice: publish-rate monitor (monotonic-only, seam at
+handles.rs publish_with_buffer) + baked `{topic → min_rate_hz}` const
+table from codegen-system, then max_age via STAMP_OFFSET once 2+3 land.
+Also here: TT-window binding (needs the major-frame dispatcher at the
+run_tiers altitude) and deadline-policy miss ACTIONS (ignore/warn/skip/
+fault — note the executor's existing DeadlinePolicy enum is deadline
+INHERITANCE, a different concept; the miss-action enum is new).
+
+- Take path `max_age` via STAMP_OFFSET; rate/jitter per spin tick;
+  node-path latency via the sched-context clock; violations through the
+  (new) Rust diagnostics surface in play_launch rule-id vocabulary;
+  zero-cost when uncontracted (empty const table → DCE, flash delta
+  measured on mps2-an385).
 - **Done when:** a native fixture pair with a violated `min_rate_hz`
   reports the violation through diagnostics while the compliant twin
   stays silent — same contract file checked by play_launch on the Linux

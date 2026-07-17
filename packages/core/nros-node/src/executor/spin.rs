@@ -1625,6 +1625,30 @@ impl<'s> Executor<'s> {
         Err(NodeError::NoSchedContextSlot)
     }
 
+    /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
+    /// (slot 0, the SC every unbound callback dispatches through).
+    ///
+    /// The run_tiers model runs one Executor per tier, so a tier-wide
+    /// scheduling policy (`[tiers.<t>] class/budget_us/period_us` and the
+    /// TT window) is exactly "this executor's default SC". Boards call
+    /// this once, before entity creation; explicit per-handle/per-group
+    /// bindings still take precedence (they never resolve to slot 0).
+    ///
+    /// Sporadic-class SCs get the same sibling `SporadicState` the
+    /// `create_sched_context` path builds, so budget refill/exhaustion
+    /// applies to the default queue too.
+    pub fn set_default_sched_context(&mut self, sc: super::sched_context::SchedContext) {
+        self.sched_contexts[0] = Some(sc);
+        if matches!(sc.class, super::sched_context::SchedClass::Sporadic) {
+            let budget = sc.budget_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+            let period = sc.period_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX);
+            self.sporadic_states[0] =
+                Some(super::sched_context::SporadicState::new(budget, period));
+        } else {
+            self.sporadic_states[0] = None;
+        }
+    }
+
     /// Bind a registered callback to a scheduling context. The next
     /// `spin_once` cycle dispatches the callback through that SC's
     /// queue (FIFO bitmap or EDF heap). Phase 110.B.

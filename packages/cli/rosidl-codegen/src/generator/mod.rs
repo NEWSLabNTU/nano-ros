@@ -1577,20 +1577,23 @@ mod tests {
         );
         // Heap string: freed + nulled.
         assert!(
-            pkg.ffi_rs.contains("msg.label.data = core::ptr::null_mut()"),
+            pkg.ffi_rs
+                .contains("msg.label.data = core::ptr::null_mut()"),
             "heap string not nulled:\n{}",
             pkg.ffi_rs
         );
         // Heap nested seq: recurse into the element teardown before the free.
         assert!(
-            pkg.ffi_rs
-                .contains("teardown_geometry_msgs_msg_point_fields(unsafe { &mut *msg.pts.data.add(i) })"),
+            pkg.ffi_rs.contains(
+                "teardown_geometry_msgs_msg_point_fields(unsafe { &mut *msg.pts.data.add(i) })"
+            ),
             "nested-element teardown recursion missing:\n{}",
             pkg.ffi_rs
         );
         // Heap primitive seq: freed + nulled, no recursion.
         assert!(
-            pkg.ffi_rs.contains("msg.pixels.data = core::ptr::null_mut()"),
+            pkg.ffi_rs
+                .contains("msg.pixels.data = core::ptr::null_mut()"),
             "heap primitive seq not nulled:\n{}",
             pkg.ffi_rs
         );
@@ -1598,8 +1601,7 @@ mod tests {
         let plain = parse_message("int32 x\n").unwrap();
         let plain_resolver = crate::config::CapacityResolver::from_toml_str("").unwrap();
         let plain_pkg =
-            generate_cpp_message_package("my_msgs", "Plain", &plain, "h", &plain_resolver)
-                .unwrap();
+            generate_cpp_message_package("my_msgs", "Plain", &plain, "h", &plain_resolver).unwrap();
         assert!(
             plain_pkg
                 .ffi_rs

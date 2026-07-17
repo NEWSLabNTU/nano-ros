@@ -207,6 +207,11 @@ pub struct MessageNrosTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
     pub type_hash: &'a str,
+    /// RFC-0052 W3a — `Some(4)` when the first field is a
+    /// `std_msgs/Header` (or bare `builtin_interfaces/Time`): the CDR
+    /// offset of `stamp.sec` (4-byte encapsulation header + zero
+    /// preceding fields). `None` = no stamp to monitor.
+    pub stamp_offset: Option<usize>,
     pub fields: Vec<NrosField>,
     pub constants: Vec<MessageConstant>,
     /// True if there are fields to serialize/deserialize

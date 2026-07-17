@@ -19,6 +19,17 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
     /// Used for type validation between publishers and subscribers.
     /// Format: 64-character hex string (SHA-256)
     const TYPE_HASH: &'static str;
+
+    /// RFC-0052 / phase-296 W3a — byte offset of `header.stamp.sec` within
+    /// this type's serialized CDR payload (encapsulation header included),
+    /// or `None` when the type has no leading `std_msgs/Header` /
+    /// `builtin_interfaces/Time`. Codegen-const, never runtime
+    /// introspection: CDR here is little-endian with a 4-byte encapsulation
+    /// header and `Time { i32 sec; u32 nanosec }` is 4-byte aligned, so a
+    /// Header-leading (or Time-leading) type carries `sec` at byte 4 and
+    /// `nanosec` at byte 8. On-target `max_age` monitors peek these two
+    /// words from the raw receive buffer before deserialization.
+    const STAMP_OFFSET: Option<usize> = None;
 }
 
 /// Marker trait for a borrowed (zero-copy) ROS message family (RFC-0033
