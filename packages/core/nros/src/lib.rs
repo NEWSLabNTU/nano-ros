@@ -687,7 +687,7 @@ pub mod __macro_support {
 // an RMW backend is linked (matches the re-export block above).
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::sched_context::{
-    DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext, SchedContextId,
+    DeadlineAction, DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext, SchedContextId,
     TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,
 };
 

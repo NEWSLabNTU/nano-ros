@@ -1155,6 +1155,11 @@ pub struct Executor<'s> {
     /// image; every monitor path below folds away).
     pub(crate) monitor_table: &'static [super::monitor::MonitorSpec],
     pub(crate) monitor_states: [super::monitor::MonitorState; super::monitor::MAX_MONITORS],
+    /// W3b.5 — baked subscriber age-contract table (empty = none).
+    pub(crate) age_table: &'static [super::monitor::AgeMonitorSpec],
+    pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_MONITORS],
+    /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
+    pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
     pub(crate) monitor_violations:
         heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
     /// Monotonic base for the std monitor clock (µs derived per check).
@@ -1267,6 +1272,9 @@ impl<'s> Executor<'s> {
             epoch_us_fn: None,
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
+            age_table: &[],
+            age_states: [super::monitor::AgeState::default(); super::monitor::MAX_MONITORS],
+            fault_fn: None,
             monitor_violations: heapless::Vec::new(),
             #[cfg(feature = "std")]
             monitor_clock_base: None,
@@ -1666,6 +1674,40 @@ impl<'s> Executor<'s> {
         self.monitor_table
     }
 
+    /// W3b.5 — install the baked subscriber age-contract table. Call
+    /// BEFORE entity creation so `create_subscription` can attach each
+    /// contracted endpoint's age cell (needs an epoch source — see
+    /// `ExecutorConfig::epoch_us`; without one the take path records
+    /// nothing and age monitors stay silent).
+    pub fn set_age_table(&mut self, table: &'static [super::monitor::AgeMonitorSpec]) {
+        self.age_table = table;
+    }
+
+    /// The installed age table (empty unless the entry set one).
+    #[must_use]
+    pub fn age_table(&self) -> &'static [super::monitor::AgeMonitorSpec] {
+        self.age_table
+    }
+
+    /// W3b.5 — resolve a subscription's age hook at registration time:
+    /// exact topic match against the baked age table, only for stamped
+    /// types (`M::STAMP_OFFSET`) and only when an epoch source exists.
+    fn age_lookup<M: RosMessage>(&self, topic: &str) -> Option<super::arena::AgeMon> {
+        M::STAMP_OFFSET?;
+        let epoch = self.epoch_us_fn?;
+        self.age_table
+            .iter()
+            .find(|a| a.topic == topic)
+            .map(|a| (a.cell, epoch))
+    }
+
+    /// W3b.5 — install the `DeadlineAction::Fault` hook. Without one a
+    /// fault-class deadline miss panics (watchdog-visible stop on
+    /// embedded targets).
+    pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
+        self.fault_fn = Some(f);
+    }
+
     /// RFC-0052 W3b.4 — drain pending contract violations (rate rule for
     /// now; age/latency land with W3b.5). The entry glue calls this after
     /// `spin_once` and feeds each entry to the `nros-diagnostics`
@@ -1693,22 +1735,42 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Run the rate checks over the monitor table (no-op when empty).
+    /// Run the rate/latency/age checks over the baked tables (single
+    /// branch each when empty).
     fn run_contract_monitors(&mut self) {
-        if self.monitor_table.is_empty() {
-            return;
-        }
-        let Some(now_us) = self.monitor_now_us() else {
-            return;
-        };
-        for (i, spec) in self
-            .monitor_table
-            .iter()
-            .take(super::monitor::MAX_MONITORS)
-            .enumerate()
+        if !self.monitor_table.is_empty()
+            && let Some(now_us) = self.monitor_now_us()
         {
-            if let Some(v) = super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us) {
-                let _ = self.monitor_violations.push(v);
+            {
+                for (i, spec) in self
+                    .monitor_table
+                    .iter()
+                    .take(super::monitor::MAX_MONITORS)
+                    .enumerate()
+                {
+                    if let Some(v) =
+                        super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us)
+                    {
+                        let _ = self.monitor_violations.push(v);
+                    }
+                    if let Some(v) =
+                        super::monitor::check_latency(spec, &mut self.monitor_states[i])
+                    {
+                        let _ = self.monitor_violations.push(v);
+                    }
+                }
+            }
+        }
+        if !self.age_table.is_empty() {
+            for (i, spec) in self
+                .age_table
+                .iter()
+                .take(super::monitor::MAX_MONITORS)
+                .enumerate()
+            {
+                if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i]) {
+                    let _ = self.monitor_violations.push(v);
+                }
             }
         }
     }
@@ -2317,6 +2379,8 @@ impl<'s> Executor<'s> {
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
         let monitors = self.monitor_table;
+        let age_monitors = self.age_table;
+        let epoch = self.epoch_us_fn;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;
@@ -2324,9 +2388,10 @@ impl<'s> Executor<'s> {
         // `&mut ConcreteSession`; lifetime is bound to this fn's
         // body via the closure's borrow of `node`.
         let mut node = NodeHandle::new(name, ns, session, 0);
-        // RFC-0052 W3b.4 — seed the baked monitor table so contracted
-        // publishers attach their counter cells without entry glue.
+        // RFC-0052 W3b.4/.5 — seed the baked monitor tables so contracted
+        // publishers/subscribers attach their cells without entry glue.
         node.set_monitors(monitors);
+        node.set_age_monitors(age_monitors, epoch);
         Ok(f(&mut node))
     }
 
@@ -2356,6 +2421,7 @@ impl<'s> Executor<'s> {
 
         let mut node = NodeHandle::new(node_name, self.namespace.clone(), &mut self.session, 0);
         node.set_monitors(self.monitor_table);
+        node.set_age_monitors(self.age_table, self.epoch_us_fn);
         Ok(node)
     }
 
@@ -2423,11 +2489,14 @@ impl<'s> Executor<'s> {
             .map_err(|_| NodeError::NameTooLong)?;
         let namespace = self.namespace.clone();
         let monitors = self.monitor_table;
+        let age_monitors = self.age_table;
+        let epoch = self.epoch_us_fn;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::NodeTableFull)?;
         let mut node = NodeHandle::new(node_name, namespace, session, 0);
         node.set_monitors(monitors);
+        node.set_age_monitors(age_monitors, epoch);
         Ok(node)
     }
 
@@ -2808,6 +2877,8 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // W3b.5 — contracted-endpoint age hook (None = free).
+        let age_mon = self.age_lookup::<M>(topic_name);
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -2832,6 +2903,7 @@ impl<'s> Executor<'s> {
                         SubInplaceEntry {
                             handle,
                             callback,
+                            age_mon,
                             _phantom: PhantomData,
                         },
                     );
@@ -2872,6 +2944,7 @@ impl<'s> Executor<'s> {
                     handle,
                     buffer,
                     callback,
+                    age_mon,
                     _phantom: PhantomData,
                 },
             );
@@ -5111,6 +5184,33 @@ impl<'s> Executor<'s> {
                 }
             };
 
+        // W3b.5 — post-dispatch contract checks. `lat_active` gates the
+        // per-dispatch publish-count snapshot (attribution of dispatch
+        // elapsed time to monitored publishers whose counter advanced);
+        // `dl_active` gates elapsed measurement for deadline actions on
+        // no_std (std measures anyway for the sporadic path).
+        let mon_table = self.monitor_table;
+        let lat_active = mon_table.iter().any(|m| m.max_latency_ms > 0);
+        #[cfg(not(feature = "std"))]
+        let dl_active = self.sched_contexts.iter().flatten().any(|sc| {
+            sc.deadline_us.is_some()
+                && !matches!(
+                    sc.deadline_action,
+                    super::sched_context::DeadlineAction::Ignore
+                )
+        });
+        #[cfg(not(feature = "std"))]
+        let mon_clock = self.clock_us_fn;
+        // Deferred deadline-miss violations (the loop body holds an
+        // immutable borrow of `self.entries`, so the ring is fed after).
+        let mut deadline_misses: heapless::Vec<
+            super::monitor::Violation,
+            { super::monitor::MAX_VIOLATIONS },
+        > = heapless::Vec::new();
+        // SCs whose remaining callbacks this cycle are skipped
+        // (`DeadlineAction::Skip`) — bitmask over SC slots.
+        let mut skipped_scs: u64 = 0;
+
         // For each priority bucket (Critical → Normal → BestEffort),
         // drain EDF first then FIFO so an EDF callback in this bucket
         // beats a FIFO peer at the same priority, but no lower-priority
@@ -5120,13 +5220,30 @@ impl<'s> Executor<'s> {
         for bucket in 0..NB {
             while let Some(job) = edf.pop_from(bucket) {
                 let i = job.desc_idx as usize;
+                let sc_idx = self.sched_context_bindings[i].0 as usize;
+                if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
+                    continue; // W3b.5 DeadlineAction::Skip containment
+                }
                 if let Some(meta) = self.entries[i].as_ref() {
+                    let counts_before = snapshot_pub_counts(mon_table, lat_active);
                     #[cfg(feature = "std")]
                     let start = std::time::Instant::now();
+                    #[cfg(not(feature = "std"))]
+                    let start_us = if lat_active || dl_active {
+                        mon_clock.map(|c| c())
+                    } else {
+                        None
+                    };
                     dispatch_one(meta, arena_ptr, delta_ms, &mut result);
                     #[cfg(feature = "std")]
-                    {
-                        let elapsed_us = start.elapsed().as_micros().min(u32::MAX as u128) as u32;
+                    let elapsed_us: Option<u32> =
+                        Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
+                    #[cfg(not(feature = "std"))]
+                    let elapsed_us: Option<u32> = start_us
+                        .and_then(|t0| mon_clock.map(|c| c().saturating_sub(t0)))
+                        .map(|d| d.min(u32::MAX as u64) as u32);
+                    #[cfg(feature = "std")]
+                    if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,
                             elapsed_us,
@@ -5134,19 +5251,47 @@ impl<'s> Executor<'s> {
                             &self.sched_contexts[..],
                             #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
+                        );
+                    }
+                    if let Some(elapsed_us) = elapsed_us {
+                        attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
+                        check_deadline_miss(
+                            self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
+                            sc_idx,
+                            elapsed_us,
+                            &mut deadline_misses,
+                            &mut skipped_scs,
+                            self.fault_fn,
                         );
                     }
                 }
             }
             while let Some(job) = fifo.pop_from(bucket) {
                 let i = job.desc_idx as usize;
+                let sc_idx = self.sched_context_bindings[i].0 as usize;
+                if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
+                    continue; // W3b.5 DeadlineAction::Skip containment
+                }
                 if let Some(meta) = self.entries[i].as_ref() {
+                    let counts_before = snapshot_pub_counts(mon_table, lat_active);
                     #[cfg(feature = "std")]
                     let start = std::time::Instant::now();
+                    #[cfg(not(feature = "std"))]
+                    let start_us = if lat_active || dl_active {
+                        mon_clock.map(|c| c())
+                    } else {
+                        None
+                    };
                     dispatch_one(meta, arena_ptr, delta_ms, &mut result);
                     #[cfg(feature = "std")]
-                    {
-                        let elapsed_us = start.elapsed().as_micros().min(u32::MAX as u128) as u32;
+                    let elapsed_us: Option<u32> =
+                        Some(start.elapsed().as_micros().min(u32::MAX as u128) as u32);
+                    #[cfg(not(feature = "std"))]
+                    let elapsed_us: Option<u32> = start_us
+                        .and_then(|t0| mon_clock.map(|c| c().saturating_sub(t0)))
+                        .map(|d| d.min(u32::MAX as u64) as u32);
+                    #[cfg(feature = "std")]
+                    if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,
                             elapsed_us,
@@ -5156,8 +5301,24 @@ impl<'s> Executor<'s> {
                             &self.sporadic_atomic_states[..],
                         );
                     }
+                    if let Some(elapsed_us) = elapsed_us {
+                        attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
+                        check_deadline_miss(
+                            self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
+                            sc_idx,
+                            elapsed_us,
+                            &mut deadline_misses,
+                            &mut skipped_scs,
+                            self.fault_fn,
+                        );
+                    }
                 }
             }
+        }
+
+        // W3b.5 — feed deferred deadline misses into the violation ring.
+        for v in deadline_misses {
+            let _ = self.monitor_violations.push(v);
         }
 
         // Process parameter services (outside the arena)
@@ -6470,5 +6631,99 @@ mod p274_w1_tier_executor_tests {
             session_ptr,
             "from_raw reconstructed handle must open executor on the same session"
         );
+    }
+}
+
+/// W3b.5 — snapshot the monitored publishers' counters before a dispatch
+/// (only when a latency contract exists; otherwise a zeroed array that
+/// `attribute_latency` never reads).
+fn snapshot_pub_counts(
+    table: &'static [super::monitor::MonitorSpec],
+    active: bool,
+) -> [u32; super::monitor::MAX_MONITORS] {
+    let mut counts = [0u32; super::monitor::MAX_MONITORS];
+    if active {
+        for (k, spec) in table.iter().take(super::monitor::MAX_MONITORS).enumerate() {
+            counts[k] = spec.cell.count.load(core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    counts
+}
+
+/// W3b.5 — attribute one dispatch's elapsed time to every monitored
+/// publisher whose counter advanced during it (an upper bound on the
+/// node-path take → publish latency: the callback deserialized, ran, and
+/// published within `elapsed_us`).
+fn attribute_latency(
+    table: &'static [super::monitor::MonitorSpec],
+    active: bool,
+    counts_before: &[u32; super::monitor::MAX_MONITORS],
+    elapsed_us: u32,
+) {
+    if !active {
+        return;
+    }
+    for (k, spec) in table.iter().take(super::monitor::MAX_MONITORS).enumerate() {
+        if spec.max_latency_ms == 0 {
+            continue;
+        }
+        let now = spec.cell.count.load(core::sync::atomic::Ordering::Relaxed);
+        if now != counts_before[k] {
+            spec.cell
+                .max_latency_us
+                .fetch_max(elapsed_us, core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+/// W3b.5 — enforce the bound SC's deadline after a dispatch. A miss maps
+/// through [`DeadlineAction`](super::sched_context::DeadlineAction):
+/// `Warn`/`Skip`/`Fault` all report; `Skip` additionally masks the SC's
+/// remaining callbacks for this cycle; `Fault` invokes the fault hook
+/// (panic when none is registered).
+fn check_deadline_miss(
+    sc: Option<&super::sched_context::SchedContext>,
+    sc_idx: usize,
+    elapsed_us: u32,
+    misses: &mut heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
+    skipped_scs: &mut u64,
+    fault_fn: Option<fn(&super::monitor::Violation)>,
+) {
+    use super::sched_context::DeadlineAction;
+    let Some(sc) = sc else { return };
+    let Some(deadline_us) = sc.deadline_us.get().map(|nz| nz.get()) else {
+        return;
+    };
+    if matches!(sc.deadline_action, DeadlineAction::Ignore) || elapsed_us <= deadline_us {
+        return;
+    }
+    let v = super::monitor::Violation {
+        rule: "deadline-miss-runtime",
+        // Entries carry no name at this altitude; the SC slot stands in.
+        fqn: "sched-context",
+        measured: elapsed_us,
+        declared: deadline_us,
+    };
+    match sc.deadline_action {
+        DeadlineAction::Ignore => {}
+        DeadlineAction::Warn => {
+            let _ = misses.push(v);
+        }
+        DeadlineAction::Skip => {
+            if sc_idx < 64 {
+                *skipped_scs |= 1u64 << sc_idx;
+            }
+            let _ = misses.push(v);
+        }
+        DeadlineAction::Fault => {
+            if let Some(f) = fault_fn {
+                f(&v);
+                let _ = misses.push(v);
+            } else {
+                panic!(
+                    "nros: deadline fault — dispatch ran {elapsed_us} us past a {deadline_us} us deadline"
+                );
+            }
+        }
     }
 }

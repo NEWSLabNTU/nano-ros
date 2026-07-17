@@ -255,8 +255,28 @@ pub struct MonitorRow {
     pub topic: String,
     /// Endpoint ref (`<node FQN>/<endpoint>`), the violation report key.
     pub fqn: String,
-    /// Declared publisher guarantee, milli-Hz.
+    /// Declared publisher guarantee, milli-Hz. 0 = no rate contract
+    /// (latency-only row).
     pub min_rate_hz_milli: u32,
+    /// W3b.5 — node-path budget (ms) for paths whose output is this
+    /// endpoint (`contracts.node_paths`). 0 = no latency contract.
+    #[serde(skip_serializing_if = "is_zero", default)]
+    pub max_latency_ms: u32,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+/// W3b.5 — one contracted-subscriber age row (`sub_endpoints.max_age_ms`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct AgeRow {
+    /// Topic FQN (the wiring name the subscriber creates).
+    pub topic: String,
+    /// Endpoint ref, the violation report key.
+    pub fqn: String,
+    /// Declared max take-age, ms.
+    pub max_age_ms: u32,
 }
 
 /// Extract the publisher rate-monitor rows: every `pub_endpoints` entry
@@ -264,25 +284,87 @@ pub struct MonitorRow {
 /// publisher. A contracted endpoint with NO owning topic in the wiring is
 /// a model inconsistency — fail loud.
 pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>> {
-    let mut rows = Vec::new();
+    use std::collections::BTreeMap;
+    // fqn -> (min_rate_milli, max_latency_ms); node_paths may add
+    // latency-only rows for endpoints without a rate contract.
+    let mut by_fqn: BTreeMap<String, (u32, u32)> = BTreeMap::new();
     for (ep_ref, c) in &model.contracts.pub_endpoints {
         let Some(min) = c.min_rate_hz else { continue };
+        by_fqn.insert(
+            ep_ref.clone(),
+            (
+                (min * 1000.0).round().max(0.0).min(u32::MAX as f64) as u32,
+                0,
+            ),
+        );
+    }
+    // W3b.5 — node-path budgets attach to the path's OUTPUT endpoints.
+    for (path_ref, p) in &model.contracts.node_paths {
+        let Some(lat) = p.max_latency_ms else {
+            continue;
+        };
+        let lat = lat.round().max(0.0).min(u32::MAX as f64) as u32;
+        if lat == 0 {
+            continue;
+        }
+        if p.output.is_empty() {
+            bail!(
+                "SystemModel: node path '{path_ref}' declares max_latency_ms but \
+                 lists no output endpoint — inconsistent model"
+            );
+        }
+        for out in &p.output {
+            let e = by_fqn.entry(out.clone()).or_insert((0, 0));
+            e.1 = e.1.max(lat);
+        }
+    }
+    let mut rows = Vec::new();
+    for (ep_ref, (min_milli, lat_ms)) in by_fqn {
         let topic = model
             .structure
             .topics
             .iter()
-            .find(|(_, w)| w.publishers.iter().any(|p| p == ep_ref))
+            .find(|(_, w)| w.publishers.iter().any(|p| p == &ep_ref))
             .map(|(t, _)| t.clone());
         let Some(topic) = topic else {
             bail!(
-                "SystemModel: contracted publisher '{ep_ref}' (min_rate_hz) has no \
+                "SystemModel: contracted publisher '{ep_ref}' has no \
                  owning topic in structure.topics — inconsistent model"
             );
         };
         rows.push(MonitorRow {
             topic,
+            fqn: ep_ref,
+            min_rate_hz_milli: min_milli,
+            max_latency_ms: lat_ms,
+        });
+    }
+    Ok(rows)
+}
+
+/// W3b.5 — extract the subscriber age rows: every `sub_endpoints` entry
+/// with `max_age_ms`, joined to the topic whose wiring lists it as a
+/// subscriber. Orphans fail loud (same rule as the publisher join).
+pub fn age_rows(model: &SystemModel) -> Result<Vec<AgeRow>> {
+    let mut rows = Vec::new();
+    for (ep_ref, c) in &model.contracts.sub_endpoints {
+        let Some(age) = c.max_age_ms else { continue };
+        let topic = model
+            .structure
+            .topics
+            .iter()
+            .find(|(_, w)| w.subscribers.iter().any(|p| p == ep_ref))
+            .map(|(t, _)| t.clone());
+        let Some(topic) = topic else {
+            bail!(
+                "SystemModel: contracted subscriber '{ep_ref}' (max_age_ms) has no \
+                 owning topic in structure.topics — inconsistent model"
+            );
+        };
+        rows.push(AgeRow {
+            topic,
             fqn: ep_ref.clone(),
-            min_rate_hz_milli: (min * 1000.0).round().max(0.0).min(u32::MAX as f64) as u32,
+            max_age_ms: age.round().max(1.0).min(u32::MAX as f64) as u32,
         });
     }
     rows.sort_by(|a, b| a.fqn.cmp(&b.fqn));
@@ -294,33 +376,51 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>> {
 /// contracted publisher + the `MONITORS` spec table + an installer the
 /// generated entry calls before entity creation. Empty rows → an empty
 /// table (DCE'd — the zero-cost gate).
-pub fn render_monitor_rs(rows: &[MonitorRow]) -> String {
+pub fn render_monitor_rs(rows: &[MonitorRow], ages: &[AgeRow]) -> String {
     let mut out = String::new();
     out.push_str(
-        "// GENERATED by `nros codegen-system --model` (RFC-0052 W3b.4 / phase-296 N1).\n\
-         // One PubMonitorCell per contracted publisher + the executor monitor table.\n\
-         // Include from the entry; call `nros_install_monitors(&mut executor)` and\n\
-         // `node.set_monitors(NROS_MONITORS)` BEFORE entity creation.\n\
-         use ::nros_node::executor::monitor::{MonitorSpec, PubMonitorCell};\n\n",
+        "// GENERATED by `nros codegen-system --model` (RFC-0052 W3b.4/.5 / phase-296 N1).\n\
+         // One PubMonitorCell per contracted publisher (+ one SubMonitorCell per age\n\
+         // contract) + the executor monitor tables. Include from the entry; call\n\
+         // `nros_install_monitors(&mut executor)` BEFORE entity creation (node-side\n\
+         // attachment is auto-seeded from the executor at create_node).\n\
+         use ::nros_node::executor::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};\n\n",
     );
     for (i, _r) in rows.iter().enumerate() {
         out.push_str(&format!(
             "static NROS_MONITOR_CELL_{i}: PubMonitorCell = PubMonitorCell::new();\n"
         ));
     }
+    for (i, _r) in ages.iter().enumerate() {
+        out.push_str(&format!(
+            "static NROS_AGE_CELL_{i}: SubMonitorCell = SubMonitorCell::new();\n"
+        ));
+    }
     out.push_str("\npub static NROS_MONITORS: &[MonitorSpec] = &[\n");
     for (i, r) in rows.iter().enumerate() {
         out.push_str(&format!(
             "    MonitorSpec {{ topic: {t:?}, fqn: {f:?}, min_rate_hz_milli: {m}u32, \
-             cell: &NROS_MONITOR_CELL_{i} }},\n",
+             max_latency_ms: {l}u32, cell: &NROS_MONITOR_CELL_{i} }},\n",
             t = r.topic,
             f = r.fqn,
             m = r.min_rate_hz_milli,
+            l = r.max_latency_ms,
+        ));
+    }
+    out.push_str("];\n\n");
+    out.push_str("pub static NROS_AGE_MONITORS: &[AgeMonitorSpec] = &[\n");
+    for (i, r) in ages.iter().enumerate() {
+        out.push_str(&format!(
+            "    AgeMonitorSpec {{ topic: {t:?}, fqn: {f:?}, max_age_ms: {a}u32, \
+             cell: &NROS_AGE_CELL_{i} }},\n",
+            t = r.topic,
+            f = r.fqn,
+            a = r.max_age_ms,
         ));
     }
     out.push_str("];\n\n");
     out.push_str(
-        "pub fn nros_install_monitors(executor: &mut ::nros_node::executor::Executor<'_>) {\n             executor.set_monitor_table(NROS_MONITORS);\n}\n",
+        "pub fn nros_install_monitors(executor: &mut ::nros_node::executor::Executor<'_>) {\n    executor.set_monitor_table(NROS_MONITORS);\n    executor.set_age_table(NROS_AGE_MONITORS);\n}\n",
     );
     out
 }
@@ -356,7 +456,7 @@ mod monitor_tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].topic, "/perception/objects");
         assert_eq!(rows[0].min_rate_hz_milli, 10_000);
-        let rs = render_monitor_rs(&rows);
+        let rs = render_monitor_rs(&rows, &[]);
         assert!(rs.contains("NROS_MONITOR_CELL_0"));
         assert!(rs.contains("min_rate_hz_milli: 10000u32"));
         assert!(rs.contains("topic: \"/perception/objects\""));
@@ -377,8 +477,67 @@ mod monitor_tests {
     fn empty_contracts_render_empty_table() {
         let rows = monitor_rows(&SystemModel::default()).expect("rows");
         assert!(rows.is_empty());
-        let rs = render_monitor_rs(&rows);
+        let rs = render_monitor_rs(&rows, &[]);
         assert!(rs.contains("NROS_MONITORS: &[MonitorSpec] = &[\n];"));
+        assert!(rs.contains("NROS_AGE_MONITORS: &[AgeMonitorSpec] = &[\n];"));
+    }
+
+    #[test]
+    fn age_rows_join_subscriber_and_render() {
+        use ros_launch_manifest_model::SubContract;
+        let mut m = SystemModel::default();
+        m.structure.topics.insert(
+            "/sensing/scan".to_string(),
+            TopicWiring {
+                msg_type: "sensor_msgs/msg/LaserScan".to_string(),
+                publishers: vec![],
+                subscribers: vec!["/perception/detector/scan".to_string()],
+            },
+        );
+        m.contracts.sub_endpoints.insert(
+            "/perception/detector/scan".to_string(),
+            SubContract {
+                max_age_ms: Some(100.0),
+                ..Default::default()
+            },
+        );
+        let ages = age_rows(&m).expect("ages");
+        assert_eq!(ages.len(), 1);
+        assert_eq!(ages[0].topic, "/sensing/scan");
+        assert_eq!(ages[0].max_age_ms, 100);
+        let rs = render_monitor_rs(&[], &ages);
+        assert!(rs.contains("NROS_AGE_CELL_0"));
+        assert!(rs.contains("max_age_ms: 100u32"));
+        assert!(rs.contains("set_age_table(NROS_AGE_MONITORS)"));
+
+        // Orphan sub contract: fail loud.
+        m.structure.topics.clear();
+        let err = age_rows(&m).unwrap_err().to_string();
+        assert!(
+            err.contains("no owning topic") || err.contains("owning topic"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn node_path_budget_attaches_to_output_endpoint() {
+        use ros_launch_manifest_model::PathContract;
+        let mut m = model_with_contract();
+        m.contracts.node_paths.insert(
+            "/perception/detector/proc".to_string(),
+            PathContract {
+                input: vec!["/perception/detector/scan".to_string()],
+                output: vec!["/perception/detector/objects".to_string()],
+                max_latency_ms: Some(20.0),
+                ..Default::default()
+            },
+        );
+        let rows = monitor_rows(&m).expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].max_latency_ms, 20);
+        assert_eq!(rows[0].min_rate_hz_milli, 10_000, "rate contract kept");
+        let rs = render_monitor_rs(&rows, &[]);
+        assert!(rs.contains("max_latency_ms: 20u32"));
     }
 }
 

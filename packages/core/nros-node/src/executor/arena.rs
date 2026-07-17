@@ -275,11 +275,33 @@ pub(crate) fn buffered_region_size(depth: u32, slot_size: usize) -> (usize, usiz
 /// [SubBufferedEntry<M, F> struct][trailing: slot_count × slot_size bytes]
 ///  ↑ offset                      ↑ buffer managed by BufferStrategy
 /// ```
+/// W3b.5 — a contracted subscriber's age hook: the endpoint's cell plus
+/// the epoch clock, captured at registration. `None` = uncontracted (or
+/// no epoch source / no stamp in the type) — the take path costs one
+/// `Option` branch.
+pub(crate) type AgeMon = (
+    &'static crate::executor::monitor::SubMonitorCell,
+    fn() -> u64,
+);
+
+/// W3b.5 — peek the message stamp from the raw CDR buffer and record its
+/// take-age. Compiled away per-type when `M::STAMP_OFFSET` is `None`.
+#[inline]
+pub(crate) fn observe_age<M: RosMessage>(raw: &[u8], mon: &Option<AgeMon>) {
+    if let (Some((cell, epoch)), Some(off)) = (mon, M::STAMP_OFFSET)
+        && let Some(stamp_us) = crate::executor::monitor::peek_stamp_us(raw, off)
+    {
+        cell.observe(stamp_us, epoch());
+    }
+}
+
 #[repr(C)]
 pub(crate) struct SubBufferedEntry<M, F> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: BufferStrategy,
     pub(crate) callback: F,
+    /// W3b.5 — age hook for contracted endpoints.
+    pub(crate) age_mon: Option<AgeMon>,
     pub(crate) _phantom: PhantomData<M>,
 }
 
@@ -335,6 +357,7 @@ where
     match &entry.buffer {
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
+                observe_age::<M>(&data[..len], &entry.age_mon);
                 let mut reader = CdrReader::new_with_header(&data[..len])
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
@@ -347,6 +370,7 @@ where
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
+                observe_age::<M>(&data[..len], &entry.age_mon);
                 let mut reader = CdrReader::new_with_header(&data[..len])
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
@@ -388,6 +412,8 @@ pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
 pub(crate) struct SubInplaceEntry<M, F> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) callback: F,
+    /// W3b.5 — age hook for contracted endpoints.
+    pub(crate) age_mon: Option<AgeMon>,
     pub(crate) _phantom: PhantomData<M>,
 }
 
@@ -410,19 +436,24 @@ where
     let entry = unsafe { &mut *(ptr as *mut SubInplaceEntry<M, F>) };
     // Split-borrow the handle and callback (disjoint fields).
     let SubInplaceEntry {
-        handle, callback, ..
+        handle,
+        callback,
+        age_mon,
+        ..
     } = entry;
     let mut did_work = false;
     loop {
         let mut deser_err = false;
-        let processed =
-            handle.process_raw_in_place(|raw| match CdrReader::new_with_header(raw) {
+        let processed = handle.process_raw_in_place(|raw| {
+            observe_age::<M>(raw, age_mon);
+            match CdrReader::new_with_header(raw) {
                 Ok(mut reader) => match M::deserialize(&mut reader) {
                     Ok(msg) => (callback)(&msg),
                     Err(_) => deser_err = true,
                 },
                 Err(_) => deser_err = true,
-            })?;
+            }
+        })?;
         if deser_err {
             return Err(TransportError::DeserializationError);
         }

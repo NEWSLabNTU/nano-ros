@@ -39,6 +39,10 @@ pub struct NodeHandle<'a> {
     /// `qos_overrides`): `create_publisher` attaches the matching
     /// endpoint's counter cell so `publish` can bump it lock-free.
     monitors: &'static [crate::executor::monitor::MonitorSpec],
+    /// W3b.5 — baked subscriber age-contract table + epoch clock;
+    /// `create_subscription` attaches the matching endpoint's age cell.
+    age_monitors: &'static [crate::executor::monitor::AgeMonitorSpec],
+    epoch_us_fn: Option<fn() -> u64>,
 }
 
 impl<'a> NodeHandle<'a> {
@@ -56,6 +60,8 @@ impl<'a> NodeHandle<'a> {
             domain_id,
             qos_overrides: &[],
             monitors: &[],
+            age_monitors: &[],
+            epoch_us_fn: None,
         }
     }
 
@@ -74,6 +80,17 @@ impl<'a> NodeHandle<'a> {
     /// (called by the entry glue / fixture alongside `set_qos_overrides`).
     pub fn set_monitors(&mut self, monitors: &'static [crate::executor::monitor::MonitorSpec]) {
         self.monitors = monitors;
+    }
+
+    /// W3b.5 — install the subscriber age-contract table + epoch clock
+    /// (auto-seeded from the executor's `set_age_table` / config epoch).
+    pub fn set_age_monitors(
+        &mut self,
+        table: &'static [crate::executor::monitor::AgeMonitorSpec],
+        epoch_us: Option<fn() -> u64>,
+    ) {
+        self.age_monitors = table;
+        self.epoch_us_fn = epoch_us;
     }
 
     /// The installed QoS-override table (empty unless the entry set one).
@@ -355,10 +372,21 @@ impl<'a> NodeHandle<'a> {
             .session
             .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+        // W3b.5 — attach the contracted endpoint's age cell (stamped
+        // types only; needs an epoch source).
+        let age_mon = match (<M as RosMessage>::STAMP_OFFSET, self.epoch_us_fn) {
+            (Some(_), Some(epoch)) => self
+                .age_monitors
+                .iter()
+                .find(|a| a.topic == topic_name)
+                .map(|a| (a.cell, epoch)),
+            _ => None,
+        };
         Ok(Subscription {
             handle,
             buffer: [0u8; RX_BUF],
             event_regs: crate::executor::handles::empty_event_regs(),
+            age_mon,
             _phantom: PhantomData,
         })
     }

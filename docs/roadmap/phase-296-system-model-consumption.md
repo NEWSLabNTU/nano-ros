@@ -141,19 +141,46 @@ from model contracts + the native parity fixture vs play_launch.
   play_launch flags the same violation from the same contract file
   (the cross-runtime parity test).
 
-#### W3b.5 — max_age + node-path latency
+#### W3b.5 — max_age + node-path latency (machinery LANDED; parity fixture remains)
 
-- Take-path peek via `RosMessage::STAMP_OFFSET` (landed W3a) +
-  W3b.2 epoch hook → `max-age-runtime`; node-path
-  (take→publish) latency via the sched-context monotonic clock →
-  `max-latency-runtime`.
-- TT-window binding (major-frame dispatcher at the run_tiers altitude)
-  and the deadline-miss ACTION enum (ignore/warn/skip/fault — distinct
-  from the executor's existing DeadlinePolicy inheritance enum) land
-  here too, closing the W2 deferral.
-- **Done when:** parity fixture extends to a stale-stamp scenario
-  (max_age fires both runtimes) and a deadline_policy=skip tier
-  provably skips the offending group's remaining callbacks.
+Landed (2026-07-17):
+- `max-age-runtime` — `SubMonitorCell` + `AgeMonitorSpec` table
+  (`Executor::set_age_table`); the take path peeks `header.stamp` from
+  the raw CDR buffer at `M::STAMP_OFFSET` (`monitor::peek_stamp_us`,
+  LE `Time` words; unstamped/pre-epoch = no sample) and records
+  `epoch_now - stamp` (fetch_max). Hooked at ALL take sites: arena
+  buffered (triple + ring), arena in-place, and the session-direct
+  `Subscription::try_recv` (NodeHandle path; auto-seeded from the
+  executor's table + epoch at create_node). Attachment needs a stamped
+  type AND an epoch source — otherwise the hook is `None` (one branch).
+- `max-latency-runtime` — dispatch elapsed time (std `Instant`, no_std
+  `clock_us` hook) attributed to every monitored publisher whose
+  counter advanced during that dispatch (upper bound on take→publish);
+  window max drained per monitor tick. Budgets come from
+  `contracts.node_paths[..].max_latency_ms` attached to each path's
+  OUTPUT endpoints (`MonitorSpec.max_latency_ms`; latency-only rows
+  get `min_rate_hz_milli: 0`).
+- `deadline-miss-runtime` + `DeadlineAction` (ignore/warn/skip/fault,
+  distinct from the `DeadlinePolicy` inheritance enum;
+  `SchedContext.deadline_action`): post-dispatch elapsed vs the bound
+  SC's `deadline_us`. `skip` masks the SC's remaining callbacks for
+  the REST of that spin cycle (per-cycle bitmask; behavior-tested:
+  `deadline_skip_masks_remaining_same_sc_callbacks`), `fault` invokes
+  `set_fault_handler` (panic when unset). Violation fields generalized
+  to `measured`/`declared` (unit per rule).
+- TT-window binding at the run_tiers altitude: posix
+  `apply_tier_sched` lowers `class = "time_triggered"` + `period_us`
+  to `register_time_triggered_dispatcher(period)` + a default SC with
+  `tt_window_duration_us = budget_us | period` (offset 0; multi-window
+  = schedule-table API). Other boards: tier-sched glue still TODO
+  (posix is the only `apply_tier_sched` — W2 note stands).
+- Emitter: `codegen-system --model` bakes `NROS_AGE_MONITORS` (+
+  `SubMonitorCell` statics) and `max_latency_ms` into
+  `system_monitors.rs`; `nros_install_monitors` also calls
+  `set_age_table`. Plan gains a skip-empty `age_monitors` section.
+- **Remaining (with the W3b.4 remainder):** the native parity fixture —
+  violated `min_rate_hz` + stale-stamp (`max_age`) pair vs play_launch
+  on the same contract file.
 
 ### W4 — CMake + ASI pilot
 

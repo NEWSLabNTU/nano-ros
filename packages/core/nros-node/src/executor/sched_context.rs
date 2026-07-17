@@ -131,6 +131,41 @@ pub enum DeadlinePolicy {
     Inherited,
 }
 
+/// RFC-0052 / phase-296 W3b.5 — what the executor DOES when a dispatched
+/// callback runs past its bound SC's `deadline_us`. Distinct from
+/// [`DeadlinePolicy`] (which says where the deadline COMES from); this is
+/// the miss REACTION, lowered from the tier table's `deadline_policy`
+/// string (`ignore | warn | skip | fault`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DeadlineAction {
+    /// Measure nothing, report nothing (uncontracted default).
+    #[default]
+    Ignore,
+    /// Push a `deadline-miss-runtime` violation onto the monitor drain.
+    Warn,
+    /// Warn AND skip the offending SC's remaining callbacks for the rest
+    /// of this spin cycle (damage containment: a runaway callback does
+    /// not get to also starve unrelated groups with its siblings).
+    Skip,
+    /// Warn AND invoke the executor's fault hook (panic when none is
+    /// registered — on embedded targets that is a watchdog-visible stop).
+    Fault,
+}
+
+impl DeadlineAction {
+    /// Lower the tier-table string (`[tiers.<t>].deadline_policy`).
+    /// Unknown strings map to `Ignore` — the bake already validated the
+    /// vocabulary; runtime tolerance here avoids a boot-time panic path.
+    pub fn from_tier_str(s: &str) -> Self {
+        match s {
+            "warn" => Self::Warn,
+            "skip" => Self::Skip,
+            "fault" => Self::Fault,
+            _ => Self::Ignore,
+        }
+    }
+}
+
 /// Identifier for a [`SchedContext`] registered with an Executor.
 /// 110.B.b adds storage `[Option<SchedContext>; MAX_SC]`; this index
 /// addresses into that array.
@@ -176,6 +211,8 @@ pub struct SchedContext {
     /// gated; both gates apply (skip dispatch when EITHER fails).
     /// Pairs with `Executor::register_time_triggered_dispatcher`
     /// which sets the major-frame length.
+    /// W3b.5 — reaction on a deadline miss (see [`DeadlineAction`]).
+    pub deadline_action: DeadlineAction,
     pub tt_window_offset_us: OptUs,
     /// Phase 110.G — time-triggered window length. See
     /// `tt_window_offset_us`.
@@ -353,6 +390,7 @@ impl SchedContext {
             deadline_us: OptUs::NONE,
             deadline_policy: DeadlinePolicy::Activated,
             os_pri: 0,
+            deadline_action: DeadlineAction::Ignore,
             tt_window_offset_us: OptUs::NONE,
             tt_window_duration_us: OptUs::NONE,
         }

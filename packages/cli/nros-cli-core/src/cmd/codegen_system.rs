@@ -145,11 +145,14 @@ pub fn run(args: Args) -> Result<()> {
     // stays local to this bake.
     let bringup_owned;
     let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
+    let mut model_ages: Vec<crate::orchestration::model_ingest::AgeRow> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
     let bringup = if let Some(model_path) = &args.model {
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
+        // W3b.5 — subscriber age contracts ride alongside.
+        model_ages = crate::orchestration::model_ingest::age_rows(&model)?;
         // R1-N3 — transports ride the bake plan.
         model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
         let mut owned = bringup.clone();
@@ -222,6 +225,7 @@ pub fn run(args: Args) -> Result<()> {
         resolved_launch.as_deref(),
         &tier_table,
         model_monitors,
+        model_ages,
         model_transports,
     )?;
 
@@ -430,6 +434,7 @@ fn emit_bake_tree(
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    ages: Vec<crate::orchestration::model_ingest::AgeRow>,
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
@@ -476,10 +481,10 @@ fn emit_bake_tree(
 
     // R1-N1 — baked monitor table (model mode; empty rows write nothing,
     // keeping legacy bakes byte-identical).
-    if !monitors.is_empty() {
+    if !monitors.is_empty() || !ages.is_empty() {
         write_if_changed(
             &bake_dir.join("system_monitors.rs"),
-            &crate::orchestration::model_ingest::render_monitor_rs(&monitors),
+            &crate::orchestration::model_ingest::render_monitor_rs(&monitors, &ages),
         )?;
     }
 
@@ -492,6 +497,7 @@ fn emit_bake_tree(
             resolved_launch,
             tier_table,
             monitors,
+            ages,
             transports,
         )?,
     )?;
@@ -668,6 +674,9 @@ struct PlanDoc<'a> {
     /// empty/omitted otherwise so legacy plans stay byte-identical).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    /// W3b.5 — contracted-subscriber age rows (model mode only).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    age_monitors: Vec<crate::orchestration::model_ingest::AgeRow>,
     /// R1-N3 — transport/session declarations from the model's execution
     /// layer (model mode only; the board network bake's input, replacing
     /// the legacy [[transport]] system.toml read on the canonical path).
@@ -721,6 +730,7 @@ fn render_plan_json(
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    ages: Vec<crate::orchestration::model_ingest::AgeRow>,
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<String> {
     let launch_file: Option<String> = resolved_launch
@@ -799,6 +809,7 @@ fn render_plan_json(
         launch_file: launch_file.as_deref(),
         components,
         monitors,
+        age_monitors: ages,
         transports,
         tiers,
     };
@@ -958,6 +969,7 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
             Some("px4"),
             None,
             &px4_tiers,
+            Vec::new(),
             Vec::new(),
             Vec::new(),
         )?,

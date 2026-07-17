@@ -1077,6 +1077,9 @@ pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF
     pub(crate) buffer: [u8; RX_BUF],
     /// Phase 108 — registered event closures.
     pub(crate) event_regs: EventRegs,
+    /// W3b.5 — contracted-endpoint age hook (cell + epoch clock);
+    /// `None` = uncontracted.
+    pub(crate) age_mon: Option<crate::executor::arena::AgeMon>,
     pub(crate) _phantom: PhantomData<M>,
 }
 
@@ -1095,6 +1098,8 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?
         {
             Some(len) => {
+                // W3b.5 — record take-age for contracted endpoints.
+                crate::executor::arena::observe_age::<M>(&self.buffer[..len], &self.age_mon);
                 let mut reader = CdrReader::new_with_header(&self.buffer[..len])
                     .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
                 let msg = M::deserialize(&mut reader)
@@ -3066,8 +3071,8 @@ mod parse_response_tests {
     #[test]
     fn valid_goal_accepted_still_parses() {
         let frame = [0x00, 0x01, 0x00, 0x00, 0x01];
-        assert_eq!(parse_goal_accepted(&frame).unwrap(), true);
+        assert!(parse_goal_accepted(&frame).unwrap());
         let frame0 = [0x00, 0x01, 0x00, 0x00, 0x00];
-        assert_eq!(parse_goal_accepted(&frame0).unwrap(), false);
+        assert!(!parse_goal_accepted(&frame0).unwrap());
     }
 }

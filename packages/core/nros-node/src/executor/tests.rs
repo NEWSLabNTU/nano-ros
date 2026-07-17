@@ -3569,3 +3569,138 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
         "unmapped group must fall back to node default SC 2"
     );
 }
+
+// ====================================================================
+// RFC-0052 / phase-296 W3b.5 — deadline-miss actions
+// ====================================================================
+
+/// `DeadlineAction::Skip`: a callback overrunning its SC deadline masks
+/// the SAME SC's remaining callbacks for the rest of that spin cycle,
+/// and the miss lands on the violation drain.
+#[test]
+fn deadline_skip_masks_remaining_same_sc_callbacks() {
+    use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let fired = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let f_slow = fired.clone();
+    let f_victim = fired.clone();
+
+    let nid = executor.node_builder("deadline_skip").build().unwrap();
+    let h_slow = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/slow", move |req: &TestServiceRequest| {
+            f_slow.lock().unwrap().push(req.a);
+            std::thread::sleep(core::time::Duration::from_millis(5));
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+    let h_victim = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/victim", move |req: &TestServiceRequest| {
+            f_victim.lock().unwrap().push(req.a);
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+
+    // One SC, 1 ms deadline, skip on miss — both callbacks bound to it.
+    let sc = executor
+        .create_sched_context(SchedContext {
+            deadline_us: OptUs::from_us(1_000),
+            deadline_action: DeadlineAction::Skip,
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h_slow, sc).unwrap();
+    executor.bind_handle_to_sched_context(h_victim, sc).unwrap();
+
+    let (d_slow, n_slow) = encode_test_msg(1);
+    let (d_victim, n_victim) = encode_test_msg(2);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off_slow = executor.entries[0].as_ref().unwrap().offset;
+    let off_victim = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off_slow) as *const MockServiceServer) }.load(d_slow, n_slow);
+    unsafe { &*(arena_ptr.add(off_victim) as *const MockServiceServer) }.load(d_victim, n_victim);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    // The slow callback ran 5 ms past a 1 ms deadline; its SC sibling
+    // must NOT have fired in the same cycle.
+    assert_eq!(*fired.lock().unwrap(), std::vec![1], "victim skipped");
+    let mut rules = std::vec::Vec::new();
+    executor.drain_violations(|v| rules.push((v.rule, v.declared)));
+    assert!(
+        rules
+            .iter()
+            .any(|(r, d)| *r == "deadline-miss-runtime" && *d == 1_000),
+        "miss reported: {rules:?}"
+    );
+
+    // Next cycle: the mask is per-cycle — the victim fires now.
+    let (d2, n2) = encode_test_msg(3);
+    unsafe { &*(arena_ptr.add(off_victim) as *const MockServiceServer) }.load(d2, n2);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        *fired.lock().unwrap(),
+        std::vec![1, 3],
+        "mask cleared next cycle"
+    );
+}
+
+/// `DeadlineAction::Warn`: reports the miss but never masks siblings.
+#[test]
+fn deadline_warn_reports_without_skipping() {
+    use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let fired = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let f_slow = fired.clone();
+    let f_peer = fired.clone();
+
+    let nid = executor.node_builder("deadline_warn").build().unwrap();
+    let h_slow = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/slow", move |req: &TestServiceRequest| {
+            f_slow.lock().unwrap().push(req.a);
+            std::thread::sleep(core::time::Duration::from_millis(5));
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+    let h_peer = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/peer", move |req: &TestServiceRequest| {
+            f_peer.lock().unwrap().push(req.a);
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+    let sc = executor
+        .create_sched_context(SchedContext {
+            deadline_us: OptUs::from_us(1_000),
+            deadline_action: DeadlineAction::Warn,
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h_slow, sc).unwrap();
+    executor.bind_handle_to_sched_context(h_peer, sc).unwrap();
+
+    let (d1, n1) = encode_test_msg(1);
+    let (d2, n2) = encode_test_msg(2);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off1 = executor.entries[0].as_ref().unwrap().offset;
+    let off2 = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off1) as *const MockServiceServer) }.load(d1, n1);
+    unsafe { &*(arena_ptr.add(off2) as *const MockServiceServer) }.load(d2, n2);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(*fired.lock().unwrap(), std::vec![1, 2], "peer still fires");
+    let mut misses = 0;
+    executor.drain_violations(|v| {
+        if v.rule == "deadline-miss-runtime" {
+            misses += 1;
+        }
+    });
+    assert!(misses >= 1, "warn reported the miss");
+}

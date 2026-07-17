@@ -442,10 +442,20 @@ structure:
       type: std_msgs/msg/String
       pub:
         - /demo/talker/chatter
+      sub:
+        - /demo/listener/chatter
 contracts:
   pub_endpoints:
     /demo/talker/chatter:
       min_rate_hz: 10.0
+  sub_endpoints:
+    /demo/listener/chatter:
+      max_age_ms: 150.0
+  node_paths:
+    /demo/talker/proc:
+      output:
+        - /demo/talker/chatter
+      max_latency_ms: 30.0
 execution: {}
 "#,
     )
@@ -458,8 +468,14 @@ execution: {}
     let mon = fs::read_to_string(out.join("nros-system/system_monitors.rs")).expect("table baked");
     assert!(mon.contains("min_rate_hz_milli: 10000u32"), "{mon}");
     assert!(mon.contains("fqn: \"/demo/talker/chatter\""), "{mon}");
+    // W3b.5 — latency budget on the output endpoint + subscriber age row.
+    assert!(mon.contains("max_latency_ms: 30u32"), "{mon}");
+    assert!(mon.contains("max_age_ms: 150u32"), "{mon}");
+    assert!(mon.contains("fqn: \"/demo/listener/chatter\""), "{mon}");
+    assert!(mon.contains("set_age_table(NROS_AGE_MONITORS)"), "{mon}");
     let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
     assert!(plan.contains("\"monitors\""), "{plan}");
+    assert!(plan.contains("\"age_monitors\""), "{plan}");
 
     // Uncontracted model: no table file, no plan section.
     let model2 = ws.join("m2.yaml");
