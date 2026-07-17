@@ -208,11 +208,16 @@ parity. Ordered gates (each verifiable before the next):
     M5 endpoint contracts gain optional `qos` (retires the 211.H
     launch-param overlay);
     M6 per-node `lifecycle_autostart`.
-  - **P (play_launch resolve):** P1 read `system.toml` as the
-    system-config input (deploy/tiers/transports/bridges/features) and
-    fill execution; P2 merge manifest `actions:` into the index (the
-    always-empty `structure.actions` gap); P3 per-target resolve
-    ergonomics (decide one-model-all-targets vs per-target).
+  - **P (play_launch resolve): P1+P2 LANDED (efdc92d + manifest
+    484a411, 2026-07-17)** — `resolve --system` fills execution (deploy
+    placement via `[deploy.<name>].nodes` FQN lists, RFC-0004 ladder,
+    transports/bridges/features, provenance-hashed); the loader merges
+    `actions:`. **P3 DECIDED: one model carries all targets** — TierDef
+    already holds every platform sub-table and transports/deploy are
+    per-node; consumers slice by their board. Limitation recorded: the
+    mapper-DERIVED sched path stays per-target (synthesized tiers carry
+    only the resolve target's placement); declared tiers are
+    target-complete.
   - **N (nano-ros):** N1 monitor-table emission from model contracts
     (W3b.4 tail); N2 `codegen entry --model` (W4.1) incl. the
     plugin=class mapping + resolved-wiring remap verification; N3
