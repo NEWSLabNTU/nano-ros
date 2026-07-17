@@ -128,15 +128,18 @@ named reference consumer), 287 (ament verbs on zephyr).
     below: multicast join error -1 (IGMP; unicast-only fallback engages),
     ComponentNode `declare_parameter` code -5 (issue-0116 projection
     class), and wall #6.
-  - [ ] Wall #6 (2026-07-17, OPEN): SMP-4 images crash in newlib
-    `_free_r((void*)0xffffffff)` (alignment abort, FAR 0xfffffff7) within
-    the first few `printf` calls from `main` — single-core images are
-    immune. Newlib malloc/stdio under Zephyr arm64 SMP suspect
-    (retargeted `__malloc_lock` vs SMP?). Also in the same class: the
-    RTPS-failure error path crashes through a garbage pointer
-    (PC-alignment fault to 0x13 from picolibc `cbputc`) instead of
-    halting cleanly — only reproducible while a boot-failure
-    diagnostic is being printed.
+  - [x] Wall #6 (2026-07-17, RESOLVED — duplicate of wall #9): the SMP-4
+    newlib `_free_r((void*)0xffffffff)` printf crash (and the picolibc
+    `cbputc` PC-alignment variant) was the SAME silent
+    `pthread_mutex_init` failure — newlib's retargeted stdio/malloc
+    locks allocate from the same exhausted pthread mutex pool cyclone
+    drained, and lock ops on the failed-init mutexes corrupted the
+    heap. With the wall-#9 fix (pool 1024 + loud init) the stock SMP-4
+    image boots, spins, and delivers the FULL closed-loop demo
+    (control_cmd ~18 Hz through the bridge, 30+ min sim, zero faults).
+    Residual: issue 0230 — a spurious `ComponentNode failed at ?
+    (code=0)` FATAL print on healthy SMP boots (ok-flag visibility
+    race).
   - [x] Wall #7 (2026-07-17, FIXED): `NrosRmwCycloneddsTypeSupport.cmake`'s
     `find_program(msg_to_cyclone_idl.py)` knew only the install layout —
     Zephyr-module/source-tree consumers silently lost descriptor codegen

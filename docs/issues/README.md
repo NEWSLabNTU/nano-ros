@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#230** — SMP: spurious `ComponentNode failed at ? (code=0)` FATAL print on a
+healthy boot (cross-CPU visibility race on the ok-flag; single-core never
+prints it; the same race could mask a real failure). Found on the ASI FVP
+SMP-4 validation. See `0230-smp-spurious-component-failure-print.md`.
+
 **#229** — C `nros_ret_t` and C++ `nros::ErrorCode` disagree from -5 down
 (`ALREADY_EXISTS` vs `Full`), and `Result` is built straight from C codes —
 error misreporting class, found during the phase-292 ASI FVP bring-up. See
