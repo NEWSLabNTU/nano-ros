@@ -392,7 +392,12 @@ class ComponentNode {
               typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
     T declare_parameter(const char* name, T default_value = T{}) {
         Result r = params_.template declare_parameter<T>(name, default_value);
-        if (!r.ok()) {
+        // Launch-seeded params (phase-269 entry post-configure) are DECLARED
+        // before the component ctor runs; a component re-declare is the rclcpp
+        // "declare adopts the override" case, not an error — fall through to
+        // the read-back so the seeded value wins. (NROS_RET_ALREADY_EXISTS is
+        // the C-ABI code; do not confuse with the C++ ErrorCode at -5.)
+        if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
             set_error("declare_parameter", r.raw());
             return default_value;
         }
@@ -428,6 +433,9 @@ class ComponentNode {
         using Elem = typename V::value_type;
         Result r = params_.template declare_parameter<Elem, NROS_PARAM_SEQ_DEFAULT_CAP>(
             name, default_value);
+        if (!r.ok() && r.raw() == NROS_RET_ALREADY_EXISTS) {
+            r = Result(0); // launch-seeded — adopt the existing value below
+        }
         if (!r.ok()) {
             set_error("declare_parameter(vector)", r.raw());
             return default_value;

@@ -44,6 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#229** — C `nros_ret_t` and C++ `nros::ErrorCode` disagree from -5 down
+(`ALREADY_EXISTS` vs `Full`), and `Result` is built straight from C codes —
+error misreporting class, found during the phase-292 ASI FVP bring-up. See
+`0229-c-cpp-ret-code-enums-disagree.md`.
+
 Recently resolved (see [`archived/`](archived/) for the full list): **#228** — one C
 serialize convention (phase-294): services + actions joined the message shape (0/-1 +
 size_t* out-param, 5 emitters); 28 consumers migrated; all five platforms' service/action

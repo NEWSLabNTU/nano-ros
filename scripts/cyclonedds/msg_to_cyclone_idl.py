@@ -52,6 +52,46 @@ DEFAULT_ADAPTER_BIN = Path(
 )
 
 
+
+
+def _guard_typedefs(pkg_name: str, text: str) -> str:
+    """CPP-guard `typedef` lines per (package, typedef-name).
+
+    rosidl emits array typedefs like `typedef double double__36[36];` into
+    EVERY file whose struct uses that array shape; two such files in one
+    package (PoseWithCovariance + TwistWithCovariance) redeclare the name
+    in the same reopened module and idlc 0.10.5 errors ("Declaration
+    'double__36' collides"). Package-scoped so another package's own
+    module still gets its copy.
+    """
+    out = []
+    for line in text.split("\n"):
+        m = re.match(r"^(\s*)typedef\s+\S.*?(\w+)\s*\[[^\]]*\]\s*;\s*$", line)
+        if m:
+            tag = f"NROS_TD_{pkg_name}_{m.group(2)}".upper().replace("-", "_")
+            out.append(f"#ifndef {tag}")
+            out.append(f"#define {tag}")
+            out.append(line)
+            out.append(f"#endif /* {tag} */")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _guard_wrap(pkg_name: str, out_idl: Path, text: str) -> str:
+    """Wrap an emitted IDL in a C-preprocessor include guard.
+
+    idlc runs a CPP pass over `#include` but (0.10.5) does NOT dedupe a
+    diamond include — `Control.idl -> {Lateral,Longitudinal} -> Time.idl`
+    re-declares `Time_` and idlc aborts in `delete_const_expr`
+    ("Declaration 'Time_' collides"). Standard guards fix every diamond
+    (phase-292 W2, ASI wall #8 follow-on).
+    """
+    tag = f"NROS_IDL_GUARD_{pkg_name}_{out_idl.stem}".upper().replace("-", "_")
+    text = _guard_typedefs(pkg_name, text)
+    return f"#ifndef {tag}\n#define {tag}\n{text}#endif /* {tag} */\n"
+
+
 def find_adapter(name: str) -> Path:
     p = DEFAULT_ADAPTER_BIN / name
     if not p.is_file():
@@ -403,7 +443,7 @@ def main() -> int:
             # see `synthesize_action_idl`).
             mangled = synthesize_action_idl(args.pkg_name, iface_path, msg2idl)
             out_idl = args.output_dir / iface_path.with_suffix(".idl").name
-            out_idl.write_text(mangled)
+            out_idl.write_text(_guard_wrap(args.pkg_name, out_idl, mangled))
             out_paths.append(out_idl.resolve())
             continue
 
@@ -438,7 +478,7 @@ def main() -> int:
         mangled = mangle_idl(raw, inject_service_header=inject_header)
 
         out_idl = args.output_dir / iface_path.with_suffix(".idl").name
-        out_idl.write_text(mangled)
+        out_idl.write_text(_guard_wrap(args.pkg_name, out_idl, mangled))
         out_paths.append(out_idl.resolve())
 
     for p in out_paths:

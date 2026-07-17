@@ -137,6 +137,36 @@ named reference consumer), 287 (ament verbs on zephyr).
     (PC-alignment fault to 0x13 from picolibc `cbputc`) instead of
     halting cleanly — only reproducible while a boot-failure
     diagnostic is being printed.
+  - [x] Wall #7 (2026-07-17, FIXED): `NrosRmwCycloneddsTypeSupport.cmake`'s
+    `find_program(msg_to_cyclone_idl.py)` knew only the install layout —
+    Zephyr-module/source-tree consumers silently lost descriptor codegen
+    ("msg_to_cyclone_idl.py not found" STATUS at configure) and every
+    runtime `find_descriptor()` failed. Added the source-tree hint
+    (`<repo>/scripts/cyclonedds/`).
+  - [x] Wall #8 (2026-07-17, FIXED): the Zephyr-module
+    `nros_generate_interfaces()` (zephyr/cmake/) never emitted Cyclone
+    topic descriptors at all — only the canonical workspace generator
+    (phase-171.C.runtime) did. Ported the branch: per-package idlc
+    descriptor+register static lib, whole-archived into `app` via ONE
+    comma-joined `-Wl` link ITEM by literal archive path (link OPTIONS on
+    the static `app` lib never reach the final zephyr link; a
+    `$<TARGET_FILE:>` genex inside a link-libraries string trips
+    `$<LINK_ONLY>`'s comma parsing; separate flag tokens hit the #192
+    de-dup). Plus two idlc-0.10.5 crash classes fixed in the converter
+    (`msg_to_cyclone_idl.py`): CPP include guards per emitted IDL (diamond
+    include re-declares `Time_` → `delete_const_expr` abort) and
+    per-package guards around rosidl array typedefs (`double__36` emitted
+    by two files of one module → "collides with earlier declaration").
+  - [x] 2026-07-17 — **ASI controller BOOTS AND SPINS on the FVP** (single
+    core): participant + launch-seeded params + 5 subscriptions +
+    publishers + timers all up; steady "Control is skipped since input
+    data is not ready" idle ticks; SPDP streaming on tap0 (500+ frames).
+    Consumer-side knobs that made it fit: `NROS_MAX_PARAMETERS=256`,
+    `NROS_EXECUTOR_MAX_CBS=16`, `NROS_SUBSCRIPTION_BUFFER_SIZE=16384`
+    (ASI build.sh), stub `package.xml` per vendored msg package
+    (rosidl_adapter requirement). Remaining runtime gaps: multicast join
+    error -1 (IGMP; unicast-only fallback engages — peers must SPDP to
+    us), wall #6 (SMP-4), and the compose-bridge delivery check.
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.

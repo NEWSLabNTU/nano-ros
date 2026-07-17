@@ -519,4 +519,71 @@ targets = [\"${NROS_RUST_TARGET}\"]
       ${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c
     )
   endif()
+
+  # ---- phase-292 W2 (ASI wall #8) — Cyclone topic descriptors -------------
+  # The canonical workspace generator (cmake/NanoRosGenerateInterfaces.cmake,
+  # phase-171.C.runtime) emits + whole-archives an idlc descriptor/register
+  # lib per package; this Zephyr-module variant never did, so every
+  # find_descriptor() on a module-generated type failed at runtime
+  # (create_subscription/-publisher → TransportError). Same generation, app
+  # target model: descriptors compile into a per-package static lib linked
+  # whole-archive into `app` (comma-joined single -Wl token — the #192 CMake
+  # de-dup hazard applies here identically).
+  if(CONFIG_NROS_RMW_CYCLONEDDS AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
+    set(_cyc_ifaces "")
+    foreach(_if ${_interface_files})
+      if(_if MATCHES "\\.(msg|srv|action)$")
+        file(READ "${_if}" _if_body)
+        if(_if_body MATCHES "(\n|^)[ \t]*wstring[ \t<\\[]")
+          message(STATUS
+            "nros_generate_interfaces(${target}): skipping cyclonedds "
+            "descriptor for ${_if} — `wstring` is unsupported by the "
+            "bundled Cyclone DDS 0.10.5 idlc.")
+        else()
+          list(APPEND _cyc_ifaces "${_if}")
+        endif()
+      endif()
+    endforeach()
+    if(_cyc_ifaces)
+      list(GET _cyc_ifaces 0 _cyc_first)
+      get_filename_component(_cyc_ifdir "${_cyc_first}" DIRECTORY)
+      get_filename_component(_cyc_pkgdir "${_cyc_ifdir}" DIRECTORY)
+      set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
+      set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
+      nros_rmw_cyclonedds_generate_from_msg(_cyc_sources
+        PKG_NAME   "${target}"
+        PKG_DIR    "${_cyc_pkgdir}"
+        INTERFACES ${_cyc_ifaces}
+        INCLUDE_ROOT "${_cyc_idl_root}"
+        GEN_ROOT     "${_cyc_gen_root}"
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}")
+      if(_cyc_sources)
+        add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
+        target_include_directories(${target}__cyclonedds_ts PRIVATE
+          "${_cyc_gen_root}")
+        # Zephyr flags/includes (dds/dds.h via the module's cyclone dirs).
+        target_link_libraries(${target}__cyclonedds_ts PRIVATE zephyr_interface)
+        # Cross-package IDL include ordering (deps populate the shared root
+        # before this package's idlc runs).
+        foreach(_dep ${_ARG_DEPENDENCIES})
+          if(TARGET ${_dep}__cyclonedds_ts)
+            add_dependencies(${target}__cyclonedds_ts ${_dep}__cyclonedds_ts)
+          endif()
+        endforeach()
+        # Same idiom as the FFI staticlib above: ONE comma-joined `-Wl`
+        # link ITEM by literal archive path. Link OPTIONS on the static
+        # `app` lib never reach the final zephyr link; a genex inside a
+        # link-libraries string trips $<LINK_ONLY>'s comma parsing; and
+        # the #192 de-dup hazard forbids separate flag tokens.
+        set(_cyc_ts_archive
+          "${CMAKE_CURRENT_BINARY_DIR}/lib${target}__cyclonedds_ts.a")
+        set_target_properties(${target}__cyclonedds_ts PROPERTIES
+          ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+          OUTPUT_NAME "${target}__cyclonedds_ts")
+        target_link_libraries(app PRIVATE
+          "-Wl,--whole-archive,${_cyc_ts_archive},--no-whole-archive")
+        add_dependencies(app ${target}__cyclonedds_ts)
+      endif()
+    endif()
+  endif()
 endfunction()
