@@ -6,7 +6,7 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: planned.
+Status: W1 landed (2026-07-17); W2-W4 planned.
 
 ## Waves
 
@@ -27,6 +27,11 @@ Status: planned.
   shape: tiers + bindings + one `mcu:*` deploy entry) produces an
   `nros-plan.json` byte-equivalent to the same config authored in
   `system.toml`, and `nros check` passes on it.
+- Landed: `orchestration/model_ingest.rs` (load + tier conversion with
+  core/deadline hoisting + fail-loud bindings), `--model` on
+  codegen-system, byte-equivalence + fail-loud integration tests, manual
+  PLAN-IDENTICAL validation on ws-realtime-rust. Note: model `Deploy`
+  lacks domain/locator fields — schema follow-up filed with W4.
 
 ### W2 — widen the tier pipe (kill the lossy narrowing)
 

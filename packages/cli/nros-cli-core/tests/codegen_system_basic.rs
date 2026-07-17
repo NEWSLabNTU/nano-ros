@@ -137,6 +137,7 @@ fn args(ws: &Path, out: &Path) -> Args {
         file: None,
         exec: None,
         rmw: None,
+        model: None,
     }
 }
 
@@ -311,5 +312,114 @@ fn codegen_system_picks_deploy_target_overlay() {
     assert!(
         launch_file.ends_with("system.launch.xml"),
         "expected default launch; got {launch_file}"
+    );
+}
+
+/// RFC-0052 / phase-296 W1 — a SystemModel-driven bake produces a
+/// byte-identical `nros-plan.json` to the same execution config authored
+/// in `system.toml` ([tiers.*] + group_tiers). Same resolver by
+/// construction; this pins the conversion seam.
+#[test]
+fn codegen_system_model_mode_plan_matches_system_toml() {
+    let ws = temp_root("model-eq");
+    write_fixture(&ws);
+    // Author tiers + bindings in system.toml (the baseline).
+    let system_toml = ws.join("demo_bringup/system.toml");
+    let mut s = fs::read_to_string(&system_toml).unwrap();
+    s = s.replace(
+        "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"",
+        "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"\ngroup_tiers = { ctrl = \"high\" }",
+    );
+    s.push_str(
+        r#"
+[tiers.high]
+spin_period_us = 1000
+[tiers.high.posix]
+priority = 80
+sched_class = "SCHED_FIFO"
+[tiers.high.freertos]
+priority = 5
+stack_bytes = 32768
+"#,
+    );
+    fs::write(&system_toml, &s).unwrap();
+
+    let out_toml = temp_root("model-eq-out-toml");
+    codegen_system::run(args(&ws, &out_toml)).expect("toml-mode bake");
+
+    // The equivalent model: same tiers, binding expressed the model way.
+    let model_path = ws.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure: {}
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+        sched_class: SCHED_FIFO
+      freertos:
+        priority: 5
+        stack_bytes: 32768
+  bindings:
+    /demo/talker/ctrl: high
+"#,
+    )
+    .unwrap();
+    // Strip the authored tiers so ONLY the model supplies them (proves the
+    // model replaces, not merges).
+    let stripped = fs::read_to_string(&system_toml)
+        .unwrap()
+        .split("[tiers.high]")
+        .next()
+        .unwrap()
+        .to_string();
+    fs::write(&system_toml, stripped).unwrap();
+
+    let out_model = temp_root("model-eq-out-model");
+    let mut a = args(&ws, &out_model);
+    a.model = Some(model_path);
+    codegen_system::run(a).expect("model-mode bake");
+
+    let plan_toml = fs::read_to_string(out_toml.join("nros-system/nros-plan.json")).unwrap();
+    let plan_model = fs::read_to_string(out_model.join("nros-system/nros-plan.json")).unwrap();
+    assert_eq!(
+        plan_toml, plan_model,
+        "model-driven plan must be byte-identical to the system.toml-authored plan"
+    );
+}
+
+/// Fail-loud: a model binding naming a component the bringup doesn't have
+/// refuses the bake (never a silent no-op).
+#[test]
+fn codegen_system_model_mode_unknown_binding_fails() {
+    let ws = temp_root("model-badbind");
+    write_fixture(&ws);
+    let model_path = ws.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure: {}
+execution:
+  tiers:
+    rt:
+      posix:
+        priority: 20
+  bindings:
+    /ghost_node: rt
+"#,
+    )
+    .unwrap();
+    let out = temp_root("model-badbind-out");
+    let mut a = args(&ws, &out);
+    a.model = Some(model_path);
+    let err = codegen_system::run(a).unwrap_err().to_string();
+    assert!(
+        err.contains("no component named 'ghost_node'") && err.contains("/ghost_node"),
+        "got: {err}"
     );
 }

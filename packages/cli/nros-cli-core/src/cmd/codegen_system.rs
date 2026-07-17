@@ -94,6 +94,14 @@ pub struct Args {
     #[arg(long = "exec")]
     pub exec: Option<String>,
 
+    /// RFC-0052 / phase-296 W1 — consume a SystemModel (play_launch
+    /// `resolve` output). The model's execution layer REPLACES the
+    /// bringup's `[tiers.*]` + `[[node_overrides]]` (same resolver, same
+    /// plan output as the equivalent `system.toml`). Structure/contract
+    /// layers: later waves.
+    #[arg(long = "model", value_name = "system_model.yaml")]
+    pub model: Option<PathBuf>,
+
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
     /// (`--rmw` > `[deploy.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
     /// the `NROS_SYSTEM_RMW*` define for this bake regardless of `system.toml`.
@@ -130,6 +138,32 @@ pub fn run(args: Args) -> Result<()> {
     // the single `default` tier (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
     let target_rtos = derive_target_rtos(&bringup.system, args.target.as_deref());
+    // RFC-0052 W1 — a SystemModel's execution layer replaces the authored
+    // tier tables before resolution (checked artifact wins; fail-loud on
+    // bindings that name unknown components/groups/tiers). `bringup` is a
+    // borrow into `cfg`; model mode clones the entry so the substitution
+    // stays local to this bake.
+    let bringup_owned;
+    let bringup = if let Some(model_path) = &args.model {
+        let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        let mut owned = bringup.clone();
+        crate::orchestration::model_ingest::apply_model_execution(
+            &mut owned.system,
+            &model,
+            &target_rtos,
+            &callback_groups,
+        )?;
+        eprintln!(
+            "codegen-system: execution layer from SystemModel {} ({} tier(s), {} binding(s))",
+            model_path.display(),
+            model.execution.tiers.len(),
+            model.execution.bindings.len(),
+        );
+        bringup_owned = owned;
+        &bringup_owned
+    } else {
+        bringup
+    };
     let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)
         .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
 
@@ -1231,6 +1265,7 @@ launch = "system.launch.xml"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs");
 
@@ -1468,6 +1503,7 @@ name = "talker"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs");
 
@@ -1524,6 +1560,7 @@ name = "talker"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         };
         run(args()).expect("first run");
 
@@ -1558,6 +1595,7 @@ name = "talker"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs");
 
@@ -1595,6 +1633,7 @@ name = "talker"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs");
 
@@ -1715,6 +1754,7 @@ locator = "tcp/127.0.0.1:7447"
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs for self-bringup");
 
@@ -1794,6 +1834,7 @@ domain_id = 3
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs via workspace pointer");
 
@@ -1820,6 +1861,7 @@ domain_id = 3
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen runs");
 
@@ -1910,6 +1952,7 @@ domain_id = 5
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("codegen-system resolves dir basename → cargo pkg name via alias");
 
@@ -1976,6 +2019,7 @@ domain_id = 11
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect("dir-identity fallback resolves arbitrary cargo name");
         let header = fs::read_to_string(out.join("nros-system/system_config.h")).unwrap();
@@ -2006,6 +2050,7 @@ domain_id = 11
             file: None,
             exec: None,
             rmw: None,
+            model: None,
         })
         .expect_err("expected resolver to fail");
         let msg = format!("{err:#}");

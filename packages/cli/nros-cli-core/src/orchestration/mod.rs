@@ -14,6 +14,7 @@ pub mod config;
 pub mod launch_synth;
 pub mod manifest;
 pub mod metadata_build;
+pub mod model_ingest;
 pub mod names;
 pub mod nros_config;
 pub mod params;

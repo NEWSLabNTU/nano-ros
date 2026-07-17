@@ -43,6 +43,9 @@ cargo_metadata = "0.18"
 # `nros` a portable libc-only binary; the python-bearing parser is distributed
 # separately (`pip install play-launch-parser` / its own binary).
 ros-launch-manifest-types = { path = "../third-party/ros-launch-manifest/types" }
+# RFC-0052 / phase-296 W1 — SystemModel ingestion (shared schema, RFC-0050)
+ros-launch-manifest-model = { path = "../third-party/ros-launch-manifest/model" }
+ros-launch-manifest-sched = { path = "../third-party/ros-launch-manifest/sched" }
 
 # Phase 228.E — shared per-tier orchestration schema + resolver (RFC-0015),
 # from the runtime workspace at `packages/core/`. Same crate the
