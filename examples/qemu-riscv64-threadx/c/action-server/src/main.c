@@ -124,10 +124,11 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
 
         // Publish feedback using generated serialize
         uint8_t fb_buf[512];
-        int32_t fb_len =
-            example_interfaces_action_fibonacci_feedback_serialize(&fb, fb_buf, sizeof(fb_buf));
-        if (fb_len > 0) {
-            ret = nros_action_publish_feedback(server, goal, fb_buf, (size_t)fb_len);
+        size_t fb_len = 0;
+        int32_t fb_len_rc = example_interfaces_action_fibonacci_feedback_serialize(
+            &fb, fb_buf, sizeof(fb_buf), &fb_len);
+        if (fb_len_rc == 0) {
+            ret = nros_action_publish_feedback(server, goal, fb_buf, fb_len);
             if (ret != NROS_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
@@ -143,10 +144,11 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     memcpy(result.sequence.data, fb.sequence.data, fb.sequence.size * sizeof(int32_t));
 
     uint8_t result_buf[512];
-    int32_t result_len = example_interfaces_action_fibonacci_result_serialize(&result, result_buf,
-                                                                              sizeof(result_buf));
-    if (result_len > 0) {
-        ret = nros_action_succeed(server, goal, result_buf, (size_t)result_len);
+    size_t result_len = 0;
+    int32_t result_len_rc = example_interfaces_action_fibonacci_result_serialize(
+        &result, result_buf, sizeof(result_buf), &result_len);
+    if (result_len_rc == 0) {
+        ret = nros_action_succeed(server, goal, result_buf, result_len);
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Failed to send result: %d\n", ret);
         } else {

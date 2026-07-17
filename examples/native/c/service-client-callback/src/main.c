@@ -131,13 +131,14 @@ int nros_app_main(int argc, char** argv) {
     request.b = b;
 
     uint8_t req_buf[256];
-    int32_t req_len =
-        example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf, sizeof(req_buf));
-    if (req_len < 0) {
+    size_t req_len = 0;
+    int32_t req_len_rc = example_interfaces_srv_add_two_ints_request_serialize(
+        &request, req_buf, sizeof(req_buf), &req_len);
+    if (req_len_rc != 0) {
         fprintf(stderr, "Failed to serialize request\n");
         exit_code = 1;
     } else {
-        nros_ret_t ret = nros_client_send_request_async(&app.client, req_buf, (size_t)req_len);
+        nros_ret_t ret = nros_client_send_request_async(&app.client, req_buf, req_len);
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Async send failed with error %d\n", ret);
             exit_code = 1;

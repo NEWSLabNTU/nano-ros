@@ -43,8 +43,9 @@ typedef struct {{ goal_struct_name }} {
 void {{ goal_struct_name }}_init({{ goal_struct_name }}* msg);
 
 /// Serialize a {{ action_name }} goal to CDR format
-/// Returns the number of bytes written, or -1 on error
-int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint8_t* buffer, size_t buffer_size);
+/// Returns 0 on success, -1 on error. On success, *serialized_size contains
+/// bytes written (issue #228 — unified with the message convention).
+int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
 
 /// Deserialize a {{ action_name }} goal from CDR format
 /// Returns 0 on success, -1 on error
@@ -73,8 +74,9 @@ typedef struct {{ result_struct_name }} {
 void {{ result_struct_name }}_init({{ result_struct_name }}* msg);
 
 /// Serialize a {{ action_name }} result to CDR format
-/// Returns the number of bytes written, or -1 on error
-int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, uint8_t* buffer, size_t buffer_size);
+/// Returns 0 on success, -1 on error. On success, *serialized_size contains
+/// bytes written (issue #228 — unified with the message convention).
+int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
 
 /// Deserialize a {{ action_name }} result from CDR format
 /// Returns 0 on success, -1 on error
@@ -103,8 +105,9 @@ typedef struct {{ feedback_struct_name }} {
 void {{ feedback_struct_name }}_init({{ feedback_struct_name }}* msg);
 
 /// Serialize a {{ action_name }} feedback to CDR format
-/// Returns the number of bytes written, or -1 on error
-int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* msg, uint8_t* buffer, size_t buffer_size);
+/// Returns 0 on success, -1 on error. On success, *serialized_size contains
+/// bytes written (issue #228 — unified with the message convention).
+int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
 
 /// Deserialize a {{ action_name }} feedback from CDR format
 /// Returns 0 on success, -1 on error

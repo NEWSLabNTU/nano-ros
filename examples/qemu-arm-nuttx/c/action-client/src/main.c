@@ -159,9 +159,10 @@ int nros_app_main(int argc, char** argv) {
     goal.order = 10;
 
     uint8_t goal_buf[64];
-    int32_t goal_len =
-        example_interfaces_action_fibonacci_goal_serialize(&goal, goal_buf, sizeof(goal_buf));
-    if (goal_len < 0) {
+    size_t goal_len = 0;
+    int32_t goal_len_rc = example_interfaces_action_fibonacci_goal_serialize(
+        &goal, goal_buf, sizeof(goal_buf), &goal_len);
+    if (goal_len_rc != 0) {
         fprintf(stderr, "Failed to serialize goal\n");
         goto cleanup;
     }
@@ -182,7 +183,7 @@ int nros_app_main(int argc, char** argv) {
             nros_executor_spin_some(&app.executor, 1000000000ull);
         }
         printf("\nSending goal\n");
-        ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, (size_t)goal_len,
+        ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len,
                                     &goal_uuid);
         if (ret != NROS_RET_TIMEOUT) {
             break;

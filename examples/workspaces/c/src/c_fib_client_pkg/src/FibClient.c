@@ -79,9 +79,10 @@ static void send_goal(fib_client_t* self) {
     example_interfaces_action_fibonacci_goal_init(&goal);
     goal.order = 10;
     uint8_t buf[64];
-    int32_t n = example_interfaces_action_fibonacci_goal_serialize(&goal, buf, sizeof(buf));
-    if (n > 0 && nros_cpp_action_client_send_goal_async(self->client, buf, (size_t)n,
-                                                        &self->goal_id) == 0) {
+    size_t n = 0;
+    int32_t n_rc = example_interfaces_action_fibonacci_goal_serialize(&goal, buf, sizeof(buf), &n);
+    if (n_rc == 0 &&
+        nros_cpp_action_client_send_goal_async(self->client, buf, n, &self->goal_id) == 0) {
         self->phase = FIB_GOAL_SENT;
         self->waits = 0;
     }
@@ -94,28 +95,28 @@ static void on_tick(void* ctx) {
     nros_cpp_action_client_poll(self->client);
 
     switch (self->phase) {
-        case FIB_IDLE:
-            send_goal(self);
-            break;
-        case FIB_GOAL_SENT:
-            if (++self->waits > 10) {
-                self->phase = FIB_IDLE; /* no goal response — resend */
-            }
-            break;
-        case FIB_NEED_RESULT:
-            if (nros_cpp_action_client_get_result_async(self->client, &self->goal_id) == 0) {
-                self->phase = FIB_AWAIT_RESULT;
-                self->waits = 0;
-            }
-            break;
-        case FIB_AWAIT_RESULT:
-            if (++self->waits > 40) {
-                self->phase = FIB_NEED_RESULT; /* no result — re-request */
-            }
-            break;
-        case FIB_DONE:
-        default:
-            break;
+    case FIB_IDLE:
+        send_goal(self);
+        break;
+    case FIB_GOAL_SENT:
+        if (++self->waits > 10) {
+            self->phase = FIB_IDLE; /* no goal response — resend */
+        }
+        break;
+    case FIB_NEED_RESULT:
+        if (nros_cpp_action_client_get_result_async(self->client, &self->goal_id) == 0) {
+            self->phase = FIB_AWAIT_RESULT;
+            self->waits = 0;
+        }
+        break;
+    case FIB_AWAIT_RESULT:
+        if (++self->waits > 40) {
+            self->phase = FIB_NEED_RESULT; /* no result — re-request */
+        }
+        break;
+    case FIB_DONE:
+    default:
+        break;
     }
 }
 

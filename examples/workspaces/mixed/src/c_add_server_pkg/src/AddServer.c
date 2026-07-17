@@ -45,12 +45,13 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
     printf("[c_add_server_pkg] %lld + %lld = %lld\n", (long long)req.a, (long long)req.b,
            (long long)resp.sum);
 
-    int32_t len =
-        example_interfaces_srv_add_two_ints_response_serialize(&resp, resp_data, resp_cap);
-    if (len < 0) {
+    size_t len = 0;
+    int32_t len_rc =
+        example_interfaces_srv_add_two_ints_response_serialize(&resp, resp_data, resp_cap, &len);
+    if (len_rc != 0) {
         return false;
     }
-    *resp_len = (size_t)len;
+    *resp_len = len;
     return true;
 }
 

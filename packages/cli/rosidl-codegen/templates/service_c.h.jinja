@@ -43,8 +43,9 @@ typedef struct {{ request_struct_name }} {
 void {{ request_struct_name }}_init({{ request_struct_name }}* msg);
 
 /// Serialize a {{ service_name }} request to CDR format
-/// Returns the number of bytes written, or -1 on error
-int32_t {{ request_struct_name }}_serialize(const {{ request_struct_name }}* msg, uint8_t* buffer, size_t buffer_size);
+/// Returns 0 on success, -1 on error. On success, *serialized_size contains
+/// bytes written (issue #228 — unified with the message convention).
+int32_t {{ request_struct_name }}_serialize(const {{ request_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
 
 /// Deserialize a {{ service_name }} request from CDR format
 /// Returns 0 on success, -1 on error
@@ -73,8 +74,9 @@ typedef struct {{ response_struct_name }} {
 void {{ response_struct_name }}_init({{ response_struct_name }}* msg);
 
 /// Serialize a {{ service_name }} response to CDR format
-/// Returns the number of bytes written, or -1 on error
-int32_t {{ response_struct_name }}_serialize(const {{ response_struct_name }}* msg, uint8_t* buffer, size_t buffer_size);
+/// Returns 0 on success, -1 on error. On success, *serialized_size contains
+/// bytes written (issue #228 — unified with the message convention).
+int32_t {{ response_struct_name }}_serialize(const {{ response_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
 
 /// Deserialize a {{ service_name }} response from CDR format
 /// Returns 0 on success, -1 on error

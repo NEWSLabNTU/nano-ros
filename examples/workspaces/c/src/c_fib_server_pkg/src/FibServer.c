@@ -27,10 +27,10 @@
 
 typedef struct {
     _Alignas(8) uint8_t server[NROS_C_ACTION_SERVER_STORAGE_SIZE];
-    void* executor;        /* opaque executor handle (needed for complete_goal) */
-    uint8_t goal_id[16];   /* the accepted goal's UUID */
-    int32_t order;         /* the requested Fibonacci order */
-    bool has_pending;      /* a goal is accepted + awaiting its tick-driven result */
+    void* executor;      /* opaque executor handle (needed for complete_goal) */
+    uint8_t goal_id[16]; /* the accepted goal's UUID */
+    int32_t order;       /* the requested Fibonacci order */
+    bool has_pending;    /* a goal is accepted + awaiting its tick-driven result */
     int goal_count;
 } fib_server_t;
 
@@ -86,12 +86,14 @@ static void on_tick(void* ctx) {
     }
 
     uint8_t buf[512];
-    int32_t n = example_interfaces_action_fibonacci_result_serialize(&result, buf, sizeof(buf));
-    if (n < 0) {
+    size_t n = 0;
+    int32_t n_rc =
+        example_interfaces_action_fibonacci_result_serialize(&result, buf, sizeof(buf), &n);
+    if (n_rc != 0) {
         return;
     }
     if (nros_cpp_action_server_complete_goal(self->server, self->executor, &self->goal_id, buf,
-                                             (size_t)n) == 0) {
+                                             n) == 0) {
         self->has_pending = false;
         self->goal_count++;
         printf("[c_fib_server_pkg] completed last=%d\n",
@@ -120,8 +122,8 @@ static nros_ret_t fib_server_configure(const nros_cpp_node_t* node, void* execut
     if (rc != 0) {
         return rc;
     }
-    rc = nros_cpp_action_server_set_callbacks(self->server, fib_server_on_goal, fib_server_on_cancel,
-                                              self);
+    rc = nros_cpp_action_server_set_callbacks(self->server, fib_server_on_goal,
+                                              fib_server_on_cancel, self);
     if (rc != 0) {
         return rc;
     }

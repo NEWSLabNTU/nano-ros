@@ -76,14 +76,15 @@ static bool service_callback(const uint8_t* request_data, size_t request_len,
     printf("Incoming request\na: %lld b: %lld\n", (long long)request.a, (long long)request.b);
 
     // Serialize response using generated function
-    int32_t len = example_interfaces_srv_add_two_ints_response_serialize(&response, response_data,
-                                                                         response_capacity);
-    if (len < 0) {
+    size_t len = 0;
+    int32_t len_rc = example_interfaces_srv_add_two_ints_response_serialize(
+        &response, response_data, response_capacity, &len);
+    if (len_rc != 0) {
         fprintf(stderr, "Failed to serialize response\n");
         return false;
     }
 
-    *response_len = (size_t)len;
+    *response_len = len;
     return true;
 }
 

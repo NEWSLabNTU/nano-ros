@@ -27,7 +27,7 @@ void {{ goal_struct_name }}_init({{ goal_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ goal_struct_name }}));
 }
 
-int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint8_t* buffer, size_t buffer_size) {
+int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
     uint8_t* ptr = buffer;
@@ -74,7 +74,10 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
 {%- endfor %}
 {%- endif %}
 
-    return (int32_t)(ptr - buffer);
+    if (serialized_size != NULL) {
+        *serialized_size = (size_t)(ptr - buffer);
+    }
+    return 0;
 }
 
 int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const uint8_t* buffer, size_t buffer_size) {
@@ -139,7 +142,7 @@ void {{ result_struct_name }}_init({{ result_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ result_struct_name }}));
 }
 
-int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, uint8_t* buffer, size_t buffer_size) {
+int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
     uint8_t* ptr = buffer;
@@ -185,7 +188,10 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
 {%- endfor %}
 {%- endif %}
 
-    return (int32_t)(ptr - buffer);
+    if (serialized_size != NULL) {
+        *serialized_size = (size_t)(ptr - buffer);
+    }
+    return 0;
 }
 
 int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, const uint8_t* buffer, size_t buffer_size) {
@@ -250,7 +256,7 @@ void {{ feedback_struct_name }}_init({{ feedback_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ feedback_struct_name }}));
 }
 
-int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* msg, uint8_t* buffer, size_t buffer_size) {
+int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
     uint8_t* ptr = buffer;
@@ -296,7 +302,10 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
 {%- endfor %}
 {%- endif %}
 
-    return (int32_t)(ptr - buffer);
+    if (serialized_size != NULL) {
+        *serialized_size = (size_t)(ptr - buffer);
+    }
+    return 0;
 }
 
 int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, const uint8_t* buffer, size_t buffer_size) {

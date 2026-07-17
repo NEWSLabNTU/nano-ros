@@ -33,8 +33,10 @@ static void send_next(add_client_t* self) {
     req.a = self->a;
     req.b = 1;
     uint8_t buf[64];
-    int32_t n = example_interfaces_srv_add_two_ints_request_serialize(&req, buf, sizeof(buf));
-    if (n > 0 && nros_cpp_service_client_send_request(self->client, buf, (size_t)n) == 0) {
+    size_t n = 0;
+    int32_t n_rc =
+        example_interfaces_srv_add_two_ints_request_serialize(&req, buf, sizeof(buf), &n);
+    if (n_rc == 0 && nros_cpp_service_client_send_request(self->client, buf, n) == 0) {
         self->in_flight = true;
         self->waits = 0;
     }
