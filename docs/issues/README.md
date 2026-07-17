@@ -49,6 +49,20 @@ Recently resolved: **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
 
+**#235** — threadx-riscv64 C++ cyclone pubsub has no runtime lane: the riscv64 example set
+builds C + rust cyclone two-QEMU (#214) but no C++ variant; needs a cpp cyclone build config +
+a two-QEMU lane. Carved from #233. See `0235-threadx-riscv64-cpp-cyclone-pubsub-lane.md`.
+
+**#234** — native rust cyclone action fails at creation (`ActionCreationFailed`): the
+typed-action-descriptor path C/C++'s descriptors.cpp fills has no pure-rust equivalent (#67
+marker covers pub/sub+service, not action types). Carved from #233. See
+`0234-rust-cyclone-action-creation-fails.md`.
+
+**#233** — RMW runtime-coverage backlog: the phase-295 matrix makes the cyclone/xrce-on-RTOS
+debt visible as BuildOnly cells; the fixture-wireable ones are done (native rust cyclone service,
+threadx-linux C cyclone service+action, threadx-linux C++ cyclone pubsub), the rest carved to
+#234/#235. See `0233-rmw-runtime-coverage-backlog.md`.
+
 **#232** — no FVP runtime lane: the fvp-aemv8r recipe is a build smoke, so
 cyclone-on-Zephyr-hardware regressions (phase-292 walls #4/#5/#8/#9) shipped
 invisible until the ASI consumer hit them. Wanted: a model-gated

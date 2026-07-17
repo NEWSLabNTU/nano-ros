@@ -255,8 +255,6 @@ use Workload::*;
 /// worthy cells (native rust cyclone service/action; threadx C cyclone
 /// service/action; threadx C++ cyclone pubsub) are tracked in issue #233
 /// and stay BuildOnly until wired; the rest are firm CarveOuts.
-const CYCLONE_RTOS_TODO: &str =
-    "cyclone links here; no runtime lane yet — tracked in issue #233 (RMW coverage backlog)";
 const CYCLONE_RUST_RTOS_CARVE: &str =
     "cyclone-on-RTOS is C/C++ only; pure-rust image has no cyclone backend symbol (#163 class)";
 const XRCE_RTOS_CARVE: &str =
