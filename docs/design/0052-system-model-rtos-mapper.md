@@ -1,0 +1,168 @@
+---
+rfc: 0052
+title: "SystemModel → RTOS primitives — the execution/contract mapper for embedded consumption"
+status: Draft
+since: 2026-07
+last-reviewed: 2026-07
+implements-tracked-by: [phase-296]
+supersedes: []
+superseded-by: null
+---
+
+# RFC-0052 — SystemModel → RTOS primitives
+
+## Summary
+
+RFC-0050 defined the SystemModel; play_launch phase 43 made it real (the
+Linux runtime consumes it end-to-end). This RFC defines the **nano-ros
+half**: how the model's execution layer (tiers, bindings, deploy) and
+contract layer (rates, ages, budgets, QoS) map onto the RTOS primitives a
+baked image actually has — task priorities, stacks, core pinning,
+preemption thresholds, executor scheduling contexts, and on-target
+monitors. One mapping table, applied uniformly across POSIX, FreeRTOS,
+Zephyr, ThreadX, and NuttX, landing on the seams that already exist
+(RFC-0015 tiers, RFC-0016 priority normalization, RFC-0047 sched-context
+binding, RFC-0045 boot config, RFC-0048 CMake verbs).
+
+## Baseline facts (2026-07 exploration)
+
+- `system.toml` tiers are resolved by `nros-orchestration-ir::resolve_tiers`
+  (the CLI/`nros::main!` shared SSoT) and narrowed to the runtime
+  `TierSpec { name, groups, priority, stack_bytes, spin_period_us }`
+  (`packages/core/nros-platform/src/board/tier.rs`).
+- **Lossy narrowing**: `core`, `preempt_threshold`, `sched_class`, `class`,
+  `period_us`, `budget_us`, `deadline_us`, `deadline_policy` die at the
+  codegen boundary (`codegen_system.rs::PlanTierDoc`); FreeRTOS's
+  `emit_cpp` additionally drops `stack_bytes` (documented in
+  `freertos_run_tiers.c`).
+- The executor already HAS sporadic-budget ticking and time-triggered
+  windows (`sched_context.rs::tick`, `tt_window_offset_us`) — but only via
+  the programmatic API, never fed from tier tables.
+- There is **no message-age concept** in `nros-node`: the take path
+  (`handles.rs::try_recv`) never extracts `header.stamp`; no rate/jitter
+  accounting exists.
+- The vendored `ros-launch-manifest` `model`/`sched` crates define
+  `TierDef`/`TierPlatformSpec` that duplicate `nros-orchestration-ir`'s
+  `TierDef` — two hand-mirrored tier schemas (the FFI-mirror-drift class,
+  cross-repo).
+
+## Model ingestion (build side)
+
+`nros codegen-system` gains a model mode: `--model system_model.yaml`
+(mutually exclusive with the launch/system.toml pair). Per RFC-0050 the
+model is checked-by-construction; ingestion is selection + mapping, not
+re-validation:
+
+1. **Slice selection**: `execution.deploy` picks this image's nodes —
+   entries with `target: mcu:<board>` matching the build's board (from
+   `nano_ros_use_board` / `package.xml <export><nano_ros board=…>`). A
+   model with no `deploy` section and exactly one candidate node set is
+   accepted with a note; ambiguity is a hard error.
+2. **Tiers + bindings** → `ResolvedTierTable` (existing tier_resolver
+   path) → `nros-plan.json` + the `run_tiers` const table. Bindings keys
+   are node FQNs or `FQN/callback_group` — exactly RFC-0047's binding
+   granularity.
+3. **Boot config** → RFC-0045 baked rung: domain/locator from
+   `execution.deploy[node]` (falling back to `meta`-level system config),
+   emitted into `system_config.h` like today's `codegen_system` output.
+4. **Wiring** → topic names for the node's endpoints (layer 1), replacing
+   what the launch XML carries today.
+5. **Contracts** → a generated per-node `const` monitor table (see
+   "On-target monitors"), plus QoS onto endpoint config.
+
+The vendored `model` crate is the parser — no schema re-declaration in
+nano-ros. **Schema unification**: `nros-orchestration-ir::TierDef` gains
+`From<ros_launch_manifest_sched::TierDef>` (explicit conversion, not type
+replacement — orchestration-ir must stay `no_std`-friendly for the
+proc-macro; drift is caught by a round-trip test over every field, the
+FFI-mirror lesson applied).
+
+## The mapper
+
+### Execution layer → task/scheduling primitives
+
+| Model field | POSIX | FreeRTOS | Zephyr | ThreadX | NuttX |
+|---|---|---|---|---|---|
+| `priority` (+ `sched_class`) | `pthread_setschedparam` SCHED_FIFO/RR (upgrade from today's advisory-only) | `xTaskCreate` priority (RFC-0016 normalize) | `k_thread` priority (negative coop admitted) | `tx_thread_create` priority | pthread SCHED_FIFO priority |
+| `stack_bytes` | `pthread_attr_setstacksize` | task stack words (**fix the emit_cpp drop**) | `K_THREAD_STACK` size | thread stack size | `pthread_attr_setstacksize` |
+| `core` | `pthread_setaffinity_np` | `vTaskCoreAffinitySet` (SMP builds; ignore+note on UP) | `k_thread_cpu_pin` | SMP core exclusion mask | `pthread_attr_setaffinity` |
+| `preempt_threshold` | reject (validate-time error) | reject | reject | `tx_thread_preemption_change` | reject |
+| `spin_period_us` | tier spin loop (exists) | exists | exists | exists | exists |
+
+Rejection semantics: a platform-inapplicable field in the SELECTED
+target's sub-table is a **bake-time error** (same philosophy as
+play_launch 43.3's missing-sub-table hard error): the integrator wrote a
+knob the platform cannot honor; silently ignoring it is the domain-0
+class of bug. Fields in OTHER platforms' sub-tables are ignored (one
+model serves all targets).
+
+### `class` → executor scheduling mode
+
+| `class` | Mapping |
+|---|---|
+| `best_effort` (default) | plain tier task; no deadline machinery |
+| `real_time` | fixed-priority preemptive tier + deadline monitor when `deadline_us` set |
+| `time_triggered` | executor TT window (`tt_window_offset_us` — exists): `period_us` = window period, tier spin aligned; requires `period_us` |
+| `interrupt` | out of scope v1 — bake-time reject (ISR-context executors are their own RFC) |
+
+`budget_us` + `period_us` → the existing sporadic-budget `SchedContext`
+(`tick`), fed from the tier table instead of only the programmatic API.
+
+`deadline_policy` → monitor action: `ignore` (no monitor), `warn`
+(diagnostics entry), `skip` (executor skips the group's remaining
+callbacks this cycle — `set_active_groups` seam), `fault` (platform fault
+hook: `nros_fault()` → board-defined, defaults to panic).
+
+### Contract layer → on-target monitors
+
+Generated per-node `const` table (no heap, no YAML on target):
+
+| Contract | Monitor | Seam |
+|---|---|---|
+| sub `max_age_ms` | `now - header.stamp` at take; requires the **new** stamp extraction: CDR peek of the leading `std_msgs/Header` when the type has one (codegen knows; non-stamped types get no age monitor) | take path (`handles.rs::try_recv`) |
+| pub `min_rate_hz` / `jitter_ms` | per-endpoint publish counter + EWMA period, checked per spin tick (~the play_launch 5 s cadence, scaled to `spin_period_us`) | publish path + spin loop |
+| node path `max_latency_ms` | take-timestamp → publish-timestamp delta for the declared (input, output) pair | executor sched-context (already threads a monotonic clock) |
+| topic QoS | baked endpoint QoS config (exists — RFC-0006 axes) | codegen |
+| scope paths / drops | NOT monitored on-target v1 — cross-machine E2E is the Linux side's job (`max_age_ms` at the final subscriber catches the total, per RFC-0050) | — |
+
+Violations surface through the existing diagnostics path
+(`nros-diagnostic-updater`), one entry per rule id, mirroring
+play_launch's severity vocabulary — the two runtimes report the same
+contract in the same words. The assumption/guarantee split (sub = assume,
+pub/path = guarantee) rides into the diagnostic payload for the 4-quadrant
+diagnosis RFC-0050 describes.
+
+Cost discipline: every monitor is compile-time-gated by the presence of
+its contract field in the model — an uncontracted image bakes zero
+monitor code (`const` table empty → dead-code elimination).
+
+## CMake surface
+
+`nano_ros_add_executable(... MODEL path/to/system_model.yaml)` as the
+alternative to `LAUNCH "pkg:file.xml"` — the seam ASI already sits on
+(its `system.launch.xml` is exactly what the resolved model replaces).
+`MODEL` implies model-mode `codegen-system`. The launch-file path stays
+supported; deprecation is a later decision.
+
+## Non-goals
+
+- `interrupt` tier class (v1 rejects).
+- On-target scope-path/drop monitoring (Linux side owns E2E).
+- Replacing `system.toml` for pure-nano-ros projects — the model is an
+  ALTERNATIVE input (produced by play_launch resolve); `system.toml`
+  remains the native authoring surface and the `[deploy]` SSoT that
+  resolve consumes (closing RFC-0050's open question: the deploy section
+  lives in `system.toml`, play_launch reads it as its system-config
+  input).
+- Dynamic model reload — baked images are one variant by construction.
+
+## Open questions
+
+- Stamp extraction ABI: peek-decode `Header` in the take path vs codegen
+  emitting a per-type `stamp_offset` const (leaning const — no runtime
+  type introspection).
+- Whether POSIX tier priorities upgrade to real SCHED_FIFO by default or
+  behind a knob (today advisory; play_launch's rt_helper precedent says
+  knob + privilege check).
+- `bindings` targeting a callback group that the node code never declares:
+  bake-time error vs warn (leaning error — same fail-loud family).
