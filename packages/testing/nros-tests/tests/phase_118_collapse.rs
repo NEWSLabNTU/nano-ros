@@ -370,7 +370,7 @@ fn test_zephyr_c_cyclonedds_service_e2e() {
         .expect("spawn zephyr c service-client (cyclonedds)");
 
     // Issue 0157 — the C client prints the canonical
-    // `SERVICE_RESULT_PREFIX` ("Result of add_two_ints:"); the old literal
+    // `SERVICE_RESULT_PREFIX` (nros_tests::output::SERVICE_RESULT_PREFIX); the old literal
     // "Result:" is a substring of NEITHER client's output, so this test
     // could never pass even with delivery working (the 277-marker class).
     let output = client.wait_for_pattern(

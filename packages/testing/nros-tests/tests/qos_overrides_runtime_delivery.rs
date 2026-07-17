@@ -117,13 +117,20 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
     );
 
     let listener_output = listener
-        .wait_for_output_count("Received:", 2, Duration::from_secs(15))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(15),
+        )
         .expect("subscriber received nothing under the best_effort override");
 
     talker.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     assert!(
         received >= 2,
         "delivery must succeed under the runtime qos override (Received = {received}):\n{listener_output}"

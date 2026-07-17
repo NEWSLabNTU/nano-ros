@@ -37,7 +37,9 @@ fn max_and_count(out: &str) -> (i64, usize) {
     let mut max = 0i64;
     let mut count = 0usize;
     for line in out.lines() {
-        if let Some(rest) = line.split("Received:").nth(1)
+        if let Some(rest) = line
+            .split(nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+            .nth(1)
             && let Ok(v) = rest.split_whitespace().next().unwrap_or("").parse::<i64>()
         {
             max = max.max(v);
@@ -94,22 +96,30 @@ fn w1d_ctrl_tier_generation_vs_tx(zenohd_unique: ZenohRouter) {
     };
 
     let mut proc = boot_entry();
-    let mut first = match ctrl.wait_for_output_count("Received:", 1, Duration::from_secs(12)) {
+    let mut first = match ctrl.wait_for_output_count(
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+        1,
+        Duration::from_secs(12),
+    ) {
         Ok(out) => out,
         Err(_) => {
             // Startup race: entry published into the gossip gap. Retry ONE boot.
             eprintln!("W1.d probe: no first delivery in 12 s — startup race, retrying boot once");
             proc.kill();
             proc = boot_entry();
-            ctrl.wait_for_output_count("Received:", 1, Duration::from_secs(12))
-                .unwrap_or_else(|_| {
-                    proc.kill();
-                    ctrl.kill();
-                    panic!(
-                        "no /ctrl delivery after two boots — realtime entry or router broken \
+            ctrl.wait_for_output_count(
+                nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+                1,
+                Duration::from_secs(12),
+            )
+            .unwrap_or_else(|_| {
+                proc.kill();
+                ctrl.kill();
+                panic!(
+                    "no /ctrl delivery after two boots — realtime entry or router broken \
                          (not a transient startup race)"
-                    )
-                })
+                )
+            })
         }
     };
 

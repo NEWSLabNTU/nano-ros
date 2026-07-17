@@ -49,11 +49,14 @@ fn cpp_qos_matched_delivers_cross_process() {
         ManagedProcess::spawn_command(cmd, "cpp-qos-talker")
             .unwrap_or_else(|e| panic!("spawn talker: {e}"))
     };
-    tlk.wait_for_output_pattern("Published:", Duration::from_secs(10))
-        .unwrap_or_else(|_| {
-            tlk.kill();
-            panic!("qos_talker never published")
-        });
+    tlk.wait_for_output_pattern(
+        nros_tests::output::INT32_TALKER_LOG_PREFIX,
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| {
+        tlk.kill();
+        panic!("qos_talker never published")
+    });
 
     let mut lis = {
         let mut cmd = Command::new(&listener);
@@ -63,7 +66,11 @@ fn cpp_qos_matched_delivers_cross_process() {
     };
 
     let out = lis
-        .wait_for_output_count("Received:", 3, Duration::from_secs(60))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(60),
+        )
         .unwrap_or_else(|_| {
             lis.kill();
             tlk.kill();
@@ -79,6 +86,6 @@ fn cpp_qos_matched_delivers_cross_process() {
     // The talker ramps the int32 0,1,2,…; the listener decodes + prints each `Received: N`. Early
     // pre-discovery samples may be missed, so assert the field appears ≥3× (proves the non-default
     // QoS profile, declared per-entity on both endpoints, connects + delivers end-to-end).
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(n >= 3, "expected ≥3 QoS-matched receives, got {n}.\n{out}");
 }

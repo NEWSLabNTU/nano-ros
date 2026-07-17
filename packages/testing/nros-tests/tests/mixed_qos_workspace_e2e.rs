@@ -49,11 +49,14 @@ fn mixed_qos_matched_delivers_cross_process() {
         ManagedProcess::spawn_command(cmd, "mixed-qos-talker")
             .unwrap_or_else(|e| panic!("spawn talker: {e}"))
     };
-    tlk.wait_for_output_pattern("Published:", Duration::from_secs(10))
-        .unwrap_or_else(|_| {
-            tlk.kill();
-            panic!("qos_talker never published")
-        });
+    tlk.wait_for_output_pattern(
+        nros_tests::output::INT32_TALKER_LOG_PREFIX,
+        Duration::from_secs(10),
+    )
+    .unwrap_or_else(|_| {
+        tlk.kill();
+        panic!("qos_talker never published")
+    });
 
     let mut lis = {
         let mut cmd = Command::new(&listener);
@@ -63,7 +66,11 @@ fn mixed_qos_matched_delivers_cross_process() {
     };
 
     let out = lis
-        .wait_for_output_count("Received:", 3, Duration::from_secs(60))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(60),
+        )
         .unwrap_or_else(|_| {
             lis.kill();
             tlk.kill();
@@ -76,6 +83,6 @@ fn mixed_qos_matched_delivers_cross_process() {
     lis.kill();
     tlk.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received:");
+    let n = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(n >= 3, "expected ≥3 QoS-matched receives, got {n}.\n{out}");
 }

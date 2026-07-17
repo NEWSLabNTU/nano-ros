@@ -96,7 +96,11 @@ fn realtime_tiers_rust_riscv_nuttx_entry_schedules_high_and_low() {
     // Anchor on the SLOW tier: 5 telem (100 ms) receives ≈ 0.5 s+ elapsed, so the
     // 10 ms ctrl tier must have delivered many more — both tiers live.
     let telem_out = telem
-        .wait_for_output_count("Received:", 5, Duration::from_secs(90))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             qemu.kill();
             ctrl.kill();
@@ -125,8 +129,12 @@ fn realtime_tiers_rust_riscv_nuttx_entry_schedules_high_and_low() {
     // counter, so its highest delivered value = how many times ITS OWN timer
     // fired. The 10 ms ctrl tier must outrun the 100 ms telem tier (~10×;
     // assert a ≥3× margin).
-    let telem_max = nros_tests::max_int_after(&telem_all, "Received:").unwrap_or(0);
-    let ctrl_max = nros_tests::max_int_after(&ctrl_all, "Received:").unwrap_or(0);
+    let telem_max =
+        nros_tests::max_int_after(&telem_all, nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+            .unwrap_or(0);
+    let ctrl_max =
+        nros_tests::max_int_after(&ctrl_all, nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+            .unwrap_or(0);
     assert!(
         telem_max > 0,
         "low-tier /telem counter never advanced (max {telem_max}) — the low tier did not run \

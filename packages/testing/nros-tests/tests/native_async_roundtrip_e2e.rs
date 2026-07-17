@@ -60,7 +60,7 @@ fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
     srv.kill();
 
     assert!(
-        out.contains("Result of add_two_ints:"),
+        out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "async service client never resolved its awaited reply — the tokio \
          spin_async + .await path did not complete against the server.\n{out}"
     );
@@ -95,7 +95,7 @@ fn native_async_action_client_awaits_goal_and_result(zenohd_unique: ZenohRouter)
     srv.kill();
 
     assert!(
-        out.contains("Goal accepted by server"),
+        out.contains(nros_tests::output::ACTION_GOAL_ACCEPTED_MARKER),
         "async action client never resolved its awaited goal acceptance — the \
          tokio spin_async + .await path did not complete against the server.\n{out}"
     );

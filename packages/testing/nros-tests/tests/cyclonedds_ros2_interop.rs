@@ -238,7 +238,10 @@ fn test_cyclonedds_action_nano_server_ros2_client() {
     let mut server = spawn_nano_cyclone(&server_bin, "nano-cyclone-action-server", domain);
     // Actions compose goal/result/cancel services + feedback/status pubs; give
     // the server time to register all of them before the client sends a goal.
-    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(8));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(8),
+    );
     std::thread::sleep(Duration::from_secs(2));
 
     let mut client = Ros2DdsProcess::action_send_goal_cyclonedds_with_domain(

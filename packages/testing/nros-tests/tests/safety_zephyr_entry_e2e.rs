@@ -68,7 +68,11 @@ fn safety_zephyr_entry_crc_validated_delivers() {
     // `/safe_ok` carries the CRC-VALIDATED receive count — samples there mean
     // the on-target CRC attach → deliver → validate chain ran end-to-end.
     let _ = obs
-        .wait_for_output_count("Received:", 3, Duration::from_secs(90))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             zephyr.kill();
             obs.kill();

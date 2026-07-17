@@ -48,7 +48,11 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
     // The gated `Published:` line only appears once on_activate flipped the gate, so
     // waiting for it proves the whole wrapper chain ran (register + configure + activate).
     let out = node
-        .wait_for_output_count("Published:", 2, Duration::from_secs(12))
+        .wait_for_output_count(
+            nros_tests::output::INT32_TALKER_LOG_PREFIX,
+            2,
+            Duration::from_secs(12),
+        )
         .unwrap_or_else(|_| {
             node.kill();
             panic!(

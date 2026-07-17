@@ -111,7 +111,10 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     eprintln!("Listener output:\n{}", listener_output);
 
     // Parse RECV_DONE line
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     let invalid = count_pattern(&listener_output, "valid=false");
 
     assert!(
@@ -278,7 +281,7 @@ fn test_zenoh_e2e_large_receive(
 
     eprintln!("Large receive test output:\n{}", output);
 
-    let received = count_pattern(&output, "Received:");
+    let received = count_pattern(&output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     let invalid = count_pattern(&output, "valid=false");
 
     assert!(
@@ -338,7 +341,10 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     talker.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("100Hz test: received {} messages", received);
 
     assert!(
@@ -394,7 +400,10 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     talker.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("Burst test: received {} messages", received);
 
     assert!(
@@ -457,7 +466,10 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
 
     eprintln!("XRCE listener output:\n{}", listener_output);
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     let invalid = count_pattern(&listener_output, "valid=false");
 
     assert!(
@@ -505,7 +517,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
 
         proc.kill();
 
-        let published = count_pattern(&output, "Published:");
+        let published = count_pattern(&output, nros_tests::output::INT32_TALKER_LOG_PREFIX);
         assert!(
             published >= 2,
             "Expected at least 2 publishes at size={}, got {}.\nOutput:\n{}",
@@ -562,7 +574,10 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     talker.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("XRCE 100Hz test: received {} messages", received);
 
     assert!(
@@ -619,7 +634,10 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     talker.kill();
     listener.kill();
 
-    let received = count_pattern(&listener_output, "Received:");
+    let received = count_pattern(
+        &listener_output,
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+    );
     eprintln!("XRCE burst test: received {} messages", received);
 
     assert!(

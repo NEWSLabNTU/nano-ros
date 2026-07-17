@@ -64,13 +64,17 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     // which dropped the "Support initialized" print — the publish line is
     // the talker's started-marker now (also proves the timer fired).
     let output = talker
-        .wait_for_output_count("Publishing: '", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::TALKER_PAYLOAD_PREFIX,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("C XRCE talker did not initialize");
 
     eprintln!("C XRCE talker output:\n{}", output);
 
     assert!(
-        output.contains("Publishing: '"),
+        output.contains(nros_tests::output::TALKER_PAYLOAD_PREFIX),
         "C XRCE talker failed to initialize.\nOutput:\n{}",
         output
     );
@@ -213,7 +217,10 @@ fn test_c_xrce_service_request_response() {
     server_cmd.env("NROS_LOCATOR", &addr);
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-service-server")
         .expect("start c-xrce-service-server");
-    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(15));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(15),
+    );
 
     let client_bin = nano_c_xrce("service-client", "c_service_client");
     let mut client_cmd = stdbuf_command(&client_bin);
@@ -267,7 +274,10 @@ fn test_c_xrce_action_fibonacci() {
     server_cmd.env("NROS_LOCATOR", &addr);
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-action-server")
         .expect("start c-xrce-action-server");
-    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(15));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(15),
+    );
 
     let client_bin = nano_c_xrce("action-client", "c_action_client");
     let mut client_cmd = stdbuf_command(&client_bin);

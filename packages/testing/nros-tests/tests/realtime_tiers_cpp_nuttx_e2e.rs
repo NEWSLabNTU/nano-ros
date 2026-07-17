@@ -90,7 +90,11 @@ fn realtime_tiers_cpp_nuttx_entry_schedules_high_and_low() {
     // Anchor on the SLOW tier: 5 telem (100 ms) receives ≈ 0.5 s+ elapsed, so the
     // 10 ms ctrl tier must have delivered many more — both tiers live.
     let telem_out = telem
-        .wait_for_output_count("Received:", 5, Duration::from_secs(90))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             qemu.kill();
             ctrl.kill();
@@ -122,8 +126,12 @@ fn realtime_tiers_cpp_nuttx_entry_schedules_high_and_low() {
     // so its highest delivered value = how many times ITS OWN timer fired — robust
     // to zenoh delivery batching/drops that distort raw sample counts. The 10 ms
     // ctrl tier must outrun the 100 ms telem tier (~10×; assert a ≥3× margin).
-    let telem_max = nros_tests::max_int_after(&telem_all, "Received:").unwrap_or(0);
-    let ctrl_max = nros_tests::max_int_after(&ctrl_all, "Received:").unwrap_or(0);
+    let telem_max =
+        nros_tests::max_int_after(&telem_all, nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+            .unwrap_or(0);
+    let ctrl_max =
+        nros_tests::max_int_after(&ctrl_all, nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+            .unwrap_or(0);
     // Anchor already proved 5 low-tier samples; guard only against a parse-fail
     // (0-indexed counter ⇒ 5 samples = max value 4 — assert advancement, not a count).
     assert!(

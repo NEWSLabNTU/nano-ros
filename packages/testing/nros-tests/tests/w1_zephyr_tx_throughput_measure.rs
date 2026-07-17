@@ -60,8 +60,10 @@ fn w1_measure_zephyr_tx_throughput() {
 
     zephyr.kill();
 
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, "Received:");
-    let telem_n = nros_tests::count_pattern(&telem_out, "Received:");
+    let ctrl_n =
+        nros_tests::count_pattern(&ctrl_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+    let telem_n =
+        nros_tests::count_pattern(&telem_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     let w = WINDOW_SECS as f64;
     eprintln!("\n===== phase-279 W1 measurement (window {WINDOW_SECS}s) =====");
     eprintln!(

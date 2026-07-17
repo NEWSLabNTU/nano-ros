@@ -69,7 +69,11 @@ fn qos_zephyr_entry_matched_pair_delivers() {
     // `/qos_ok` carries the listener's running receive count — samples there
     // mean the on-target reliable+transient_local pair matched and delivered.
     let _ = obs
-        .wait_for_output_count("Received:", 3, Duration::from_secs(90))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            3,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             zephyr.kill();
             obs.kill();

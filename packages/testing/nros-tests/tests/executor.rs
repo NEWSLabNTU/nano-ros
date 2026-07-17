@@ -53,7 +53,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
     println!("=== Talker timer output ===");
     println!("{}", output);
 
-    // Count "Published:" lines
+    // Count nros_tests::output::INT32_TALKER_LOG_PREFIX lines
     let published_count = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     // At 1Hz for 5 seconds, we expect ~5 messages (allow 3-7 for timing variance)
@@ -285,7 +285,7 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
     proc.kill();
 
     // The talker uses spin_once() in its main loop.
-    // If spin_once processes work correctly, we should see "Published:" messages.
+    // If spin_once processes work correctly, we should see nros_tests::output::INT32_TALKER_LOG_PREFIX messages.
     let published = count_pattern(&output, nros_tests::output::TALKER_LOG_PREFIX);
 
     assert!(

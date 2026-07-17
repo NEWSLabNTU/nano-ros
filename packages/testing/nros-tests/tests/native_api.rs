@@ -82,7 +82,7 @@ impl Language {
     /// (identical wording in both languages, demo parity) is the reliable
     /// started-marker for talkers; it also proves the timer fired.
     fn talker_ready_marker(&self) -> &'static str {
-        "Publishing: '"
+        nros_tests::output::TALKER_PAYLOAD_PREFIX
     }
 
     fn talker_binary(&self) -> PathBuf {
@@ -372,7 +372,7 @@ fn test_native_service_communication(
     let client_bin = lang.service_client_binary();
 
     let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
-    // Server prints "Waiting for service requests" after queryable registration.
+    // Server prints nros_tests::output::SERVICE_SERVER_READY_MARKER after queryable registration.
     server
         .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("service server did not become ready");
@@ -726,7 +726,7 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
     eprintln!("C++ callback action client output:\n{}", client_output);
 
     assert!(
-        client_output.contains("Goal accepted by server, waiting for result"),
+        client_output.contains(nros_tests::output::ACTION_GOAL_ACCEPTED_MARKER),
         "Expected goal-response callback to fire with acceptance.\nOutput:\n{}",
         client_output
     );
@@ -793,7 +793,7 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
         client_output
     );
     assert!(
-        client_output.contains("Goal accepted by server, waiting for result"),
+        client_output.contains(nros_tests::output::ACTION_GOAL_ACCEPTED_MARKER),
         "Expected goal-response acceptance across languages.\nOutput:\n{}",
         client_output
     );
@@ -1298,7 +1298,10 @@ fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: La
         &format!("{}-cyclonedds-service-server", lang.tag()),
         &domain,
     );
-    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
     let mut client = spawn_cyclone_binary(
         &client_bin,
         &format!("{}-cyclonedds-service-client", lang.tag()),
@@ -1348,7 +1351,10 @@ fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)]
         &format!("{}-cyclonedds-service-server", lang.tag()),
         &domain,
     );
-    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
     let mut client = spawn_cyclone_binary(
         &client_bin,
         &format!("{}-cyclonedds-service-client-callback", lang.tag()),

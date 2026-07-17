@@ -2364,7 +2364,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
 
     // Wait for 2 messages: this test asserts `received_count >= 2` below, so
     // waiting for only 1 returned as soon as the first arrived and captured a
-    // single "Received:" line, failing deterministically. The Zephyr C++
+    // single nros_tests::output::INT32_LISTENER_LOG_PREFIX line, failing deterministically. The Zephyr C++
     // talker publishes repeatedly (~every 2.5 s after a 5 s warm-up), so 2
     // messages arrive well within the 30 s budget.
     let listener_output = listener
@@ -2765,7 +2765,7 @@ fn test_zephyr_c_service_server_to_client_e2e() {
 ///
 /// Previously `#[ignore]`d as "server hangs in `create_action_server`, never
 /// reaches readiness" — that was a STALE-MARKER false diagnosis, not a hang. The
-/// server does reach readiness and prints `"Waiting for action goals"`
+/// server does reach readiness and prints `nros_tests::output::ACTION_SERVER_READY_MARKER`
 /// (`ACTION_SERVER_READY_MARKER`); the old readiness grep looked for the literal
 /// `"Waiting for goals"`, which never matches, so the test timed out at the 30 s
 /// readiness wait and was read as a server hang. Same class as #174's

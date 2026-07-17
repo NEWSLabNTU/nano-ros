@@ -82,7 +82,11 @@ fn params_zephyr_entry_publishes_baked_initial() {
     // (`apply_param_services`, the #128 emit), and live-read by the node's
     // callback on the embedded target.
     let out = obs
-        .wait_for_output_count("Received: 250", 3, Duration::from_secs(90))
+        .wait_for_output_count(
+            &nros_tests::output::int32_listener_line(250),
+            3,
+            Duration::from_secs(90),
+        )
         .unwrap_or_else(|_| {
             zephyr.kill();
             obs.kill();
@@ -96,6 +100,6 @@ fn params_zephyr_entry_publishes_baked_initial() {
     zephyr.kill();
     obs.kill();
 
-    let n = nros_tests::count_pattern(&out, "Received: 250");
+    let n = nros_tests::count_pattern(&out, &nros_tests::output::int32_listener_line(250));
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }

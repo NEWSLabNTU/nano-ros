@@ -58,13 +58,17 @@ fn nros_subscriber_receives_stock_demo_nodes_cpp_talker(zenohd_unique: ZenohRout
         .expect("spawn demo_nodes_cpp talker");
 
     let out = sub
-        .wait_for_output_count("Received:", 2, Duration::from_secs(20))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            2,
+            Duration::from_secs(20),
+        )
         .expect("nano-ros subscriber received nothing from the stock demo_nodes_cpp talker");
 
     sub.kill();
     _talker.kill();
 
-    let received = nros_tests::count_pattern(&out, "Received:");
+    let received = nros_tests::count_pattern(&out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(
         received >= 2,
         "nano-ros must receive the stock demo_nodes_cpp talker's std_msgs/String \

@@ -132,11 +132,15 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
     );
 
     // Check if messages were published (at least the attempt)
-    let published = output.matches("Published:").count();
+    let published = output
+        .matches(nros_tests::output::INT32_TALKER_LOG_PREFIX)
+        .count();
     println!("Published {} messages", published);
 
     // Check if any messages were received
-    let received_count = output.matches("Received:").count();
+    let received_count = output
+        .matches(nros_tests::output::INT32_LISTENER_LOG_PREFIX)
+        .count();
     println!("Received {} messages", received_count);
 
     // With loopback, we should receive what we published

@@ -18,6 +18,7 @@
 //! ```
 
 pub mod alloc;
+pub mod checker;
 pub mod esp32;
 pub mod fixtures;
 pub mod matrix;

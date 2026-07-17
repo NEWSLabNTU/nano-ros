@@ -211,7 +211,10 @@ fn test_xrce_service_request_response(
         .expect("Failed to start service server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
 
     // Stabilization delay — let XRCE Agent propagate the service
     std::thread::sleep(Duration::from_secs(2));
@@ -284,7 +287,10 @@ fn test_xrce_action_fibonacci(
         .expect("Failed to start action server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::ACTION_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(2));

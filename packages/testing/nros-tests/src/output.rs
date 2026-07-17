@@ -44,6 +44,10 @@ pub const LISTENER_LOG_PREFIX: &str = "I heard:";
 /// that only need liveness (not a specific N) stay self-documenting.
 pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 
+/// Talker line WITH the opening payload quote — distinguishes a real
+/// publish line from setup prose containing "Publishing" (phase-295 W2).
+pub const TALKER_PAYLOAD_PREFIX: &str = "Publishing: '";
+
 /// Pre-W4 Int32 chatter wording, retained by nodes OUTSIDE the phase-277 W4
 /// demo-parity flip: the purpose-built fixture bins
 /// (`packages/testing/nros-tests/bins/{param,safety,header}-chatter-*`,

@@ -167,7 +167,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_MSG_COUNT", "3")
-        // "Received:" logs at INFO — surface them so the test can see receipt.
+        // nros_tests::output::INT32_LISTENER_LOG_PREFIX logs at INFO — surface them so the test can see receipt.
         .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");

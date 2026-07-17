@@ -209,7 +209,7 @@ fn test_esp32_talker_listener_e2e() {
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
     // Wait for talker to publish messages (examples now run forever).
-    // Reaching the first "Published:" implies session open + publisher
+    // Reaching the first nros_tests::output::INT32_TALKER_LOG_PREFIX implies session open + publisher
     // declaration succeeded.
     let talker_output = talker
         .wait_for_output_pattern(
@@ -319,7 +319,7 @@ fn test_esp32_to_native() {
     // Start ESP32 talker
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
-    // Wait for ESP32 talker to publish messages. The first "Published:"
+    // Wait for ESP32 talker to publish messages. The first nros_tests::output::INT32_TALKER_LOG_PREFIX
     // implies the session opened and the publisher was declared.
     let _talker_output = talker
         .wait_for_output_pattern(

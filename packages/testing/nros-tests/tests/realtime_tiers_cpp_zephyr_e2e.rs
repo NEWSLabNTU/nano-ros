@@ -72,7 +72,11 @@ fn realtime_tiers_cpp_zephyr_entry_schedules_high_and_low() {
     // Anchor on the SLOW tier: 5 telem (100 ms) receives ≈ 0.5 s+ elapsed, so
     // the 10 ms ctrl tier must have delivered many more — both tiers live.
     let telem_out = telem
-        .wait_for_output_count("Received:", 5, Duration::from_secs(60))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            5,
+            Duration::from_secs(60),
+        )
         .unwrap_or_else(|_| {
             zephyr.kill();
             ctrl.kill();
@@ -84,7 +88,11 @@ fn realtime_tiers_cpp_zephyr_entry_schedules_high_and_low() {
         });
     // Grab whatever the high tier has accumulated by now (it already has many).
     let ctrl_out = ctrl
-        .wait_for_output_count("Received:", 1, Duration::from_secs(2))
+        .wait_for_output_count(
+            nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+            1,
+            Duration::from_secs(2),
+        )
         .unwrap_or_else(|_| {
             zephyr.kill();
             ctrl.kill();
@@ -99,8 +107,10 @@ fn realtime_tiers_cpp_zephyr_entry_schedules_high_and_low() {
     ctrl.kill();
     telem.kill();
 
-    let telem_n = nros_tests::count_pattern(&telem_out, "Received:");
-    let ctrl_n = nros_tests::count_pattern(&ctrl_out, "Received:");
+    let telem_n =
+        nros_tests::count_pattern(&telem_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+    let ctrl_n =
+        nros_tests::count_pattern(&ctrl_out, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     assert!(
         telem_n >= 5,
         "expected ≥5 low-tier /telem samples, got {telem_n}"
