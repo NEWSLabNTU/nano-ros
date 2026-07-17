@@ -1151,6 +1151,15 @@ pub struct Executor<'s> {
     pub(crate) clock_us_fn: Option<fn() -> u64>,
     /// RFC-0052 W3b.2 — wall-clock (epoch µs) source for age monitors.
     pub(crate) epoch_us_fn: Option<fn() -> u64>,
+    /// RFC-0052 W3b.4 — baked contract-monitor table (empty = uncontracted
+    /// image; every monitor path below folds away).
+    pub(crate) monitor_table: &'static [super::monitor::MonitorSpec],
+    pub(crate) monitor_states: [super::monitor::MonitorState; super::monitor::MAX_MONITORS],
+    pub(crate) monitor_violations:
+        heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
+    /// Monotonic base for the std monitor clock (µs derived per check).
+    #[cfg(feature = "std")]
+    pub(crate) monitor_clock_base: Option<std::time::Instant>,
 }
 
 impl<'s> Executor<'s> {
@@ -1256,6 +1265,11 @@ impl<'s> Executor<'s> {
             #[cfg(not(feature = "std"))]
             clock_us_fn: None,
             epoch_us_fn: None,
+            monitor_table: &[],
+            monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
+            monitor_violations: heapless::Vec::new(),
+            #[cfg(feature = "std")]
+            monitor_clock_base: None,
         }
     }
 
@@ -1638,6 +1652,67 @@ impl<'s> Executor<'s> {
         self.epoch_us_fn.map(|f| f())
     }
 
+    /// RFC-0052 W3b.4 — install the baked contract-monitor table. Call
+    /// BEFORE entity creation so `create_publisher` can attach each
+    /// contracted endpoint's counter cell. Mirrors `set_qos_overrides`:
+    /// `&'static`, codegen-baked, empty by default.
+    pub fn set_monitor_table(&mut self, table: &'static [super::monitor::MonitorSpec]) {
+        self.monitor_table = table;
+    }
+
+    /// The installed monitor table (empty unless the entry set one).
+    #[must_use]
+    pub fn monitor_table(&self) -> &'static [super::monitor::MonitorSpec] {
+        self.monitor_table
+    }
+
+    /// RFC-0052 W3b.4 — drain pending contract violations (rate rule for
+    /// now; age/latency land with W3b.5). The entry glue calls this after
+    /// `spin_once` and feeds each entry to the `nros-diagnostics`
+    /// reporter. Draining clears the ring.
+    pub fn drain_violations(&mut self, mut f: impl FnMut(&super::monitor::Violation)) {
+        for v in self.monitor_violations.iter() {
+            f(v);
+        }
+        self.monitor_violations.clear();
+    }
+
+    /// Monotonic µs for monitor windows: the no_std `clock_us` hook, or a
+    /// process-local Instant base on std.
+    fn monitor_now_us(&mut self) -> Option<u64> {
+        #[cfg(not(feature = "std"))]
+        {
+            self.clock_us_fn.map(|clock| clock())
+        }
+        #[cfg(feature = "std")]
+        {
+            let base = *self
+                .monitor_clock_base
+                .get_or_insert_with(std::time::Instant::now);
+            Some(base.elapsed().as_micros() as u64)
+        }
+    }
+
+    /// Run the rate checks over the monitor table (no-op when empty).
+    fn run_contract_monitors(&mut self) {
+        if self.monitor_table.is_empty() {
+            return;
+        }
+        let Some(now_us) = self.monitor_now_us() else {
+            return;
+        };
+        for (i, spec) in self
+            .monitor_table
+            .iter()
+            .take(super::monitor::MAX_MONITORS)
+            .enumerate()
+        {
+            if let Some(v) = super::monitor::check_rate(spec, &mut self.monitor_states[i], now_us) {
+                let _ = self.monitor_violations.push(v);
+            }
+        }
+    }
+
     /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
@@ -1918,9 +1993,16 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_HASH,
             qos,
         )?;
+        // RFC-0052 W3b.4 — attach the contracted endpoint's counter cell.
+        let monitor = self
+            .monitor_table
+            .iter()
+            .find(|m| m.topic == topic_name)
+            .map(|m| m.cell);
         Ok(crate::executor::handles::EmbeddedPublisher {
             handle,
             event_regs: crate::executor::handles::empty_event_regs(),
+            monitor,
             _phantom: PhantomData,
         })
     }
@@ -4433,6 +4515,10 @@ impl<'s> Executor<'s> {
         let spin_start = std::time::Instant::now();
         #[cfg(not(feature = "std"))]
         let spin_start_us = self.clock_us_fn.map(|clock| clock());
+
+        // RFC-0052 W3b.4 — contract monitors tick once per spin (window
+        // logic inside; single branch when the baked table is empty).
+        self.run_contract_monitors();
 
         // Phase 104.C.6 — shared executor wake. Swap-and-clear the
         // wake flag; if it was set before this `spin_once` entered,

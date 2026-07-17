@@ -35,6 +35,10 @@ pub struct NodeHandle<'a> {
     /// (setup-time, no alloc). Empty (`&[]`) by default → zero cost for
     /// systems without overrides.
     qos_overrides: &'static [nros_rmw::QosOverride],
+    /// RFC-0052 W3b.4 — baked contract-monitor table (mirror of
+    /// `qos_overrides`): `create_publisher` attaches the matching
+    /// endpoint's counter cell so `publish` can bump it lock-free.
+    monitors: &'static [crate::executor::monitor::MonitorSpec],
 }
 
 impl<'a> NodeHandle<'a> {
@@ -51,6 +55,7 @@ impl<'a> NodeHandle<'a> {
             session,
             domain_id,
             qos_overrides: &[],
+            monitors: &[],
         }
     }
 
@@ -63,6 +68,12 @@ impl<'a> NodeHandle<'a> {
     /// user's `create_publisher(topic)` call is unchanged, matching rclcpp).
     pub fn set_qos_overrides(&mut self, overrides: &'static [nros_rmw::QosOverride]) {
         self.qos_overrides = overrides;
+    }
+
+    /// RFC-0052 W3b.4 — install the executor's monitor table on this node
+    /// (called by the entry glue / fixture alongside `set_qos_overrides`).
+    pub fn set_monitors(&mut self, monitors: &'static [crate::executor::monitor::MonitorSpec]) {
+        self.monitors = monitors;
     }
 
     /// The installed QoS-override table (empty unless the entry set one).
@@ -221,9 +232,17 @@ impl<'a> NodeHandle<'a> {
             .session
             .create_publisher(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
+        // RFC-0052 W3b.4 — attach the contracted endpoint's counter cell
+        // (exact topic-name match against the baked table; None = free).
+        let monitor = self
+            .monitors
+            .iter()
+            .find(|m| m.topic == topic_name)
+            .map(|m| m.cell);
         Ok(EmbeddedPublisher {
             handle,
             event_regs: crate::executor::handles::empty_event_regs(),
+            monitor,
             _phantom: PhantomData,
         })
     }

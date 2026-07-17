@@ -105,6 +105,9 @@ pub struct EmbeddedPublisher<M> {
     /// Phase 108 — registered event closures kept alive for the
     /// publisher's lifetime; freed in `Drop`.
     pub(crate) event_regs: EventRegs,
+    /// RFC-0052 W3b.4 — contracted endpoint's publish counter (`None`
+    /// for uncontracted publishers; one relaxed atomic bump when set).
+    pub(crate) monitor: Option<&'static crate::executor::monitor::PubMonitorCell>,
     pub(crate) _phantom: PhantomData<M>,
 }
 
@@ -128,13 +131,25 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         msg.serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
         let len = writer.position();
+        self.bump_monitor();
         self.handle
             .publish_raw(&buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
+    /// RFC-0052 W3b.4 — one relaxed bump per publish on contracted
+    /// endpoints; a predictable no-op otherwise.
+    #[inline]
+    fn bump_monitor(&self) {
+        if let Some(cell) = self.monitor {
+            cell.count
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     /// Publish raw CDR-encoded data (must include CDR header).
     pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+        self.bump_monitor();
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))

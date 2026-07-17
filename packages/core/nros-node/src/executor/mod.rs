@@ -34,6 +34,8 @@ mod handles;
 #[cfg(feature = "std")]
 pub mod handoff;
 #[cfg(any(has_rmw, test))]
+pub mod monitor;
+#[cfg(any(has_rmw, test))]
 mod node;
 #[cfg(any(has_rmw, test))]
 pub mod node_record;
@@ -41,7 +43,6 @@ pub mod node_record;
 mod node_wake;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
-#[cfg(any(has_rmw, test))]
 pub mod sched_context;
 #[cfg(any(has_rmw, test))]
 mod spin;

@@ -6,7 +6,7 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: W1+W2+W3a landed (2026-07-17); W3b-W4 planned.
+Status: W1+W2+W3a+W3b.1-.4(machinery) landed (2026-07-17); W3b.4 parity fixture + W3b.5 + W4 remain.
 
 ## Waves
 
@@ -116,7 +116,15 @@ small, independently landable prerequisite with its own done-when.
 - **Done when:** the parity fixture's wire traffic carries non-zero
   stamps (asserted via the listener's received msg in-test).
 
-#### W3b.4 — rate monitor + baked monitor table
+#### W3b.4 — rate monitor + baked monitor table (machinery LANDED; parity fixture remains)
+
+Landed: executor/monitor.rs (MonitorSpec + PubMonitorCell statics +
+pure check_rate with window/dedup/recovery semantics, unit-tested),
+Executor::set_monitor_table/drain_violations + spin-tick hook (one
+branch when the table is empty), NodeHandle::set_monitors +
+create_publisher cell attach (both constructor sites), relaxed-atomic
+publish bump. Remaining here: the codegen-system emission of the table
+from model contracts + the native parity fixture vs play_launch.
 
 - `codegen-system --model` emits a per-node
   `static const nros_monitor_spec_t { topic, min_rate_hz, jitter_ms,
