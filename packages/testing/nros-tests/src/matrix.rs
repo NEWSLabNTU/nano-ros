@@ -376,8 +376,10 @@ pub const CELLS: &[Cell] = &[
     // threadx-linux cyclone: C pubsub pair proven (native_api #215 lane);
     // service/action fixtures build but have no runtime lane.
     cell(ThreadxLinux, C,   Cyclonedds, Pubsub,  Example, Runtime),
-    cell(ThreadxLinux, C,   Cyclonedds, Service, Example, BuildOnly(CYCLONE_RTOS_TODO)),
-    cell(ThreadxLinux, C,   Cyclonedds, Action,  Example, BuildOnly(CYCLONE_RTOS_TODO)),
+    // issue #233 cell 3 — threadx C cyclone service proven (test_threadx_linux_cyclonedds_service).
+    cell(ThreadxLinux, C,   Cyclonedds, Service, Example, Runtime),
+    // issue #233 cell 3 — threadx C cyclone action proven (test_threadx_linux_cyclonedds_action).
+    cell(ThreadxLinux, C,   Cyclonedds, Action,  Example, Runtime),
     cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, BuildOnly(CYCLONE_RTOS_TODO)),
 
     // ThreadX riscv64 — pubsub + service runtime; action examples absent;

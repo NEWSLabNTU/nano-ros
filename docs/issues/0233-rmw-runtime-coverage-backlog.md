@@ -34,10 +34,11 @@ the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
    marker covers pub/sub + service create, not action-type descriptors).
    This is a rust cyclone BACKEND fix, not a fixture-wiring task — the
    remaining half of this cell, and the reason it stays BuildOnly.
-3. **threadx-linux C cyclonedds service + action.** The C cyclone pubsub
-   pair is Runtime (#215); the service/action fixtures build (BuildOnly)
-   but have no runtime lane. Needs the two-process (or embedded-pair) e2e
-   wiring the pubsub lane already models.
+3. ~~threadx-linux C cyclonedds **service + action**~~ **DONE (2026-07-18)**
+   — `test_threadx_linux_cyclonedds_{service,action}`: the embedded ThreadX
+   C server drives a native POSIX client over Cyclone (service → result 5;
+   action → full order-10 Fibonacci), mirroring the #215 pubsub interop
+   lane. Both matrix cells flipped to Runtime.
 4. **threadx-linux C++ cyclonedds pubsub** and **threadx-riscv64 C++
    cyclonedds pubsub.** C++ cyclone example images link; no runtime lane.
    riscv64 mirrors the #214 C/rust two-QEMU pattern.

@@ -1189,6 +1189,93 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     );
 }
 
+/// issue #233 cell 3 — threadx-linux C CycloneDDS **service**: an embedded
+/// ThreadX server (NetX Duo over NSOS) answers a native POSIX client over the
+/// same Cyclone backend, mirroring the #215 pubsub interop lane. The
+/// service/action fixtures always built (BuildOnly in the matrix); this is
+/// the runtime proof. Domain 107 matches the threadx cyclone fixture's baked
+/// `-DNROS_DOMAIN_ID` (the native client reads it from the env — host
+/// exception).
+#[test]
+fn test_threadx_linux_cyclonedds_service() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let server_bin = nros_tests::project_root()
+        .join("examples/threadx-linux/c/service-server/build-cyclonedds/c_service_server");
+    if !server_bin.exists() {
+        nros_tests::skip!(
+            "threadx-linux CycloneDDS service-server missing; build with: \
+             just threadx_linux build-fixtures"
+        );
+    }
+    let client_bin = cyclone_role_binary(Language::C, "service-client");
+
+    let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-service-server", "107");
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-service-client", "107");
+
+    let client_out = client
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_out = server
+        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!("threadx→native Cyclone service client:\n{client_out}\n--- server ---\n{server_out}");
+    let calls = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
+    let handled = count_pattern(&server_out, "Incoming request");
+    assert!(
+        calls >= 1 || handled >= 1,
+        "threadx-linux C Cyclone service roundtrip produced no calls/requests.\n\
+         client:\n{client_out}\nserver:\n{server_out}"
+    );
+}
+
+/// issue #233 cell 3 — threadx-linux C CycloneDDS **action**: the embedded
+/// ThreadX Fibonacci server drives a native POSIX action client to a full
+/// order-10 result over Cyclone (unlike the pure-rust cyclone action path,
+/// C carries the action-type descriptors via `descriptors.cpp`, so creation
+/// succeeds).
+#[test]
+fn test_threadx_linux_cyclonedds_action() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let server_bin = nros_tests::project_root()
+        .join("examples/threadx-linux/c/action-server/build-cyclonedds/c_action_server");
+    if !server_bin.exists() {
+        nros_tests::skip!(
+            "threadx-linux CycloneDDS action-server missing; build with: \
+             just threadx_linux build-fixtures"
+        );
+    }
+    let client_bin = cyclone_role_binary(Language::C, "action-client");
+
+    let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-action-server", "107");
+    let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
+    let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-action-client", "107");
+
+    let client_out = client
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(40))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!("threadx→native Cyclone action client:\n{client_out}");
+    let results = count_pattern(&client_out, ACTION_RESULT_PREFIX);
+    assert!(
+        results >= 1,
+        "threadx-linux C Cyclone action produced no result.\nclient:\n{client_out}"
+    );
+}
+
 fn native_rust_service_interop(lang: Language, locator: &str) {
     let rust_client = match nros_tests::fixtures::build_native_service_client() {
         Ok(p) => p.to_path_buf(),
