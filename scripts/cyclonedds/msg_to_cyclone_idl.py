@@ -433,7 +433,16 @@ def main() -> int:
     for iface in args.interface:
         iface_path = Path(iface)
         if not iface_path.is_absolute():
-            iface_path = (args.pkg_dir / iface_path).resolve()
+            iface_path = args.pkg_dir / iface_path
+        # Resolve symlinks on BOTH sides before computing the package-
+        # relative path. The Zephyr west workspace exposes the repo through a
+        # `nano-ros` symlink, so an ABSOLUTE `--interface` arg arrives
+        # symlinked while `pkg_dir.resolve()` follows the link — `relative_to`
+        # then raised "not in the subpath / one relative one absolute" (the
+        # absolute branch used to skip the resolve, so only pkg_dir was
+        # canonicalised). Consistent resolution keeps `rel` = the package-
+        # relative interface path for the scratch-dir adapter copy below.
+        iface_path = iface_path.resolve()
         rel = iface_path.relative_to(args.pkg_dir.resolve())
 
         if iface_path.suffix == ".action":
@@ -464,7 +473,25 @@ def main() -> int:
         with tempfile.TemporaryDirectory() as tmp:
             scratch = Path(tmp) / args.pkg_name
             scratch.mkdir()
-            shutil.copy(args.pkg_dir / "package.xml", scratch / "package.xml")
+            # rosidl_adapter derives the IDL's top-level `module <pkg>` from
+            # the package.xml `<name>` in its CWD — NOT from a CLI flag. Copying
+            # the caller's real package.xml breaks whenever `--pkg-name` differs
+            # from that `<name>`: an example that bundles a `std_msgs/String`
+            # under its OWN package dir (`--pkg-name std_msgs --pkg-dir
+            # <example>`, the example's `<name>` = the node target) emitted the
+            # descriptor as `<target>_msg_dds__String__desc` while the register
+            # TU (driven by `--pkg-name`) referenced `std_msgs_msg_dds__String__desc`
+            # → undefined-reference at link. Synthesise a minimal package.xml
+            # whose `<name>` IS `--pkg-name` so the module, the descriptor
+            # symbol, and the register TU all agree (matches the action path
+            # above). msg2idl reads only `<name>`, so a stub suffices.
+            (scratch / "package.xml").write_text(
+                f'<?xml version="1.0"?>\n<package format="3">'
+                f"<name>{args.pkg_name}</name><version>0.0.0</version>"
+                "<description>x</description>"
+                '<maintainer email="x@example.com">x</maintainer>'
+                "<license>x</license></package>\n"
+            )
             (scratch / rel.parent).mkdir(parents=True, exist_ok=True)
             shutil.copy(iface_path, scratch / rel)
 
