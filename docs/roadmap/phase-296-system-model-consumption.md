@@ -102,8 +102,12 @@ INHERITANCE, a different concept; the miss-action enum is new).
 
 ### W4 — CMake + ASI pilot
 
-- `nano_ros_add_executable(... MODEL <path>)` (RFC-0048 verb surface)
-  driving model-mode codegen-system.
+- Scoping fact (W3a exploration): the `LAUNCH` keyword drives
+  `nros codegen entry` (launch-parsed node list), NOT codegen-system —
+  so `MODEL` needs a `nros codegen entry --model` mode that builds the
+  entry plan from the model's STRUCTURE layer (nodes/components), plus
+  the `nano_ros_add_executable(... MODEL <path>)` keyword pass-through,
+  plus the model-mode codegen-system already landed in W1.
 - ASI pilot: replace `controller_pkg:system.launch.xml` with a
   play_launch-resolved `system_model.yaml` for the zephyr-fvp lane;
   validate on AVH.
