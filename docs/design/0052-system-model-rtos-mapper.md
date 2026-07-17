@@ -172,6 +172,38 @@ resolution machinery — `launch_synth`, `nros plan`'s launch-XML parsing,
   the baked slice, as today.
 - Retirement trajectory staged in phase-296 (§Retirement).
 
+## Parity gap analysis (2026-07-17 exploration)
+
+Everything the legacy path (`system.toml` + launch XML + `nros-plan.json`)
+expresses, versus the model schema. Status: **model** = needs a schema
+addition (shared crates); **resolve** = play_launch resolve work;
+**local** = stays a nano-ros build knob (never system semantics);
+**covered** = already expressible.
+
+| Legacy feature | Source | Status → home |
+|---|---|---|
+| Node parameters (resolved key→values, baked into component configure) | launch `<param>` / `PlanInstance.parameters` | **model** — `structure.nodes[].params`. ROS parameters ARE system semantics; the "no spawn info" exclusion was about cmd/env/params-FILES, not resolved param values. Embedded has no record to read them from. |
+| Remaps | launch `<remap>` | **covered** — the model's wiring carries RESOLVED topic FQNs; entry codegen binds endpoints to those names. Verify at W4.1. |
+| Component class (`pkg::Class`) | `[[component]].class` | **covered-by-mapping** — model `NodeInstance.plugin` carries the class for library-component nodes (exec unused); the exec→class lookup for launch-sourced systems stays in cmake metadata. Document in W4.1. |
+| RMW selection (`[system].rmw`, `[deploy.*].rmw`, `--rmw`) | system.toml | **model** — `execution.deploy[].rmw` + a system default (meta or execution header). The bake cannot pick a backend without it. |
+| domain/locator (system + per-deploy override ladder) | system.toml | **model** — `Deploy{domain, locator}` (already filed as R1 ask #1). |
+| `[[transport]]` network identity (ip/mac/gateway/interfaces, wifi ssid/psk, serial/can device+baud, per-transport rmw/locator/domain) | system.toml → `PlanTransport` | **model** — `execution.transports` (typed, per deploy target). Integrator-owned system config; the embedded boot bake (RFC-0045) and bridge sessions read it. Largest single gap. |
+| `[[bridge]]` in-binary relays (from/to/topics/bidirectional) | system.toml (RFC-0009) | **model** — `execution.bridges` passthrough; `nros sync`-style type resolution moves behind resolve (types come from layer 1). |
+| `[[domain]]` multi-domain routing | system.toml | **model** — folds into `execution.transports` (a transport = (rmw, locator, domain) session). |
+| `[lifecycle] autostart` | system.toml | **model** — per-node `lifecycle_autostart` (`none\|configure\|active`) on `NodeInstance` or deploy entry; the contract-layer `lifecycle` flag stays the managed-node marker. |
+| Capability axes (`features = [..]`, `[safety]`, `[param_services]`) | system.toml | **model** — `execution.features: [String]` (system-level; per-deploy `features` see build tuning below). Unknown names stay a bake-time error (capability_resolver). |
+| Per-deploy build tuning (`profile`, `optimize`, cargo `features`), `kind`, `framework` | system.toml `[deploy.*]` | **model (passthrough)** — `Deploy.extra: map` (consumer-defined, documented keys). In the end state nano-ros must not parse system.toml at all, so even build knobs ride the model — as an open map, not typed schema (they are not cross-runtime semantics). |
+| Per-endpoint QoS (manifest per-endpoint QoS + 211.H `qos_overrides.*` launch params) | manifests + launch params | **model** — endpoint contracts (`PubContract`/`SubContract`) gain optional `qos`; the 211.H launch-param overlay retires into it. |
+| Board selection | `[deploy.*].board` / cmake | **covered** — `mcu:<board>` target encodes it. |
+| `default_launch` / `default_target` | system.toml | **retire** — resolve-input ergonomics; obsolete once resolve is the front door. |
+| RFC-0033 message capacities (`nros-codegen.toml`) | workspace file | **local** — message-generation knob, not system semantics. |
+| Monitor tables (contracts → baked consts) | new (W3b.4) | **resolve→nano-ros** — emission from model contracts, already planned. |
+| Actions wiring | manifest `actions:` | **resolve** — play_launch's ManifestIndex never merges actions; `structure.actions` is always empty today. |
+
+Ordering: the transports/bridges/rmw block is the R1 critical path for any
+real embedded system; params + per-endpoint QoS next; lifecycle/features/
+extras are small.
+
 ## Open questions
 
 - Stamp extraction ABI: peek-decode `Header` in the take path vs codegen

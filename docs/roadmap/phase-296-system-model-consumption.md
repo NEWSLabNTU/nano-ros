@@ -192,10 +192,29 @@ from model contracts + the native parity fixture vs play_launch.
 The SystemModel is canonical; nano-ros's custom resolution retires at
 parity. Ordered gates (each verifiable before the next):
 
-- R1 — model parity: W3b tail + W4.1/.2 land (monitor tables, entry
-  codegen `--model`, CMake `MODEL`), plus play_launch-side gaps:
-  `Deploy{domain, locator}` schema fields and `resolve` reading
-  `system.toml [deploy]` (file these in play_launch when starting R1).
+- R1 — model parity (gap inventory: RFC-0052 §Parity gap analysis).
+  Concrete items, dependency-ordered:
+  - **M (shared model schema, ros-launch-manifest):**
+    M1 `Deploy{domain, locator, rmw}` + `Deploy.extra` open map;
+    M2 `execution.transports` (typed PlanTransport equivalent: ip/mac/
+    gateway/interfaces/ssid/psk/device/baud + per-transport rmw/locator/
+    domain) — the largest gap, folds `[[domain]]`;
+    M3 `execution.bridges` + `execution.features`;
+    M4 `structure.nodes[].params` (resolved values — ROS params are
+    system semantics; embedded has no record to read);
+    M5 endpoint contracts gain optional `qos` (retires the 211.H
+    launch-param overlay);
+    M6 per-node `lifecycle_autostart`.
+  - **P (play_launch resolve):** P1 read `system.toml` as the
+    system-config input (deploy/tiers/transports/bridges/features) and
+    fill execution; P2 merge manifest `actions:` into the index (the
+    always-empty `structure.actions` gap); P3 per-target resolve
+    ergonomics (decide one-model-all-targets vs per-target).
+  - **N (nano-ros):** N1 monitor-table emission from model contracts
+    (W3b.4 tail); N2 `codegen entry --model` (W4.1) incl. the
+    plugin=class mapping + resolved-wiring remap verification; N3
+    boot/transport bake reads `execution.transports` instead of
+    `[[transport]]`.
 - R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
   (`ws-realtime-rust` first) build from resolved models; book chapters
   switch to the resolve→bake flow.
