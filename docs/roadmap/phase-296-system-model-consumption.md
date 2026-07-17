@@ -73,41 +73,94 @@ Status: W1+W2+W3a landed (2026-07-17); W3b-W4 planned.
 
 ### W3b — on-target contract monitors (layer 2)
 
-Exploration (2026-07-17) found three blockers, in dependency order:
-1. **No Rust diagnostics surface exists** — nros-diagnostic-updater is a
-   C++ header only; no diagnostic_msgs in-tree. The monitors have
-   nothing to report through. Build first: generate diagnostic_msgs +
-   a minimal Rust DiagnosticArray publisher on /diagnostics.
-2. **No epoch clock on embedded** — `ExecutorConfig.clock_us` is
-   monotonic; `now - header.stamp` needs a wall-clock hook beside it.
-3. **Examples never stamp `header.stamp`** — the parity fixture must
-   stamp on publish.
-Recommended first slice: publish-rate monitor (monotonic-only, seam at
-handles.rs publish_with_buffer) + baked `{topic → min_rate_hz}` const
-table from codegen-system, then max_age via STAMP_OFFSET once 2+3 land.
-Also here: TT-window binding (needs the major-frame dispatcher at the
-run_tiers altitude) and deadline-policy miss ACTIONS (ignore/warn/skip/
-fault — note the executor's existing DeadlinePolicy enum is deadline
-INHERITANCE, a different concept; the miss-action enum is new).
+The three explored blockers become the first three steps — each is a
+small, independently landable prerequisite with its own done-when.
 
-- Take path `max_age` via STAMP_OFFSET; rate/jitter per spin tick;
-  node-path latency via the sched-context clock; violations through the
-  (new) Rust diagnostics surface in play_launch rule-id vocabulary;
-  zero-cost when uncontracted (empty const table → DCE, flash delta
-  measured on mps2-an385).
-- **Done when:** a native fixture pair with a violated `min_rate_hz`
-  reports the violation through diagnostics while the compliant twin
-  stays silent — same contract file checked by play_launch on the Linux
-  side (cross-runtime parity test).
+#### W3b.1 — Rust diagnostics surface (blocker 1)
+
+- Vendor `diagnostic_msgs` interface sources at
+  `packages/cli/interfaces/diagnostic_msgs/` (the #204 bundled-share
+  mechanism — same path std_msgs/builtin_interfaces took, so no-ROS
+  hosts generate it too).
+- New `packages/core/nros-diagnostics` (no_std + heapless): a thin
+  `DiagnosticReporter` that owns one publisher on `/diagnostics`
+  (`DiagnosticArray`) and exposes
+  `report(rule_id, severity, fqn, message)` with the play_launch rule-id
+  vocabulary as consts (`rate-hierarchy-runtime`, `max-age-runtime`,
+  `max-latency-runtime`) + the assumption/guarantee tag in `values`.
+  Thin-wrapper discipline (RFC-0019): no aggregation logic, one publish
+  per report, rate-limited by a min-interval knob.
+- **Done when:** a native example publishes a violation entry visible via
+  `ros2 topic echo /diagnostics` (interop lane), and the crate builds
+  `no_std` for one embedded board.
+
+#### W3b.2 — epoch clock hook (blocker 2)
+
+- `ExecutorConfig.epoch_us: Option<fn() -> u64>` beside `clock_us`
+  (wall-clock µs since UNIX epoch). Posix/native default:
+  `SystemTime::now()`. Embedded boards: wired from the platform layer
+  where the board HAS wall time (RTC / synced transport), else `None` —
+  and a `None` epoch source with a baked `max_age_ms` contract is a
+  BAKE-TIME error via the monitor-table emitter (fail-loud, not a
+  silently-dead monitor).
+- **Done when:** posix executor exposes epoch time to monitors; an
+  embedded bake with max_age contracts and no epoch source refuses with
+  an actionable message.
+
+#### W3b.3 — stamping (blocker 3)
+
+- `nros-node` helper `Node::stamp_now()` (epoch hook →
+  `builtin_interfaces/Time`) so nodes fill `header.stamp` in one call;
+  the parity fixture pair (talker with Header-leading msg) stamps every
+  publish. Book note in the first-node chapter's message section.
+- **Done when:** the parity fixture's wire traffic carries non-zero
+  stamps (asserted via the listener's received msg in-test).
+
+#### W3b.4 — rate monitor + baked monitor table
+
+- `codegen-system --model` emits a per-node
+  `static const nros_monitor_spec_t { topic, min_rate_hz, jitter_ms,
+  max_age_ms, stamp_offset }[]` (C) / `const MONITORS: &[MonitorSpec]`
+  (Rust macro path) from `contracts.pub_endpoints`/`sub_endpoints` —
+  empty table when uncontracted (DCE; flash delta measured on
+  mps2-an385).
+- Publisher-side: per-endpoint counter + EWMA period at
+  `publish_with_buffer`, checked on spin ticks against `min_rate_hz`/
+  `jitter_ms` (monotonic clock only — independent of W3b.2).
+- Violations through W3b.1's reporter.
+- **Done when:** native pair with violated `min_rate_hz` reports
+  `rate-hierarchy-runtime` on `/diagnostics`; compliant twin silent;
+  play_launch flags the same violation from the same contract file
+  (the cross-runtime parity test).
+
+#### W3b.5 — max_age + node-path latency
+
+- Take-path peek via `RosMessage::STAMP_OFFSET` (landed W3a) +
+  W3b.2 epoch hook → `max-age-runtime`; node-path
+  (take→publish) latency via the sched-context monotonic clock →
+  `max-latency-runtime`.
+- TT-window binding (major-frame dispatcher at the run_tiers altitude)
+  and the deadline-miss ACTION enum (ignore/warn/skip/fault — distinct
+  from the executor's existing DeadlinePolicy inheritance enum) land
+  here too, closing the W2 deferral.
+- **Done when:** parity fixture extends to a stale-stamp scenario
+  (max_age fires both runtimes) and a deadline_policy=skip tier
+  provably skips the offending group's remaining callbacks.
 
 ### W4 — CMake + ASI pilot
 
-- Scoping fact (W3a exploration): the `LAUNCH` keyword drives
-  `nros codegen entry` (launch-parsed node list), NOT codegen-system —
-  so `MODEL` needs a `nros codegen entry --model` mode that builds the
-  entry plan from the model's STRUCTURE layer (nodes/components), plus
-  the `nano_ros_add_executable(... MODEL <path>)` keyword pass-through,
-  plus the model-mode codegen-system already landed in W1.
+- W4.1 — `nros codegen entry --model`: build the entry plan from the
+  model's STRUCTURE layer (nodes/pkg/class from `[[component]]`-shaped
+  metadata; the launch parser is bypassed — the model IS the resolved
+  launch). Blocked-on nothing; the scoping fact from W3a is that the
+  `LAUNCH` keyword drives `codegen entry`, not codegen-system.
+- W4.2 — `nano_ros_add_executable(... MODEL <path>)` keyword: mutually
+  exclusive with LAUNCH; passes `--model` to BOTH `codegen entry`
+  (W4.1) and `codegen-system` (landed W1) invocations.
+- W4.3 — ASI pilot: replace `controller_pkg:system.launch.xml` with a
+  play_launch-resolved model on the zephyr-fvp lane; validate on AVH.
+  Needs the model resolved for `--target zephyr` (play_launch side is
+  target-generic already).
 - ASI pilot: replace `controller_pkg:system.launch.xml` with a
   play_launch-resolved `system_model.yaml` for the zephyr-fvp lane;
   validate on AVH.
