@@ -183,6 +183,13 @@ named reference consumer), 287 (ament verbs on zephyr).
     controller (uart gate advanced from "Waiting for acceleration data"
     to "Waiting for steering data"; 30+ min sim stable). Remaining
     inputs are autoware-typed — the ASI demo compose stack covers them.
+  - [x] 2026-07-17 — **W3.a CLOSED LOOP: the full ASI demo delivers
+    end-to-end on the FVP.** Compose stack (autoware planning sim +
+    domain_bridge 1↔2) + island on domain 2 over tap0: trajectory at
+    10 Hz reaches the firmware, the MPC engages, and
+    `/control/trajectory_follower/control_cmd` streams back on the
+    Autoware domain at ~26 Hz. nano-ros is now a proven end-to-end
+    Autoware safety-island runtime on the reference consumer.
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.
