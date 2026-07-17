@@ -586,6 +586,10 @@ fn decode_alias(
         // C zenoh
         "zephyr-c-talker" | "c-talker" => ("c", "talker", "zenoh", ""),
         "zephyr-c-listener" | "c-listener" => ("c", "listener", "zenoh", ""),
+        "zephyr-c-service-server" | "c-service-server" => ("c", "service-server", "zenoh", ""),
+        "zephyr-c-service-client" | "c-service-client" => ("c", "service-client", "zenoh", ""),
+        "zephyr-c-action-server" | "c-action-server" => ("c", "action-server", "zenoh", ""),
+        "zephyr-c-action-client" | "c-action-client" => ("c", "action-client", "zenoh", ""),
         // XRCE Rust
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => ("rust", "talker", "xrce", ""),
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => ("rust", "listener", "xrce", ""),
@@ -604,6 +608,18 @@ fn decode_alias(
         // XRCE C
         "zephyr-xrce-c-talker" | "xrce-c-talker" => ("c", "talker", "xrce", ""),
         "zephyr-xrce-c-listener" | "xrce-c-listener" => ("c", "listener", "xrce", ""),
+        "zephyr-xrce-c-service-server" | "xrce-c-service-server" => {
+            ("c", "service-server", "xrce", "")
+        }
+        "zephyr-xrce-c-service-client" | "xrce-c-service-client" => {
+            ("c", "service-client", "xrce", "")
+        }
+        "zephyr-xrce-c-action-server" | "xrce-c-action-server" => {
+            ("c", "action-server", "xrce", "")
+        }
+        "zephyr-xrce-c-action-client" | "xrce-c-action-client" => {
+            ("c", "action-client", "xrce", "")
+        }
         // XRCE C++
         "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => ("cpp", "talker", "xrce", ""),
         "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => ("cpp", "listener", "xrce", ""),

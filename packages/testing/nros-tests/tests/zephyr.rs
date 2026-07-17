@@ -1,23 +1,49 @@
-//! Zephyr native_sim integration tests
+//! phase-295 W3.c — THE Zephyr native_sim example matrix consumer (RFC-0051).
 //!
-//! These tests verify that nros running on Zephyr RTOS (native_sim)
-//! can communicate with native Rust applications via zenoh.
+//! Parametrizes the hand-written per-cell zephyr families into cells of the
+//! test matrix (`nros_tests::matrix`): every
+//! `(ZephyrNativeSim, lang, rmw, workload, Example, Runtime)` row is ONE
+//! `#[case]` of [`example_e2e`] — (rmw ∈ zenoh/cyclonedds/xrce) ×
+//! (lang ∈ rust/c/cpp) × (workload ∈ pubsub/service/action), 27 cells — plus
+//! the historical boot smokes as [`boot_smoke`] cells. The zephyr cyclone
+//! runtime family previously split across
+//! `tests/zephyr_cyclonedds_native_sim_e2e.rs` (pubsub + service e2e, rust
+//! boot smokes; ex-`phase_118_collapse`) now lives HERE — one home per
+//! family, that file is retired.
 //!
-//! # Prerequisites
+//! Isolation, preserved 1:1 from the per-cell tests (until the phase-295 W4
+//! allocator re-bake, the derivations below MIRROR the fixture bakes):
+//! - **Ephemeral zenohd** (#166 / phase-286 W1): rust/cpp zenoh cells spin a
+//!   per-test router; the image dials it via `-testargs --nros-locator`
+//!   (`zephyr_component_main!` / `ZephyrBoard::run_components` read the
+//!   override) — fully parallel.
+//! - **Baked zenohd port**: C zenoh cells (+ the rust service cell) bake
+//!   their router port at `west build` time —
+//!   `PlatformConfig::zenohd_port_for(variant, lang)` (7456 + variant
+//!   offset + lang stride; see `just/zephyr.just`). Until W4.
+//! - **Baked XRCE Agent port**: xrce cells start a MicroXRCEAgent on
+//!   `xrce_agent_port_for(variant, lang)` (2018 + offsets), matching the
+//!   `CONFIG_NROS_XRCE_AGENT_PORT` bake. Until W4.
+//! - **Baked Cyclone domain**: cyclonedds cells need no router/agent — SPDP
+//!   multicast discovery on the per-(lang, variant) `CONFIG_NROS_DOMAIN_ID`
+//!   bake (domains 50–58; pairs share, sets differ → distinct RTPS ports).
+//!   Until W4.
 //!
-//! - Zephyr workspace set up: `./scripts/zephyr/setup.sh`
-//! - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-//! - zenohd installed (for E2E tests)
+//! Skip semantics are identical to the per-cell tests: no zephyr workspace /
+//! missing or STALE west image (`just zephyr build-fixtures`) / missing XRCE
+//! agent → `nros_tests::skip!`. The `--seed` uniqueness (`ZephyrProcess`
+//! injects one per spawn — identical native_sim entropy otherwise yields
+//! identical GUIDs and discovery sees the peer as itself) and the
+//! `--nros-locator` runtime-dial mechanics are unchanged.
 //!
-//! # Running
+//! Bespoke tests kept below the matrix (NOT (rmw × lang × workload) cells):
+//! the zephyr↔native cross-platform interop pairs (pubsub both directions +
+//! bidirectional, service both directions, C++ pubsub both directions), the
+//! workspace-Entry native_sim e2e (Workspace kind), and the availability
+//! probe.
 //!
-//! ```bash
-//! # Run all Zephyr tests
-//! cargo test -p nano-ros-tests --test zephyr
-//!
-//! # Run with output
-//! cargo test -p nano-ros-tests --test zephyr -- --nocapture
-//! ```
+//! Run with: `cargo nextest run -p nros-tests --test zephyr`
+//! (slice a family: `-E 'binary(zephyr) and test(pubsub)'`).
 
 use nros_tests::{
     count_pattern,
@@ -25,6 +51,7 @@ use nros_tests::{
         XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
         build_native_service_server, build_native_talker, require_xrce_agent,
     },
+    matrix::{Lang, Rmw, Workload},
     output, platform,
     zephyr::{
         ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example,
@@ -32,31 +59,726 @@ use nros_tests::{
         zephyr_workspace_path,
     },
 };
-use std::{path::PathBuf, time::Duration};
+use rstest::rstest;
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
+
+// =============================================================================
+// Shared markers + helpers
+// =============================================================================
+
+/// Zephyr boot banner (printed by every native_sim image before app code).
+const ZEPHYR_BOOT_BANNER: &str = "Booting Zephyr";
+
+/// M-F.23: the single-node `zephyr_component_main!` macro emits the
+/// canonical `"Waiting for messages"` readiness marker for every node kind
+/// (pub/sub/service/action); the C/C++ listeners print the same line.
+const NODE_READY_MARKER: &str = "Waiting for messages";
+
+/// Lax server-readiness prefix: matches BOTH the component-main
+/// `"Waiting for messages"` marker (rust servers) and the canonical
+/// `SERVICE_SERVER_READY_MARKER` (`"Waiting for service requests"`, C/C++
+/// servers) — the historical per-cell service tests keyed on this prefix.
+const SERVER_READY_LAX: &str = "Waiting";
 
 fn count_zephyr_received(output: &str) -> usize {
     // All Zephyr listener fixtures (c/cpp/rust) print the canonical
-    // `Received: <n>` (Phase 198.2 normalized the rust fixture off `Received[`).
+    // listener sample line (Phase 198.2 normalized the rust fixture).
     output
         .lines()
         .filter(|line| line.contains(nros_tests::output::LISTENER_LOG_PREFIX))
         .count()
 }
 
-/// Get prebuilt Zephyr talker for native_sim (uses existing binary if available)
-fn get_zephyr_talker_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-talker binary")
+fn lang_str(l: Lang) -> &'static str {
+    match l {
+        Lang::Rust => "rust",
+        Lang::C => "c",
+        Lang::Cpp => "cpp",
+        Lang::Mixed => "mixed",
+    }
 }
 
-/// Get prebuilt Zephyr listener for native_sim (uses existing binary if available)
-fn get_zephyr_listener_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-listener binary")
+fn rmw_str(r: Rmw) -> &'static str {
+    match r {
+        Rmw::Zenoh => "zenoh",
+        Rmw::Cyclonedds => "cyclonedds",
+        Rmw::Xrce => "xrce",
+    }
+}
+
+/// Resolve a prebuilt Zephyr native_sim example image for
+/// (lang, case, rmw), or skip. Missing OR stale (`is_binary_stale`) west
+/// images skip with the `just zephyr build-fixtures` remedy — tests never
+/// build fixtures in their bodies (Phase 179.I).
+fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
+    let alias = match (lang, rmw) {
+        (Lang::Rust, Rmw::Zenoh) => format!("zephyr-rs-{case}"),
+        (Lang::Rust, Rmw::Xrce) => format!("zephyr-xrce-rs-{case}"),
+        (Lang::Rust, Rmw::Cyclonedds) => format!("zephyr-dds-rs-{case}"),
+        (Lang::C, Rmw::Zenoh) => format!("zephyr-c-{case}"),
+        (Lang::C, Rmw::Xrce) => format!("zephyr-xrce-c-{case}"),
+        (Lang::C, Rmw::Cyclonedds) => format!("zephyr-dds-c-{case}"),
+        (Lang::Cpp, Rmw::Zenoh) => format!("zephyr-cpp-{case}"),
+        (Lang::Cpp, Rmw::Xrce) => format!("zephyr-xrce-cpp-{case}"),
+        (Lang::Cpp, Rmw::Cyclonedds) => format!("zephyr-dds-cpp-{case}"),
+        (Lang::Mixed, _) => unreachable!("no mixed example cells"),
+    };
+    get_prebuilt_zephyr_example(&alias, ZephyrPlatform::NativeSim).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "zephyr/{}/{case} {} image not prebuilt or stale \
+             (run `just zephyr build-fixtures`): {e:?}",
+            lang_str(lang),
+            rmw_str(rmw)
+        )
+    })
+}
+
+/// Poll `proc`'s accumulated output until it carries at least `min`
+/// listener sample lines, or `timeout` elapses. Returns everything seen.
+fn wait_for_received_count(proc: &ZephyrProcess, min: usize, timeout: Duration) -> String {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let out = proc.wait_for_pattern(output::LISTENER_LOG_PREFIX, remaining);
+        if count_pattern(&out, output::LISTENER_LOG_PREFIX) >= min || Instant::now() >= deadline {
+            return out;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
 }
 
 // =============================================================================
-// Availability Tests
+// Cell table types
+// =============================================================================
+
+/// How the cell's pair is isolated from its siblings. Every baked value is
+/// the MIRROR of the fixture's compile-time bake until the phase-295 W4
+/// allocator re-bake.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Iso {
+    /// Per-test ephemeral zenohd; both images dial it at runtime via
+    /// `-testargs --nros-locator` (#166 / phase-286 W1).
+    EphemeralZenohd,
+    /// zenohd on the image's compile-time-baked port —
+    /// `ZEPHYR.zenohd_port_for(variant, lang)` (until W4).
+    BakedZenohd,
+    /// MicroXRCEAgent on the image's baked UDP port —
+    /// `ZEPHYR.xrce_agent_port_for(variant, lang)` (until W4).
+    BakedXrceAgent,
+    /// Nothing to spawn: Cyclone SPDP multicast on the baked
+    /// per-(lang, variant) `CONFIG_NROS_DOMAIN_ID` (50–58, until W4).
+    BakedCycloneDomain,
+}
+
+/// Server-side corroboration for action cells (preserved per-cell from the
+/// pre-consolidation asserts).
+#[derive(Copy, Clone, Debug)]
+enum ServerCheck {
+    /// The server must have received/executed the goal
+    /// (`ACTION_GOAL_REQUEST_PREFIX` or `ACTION_EXECUTING_MARKER`).
+    GoalReceived,
+    /// The server must have completed the goal
+    /// (`ACTION_GOAL_SUCCEEDED_MARKER`).
+    GoalSucceeded,
+}
+
+/// One (rmw × lang × workload) Zephyr native_sim matrix cell.
+struct Cell {
+    rmw: Rmw,
+    lang: Lang,
+    workload: Workload,
+    iso: Iso,
+    /// Server/listener readiness marker waited on before the peer starts.
+    ready_marker: &'static str,
+    ready_secs: u64,
+    /// Whether a missed readiness marker panics (some historical cells
+    /// tolerated it and let the client-side wait carry the failure).
+    ready_fatal: bool,
+    /// Extra settle after readiness (xrce action: the Agent needs time to
+    /// propagate the server's CREATE_REPLIER ack under load).
+    post_ready_ms: u64,
+    /// Client/listener success window.
+    window_secs: u64,
+    /// Pubsub only: minimum delivered sample lines.
+    min_received: usize,
+    /// Action only: the client must also log feedback frames.
+    require_feedback: bool,
+    /// Action only: server-side corroboration.
+    server_check: Option<ServerCheck>,
+    /// Provenance / nuance — folded into failure messages so a red cell
+    /// still names the seam it pins.
+    note: &'static str,
+}
+
+impl Cell {
+    fn id(&self) -> String {
+        format!(
+            "{}/{}/{:?}",
+            rmw_str(self.rmw),
+            lang_str(self.lang),
+            self.workload
+        )
+    }
+}
+
+/// Isolation guards — held for the whole cell (Drop tears them down).
+#[allow(dead_code)] // held for Drop, never read
+enum IsoGuard {
+    Router(ZenohRouter),
+    Agent(XrceAgent),
+    None,
+}
+
+/// Start the cell's isolation resource. Returns the guard plus the runtime
+/// locator to dial (ephemeral cells only — baked cells' images carry their
+/// endpoint at compile time).
+fn setup_isolation(cell: &Cell) -> (IsoGuard, Option<String>) {
+    let variant = cell
+        .workload
+        .as_test_variant()
+        .expect("example cells use the classic pubsub/service/action variants");
+    let lang = cell.lang.as_test_lang();
+    match cell.iso {
+        Iso::EphemeralZenohd => {
+            let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+            let locator = router.locator();
+            eprintln!("[{}] ephemeral zenohd on {locator}", cell.id());
+            (IsoGuard::Router(router), Some(locator))
+        }
+        Iso::BakedZenohd => {
+            // Baked router port (mirrors the fixture's locator bake until
+            // the phase-295 W4 allocator re-bake).
+            let port = platform::ZEPHYR.zenohd_port_for(variant, lang);
+            let router = ZenohRouter::start(port).expect("Failed to start zenohd");
+            eprintln!("[{}] zenohd on baked port {port}", cell.id());
+            (IsoGuard::Router(router), None)
+        }
+        Iso::BakedXrceAgent => {
+            // Baked Agent port (mirrors the `CONFIG_NROS_XRCE_AGENT_PORT`
+            // west bake — `just/zephyr.just` — until the W4 re-bake).
+            let port = platform::ZEPHYR.xrce_agent_port_for(variant, lang);
+            let agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
+            eprintln!("[{}] XRCE Agent on baked port {port}", cell.id());
+            (IsoGuard::Agent(agent), None)
+        }
+        Iso::BakedCycloneDomain => {
+            // Cyclone SPDP multicast on the baked per-(lang, variant)
+            // domain (50–58) — nothing to spawn (until the W4 re-bake).
+            (IsoGuard::None, None)
+        }
+    }
+}
+
+/// Boot a native_sim image, dialing `locator` when the cell is ephemeral.
+fn start_image(bin: &Path, locator: &Option<String>, what: &str) -> ZephyrProcess {
+    match locator {
+        Some(loc) => ZephyrProcess::start_with_locator(bin, ZephyrPlatform::NativeSim, loc),
+        None => ZephyrProcess::start(bin, ZephyrPlatform::NativeSim),
+    }
+    .unwrap_or_else(|e| panic!("Failed to start {what}: {e:?}"))
+}
+
+// =============================================================================
+// The parametrized matrix consumer — 27 (rmw × lang × workload) cells
+// =============================================================================
+
+/// One Zephyr native_sim example cell: boot the on-target pair against the
+/// cell's isolation resource and prove the workload contract. Case names
+/// carry `<rmw>_<lang>_<workload>_e2e` so the `.config/nextest.toml` groups
+/// can slice by family (e.g. `test(xrce)`, `test(zenoh_cpp_service_e2e)`).
+#[rstest]
+// ── zenoh ────────────────────────────────────────────────────────────────
+#[case::zenoh_rust_pubsub_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Rust, workload: Workload::Pubsub,
+    iso: Iso::EphemeralZenohd,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 40, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_talker_to_listener_e2e — zenoh-pico session over NSOS; \
+           readiness poll replaced the Phase 89.12 fixed-sleep flake",
+})]
+#[case::zenoh_c_pubsub_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::C, workload: Workload::Pubsub,
+    iso: Iso::BakedZenohd,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 30, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_c_talker_to_listener_e2e (Phase 183.1 closed the zephyr/c hole)",
+})]
+#[case::zenoh_cpp_pubsub_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Cpp, workload: Workload::Pubsub,
+    iso: Iso::EphemeralZenohd,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 40, min_received: 3,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_cpp_talker_to_listener_e2e — ≥3 deliveries (historical margin)",
+})]
+#[case::zenoh_rust_service_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Rust, workload: Workload::Service,
+    iso: Iso::BakedZenohd,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_rust_service_e2e (Phase 183.3 — rust had pubsub+action but \
+           no service); baked port 7466",
+})]
+#[case::zenoh_c_service_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::C, workload: Workload::Service,
+    iso: Iso::BakedZenohd,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_c_service_server_to_client_e2e (Phase 183.1)",
+})]
+#[case::zenoh_cpp_service_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Cpp, workload: Workload::Service,
+    iso: Iso::EphemeralZenohd,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_cpp_service_server_to_client_e2e — one-shot AddTwoIntsClient \
+           (a single reply is the whole contract)",
+})]
+#[case::zenoh_rust_action_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Rust, workload: Workload::Action,
+    iso: Iso::EphemeralZenohd,
+    ready_marker: NODE_READY_MARKER, ready_secs: 60, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 150, min_received: 0,
+    require_feedback: true, server_check: Some(ServerCheck::GoalReceived),
+    note: "ex test_zephyr_action_e2e — 3 queryable declarations serialize at ~10 s each \
+           on zenoh-pico (Phase 160.C), hence the 60 s readiness + 150 s client budget",
+})]
+#[case::zenoh_c_action_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::C, workload: Workload::Action,
+    iso: Iso::BakedZenohd,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 60, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_c_action_server_to_client_e2e — un-ignored 2026-07-12 after the \
+           stale readiness-marker false diagnosis (the #174 class)",
+})]
+#[case::zenoh_cpp_action_e2e(Cell {
+    rmw: Rmw::Zenoh, lang: Lang::Cpp, workload: Workload::Action,
+    iso: Iso::EphemeralZenohd,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 60, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 90, min_received: 0,
+    require_feedback: false, server_check: Some(ServerCheck::GoalSucceeded),
+    note: "ex test_zephyr_cpp_action_server_to_client_e2e — client needs ~25 s to reach \
+           send_goal (3 service-client declarations, Phase 160.C)",
+})]
+// ── cyclonedds (SPDP multicast; baked domains 50–58) ─────────────────────
+#[case::cyclonedds_rust_pubsub_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Rust, workload: Workload::Pubsub,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_rust_cyclonedds_pubsub_e2e — \
+           NSOS getifaddrs + IP_ADD_MEMBERSHIP forwarding + per-spawn --seed (identical \
+           GUID prefixes otherwise stall SPDP)",
+})]
+#[case::cyclonedds_c_pubsub_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::C, workload: Workload::Pubsub,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_c_cyclonedds_pubsub_e2e — the \
+           C CMake generates the Cyclone dds_topic_descriptor_t the nros C codegen omits",
+})]
+#[case::cyclonedds_cpp_pubsub_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Cpp, workload: Workload::Pubsub,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_cpp_cyclonedds_pubsub_e2e — \
+           16 MiB malloc arena + NSOS offload overlay parity with the Rust image",
+})]
+#[case::cyclonedds_rust_service_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Rust, workload: Workload::Service,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_rust_cyclonedds_service_e2e — \
+           pins the backend service_type_name trailing-underscore strip",
+})]
+#[case::cyclonedds_c_service_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::C, workload: Workload::Service,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_c_cyclonedds_service_e2e — \
+           Phase 171.0.a volatile-reader-match fix (client wrote before the match)",
+})]
+#[case::cyclonedds_cpp_service_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Cpp, workload: Workload::Service,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 20, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex zephyr_cyclonedds_native_sim_e2e::test_zephyr_cpp_cyclonedds_service_e2e",
+})]
+#[case::cyclonedds_rust_action_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Rust, workload: Workload::Action,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 90, min_received: 0,
+    require_feedback: false, server_check: Some(ServerCheck::GoalReceived),
+    note: "ex test_zephyr_dds_rs_action_e2e",
+})]
+#[case::cyclonedds_c_action_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::C, workload: Workload::Action,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 60, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 60, min_received: 0,
+    require_feedback: false, server_check: Some(ServerCheck::GoalSucceeded),
+    note: "ex test_zephyr_dds_c_action_e2e — Cyclone-on-Zephyr declares action entities \
+           at ~10 s each, hence the 60 s readiness window",
+})]
+#[case::cyclonedds_cpp_action_e2e(Cell {
+    rmw: Rmw::Cyclonedds, lang: Lang::Cpp, workload: Workload::Action,
+    iso: Iso::BakedCycloneDomain,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 60, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 60, min_received: 0,
+    require_feedback: false, server_check: Some(ServerCheck::GoalSucceeded),
+    note: "ex test_zephyr_dds_cpp_action_e2e",
+})]
+// ── xrce (MicroXRCEAgent on the baked per-(variant, lang) port) ──────────
+#[case::xrce_rust_pubsub_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Rust, workload: Workload::Pubsub,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_rust_talker_listener",
+})]
+#[case::xrce_c_pubsub_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::C, workload: Workload::Pubsub,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_c_talker_listener — pins the C talker's immediate \
+           XRCE output-stream flush after publish",
+})]
+#[case::xrce_cpp_pubsub_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Cpp, workload: Workload::Pubsub,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 1,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_cpp_talker_listener (Phase 96.1) — needs distinct XRCE \
+           session_names per cpp process (shared-key hash collided as one client)",
+})]
+#[case::xrce_rust_service_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Rust, workload: Workload::Service,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_rust_service_e2e (Phase 95.A)",
+})]
+#[case::xrce_c_service_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::C, workload: Workload::Service,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_c_service_e2e (Phase 183.1)",
+})]
+#[case::xrce_cpp_service_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Cpp, workload: Workload::Service,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: SERVER_READY_LAX, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 30, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_cpp_service_e2e (Phase 96.1)",
+})]
+#[case::xrce_rust_action_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Rust, workload: Workload::Action,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 1500, window_secs: 60, min_received: 0,
+    require_feedback: true, server_check: None,
+    note: "ex test_zephyr_xrce_rust_action_e2e — the 1500 ms settle lets the Agent \
+           propagate the server's CREATE_REPLIER ack under full-suite load",
+})]
+#[case::xrce_c_action_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::C, workload: Workload::Action,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    post_ready_ms: 0, window_secs: 60, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_c_action_e2e (Phase 183.1)",
+})]
+#[case::xrce_cpp_action_e2e(Cell {
+    rmw: Rmw::Xrce, lang: Lang::Cpp, workload: Workload::Action,
+    iso: Iso::BakedXrceAgent,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 30, ready_fatal: false,
+    post_ready_ms: 0, window_secs: 60, min_received: 0,
+    require_feedback: false, server_check: None,
+    note: "ex test_zephyr_xrce_cpp_action_e2e — this Fibonacci server completes with a \
+           result and streams NO feedback (result-only gate; the #164 marker class)",
+})]
+fn example_e2e(#[case] cell: Cell) {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if matches!(cell.iso, Iso::BakedXrceAgent) && !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    let (first_role, second_role) = match cell.workload {
+        Workload::Pubsub => ("listener", "talker"),
+        Workload::Service => ("service-server", "service-client"),
+        Workload::Action => ("action-server", "action-client"),
+        other => unreachable!("no zephyr example cell for {other:?}"),
+    };
+    // Resolve BOTH images before spawning anything (skip fast + cleanly).
+    let first_bin = resolve_example(cell.lang, first_role, cell.rmw);
+    let second_bin = resolve_example(cell.lang, second_role, cell.rmw);
+
+    let (_iso_guard, locator) = setup_isolation(&cell);
+
+    // Subscriber/server first, so its declarations are live before the
+    // talker/client starts (Phase 89.12 flake class).
+    let first = start_image(&first_bin, &locator, first_role);
+    let ready_out = first.wait_for_pattern(cell.ready_marker, Duration::from_secs(cell.ready_secs));
+    if cell.ready_fatal && !ready_out.contains(cell.ready_marker) {
+        panic!(
+            "[{}] {first_role} didn't reach readiness (`{}`) within {} s — {}.\nOutput:\n{}",
+            cell.id(),
+            cell.ready_marker,
+            cell.ready_secs,
+            cell.note,
+            ready_out
+        );
+    }
+    let mut first = first;
+    if cell.post_ready_ms > 0 {
+        std::thread::sleep(Duration::from_millis(cell.post_ready_ms));
+    }
+
+    let mut second = start_image(&second_bin, &locator, second_role);
+    let window = Duration::from_secs(cell.window_secs);
+
+    match cell.workload {
+        Workload::Pubsub => {
+            let listener_out = wait_for_received_count(&first, cell.min_received, window);
+            second.kill();
+            first.kill();
+            eprintln!("[{}] listener output:\n{listener_out}", cell.id());
+            let n = count_zephyr_received(&listener_out);
+            assert!(
+                n >= cell.min_received,
+                "[{}] listener received {n} sample(s), expected ≥{} — {}.\nOutput:\n{}",
+                cell.id(),
+                cell.min_received,
+                cell.note,
+                listener_out
+            );
+        }
+        Workload::Service => {
+            let client_out =
+                second.wait_for_pattern(nros_tests::output::SERVICE_RESULT_PREFIX, window);
+            let server_out = first
+                .wait_for_output(Duration::from_secs(3))
+                .unwrap_or_default();
+            second.kill();
+            first.kill();
+            eprintln!("[{}] service client output:\n{client_out}", cell.id());
+            eprintln!("[{}] service server output:\n{server_out}", cell.id());
+            assert!(
+                client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
+                "[{}] service client got no reply — {}.\nClient:\n{}\nServer:\n{}",
+                cell.id(),
+                cell.note,
+                client_out,
+                server_out
+            );
+        }
+        Workload::Action => {
+            let client_out =
+                second.wait_for_pattern(nros_tests::output::ACTION_RESULT_PREFIX, window);
+            let server_out = first
+                .wait_for_output(Duration::from_secs(5))
+                .unwrap_or_default();
+            second.kill();
+            first.kill();
+            eprintln!("[{}] action client output:\n{client_out}", cell.id());
+            eprintln!("[{}] action server output:\n{server_out}", cell.id());
+
+            assert!(
+                client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX),
+                "[{}] action client never received the result — {}.\nClient:\n{}\nServer:\n{}",
+                cell.id(),
+                cell.note,
+                client_out,
+                server_out
+            );
+            if cell.require_feedback {
+                let feedback =
+                    count_pattern(&client_out, nros_tests::output::ACTION_FEEDBACK_PREFIX);
+                assert!(
+                    feedback > 0,
+                    "[{}] action client completed but streamed no feedback — {}.\nClient:\n{}",
+                    cell.id(),
+                    cell.note,
+                    client_out
+                );
+            }
+            match cell.server_check {
+                Some(ServerCheck::GoalReceived) => {
+                    assert!(
+                        server_out.contains(nros_tests::output::ACTION_GOAL_REQUEST_PREFIX)
+                            || server_out.contains(nros_tests::output::ACTION_EXECUTING_MARKER),
+                        "[{}] action server never logged the goal — {}.\nServer:\n{}",
+                        cell.id(),
+                        cell.note,
+                        server_out
+                    );
+                }
+                Some(ServerCheck::GoalSucceeded) => {
+                    assert!(
+                        server_out.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER),
+                        "[{}] action server never completed the goal — {}.\nServer:\n{}",
+                        cell.id(),
+                        cell.note,
+                        server_out
+                    );
+                }
+                None => {}
+            }
+        }
+        other => unreachable!("no zephyr example cell for {other:?}"),
+    }
+}
+
+/// Tripwire: the case list above must track the matrix (RFC-0051 W1 SSoT).
+/// A new `(ZephyrNativeSim, Example, Runtime)` row means a new `#[case]` in
+/// [`example_e2e`]; a retired row means removing one. Update BOTH.
+#[test]
+fn example_e2e_case_count_tracks_matrix() {
+    use nros_tests::matrix::{Kind, PlatformId, runtime_cells};
+    let n = runtime_cells()
+        .filter(|c| {
+            matches!(c.platform, PlatformId::ZephyrNativeSim) && matches!(c.kind, Kind::Example)
+        })
+        .count();
+    assert_eq!(
+        n, 27,
+        "the matrix declares {n} (ZephyrNativeSim, Example, Runtime) cells but example_e2e \
+         carries 27 #[case]s — add/remove the matching case AND update this tripwire"
+    );
+}
+
+// =============================================================================
+// Boot smokes — image boots + initializes on native_sim, no peer/no router
+// =============================================================================
+
+/// What the smoke proves, preserved from the pre-consolidation tests.
+#[derive(Copy, Clone, Debug)]
+enum SmokeProof {
+    /// The image boots and prints the Zephyr banner / nros init output.
+    /// Connection failures are EXPECTED (no router/agent is started).
+    Banner,
+    /// The image boots AND its talker publishes (cyclone participant init —
+    /// Phase 11W.10 asserts a real publish line, not just the banner).
+    TalkerPublishes,
+    /// The image boots AND its subscription reaches the wait state.
+    ListenerReady,
+}
+
+struct Smoke {
+    rmw: Rmw,
+    lang: Lang,
+    case: &'static str,
+    proof: SmokeProof,
+}
+
+/// One boot-smoke cell: start the image with NO isolation resource and
+/// assert it initializes per the cell's [`SmokeProof`]. Case names end in
+/// `_boots` so the nextest e2e filters never capture them.
+#[rstest]
+// zenoh rust (the historical `test_zephyr_*_smoke` six-pack).
+#[case::zenoh_rust_talker_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "talker", proof: SmokeProof::Banner })]
+#[case::zenoh_rust_listener_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "listener", proof: SmokeProof::Banner })]
+#[case::zenoh_rust_service_server_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "service-server", proof: SmokeProof::Banner })]
+#[case::zenoh_rust_service_client_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "service-client", proof: SmokeProof::Banner })]
+#[case::zenoh_rust_action_server_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "action-server", proof: SmokeProof::Banner })]
+#[case::zenoh_rust_action_client_boots(Smoke { rmw: Rmw::Zenoh, lang: Lang::Rust, case: "action-client", proof: SmokeProof::Banner })]
+// xrce cpp (Phase 95.C — the examples block in nros::init without an agent,
+// so the banner proves the binary linked + booted clean).
+#[case::xrce_cpp_talker_boots(Smoke { rmw: Rmw::Xrce, lang: Lang::Cpp, case: "talker", proof: SmokeProof::Banner })]
+#[case::xrce_cpp_listener_boots(Smoke { rmw: Rmw::Xrce, lang: Lang::Cpp, case: "listener", proof: SmokeProof::Banner })]
+// cyclonedds cpp + c (Phase 95.D/95.E).
+#[case::cyclonedds_cpp_talker_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Cpp, case: "talker", proof: SmokeProof::Banner })]
+#[case::cyclonedds_cpp_listener_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Cpp, case: "listener", proof: SmokeProof::Banner })]
+#[case::cyclonedds_cpp_service_server_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Cpp, case: "service-server", proof: SmokeProof::Banner })]
+#[case::cyclonedds_cpp_service_client_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Cpp, case: "service-client", proof: SmokeProof::Banner })]
+#[case::cyclonedds_c_talker_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::C, case: "talker", proof: SmokeProof::Banner })]
+#[case::cyclonedds_c_listener_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::C, case: "listener", proof: SmokeProof::Banner })]
+#[case::cyclonedds_c_service_server_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::C, case: "service-server", proof: SmokeProof::Banner })]
+#[case::cyclonedds_c_service_client_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::C, case: "service-client", proof: SmokeProof::Banner })]
+// cyclonedds rust (ex zephyr_cyclonedds_native_sim_e2e boot smokes —
+// Phase 11W.9/.10: participant init proven by a real publish / wait state).
+#[case::cyclonedds_rust_talker_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Rust, case: "talker", proof: SmokeProof::TalkerPublishes })]
+#[case::cyclonedds_rust_listener_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Rust, case: "listener", proof: SmokeProof::ListenerReady })]
+fn boot_smoke(#[case] smoke: Smoke) {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let bin = resolve_example(smoke.lang, smoke.case, smoke.rmw);
+    let id = format!(
+        "{}/{}/{}",
+        rmw_str(smoke.rmw),
+        lang_str(smoke.lang),
+        smoke.case
+    );
+    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
+        .unwrap_or_else(|e| panic!("Failed to start {id}: {e:?}"));
+
+    match smoke.proof {
+        SmokeProof::Banner => {
+            let out = p.wait_for_pattern(ZEPHYR_BOOT_BANNER, Duration::from_secs(10));
+            p.kill();
+            eprintln!("[{id}] output:\n{out}");
+            assert!(
+                out.contains(ZEPHYR_BOOT_BANNER) || out.contains("nros"),
+                "[{id}] failed to boot — no initialization output:\n{out}"
+            );
+        }
+        SmokeProof::TalkerPublishes => {
+            // 1 Hz timer — first publish lands ~1.1 s in; allow margin.
+            let out = p.wait_for_pattern(output::TALKER_LOG_PREFIX, Duration::from_secs(10));
+            p.kill();
+            eprintln!("[{id}] output:\n{out}");
+            assert!(
+                out.contains(ZEPHYR_BOOT_BANNER) || out.contains("nros"),
+                "[{id}] failed to print init banner:\n{out}"
+            );
+            output::assert_talker(&out, 1);
+        }
+        SmokeProof::ListenerReady => {
+            let out = p.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(10));
+            p.kill();
+            eprintln!("[{id}] output:\n{out}");
+            assert!(
+                out.contains(NODE_READY_MARKER),
+                "[{id}] did not reach the subscription wait state:\n{out}"
+            );
+        }
+    }
+}
+
+// =============================================================================
+// Availability probe (bespoke — informational)
 // =============================================================================
 
 /// Test that Zephyr availability checks work
@@ -69,163 +791,10 @@ fn test_zephyr_availability_checks() {
 }
 
 // =============================================================================
-// Zephyr E2E Tests (with automatic zenohd)
+// Bespoke: Zephyr ↔ native cross-platform pubsub (rust) — NOT
+// (rmw × lang × workload) cells: each pairs a Zephyr image with a NATIVE
+// process (Interop-shaped, single-platform matrix cells can't express it).
 // =============================================================================
-
-/// Test: Zephyr talker → Zephyr listener communication
-///
-/// This is a full E2E integration test that:
-/// 1. Starts zenohd automatically automatically
-/// 2. Runs both Zephyr talker and listener
-/// 3. Verifies messages are delivered
-///
-/// Requires:
-/// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - Both examples built with their specific TAP interface configs
-#[test]
-fn test_zephyr_talker_to_listener_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override. The
-    // image reads `-testargs --nros-locator=<loc>` and dials THIS router instead
-    // of its build-time-baked port, so this test no longer needs the fixed
-    // per-(variant,lang) port and no longer has to serialize against its siblings.
-    eprintln!("Starting per-test zenohd router (ephemeral port)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
-    let locator = router.locator();
-    eprintln!("zenohd started on {locator}");
-
-    // Resolve prebuilt examples (to separate directories)
-    let talker_binary = get_zephyr_talker_native_sim();
-    let listener_binary = get_zephyr_listener_native_sim();
-
-    eprintln!("Talker binary: {}", talker_binary.display());
-    eprintln!("Listener binary: {}", listener_binary.display());
-
-    // Start listener first (so it creates its subscriber before talker publishes)
-    eprintln!("Starting Zephyr listener...");
-    let listener =
-        ZephyrProcess::start_with_locator(&listener_binary, ZephyrPlatform::NativeSim, &locator)
-            .expect("Failed to start Zephyr listener");
-
-    // Wait for listener to reach subscriber readiness before starting
-    // talker. Under parallel load the native_sim cold-boot +
-    // `Executor::open` + subscription-declaration propagation to the
-    // zenohd router regularly slips past any fixed sleep; polling the
-    // actual output marker is the robust fix (Phase 89.12).
-    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-    if !listener_ready.contains("Waiting for messages") {
-        panic!(
-            "Zephyr listener didn't reach readiness within 30 s.\nOutput:\n{}",
-            listener_ready
-        );
-    }
-    let mut listener = listener;
-
-    // Start talker
-    eprintln!("Starting Zephyr talker...");
-    let mut talker =
-        ZephyrProcess::start_with_locator(&talker_binary, ZephyrPlatform::NativeSim, &locator)
-            .expect("Failed to start Zephyr talker");
-
-    // Wait for communication
-    eprintln!("Waiting for Zephyr talker → listener communication...");
-
-    // Probe for the talker's 3rd publish + the listener's 3rd
-    // Received marker, early-exiting as soon as both have emitted
-    // enough output. Under `max-threads = 3` parallel load the
-    // native_sim cold-boot + session open can take >8 s, so the
-    // old fixed-8 s `wait_for_output` regularly missed the first
-    // couple of publishes. 30 s cap is comfortable headroom.
-    let _ = talker.wait_for_pattern(
-        nros_tests::output::talker_line(3).as_str(),
-        Duration::from_secs(30),
-    );
-    let _ = listener.wait_for_pattern(
-        nros_tests::output::LISTENER_LOG_PREFIX,
-        Duration::from_secs(30),
-    );
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
-    // Kill processes
-    talker.kill();
-    listener.kill();
-    drop(router);
-
-    eprintln!("\n=== Talker output ===\n{}", talker_output);
-    eprintln!("\n=== Listener output ===\n{}", listener_output);
-
-    // Check talker status
-    let talker_published = output::parse_talker(&talker_output).published_count > 0;
-    let talker_connected = !talker_output.contains("session error");
-    let talker_created_pub = talker_output.contains("Declared publisher")
-        || talker_output.contains("Publisher created")
-        || talker_output.contains(nros_tests::output::TALKER_READY_MARKER);
-
-    // Check listener status
-    let listener_received = count_zephyr_received(&listener_output) > 0;
-    let listener_connected = !listener_output.contains("session error");
-    let listener_created_sub = listener_output.contains("Declared subscriber")
-        || listener_output.contains("Subscriber created")
-        || listener_output.contains("Waiting for messages");
-    let listener_failed_sub = listener_output.contains("Failed to create subscriber");
-
-    if !talker_connected {
-        panic!("Talker failed to connect to zenohd");
-    }
-    if !listener_connected {
-        panic!("Listener failed to connect to zenohd");
-    }
-
-    // Handle zenoh-pico interest message limitation
-    // Only one client can successfully declare at a time
-    if !talker_created_pub && !listener_failed_sub {
-        panic!("Talker failed to create publisher");
-    }
-    if !listener_created_sub && !talker_published {
-        // Listener failed to create subscriber - known zenoh-pico limitation
-        // when multiple clients connect simultaneously
-        if listener_failed_sub {
-            eprintln!(
-                "\nWARNING: Listener failed to create subscriber (zenoh-pico interest conflict)"
-            );
-            eprintln!("This is a known limitation when multiple clients connect simultaneously");
-            eprintln!(
-                "Talker published {} messages successfully",
-                count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX)
-            );
-            // Don't fail the test - this is a known limitation
-            return;
-        }
-        panic!("Listener failed to create subscriber and talker didn't publish");
-    }
-
-    // Check for known zenoh-pico limitation: transport TX failure when multiple clients connect
-    let talker_tx_failed = talker_output.contains("Failed to publish");
-
-    if talker_published && listener_received {
-        let count = count_zephyr_received(&listener_output);
-        eprintln!(
-            "\nSUCCESS: Zephyr listener received {} messages from Zephyr talker",
-            count
-        );
-    } else if talker_published && listener_created_sub {
-        panic!("Talker published but listener didn't receive (timing issue?)");
-    } else if talker_tx_failed {
-        panic!("Talker transport TX failed — zenoh-pico session issue");
-    } else if talker_published {
-        panic!("Talker published but listener failed to subscribe");
-    } else {
-        panic!("Communication failed — talker didn't publish messages");
-    }
-}
 
 /// Test: Zephyr talker → Native listener communication
 ///
@@ -249,7 +818,7 @@ fn test_zephyr_to_native_e2e() {
     let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
 
     // Get Zephyr talker
-    let zephyr_binary = get_zephyr_talker_native_sim();
+    let zephyr_binary = resolve_example(Lang::Rust, "talker", Rmw::Zenoh);
     eprintln!("Zephyr talker binary: {}", zephyr_binary.display());
 
     // Start native listener connecting to zenohd
@@ -300,7 +869,7 @@ fn test_zephyr_to_native_e2e() {
     eprintln!("\n=== Native listener output ===\n{}", listener_output);
 
     // Strict delivery check: the native listener must log at least one
-    // real "Received: <N>" line (not setup text like "Waiting for Int32 ...").
+    // real sample line (not setup text like "Waiting for Int32 ...").
     let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_publisher_put failed")
@@ -319,7 +888,7 @@ fn test_zephyr_to_native_e2e() {
     } else {
         panic!(
             "No messages delivered from Zephyr talker to native listener. \
-             Listener received 0 'Received:' lines."
+             Listener received 0 sample lines."
         );
     }
 }
@@ -344,7 +913,7 @@ fn test_native_to_zephyr_e2e() {
     let talker_path = build_native_talker().expect("Failed to build native-rs-talker");
 
     // Get Zephyr listener
-    let zephyr_binary = get_zephyr_listener_native_sim();
+    let zephyr_binary = resolve_example(Lang::Rust, "listener", Rmw::Zenoh);
     eprintln!("Zephyr listener binary: {}", zephyr_binary.display());
 
     // Start Zephyr listener first (so it subscribes before talker publishes)
@@ -353,7 +922,7 @@ fn test_native_to_zephyr_e2e() {
         ZephyrProcess::start_with_locator(&zephyr_binary, ZephyrPlatform::NativeSim, &locator)
             .expect("Failed to start Zephyr listener");
 
-    let _ = zephyr.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    let _ = zephyr.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(30));
 
     // Start native talker connecting to zenohd
     use nros_tests::process::ManagedProcess;
@@ -391,7 +960,7 @@ fn test_native_to_zephyr_e2e() {
     eprintln!("\n=== Zephyr listener output ===\n{}", zephyr_output);
 
     // Strict delivery check: the Zephyr listener must log at least one
-    // canonical `Received: <n>` sample line (all c/cpp/rust fixtures, 198.2).
+    // canonical sample line (all c/cpp/rust fixtures, 198.2).
     let received_count = count_zephyr_received(&zephyr_output);
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_declare_subscriber failed")
@@ -443,8 +1012,8 @@ fn test_bidirectional_native_zephyr_e2e() {
     // Build all binaries
     let native_talker_path = build_native_talker().expect("Failed to build native-rs-talker");
     let native_listener_path = build_native_listener().expect("Failed to build native-rs-listener");
-    let zephyr_talker_binary = get_zephyr_talker_native_sim();
-    let zephyr_listener_binary = get_zephyr_listener_native_sim();
+    let zephyr_talker_binary = resolve_example(Lang::Rust, "talker", Rmw::Zenoh);
+    let zephyr_listener_binary = resolve_example(Lang::Rust, "listener", Rmw::Zenoh);
 
     eprintln!("Native talker: {}", native_talker_path.display());
     eprintln!("Native listener: {}", native_listener_path.display());
@@ -477,7 +1046,7 @@ fn test_bidirectional_native_zephyr_e2e() {
     native_listener
         .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
         .expect("native listener did not become ready");
-    let _ = zephyr_listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    let _ = zephyr_listener.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(30));
 
     // Start talkers
     eprintln!("Starting talkers...");
@@ -548,7 +1117,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     // Strict delivery counts: match only real sample lines, not setup
     // text like "Waiting for Int32 messages ...". All fixtures log the
-    // canonical `Received: <n>` (198.2).
+    // canonical sample line (198.2).
     let native_received_count = count_pattern(
         &native_listener_output,
         nros_tests::output::LISTENER_LOG_PREFIX,
@@ -584,431 +1153,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 }
 
 // =============================================================================
-// Smoke Tests (no zenohd required)
-// =============================================================================
-
-/// Test: Zephyr talker starts and runs without crashing
-///
-/// Basic smoke test that verifies the Zephyr binary runs correctly.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_talker_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_talker_native_sim();
-    eprintln!("Starting Zephyr talker: {}", zephyr_binary.display());
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr talker");
-
-    // Wait for output (Zephyr will fail to connect but should produce init messages)
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    // The process should have started and produced some output
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr talker booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr talker failed to boot - no initialization output");
-    }
-}
-
-/// Test: Zephyr listener starts correctly
-///
-/// Basic smoke test that verifies the Zephyr listener boots and initializes.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_listener_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_listener_native_sim();
-    eprintln!("Starting Zephyr listener: {}", zephyr_binary.display());
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr listener");
-
-    // Wait for output (Zephyr will fail to connect but should produce init messages)
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    // The process should have started and produced some output
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr listener booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr listener failed to boot - no initialization output");
-    }
-}
-
-// =============================================================================
-// Build Tests
-// =============================================================================
-
-// (Phase 182.3) `test_zephyr_{talker,listener}_build` removed — build-only
-// fixture-presence checks, covered by `just zephyr build-fixtures` (the west
-// prebuild that test-all depends on) + the zephyr pub/sub e2e tests that
-// build+run the same prebuilt binaries.
-
-// =============================================================================
-// Zephyr Action Examples
-// =============================================================================
-
-/// Get prebuilt Zephyr action server for native_sim
-fn get_zephyr_action_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-action-server binary")
-}
-
-/// Get prebuilt Zephyr action client for native_sim
-fn get_zephyr_action_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-action-client binary")
-}
-
-// (Phase 182.3) `test_zephyr_action_{server,client}_build` removed — build-only
-// presence checks (see the note above). The action e2e tests below build+run
-// the same prebuilt binaries via `get_zephyr_action_{server,client}_native_sim`.
-
-/// Test: Zephyr action server starts correctly
-///
-/// Basic smoke test that verifies the Zephyr action server boots and initializes.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_action_server_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_action_server_native_sim();
-    eprintln!("Starting Zephyr action server: {}", zephyr_binary.display());
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr action server");
-
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr action server booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr action server failed to boot - no initialization output");
-    }
-}
-
-/// Test: Zephyr action client starts correctly
-///
-/// Basic smoke test that verifies the Zephyr action client boots and initializes.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_action_client_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_action_client_native_sim();
-    eprintln!("Starting Zephyr action client: {}", zephyr_binary.display());
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr action client");
-
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr action client booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr action client failed to boot - no initialization output");
-    }
-}
-
-/// Test: Zephyr action server → Zephyr action client communication
-///
-/// This is a full E2E integration test that:
-/// 1. Starts zenohd automatically automatically
-/// 2. Runs both Zephyr action server and client
-/// 3. Verifies action communication works
-///
-/// NOTE: This test documents a known zenoh-pico limitation where two clients
-/// connecting simultaneously can cause subscription failures.
-///
-/// Requires:
-/// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - Both examples built with their specific TAP interface configs
-#[test]
-fn test_zephyr_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
-    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
-    let locator = router.locator();
-    eprintln!("zenohd started on {locator}");
-
-    // Resolve prebuilt examples
-    let server_binary = get_zephyr_action_server_native_sim();
-    let client_binary = get_zephyr_action_client_native_sim();
-
-    eprintln!("Action server binary: {}", server_binary.display());
-    eprintln!("Action client binary: {}", client_binary.display());
-
-    // Start action server first
-    eprintln!("Starting Zephyr action server...");
-    let server =
-        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
-            .expect("Failed to start Zephyr action server");
-
-    // Wait for server to declare its queryables before starting the
-    // client. Under parallel load this replaces a fixed sleep that
-    // would otherwise race `client.send_goal()` against a
-    // still-initialising queryable (Phase 89.12 flake). The
-    // readiness marker is any of the "ready" / "Queryable" strings
-    // the Zephyr action server example emits after
-    // `create_action_server` returns — match on the common substring
-    // "Action server ready".
-    //
-    // Phase 160.C — bumped 30s → 60s. Each of the 3 service-server
-    // (queryable) declarations on Zephyr serializes at ~10 s under the
-    // current zenoh-pico transport (every declare does a sync wait that
-    // hits an internal lease/keepalive boundary; native_sim NSOS does
-    // not exhibit it on POSIX). 3 × 10 s + headroom puts readiness at
-    // ~30 s, right on the prior cutoff. Root-cause investigation
-    // (zenoh-pico declare-flush behaviour under Z_FEATURE_INTEREST=1)
-    // remains open as a follow-up.
-    // M-F.23: the single-node `zephyr_component_main!` macro emits the
-    // canonical "Waiting for messages" readiness marker for every node
-    // (pub/sub/service/action), so key readiness off that.
-    let server_ready = server.wait_for_pattern("Waiting for messages", Duration::from_secs(60));
-    if !server_ready.contains("Waiting for messages") {
-        panic!(
-            "Zephyr action server didn't reach readiness within 60 s.\nOutput:\n{}",
-            server_ready
-        );
-    }
-    let mut server = server;
-
-    // Start action client
-    eprintln!("Starting Zephyr action client...");
-    let mut client =
-        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
-            .expect("Failed to start Zephyr action client");
-
-    // Wait for action communication
-    eprintln!("Waiting for action communication...");
-
-    // Wait for the client to print the action-completion marker
-    // (early-exits as soon as the action completes; falls back to a
-    // long cap so a stuck client still returns and surfaces the
-    // failure). Phase 160.C.2 — bumped 40 s → 150 s. Client
-    // budget: ~22 s setup (3 service-client cascades on Zephyr
-    // zenoh-pico, ~7 s each despite the upstream BATCH_UNICAST_SIZE
-    // bump — still slower than POSIX) + 5 s send_goal + ~25 s
-    // feedback stream (10 increments × 2.5 s) + 30 s get_result
-    // (with `NROS_SERVICE_TIMEOUT_MS` raised to 30 s). Total
-    // ~110 s. 150 s leaves headroom for `max-threads = 3`
-    // parallelism load.
-    let client_output = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(150),
-    );
-    // Server output can stop shortly after the client finishes —
-    // give the reader a few seconds to drain any trailing feedback.
-    let server_output = server
-        .wait_for_output(Duration::from_secs(5))
-        .unwrap_or_default();
-
-    // Kill processes
-    server.kill();
-    client.kill();
-    drop(router);
-
-    eprintln!("\n=== Action Server output ===\n{}", server_output);
-    eprintln!("\n=== Action Client output ===\n{}", client_output);
-
-    // Check server status
-    let server_connected =
-        server_output.contains("Session opened") || server_output.contains("Waiting for messages");
-    let server_created_queryables =
-        server_output.contains("Queryable") || server_output.contains("ready");
-    let server_received_goal = server_output.contains("Received goal")
-        || server_output.contains("Goal accepted")
-        || server_output.contains("Goal request");
-
-    // Check client status
-    let client_connected =
-        client_output.contains("Session opened") || client_output.contains("Waiting for messages");
-    let _client_subscribed = client_output.contains("Feedback subscriber ready")
-        || client_output.contains("Subscriber created");
-    let client_got_feedback = client_output.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX)
-        || client_output.contains("feedback");
-    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-
-    // Report results
-    if !server_connected {
-        panic!("Action server failed to connect to zenohd");
-    }
-    if !client_connected {
-        panic!("Action client failed to connect to zenohd");
-    }
-
-    // Full success case — if client got feedback and completed, the action worked
-    // regardless of whether the "subscriber ready" log message appeared
-    if server_received_goal && client_got_feedback && client_completed {
-        let feedback_count =
-            count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
-        eprintln!("\nSUCCESS: Zephyr action communication works!");
-        eprintln!("  - Server received goal");
-        eprintln!("  - Client received {} feedback messages", feedback_count);
-        eprintln!("  - Action completed successfully");
-    } else if !server_received_goal {
-        panic!("Server didn't receive goal");
-    } else if !client_got_feedback {
-        panic!("Client didn't receive feedback");
-    } else {
-        panic!(
-            "Action test failed:\n  server_connected={}\n  server_queryables={}\n  server_goal={}\n  client_connected={}\n  client_feedback={}\n  client_completed={}",
-            server_connected,
-            server_created_queryables,
-            server_received_goal,
-            client_connected,
-            client_got_feedback,
-            client_completed
-        );
-    }
-}
-
-// =============================================================================
-// Zephyr Service Examples
-// =============================================================================
-
-/// Get prebuilt Zephyr service server for native_sim
-fn get_zephyr_service_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-service-server binary")
-}
-
-/// Get prebuilt Zephyr service client for native_sim
-fn get_zephyr_service_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-rs-service-client binary")
-}
-
-// (Phase 182.3) `test_zephyr_service_{server,client}_build` removed — build-only
-// presence checks (see the note above the action examples). The service smoke /
-// e2e tests below build+run the same prebuilt binaries.
-
-/// Test: Zephyr service server starts correctly
-///
-/// Basic smoke test that verifies the Zephyr service server boots and initializes.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_service_server_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_service_server_native_sim();
-    eprintln!(
-        "Starting Zephyr service server: {}",
-        zephyr_binary.display()
-    );
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr service server");
-
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr service server booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr service server failed to boot - no initialization output");
-    }
-}
-
-/// Test: Zephyr service client starts correctly
-///
-/// Basic smoke test that verifies the Zephyr service client boots and initializes.
-/// Connection failure is expected without zenohd.
-#[test]
-fn test_zephyr_service_client_smoke() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let zephyr_binary = get_zephyr_service_client_native_sim();
-    eprintln!(
-        "Starting Zephyr service client: {}",
-        zephyr_binary.display()
-    );
-
-    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr service client");
-
-    let output = zephyr
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("Zephyr output:\n{}", output);
-
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
-
-    if has_boot {
-        eprintln!("SUCCESS: Zephyr service client booted and initialized");
-        if output.contains("ConnectionFailed") || output.contains("session error") {
-            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
-        }
-    } else {
-        panic!("Zephyr service client failed to boot - no initialization output");
-    }
-}
-
-// =============================================================================
-// Cross-Platform Service Tests
+// Bespoke: Zephyr ↔ native cross-platform service (rust)
 // =============================================================================
 
 /// Test: Native service server + Zephyr service client
@@ -1032,7 +1177,7 @@ fn test_native_server_zephyr_client() {
         build_native_service_server().expect("Failed to build native-rs-service-server");
 
     // Get Zephyr service client
-    let zephyr_binary = get_zephyr_service_client_native_sim();
+    let zephyr_binary = resolve_example(Lang::Rust, "service-client", Rmw::Zenoh);
     eprintln!("Zephyr client binary: {}", zephyr_binary.display());
 
     // Start native service server first
@@ -1134,981 +1279,6 @@ fn test_native_server_zephyr_client() {
     }
 }
 
-// =============================================================================
-// Zephyr XRCE-DDS E2E Tests (with XRCE Agent)
-// =============================================================================
-
-/// Get prebuilt Zephyr XRCE Rust talker for native_sim
-fn get_zephyr_xrce_rs_talker_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-talker binary")
-}
-
-/// Get prebuilt Zephyr XRCE Rust listener for native_sim
-fn get_zephyr_xrce_rs_listener_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-listener binary")
-}
-
-/// Get prebuilt Zephyr XRCE C talker for native_sim
-fn get_zephyr_xrce_c_talker_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-c-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-c-talker binary")
-}
-
-/// Get prebuilt Zephyr XRCE C listener for native_sim
-fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-c-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-c-listener binary")
-}
-
-/// Test: Zephyr XRCE Rust talker → listener communication
-///
-/// E2E integration test for XRCE-DDS backend on Zephyr:
-/// 1. Starts MicroXRCEAgent on port 2018
-/// 2. Runs Zephyr listener (native_sim)
-/// 3. Runs Zephyr talker (native_sim)
-/// 4. Verifies message delivery
-///
-/// Requires:
-/// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - XRCE Agent available: `just zephyr setup` or `just xrce setup`
-#[test]
-fn test_zephyr_xrce_rust_talker_listener() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    // Per-(variant, lang) Agent port — fixtures rebuilt with this same
-    // port via the matching `xrce_port` column in just/zephyr.just.
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust);
-    eprintln!("Starting XRCE Agent on port {}...", port);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-
-    // Resolve prebuilt examples
-    let talker_binary = get_zephyr_xrce_rs_talker_native_sim();
-    let listener_binary = get_zephyr_xrce_rs_listener_native_sim();
-
-    eprintln!("Talker binary: {}", talker_binary.display());
-    eprintln!("Listener binary: {}", listener_binary.display());
-
-    // Start listener first (subscribe before publish)
-    eprintln!("Starting Zephyr XRCE listener...");
-    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE listener");
-
-    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-
-    // Start talker
-    eprintln!("Starting Zephyr XRCE talker...");
-    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE talker");
-
-    // Wait for communication
-    eprintln!("Waiting for XRCE talker → listener communication...");
-
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-
-    // Kill processes
-    talker.kill();
-    listener.kill();
-
-    eprintln!("\n=== XRCE Talker output ===\n{}", talker_output);
-    eprintln!("\n=== XRCE Listener output ===\n{}", listener_output);
-
-    // Check talker status
-    let talker_published = output::parse_talker(&talker_output).published_count > 0;
-    let talker_error = talker_output.contains("Error:");
-
-    // Check listener status
-    let listener_received = count_zephyr_received(&listener_output) > 0;
-    let listener_waiting = listener_output.contains("Waiting for messages");
-    let listener_error = listener_output.contains("Error:");
-
-    if talker_error {
-        panic!("XRCE talker encountered an error:\n{}", talker_output);
-    }
-    if listener_error && !listener_received {
-        panic!("XRCE listener encountered an error:\n{}", listener_output);
-    }
-
-    if listener_received {
-        let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-        eprintln!(
-            "\nSUCCESS: Zephyr XRCE listener received {} messages from talker",
-            count
-        );
-    } else if talker_published && listener_waiting {
-        panic!("Talker published but listener didn't receive (timing issue?)");
-    } else {
-        panic!(
-            "XRCE communication failed:\n  talker_published={}\n  listener_waiting={}\n  listener_received={}",
-            talker_published, listener_waiting, listener_received
-        );
-    }
-}
-
-/// Test: Zephyr XRCE C talker → listener communication
-///
-/// E2E integration test for XRCE-DDS C API backend on Zephyr:
-/// 1. Starts MicroXRCEAgent on port 2018
-/// 2. Runs C listener (native_sim)
-/// 3. Runs C talker (native_sim)
-/// 4. Verifies message delivery
-///
-/// Requires:
-/// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - XRCE Agent available: `just zephyr setup` or `just xrce setup`
-#[test]
-// Previously #[ignore]: C talker didn't flush XRCE output stream after publish (fixed)
-fn test_zephyr_xrce_c_talker_listener() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port =
-        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::C);
-    eprintln!("Starting XRCE Agent on port {}...", port);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-
-    // Resolve prebuilt examples
-    let talker_binary = get_zephyr_xrce_c_talker_native_sim();
-    let listener_binary = get_zephyr_xrce_c_listener_native_sim();
-
-    eprintln!("C Talker binary: {}", talker_binary.display());
-    eprintln!("C Listener binary: {}", listener_binary.display());
-
-    // Start listener first (subscribe before publish)
-    eprintln!("Starting Zephyr XRCE C listener...");
-    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE C listener");
-
-    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-
-    // Start talker
-    eprintln!("Starting Zephyr XRCE C talker...");
-    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE C talker");
-
-    // Wait for communication
-    eprintln!("Waiting for XRCE C talker → listener communication...");
-
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-
-    // Kill processes
-    talker.kill();
-    listener.kill();
-
-    eprintln!("\n=== XRCE C Talker output ===\n{}", talker_output);
-    eprintln!("\n=== XRCE C Listener output ===\n{}", listener_output);
-
-    // Check talker status (C API uses LOG_INF format)
-    let talker_published = output::parse_talker(&talker_output).published_count > 0;
-    let talker_init = talker_output.contains(nros_tests::output::TALKER_READY_MARKER);
-    let talker_error =
-        talker_output.contains("failed") || talker_output.contains("Network not ready");
-
-    // Check listener status (C API uses LOG_INF format)
-    let listener_received = listener_output.contains(nros_tests::output::LISTENER_LOG_PREFIX);
-    let listener_waiting = listener_output.contains("Waiting for messages");
-    let listener_error =
-        listener_output.contains("failed") || listener_output.contains("Network not ready");
-
-    if talker_error && !talker_init {
-        panic!("XRCE C talker encountered an error:\n{}", talker_output);
-    }
-    if listener_error && !listener_waiting {
-        panic!("XRCE C listener encountered an error:\n{}", listener_output);
-    }
-
-    if listener_received {
-        let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-        eprintln!(
-            "\nSUCCESS: Zephyr XRCE C listener received {} messages from talker",
-            count
-        );
-    } else if talker_published && listener_waiting {
-        panic!("C talker published but listener didn't receive (timing issue?)");
-    } else {
-        panic!(
-            "XRCE C communication failed:\n  talker_published={}\n  listener_waiting={}\n  listener_received={}",
-            talker_published, listener_waiting, listener_received
-        );
-    }
-}
-
-// =============================================================================
-// Zephyr XRCE Rust Service + Action E2E Tests (Phase 95.A)
-// =============================================================================
-
-fn get_zephyr_xrce_rs_service_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-service-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-service-server binary")
-}
-
-fn get_zephyr_xrce_rs_service_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-service-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-service-client binary")
-}
-
-fn get_zephyr_xrce_rs_action_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-action-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-action-server binary")
-}
-
-fn get_zephyr_xrce_rs_action_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-rs-action-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-rs-action-client binary")
-}
-
-/// Test: Zephyr XRCE Rust service server → Zephyr XRCE Rust service client
-///
-/// E2E integration test for XRCE service path on Zephyr:
-/// 1. Starts MicroXRCEAgent on port 2018
-/// 2. Runs server + client (both native_sim)
-/// 3. Verifies the client receives at least one response
-#[test]
-fn test_zephyr_xrce_rust_service_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Rust);
-    eprintln!("Starting XRCE Agent on port {}...", port);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_binary = get_zephyr_xrce_rs_service_server_native_sim();
-    let client_binary = get_zephyr_xrce_rs_service_client_native_sim();
-
-    eprintln!("XRCE service server binary: {}", server_binary.display());
-    eprintln!("XRCE service client binary: {}", client_binary.display());
-
-    eprintln!("Starting Zephyr XRCE service server...");
-    let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE service server");
-    let _ = server.wait_for_pattern(
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-
-    eprintln!("Starting Zephyr XRCE service client...");
-    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE service client");
-
-    let client_output = client
-        .wait_for_output(Duration::from_secs(30))
-        .unwrap_or_default();
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    client.kill();
-    server.kill();
-
-    eprintln!("\n=== XRCE service server output ===\n{}", server_output);
-    eprintln!("\n=== XRCE service client output ===\n{}", client_output);
-
-    let response_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    let request_count = count_pattern(
-        &server_output,
-        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
-    );
-
-    if response_count >= 1 {
-        eprintln!(
-            "\nSUCCESS: XRCE service client got {} responses, server handled {} requests",
-            response_count, request_count
-        );
-    } else if request_count > 0 {
-        panic!(
-            "Server handled {} requests but client got 0 responses (timing/agent issue?)",
-            request_count
-        );
-    } else {
-        panic!(
-            "XRCE service E2E failed:\n  client_responses={}\n  server_requests={}",
-            response_count, request_count
-        );
-    }
-}
-
-/// Test: Zephyr XRCE Rust action server → Zephyr XRCE Rust action client
-///
-/// E2E integration test for XRCE action path on Zephyr:
-/// 1. Starts MicroXRCEAgent on port 2018
-/// 2. Runs Fibonacci server + client (both native_sim)
-/// 3. Verifies the client's terminal `Result received: [...]` line
-#[test]
-fn test_zephyr_xrce_rust_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Rust);
-    eprintln!("Starting XRCE Agent on port {}...", port);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_binary = get_zephyr_xrce_rs_action_server_native_sim();
-    let client_binary = get_zephyr_xrce_rs_action_client_native_sim();
-
-    eprintln!("XRCE action server binary: {}", server_binary.display());
-    eprintln!("XRCE action client binary: {}", client_binary.display());
-
-    eprintln!("Starting Zephyr XRCE action server...");
-    let server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE action server");
-
-    let server_ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!(
-            "Zephyr XRCE action server didn't reach readiness within 30s.\nOutput:\n{}",
-            server_ready
-        );
-    }
-    // Was 500 ms — bumped to 1500 ms so the XRCE Agent has time to
-    // propagate the server's CREATE_REPLIER ack back to the client
-    // session under `just test-all` load (8 sibling Zephyr XRCE
-    // workers + parallel rebuilds racing for the same Agent).
-    std::thread::sleep(Duration::from_millis(1500));
-    let mut server = server;
-
-    eprintln!("Starting Zephyr XRCE action client...");
-    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr XRCE action client");
-
-    let client_output = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(60),
-    );
-    let server_output = server
-        .wait_for_output(Duration::from_secs(5))
-        .unwrap_or_default();
-
-    server.kill();
-    client.kill();
-
-    eprintln!("\n=== XRCE action server output ===\n{}", server_output);
-    eprintln!("\n=== XRCE action client output ===\n{}", client_output);
-
-    let server_received_goal = server_output.contains("Received goal request")
-        || server_output.contains(nros_tests::output::ACTION_EXECUTING_MARKER);
-    let client_got_feedback = client_output.contains(nros_tests::output::ACTION_FEEDBACK_PREFIX);
-    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-
-    if client_completed && client_got_feedback {
-        eprintln!("\nSUCCESS: XRCE action client received feedback and completed");
-    } else if server_received_goal {
-        panic!(
-            "Server received goal but client didn't complete:\n  feedback={}\n  completed={}",
-            client_got_feedback, client_completed
-        );
-    } else {
-        panic!(
-            "XRCE action E2E failed:\n  server_received_goal={}\n  client_feedback={}\n  client_completed={}",
-            server_received_goal, client_got_feedback, client_completed
-        );
-    }
-}
-
-// =============================================================================
-// Phase 95.C — Zephyr XRCE C++ talker/listener/svc/action
-// =============================================================================
-//
-// Six new example crates ported from cpp/zenoh to cpp/xrce. They
-// build clean and the boot smoke tests below verify each one reaches
-// readiness on native_sim/native/64. Dual-instance E2E tests are
-// #[ignore]d pending follow-up — see comments at each ignored test.
-
-// Boot smoke tests match the banner the example prints _before_
-// `nros::init()`. xrce examples block in `nros::init()` without an
-// agent on port 2018 — we don't run one here because that's the
-// E2E setup. The banner proves the binary linked + booted clean.
-
-#[test]
-fn test_zephyr_xrce_cpp_talker_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_zephyr_xrce_cpp_talker_native_sim();
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce talker");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/xrce talker didn't boot:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_xrce_cpp_listener_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_zephyr_xrce_cpp_listener_native_sim();
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce listener");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/xrce listener didn't boot:\n{}", out);
-    }
-}
-
-// =============================================================================
-// Phase 95.D — Zephyr DDS C++ talker/listener/svc/action boot tests
-// =============================================================================
-
-#[test]
-fn test_zephyr_dds_cpp_talker_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-cpp-talker binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds talker");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/dds talker didn't boot:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_cpp_listener_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-cpp-listener binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds listener");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/dds listener didn't boot:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_cpp_service_server_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin =
-        get_prebuilt_zephyr_example("zephyr-dds-cpp-service-server", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-cpp-service-server binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds service server");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/dds service server didn't boot:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_cpp_service_client_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin =
-        get_prebuilt_zephyr_example("zephyr-dds-cpp-service-client", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-cpp-service-client binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds service client");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("cpp/dds service client didn't boot:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_cpp_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let server_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-server", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-cpp-action-server binary");
-    let client_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-client", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-cpp-action-client binary");
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds action server");
-    // Cyclone-on-Zephyr `create_action_server` declares its goal/cancel/result
-    // queryables + feedback/status writers serially (~10 s each under the current
-    // transport), so readiness lands ~30 s+ — give it 60 s (mirrors the zenoh
-    // action tests' bump).
-    let server_ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(60),
-    );
-    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!(
-            "Zephyr C++ Cyclone action server didn't reach readiness.\nOutput:\n{}",
-            server_ready
-        );
-    }
-
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/dds action client");
-    let client_output = client.wait_for_pattern("Result received", Duration::from_secs(60));
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!(
-        "\n=== Zephyr C++ Cyclone action server output ===\n{}",
-        server_output
-    );
-    eprintln!(
-        "\n=== Zephyr C++ Cyclone action client output ===\n{}",
-        client_output
-    );
-
-    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
-    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-    if !(server_completed && client_completed) {
-        panic!(
-            "C++ Cyclone action E2E failed (server_completed={}, client_completed={}).",
-            server_completed, client_completed
-        );
-    }
-}
-
-#[test]
-fn test_zephyr_dds_rs_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let server_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-rs-action-server", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-rs-action-server binary");
-    let client_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-rs-action-client", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-rs-action-client binary");
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start rs/dds action server");
-    // M-F.23: `zephyr_component_main!` emits "Waiting for messages" as the
-    // universal readiness marker.
-    let server_ready = server.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-    if !server_ready.contains("Waiting for messages") {
-        panic!(
-            "Zephyr Rust Cyclone action server didn't reach readiness.\nOutput:\n{}",
-            server_ready
-        );
-    }
-
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start rs/dds action client");
-    let client_output = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(90),
-    );
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!(
-        "\n=== Zephyr Rust Cyclone action server output ===\n{}",
-        server_output
-    );
-    eprintln!(
-        "\n=== Zephyr Rust Cyclone action client output ===\n{}",
-        client_output
-    );
-
-    let server_received_goal = server_output.contains("Received goal request")
-        || server_output.contains(nros_tests::output::ACTION_EXECUTING_MARKER);
-    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-    if !(server_received_goal && client_completed) {
-        panic!(
-            "Rust Cyclone action E2E failed (server_received_goal={}, client_completed={}).",
-            server_received_goal, client_completed
-        );
-    }
-}
-
-// =============================================================================
-// Phase 95.E — Zephyr DDS C talker/listener/svc/action boot tests
-// =============================================================================
-
-#[test]
-fn test_zephyr_dds_c_talker_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-c-talker binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds talker");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("c/dds talker didn't print Zephyr banner:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_c_listener_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-c-listener binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds listener");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("c/dds listener didn't print Zephyr banner:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_c_service_server_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-service-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-c-service-server binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds service server");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("c/dds service server didn't print Zephyr banner:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_c_service_client_boots() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-service-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-dds-c-service-client binary");
-    let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds service client");
-    let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
-    p.kill();
-    if !out.contains("Booting Zephyr OS") {
-        panic!("c/dds service client didn't print Zephyr banner:\n{}", out);
-    }
-}
-
-#[test]
-fn test_zephyr_dds_c_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let server_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-c-action-server", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-c-action-server binary");
-    let client_bin =
-        get_prebuilt_zephyr_example("zephyr-dds-c-action-client", ZephyrPlatform::NativeSim)
-            .expect("Failed to get zephyr-dds-c-action-client binary");
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds action server");
-    // See the C++ sibling: Cyclone-on-Zephyr `create_action_server` is slow to
-    // declare its entities (~10 s/queryable), so readiness needs a 60 s window.
-    let server_ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(60),
-    );
-    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!(
-            "Zephyr C Cyclone action server didn't reach readiness.\nOutput:\n{}",
-            server_ready
-        );
-    }
-
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start c/dds action client");
-    let client_output = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(60),
-    );
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!(
-        "\n=== Zephyr C Cyclone action server output ===\n{}",
-        server_output
-    );
-    eprintln!(
-        "\n=== Zephyr C Cyclone action client output ===\n{}",
-        client_output
-    );
-
-    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
-    let client_completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-    if !(server_completed && client_completed) {
-        panic!(
-            "C Cyclone action E2E failed (server_completed={}, client_completed={}).",
-            server_completed, client_completed
-        );
-    }
-}
-
-// =============================================================================
-// Phase 95.C — Zephyr XRCE C++ E2E tests (dual-instance, #[ignore]d)
-// =============================================================================
-
-fn get_zephyr_xrce_cpp_talker_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-talker binary")
-}
-
-fn get_zephyr_xrce_cpp_listener_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-listener binary")
-}
-
-fn get_zephyr_xrce_cpp_service_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-service-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-service-server binary")
-}
-
-fn get_zephyr_xrce_cpp_service_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-service-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-service-client binary")
-}
-
-fn get_zephyr_xrce_cpp_action_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-action-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-action-server binary")
-}
-
-fn get_zephyr_xrce_cpp_action_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("zephyr-xrce-cpp-action-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-xrce-cpp-action-client binary")
-}
-
-/// Phase 96.1 — cpp/xrce talker→listener interop on a shared agent.
-///
-/// Re-enabled after the cpp `nros::init()` overload took an explicit
-/// session_name. Earlier the wrapper hardcoded the XRCE session key
-/// to a hash of `"nros_cpp"` for every cpp process — two cpp
-/// participants on the same agent collided as one client, so topic
-/// publishes weren't cross-routed. Examples now pass distinct names
-/// (`"zephyr_cpp_talker"`, `"zephyr_cpp_listener"`, …).
-#[test]
-fn test_zephyr_xrce_cpp_talker_listener() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let talker_bin = get_zephyr_xrce_cpp_talker_native_sim();
-    let listener_bin = get_zephyr_xrce_cpp_listener_native_sim();
-
-    let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr cpp/xrce listener");
-    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-
-    let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start Zephyr cpp/xrce talker");
-
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_output(Duration::from_secs(10))
-        .unwrap_or_default();
-    talker.kill();
-    listener.kill();
-
-    eprintln!("=== cpp/xrce talker output ===\n{}", talker_output);
-    eprintln!("=== cpp/xrce listener output ===\n{}", listener_output);
-
-    let listener_received = count_zephyr_received(&listener_output) > 0;
-    if !listener_received {
-        panic!(
-            "cpp/xrce listener didn't receive any messages.\nTalker:\n{}\nListener:\n{}",
-            talker_output, listener_output
-        );
-    }
-    let count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-    eprintln!("SUCCESS: cpp/xrce listener got {} messages", count);
-}
-
-/// Phase 96.1 — cpp/xrce service request/reply on a shared agent.
-/// Re-enabled alongside `test_zephyr_xrce_cpp_talker_listener`.
-#[test]
-fn test_zephyr_xrce_cpp_service_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Cpp);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_bin = get_zephyr_xrce_cpp_service_server_native_sim();
-    let client_bin = get_zephyr_xrce_cpp_service_client_native_sim();
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce service server");
-    let _ = server.wait_for_pattern("Waiting for service", Duration::from_secs(30));
-
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce service client");
-
-    let client_output = client
-        .wait_for_output(Duration::from_secs(30))
-        .unwrap_or_default();
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!("=== cpp/xrce service server output ===\n{}", server_output);
-    eprintln!("=== cpp/xrce service client output ===\n{}", client_output);
-
-    let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    let request_count = count_pattern(
-        &server_output,
-        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
-    );
-    if ok_count >= 1 {
-        eprintln!(
-            "SUCCESS: cpp/xrce service got {} responses, {} requests handled",
-            ok_count, request_count
-        );
-    } else {
-        panic!(
-            "cpp/xrce service E2E failed (client OK={}, server requests={}).\nClient:\n{}\nServer:\n{}",
-            ok_count, request_count, client_output, server_output
-        );
-    }
-}
-
-/// Phase 96.1 follow-up — cpp/xrce action goal/feedback/result on
-/// a shared agent. Re-enabled after fixing two off-by-N offset
-/// bugs in `arena.rs`'s action-client trampoline:
-///   * result reply: `result_offset = 5` missed the 3-byte align
-///     pad inserted by `try_handle_get_result_raw` between the
-///     status byte and the payload (correct offset = 8).
-///   * feedback: `offset = 4 + 16` missed the 4-byte GoalId
-///     length-prefix u32 written by `write_goal_id` (correct
-///     offset = 24).
-///
-/// Both surfaced as empty payloads on the cpp client side because
-/// the prefix bytes leaked into the body and `ffi_deserialize`
-/// read sequence_length = 0.
-#[test]
-fn test_zephyr_xrce_cpp_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let port = platform::ZEPHYR
-        .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Cpp);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_bin = get_zephyr_xrce_cpp_action_server_native_sim();
-    let client_bin = get_zephyr_xrce_cpp_action_client_native_sim();
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce action server");
-    let _ = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
-        .expect("Failed to start cpp/xrce action client");
-
-    let client_output = client
-        .wait_for_output(Duration::from_secs(60))
-        .unwrap_or_default();
-    let server_output = server
-        .wait_for_output(Duration::from_secs(5))
-        .unwrap_or_default();
-    client.kill();
-    server.kill();
-
-    eprintln!("=== cpp/xrce action server output ===\n{}", server_output);
-    eprintln!("=== cpp/xrce action client output ===\n{}", client_output);
-
-    // The Fibonacci action client prints canonical prefixes (`nros_tests::output`):
-    // `ACTION_RESULT_PREFIX` on the final result, and (if the server streamed any)
-    // `ACTION_FEEDBACK_PREFIX` per feedback frame. This Fibonacci server computes
-    // the sequence and COMPLETES the goal with a result — it does NOT stream
-    // feedback (same as the C sibling, whose test also asserts only the result).
-    // So gate success on the result round-trip; report feedback as info. (Was
-    // grepping stale literals `"Feedback"` / `"completed"` the example never
-    // prints AND requiring feedback the server never sends — #164 marker class.)
-    let feedback = count_pattern(&client_output, nros_tests::output::ACTION_FEEDBACK_PREFIX);
-    let completed = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-    if completed {
-        eprintln!("SUCCESS: cpp/xrce action completed ({feedback} feedback frames)");
-    } else {
-        panic!(
-            "cpp/xrce action E2E failed (feedback={}, completed={}).\nClient:\n{}\nServer:\n{}",
-            feedback, completed, client_output, server_output
-        );
-    }
-}
-
-// =============================================================================
-// Cross-Platform Service Tests
-// =============================================================================
-
 /// Test: Zephyr service server + Native service client
 ///
 /// Tests cross-platform service communication with Zephyr server and native client.
@@ -2130,7 +1300,7 @@ fn test_zephyr_server_native_client() {
         build_native_service_client().expect("Failed to build native-rs-service-client");
 
     // Get Zephyr service server
-    let zephyr_binary = get_zephyr_service_server_native_sim();
+    let zephyr_binary = resolve_example(Lang::Rust, "service-server", Rmw::Zenoh);
     eprintln!("Zephyr server binary: {}", zephyr_binary.display());
 
     // Start Zephyr service server first
@@ -2211,118 +1381,8 @@ fn test_zephyr_server_native_client() {
 }
 
 // =============================================================================
-// Zephyr C++ E2E Tests
+// Bespoke: Zephyr ↔ native cross-platform pubsub (cpp)
 // =============================================================================
-
-/// Get prebuilt Zephyr C++ talker for native_sim
-fn get_zephyr_cpp_talker_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-talker", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-talker binary")
-}
-
-/// Get prebuilt Zephyr C++ listener for native_sim
-fn get_zephyr_cpp_listener_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-listener", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-listener binary")
-}
-
-/// Test: Zephyr C++ talker → Zephyr C++ listener communication
-///
-/// Full E2E integration test:
-/// 1. Starts zenohd automatically
-/// 2. Runs both Zephyr C++ talker and listener
-/// 3. Verifies messages are delivered
-#[test]
-fn test_zephyr_cpp_talker_to_listener_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override
-    // (the C++ `ZephyrBoard::run_components` reads `nros_runtime_locator_override`
-    // fed by `-testargs --nros-locator`), so this test drops its fixed baked port
-    // and runs parallel with its siblings.
-    eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
-    let locator = router.locator();
-    eprintln!("zenohd locator: {locator}");
-    let talker_binary = get_zephyr_cpp_talker_native_sim();
-    let listener_binary = get_zephyr_cpp_listener_native_sim();
-
-    eprintln!("C++ Talker binary: {}", talker_binary.display());
-    eprintln!("C++ Listener binary: {}", listener_binary.display());
-
-    // Start listener first (subscriber must be ready before publisher).
-    // Probe for the listener's output readiness marker so we don't
-    // race the publisher against a still-cold_booting native_sim
-    // under full-suite parallel load (Phase 89.12 flake).
-    let listener =
-        ZephyrProcess::start_with_locator(&listener_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-    if !listener_ready.contains("Waiting for messages") {
-        panic!(
-            "Zephyr C++ listener didn't reach readiness within 30 s.\nOutput:\n{}",
-            listener_ready
-        );
-    }
-    let mut listener = listener;
-
-    // Start talker
-    let mut talker =
-        ZephyrProcess::start_with_locator(&talker_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-
-    // Probe for the 3rd publish + 3rd Received, early-exiting
-    // instead of a fixed 8 s wait that couldn't keep up with
-    // `max-threads = 3` parallel cold-boot variance.
-    let _ = talker.wait_for_pattern(
-        nros_tests::output::talker_line(3).as_str(),
-        Duration::from_secs(30),
-    );
-    let _ = listener.wait_for_pattern(
-        nros_tests::output::listener_line(3).as_str(),
-        Duration::from_secs(30),
-    );
-
-    // Collect outputs
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!("\n=== Zephyr C++ talker output ===\n{}", talker_output);
-    eprintln!("\n=== Zephyr C++ listener output ===\n{}", listener_output);
-
-    // Check talker connected and published
-    let talker_published = output::parse_talker(&talker_output).published_count > 0;
-    // Check listener received messages
-    let listener_received =
-        count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-
-    if listener_received >= 3 {
-        eprintln!(
-            "\nSUCCESS: Zephyr C++ listener received {} messages from talker",
-            listener_received
-        );
-    } else if talker_published && listener_received > 0 {
-        panic!(
-            "Listener received only {} messages (expected >= 3)",
-            listener_received
-        );
-    } else if !talker_output.contains("Booting Zephyr OS") {
-        panic!("Zephyr C++ talker failed to start");
-    } else if !talker_published {
-        panic!("Talker started but didn't publish — zenoh-pico session issue");
-    } else {
-        panic!(
-            "Talker published but listener received {} messages",
-            listener_received
-        );
-    }
-}
 
 /// Test: Zephyr C++ talker → native Rust listener (cross-platform)
 #[test]
@@ -2343,7 +1403,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     };
 
     // Build Zephyr C++ talker
-    let talker_binary = get_zephyr_cpp_talker_native_sim();
+    let talker_binary = resolve_example(Lang::Cpp, "talker", Rmw::Zenoh);
 
     // Start native listener first (connects to zenohd)
     let mut listener_cmd = std::process::Command::new(&native_listener);
@@ -2364,7 +1424,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
 
     // Wait for 2 messages: this test asserts `received_count >= 2` below, so
     // waiting for only 1 returned as soon as the first arrived and captured a
-    // single nros_tests::output::INT32_LISTENER_LOG_PREFIX line, failing deterministically. The Zephyr C++
+    // single sample line, failing deterministically. The Zephyr C++
     // talker publishes repeatedly (~every 2.5 s after a 5 s warm-up), so 2
     // messages arrive well within the 30 s budget.
     let listener_output = listener
@@ -2420,7 +1480,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     };
 
     // Build Zephyr C++ listener
-    let listener_binary = get_zephyr_cpp_listener_native_sim();
+    let listener_binary = resolve_example(Lang::Cpp, "listener", Rmw::Zenoh);
 
     // Start Zephyr listener first; wait for its subscription-ready
     // output marker so the native talker doesn't race a still-booting
@@ -2428,8 +1488,8 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     let listener =
         ZephyrProcess::start_with_locator(&listener_binary, ZephyrPlatform::NativeSim, &locator)
             .unwrap();
-    let listener_ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-    if !listener_ready.contains("Waiting for messages") {
+    let listener_ready = listener.wait_for_pattern(NODE_READY_MARKER, Duration::from_secs(30));
+    if !listener_ready.contains(NODE_READY_MARKER) {
         panic!(
             "Zephyr C++ listener didn't reach readiness within 30 s.\nOutput:\n{}",
             listener_ready
@@ -2445,7 +1505,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         nros_tests::fixtures::ManagedProcess::spawn_command(talker_cmd, "native-talker")
             .expect("Failed to start native talker");
 
-    // Probe for the 3rd Received on the Zephyr side (early-exits
+    // Probe for the 3rd sample line on the Zephyr side (early-exits
     // instead of the old 8 s+3 s blind sleep that couldn't keep
     // up with parallel-load variance).
     let _ = listener.wait_for_pattern(
@@ -2484,438 +1544,9 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 }
 
 // =============================================================================
-// Zephyr C++ Service E2E Tests
-// =============================================================================
-
-/// Get prebuilt Zephyr C++ service server for native_sim
-fn get_zephyr_cpp_service_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-service-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-service-server binary")
-}
-
-/// Get prebuilt Zephyr C++ service client for native_sim
-fn get_zephyr_cpp_service_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-service-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-service-client binary")
-}
-
-/// Test: Zephyr C++ service server → Zephyr C++ service client communication
-///
-/// Full E2E integration test:
-/// 1. Starts zenohd automatically
-/// 2. Runs Zephyr C++ service server and client
-/// 3. Verifies service calls succeed
-#[test]
-fn test_zephyr_cpp_service_server_to_client_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
-    let locator = router.locator();
-    eprintln!("zenohd locator: {locator}");
-    let server_binary = get_zephyr_cpp_service_server_native_sim();
-    let client_binary = get_zephyr_cpp_service_client_native_sim();
-
-    eprintln!("C++ Service Server binary: {}", server_binary.display());
-    eprintln!("C++ Service Client binary: {}", client_binary.display());
-
-    // Start server first
-    let mut server =
-        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-    let _ = server.wait_for_pattern("Waiting for service", Duration::from_secs(30));
-
-    // Start client
-    let mut client =
-        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-
-    // Wait for the client to complete. Like the C sibling, `AddTwoIntsClient`
-    // is a ONE-SHOT: `on_tick` sends a single request, prints one
-    // `Result of add_two_ints:` on the reply, then sets `done_` — so the
-    // asserted signal is >= 1 completed call, not a loop.
-    let client_output = client
-        .wait_for_output(Duration::from_secs(30))
-        .unwrap_or_default();
-
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!(
-        "\n=== Zephyr C++ service server output ===\n{}",
-        server_output
-    );
-    eprintln!(
-        "\n=== Zephyr C++ service client output ===\n{}",
-        client_output
-    );
-
-    let ok_count = count_pattern(&client_output, nros_tests::output::SERVICE_RESULT_PREFIX);
-    let request_count = count_pattern(
-        &server_output,
-        nros_tests::output::SERVICE_INCOMING_REQUEST_MARKER,
-    );
-
-    if ok_count >= 1 {
-        eprintln!(
-            "\nSUCCESS: C++ service client completed {} call(s), server handled {} request(s)",
-            ok_count, request_count
-        );
-    } else {
-        panic!(
-            "C++ service test failed (client OK={}, server requests={})",
-            ok_count, request_count
-        );
-    }
-}
-
-// =============================================================================
-// Zephyr C++ Action E2E Tests
-// =============================================================================
-
-/// Get prebuilt Zephyr C++ action server for native_sim
-fn get_zephyr_cpp_action_server_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-action-server", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-action-server binary")
-}
-
-/// Get prebuilt Zephyr C++ action client for native_sim
-fn get_zephyr_cpp_action_client_native_sim() -> PathBuf {
-    get_prebuilt_zephyr_example("cpp-action-client", ZephyrPlatform::NativeSim)
-        .expect("Failed to get zephyr-cpp-action-client binary")
-}
-
-/// Test: Zephyr C++ action server → Zephyr C++ action client communication
-///
-/// Full E2E integration test:
-/// 1. Starts zenohd automatically
-/// 2. Runs Zephyr C++ action server and client
-/// 3. Verifies goal completion
-#[test]
-fn test_zephyr_cpp_action_server_to_client_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
-    let locator = router.locator();
-    eprintln!("zenohd locator: {locator}");
-    let server_binary = get_zephyr_cpp_action_server_native_sim();
-    let client_binary = get_zephyr_cpp_action_client_native_sim();
-
-    eprintln!("C++ Action Server binary: {}", server_binary.display());
-    eprintln!("C++ Action Client binary: {}", client_binary.display());
-
-    // Start action server first
-    let mut server =
-        ZephyrProcess::start_with_locator(&server_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-
-    // Phase 160.C — wait for server readiness rather than fixed 3 s sleep.
-    // `create_action_server` declares 3 queryables on Zephyr; each
-    // serializes at ~10 s under the current zenoh-pico transport
-    // (see test_zephyr_action_e2e for the same observation). Total
-    // readiness time ~30 s — fixed-3-s sleep used to race the client
-    // ahead of the server's first queryable and the test failed.
-    let server_ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(60),
-    );
-    if !server_ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!(
-            "Zephyr C++ action server didn't reach readiness within 60 s.\nOutput:\n{}",
-            server_ready
-        );
-    }
-    // Start action client
-    let client =
-        ZephyrProcess::start_with_locator(&client_binary, ZephyrPlatform::NativeSim, &locator)
-            .unwrap();
-
-    // Wait for client to complete. Phase 160.C — bumped 30 s → 90 s.
-    // Client itself takes ~25 s to reach `send_goal` (3 service-clients
-    // mirror the server's 3 queryables — each declaration serializes at
-    // ~10 s on Zephyr zenoh-pico). Then goal exec + get_result. Was
-    // racing the 30 s window before this bump.
-    let client_output = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(90),
-    );
-    let server_output = server
-        .wait_for_output(Duration::from_secs(3))
-        .unwrap_or_default();
-
-    eprintln!(
-        "\n=== Zephyr C++ action server output ===\n{}",
-        server_output
-    );
-    eprintln!(
-        "\n=== Zephyr C++ action client output ===\n{}",
-        client_output
-    );
-
-    let client_ok = client_output.contains(nros_tests::output::ACTION_RESULT_PREFIX);
-    let server_completed = server_output.contains(nros_tests::output::ACTION_GOAL_SUCCEEDED_MARKER);
-
-    if client_ok && server_completed {
-        eprintln!("\nSUCCESS: C++ action server completed goal, client received result");
-    } else if server_completed {
-        panic!("Server completed goal but client didn't get result");
-    } else if server_output.contains("Received goal request") {
-        panic!("Server received goal but didn't complete");
-    } else {
-        panic!(
-            "C++ action test failed (client OK={}, server completed={})",
-            client_ok, server_completed
-        );
-    }
-}
-
-// =============================================================================
-// Zephyr C E2E (Phase 183.1) — close the zephyr/c hole.
-//
-// `examples/zephyr/c/` ships 6 zenoh + 6 xrce cases, but the only C runtime
-// coverage was `test_zephyr_xrce_c_talker_listener` (xrce pubsub). These add
-// the C zenoh pub/sub + service + action e2e and the C xrce service + action,
-// mirroring the cpp/rust suites. Binaries resolve via the per-(lang,case,rmw)
-// CMake/Corrosion prebuild (`build-c-<case>-<rmw>/zephyr/zephyr.exe`), so each
-// skips cleanly when `just zephyr build-fixtures` hasn't produced the cell.
-// Not `#[ignore]`d: zephyr C zenoh/xrce are expected to run (the cyclone C
-// e2e already does) — a runtime failure here is a real bug to surface.
-// =============================================================================
-
-/// Resolve a prebuilt zephyr C example for `case` + `rmw`, or skip.
-fn zephyr_c_example(case: &str, rmw: nros_tests::fixtures::Rmw) -> std::path::PathBuf {
-    nros_tests::fixtures::build_zephyr_cmake_example_rmw("c", case, rmw).unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "zephyr/c/{case} {rmw:?} not prebuilt (run `just zephyr build-fixtures`): {e:?}"
-        )
-    })
-}
-
-/// Zephyr C zenoh talker → listener pub/sub.
-#[test]
-fn test_zephyr_c_talker_to_listener_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::C),
-    )
-    .expect("Failed to start zenohd");
-    let listener_bin = zephyr_c_example("listener", nros_tests::fixtures::Rmw::Zenoh);
-    let talker_bin = zephyr_c_example("talker", nros_tests::fixtures::Rmw::Zenoh);
-
-    let listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim).unwrap();
-    let ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
-    if !ready.contains("Waiting for messages") {
-        panic!("Zephyr C zenoh listener not ready in 30 s.\nOutput:\n{ready}");
-    }
-    let mut listener = listener;
-    let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let listener_out = listener.wait_for_pattern(
-        nros_tests::output::LISTENER_LOG_PREFIX,
-        Duration::from_secs(30),
-    );
-    talker.kill();
-    listener.kill();
-    eprintln!("=== zephyr C zenoh listener ===\n{listener_out}");
-    assert!(
-        listener_out.contains(nros_tests::output::LISTENER_LOG_PREFIX),
-        "zephyr C zenoh listener received no sample:\n{listener_out}"
-    );
-}
-
-/// Zephyr C zenoh service server ↔ client.
-#[test]
-fn test_zephyr_c_service_server_to_client_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::C),
-    )
-    .expect("Failed to start zenohd");
-    let server_bin = zephyr_c_example("service-server", nros_tests::fixtures::Rmw::Zenoh);
-    let client_bin = zephyr_c_example("service-client", nros_tests::fixtures::Rmw::Zenoh);
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let client_out = client.wait_for_pattern(
-        nros_tests::output::SERVICE_RESULT_PREFIX,
-        Duration::from_secs(30),
-    );
-    client.kill();
-    server.kill();
-    eprintln!("=== zephyr C zenoh service client ===\n{client_out}");
-    assert!(
-        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
-        "zephyr C zenoh service client got no reply:\n{client_out}"
-    );
-}
-
-/// Zephyr C zenoh action server ↔ client.
-///
-/// Previously `#[ignore]`d as "server hangs in `create_action_server`, never
-/// reaches readiness" — that was a STALE-MARKER false diagnosis, not a hang. The
-/// server does reach readiness and prints `nros_tests::output::ACTION_SERVER_READY_MARKER`
-/// (`ACTION_SERVER_READY_MARKER`); the old readiness grep looked for the literal
-/// `"Waiting for goals"`, which never matches, so the test timed out at the 30 s
-/// readiness wait and was read as a server hang. Same class as #174's
-/// `xrce_c_action`. With the marker corrected the full action completes
-/// (server ready → goal → result) in ~5 s; un-ignored 2026-07-12.
-#[test]
-fn test_zephyr_c_action_server_to_client_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::C),
-    )
-    .expect("Failed to start zenohd");
-    let server_bin = zephyr_c_example("action-server", nros_tests::fixtures::Rmw::Zenoh);
-    let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Zenoh);
-
-    let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-    if !ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!("Zephyr C zenoh action server not ready in 30 s.\nOutput:\n{ready}");
-    }
-    let mut server = server;
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let client_out = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(60),
-    );
-    client.kill();
-    server.kill();
-    eprintln!("=== zephyr C zenoh action client ===\n{client_out}");
-    assert!(
-        client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX),
-        "zephyr C zenoh action client did not complete:\n{client_out}"
-    );
-}
-
-/// Zephyr C XRCE service server ↔ client.
-#[test]
-fn test_zephyr_xrce_c_service_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    let port =
-        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::C);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_bin = zephyr_c_example("service-server", nros_tests::fixtures::Rmw::Xrce);
-    let client_bin = zephyr_c_example("service-client", nros_tests::fixtures::Rmw::Xrce);
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let client_out = client.wait_for_pattern(
-        nros_tests::output::SERVICE_RESULT_PREFIX,
-        Duration::from_secs(30),
-    );
-    client.kill();
-    server.kill();
-    eprintln!("=== zephyr C xrce service client ===\n{client_out}");
-    assert!(
-        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
-        "zephyr C xrce service client got no reply:\n{client_out}"
-    );
-}
-
-/// Zephyr C XRCE action server ↔ client.
-#[test]
-fn test_zephyr_xrce_c_action_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    let port =
-        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::C);
-    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    let server_bin = zephyr_c_example("action-server", nros_tests::fixtures::Rmw::Xrce);
-    let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Xrce);
-
-    let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let ready = server.wait_for_pattern(
-        nros_tests::output::ACTION_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
-    if !ready.contains(nros_tests::output::ACTION_SERVER_READY_MARKER) {
-        panic!("Zephyr C xrce action server not ready in 30 s.\nOutput:\n{ready}");
-    }
-    let mut server = server;
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let client_out = client.wait_for_pattern(
-        nros_tests::output::ACTION_RESULT_PREFIX,
-        Duration::from_secs(60),
-    );
-    client.kill();
-    server.kill();
-    eprintln!("=== zephyr C xrce action client ===\n{client_out}");
-    assert!(
-        client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX),
-        "zephyr C xrce action client did not complete:\n{client_out}"
-    );
-}
-
-// =============================================================================
-// Zephyr Rust zenoh service E2E (Phase 183.3) — rust had pubsub + action e2e
-// but no service (the cpp sibling did). Reuses the existing
-// `get_zephyr_service_{server,client}_native_sim` (rust zenoh) resolvers.
-// =============================================================================
-
-/// Zephyr Rust zenoh service server ↔ client.
-#[test]
-fn test_zephyr_rust_service_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    let _router = ZenohRouter::start(
-        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
-    let server_bin = get_zephyr_service_server_native_sim();
-    let client_bin = get_zephyr_service_client_native_sim();
-
-    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
-    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
-    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
-
-    let client_out = client.wait_for_pattern(
-        nros_tests::output::SERVICE_RESULT_PREFIX,
-        Duration::from_secs(30),
-    );
-    client.kill();
-    server.kill();
-    eprintln!("=== zephyr rust zenoh service client ===\n{client_out}");
-    assert!(
-        client_out.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
-        "zephyr rust zenoh service client got no reply:\n{client_out}"
-    );
-}
-
-// =============================================================================
-// Zephyr workspace Entry E2E (Phase 225.P)
+// Bespoke: Zephyr workspace Entry E2E (Phase 225.P) — a WORKSPACE-kind cell
+// (`(ZephyrNativeSim, Rust, Zenoh, EntryPubsub)` observes via an external
+// native listener), not an example cell.
 //
 // The workspace Entry (`examples/workspaces/rust/src/zephyr_entry`) is the
 // Zephyr sibling of the native / FreeRTOS / ThreadX workspace Entries: a
@@ -2931,12 +1562,6 @@ fn test_zephyr_rust_service_e2e() {
 // delivery to a SECOND, EXTERNAL native listener — the same shape as the
 // single-node Zephyr rust pubsub E2E — which is a real cross-process
 // pub/sub observation through generated `std_msgs/Int32` on `/chatter`.
-//
-// The Entry's baked locator + the external listener's `NROS_LOCATOR` + the
-// zenohd router all use the Zephyr rust-pubsub port (7456). The Entry
-// therefore shares that port with the single-node rust pubsub talker and
-// must serialize with it — this test is routed into the
-// `qemu-zephyr-pubsub-rust` nextest group.
 // =============================================================================
 
 /// Zephyr workspace Entry boots on native_sim, brings up its launch node set
@@ -2995,7 +1620,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
         ZephyrProcess::start_with_locator(&entry_binary, ZephyrPlatform::NativeSim, &locator)
             .expect("Failed to start Zephyr workspace Entry");
 
-    // The external listener must log at least one real `Received:` line.
+    // The external listener must log at least one real sample line.
     // Timeout is generous: on a slow native_sim host the Entry's zenoh-pico
     // session setup + first publish lands ~20 s after boot (steady-state
     // cadence then tracks the ~2.5 s lease keepalive). `wait_for_all_output`
@@ -3019,7 +1644,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     assert!(
         received >= 1,
         "Workspace Entry talker delivered no messages to the external native \
-         listener (0 `Received:` lines). The Entry boots talker+listener in one \
+         listener (0 sample lines). The Entry boots talker+listener in one \
          process; cross-process delivery on `/chatter` is the asserted signal.\n\
          Entry output:\n{entry_output}\nListener output:\n{listener_output}",
     );
