@@ -25,17 +25,21 @@
  * arena).** The per-parameter capacity is the compile-time `N` of the
  * `Seq<T, N>` the caller declares. The server owns the element bytes in
  * an inline, statically-sized pool (`SeqPoolBytes`) bump-allocated at
- * declare time, plus a fixed sequence-record table (`SeqSlots`). Both are
- * compile-time bounds — no heap, no STL `std::vector` in storage. The
- * value type may be *built* from a `std::vector<T>` under `NROS_CPP_STD`,
- * but the storage is always the fixed pool. Over-`N`, over-pool, and
- * over-slot conditions are rejected with an error code, never UB.
+ * declare time. Both are compile-time bounds — no heap, no STL
+ * `std::vector` in storage. The value type may be *built* from a
+ * `std::vector<T>` under `NROS_CPP_STD`, but the storage is always the
+ * fixed pool. Over-`N` and over-pool conditions are rejected with an
+ * error code, never UB.
  *
- * Sequences are C++-storage-local: they do **not** cross the C FFI. The
- * C array-parameter FFI (`nros_param_*_double_array`) stores a *borrowed*
- * caller pointer + length, which would dangle under the server-owns-the-
- * value semantics rclcpp expects — so sequence storage lives entirely in
- * this wrapper.
+ * **Storage split (issue #226).** The C array-parameter FFI
+ * (`nros_param_*_array`) stores a *borrowed* pointer + length — the
+ * caller must own stable bytes. This wrapper's inline pool IS that stable
+ * owner: element bytes live in the pool (each allocation prefixed by its
+ * element capacity), while the RECORDS (name → type → pointer/len) live
+ * in the C server like every scalar. No parallel name table, no duplicate
+ * lookup — and sequence parameters are visible through `raw()` to the
+ * param services like everything else. (The pre-#226 header kept its own
+ * record table and hid sequences from the C server entirely.)
  */
 
 #ifndef NROS_CPP_PARAMETER_HPP
@@ -59,6 +63,30 @@
 extern "C" {
 #include "nros/parameter.h"
 }
+
+// Issue #226 — the array-parameter FFI is macro-generated in nros-c
+// (paste! expansion), which cbindgen cannot expand into nros_generated.h.
+// Declare the six entry points used below locally (client.hpp precedent).
+extern "C" {
+nros_ret_t nros_param_declare_double_array(nros_param_server_t* server, const char* name,
+                                           const double* data, size_t len);
+nros_ret_t nros_param_declare_integer_array(nros_param_server_t* server, const char* name,
+                                            const int64_t* data, size_t len);
+nros_ret_t nros_param_declare_bool_array(nros_param_server_t* server, const char* name,
+                                         const bool* data, size_t len);
+nros_ret_t nros_param_get_double_array(const nros_param_server_t* server, const char* name,
+                                       const double** data, size_t* len);
+nros_ret_t nros_param_get_integer_array(const nros_param_server_t* server, const char* name,
+                                        const int64_t** data, size_t* len);
+nros_ret_t nros_param_get_bool_array(const nros_param_server_t* server, const char* name,
+                                     const bool** data, size_t* len);
+nros_ret_t nros_param_set_double_array(nros_param_server_t* server, const char* name,
+                                       const double* data, size_t len);
+nros_ret_t nros_param_set_integer_array(nros_param_server_t* server, const char* name,
+                                        const int64_t* data, size_t len);
+nros_ret_t nros_param_set_bool_array(nros_param_server_t* server, const char* name,
+                                     const bool* data, size_t len);
+} // extern "C"
 
 namespace nros {
 
@@ -158,23 +186,7 @@ template <typename T, ::size_t N> class Seq {
     bool overflow_ = false;
 };
 
-namespace detail {
-
-/// Element-type discriminator for stored sequence parameters.
-enum class SeqKind : uint8_t { Double, Integer, Bool };
-
-template <typename T> struct seq_kind_of;
-template <> struct seq_kind_of<double> {
-    static constexpr SeqKind value = SeqKind::Double;
-};
-template <> struct seq_kind_of<int64_t> {
-    static constexpr SeqKind value = SeqKind::Integer;
-};
-template <> struct seq_kind_of<bool> {
-    static constexpr SeqKind value = SeqKind::Bool;
-};
-
-} // namespace detail
+namespace detail {} // namespace detail
 
 /// Fixed-capacity, node-local typed parameter server.
 ///
@@ -183,7 +195,10 @@ template <> struct seq_kind_of<bool> {
 /// fixed-capacity `Seq<T, N>` sequences (`T` = double / int64 / bool).
 ///
 /// @tparam Capacity     Max scalar/string parameters (C-side storage).
-/// @tparam SeqSlots     Max sequence parameters (default 4).
+/// @tparam SeqSlots     Retained for source compatibility (issue #226):
+///                      sequence records now live in the C server, so the
+///                      declare count is bounded by `Capacity` like every
+///                      scalar; this parameter no longer bounds anything.
 /// @tparam SeqPoolBytes Inline byte pool backing all sequence element
 ///                      storage (default 256 B ≈ 32 doubles).
 ///
@@ -205,7 +220,8 @@ template <> struct seq_kind_of<bool> {
 /// nros::Seq<double, 8> w;
 /// NROS_TRY(params.get_parameter("mpc_weights", w));
 /// ```
-template <::size_t Capacity, ::size_t SeqSlots = 4, ::size_t SeqPoolBytes = 256>
+template <::size_t Capacity, ::size_t SeqSlots /* unused, see above */ = 4,
+          ::size_t SeqPoolBytes = 256>
 class ParameterServer {
   public:
     ParameterServer() : server_(nros_param_server_get_zero_initialized()) {
@@ -289,20 +305,17 @@ class ParameterServer {
     /// @retval NROS_RET_INVALID_ARGUMENT  element-type mismatch or `out`
     ///                                  too small.
     template <typename T, ::size_t N> Result get_parameter(const char* name, Seq<T, N>& out) const {
-        int idx = find_seq(name);
-        if (idx < 0) {
-            return Result(NROS_RET_NOT_FOUND);
+        const T* src = nullptr;
+        ::size_t len = 0;
+        nros_ret_t rc = seq_get_ffi(&server_, name, &src, &len);
+        if (rc != NROS_RET_OK) {
+            return Result(rc);
         }
-        const SeqRecord& r = seq_records_[static_cast<::size_t>(idx)];
-        if (r.kind != detail::seq_kind_of<T>::value) {
+        if (len > N) {
             return Result(NROS_RET_INVALID_ARGUMENT);
         }
-        if (r.size_elems > N) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        const T* src = reinterpret_cast<const T*>(&seq_pool_[r.offset]);
         out.clear();
-        for (::size_t i = 0; i < r.size_elems; ++i) {
+        for (::size_t i = 0; i < len; ++i) {
             out.push_back(src[i]);
         }
         return Result(NROS_RET_OK);
@@ -314,32 +327,19 @@ class ParameterServer {
     /// parameter is overwritten or the server is destroyed.
     template <typename T>
     Result get_parameter(const char* name, const T*& data, ::size_t& len) const {
-        int idx = find_seq(name);
-        if (idx < 0) {
-            return Result(NROS_RET_NOT_FOUND);
-        }
-        const SeqRecord& r = seq_records_[static_cast<::size_t>(idx)];
-        if (r.kind != detail::seq_kind_of<T>::value) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        data = reinterpret_cast<const T*>(&seq_pool_[r.offset]);
-        len = r.size_elems;
-        return Result(NROS_RET_OK);
+        return Result(seq_get_ffi(&server_, name, &data, &len));
     }
 
 #ifdef NROS_CPP_STD
     /// Get a sequence parameter into a `std::vector<T>` (hosted).
     template <typename T> Result get_parameter(const char* name, std::vector<T>& out) const {
-        int idx = find_seq(name);
-        if (idx < 0) {
-            return Result(NROS_RET_NOT_FOUND);
+        const T* src = nullptr;
+        ::size_t len = 0;
+        nros_ret_t rc = seq_get_ffi(&server_, name, &src, &len);
+        if (rc != NROS_RET_OK) {
+            return Result(rc);
         }
-        const SeqRecord& r = seq_records_[static_cast<::size_t>(idx)];
-        if (r.kind != detail::seq_kind_of<T>::value) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        const T* src = reinterpret_cast<const T*>(&seq_pool_[r.offset]);
-        out.assign(src, src + r.size_elems);
+        out.assign(src, src + len);
         return Result(NROS_RET_OK);
     }
 #endif
@@ -365,19 +365,18 @@ class ParameterServer {
     }
 #endif
 
-    /// Check whether a parameter has been declared (scalar or sequence).
-    bool has_parameter(const char* name) const {
-        return nros_param_has(&server_, name) || find_seq(name) >= 0;
-    }
+    /// Check whether a parameter has been declared (scalar or sequence —
+    /// both live in the C server since issue #226).
+    bool has_parameter(const char* name) const { return nros_param_has(&server_, name); }
 
     /// Number of declared parameters (scalars + sequences).
-    ::size_t parameter_count() const { return nros_param_server_get_count(&server_) + seq_count_; }
+    ::size_t parameter_count() const { return nros_param_server_get_count(&server_); }
 
     /// Get the underlying C server pointer.
     ///
     /// Useful for handing the server to C-API helpers (e.g. ROS 2
     /// service registration when the `param-services` feature is on).
-    /// Sequence parameters are C++-local and not reflected here.
+    /// Since issue #226 sequence parameters are recorded here too.
     nros_param_server_t* raw() { return &server_; }
     const nros_param_server_t* raw() const { return &server_; }
 
@@ -456,108 +455,108 @@ class ParameterServer {
     }
 #endif // NROS_CPP_STD
 
-    /* -------- sequence parameter storage (C++-local) -------- */
-
-    static constexpr ::size_t kNameCap = 64; // matches NROS_MAX_PARAM_NAME_LEN
-
-    struct SeqRecord {
-        char name[kNameCap];
-        detail::SeqKind kind;
-        ::size_t offset;     // byte offset into seq_pool_
-        ::size_t cap_elems;  // declared compile-time N
-        ::size_t size_elems; // current element count
-    };
-
-    static bool name_eq(const char* a, const char* b) {
-        ::size_t i = 0;
-        for (; a[i] != '\0' && b[i] != '\0'; ++i) {
-            if (a[i] != b[i]) {
-                return false;
-            }
-        }
-        return a[i] == b[i];
-    }
-
-    static void name_copy(char* dst, const char* src) {
-        ::size_t i = 0;
-        for (; i + 1 < kNameCap && src[i] != '\0'; ++i) {
-            dst[i] = src[i];
-        }
-        dst[i] = '\0';
-    }
-
-    int find_seq(const char* name) const {
-        if (name == nullptr) {
-            return -1;
-        }
-        for (::size_t i = 0; i < seq_count_; ++i) {
-            if (name_eq(seq_records_[i].name, name)) {
-                return static_cast<int>(i);
-            }
-        }
-        return -1;
-    }
+    /* -------- sequence parameters (issue #226): bytes in the pool below,
+       records in the C server. Each pool allocation is prefixed by a
+       uint64_t element-capacity header so `set_parameter` can bounds-check
+       without a parallel record table; both the header and the element
+       block are 8-aligned (every supported element type has alignment
+       <= 8). Pool bytes are permanent for the server's lifetime, exactly
+       what the borrow-semantics C array FFI requires of its caller. A
+       declare that fails at the FFI (duplicate name racing in, server
+       full) does not advance the pool cursor. -------- */
 
     static ::size_t align_up(::size_t off, ::size_t a) { return (off + (a - 1)) & ~(a - 1); }
 
+    /* C-FFI dispatch by element type (double / int64 / bool). */
+    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const double* d,
+                                      ::size_t l) {
+        return nros_param_declare_double_array(s, n, d, l);
+    }
+    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const int64_t* d,
+                                      ::size_t l) {
+        return nros_param_declare_integer_array(s, n, d, l);
+    }
+    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const bool* d,
+                                      ::size_t l) {
+        return nros_param_declare_bool_array(s, n, d, l);
+    }
+    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const double** d,
+                                  ::size_t* l) {
+        return nros_param_get_double_array(s, n, d, l);
+    }
+    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const int64_t** d,
+                                  ::size_t* l) {
+        return nros_param_get_integer_array(s, n, d, l);
+    }
+    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const bool** d,
+                                  ::size_t* l) {
+        return nros_param_get_bool_array(s, n, d, l);
+    }
+    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const double* d,
+                                  ::size_t l) {
+        return nros_param_set_double_array(s, n, d, l);
+    }
+    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const int64_t* d,
+                                  ::size_t l) {
+        return nros_param_set_integer_array(s, n, d, l);
+    }
+    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const bool* d,
+                                  ::size_t l) {
+        return nros_param_set_bool_array(s, n, d, l);
+    }
+
     template <typename T>
     Result declare_seq_impl(const char* name, const T* src, ::size_t len, ::size_t cap_n) {
-        if (name == nullptr) {
+        static_assert(alignof(T) <= 8, "sequence element alignment exceeds pool alignment");
+        if (name == nullptr || len > cap_n) {
             return Result(NROS_RET_INVALID_ARGUMENT);
         }
-        if (find_seq(name) >= 0 || nros_param_has(&server_, name)) {
-            return Result(NROS_RET_ALREADY_EXISTS);
-        }
-        if (seq_count_ >= SeqSlots) {
-            return Result(NROS_RET_FULL);
-        }
-        const ::size_t base = align_up(seq_pool_used_, alignof(T));
+        /* Layout: [uint64_t cap][T x cap_n], both 8-aligned. */
+        const ::size_t hdr = align_up(seq_pool_used_, 8);
+        const ::size_t base = hdr + sizeof(uint64_t);
         const ::size_t end = base + cap_n * sizeof(T);
         if (end > SeqPoolBytes) {
             return Result(NROS_RET_FULL);
         }
-        SeqRecord& r = seq_records_[seq_count_];
-        name_copy(r.name, name);
-        r.kind = detail::seq_kind_of<T>::value;
-        r.offset = base;
-        r.cap_elems = cap_n;
-        r.size_elems = len;
+        *reinterpret_cast<uint64_t*>(&seq_pool_[hdr]) = static_cast<uint64_t>(cap_n);
         T* dst = reinterpret_cast<T*>(&seq_pool_[base]);
         for (::size_t i = 0; i < len; ++i) {
             dst[i] = src[i];
         }
+        /* The C server owns the record (duplicate-name + capacity checks
+           happen there); only commit the pool cursor on success. */
+        nros_ret_t rc = seq_declare_ffi(&server_, name, dst, len);
+        if (rc != NROS_RET_OK) {
+            return Result(rc);
+        }
         seq_pool_used_ = end;
-        ++seq_count_;
         return Result(NROS_RET_OK);
     }
 
     template <typename T> Result set_seq_impl(const char* name, const T* src, ::size_t len) {
-        int idx = find_seq(name);
-        if (idx < 0) {
-            return Result(NROS_RET_NOT_FOUND);
+        const T* cur = nullptr;
+        ::size_t cur_len = 0;
+        /* Existence + element-type validation happen in the C server. */
+        nros_ret_t rc = seq_get_ffi(&server_, name, &cur, &cur_len);
+        if (rc != NROS_RET_OK) {
+            return Result(rc);
         }
-        SeqRecord& r = seq_records_[static_cast<::size_t>(idx)];
-        if (r.kind != detail::seq_kind_of<T>::value) {
+        const ::size_t cap = static_cast<::size_t>(reinterpret_cast<const uint64_t*>(cur)[-1]);
+        if (len > cap) {
             return Result(NROS_RET_INVALID_ARGUMENT);
         }
-        if (len > r.cap_elems) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        T* dst = reinterpret_cast<T*>(&seq_pool_[r.offset]);
+        T* dst = const_cast<T*>(cur); /* pool bytes are ours */
         for (::size_t i = 0; i < len; ++i) {
             dst[i] = src[i];
         }
-        r.size_elems = len;
-        return Result(NROS_RET_OK);
+        return Result(seq_set_ffi(&server_, name, dst, len));
     }
 
     nros_param_server_t server_;
     nros_parameter_t storage_[Capacity];
 
-    SeqRecord seq_records_[SeqSlots];
     alignas(8) unsigned char seq_pool_[SeqPoolBytes];
     ::size_t seq_pool_used_ = 0;
-    ::size_t seq_count_ = 0;
 };
 
 } // namespace nros

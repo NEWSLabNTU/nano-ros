@@ -48,12 +48,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   messages return 0/-1 + out-param, services return byte-count — same concept, two ABIs. (deep audit 2026-07-17)
 - **#227** — [domain_id==0 sentinel blocks explicit domain 0](0227-domain-zero-sentinel-blocks-explicit-domain0.md):
   baked nonzero NROS_ENTRY_DOMAIN_ID makes domain 0 unreachable; plus uint8 vs u32 domain type drift. (deep audit 2026-07-17)
-- **#226** — [C++ ParameterServer seq storage engine lives in the header](0226-cpp-parameter-seq-storage-in-header.md):
-  C1 thin-wrapper violation — behavior the Rust core doesn't own; promote or document the carve-out. (deep audit 2026-07-17)
 - **#221** — [stm32f4 rtic action examples panic on hardware](0221-stm32f4-rtic-action-examples-panic-on-hardware.md):
   README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#222** — the four
+Recently resolved (see [`archived/`](archived/) for the full list): **#226** — the C++
+ParameterServer sequence engine is gone: bytes stay in the inline pool (the stable owner the
+borrow-FFI requires, capacity-header-prefixed), records moved into the C/Rust server via the
+existing array FFI — no parallel name table, and sequence params are now visible to the param
+services. **#222** — the four
 rtos fixture resolvers now hard-fail STALE instead of running museum binaries (the #215 trap
 closed on freertos/nuttx/threadx×2); found + fixed the deeper flaw en route: regenerated-in-place
 cbindgen headers (nros_generated.h / nros_cpp_ffi.h / zpico.h) must be EXCLUDED from dep-graph
