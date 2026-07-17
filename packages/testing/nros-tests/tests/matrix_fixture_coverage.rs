@@ -64,8 +64,11 @@ fn rmw_from_str(s: &str) -> Option<Rmw> {
     })
 }
 
-/// (platform, lang, rmw, is_workspace) triples present in fixtures.toml.
-fn fixture_coords() -> (BTreeSet<(u16, u16, u16, bool)>, Vec<String>) {
+/// (platform_idx, lang_idx, rmw_idx, is_workspace) coordinate key.
+type Coord = (u16, u16, u16, bool);
+
+/// Coordinates present in fixtures.toml + rows whose strings didn't map.
+fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
     let text = std::fs::read_to_string(project_root().join("examples/fixtures.toml"))
         .expect("read examples/fixtures.toml");
     let doc: toml::Table = toml::from_str(&text).expect("parse fixtures.toml");
