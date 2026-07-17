@@ -167,6 +167,22 @@ named reference consumer), 287 (ament verbs on zephyr).
     (rosidl_adapter requirement). Remaining runtime gaps: multicast join
     error -1 (IGMP; unicast-only fallback engages — peers must SPDP to
     us), wall #6 (SMP-4), and the compose-bridge delivery check.
+  - [x] Wall #9 (2026-07-17, FIXED): first inbound peer discovery
+    aborted the image — `ddsrt_mutex_init` (posix sync) IGNORES
+    `pthread_mutex_init` failure, and Zephyr's finite mutex pool
+    (snippet: 256) exhausts during cyclone entity/proxy/tkmap init, so
+    the first `ddsrt_mutex_lock` on the uninitialized
+    `local_reader_ary.rdary_lock` hit cyclone's bare `abort()` at
+    proxy-writer match time. Fix: fork commit 4c8ff8c2 makes init fail
+    loudly at the site; snippet raises
+    `CONFIG_MAX_PTHREAD_MUTEX_COUNT` to 1024 (+cond 512).
+  - [x] 2026-07-17 — **host↔guest DDS interop PROVEN over tap0**: host
+    ROS 2 Humble (rmw_cyclonedds_cpp, iface-pinned) lists the firmware's
+    full topic graph, and host-published `nav_msgs/Odometry` +
+    `geometry_msgs/AccelWithCovarianceStamped` are consumed by the
+    controller (uart gate advanced from "Waiting for acceleration data"
+    to "Waiting for steering data"; 30+ min sim stable). Remaining
+    inputs are autoware-typed — the ASI demo compose stack covers them.
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.
