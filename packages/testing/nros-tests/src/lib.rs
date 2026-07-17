@@ -17,8 +17,10 @@
 //! }
 //! ```
 
+pub mod alloc;
 pub mod esp32;
 pub mod fixtures;
+pub mod matrix;
 pub mod output;
 pub mod platform;
 pub mod process;
