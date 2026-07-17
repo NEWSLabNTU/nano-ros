@@ -1269,6 +1269,13 @@ impl<'s> Executor<'s> {
             last_spin_end_us: None,
             #[cfg(not(feature = "std"))]
             clock_us_fn: None,
+            // RFC-0052 W3b.5 — hosted builds get a wall clock by default so
+            // native age monitors activate without extra wiring; embedded
+            // builds install `config.epoch_us` from the board in
+            // `from_session_in`/`open` (the `not(std)` blocks above).
+            #[cfg(feature = "std")]
+            epoch_us_fn: Some(super::types::std_epoch_us),
+            #[cfg(not(feature = "std"))]
             epoch_us_fn: None,
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
@@ -1687,6 +1694,15 @@ impl<'s> Executor<'s> {
     #[must_use]
     pub fn age_table(&self) -> &'static [super::monitor::AgeMonitorSpec] {
         self.age_table
+    }
+
+    /// W3b.5 — override the wall-clock (epoch µs) source age monitors take
+    /// message stamps against. Hosted builds default to `SystemTime`; a
+    /// board with a synced RTC installs its own here (or via
+    /// `ExecutorConfig::epoch_us`). Call BEFORE entity creation — the age
+    /// hook captures this at `create_subscription` time.
+    pub fn set_epoch_clock(&mut self, epoch_us: fn() -> u64) {
+        self.epoch_us_fn = Some(epoch_us);
     }
 
     /// W3b.5 — resolve a subscription's age hook at registration time:

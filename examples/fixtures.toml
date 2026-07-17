@@ -1571,6 +1571,16 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/safety-chatter-listener"
 
+# RFC-0052 / phase-296 W3b.4/.5 — the contract-monitor parity fixture. One
+# crate, three bins (contract-monitor-{pub,sub,diagsink}); building the crate
+# produces all three. Consumed by tests/contract_monitor_parity.rs (the
+# W3b.4/.5 cross-runtime "done-when": min_rate_hz + max_age violations report
+# on /diagnostics in the play_launch rule vocabulary; compliant twin silent).
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/contract-monitor"
+
 # Zero-copy (unstable zenoh receive API) variant.
 [[fixture]]
 platform = "native"

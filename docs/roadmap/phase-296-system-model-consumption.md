@@ -116,15 +116,15 @@ small, independently landable prerequisite with its own done-when.
 - **Done when:** the parity fixture's wire traffic carries non-zero
   stamps (asserted via the listener's received msg in-test).
 
-#### W3b.4 — rate monitor + baked monitor table (machinery LANDED; parity fixture remains)
+#### W3b.4 — rate monitor + baked monitor table (LANDED, incl. parity fixture)
 
 Landed: executor/monitor.rs (MonitorSpec + PubMonitorCell statics +
 pure check_rate with window/dedup/recovery semantics, unit-tested),
 Executor::set_monitor_table/drain_violations + spin-tick hook (one
 branch when the table is empty), NodeHandle::set_monitors +
 create_publisher cell attach (both constructor sites), relaxed-atomic
-publish bump. Remaining here: the codegen-system emission of the table
-from model contracts + the native parity fixture vs play_launch.
+publish bump, codegen-system emission from model contracts, AND the
+native cross-process parity fixture (below).
 
 - `codegen-system --model` emits a per-node
   `static const nros_monitor_spec_t { topic, min_rate_hz, jitter_ms,
@@ -136,12 +136,25 @@ from model contracts + the native parity fixture vs play_launch.
   `publish_with_buffer`, checked on spin ticks against `min_rate_hz`/
   `jitter_ms` (monotonic clock only — independent of W3b.2).
 - Violations through W3b.1's reporter.
-- **Done when:** native pair with violated `min_rate_hz` reports
-  `rate-hierarchy-runtime` on `/diagnostics`; compliant twin silent;
-  play_launch flags the same violation from the same contract file
-  (the cross-runtime parity test).
+- **Done — parity fixture LANDED (2026-07-18):**
+  `packages/testing/nros-tests/bins/contract-monitor` (one crate, three
+  bins: `pub`/`sub`/`diagsink`) + `tests/contract_monitor_parity.rs`. A
+  native three-process topology over a real zenoh graph: the pub bakes a
+  `min_rate_hz` contract and publishes a stale-stamped `std_msgs/Header`,
+  the sub bakes a `max_age_ms` contract, both drain their violations
+  through the `nros-diagnostics` reporter onto `/diagnostics`, and the
+  diagsink observes. The violating case (2 Hz < 10 Hz + 2 s stale)
+  surfaces BOTH `rate-hierarchy-runtime` and `max-age-runtime`; the
+  compliant twin (20 Hz, fresh) stays silent while still delivering. The
+  rule ids ARE the play_launch runtime vocabulary (RFC-0050 / the shared
+  `nros-diagnostics::RULE_*` consts), so the same contract reports in the
+  same words on the Linux runtime — the cross-runtime parity. Executor
+  API added: `nros::monitor` re-export (umbrella access to the baked
+  types) + hosted builds default `epoch_us_fn` to `SystemTime` so native
+  age monitors activate without extra wiring (+ `Executor::set_epoch_clock`
+  for boards with a synced RTC).
 
-#### W3b.5 — max_age + node-path latency (machinery LANDED; parity fixture remains)
+#### W3b.5 — max_age + node-path latency (LANDED, incl. parity fixture)
 
 Landed (2026-07-17):
 - `max-age-runtime` — `SubMonitorCell` + `AgeMonitorSpec` table
@@ -178,9 +191,11 @@ Landed (2026-07-17):
   `SubMonitorCell` statics) and `max_latency_ms` into
   `system_monitors.rs`; `nros_install_monitors` also calls
   `set_age_table`. Plan gains a skip-empty `age_monitors` section.
-- **Remaining (with the W3b.4 remainder):** the native parity fixture —
-  violated `min_rate_hz` + stale-stamp (`max_age`) pair vs play_launch
-  on the same contract file.
+- **Done — the stale-stamp (`max_age`) half of the parity fixture
+  LANDED (2026-07-18)** alongside the rate half: see W3b.4's
+  `contract-monitor` fixture + `contract_monitor_parity.rs`. The
+  violating sub receives 2 s-stale headers and reports `max-age-runtime`
+  on `/diagnostics`; the compliant sub (fresh stamps) stays silent.
 
 ### W4 — CMake + ASI pilot
 

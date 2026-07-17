@@ -630,6 +630,20 @@ pub use nros_node::{
     SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
 };
 
+// RFC-0052 / phase-296 W3b — on-target contract-monitor types. Baked
+// `system_monitors.rs` uses the fully-qualified `::nros_node::executor::
+// monitor::*` path; this re-export lets hand-written entries and fixtures
+// reach the same types through the `nros` umbrella (they install the
+// tables via `Executor::set_monitor_table` / `set_age_table` and drain
+// with `drain_violations`). The monitor module is `has_rmw`-gated in
+// nros-node (it names entity types), so mirror that with `rmw-cffi`.
+#[cfg(feature = "rmw-cffi")]
+pub mod monitor {
+    pub use nros_node::executor::monitor::{
+        AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell, Violation,
+    };
+}
+
 // Re-export RMW-dependent types (require an active transport backend)
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::{

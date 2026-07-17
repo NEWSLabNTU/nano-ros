@@ -1,0 +1,51 @@
+[workspace]
+
+[package]
+name = "contract-monitor"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "RFC-0052 / phase-296 W3b.4/.5 cross-runtime parity fixture. Three bins exercise the on-target contract monitors end-to-end over zenoh: `contract-monitor-pub` bakes a publisher rate contract (min_rate_hz) + publishes a stale-stamped std_msgs/Header, `contract-monitor-sub` bakes a subscriber max_age contract, and both drain their violations through the nros-diagnostics reporter onto /diagnostics; `contract-monitor-diagsink` observes /diagnostics and prints the rule ids. The test drives a violating pair (slow + stale) that must report rate-hierarchy-runtime / max-age-runtime and a compliant twin (fast + fresh) that must stay silent — the same contract play_launch enforces on the Linux runtime (RFC-0050 rule vocabulary)."
+
+[[bin]]
+name = "contract-monitor-pub"
+path = "src/bin/pub.rs"
+
+[[bin]]
+name = "contract-monitor-sub"
+path = "src/bin/sub.rs"
+
+[[bin]]
+name = "contract-monitor-diagsink"
+path = "src/bin/diagsink.rs"
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+] }
+# The contract-monitor reporter + the SAME DiagnosticArray/Header/Time crates
+# the executor bakes against (RFC-0033 capacities). Using the identical crates
+# keeps the wire ABI consistent across pub → sub → diagsink.
+nros-diagnostics = { path = "../../../../core/nros-diagnostics", default-features = false, features = ["std"] }
+nros-diagnostic-msgs = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs", default-features = false, features = ["std"] }
+nros-std-msgs-diag = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag", default-features = false, features = ["std"] }
+nros-builtin-interfaces-diag = { path = "../../../../interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag", default-features = false, features = ["std"] }
+heapless = "0.8"
+log = "0.4"
+env_logger = "0.11"
+
+# The generated diag crates depend on `nros-core`/`nros-serdes` via
+# `version = "*"`; resolve them to the local workspace (same pattern as the
+# other standalone fixture bins).
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

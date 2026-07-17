@@ -69,6 +69,13 @@ static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_TALKER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached paths to the three `contract-monitor` parity-fixture bins
+/// (RFC-0052 / phase-296 W3b.4/.5): rate-contract pub, age-contract sub, and
+/// the `/diagnostics` observer.
+static CONTRACT_MONITOR_PUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static CONTRACT_MONITOR_SUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static CONTRACT_MONITOR_DIAGSINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the `safety-chatter-listener` fixture bin (phase-277 W3.a —
 /// was the listener `safety-e2e`-gated second `main`).
 static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -3352,6 +3359,43 @@ pub fn build_native_talker_header() -> TestResult<&'static Path> {
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
+}
+
+/// Resolve one prebuilt `contract-monitor` parity-fixture bin (cached). All
+/// three binaries come from the single
+/// `packages/testing/nros-tests/bins/contract-monitor` crate, so building any
+/// one builds all three.
+fn build_contract_monitor_bin(
+    cache: &'static OnceCell<PathBuf>,
+    bin_name: &str,
+) -> TestResult<&'static Path> {
+    cache
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/contract-monitor");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/{bin_name}"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// RFC-0052 / phase-296 W3b.4 — the rate-contract publisher bin.
+pub fn build_contract_monitor_pub() -> TestResult<&'static Path> {
+    build_contract_monitor_bin(&CONTRACT_MONITOR_PUB_BINARY, "contract-monitor-pub")
+}
+
+/// RFC-0052 / phase-296 W3b.5 — the age-contract subscriber bin.
+pub fn build_contract_monitor_sub() -> TestResult<&'static Path> {
+    build_contract_monitor_bin(&CONTRACT_MONITOR_SUB_BINARY, "contract-monitor-sub")
+}
+
+/// RFC-0052 / phase-296 W3b.4/.5 — the `/diagnostics` observer bin.
+pub fn build_contract_monitor_diagsink() -> TestResult<&'static Path> {
+    build_contract_monitor_bin(
+        &CONTRACT_MONITOR_DIAGSINK_BINARY,
+        "contract-monitor-diagsink",
+    )
 }
 
 /// Resolve the prebuilt `safety-chatter-listener` fixture (cached).

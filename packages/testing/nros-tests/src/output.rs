@@ -401,6 +401,25 @@ pub fn assert_monotonic(values: &[i64]) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// RFC-0052 / phase-296 W3b.4/.5 — contract-monitor parity fixture markers.
+// The rule ids are the play_launch runtime-enforcement vocabulary (RFC-0050),
+// so the same contract yields the same rule string on either runtime.
+// ---------------------------------------------------------------------------
+
+/// `contract-monitor-diagsink` per-status prefix (`"DIAG rule=<id> hw=<ep>"`).
+pub const CONTRACT_MONITOR_DIAG_PREFIX: &str = "DIAG rule=";
+
+/// Readiness marker of the `contract-monitor-diagsink` observer (its banner
+/// contains "Listener", like the other sink fixtures).
+pub const CONTRACT_MONITOR_DIAGSINK_READY_MARKER: &str = "diagsink Listener";
+
+/// Publisher-rate-contract violation rule id (`min_rate_hz` guarantee).
+pub const RULE_RATE_HIERARCHY_RUNTIME: &str = "rate-hierarchy-runtime";
+
+/// Subscriber max-data-age violation rule id (`max_age_ms` assumption).
+pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.
