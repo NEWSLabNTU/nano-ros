@@ -126,15 +126,47 @@ Status: **Draft — 2026-07-17** · Implements
 
 
 ### W5 — launch via framework runner metadata
-- [ ] W5.a Zephyr: interpret `runners.yaml` from the prebuilt build dir
-  (west-fvp-run pattern generalized); native_sim keeps direct exec (it IS
-  the framework convention there).
-- [ ] W5.b ESP-IDF: derive the QEMU/espflash line from
-  `flasher_args.json`.
-- [ ] W5.c NuttX/FreeRTOS/baremetal: per-machine QEMU argument blocks move
-  next to the board crates (phase-215 duty rule); `qemu.rs` becomes the
-  interpreter. Sanctioned-bypass doc-comments at any callsite that can't
-  use the framework runner (E1-exception pattern).
+
+> As-landed (2026-07-17, this commit): the launch plumbing now READS the
+> framework's build-stage runner metadata instead of hand-coding the line
+> where such metadata exists. New interpreters (both tiny hand-rolled
+> readers, no new deps — same flat-parse style as `fvp.py`'s CMakeCache
+> read): `zephyr::RunnersYaml` (parses `<build_dir>/zephyr/runners.yaml` —
+> `flash-runner`, `runners:` list, `config.exe_file`/`elf_file`) and
+> `esp32::EspFlasherArgs` (parses `<build_dir>/flasher_args.json` via
+> serde_json — `extra_esptool_args.chip` → QEMU `-M`, `flash_settings`).
+> Validation (fixtures fresh from W4, no rebuild): native_sim zephyr rust
+> pubsub e2e via the new `runners.yaml` path PASS; zephyr boot_smoke PASS;
+> freertos rust pubsub qemu lane PASS (launch unchanged); esp32 boot lane
+> PASS with the derived `-M esp32c3`; matrix_fixture_coverage +
+> output_marker_gate + all 52 lib unit tests green. No lane behavior
+> changed — this is launch-source plumbing only.
+
+- [x] W5.a Zephyr: `ZephyrProcess::start` (native_sim) now derives its launch
+  binary from `runners.yaml` — confirms `flash-runner: native` and runs
+  `config.exe_file`, the SANCTIONED framework form (the `native` runner just
+  host-execs `zephyr.exe`; documented at the callsite as NOT an E1/E9 bypass);
+  falls back to the passed binary when the file is absent (identical effect).
+  The dormant `QemuArm` branch reads `runners.yaml` for the `qemu` runner +
+  `elf_file`; its `-cpu/-machine` block stays hand-rolled under a
+  sanctioned-bypass doc-comment (Zephyr keeps QEMU flags in `board.cmake` →
+  the CMake `run` target, reachable only via `west build -t run` which trips
+  E1). `west build -t run` NOT used.
+- [x] W5.b ESP-IDF: `esp32::start_esp32_qemu{,_mcast}` derive the QEMU `-M`
+  machine from a sibling `flasher_args.json` when present (ESP-IDF `idf.py`
+  layout). The esp32 Rust examples flash an `espflash save-image --merge`
+  blob with NO `flasher_args.json`, so that path falls back to `esp32c3`
+  under a documented sanctioned exception (no framework metadata exists for
+  the merged-image path). `create_esp32_flash_image` (the espflash line)
+  stays as-is — it is build-stage image prep, not the launch line.
+- [x] W5.c NuttX/FreeRTOS/baremetal: no framework runner exists, so the
+  hand-rolled `qemu.rs` builders ARE the convention and are KEPT. Chose the
+  doc-comment route (prompt-preferred, avoids disturbing the many green QEMU
+  lanes): a module-level SANCTIONED-BYPASS doc-block in `qemu.rs` explains the
+  E1/E9 exception for all `start_*` builders. FOLLOW-UP (deferred): relocate
+  each per-machine `-M/-cpu/-netdev` block into the owning board crate's
+  `NROS_BOARD_RUNNER`-adjacent metadata (phase-215 duty rule) so `qemu.rs`
+  becomes a thin reader of board-provided launch metadata.
 
 ### W6 — RMW runtime-coverage triage (the matrix makes debt visible)
 - [ ] W6.a Per-cell Runtime-vs-CarveOut decision for cyclonedds + xrce on

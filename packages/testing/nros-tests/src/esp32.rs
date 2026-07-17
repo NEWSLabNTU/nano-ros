@@ -167,6 +167,81 @@ pub fn wait_for_addr(addr: &str, timeout: std::time::Duration) -> bool {
 }
 
 // =============================================================================
+// ESP-IDF flasher_args.json interpreter (phase-295 W5.b)
+// =============================================================================
+
+/// phase-295 W5.b — parsed subset of an ESP-IDF `flasher_args.json`.
+///
+/// `idf.py build` emits `<build_dir>/flasher_args.json` at the BUILD stage: it
+/// is Espressif's own flashing metadata (chip model, flash mode/size/freq, the
+/// bootloader + partition-table + app offset→file map). Deriving the QEMU
+/// machine and flash settings from it keeps the launch line the framework's,
+/// rather than a hand-built Espressif-fork command line (RFC-0051 §4). This is
+/// the ESP-IDF sibling of the Zephyr `runners.yaml` interpreter.
+///
+/// Parsed with `serde_json` (a workspace dep); only the keys the harness needs
+/// are modeled — `extra_esptool_args.chip` and `flash_settings`.
+#[derive(Debug, Clone, Default)]
+pub struct EspFlasherArgs {
+    /// `extra_esptool_args.chip` (e.g. `esp32c3`) — selects the QEMU `-M`.
+    pub chip: Option<String>,
+    /// `flash_settings.flash_size` (e.g. `2MB`).
+    pub flash_size: Option<String>,
+    /// `flash_settings.flash_mode` (e.g. `dio`).
+    pub flash_mode: Option<String>,
+    /// `flash_settings.flash_freq` (e.g. `80m`).
+    pub flash_freq: Option<String>,
+}
+
+impl EspFlasherArgs {
+    /// Parse a `flasher_args.json` at `path`. Returns `None` if absent or
+    /// unparseable so callers fall back gracefully.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(path).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+        let s = |x: &serde_json::Value| x.as_str().map(str::to_string);
+        Some(EspFlasherArgs {
+            chip: s(&v["extra_esptool_args"]["chip"]),
+            flash_size: s(&v["flash_settings"]["flash_size"]),
+            flash_mode: s(&v["flash_settings"]["flash_mode"]),
+            flash_freq: s(&v["flash_settings"]["flash_freq"]),
+        })
+    }
+
+    /// Convenience: parse `<build_dir>/flasher_args.json`.
+    pub fn from_build_dir(build_dir: &Path) -> Option<Self> {
+        Self::from_path(&build_dir.join("flasher_args.json"))
+    }
+
+    /// The QEMU `-M` machine model derived from the chip. Espressif's QEMU
+    /// fork names its machines after the chip (`esp32c3`, `esp32`, …), so the
+    /// chip string is the machine string.
+    pub fn qemu_machine(&self) -> Option<&str> {
+        self.chip.as_deref()
+    }
+}
+
+/// phase-295 W5.b — resolve the QEMU `-M` machine model for a flash image.
+///
+/// Prefers the framework's metadata: if a `flasher_args.json` sits next to the
+/// image (the ESP-IDF `idf.py` layout), the machine comes from its
+/// `extra_esptool_args.chip`.
+///
+/// SANCTIONED FALLBACK (E1/E9 exception, RFC-0051 §4): the esp32 *Rust*
+/// examples flash via `espflash save-image --merge` (see
+/// [`create_esp32_flash_image`]), which produces a single merged `.bin` and
+/// emits NO `flasher_args.json`. There is no framework runner metadata to read
+/// for that path, so the machine defaults to `esp32c3` — the only chip the
+/// esp32 fixtures target (their build target is `riscv32imc…` / `-M esp32c3`).
+fn esp32_qemu_machine_for_image(flash_image: &Path) -> String {
+    flash_image
+        .parent()
+        .and_then(EspFlasherArgs::from_build_dir)
+        .and_then(|f| f.qemu_machine().map(str::to_string))
+        .unwrap_or_else(|| "esp32c3".to_string())
+}
+
+// =============================================================================
 // ESP32-C3 QEMU Helpers
 // =============================================================================
 
@@ -248,11 +323,16 @@ pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<Mana
     }
 
     let drive_arg = format!("file={},if=mtd,format=raw", flash_image.display());
+    // phase-295 W5.b — machine model comes from the framework's
+    // `flasher_args.json` when present (ESP-IDF layout); the espflash
+    // merged-image path has no such metadata and falls back to `esp32c3`
+    // (documented in `esp32_qemu_machine_for_image`).
+    let machine = esp32_qemu_machine_for_image(flash_image);
 
     let mut cmd = Command::new("qemu-system-riscv32");
     cmd.args([
         "-M",
-        "esp32c3",
+        &machine,
         "-icount",
         "3",
         "-nographic",
@@ -297,11 +377,13 @@ pub fn start_esp32_qemu_mcast(
 
     let drive_arg = format!("file={},if=mtd,format=raw", flash_image.display());
     let nic_arg = format!("socket,model=open_eth,mcast={mcast_addr_port},mac={mac}");
+    // phase-295 W5.b — see `esp32_qemu_machine_for_image`.
+    let machine = esp32_qemu_machine_for_image(flash_image);
 
     let mut cmd = Command::new("qemu-system-riscv32");
     cmd.args([
         "-M",
-        "esp32c3",
+        &machine,
         "-icount",
         "3",
         "-nographic",
@@ -340,5 +422,32 @@ mod tests {
     fn test_espflash_detection() {
         let available = is_espflash_available();
         eprintln!("espflash available: {}", available);
+    }
+
+    #[test]
+    fn flasher_args_derives_qemu_machine() {
+        // phase-295 W5.b — the QEMU machine model must come from the
+        // framework's `flasher_args.json`, not a hardcoded string. Uses the
+        // exact shape `idf.py` emits.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("flasher_args.json"),
+            r#"{
+                "flash_settings": {"flash_mode": "dio", "flash_size": "2MB", "flash_freq": "80m"},
+                "extra_esptool_args": {"chip": "esp32c3", "after": "hard_reset"}
+            }"#,
+        )
+        .unwrap();
+        let f = EspFlasherArgs::from_build_dir(dir.path()).unwrap();
+        assert_eq!(f.chip.as_deref(), Some("esp32c3"));
+        assert_eq!(f.qemu_machine(), Some("esp32c3"));
+        assert_eq!(f.flash_size.as_deref(), Some("2MB"));
+
+        // A merged .bin with no sibling flasher_args.json → sanctioned esp32c3.
+        let img = dir.path().join("nowhere").join("app.bin");
+        assert_eq!(esp32_qemu_machine_for_image(&img), "esp32c3");
+        // With the metadata present, the machine is derived from it.
+        let img2 = dir.path().join("app.bin");
+        assert_eq!(esp32_qemu_machine_for_image(&img2), "esp32c3");
     }
 }

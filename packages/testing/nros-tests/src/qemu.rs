@@ -1,6 +1,32 @@
 //! QEMU process fixture for embedded testing
 //!
 //! Provides managed QEMU processes for testing ARM Cortex-M binaries.
+//!
+//! ## Launch convention — SANCTIONED hand-rolled builders (phase-295 W5.c)
+//!
+//! Every `QemuProcess::start_*` builder below assembles a `qemu-system-{arm,
+//! riscv32,riscv64}` command line by hand. This is the **sanctioned form**
+//! (RFC-0051 §4 / audit checklist E9 / the #222 E1-exception pattern), not a
+//! bypass to fix, because the platforms this module launches — FreeRTOS,
+//! NuttX, ThreadX, and pure bare-metal — have **no build-system runner
+//! metadata** to interpret:
+//!
+//! - There is no Zephyr `runners.yaml` (that path is handled by the
+//!   [`crate::zephyr::RunnersYaml`] interpreter) and no ESP-IDF
+//!   `flasher_args.json` ([`crate::esp32::EspFlasherArgs`]) for these images.
+//!   They are plain cross-compiled ELFs; the emulator machine/CPU/netdev plan
+//!   lives only in each board crate's build glue and this file.
+//! - So `qemu.rs` is itself "the interpreter" E9 refers to: the hand-rolled
+//!   `-M/-cpu/-netdev` blocks here are the run convention, and consuming
+//!   PREBUILT ELFs (never building at run time) keeps the E1 no-compile rule.
+//!
+//! FOLLOW-UP (phase doc W5.c): the per-machine argument blocks (the
+//! `-M virt -cpu cortex-a7 …` specifics) can later move into each board
+//! crate's `NROS_BOARD_RUNNER`-adjacent metadata so a board owns its launch
+//! line (the phase-215 duty rule), leaving these functions as thin readers of
+//! board-provided launch metadata. That relocation is deferred here to avoid
+//! disturbing the many green QEMU lanes; the doc-comment route is the
+//! sanctioned interim state.
 
 use crate::{
     TestError, TestResult,

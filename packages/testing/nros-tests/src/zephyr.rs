@@ -39,6 +39,99 @@ impl ZephyrPlatform {
     }
 }
 
+/// phase-295 W5.a — parsed subset of a Zephyr `runners.yaml`.
+///
+/// Zephyr emits `<build_dir>/zephyr/runners.yaml` at the BUILD stage — it is
+/// the framework's runner metadata, the same file `west flash` / `west build
+/// -t run` consult to decide *how* an image is launched. Interpreting it here
+/// (instead of hand-coding a launch line) keeps the RUN command the
+/// framework's, per RFC-0051 §4. This is the generalization of the `west fvp
+/// run` template (phase-215.D `scripts/west_commands/fvp.py`), which reads the
+/// board's runner key from `CMakeCache.txt` and delegates accordingly.
+///
+/// The parse is deliberately a tiny hand-rolled reader (no YAML dep, matching
+/// `fvp.py`'s flat-key `CMakeCache` parse) covering only the keys the harness
+/// needs: the `flash-runner`, the `runners:` list, and the `config.exe_file`
+/// / `config.elf_file` build outputs.
+#[derive(Debug, Clone, Default)]
+pub struct RunnersYaml {
+    /// The `flash-runner:` value (`native`, `qemu`, `jlink`, `armfvp`, …).
+    pub flash_runner: Option<String>,
+    /// The `runners:` list (available runners the board declared).
+    pub runners: Vec<String>,
+    /// `config.exe_file` — the host executable a `native` runner runs
+    /// directly (e.g. `zephyr.exe`).
+    pub exe_file: Option<String>,
+    /// `config.elf_file` — the ELF a `qemu`/hardware runner loads
+    /// (e.g. `zephyr.elf`).
+    pub elf_file: Option<String>,
+    /// The directory the file lives in (`<build_dir>/zephyr`), used to
+    /// resolve the relative `exe_file` / `elf_file` names.
+    dir: PathBuf,
+}
+
+impl RunnersYaml {
+    /// Parse `<zephyr_dir>/runners.yaml`. `zephyr_dir` is the `zephyr/`
+    /// subdirectory of a Zephyr build directory (the dir the built
+    /// `zephyr.exe` / `zephyr.elf` also live in). Returns `None` when the
+    /// file is absent or unreadable so callers can fall back gracefully.
+    pub fn from_zephyr_dir(zephyr_dir: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(zephyr_dir.join("runners.yaml")).ok()?;
+        let mut me = RunnersYaml {
+            dir: zephyr_dir.to_path_buf(),
+            ..Default::default()
+        };
+        // Section tracking: `runners:` list items are dash-prefixed and (in
+        // Zephyr's emitter) sit at column 0; `config:` children are indented
+        // `key: value`. Track the last top-level key as the active section.
+        let mut section = String::new();
+        for raw in text.lines() {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if let Some(item) = trimmed.strip_prefix("- ") {
+                if section == "runners" {
+                    me.runners.push(item.trim().to_string());
+                }
+                continue;
+            }
+            let indented = raw.starts_with(' ') || raw.starts_with('\t');
+            let Some((key, val)) = trimmed.split_once(':') else {
+                continue;
+            };
+            if !indented {
+                section = key.trim().to_string();
+                if key.trim() == "flash-runner" {
+                    me.flash_runner = Some(val.trim().to_string());
+                }
+            } else if section == "config" {
+                match key.trim() {
+                    "exe_file" => me.exe_file = Some(val.trim().to_string()),
+                    "elf_file" => me.elf_file = Some(val.trim().to_string()),
+                    _ => {}
+                }
+            }
+        }
+        Some(me)
+    }
+
+    /// Convenience: parse `<build_dir>/zephyr/runners.yaml`.
+    pub fn from_build_dir(build_dir: &Path) -> Option<Self> {
+        Self::from_zephyr_dir(&build_dir.join("zephyr"))
+    }
+
+    /// Absolute path to the `native`-runner host executable, if declared.
+    pub fn exe_path(&self) -> Option<PathBuf> {
+        self.exe_file.as_ref().map(|f| self.dir.join(f))
+    }
+
+    /// Absolute path to the `qemu`/hardware-runner ELF, if declared.
+    pub fn elf_path(&self) -> Option<PathBuf> {
+        self.elf_file.as_ref().map(|f| self.dir.join(f))
+    }
+}
+
 /// Managed Zephyr process for native_sim or QEMU
 ///
 /// Starts a Zephyr application and captures output.
@@ -175,7 +268,26 @@ impl ZephyrProcess {
 
         let mut handle = match platform {
             ZephyrPlatform::NativeSim => {
-                // native_sim runs directly
+                // phase-295 W5.a — native_sim direct-exec IS the framework
+                // convention: Zephyr's `native` runner (see the board's
+                // `runners.yaml`, `flash-runner: native`) simply runs
+                // `config.exe_file` as a host process — there is no emulator to
+                // interpret. So "derive the launch from runner metadata" here
+                // means honoring that file's `exe_file` under a confirmed
+                // `native` runner, which we do below; running the built
+                // `zephyr.exe` directly is the SANCTIONED form, not an
+                // E1/E9 bypass. If `runners.yaml` is missing or names a
+                // non-native runner we fall back to the passed binary so the
+                // lane still runs (identical effect — `binary` already points
+                // at `<build_dir>/zephyr/zephyr.exe`).
+                let launch_bin = binary
+                    .parent()
+                    .and_then(RunnersYaml::from_zephyr_dir)
+                    .filter(|r| r.flash_runner.as_deref() == Some("native"))
+                    .and_then(|r| r.exe_path())
+                    .filter(|p| p.exists())
+                    .unwrap_or_else(|| binary.to_path_buf());
+
                 // Each process needs a unique --seed to prevent ephemeral port conflicts
                 // (the test entropy source produces identical random numbers without different seeds).
                 // Use current time nanos as a random base; the atomic counter ensures
@@ -187,7 +299,7 @@ impl ZephyrProcess {
                     .subsec_nanos();
                 let offset = SEED_COUNTER.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
                 let seed = base.wrapping_add(offset);
-                let mut cmd = Command::new(binary);
+                let mut cmd = Command::new(&launch_bin);
                 cmd.arg(format!("--seed={}", seed))
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
@@ -203,6 +315,32 @@ impl ZephyrProcess {
                 cmd.spawn()?
             }
             ZephyrPlatform::QemuArm => {
+                // phase-295 W5.a — the launch ELF is derived from the board's
+                // `runners.yaml` (`config.elf_file` under a confirmed `qemu`
+                // runner), mirroring the native branch above; falls back to the
+                // passed binary when the metadata is absent.
+                //
+                // SANCTIONED BYPASS (E1/E9 exception, RFC-0051 §4): the
+                // `-cpu/-machine` block below stays hand-rolled because Zephyr
+                // does NOT record the QEMU machine flags in `runners.yaml`.
+                // For an emulator board the flags live in
+                // `boards/qemu/cortex_m3/board.cmake` (`QEMU_FLAGS_<ARCH> =
+                // -cpu cortex-m3 -machine lm3s6965evb …`) and are assembled by
+                // `cmake/emu/qemu.cmake` into the CMake `run` target — reachable
+                // only via `west build -t run`, which triggers the build half
+                // (an E1 violation, and a stale reconfigure can mask a museum
+                // binary). So we read what `runners.yaml` DOES carry (the runner
+                // kind + the ELF) and mirror the board.cmake machine line here.
+                // A follow-up (phase doc W5.c) can relocate these flags into the
+                // board crate's `NROS_BOARD_RUNNER`-adjacent metadata.
+                let launch_bin = binary
+                    .parent()
+                    .and_then(RunnersYaml::from_zephyr_dir)
+                    .filter(|r| r.runners.iter().any(|x| x == "qemu"))
+                    .and_then(|r| r.elf_path())
+                    .filter(|p| p.exists())
+                    .unwrap_or_else(|| binary.to_path_buf());
+
                 // QEMU ARM requires qemu-system-arm; Phase 143 routes
                 // this through the patched build under `build/qemu/`
                 // when present.
@@ -215,7 +353,7 @@ impl ZephyrProcess {
                     "-nographic",
                     "-kernel",
                 ])
-                .arg(binary)
+                .arg(&launch_bin)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
                 #[cfg(unix)]
@@ -1213,6 +1351,49 @@ mod tests {
             Some(false),
             "a rebuilt binary re-baselines and reports fresh"
         );
+    }
+
+    #[test]
+    fn runners_yaml_parses_native_and_qemu() {
+        // phase-295 W5.a — the harness must read the framework's runner
+        // metadata to construct its launch. Lock the tiny parser against the
+        // real emitter shape (native_sim + a qemu board).
+        let dir = tempfile::tempdir().unwrap();
+        let zdir = dir.path();
+
+        // native_sim shape (as emitted for native_sim/native/64).
+        std::fs::write(
+            zdir.join("runners.yaml"),
+            "runners:\n- native\nflash-runner: native\ndebug-runner: native\n\
+             config:\n  board_dir: /x/boards/native/native_sim\n  \
+             elf_file: zephyr.elf\n  exe_file: zephyr.exe\n  gdb: /usr/bin/gdb\n",
+        )
+        .unwrap();
+        let r = RunnersYaml::from_zephyr_dir(zdir).unwrap();
+        assert_eq!(r.flash_runner.as_deref(), Some("native"));
+        assert_eq!(r.runners, vec!["native".to_string()]);
+        assert_eq!(r.exe_file.as_deref(), Some("zephyr.exe"));
+        assert_eq!(r.exe_path().unwrap(), zdir.join("zephyr.exe"));
+        assert_eq!(r.elf_path().unwrap(), zdir.join("zephyr.elf"));
+
+        // qemu board shape (multiple runners, flash-runner qemu).
+        std::fs::write(
+            zdir.join("runners.yaml"),
+            "runners:\n- qemu\n- jlink\nflash-runner: qemu\n\
+             config:\n  elf_file: zephyr.elf\n",
+        )
+        .unwrap();
+        let r = RunnersYaml::from_zephyr_dir(zdir).unwrap();
+        assert_eq!(r.flash_runner.as_deref(), Some("qemu"));
+        assert!(r.runners.iter().any(|x| x == "qemu"));
+        assert_eq!(r.elf_path().unwrap(), zdir.join("zephyr.elf"));
+        assert!(r.exe_file.is_none());
+    }
+
+    #[test]
+    fn runners_yaml_absent_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(RunnersYaml::from_zephyr_dir(dir.path()).is_none());
     }
 
     #[test]
