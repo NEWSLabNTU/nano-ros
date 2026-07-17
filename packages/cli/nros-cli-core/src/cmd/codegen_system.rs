@@ -145,10 +145,13 @@ pub fn run(args: Args) -> Result<()> {
     // stays local to this bake.
     let bringup_owned;
     let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
+    let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
     let bringup = if let Some(model_path) = &args.model {
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
+        // R1-N3 — transports ride the bake plan.
+        model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
             &mut owned.system,
@@ -219,6 +222,7 @@ pub fn run(args: Args) -> Result<()> {
         resolved_launch.as_deref(),
         &tier_table,
         model_monitors,
+        model_transports,
     )?;
 
     if let Some(mode) = args.ahead_of_vendor {
@@ -426,6 +430,7 @@ fn emit_bake_tree(
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
         .with_context(|| format!("create bake dir {}", bake_dir.display()))?;
@@ -487,6 +492,7 @@ fn emit_bake_tree(
             resolved_launch,
             tier_table,
             monitors,
+            transports,
         )?,
     )?;
 
@@ -662,6 +668,11 @@ struct PlanDoc<'a> {
     /// empty/omitted otherwise so legacy plans stay byte-identical).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    /// R1-N3 — transport/session declarations from the model's execution
+    /// layer (model mode only; the board network bake's input, replacing
+    /// the legacy [[transport]] system.toml read on the canonical path).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    transports: Vec<crate::orchestration::plan::PlanTransport>,
     /// Phase 228.B — resolved per-tier table. Omitted in the single-tier
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -710,6 +721,7 @@ fn render_plan_json(
     resolved_launch: Option<&str>,
     tier_table: &ResolvedTierTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
+    transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<String> {
     let launch_file: Option<String> = resolved_launch
         .map(|s| s.to_string())
@@ -787,6 +799,7 @@ fn render_plan_json(
         launch_file: launch_file.as_deref(),
         components,
         monitors,
+        transports,
         tiers,
     };
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
@@ -939,7 +952,15 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
         .unwrap_or(ResolvedTierTable { tiers: Vec::new() });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
-        &render_plan_json(bringup, &kinds, Some("px4"), None, &px4_tiers, Vec::new())?,
+        &render_plan_json(
+            bringup,
+            &kinds,
+            Some("px4"),
+            None,
+            &px4_tiers,
+            Vec::new(),
+            Vec::new(),
+        )?,
     )?;
 
     Ok(())

@@ -476,6 +476,58 @@ execution: {}
     );
 }
 
+/// R1-N3 — a model carrying `execution.transports` rides them into the
+/// bake plan (`transports` section); a transport-free model omits the
+/// section (legacy byte-identity).
+#[test]
+fn codegen_system_model_mode_emits_transports() {
+    let ws = temp_root("model-tx");
+    write_fixture(&ws);
+    let model_path = ws.join("system_model.yaml");
+    fs::write(
+        &model_path,
+        r#"meta:
+  version: 1
+structure: {}
+execution:
+  transports:
+    - kind: ethernet
+      id: eth0
+      ip: 10.0.2.50/24
+      mac: "02:00:00:00:00:01"
+      gateway: 10.0.2.2
+      domain: 7
+"#,
+    )
+    .unwrap();
+    let out = temp_root("model-tx-out");
+    let mut a = args(&ws, &out);
+    a.model = Some(model_path);
+    codegen_system::run(a).expect("bake");
+
+    let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&plan).unwrap();
+    let tx = parsed["transports"].as_array().expect("transports section");
+    assert_eq!(tx.len(), 1);
+    assert_eq!(tx[0]["kind"], "ethernet");
+    assert_eq!(tx[0]["ip"], "10.0.2.50/24");
+    assert_eq!(tx[0]["mac"], "02:00:00:00:00:01");
+    assert_eq!(tx[0]["domain"], 7);
+
+    // Unknown kind: fail-loud, never a silent skip.
+    let bad = ws.join("bad.yaml");
+    fs::write(
+        &bad,
+        "meta:\n  version: 1\nstructure: {}\nexecution:\n  transports:\n    - kind: carrier-pigeon\n",
+    )
+    .unwrap();
+    let out2 = temp_root("model-tx-out2");
+    let mut a2 = args(&ws, &out2);
+    a2.model = Some(bad);
+    let err = codegen_system::run(a2).unwrap_err().to_string();
+    assert!(err.contains("carrier-pigeon"), "got: {err}");
+}
+
 /// R1-N2 — `plan_from_model`: a model with deploy placement, params,
 /// bindings, and features produces a Plan sliced per board with all the
 /// legacy-path fields populated.

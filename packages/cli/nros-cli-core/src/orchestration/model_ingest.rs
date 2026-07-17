@@ -381,3 +381,67 @@ mod monitor_tests {
         assert!(rs.contains("NROS_MONITORS: &[MonitorSpec] = &[\n];"));
     }
 }
+
+/// R1-N3 — convert the model's transport declarations into the plan's
+/// [`PlanTransport`] shape (the type the board network bake consumes).
+/// Unknown `kind` strings are a bake-time error (fail-loud).
+pub fn plan_transports(
+    model: &SystemModel,
+) -> Result<Vec<crate::orchestration::plan::PlanTransport>> {
+    use crate::orchestration::plan::{PlanTransport, TransportKind};
+    let mut out = Vec::new();
+    for t in &model.execution.transports {
+        let kind = match t.kind.as_str() {
+            "ethernet" => TransportKind::Ethernet,
+            "wifi" => TransportKind::Wifi,
+            "serial" => TransportKind::Serial,
+            "can" => TransportKind::Can,
+            other => bail!(
+                "SystemModel transport kind '{other}' is not supported \
+                 (ethernet | wifi | serial | can)"
+            ),
+        };
+        out.push(PlanTransport {
+            kind,
+            id: t.id.clone(),
+            ip: t.ip.clone(),
+            ssid: t.ssid.clone(),
+            password: t.password.clone(),
+            mac: t.mac.clone(),
+            gateway: t.gateway.clone(),
+            interfaces: t.interfaces.clone(),
+            device: t.device.clone(),
+            baudrate: t.baudrate,
+            rmw: t.rmw.clone(),
+            locator: t.locator.clone(),
+            domain: t.domain.map(u32::from),
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    use ros_launch_manifest_model::Transport;
+
+    #[test]
+    fn transports_convert_and_unknown_kind_fails() {
+        let mut m = SystemModel::default();
+        m.execution.transports.push(Transport {
+            kind: "ethernet".to_string(),
+            id: Some("eth0".to_string()),
+            ip: Some("10.0.2.50/24".to_string()),
+            mac: Some("02:00:00:00:00:01".to_string()),
+            domain: Some(7),
+            ..Default::default()
+        });
+        let pts = plan_transports(&m).expect("converts");
+        assert_eq!(pts.len(), 1);
+        assert_eq!(pts[0].mac.as_deref(), Some("02:00:00:00:00:01"));
+        assert_eq!(pts[0].domain, Some(7));
+
+        m.execution.transports[0].kind = "carrier-pigeon".to_string();
+        assert!(plan_transports(&m).is_err());
+    }
+}

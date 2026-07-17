@@ -225,11 +225,17 @@ parity. Ordered gates (each verifiable before the next):
     params, group_tiers from bindings, features/lifecycle; plugin nodes
     take their class's bare name as exec, typed metadata enrichment
     unchanged) + W4.2 CMake `MODEL` keyword on nano_ros_add_executable /
-    nano_ros_entry (mutually exclusive with LAUNCH). Remaining in N2:
-    the generated entries calling `nros_install_monitors` +
-    `set_monitors` (needs the emitters to include the baked table). N3
-    boot/transport bake reads `execution.transports` instead of
-    `[[transport]]`.
+    nano_ros_entry (mutually exclusive with LAUNCH). N2 tail **LANDED** —
+    the executor auto-seeds every `NodeHandle` with its monitor table
+    (`create_node` / bridge factory / `with_node`), so
+    `set_monitor_table(&SYSTEM_MONITORS)` alone activates publisher
+    attachment; the baked `system_monitors.rs` is `include!`-able from
+    any Rust entry. Deferred with a note: C/C++ entry monitor FFI
+    (install + drain surface through `nros_c`) — Rust-only until a
+    C consumer exists. N3 **LANDED** — model `execution.transports`
+    rides into the bake plan (`transports` section in `nros-plan.json`,
+    same `PlanTransport` shape the board network bake consumes; unknown
+    kind = refused bake; transport-free model stays byte-identical).
 - R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
   (`ws-realtime-rust` first) build from resolved models; book chapters
   switch to the resolve→bake flow.

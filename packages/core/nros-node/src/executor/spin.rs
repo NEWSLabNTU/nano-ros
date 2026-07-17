@@ -2316,6 +2316,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
+        let monitors = self.monitor_table;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;
@@ -2323,6 +2324,9 @@ impl<'s> Executor<'s> {
         // `&mut ConcreteSession`; lifetime is bound to this fn's
         // body via the closure's borrow of `node`.
         let mut node = NodeHandle::new(name, ns, session, 0);
+        // RFC-0052 W3b.4 — seed the baked monitor table so contracted
+        // publishers attach their counter cells without entry glue.
+        node.set_monitors(monitors);
         Ok(f(&mut node))
     }
 
@@ -2350,12 +2354,9 @@ impl<'s> Executor<'s> {
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
 
-        Ok(NodeHandle::new(
-            node_name,
-            self.namespace.clone(),
-            &mut self.session,
-            0,
-        ))
+        let mut node = NodeHandle::new(node_name, self.namespace.clone(), &mut self.session, 0);
+        node.set_monitors(self.monitor_table);
+        Ok(node)
     }
 
     /// Phase 128.F.2 — bridge-mode node factory. Registers a Node
@@ -2421,10 +2422,13 @@ impl<'s> Executor<'s> {
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
         let namespace = self.namespace.clone();
+        let monitors = self.monitor_table;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::NodeTableFull)?;
-        Ok(NodeHandle::new(node_name, namespace, session, 0))
+        let mut node = NodeHandle::new(node_name, namespace, session, 0);
+        node.set_monitors(monitors);
+        Ok(node)
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
