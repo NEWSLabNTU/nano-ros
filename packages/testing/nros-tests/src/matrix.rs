@@ -450,13 +450,31 @@ pub const CELLS: &[Cell] = &[
     // mirror the ws-* families).
     cell(Native, C,     Zenoh, CustomMsg, Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, CustomMsg, Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, CustomMsg, Workspace, Runtime),
+    // Corrected during the phase-295 W3.b consolidation: the seed table
+    // marked native rust CustomMsg/Qos `Runtime`, but no fixtures.toml row
+    // builds `ws-{custom-msg,qos}-rust`'s `native_entry` and no test
+    // consumes it (the C files' "C projection of the Rust demo" prose
+    // described the WORKSPACE, not a lane; ws-qos-rust's only runtime lane
+    // is the zephyr image). Single-entry natives also hit issue 0096
+    // (in-process pub→sub never delivers), so wiring them needs split
+    // talker/listener entries first — W6.
+    cell(Native, Rust,  Zenoh, CustomMsg, Workspace,
+         BuildOnly("ws-custom-msg-rust native_entry has no fixture row or runtime lane \
+                    (needs an 0096 two-entry split) — phase-295 W3.b finding, W6 wires it")),
     cell(Native, Mixed, Zenoh, CustomMsg, Workspace, Runtime),
     cell(Native, C,     Zenoh, Logging,   Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Logging,   Workspace, Runtime),
+    // Added during the phase-295 W3.b consolidation: the rust + mixed
+    // logging lanes existed (tests/{,mixed_}logging_workspace_e2e.rs,
+    // phase-263 A5) but the seed table never modeled them.
+    cell(Native, Rust,  Zenoh, Logging,   Workspace, Runtime),
+    cell(Native, Mixed, Zenoh, Logging,   Workspace, Runtime),
     cell(Native, C,     Zenoh, Qos,       Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Qos,       Workspace, Runtime),
-    cell(Native, Rust,  Zenoh, Qos,       Workspace, Runtime),
+    // See the CustomMsg rust row above — same phase-295 W3.b correction.
+    cell(Native, Rust,  Zenoh, Qos,       Workspace,
+         BuildOnly("ws-qos-rust native_entry has no fixture row or runtime lane (only \
+                    the zephyr image is consumed) — phase-295 W3.b finding, W6 wires it")),
     cell(Native, Mixed, Zenoh, Qos,       Workspace, Runtime),
     cell(Native, C,     Zenoh, Params,    Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Params,    Workspace, Runtime),

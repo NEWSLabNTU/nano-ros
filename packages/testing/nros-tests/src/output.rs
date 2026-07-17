@@ -133,6 +133,32 @@ pub fn ws_action_result_last_line(n: impl std::fmt::Display) -> String {
     format!("result last={n}")
 }
 
+/// Per-publish prefix of the ws-custom-msg workspace talker components
+/// (`"sent seq=N"` — C/C++/mixed `reading_talker_pkg`).
+pub const WS_CUSTOM_MSG_SENT_PREFIX: &str = "sent seq=";
+
+/// Per-receive prefix of the ws-custom-msg workspace listener components
+/// (`"reading seq=N …"` — the decoded `sequence` field of
+/// `custom_msgs/Reading`).
+pub const WS_CUSTOM_MSG_READING_PREFIX: &str = "reading seq=";
+
+/// Decoded second field of the ws-custom-msg listener line (`"temp="`) —
+/// proves the full CDR layout, not just a counter, survives the trip.
+pub const WS_CUSTOM_MSG_TEMP_FIELD: &str = "temp=";
+
+/// The Rust workspace `talker_pkg`'s per-tick `nros_info!` line marker
+/// (`"talker publishing chatter seq=N"` — phase-263 A5 logging demo).
+pub const WS_RUST_LOGGING_MARKER: &str = "talker publishing chatter";
+
+/// The C workspace talker's per-tick `NROS_LOG_INFO` line marker
+/// (`"c_talker logging seq=N"`); the MIXED workspace reuses the C talker,
+/// so its logging cell greps the same marker.
+pub const WS_C_LOGGING_MARKER: &str = "c_talker logging";
+
+/// The C++ workspace talker's per-tick `NROS_LOG_INFO` line marker
+/// (`"cpp_talker logging seq=N"`).
+pub const WS_CPP_LOGGING_MARKER: &str = "cpp_talker logging";
+
 // ---------------------------------------------------------------------------
 // Service (AddTwoInts) demo wording — phase-277 W5.
 //

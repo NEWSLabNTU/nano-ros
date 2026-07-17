@@ -9,7 +9,7 @@
 //! driving the boot **autostart** (Configure → Activate) on the embedded
 //! target — no external `ros2 lifecycle set`.
 //!
-//! Assertion mirrors the native `lifecycle_workspace_e2e`: discover the managed
+//! Assertion mirrors the native `workspace_features_e2e` lifecycle cells: discover the managed
 //! node via `ros2 lifecycle nodes`, then poll `ros2 lifecycle get` until it
 //! reports `active`. The `zephyr.exe` runs as a host process (native_sim, NSOS
 //! host sockets) and dials the baked `tcp/127.0.0.1:17847` locator.

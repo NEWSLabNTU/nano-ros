@@ -1137,7 +1137,7 @@ pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static 
 /// phase-263 A3 (Track D) — the managed (lifecycle) workspace Entry (cached). The
 /// entry bakes `lifecycle-services` + declares `[lifecycle] autostart = "active"`, so
 /// `nros::main!` registers the 5 REP-2002 services and drives Configure→Activate at
-/// boot; `lifecycle_workspace_e2e` asserts the node reaches `active` via `ros2 lifecycle`.
+/// boot; `workspace_features_e2e` (native_rust_lifecycle) asserts the node reaches `active` via `ros2 lifecycle`.
 pub fn build_native_workspace_rust_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1181,7 +1181,7 @@ pub fn build_native_workspace_rust_safety_talker_entry() -> TestResult<&'static 
 
 /// phase-263 B1 (Track D) — the listener half of the cross-process E2E-safety demo
 /// (cached). Validates the CRC and republishes the validated count on `/safe_ok`,
-/// which `safety_workspace_e2e` asserts.
+/// which `workspace_features_e2e` (native_rust_safety) asserts.
 pub fn build_native_workspace_rust_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1240,7 +1240,7 @@ pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
 
 /// Phase 269 W2 — the managed-node (lifecycle) C workspace Entry pkg fixture (`ws-lifecycle-c`).
 /// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
-/// tests/cpp_c_lifecycle_autostart_e2e.rs.
+/// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1255,7 +1255,7 @@ pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
 
 /// Phase 269 W3 — the talker half of the cross-process E2E-safety C demo (`ws-safety-c`).
 /// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
-/// Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+/// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1271,7 +1271,7 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
 
 /// Phase 269 W3 — the listener half of the cross-process E2E-safety C demo (`ws-safety-c`).
 /// Uses `nros_cpp_subscription_register_validated`; counts CRC-valid frames.
-/// Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+/// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1351,7 +1351,7 @@ pub fn build_native_workspace_c_action_client_entry() -> TestResult<&'static Pat
 }
 
 /// phase-263 B6 (custom-msg, C) — the workspace-local `custom_msgs/Reading` TALKER single-node
-/// entry (cached). Cross-process (issue 0096); consumed by tests/c_custom_msg_workspace_e2e.rs.
+/// entry (cached). Cross-process (issue 0096); consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_custom_msg_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1381,7 +1381,7 @@ pub fn build_native_workspace_c_custom_msg_listener_entry() -> TestResult<&'stat
 /// phase-263 B4 (QoS, C) — the per-entity QoS-override TALKER single-node entry (cached).
 /// Publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
 /// transient-local + keep-last-10) set in code. Cross-process (issue 0096); consumed by
-/// tests/c_qos_workspace_e2e.rs.
+/// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_qos_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1411,7 +1411,7 @@ pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path
 /// phase-263 B4 (QoS, C++) — the per-entity QoS-override TALKER single-node entry (cached).
 /// A C++ talker publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
 /// transient-local + keep-last-10) built via the `nros::QoS` builder. Cross-process (issue 0096);
-/// consumed by tests/cpp_qos_workspace_e2e.rs.
+/// consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_qos_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1440,7 +1440,7 @@ pub fn build_native_workspace_cpp_qos_listener_entry() -> TestResult<&'static Pa
 
 /// phase-263 B4 (QoS, MIXED) — the QoS-override TALKER single-node entry (cached). The C
 /// `qos_talker_pkg` (non-default QoS in code) reused verbatim, driven by a C++ TYPED entry carrier.
-/// Cross-process (issue 0096); consumed by tests/mixed_qos_workspace_e2e.rs.
+/// Cross-process (issue 0096); consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_QOS_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1469,7 +1469,7 @@ pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static 
 
 /// phase-263 B6 (custom-msg, C++) — the workspace-local `custom_msgs/Reading` TALKER single-node
 /// entry (cached). A C++ talker hand-encodes the Reading CDR (raw-CDR idiom, no generated link).
-/// Cross-process (issue 0096); consumed by tests/cpp_custom_msg_workspace_e2e.rs.
+/// Cross-process (issue 0096); consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_custom_msg_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1498,7 +1498,7 @@ pub fn build_native_workspace_cpp_custom_msg_listener_entry() -> TestResult<&'st
 
 /// phase-263 B6 (custom-msg, MIXED) — the workspace-local `custom_msgs/Reading` TALKER single-node
 /// entry (cached). The C `reading_talker_pkg` reused verbatim, driven by a C++ TYPED entry carrier.
-/// Cross-process (issue 0096); consumed by tests/mixed_custom_msg_workspace_e2e.rs.
+/// Cross-process (issue 0096); consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_CUSTOM_MSG_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1960,7 +1960,7 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
 
 /// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`ws-lifecycle-cpp`).
 /// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
-/// tests/cpp_c_lifecycle_autostart_e2e.rs.
+/// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -1991,7 +1991,7 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
 
 /// Phase 269 W3 — the talker half of the cross-process E2E-safety C++ demo (`ws-safety-cpp`).
 /// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
-/// Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+/// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_TALKER_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -2007,7 +2007,7 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
 
 /// Phase 269 W3 — the listener half of the cross-process E2E-safety C++ demo (`ws-safety-cpp`).
 /// Uses `node.create_subscription_with_safety<M>()` typed API + IntegrityStatus callback.
-/// Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+/// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY
         .get_or_try_init(|| {

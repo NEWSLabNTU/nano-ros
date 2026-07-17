@@ -218,7 +218,7 @@ target_dir = "target-fixtures"
 # safe_listener run as two processes. Both entries bake `safety-e2e`, so the zenoh
 # backend attaches a CRC on publish and the listener validates it on receive;
 # safe_listener republishes the running CRC-VALIDATED count on `/safe_ok`. Consumed by
-# tests/safety_workspace_e2e.rs: a `/safe_ok` subscriber asserts the count climbs —
+# tests/workspace_features_e2e.rs: a `/safe_ok` subscriber asserts the count climbs —
 # proving the E2E CRC attach→validate→integrity-read path. Each entry is 1 node (under
 # the default MAX_CBS, issue 0095).
 [[workspace_fixture]]
@@ -244,7 +244,7 @@ target_dir = "target-fixtures"
 # phase-263 A3 (Track D) — the managed (lifecycle) workspace. `[lifecycle] autostart =
 # "active"` + the entry's `nros/lifecycle-services` feature; `nros::main!` registers the
 # 5 REP-2002 services and drives Configure→Activate at boot. Consumed by
-# tests/lifecycle_workspace_e2e.rs (ROS 2 interop lane): `ros2 lifecycle get` asserts the
+# tests/workspace_features_e2e.rs (ROS 2 interop lane): `ros2 lifecycle get` asserts the
 # managed node reached `active` via autostart, with no manual transition. Skips where the
 # distro `rmw_zenoh_cpp` is absent (needs `just rmw_zenoh setup`).
 [[workspace_fixture]]
@@ -541,7 +541,7 @@ build_subdir = "build-workspace-fixtures"
 # (C projection of ws-custom-msg-rust). A C talker publishes `custom_msgs/Reading` (declared
 # in the in-workspace `custom_msgs` interface pkg) on /reading; a C listener subscribes + prints
 # the decoded `sequence`/`temperature` fields. They run as TWO entries (issue 0096). Consumed by
-# tests/c_custom_msg_workspace_e2e.rs (the listener prints the custom-msg field it receives).
+# tests/workspace_features_e2e.rs (the listener prints the custom-msg field it receives).
 [[workspace_fixture]]
 id = "workspace-c-native-custom-msg-talker"
 platform = "native"
@@ -569,7 +569,7 @@ build_subdir = "build-workspace-fixtures"
 # (reliable + transient-local + keep-last-10, set in code — not via launch `qos_overrides`); a C
 # listener subscribes with the SAME profile + prints `Received: N`. QoS is a per-entity contract
 # both endpoints must match to connect. They run as TWO entries (issue 0096). Consumed by
-# tests/c_qos_workspace_e2e.rs (the listener receives the QoS-matched stream cross-process).
+# tests/workspace_features_e2e.rs (the listener receives the QoS-matched stream cross-process).
 [[workspace_fixture]]
 id = "workspace-c-native-qos-talker"
 platform = "native"
@@ -599,7 +599,7 @@ build_subdir = "build-workspace-fixtures"
 
 # phase-263 B4 (QoS, C++) — C++ talker publishes std_msgs/Int32 on /chatter with a NON-DEFAULT
 # QoS profile (reliable + transient-local + keep-last-10) via the nros::QoS builder; a C++ listener
-# subscribes with the SAME profile + prints `Received: N`. Consumed by tests/cpp_qos_workspace_e2e.rs.
+# subscribes with the SAME profile + prints `Received: N`. Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-qos-talker"
 platform = "native"
@@ -623,7 +623,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 B4 (QoS, MIXED) — the C qos node pkgs (reused verbatim from ws-qos-c, non-default QoS
-# in code) driven by a C++ TYPED entry carrier. Consumed by tests/mixed_qos_workspace_e2e.rs.
+# in code) driven by a C++ TYPED entry carrier. Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-mixed-native-qos-talker"
 platform = "native"
@@ -648,7 +648,7 @@ build_subdir = "build-workspace-fixtures"
 
 # phase-263 B6 (custom-msg, C++) — C++ talker/listener for the in-workspace custom_msgs/Reading
 # via the raw-CDR idiom (no generated interface link). Consumed by
-# tests/cpp_custom_msg_workspace_e2e.rs.
+# tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-custom-msg-talker"
 platform = "native"
@@ -672,7 +672,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
 # phase-263 B6 (custom-msg, MIXED) — the C reading node pkgs (reused verbatim from ws-custom-msg-c)
-# driven by a C++ TYPED entry carrier. Consumed by tests/mixed_custom_msg_workspace_e2e.rs.
+# driven by a C++ TYPED entry carrier. Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-mixed-native-custom-msg-talker"
 platform = "native"
@@ -936,7 +936,7 @@ build_subdir = "build-workspace-fixtures"
 # Phase 269 W2 — managed-node (lifecycle) C workspace. [lifecycle] autostart = "active" bakes
 # nros_cpp_lifecycle_autostart(executor, 2u) into the generated entry (emit_c.rs W2); the five
 # REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
-# tests/cpp_c_lifecycle_autostart_e2e.rs: `ros2 lifecycle get /talker` → active.
+# tests/workspace_features_e2e.rs: `ros2 lifecycle get /talker` → active.
 [[workspace_fixture]]
 id = "workspace-c-native-lifecycle"
 platform = "native"
@@ -951,7 +951,7 @@ build_subdir = "build-workspace-fixtures"
 # Phase 269 W2 — managed-node (lifecycle) C++ workspace. [lifecycle] autostart = "active" bakes
 # nros_cpp_lifecycle_autostart(__exec, 2u) into the generated entry (emit_cpp.rs W2); the five
 # REP-2002 services are registered and Configure→Activate is driven at boot. Consumed by
-# tests/cpp_c_lifecycle_autostart_e2e.rs: `ros2 lifecycle get /talker` → active.
+# tests/workspace_features_e2e.rs: `ros2 lifecycle get /talker` → active.
 [[workspace_fixture]]
 id = "workspace-cpp-native-lifecycle"
 platform = "native"
@@ -984,7 +984,7 @@ build_subdir = "build-workspace-fixtures"
 # Phase 269 W3 — E2E-safety C workspace (talker half). `[system].features = ["safety"]`
 # lowers to NANO_ROS_SAFETY_E2E=ON; the C talker publishes CRC-annotated /chatter frames.
 # Cross-process split (issue #0096); paired with workspace-c-native-safety-listener.
-# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+# Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-safety-talker"
 platform = "native"
@@ -1003,7 +1003,7 @@ build_subdir = "build-workspace-fixtures-safety-talker"
 
 # Phase 269 W3 — E2E-safety C workspace (listener half). C listener registers
 # `nros_cpp_subscription_register_validated`; validates CRC and counts good frames.
-# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+# Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-safety-listener"
 platform = "native"
@@ -1019,7 +1019,7 @@ build_subdir = "build-workspace-fixtures-safety-listener"
 
 # Phase 269 W3 — E2E-safety C++ workspace (talker half). C++ talker publishes
 # CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
-# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+# Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-safety-talker"
 platform = "native"
@@ -1035,7 +1035,7 @@ build_subdir = "build-workspace-fixtures-safety-talker"
 
 # Phase 269 W3 — E2E-safety C++ workspace (listener half). C++ listener uses
 # `node.create_subscription_with_safety<M>()` to receive typed msgs + IntegrityStatus.
-# Consumed by tests/cpp_c_safety_integrity_e2e.rs.
+# Consumed by tests/workspace_features_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-safety-listener"
 platform = "native"

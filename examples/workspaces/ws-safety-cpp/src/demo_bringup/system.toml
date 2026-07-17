@@ -7,7 +7,7 @@
 #
 # In-process delivery does not happen (same zenoh session; issue 0096), so the demo
 # is split into two entries: `native_safety_talker_entry` + `native_safety_listener_entry`.
-# Cross-process e2e: tests/cpp_c_safety_integrity_e2e.rs.
+# Cross-process e2e: tests/workspace_features_e2e.rs.
 
 [system]
 name = "cpp_safety_demo"
