@@ -21,7 +21,6 @@ builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
-nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section" }  # nros-managed
 nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }  # nros-managed
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
