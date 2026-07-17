@@ -23,16 +23,16 @@
 //! `examples/stm32f4/rust/action_server_pkg/src/lib.rs` for the body
 //! + the RTIC-side dispatch-handle plumbing TODO.
 //!
-//! ## Skeleton status
+//! ## Runtime status (issue #221 doc refresh, 2026-07-17)
 //!
-//! `init_hardware`'s body is still `todo!()` (216.B.2 follow-up
-//! mirrors the legacy Pattern A bringup), and the trampoline-
-//! registration story that hands the sibling
-//! `stm32f4_action_server_pkg` Node onto the dispatch runtime —
-//! including threading an RTIC `spawn()`-style handle through to
-//! `ActionServerState` — is the next 216.B wave. The macro emit +
-//! dep graph compile clean today; a real flash will hit the
-//! `todo!()` panic in `init_hardware`.
+//! The old "skeleton" caveats are gone: `RticBoardEntry::init_hardware`
+//! does the full bringup (clocks / RMII / smoltcp / zenoh register — it
+//! delegates to `nros_board_stm32f4::init_hardware`), and phase-289
+//! (`c2227f527`, #178) filled the run task, so the RTIC runtime actually
+//! DELIVERS — proven end-to-end by the QEMU mps2 RTIC action lane, which
+//! shares this entry scaffold. Flashing a NUCLEO-F429ZI boots and runs;
+//! on-hardware runtime validation on a physical bench is the remaining
+//! (hardware-gated) tail.
 
 #![no_std]
 #![no_main]

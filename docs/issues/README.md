@@ -46,10 +46,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 - **#228** — [generated C serialize conventions split](0228-c-serialize-return-convention-split.md):
   messages return 0/-1 + out-param, services return byte-count — same concept, two ABIs. (deep audit 2026-07-17)
-- **#221** — [stm32f4 rtic action examples panic on hardware](0221-stm32f4-rtic-action-examples-panic-on-hardware.md):
-  README flashes them, board init_hardware() is todo!(). (deep audit 2026-07-17)
 
-Recently resolved (see [`archived/`](archived/) for the full list): **#227** — explicit
+Recently resolved (see [`archived/`](archived/) for the full list): **#221** — stale-docs
+premise: stm32f4 rtic/embassy `init_hardware` has been REAL since phase-289 (`c2227f527` — QEMU
+RTIC pubsub/service/action lanes all green on the shared entry scaffold); no `todo!()` panic
+exists. The 8 example "Skeleton status" headers + the board doc now state the post-289 truth
+with honest caveats (on-hardware bench run still pending; embassy has no e2e lane). Action pair
+build-proven. **#227** — explicit
 domain 0 is reachable from C/C++: `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255) /
 `nros::kDomainIdExplicitZero` maps to a baked `Some(0)` through the one resolver (0 stays the
 unset sentinel per the #206 model-A decision; hosted env still overrides); u8→u32 domain type

@@ -10,14 +10,17 @@
 //! `EmbassyBoardEntry::init_hardware` brings up the hardware and
 //! returns the `(Executor, EmbassyRuntime)` pair.
 //!
-//! ## Skeleton status
+//! ## Runtime status (issue #221 doc refresh, 2026-07-17)
 //!
-//! `init_hardware`'s body is still `todo!()` (216.C.2 follow-up
-//! mirrors the legacy Pattern A bringup), and the trampoline-
-//! registration story that hands the sibling `stm32f4_talker_pkg`
-//! Node onto the dispatch runtime is the next 216.C wave. The macro
-//! emit + dep graph compile clean today; a real flash will hit the
-//! `todo!()` panic in `init_hardware`.
+//! The old "skeleton" caveats are gone: `EmbassyBoardEntry::init_hardware`
+//! is implemented (delegates the hardware bringup to the shared
+//! `nros_board_stm32f4` path and registers the zenoh backend explicitly —
+//! bare-metal `.init_array` doesn't run). Flashing does NOT hit a
+//! `todo!()` panic. Caveat, stated honestly: unlike the RTIC siblings
+//! (whose runtime is proven by the four QEMU mps2 RTIC e2e lanes,
+//! phase-289), the Embassy runtime has no e2e lane yet — the build-stage
+//! `embassy_main_macro` cargo-check is the only automated proof, and
+//! on-hardware validation is hardware-gated.
 
 #![no_std]
 #![no_main]

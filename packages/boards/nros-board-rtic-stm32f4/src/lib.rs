@@ -62,21 +62,23 @@
 //!   trait surface (`nros-platform` sits below `nros`) is
 //!   resolved at this board layer.
 //!
-//! ## Still `todo!()`
+//! ## Residuals (issue #221 doc refresh, 2026-07-17 — nothing is `todo!()`)
 //!
-//! - [`NodeDispatchRuntime::spin_once`] — returns `Err(())`
-//!   today. (Phase 258 Track 2 retired the `register_dispatch_slot_dyn`
-//!   registration bridge; owned-spin registration is via the
-//!   `install_node_typed` seam.) Spin is
-//!   driven by a framework-spawned RTIC software task pulling from
-//!   the [`take_dispatch_queue`] consumer half, not from this
-//!   trait method.
-//! - The macro-emitted `__nros_spin` task body is still
-//!   `core::future::pending` (`packages/core/nros-macros/src/main_macro.rs`,
-//!   216.B.3 follow-up). The `Executor` is built here so the
-//!   dep graph + macro emit compile against the real
-//!   `Self::Executor` type, even though the spin task hasn't
-//!   driven it yet.
+//! Phase-289 (`c2227f527`, closing #178) made the RTIC runtime DELIVER:
+//! the macro-emitted run task drives the executor (TIM2 tick + `wfi`
+//! idle-yield, entity registration, log init), and all four
+//! `test_qemu_rtic_*_e2e` lanes — pubsub, service, action — are green on
+//! the QEMU mps2 sibling, which shares this exact entry scaffold. What
+//! remains by DESIGN or as tracked follow-ups:
+//!
+//! - [`NodeDispatchRuntime::spin_once`] — returns `Err(())` by design:
+//!   RTIC owns the spin loop via the framework-generated run task; a
+//!   caller invoking `spin_once` on the runtime is a wiring bug. (Phase
+//!   258 Track 2 retired the `register_dispatch_slot_dyn` bridge;
+//!   owned-spin registration is via the `install_node_typed` seam.)
+//! - On-hardware runtime validation (a physical NUCLEO-F429ZI on a
+//!   bench) has not been run; the QEMU sibling lanes are the runtime
+//!   proof today. Hardware-gated.
 //! - The bringup starts from `Config::nucleo_f429zi()` (NUCLEO-F429ZI
 //!   IP / MAC defaults) and overlays the locator / domain id / node
 //!   name from build-time env vars `NROS_LOCATOR` / `NROS_DOMAIN_ID`
