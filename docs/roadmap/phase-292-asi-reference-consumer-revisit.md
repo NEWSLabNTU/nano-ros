@@ -75,6 +75,15 @@ named reference consumer), 287 (ament verbs on zephyr).
     unset). Fix: scope `target_compile_options(nros PRIVATE ...)` on every
     Zephyr version — only the cyclonedds TUs need the header and they all
     live in `nros`. (`zephyr/cmake/nros_rmw_cyclonedds.cmake`.)
+  - [x] Wall #2 (2026-07-17, FIXED): `nano_ros_use_board()`'s
+    `DTC_OVERLAY_FILE` append DISABLES Zephyr's auto-discovery of the APP's
+    own overlays (Zephyr only auto-discovers when the var is unset) — and
+    the FVP board crate deliberately leaves ethernet enablement to the app
+    overlay, so the consumer's NIC silently vanished (`net_if: There is no
+    network interface`, first ASI FVP boot). Fix: replicate Zephyr's
+    app-overlay convention (`boards/<board>.overlay`, `app.overlay`) before
+    appending the board-crate overlay, when the consumer hasn't curated the
+    list. (`zephyr/cmake/nano_ros_use_board.cmake`.)
 - [x] W2.b (2026-07-17) All three suspects pre-checked by loading them
   INTO the W1.a lane, which now carries the full ASI consumer profile:
   1. Cyclone+zephyr+workspace-verbs — proven by W1.a/W1.b directly.

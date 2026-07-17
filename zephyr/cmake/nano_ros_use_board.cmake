@@ -66,6 +66,26 @@ function(nano_ros_use_board NAME)
     set(EXTRA_CONF_FILE "${EXTRA_CONF_FILE}" PARENT_SCOPE)
 
     # 6. DTC_OVERLAY_FILE — append per-board DTS overlay.
+    #
+    # phase-292 W2 (ASI wall #2) — setting DTC_OVERLAY_FILE DISABLES Zephyr's
+    # automatic discovery of the APP's own overlays (`<app>/boards/<board>.
+    # overlay`, `<app>/app.overlay`) — Zephyr only auto-discovers when the
+    # variable is unset. The FVP board crate deliberately leaves ethernet to
+    # the app overlay ("users override at the example-app level"), so
+    # swallowing the app overlay silently killed the consumer's NIC
+    # (`net_if: There is no network interface`, ASI phase-3 W3 first boot).
+    # Replicate Zephyr's app-overlay convention here BEFORE appending ours,
+    # only when the consumer has not already curated the list.
+    if(NOT DTC_OVERLAY_FILE)
+        string(REGEX REPLACE "[/@]" "_" _nros_board_norm "${NROS_BOARD_ZEPHYR_ID}")
+        foreach(_app_ovl
+                "${CMAKE_CURRENT_SOURCE_DIR}/boards/${_nros_board_norm}.overlay"
+                "${CMAKE_CURRENT_SOURCE_DIR}/app.overlay")
+            if(EXISTS "${_app_ovl}")
+                list(APPEND DTC_OVERLAY_FILE "${_app_ovl}")
+            endif()
+        endforeach()
+    endif()
     list(APPEND DTC_OVERLAY_FILE "${NROS_BOARD_BOARD_OVERLAY}")
     set(DTC_OVERLAY_FILE "${DTC_OVERLAY_FILE}" PARENT_SCOPE)
 
