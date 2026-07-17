@@ -17,8 +17,8 @@ W6's decision pass triaged every gap cell. This issue tracks the cells
 judged **worth implementing**. As of 2026-07-18 the fixture-wireable cells
 are all done (native rust cyclone service; threadx-linux C cyclone
 service+action; threadx-linux C++ cyclone pubsub). What remains needs real
-code or a new fixture: the rust cyclone ACTION creation gap (#2) and the
-threadx-riscv64 C++ cyclone build variant (#5). The CarveOuts below are
+code or a new fixture: the rust cyclone ACTION creation gap (now **#234**) and the
+threadx-riscv64 C++ cyclone build variant (now **#235**). The CarveOuts below are
 firm design decisions, NOT tracked here.
 
 ## Worth-implementing cells (BuildOnly → Runtime)
@@ -31,13 +31,10 @@ the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
    client prints `Result of add_two_ints: 5`); fixtures.toml cyclone rows +
    the Runtime cell landed. The BuildOnly-"unproven" flag was correct to
    check and is now disproven.
-2. **native rust cyclonedds action** — the rust action pair over cyclone
-   FAILS AT CREATION (`ActionCreationFailed`, deterministic), while C++
-   cyclone action works. Root cause: the typed-action-descriptor path
-   C/C++'s `descriptors.cpp` provides has no pure-rust equivalent (the #67
-   marker covers pub/sub + service create, not action-type descriptors).
-   This is a rust cyclone BACKEND fix, not a fixture-wiring task — the
-   remaining half of this cell, and the reason it stays BuildOnly.
+2. **native rust cyclonedds action** — carved out to **#234**: the rust
+   action pair FAILS AT CREATION (`ActionCreationFailed`), the
+   typed-action-descriptor gap the C/C++ `descriptors.cpp` fills. A backend
+   fix, not fixture wiring.
 3. ~~threadx-linux C cyclonedds **service + action**~~ **DONE (2026-07-18)**
    — `test_threadx_linux_cyclonedds_{service,action}`: the embedded ThreadX
    C server drives a native POSIX client over Cyclone (service → result 5;
@@ -46,12 +43,9 @@ the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
 4. threadx-linux C++ cyclonedds pubsub — **DONE (2026-07-18)**:
    `test_threadx_linux_cyclonedds_cpp_talker_to_native_listener` (the C++
    sibling of the #215 C lane); cell flipped to Runtime.
-5. **threadx-riscv64 C++ cyclonedds pubsub** — remaining. Unlike the
-   others this has NO fixture yet (the riscv64 example set builds C + rust
-   cyclone two-QEMU pubsub, #214, but not C++). Needs a cpp cyclone build
-   variant added to the `just threadx_riscv64` recipe + a two-QEMU lane
-   mirroring `test_threadx_riscv64_cyclonedds_two_qemu_{pubsub,rust_pubsub}`.
-   Fixture-creation work, not just wiring.
+5. **threadx-riscv64 C++ cyclonedds pubsub** — carved out to **#235**:
+   needs a new cpp cyclone build variant + a two-QEMU lane (the riscv64 set
+   builds only C + rust cyclone today, #214). Fixture-creation work.
 
 ## Firm CarveOuts (recorded in the matrix, NOT this issue's scope)
 

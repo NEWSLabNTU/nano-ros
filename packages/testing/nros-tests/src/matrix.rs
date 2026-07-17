@@ -294,7 +294,7 @@ pub const CELLS: &[Cell] = &[
     // (ActionCreationFailed): the typed-action-descriptor path C/C++'s
     // descriptors.cpp fills, the pure-rust path does not. Not a fixture gap.
     cell(Native, Rust, Cyclonedds, Action,  Example,
-         BuildOnly("rust cyclone action = ActionCreationFailed (typed-descriptor gap) — issue #233")),
+         BuildOnly("rust cyclone action = ActionCreationFailed (typed-descriptor gap) — issue #234")),
     cell(Native, C,    Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Rust, Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Cpp,  Xrce,       Pubsub,  Example, Runtime),
@@ -396,7 +396,8 @@ pub const CELLS: &[Cell] = &[
          CarveOut("action examples not implemented on threadx-riscv64 (example set is pubsub+service); reserved slots in platform.rs")),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
-    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, BuildOnly(CYCLONE_RTOS_TODO)),
+    cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example,
+         BuildOnly("no cpp cyclone riscv64 fixture yet — needs build variant + QEMU pair, issue #235")),
 
     // NuttX riscv — C/C++/rust runtime lanes (phase #199 follow-up).
     cell(NuttxRiscv, C,    Zenoh, Pubsub, Example, Runtime),
