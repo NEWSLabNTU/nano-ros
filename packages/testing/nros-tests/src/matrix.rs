@@ -434,16 +434,37 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Cpp,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Rust, Zenoh, EntryPubsub, Workspace, Runtime),
     cell(NuttxArm, C,    Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(NuttxArm, Cpp,  Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(NuttxRiscv, C,   Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(NuttxRiscv, Cpp, Zenoh, EntryPubsub, Workspace, Runtime),
+    // Corrected during the phase-295 W3.b entry consolidation: the seed
+    // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub
+    // rows `Runtime`, but no EntryPubsub fixture or lane exists at those
+    // coordinates — the only nuttx workspace rows besides the C arm entry
+    // (17861) are the REALTIME-TIERS entries (fixtures.toml 17863/17864/
+    // 17869/17870 + workspace-rust-nuttx-riscv-realtime), which satisfied
+    // the (platform, lang) coverage gate and masked the gap. The riscv C
+    // runtime proof that exists is the STANDALONE talker example
+    // (c_riscv_nuttx_e2e — the `(NuttxRiscv, C, Pubsub, Example)` cell).
+    cell(NuttxArm, Cpp,  Zenoh, EntryPubsub, Workspace,
+         BuildOnly("no nuttx-arm C++ EntryPubsub fixture/lane; only the RT-tiers C++ \
+                    workspace builds at this coordinate — phase-295 W3.b finding, W6 wires it")),
+    cell(NuttxRiscv, C,   Zenoh, EntryPubsub, Workspace,
+         BuildOnly("no nuttx-riscv C EntryPubsub workspace fixture/lane (RT-tiers only; \
+                    the standalone talker example is the riscv C runtime proof) — \
+                    phase-295 W3.b finding, W6 wires it")),
+    cell(NuttxRiscv, Cpp, Zenoh, EntryPubsub, Workspace,
+         BuildOnly("no nuttx-riscv C++ EntryPubsub workspace fixture/lane (RT-tiers only) \
+                    — phase-295 W3.b finding, W6 wires it")),
     cell(ThreadxLinux, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
     cell(NuttxArm,     Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(NuttxRiscv,   Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
+    // See the nuttx-riscv correction above — the rust riscv workspace row
+    // is realtime-only too (workspace-rust-nuttx-riscv-realtime); no
+    // EntryPubsub image or lane exists. phase-295 W3.b finding.
+    cell(NuttxRiscv,   Rust,  Zenoh, EntryPubsub, Workspace,
+         BuildOnly("no nuttx-riscv rust EntryPubsub workspace fixture/lane (RT-tiers \
+                    only) — phase-295 W3.b finding, W6 wires it")),
     cell(Esp32Qemu,    Rust, Zenoh, EntryPubsub, Workspace, Runtime),
 
     // Workspace feature workloads (native + zephyr today; per-lang rows

@@ -92,7 +92,7 @@ build-examples:
     NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx rust
     # phase-263 C2b — the multi-node C workspace Entry (talker + listener linked into the NuttX
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
-    # tests/c_nuttx_entry_e2e.rs (cross-process /chatter delivery, baked slirp locator 17861).
+    # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 17861).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/workspace-fixtures-build.sh nuttx c
     # phase-281 W3-nuttx — the C++ realtime tiers workspace (ws-realtime-cpp nuttx entry),
     # consumed by realtime_tiers_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its

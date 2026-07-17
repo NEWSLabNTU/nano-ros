@@ -2717,7 +2717,7 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
 /// phase-263 C2d — the Zephyr (native_sim) C WORKSPACE embedded entry (talker + listener),
 /// built by the west lane (`zephyr-fixture-leaves.sh --include-workspace-entry`) into
 /// `<zephyr-build-root>/build-ws-c-entry-zenoh/zephyr/zephyr.exe`. The C/C++ sibling of the
-/// Rust workspace zephyr entry; consumed by `tests/zephyr_entry_e2e.rs`.
+/// Rust workspace zephyr entry; consumed by `tests/entry_e2e.rs` (zephyr_c cell).
 pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)
@@ -2726,7 +2726,7 @@ pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
 /// phase-263 C2c — the Zephyr (native_sim) C++ WORKSPACE embedded entry (talker + listener,
 /// typed `std_msgs::msg::Int32`), built by the west lane into
 /// `<zephyr-build-root>/build-ws-cpp-entry-zenoh/zephyr/zephyr.exe`. Consumed by
-/// `tests/cpp_zephyr_entry_e2e.rs`.
+/// `tests/entry_e2e.rs` (zephyr_cpp cell).
 pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-cpp-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)
@@ -2736,7 +2736,7 @@ pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
 /// C++ listener + Rust heartbeat), built by the west lane into
 /// `<zephyr-build-root>/build-ws-mixed-entry-zenoh/zephyr/zephyr.exe`. The Rust node is bundled
 /// into the `nros_ws_runtime` umbrella staticlib (single Rust runtime). Consumed by
-/// `tests/mixed_zephyr_entry_e2e.rs`.
+/// `tests/entry_e2e.rs` (zephyr_mixed cell).
 pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-mixed-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)
@@ -2746,7 +2746,7 @@ pub fn build_zephyr_workspace_mixed_entry() -> TestResult<PathBuf> {
 /// (`ws-params-rust/src/zephyr_entry`): the param_talker node + the six ROS 2 parameter
 /// services (the #128 fix made the `Framework::Zephyr` macro arm emit that registration).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-params-entry-zenoh/zephyr/
-/// zephyr.exe`; consumed by `tests/params_zephyr_entry_e2e.rs`.
+/// zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_params cell).
 pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-params-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)
@@ -2756,7 +2756,7 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
 /// (`ws-lifecycle-rust/src/zephyr_entry`): the talker node + the five REP-2002 lifecycle
 /// services with boot autostart (the #128 `Framework::Zephyr` `apply_lifecycle` emit).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-lifecycle-entry-zenoh/
-/// zephyr/zephyr.exe`; consumed by `tests/lifecycle_zephyr_entry_e2e.rs`.
+/// zephyr/zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_lifecycle cell).
 pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-lifecycle-entry-zenoh/zephyr/zephyr.exe");
@@ -2768,7 +2768,7 @@ pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {
 /// non-default profile (reliable + transient_local) and qos_listener subscribes with the
 /// byte-identical profile, republishing the matched receive count on `/qos_ok`. Built by
 /// the west lane into `<zephyr-build-root>/build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/qos_zephyr_entry_e2e.rs`.
+/// consumed by `tests/entry_e2e.rs` (zephyr_rust_qos cell).
 pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)
@@ -2780,7 +2780,7 @@ pub fn build_zephyr_workspace_rust_qos_entry() -> TestResult<PathBuf> {
 /// validates on receive; safe_listener republishes its CRC-VALIDATED count on
 /// `/safe_ok`. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/safety_zephyr_entry_e2e.rs`.
+/// consumed by `tests/entry_e2e.rs` (zephyr_rust_safety cell).
 pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-rs-safety-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(&binary_path)

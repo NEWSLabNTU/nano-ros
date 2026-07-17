@@ -57,14 +57,14 @@ build-examples:
     bash scripts/build/fixtures-build.sh threadx-linux rust
     bash scripts/build/workspace-fixtures-build.sh threadx-linux rust
     # phase-263 C2a — the embedded C workspace LAUNCH entry (issue 0097), consumed
-    # by tests/c_threadx_entry_e2e.rs. Builds into its own build-subdir (one board
+    # by tests/entry_e2e.rs (threadx_linux_c cell). Builds into its own build-subdir (one board
     # per CMake configure), so it never clashes with the posix workspace fixtures.
     bash scripts/build/workspace-fixtures-build.sh threadx-linux c
     # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
-    # tests/cpp_threadx_entry_e2e.rs.
+    # tests/entry_e2e.rs (threadx_linux_cpp cell).
     bash scripts/build/workspace-fixtures-build.sh threadx-linux cpp
     # phase-263 C2c — the embedded MIXED (C+C++/Rust) workspace LAUNCH entry, consumed
-    # by tests/mixed_threadx_entry_e2e.rs.
+    # by tests/entry_e2e.rs (threadx_linux_mixed cell).
     bash scripts/build/workspace-fixtures-build.sh threadx-linux mixed
     echo "ThreadX Linux examples built!"
 

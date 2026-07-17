@@ -14,7 +14,7 @@
 //! Reuses the phase-276 W5 `ws-qos-rust` Zephyr image (both nodes on-target;
 //! `/qos_ok` republished at 1 Hz) and its baked router port — the
 //! `zephyr-qos-port` nextest group serializes this with
-//! `qos_zephyr_entry_e2e` so the routers never collide.
+//! the `entry_e2e` zephyr_rust_qos cell so the routers never collide.
 //!
 //! Requires ROS 2 + `rmw_zenoh_cpp` (skips when absent) and the west-lane
 //! fixture (skips when `zephyr.exe` is absent).

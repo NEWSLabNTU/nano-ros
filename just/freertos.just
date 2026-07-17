@@ -104,13 +104,13 @@ build-examples:
     done
     bash scripts/build/workspace-fixtures-build.sh freertos rust
     # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
-    # tests/c_freertos_entry_e2e.rs. Own build-subdir (one board per CMake configure).
+    # tests/entry_e2e.rs (freertos_c cell). Own build-subdir (one board per CMake configure).
     bash scripts/build/workspace-fixtures-build.sh freertos c
     # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
-    # tests/cpp_freertos_entry_e2e.rs.
+    # tests/entry_e2e.rs (freertos_cpp cell).
     bash scripts/build/workspace-fixtures-build.sh freertos cpp
     # phase-263 C2c — the embedded MIXED (C+C++ + no_std Rust) workspace LAUNCH entry,
-    # consumed by tests/mixed_freertos_entry_e2e.rs.
+    # consumed by tests/entry_e2e.rs (freertos_mixed cell).
     bash scripts/build/workspace-fixtures-build.sh freertos mixed
     echo "FreeRTOS QEMU examples built!"
 

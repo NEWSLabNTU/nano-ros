@@ -705,7 +705,7 @@ build_subdir = "build-workspace-fixtures"
 # reaches `tcp/127.0.0.1:<port>` with NO veth bridge / root (unlike the 192.0.3.x
 # bridge the Rust threadx examples dial). No `codegen_out`: the entry's
 # `nano_ros_entry(LAUNCH)` configure shells the per-entry codegen itself.
-# Consumed by tests/c_threadx_entry_e2e.rs (cross-process /chatter delivery).
+# Consumed by tests/entry_e2e.rs (threadx_linux_c cell) (cross-process /chatter delivery).
 [[workspace_fixture]]
 id = "workspace-c-threadx-linux"
 platform = "threadx-linux"
@@ -724,7 +724,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", 
 # locator. The firmware uses a static 192.0.3.x lwIP config (no DHCP), so the test runs
 # QEMU slirp with a matching net (host=192.0.3.1) and the entry dials
 # `tcp/192.0.3.1:<port>`. Own build_subdir (one board per CMake configure). Consumed by
-# tests/c_freertos_entry_e2e.rs (cross-process /chatter from the QEMU guest).
+# tests/entry_e2e.rs (freertos_c cell) (cross-process /chatter from the QEMU guest).
 [[workspace_fixture]]
 id = "workspace-c-freertos"
 platform = "freertos"
@@ -739,7 +739,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
 # 10.0.2.2; the baked NROS_ENTRY_LOCATOR is ferried into the cc-rs entry-TU compile via the
-# board overlay's COMPILE_DEFINITIONS pass. Consumed by tests/c_nuttx_entry_e2e.rs (port 17861).
+# board overlay's COMPILE_DEFINITIONS pass. Consumed by tests/entry_e2e.rs (nuttx_arm_c cell) (port 17861).
 [[workspace_fixture]]
 id = "workspace-c-nuttx"
 platform = "nuttx"
@@ -1173,8 +1173,8 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
 # entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
 # cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board
-# (one board per CMake configure). Consumed by tests/cpp_threadx_entry_e2e.rs /
-# tests/cpp_freertos_entry_e2e.rs.
+# (one board per CMake configure). Consumed by tests/entry_e2e.rs (threadx_linux_cpp /
+# freertos_cpp cells).
 [[workspace_fixture]]
 id = "workspace-cpp-threadx-linux"
 platform = "threadx-linux"
@@ -1285,7 +1285,7 @@ build_subdir = "build-workspace-fixtures"
 # entry on threadx-linux. The Rust node links via the `nros_ws_runtime` umbrella, which on
 # threadx-linux targets the host x86_64 triple (ThreadX runs as pthreads), so the Rust node
 # compiles host-side like the native mixed entry. Own build_subdir (one board per CMake
-# configure). Consumed by tests/mixed_threadx_entry_e2e.rs.
+# configure). Consumed by tests/entry_e2e.rs (threadx_linux_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-threadx-linux"
 platform = "threadx-linux"
@@ -1302,7 +1302,7 @@ cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", 
 # the Rust heartbeat node compiles no_std (`#![no_std]`, alloc-only) and the nros_ws_runtime
 # umbrella cross-compiles + re-points NanoRosCpp for the embedded board. Own build_subdir;
 # board-matching slirp net + baked tcp/192.0.3.1:17841. Consumed by
-# tests/mixed_freertos_entry_e2e.rs.
+# tests/entry_e2e.rs (freertos_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-freertos"
 platform = "freertos"

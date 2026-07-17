@@ -441,7 +441,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # `nros/param-services` feature make the (#128-fixed) Framework::Zephyr emit
     # register the six ROS 2 parameter services. Dials a DISTINCT zenohd port
     # (17845), so it does NOT serialize with the pubsub fixtures. Consumed by
-    # tests/params_zephyr_entry_e2e.rs.
+    # tests/entry_e2e.rs (zephyr_rust_params cell).
     wsp_board="native_sim/native/64"
     wsp_lang="rust"
     wsp_lang_tag="rs"
@@ -489,7 +489,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # autostart = "active"` + the entry's `nros/lifecycle-services` feature make
     # the (#128-fixed) Framework::Zephyr emit register the five REP-2002
     # lifecycle services + drive the boot autostart. Distinct zenohd port
-    # (17847). Consumed by tests/lifecycle_zephyr_entry_e2e.rs.
+    # (17847). Consumed by tests/entry_e2e.rs (zephyr_rust_lifecycle cell).
     wsl_board="native_sim/native/64"
     wsl_lang="rust"
     wsl_lang_tag="rs"
@@ -536,7 +536,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # coverage cell. The QoS profiles are declared per-entity in node code
     # (RFC-0041, reliable + transient_local on /qos_chatter); the on-target
     # QoS-matched pair republishes its receive count on /qos_ok. Distinct zenohd
-    # port (17849). Consumed by tests/qos_zephyr_entry_e2e.rs.
+    # port (17849). Consumed by tests/entry_e2e.rs (zephyr_rust_qos cell).
     wsq_board="native_sim/native/64"
     wsq_lang="rust"
     wsq_lang_tag="rs"
@@ -584,7 +584,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # [system].features = ["safety"] → the zenoh backend attaches the E2E CRC +
     # sequence number on publish and validates on receive; the on-target
     # safe_listener republishes its CRC-VALIDATED count on /safe_ok. Distinct
-    # zenohd port (17851). Consumed by tests/safety_zephyr_entry_e2e.rs.
+    # zenohd port (17851). Consumed by tests/entry_e2e.rs (zephyr_rust_safety cell).
     wss_board="native_sim/native/64"
     wss_lang="rust"
     wss_lang_tag="rs"
@@ -830,7 +830,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) + nano_ros_entry(BOARD
     # zephyr …) — the C/C++ analog of rust_cargo_application()). It dials a DISTINCT zenohd
     # port (17831), so it does NOT serialize with the rust workspace/single-node pubsub
-    # fixtures. Consumed by tests/zephyr_entry_e2e.rs.
+    # fixtures. Consumed by tests/entry_e2e.rs (zephyr_c cell).
     wsc_board="native_sim/native/64"
     wsc_lang="c"
     wsc_lang_tag="c"
@@ -875,7 +875,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # phase-263 C2c — the C++ WORKSPACE entry (typed std_msgs). Same native_sim/NSOS west
     # path as the C workspace entry; the Zephyr application dir is
     # examples/workspaces/cpp/src/zephyr_entry. Distinct zenohd port (17833). Consumed by
-    # tests/cpp_zephyr_entry_e2e.rs.
+    # tests/entry_e2e.rs (zephyr_cpp cell).
     wscpp_board="native_sim/native/64"
     wscpp_lang="cpp"
     wscpp_lang_tag="cpp"
@@ -922,7 +922,7 @@ if [ "$include_workspace_entry" = "1" ]; then
     # is examples/workspaces/mixed/src/zephyr_entry. The entry sets NROS_WS_RUST_NODE_DIRS so
     # the nano-ros module bundles the Rust node into the nros_ws_runtime umbrella staticlib
     # (single Rust runtime). Distinct zenohd port (17843). Consumed by
-    # tests/mixed_zephyr_entry_e2e.rs.
+    # tests/entry_e2e.rs (zephyr_mixed cell).
     wsmx_board="native_sim/native/64"
     wsmx_lang="mixed"
     wsmx_lang_tag="mixed"
