@@ -39,7 +39,9 @@ parallel Explore agents (one per 2–3 categories) to READ each grep hit and
 confirm or kill it — the grep is the net, not the verdict. Judgment-heavy
 categories (C — incl. the C5 axis-agnosticism, C6 user-API-shape-vs-rclc/
 rclcpp/rclrs/ament, and C7 rmw.h-vtable-mirror conformance reads — plus H,
-J, F3, and E5's coverage-matrix cross-read) get one reader each over their
+J, F3, and the E5–E9 test-system sweep — coverage-matrix cross-read,
+matrix-derivation, output-marker/isolation discipline, launch convention +
+micro-test budget) get one reader each over their
 named surfaces; the API-shape items compare against the upstream ROS
 convention, so brief the reader to name the standard counterpart for every
 flagged divergence.
@@ -55,7 +57,7 @@ refuter (no vote panels). Finder lanes, models, and efforts:
 | cmake | A, C4, G2-cmake | `cmake/`, board/platform tomls | sonnet | low |
 | core-code | B1/B3/B5/B6/B7, C5, I3/I5 | `packages/core` (pre-filtered) | sonnet | medium |
 | API-shape | C1/C2, C6, C7, D | C/C++/Rust public API + vtable vs rclc/rclcpp/rclrs/rmw.h/ament | inherit | high |
-| testing | E1–E5 | `packages/testing`, `fixtures.toml`, coverage matrix | sonnet | low |
+| testing | E1–E9 | `packages/testing`, `fixtures.toml`, `.config/nextest.toml`, coverage matrix | sonnet | medium |
 | docs/UX | F, H | book, justfile, activate | haiku | low |
 | examples | J, I1/I2 | `examples/` sample | sonnet | medium |
 

@@ -172,6 +172,39 @@ verdict).**
   siblings on the same platform/RMW; carve-outs that live only in tribal
   memory rather than a doc/issue.
 
+- **E6 Matrix-derived lanes (RFC-0051).** Every runtime e2e lane is a cell of
+  the declared test matrix (platform × language × RMW × workload), consumed
+  by a parametrized matrix file — not a hand-written per-cell test file.
+  Detect: a NEW `tests/*_e2e.rs` that spawns a fixture pair without
+  consuming the matrix table (`matrix::CELLS` once phase-295 lands; until
+  then: any new `{c,cpp,mixed,rust}_<platform>_*_e2e.rs` per-cell file is a
+  finding — the `rtos_e2e.rs` rstest shape is the required pattern).
+- **E7 Output-marker discipline.** Example nodes follow the stock ROS 2 demo
+  behavior contract, and ALL output markers live in
+  `nros-tests/src/output.rs`; tests assert via the shared checker, never an
+  inline literal. Detect: `grep -rn '"Received:"\|"I heard"\|"Publishing:"'
+  packages/testing/nros-tests/tests/` — every hit outside `output.rs`
+  consumers is a finding (22 such literals existed at the 2026-07-17
+  survey).
+- **E8 Isolation discipline.** Ports and ROS domains come from the single
+  allocator (`nros_tests::alloc` / the fixtures.toml derived columns) —
+  deterministic, injective across the matrix, so lanes parallelize by
+  construction. Detect: port literals in test bodies
+  (`grep -rnE 'tcp/[0-9.]+:(7[0-9]{3}|17[0-9]{3})'
+  packages/testing/nros-tests/tests/`) that hand-mirror a fixtures.toml
+  bake; a new nextest serialization group whose comment does not name the
+  exclusive RESOURCE it guards (license, daemon, host-load — shared ports
+  are an allocator bug, not a serialization case).
+- **E9 Launch convention + micro-test budget.** Runtime launches derive from
+  the RTOS framework's runner metadata (Zephyr `runners.yaml`, IDF
+  `flasher_args.json`, board-crate runner fields) with prebuilt artifacts —
+  a hand-rolled emulator command outside the `qemu.rs` interpreter needs a
+  sanctioned-bypass doc-comment (E1-exception pattern). Micro-test budget:
+  phase/wave-named test FILES (`w1d_*`, `phase_*`) are automatic findings
+  (E3 covers fn names; this covers files); record the
+  `nros-tests/tests/` file count in the findings log each audit — an
+  upward trend without new matrix cells is a finding.
+
 ## F. CLI / developer UX
 
 - **F1 Error-message quality + silent drift.** `nros` failures are actionable
