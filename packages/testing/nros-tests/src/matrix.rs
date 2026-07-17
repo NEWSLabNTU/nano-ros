@@ -285,12 +285,16 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
     cell(Native, C,    Cyclonedds, Service, Example, Runtime),
     cell(Native, Cpp,  Cyclonedds, Service, Example, Runtime),
-    cell(Native, Rust, Cyclonedds, Service, Example,
-         BuildOnly("native rust cyclone service pair unproven — issue #233")),
+    // issue #233 cell 1 — proven: rust cyclone service pair delivers
+    // (test_native_cyclonedds_rust_service).
+    cell(Native, Rust, Cyclonedds, Service, Example, Runtime),
     cell(Native, C,    Cyclonedds, Action,  Example, Runtime),
     cell(Native, Cpp,  Cyclonedds, Action,  Example, Runtime),
+    // issue #233 — rust cyclone action fails at CREATION
+    // (ActionCreationFailed): the typed-action-descriptor path C/C++'s
+    // descriptors.cpp fills, the pure-rust path does not. Not a fixture gap.
     cell(Native, Rust, Cyclonedds, Action,  Example,
-         BuildOnly("native rust cyclone action pair unproven — issue #233")),
+         BuildOnly("rust cyclone action = ActionCreationFailed (typed-descriptor gap) — issue #233")),
     cell(Native, C,    Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Rust, Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Cpp,  Xrce,       Pubsub,  Example, Runtime),

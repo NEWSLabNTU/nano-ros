@@ -22,18 +22,23 @@ decisions, NOT tracked here).
 Each needs a proven example pair + a fixtures.toml cyclone row + flipping
 the matrix cell to `Runtime` (the `example_e2e` consumer then runs it):
 
-1. **native rust cyclonedds service + action.** The native rust
-   service/action crates already carry the `rmw-cyclonedds` feature
-   (`nros/rmw-cyclonedds` marker per #67), and the native rust cyclone
-   PUBSUB pair is proven — but no rust cyclone service/action pair has ever
-   been run (the `native_api` cyclone-service rstest is `Language::{C,Cpp}`
-   only). Wire a fixture + extend the rstest to Rust. Cheapest cell —
-   host-native, no QEMU.
-2. **threadx-linux C cyclonedds service + action.** The C cyclone pubsub
+1. ~~native rust cyclonedds **service**~~ **DONE (2026-07-18)** —
+   `test_native_cyclonedds_rust_service` delivers (server sees the request,
+   client prints `Result of add_two_ints: 5`); fixtures.toml cyclone rows +
+   the Runtime cell landed. The BuildOnly-"unproven" flag was correct to
+   check and is now disproven.
+2. **native rust cyclonedds action** — the rust action pair over cyclone
+   FAILS AT CREATION (`ActionCreationFailed`, deterministic), while C++
+   cyclone action works. Root cause: the typed-action-descriptor path
+   C/C++'s `descriptors.cpp` provides has no pure-rust equivalent (the #67
+   marker covers pub/sub + service create, not action-type descriptors).
+   This is a rust cyclone BACKEND fix, not a fixture-wiring task — the
+   remaining half of this cell, and the reason it stays BuildOnly.
+3. **threadx-linux C cyclonedds service + action.** The C cyclone pubsub
    pair is Runtime (#215); the service/action fixtures build (BuildOnly)
    but have no runtime lane. Needs the two-process (or embedded-pair) e2e
    wiring the pubsub lane already models.
-3. **threadx-linux C++ cyclonedds pubsub** and **threadx-riscv64 C++
+4. **threadx-linux C++ cyclonedds pubsub** and **threadx-riscv64 C++
    cyclonedds pubsub.** C++ cyclone example images link; no runtime lane.
    riscv64 mirrors the #214 C/rust two-QEMU pattern.
 

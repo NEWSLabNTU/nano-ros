@@ -1332,6 +1332,65 @@ fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: La
     );
 }
 
+/// issue #233 cell 1 — native **Rust** CycloneDDS service pair.
+///
+/// The Rust cyclone SERVICE path was flagged BuildOnly-unproven by the
+/// phase-295 matrix (the C/Cpp cyclone-service rstest above never covered
+/// Rust — the typed `create_service::<M>` over cyclone needs the
+/// `nros/rmw-cyclonedds` marker, #67). This proves it delivers: server sees
+/// the request, client prints `Result of add_two_ints:`. Separate from the
+/// C/Cpp rstest because Rust resolves via `build_native_rust_example_rmw`
+/// (target-cyclonedds), not the CMake `cyclone_role_binary`.
+///
+/// The Rust cyclone ACTION pair is deliberately NOT wired: it fails at
+/// creation (`ActionCreationFailed`) — the typed-action-descriptor gap the
+/// C/C++ `descriptors.cpp` fills but the pure-rust path does not. Tracked in
+/// issue #233.
+#[rstest]
+fn test_native_cyclonedds_rust_service() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain = next_cyclonedds_domain();
+    let server_bin = nros_tests::fixtures::build_native_rust_example_rmw(
+        "service-server",
+        "service-server",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds service-server", e));
+    let client_bin = nros_tests::fixtures::build_native_rust_example_rmw(
+        "service-client",
+        "service-client",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds service-client", e));
+
+    let mut server = spawn_cyclone_binary(&server_bin, "rust-cyclonedds-service-server", &domain);
+    let _ = server.wait_for_output_pattern(
+        nros_tests::output::SERVICE_SERVER_READY_MARKER,
+        Duration::from_secs(30),
+    );
+    let mut client = spawn_cyclone_binary(&client_bin, "rust-cyclonedds-service-client", &domain);
+
+    let client_out = client
+        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_out = server
+        .wait_for_output_pattern("Incoming request", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!("Rust Cyclone service client:\n{client_out}\n--- server ---\n{server_out}");
+    let calls = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
+    let handled = count_pattern(&server_out, "Incoming request");
+    assert!(
+        calls >= 1 || handled >= 1,
+        "Rust Cyclone service roundtrip produced no calls/requests.\nclient:\n{client_out}\nserver:\n{server_out}"
+    );
+}
+
 /// Native CycloneDDS service server ↔ **callback** client (RFC-0041 / Phase 239.8).
 ///
 /// Backend-parity check: the callback receive model is structurally

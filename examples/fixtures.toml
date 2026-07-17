@@ -1684,6 +1684,29 @@ no_default_features = true
 features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
+# issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
+# server sees the request, client prints `Result of add_two_ints: 5`). The
+# rust action pair over cyclone stays absent — ActionCreationFailed, the
+# typed-action-descriptor gap the C/C++ descriptors.cpp path fills; tracked
+# in #233.
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/service-server"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/service-client"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
 [[fixture]]
 platform = "native"
 lang = "rust"
