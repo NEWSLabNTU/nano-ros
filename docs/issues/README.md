@@ -44,10 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#228** — [generated C serialize conventions split](0228-c-serialize-return-convention-split.md):
-  messages return 0/-1 + out-param, services return byte-count — same concept, two ABIs. (deep audit 2026-07-17)
-
-Recently resolved (see [`archived/`](archived/) for the full list): **#221** — stale-docs
+Recently resolved (see [`archived/`](archived/) for the full list): **#228** — one C
+serialize convention (phase-294): services + actions joined the message shape (0/-1 +
+size_t* out-param, 5 emitters); 28 consumers migrated; all five platforms' service/action
+lanes 37/37 on regenerated typesupport. **#221** — stale-docs
 premise: stm32f4 rtic/embassy `init_hardware` has been REAL since phase-289 (`c2227f527` — QEMU
 RTIC pubsub/service/action lanes all green on the shared entry scaffold); no `todo!()` panic
 exists. The 8 example "Skeleton status" headers + the board doc now state the post-289 truth

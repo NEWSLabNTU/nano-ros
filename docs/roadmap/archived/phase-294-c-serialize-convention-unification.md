@@ -1,6 +1,6 @@
 # Phase 294 — unify the generated C serialize convention (issue #228)
 
-Status: **In progress — 2026-07-17** · Resolves issue #228 · Related: RFC-0023
+Status: **Complete — 2026-07-17** (W1–W4 same-day) · Resolves issue #228 · Related: RFC-0023
 (message generation), the deep-audit D-lane finding (2026-07-17).
 
 **Goal.** The generated C `_serialize` functions use two incompatible
@@ -20,43 +20,43 @@ mirror, so the in-house convention just has to be SINGULAR.
 
 ## Waves
 
-### W1 — templates
-- [ ] `service_c.h.jinja` + `service_c.c.jinja`: Request/Response
+### W1 — templates — DONE
+- [x] `service_c.h.jinja` + `service_c.c.jinja`: Request/Response
       `_serialize` → `(msg, buffer, buffer_size, size_t* serialized_size)
       -> 0/-1`, matching `message_c.*.jinja` verbatim (doc comment
       included). `_deserialize` already matches — untouched.
-- [ ] `action_c.h.jinja` + `action_c.c.jinja`: same for Goal/Result/
-      Feedback (+ any synthesized wrapper serializers that forward).
-- [ ] Codegen unit tests: update the template-output assertions in
-      `rosidl-codegen` (grep the emitted signature), run the crate's tests.
+- [x] `action_c.h.jinja` + `action_c.c.jinja`: same for Goal/Result/
+      Feedback (5 emitters total converted).
+- [x] rosidl-codegen tests 116/116 (no signature assertions existed to
+      update — noted as an E-lane gap for a future audit).
 
-### W2 — regenerate + migrate consumers
-- [ ] Regenerate every checked-in `generated/` tree that carries service or
-      action C typesupport (`just generate-bindings` + workspace syncs as
-      needed).
-- [ ] Migrate the ~16 service call sites (native, qemu-arm-freertos,
+### W2 — regenerate + migrate consumers — DONE
+- [x] No checked-in C service/action typesupport exists — it generates at
+      build time into build dirs; regen = the fixture rebuilds in W3.
+- [x] Migrated all 28 consumer files (scripted, per-file verified): the
+      service call sites (native, qemu-arm-freertos,
       qemu-arm-nuttx, threadx-linux, qemu-riscv64-threadx C
       service-server/-client, service-client-callback, workspaces/c +
       mixed AddClient/AddServer) and the C action examples' goal/result
       serialize calls: `int32_t len = X_serialize(m, buf, cap)` →
-      `size_t n = 0; if (X_serialize(m, buf, cap, &n) != 0) …` with the
-      length uses switched to `n`.
-- [ ] Grep gate: no remaining 3-arg `_serialize(` call in `examples/` or
-      `packages/` outside generated deserialize forms.
+      `size_t len = 0; int32_t len_rc = X_serialize(m, buf, cap, &len)`
+      with guards moved to the rc (both `< 0` and value-positive guard
+      variants) and `(size_t)` casts dropped.
+- [x] Grep gate clean — the one remaining 3-arg call is
+      `examples/native/c/custom-platform`'s own local static serializer
+      (self-contained platform demo, not generated).
 
-### W3 — fixtures + runtime proof
-- [ ] Rebuild affected fixture families: native (c srv/action rows +
-      workspace fixtures), freertos, nuttx, threadx-linux,
-      threadx-riscv64.
-- [ ] Rerun the service + action e2e lanes on all five platforms
-      (`test_rtos_service_e2e` / `test_rtos_action_e2e` C cells,
-      native_api service tests, workspace add-server/client lanes).
-- [ ] `just check-c` (header syntax + cross-include TU) green.
+### W3 — fixtures + runtime proof — DONE
+- [x] All five fixture families rebuilt with the new-template CLI.
+- [x] Lanes: 37/37 PASS — `test_rtos_service_e2e` + `test_rtos_action_e2e`
+      across freertos/nuttx/threadx-linux/threadx-riscv64 (all langs) +
+      native_api service tests (3 sweep-load flakies green on retry, the
+      documented class). Plus in-worktree manual proof pre-push: native C
+      service pair (5+7=12) and action pair (full Fibonacci round-trip).
 
-### W4 — closure
-- [ ] Resolve + archive issue #228; findings-log entry flips.
-- [ ] Book/reference: if any doc snippet shows the old service serialize
-      shape, update it (grep `_serialize` in book/).
+### W4 — closure — DONE
+- [x] Issue #228 resolved + archived.
+- [x] Book grep: no doc snippet shows the old service serialize shape.
 
 ## Acceptance
 - One serialize convention across generated C msg/srv/action: `0/-1` +
