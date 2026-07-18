@@ -260,19 +260,24 @@ function(nano_ros_entry)
         endif()
     else()
         # Target may have been declared by a sibling call (e.g. the
-        # user supplied an empty SOURCES + LAUNCH). Ensure the
+        # user supplied an empty SOURCES + LAUNCH/MODEL). Ensure the
         # generated TU still ends up on the target.
-        if(_NRA_LAUNCH)
+        if(_NRA_LAUNCH OR _NRA_MODEL)
             target_sources(${_NRA_NAME} PRIVATE "${_gen_tu}")
         endif()
     endif()
 
-    # Phase 219.J — auto-link every Node-pkg static lib the launch XML
-    # named. The sidecar `<bin>/<exe>_link_libs.cmake` is emitted by
-    # the same CLI invocation as the generated TU; it carries one
-    # `target_link_libraries(<exe> PRIVATE <pkg>_<exec>_component)`
-    # call per unique `(pkg, exec)` pair.
-    if(_NRA_LAUNCH AND _link_libs_cmake)
+    # Phase 219.J — auto-link every Node-pkg static lib the launch XML /
+    # SystemModel named. The sidecar `<bin>/<exe>_link_libs.cmake` is
+    # emitted by the same CLI invocation as the generated TU; it carries
+    # one `target_link_libraries(<exe> PRIVATE <pkg>_<exec>_component)`
+    # call per unique `(pkg, exec)` pair. RFC-0052 W4.3: the MODEL arm
+    # emits the same sidecar (plan_from_model resolves the components), so
+    # it must be included on the MODEL path too — otherwise a TYPED entry's
+    # generated TU never sees the component class headers those libs carry
+    # (their PUBLIC include dirs) and fails with `<pkg>/<Class>.hpp: No
+    # such file`.
+    if((_NRA_LAUNCH OR _NRA_MODEL) AND _link_libs_cmake)
         include("${_link_libs_cmake}")
     endif()
 

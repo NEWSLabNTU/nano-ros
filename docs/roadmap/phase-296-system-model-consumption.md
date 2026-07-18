@@ -305,8 +305,24 @@ parity. Ordered gates (each verifiable before the next):
     homogeneous multi-board demo keeps every node on each board and
     resolves tiers for the entry's own RTOS). Validated: the
     `realtime_tiers` native-rust e2e passes on the model-baked entry.
-    Remaining: the RTOS entries (nuttx/zephyr/riscv) migrate once their
-    QEMU lanes can validate; book chapters.
+  - **`ws-realtime-cpp/native_entry` migrated** to
+    `nano_ros_add_executable(... MODEL <config/system_model.yaml>)` — and
+    this surfaced + fixed a real CMake bug: the component auto-link
+    sidecar (`<exe>_link_libs.cmake`) and the generated-TU `target_sources`
+    were gated on `_NRA_LAUNCH` ONLY, so any TYPED **MODEL** entry never
+    linked its `<pkg>_<exec>_component` libs → the generated TU failed with
+    `<pkg>/<Class>.hpp: No such file` (the component libs carry the class
+    headers' include dirs). Now gated `(_NRA_LAUNCH OR _NRA_MODEL)`. This
+    also unblocks the ASI W4.3 pilot's full C++ build (only its codegen
+    was dry-run before). Validated: the `realtime_tiers` native-cpp e2e
+    passes on the model-baked entry.
+  - **Book chapters DONE** — the getting-started Rust entry-pkg + C++
+    workspace chapters document the `model =` / `MODEL` canonical path.
+  - Remaining: the Rust RTOS entries (nuttx/zephyr/riscv) migrate once a
+    build env with the QEMU toolchains (nuttx needs `genromfs`, zephyr
+    the SDK) can validate their lanes — the macro resolution is
+    board-agnostic + validated for native, so this is validation-gated,
+    not design-gated.
 - R3 — deprecation: `codegen-system` WITHOUT `--model` and `nros plan`'s
   launch-XML path warn; `launch_synth` marked deprecated. One release of
   overlap.

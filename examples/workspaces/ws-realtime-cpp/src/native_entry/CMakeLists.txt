@@ -10,9 +10,13 @@ find_package(nano_ros REQUIRED)
 # runs nros codegen with the nros-metadata.json (which carries CALLBACK_GROUPS),
 # then emits NodeBuilder::sched() calls so each node binds to its posix-priority
 # sched context (RFC-0015 §4.2).
+# RFC-0052 / phase-296 R2 — canonical model bake path: bake from the committed
+# play_launch-resolved SystemModel instead of re-parsing launch XML +
+# system.toml. `BOARD native` picks the POSIX tier sub-table; the same model
+# drives the nuttx/zephyr entries against their own RTOS sub-tables.
 nano_ros_add_executable(native_entry
     SOURCES src/main.cpp
     BOARD   native
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  native)
