@@ -43,40 +43,52 @@ STACK of gaps behind the false green, peeled in order:
    recipe-level: `build-fvp-aemv8r-cyclonedds` now layers the snippet conf via
    `-DEXTRA_CONF_FILE=zephyr/snippets/nros-cyclonedds/cyclonedds.conf`
    (mutex=1024, stacks=32K/4K, socketpair). No more SMP-4 crash.
-3. **[OPEN — last blocker to green; CONF-ONLY RULED OUT] the typed carrier
-   opens the DDS session at t≈0, before net_config runs at all.**
-   `ddsi_udp_create_conn: failed to bind to ANY:0` → `dds_create_participant
-   returned -1`. Cyclone's `session_open` logs at `00:00:00.000` — the FIRST
-   app output, with NO `net_config: Initializing network` line before it. So
-   the participant is created before the net stack has any interface with an
-   IPv4 address (Zephyr's `bind(INADDR_ANY)` needs one → EADDRNOTAVAIL).
-   Two conf attempts were cleanly REFUTED: (a) a static IP alone, and (b) the
-   full net_config blocking set (`AUTO_INIT=y` + `NEED_IPV4=y` +
-   `MY_IPV4_ADDR=10.0.2.15` + `INIT_TIMEOUT=30`) — both still bind-fail at
-   t≈0 because the carrier beats net_config's SYS_INIT. This is NOT a conf
-   problem. The ASI image publishes because its app owns
-   `network_config.cpp`, which adds the IP and BLOCKS on a net-mgmt
-   `L4_CONNECTED` semaphore BEFORE `run_components` runs — its `session_open`
-   lands at `00:00:00.157`, after the iface is up. The fix must give the
-   Zephyr typed carrier (`ZephyrBoard::run_components`) — or the example — an
-   equivalent "wait for network up" step before the first entity create.
-   Investigate the carrier's init ordering vs net_config's APPLICATION-level
-   SYS_INIT; a carrier-side wait would fix every cyclone-on-Zephyr example at
-   once. Net-stack init ordering, distinct from every wall above and from a
-   conf tweak.
+3. **[OPEN — last blocker to green] the talker example is a BUILD-ONLY image
+   with no working network; retrofitting it into a runtime image is a
+   mini-project, not a conf tweak.** `ddsi_udp_create_conn: failed to bind to
+   ANY:0` → `dds_create_participant returned -1`. (An earlier note here blamed
+   carrier-vs-net_config init ordering — that was WRONG; the `session_open` at
+   `00:00:00.000` is just fast-sim timestamp clustering under
+   `cache_state_modelled=0`. The entry is a plain `int main()`, runs after all
+   SYS_INIT.) The real chain, peeled on the FVP:
+   - The generated devicetree has `ethernet@9a000000 { status = "disabled" }`
+     — the example has **NO ethernet device at all**. It uses
+     `find_package(Zephyr)+-b` (not `nano_ros_use_board`) and ships no DTS
+     overlay, and the nros board crate's overlay only enables the UARTs (its
+     ethernet block is a stub: "users override at the example-app level"). No
+     device → no `net_if` → `bind(INADDR_ANY)` → EADDRNOTAVAIL.
+   - Adding an app overlay (`boards/<board>.overlay`, auto-discovered) that
+     enables `&eth`/`&phy`/`&mdio` (exactly ASI's overlay) got the node
+     `status = "okay"` but then **crashed the smsc91x driver at init**
+     (`smsc_select_bank` → `sys_write16` to a null register base via
+     `mdio_smsc_write`, Data Abort FAR=0x0e, before any banner). The bare
+     overlay is insufficient — the ASI image carried more (net L2 / driver /
+     mdio DTS wiring beyond the three `status=okay` lines) that the talker
+     lacks. Diagnosing the driver's null base is a further DTS layer.
+   Retrofitting the build-only talker into a working networked FVP image thus
+   means recreating ASI's full network setup piece by piece (eth device DTS +
+   driver config + IP + net-up), each step revealing the next — a mini-project.
+   **Better target:** point the runtime lane at `build-fvp-ws-entry`
+   (`examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry`, phase-292 W1.a),
+   which uses the FULL canonical ASI-shaped consumption
+   (`nano_ros_use_board(fvp-aemv8r-smp)` + `find_package(nano_ros)` + a
+   `nano_ros_add_executable(BOARD zephyr LAUNCH …)`) — the exact shape ASI
+   runs, PROVEN to publish end-to-end on this model (the closed-loop demo).
+   Give ws-entry a run recipe + a `Publishing:`/participant assertion instead
+   of retrofitting the legacy talker.
 
 ## Remaining fix direction
 
-- Make the DDS session open AFTER the network is up. Conf-only is RULED OUT
-  (finding #3): the typed carrier creates the participant at t≈0, before
-  net_config's SYS_INIT — a static IP and the full net_config blocking set
-  both still bind-fail. The carrier (`ZephyrBoard::run_components`) or the
-  example needs a "wait for L4/iface up" step before the first entity create,
-  the way ASI's `network_config.cpp` blocks on an `L4_CONNECTED` semaphore
-  before `run_components`. A carrier-side wait fixes every cyclone-on-Zephyr
-  example at once. Plus an IP config (static SLIRP `10.0.2.15` or
-  `CONFIG_NET_DHCPV4=y`). Then the existing `fvp_runtime.rs` publish assertion
-  passes.
+- Retarget the runtime lane at `build-fvp-ws-entry` (finding #3): the legacy
+  cpp/rust talkers are build-only images with no ethernet device — enabling it
+  naively crashes the smsc91x driver. `ws-realtime-cpp-fvp/src/fvp_entry`
+  already uses the full canonical `nano_ros_use_board` consumption (ASI's exact
+  shape, proven to publish on the model), so it should have the working network
+  wiring. Add a `run-fvp-ws-entry` recipe + a `fvp_runtime_ws.rs` test asserting
+  participant-create / `Publishing:`, and retire the talker runtime tests
+  (`fvp_runtime.rs` / `fvp_runtime_rust.rs`) or downgrade them to boot-banner
+  build proofs. That avoids reconstructing ASI's network setup inside a legacy
+  build-only example.
 - ~~Raise `fvp_runtime_rust.rs` from the boot-banner pattern to
   `nros_tests::output::TALKER_LOG_PREFIX` (`"Publishing:"`)~~ — **DONE** (the
   assertion + boot-banner sanity check + rename `..._boots` → `..._publishes`;
