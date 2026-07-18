@@ -25,9 +25,9 @@ find_package(nano_ros REQUIRED)
 # `nros_app_main` calling `NuttxBoard::run_tiers` (RFC-0015 Model 1): one pthread per tier over
 # ONE shared session — ctrl (10 ms, high) publishes /ctrl, telem (100 ms, low) publishes /telem.
 # The ctrl/telem node pkgs are added by the workspace root as sibling subdirs; the entry's
-# LAUNCH names them so the codegen sees their nano_ros_node_register metadata. LAUNCH-only.
+# RFC-0052 R2 — canonical model bake path (committed system_model.yaml).
 nano_ros_add_executable(nuttx_entry
     BOARD   nuttx-qemu-arm
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  nuttx-qemu-arm)

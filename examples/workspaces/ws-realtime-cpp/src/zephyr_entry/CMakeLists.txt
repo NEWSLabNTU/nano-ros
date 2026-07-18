@@ -8,7 +8,7 @@
 # a plain `int main(void)` driving `ZephyrBoard::run_tiers` (RFC-0015 Model 1): one k_thread per
 # tier over ONE shared session — ctrl (10 ms, high) publishes /ctrl, telem (100 ms, low)
 # publishes /telem. The cpp node pkgs use typed std_msgs::msg::Int32, so their
-# nros_find_interfaces generates the C++ headers; the entry auto-links them. LAUNCH-only.
+# nros_find_interfaces generates the C++ headers; the entry auto-links them. RFC-0052 R2: MODEL path.
 #
 #   west build -b native_sim/native/64 src/zephyr_entry \
 #     -- -DCONF_FILE="prj.conf;prj-zenoh.conf;<nsos>.conf" \
@@ -31,6 +31,6 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../telem_pkg" telem_pkg)
 
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  zephyr)

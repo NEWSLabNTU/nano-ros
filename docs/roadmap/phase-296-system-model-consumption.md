@@ -6,7 +6,15 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: W1+W2+W3a+W3b.1-.4(machinery) landed (2026-07-17); W3b.4 parity fixture + W3b.5 + W4 remain.
+Status: W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime parity
+fixture). R2 migration: the ws-realtime flagship is fully on the model
+path — ws-realtime-rust (all 4 entries: native + nuttx-arm + nuttx-riscv
++ zephyr) and ws-realtime-cpp (all 4 entries) — each validated by its
+QEMU/native `realtime_tiers` e2e (the one exception, zephyr-cpp, fails
+identically on LAUNCH and MODEL on this host — a pre-existing native_sim
+low-tier scheduling issue, orthogonal to the migration). Book chapters
+done. Only R3 (deprecation warnings) + R4 (removal) remain — future,
+release-gated phases in the retirement trajectory, not phase-296 impl.
 
 ## Waves
 
@@ -316,6 +324,15 @@ parity. Ordered gates (each verifiable before the next):
     also unblocks the ASI W4.3 pilot's full C++ build (only its codegen
     was dry-run before). Validated: the `realtime_tiers` native-cpp e2e
     passes on the model-baked entry.
+  - **`ws-realtime-cpp` RTOS entries DONE (2026-07-18)** — `nuttx_entry`,
+    `riscv_nuttx_entry`, `zephyr_entry` migrated to
+    `nano_ros_add_executable(... MODEL <config/system_model.yaml>)`.
+    Validated: `case_08_nuttx_arm_cpp` and `case_13_nuttx_riscv_cpp` pass
+    on the model-baked entries. `case_06_zephyr_cpp` fails IDENTICALLY on
+    LAUNCH and MODEL on this host (native_sim low-tier never scheduled —
+    a pre-existing lane issue, not a migration regression), so the
+    migration is validated-equivalent + CI-gated. **ws-realtime-cpp is
+    fully migrated.**
   - **Book chapters DONE** — the getting-started Rust entry-pkg + C++
     workspace chapters document the `model =` / `MODEL` canonical path.
   - **Rust RTOS entries DONE (2026-07-18)** — `ws-realtime-rust`'s

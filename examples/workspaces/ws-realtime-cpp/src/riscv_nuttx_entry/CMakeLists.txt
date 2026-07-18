@@ -21,6 +21,6 @@ find_package(nano_ros REQUIRED)
 # (100 ms, low) publishes /telem over ONE shared session.
 nano_ros_add_executable(riscv_nuttx_entry
     BOARD   nuttx-qemu-riscv
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  nuttx-qemu-riscv)
