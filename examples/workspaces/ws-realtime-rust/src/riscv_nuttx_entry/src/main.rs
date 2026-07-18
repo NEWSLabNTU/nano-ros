@@ -1,7 +1,7 @@
 //! Entry pkg for the RT-tiers Rust workspace on NuttX QEMU rv-virt (riscv32).
 //!
 //! phase-285 W5 (RFC-0015 Model 1, issue #165) — the riscv-nuttx projection of
-//! `ws-realtime-rust`. Same one-line `nros::main!(launch = ...)` as the native /
+//! `ws-realtime-rust`. Same one-line `nros::main!(model = ...)` as the native /
 //! zephyr / arm-nuttx siblings; `deploy = "nuttx-riscv"` (Cargo.toml) selects
 //! the rv-virt board (`QemuRvVirt`, `Framework::OwnedSpin`), and the
 //! `[tiers.*]` table in `system.toml` (with `[tiers.*.nuttx]` raw SCHED_FIFO
@@ -23,4 +23,7 @@
 //! `nsh_initialize()` (virtio FDT discovery + network bringup) and then
 //! reaches this `fn main()`.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+// RFC-0052 / phase-296 R2 — canonical model bake path (see native_entry).
+// `deploy = "..."` picks the board + its RTOS tier sub-table from the SAME
+// committed `demo_bringup/config/system_model.yaml`.
+nros::main!(model = "demo_bringup");

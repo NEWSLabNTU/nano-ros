@@ -420,7 +420,7 @@ doctor:
     if command -v genromfs &>/dev/null; then
         echo "  [OK] genromfs (riscv rv-virt ROMFS)"
     else
-        echo "  [MISSING] genromfs — needed by 'just nuttx build-riscv-c' (run: just workspace apt-packages)"
+        echo "  [MISSING] genromfs — needed by the riscv rv-virt NuttX lane (run: nros setup --tool genromfs)"
         fail=1
     fi
     # Phase 127.B.5 — NuttX DDS RTPS multi-instance tests rely on

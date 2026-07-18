@@ -1,7 +1,7 @@
 //! Entry pkg for the RT-tiers Rust workspace on NuttX QEMU ARM virt.
 //!
 //! phase-281 W3-nuttx (RFC-0015 Model 1) — the tiers-on-NuttX projection of
-//! `ws-realtime-rust`. Same one-line `nros::main!(launch = ...)` as the native /
+//! `ws-realtime-rust`. Same one-line `nros::main!(model = ...)` as the native /
 //! zephyr siblings; `deploy = "nuttx"` (Cargo.toml) selects the NuttX board
 //! (`QemuArmVirt`, `Framework::OwnedSpin`), and the `[tiers.*]` table in
 //! `system.toml` (with `[tiers.*.nuttx]` raw SCHED_FIFO priorities) flips the
@@ -19,4 +19,7 @@
 //! board crate exports a `#[no_mangle] nsh_main` that runs `nsh_initialize()`
 //! (virtio FDT discovery + network bringup) and then reaches this `fn main()`.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+// RFC-0052 / phase-296 R2 — canonical model bake path (see native_entry).
+// `deploy = "..."` picks the board + its RTOS tier sub-table from the SAME
+// committed `demo_bringup/config/system_model.yaml`.
+nros::main!(model = "demo_bringup");

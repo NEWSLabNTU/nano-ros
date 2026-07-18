@@ -318,11 +318,18 @@ parity. Ordered gates (each verifiable before the next):
     passes on the model-baked entry.
   - **Book chapters DONE** — the getting-started Rust entry-pkg + C++
     workspace chapters document the `model =` / `MODEL` canonical path.
-  - Remaining: the Rust RTOS entries (nuttx/zephyr/riscv) migrate once a
-    build env with the QEMU toolchains (nuttx needs `genromfs`, zephyr
-    the SDK) can validate their lanes — the macro resolution is
-    board-agnostic + validated for native, so this is validation-gated,
-    not design-gated.
+  - **Rust RTOS entries DONE (2026-07-18)** — `ws-realtime-rust`'s
+    `nuttx_entry` (qemu-arm-nuttx), `riscv_nuttx_entry` (rv-virt), and
+    `zephyr_entry` (native_sim) all migrated to
+    `nros::main!(model = "demo_bringup")` off the SAME committed model.
+    Validated end-to-end (cross-compile + QEMU `realtime_tiers` e2e):
+    `case_10_nuttx_arm_rust`, `case_11_nuttx_riscv_rust`,
+    `case_05_zephyr_rust` all pass on the model-baked entries. Prereq
+    provisioned canonically: `nros setup --tool genromfs` (the rv-virt
+    board bakes an `etc/` ROMFS at export) — the `just doctor` MISSING
+    message + the SDK-index comment were corrected to the canonical
+    `nros setup` path (they had pointed at apt / claimed genromfs
+    unneeded). **ws-realtime-rust is fully migrated.**
 - R3 — deprecation: `codegen-system` WITHOUT `--model` and `nros plan`'s
   launch-XML path warn; `launch_synth` marked deprecated. One release of
   overlap.

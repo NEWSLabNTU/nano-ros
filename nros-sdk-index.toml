@@ -443,8 +443,9 @@ packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-ap
 # 194.3c — the riscv (rv-virt) NuttX board: the 2nd-arch proof that the NuttX
 # provisioning path is arch-agnostic. Same source set as qemu-arm-nuttx but the
 # riscv cross-gcc; qemu already builds riscv64-softmmu (see [tool.qemu] configure
-# --target-list). The nano-ros riscv defconfig drops the board etc-ROMFS, so no
-# genromfs host tool is needed (the stock rv-virt board would require it).
+# --target-list). The rv-virt board bakes an `etc/` ROMFS at export time (the
+# stock board's `RCSRCS = etc/init.d/{rc.sysinit,rcS}` → `genromfs`), so it
+# needs the `genromfs` host tool — arm's config skips ROMFS and does not.
 [board.qemu-riscv-nuttx]
 arch = "riscv32" # rv-virt (rv32imac); riscv32imac-unknown-nuttx-elf
 platform = "nuttx"

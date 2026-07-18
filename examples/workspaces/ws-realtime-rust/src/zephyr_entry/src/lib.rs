@@ -1,7 +1,7 @@
 //! Entry pkg for the RT-tiers Rust workspace on Zephyr.
 //!
 //! phase-276 W2 (#102 H1, issue #128 half 2) — the tiers-on-embedded
-//! projection of `ws-realtime-rust`. Same one-line `nros::main!(launch = ...)`
+//! projection of `ws-realtime-rust`. Same one-line `nros::main!(model = ...)`
 //! as the native sibling; `deploy = "zephyr"` (Cargo.toml) routes it onto the
 //! `Framework::Zephyr` emit branch, and the `[tiers.*]` table in `system.toml`
 //! (with `[tiers.*.zephyr]` raw priorities) flips that arm onto
@@ -22,4 +22,5 @@
 // in so the kernel's Rust glue (`set_logger`, allocator hookup) links.
 extern crate zephyr;
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+// RFC-0052 / phase-296 R2 — canonical model bake path (see native_entry).
+nros::main!(model = "demo_bringup");
