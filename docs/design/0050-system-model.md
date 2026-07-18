@@ -158,6 +158,32 @@ declares contracts, the integrator decides placement.
    side monitors its local slice, and `max_age_ms` at the Linux subscriber
    catches the end-to-end total (age is E2E by construction).
 
+### Shared input + SSoT structure, per-platform realization (2026-07-18)
+
+Reconciles the SystemModel track with play_launch's Scheduling-SSoT track
+(RFC-0052 §"nano-ros answer"; play_launch phase-45):
+
+- **SSoT for structure.** `play_launch resolve` runs the chain mapper once
+  and embeds the resolved chain/graph **structure** in the model's
+  `execution:` layer — FQN-qualified chains (`via` topics + segment/boundary
+  decomposition) and the per-(node, path) requirement facts (trigger,
+  deadline, budget, criticality). Both back-ends read this one structure; the
+  DAG is resolved once, not re-derived per consumer.
+- **Per-platform realization.** The *ranks/priorities* are NOT shared:
+  play_launch realizes the structure as Linux fixed-priority (PiCAS);
+  nano-ros runs its **own** RTOS-framework-aware mapper (RFC-0052) that binds
+  the structure to kernel features (EDF / preemption-threshold / sporadic /
+  affinity). Same input structure, different realization — nano-ros does not
+  consume play_launch's per-path ranks.
+- **Runtime E2E monitoring stays stamp-based, no chain-id.** The graph in the
+  model is a *bake-time* input to the mappers. At run time, E2E freshness is
+  still `age = now − header.stamp` at the sink (`sub_endpoints.max_age_ms`);
+  the subscription topic disambiguates the budget, the message carries its own
+  origin time — no chain-id on the wire. The one behavioral dependency is
+  **stamp preservation**: a relay node forwards the incoming `header.stamp`
+  (age-transparent); a node that re-stamps is modeled as a periodic path
+  (`input: []`), which resets the age clock by design.
+
 ## Non-goals
 
 - Dynamic reconfiguration / mode switching inside a running model — resolve

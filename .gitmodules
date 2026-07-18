@@ -72,4 +72,4 @@
 	url = https://github.com/jerry73204/play_launch_parser.git
 [submodule "packages/cli/third-party/ros-launch-manifest"]
 	path = packages/cli/third-party/ros-launch-manifest
-	url = https://github.com/jerry73204/ros-launch-manifest.git
+	url = https://github.com/NEWSLabNTU/ros-launch-manifest.git

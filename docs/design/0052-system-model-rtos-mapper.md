@@ -214,6 +214,16 @@ extras are small.
   knob + privilege check).
 - `bindings` targeting a callback group that the node code never declares:
   bake-time error vs warn (leaning error — same fail-loud family).
+- **(realization)** Segment ↔ executor ↔ thread cardinality: strict
+  `one segment = one executor = one thread` (analyzable, RTIC-like) vs letting
+  the realizer **coalesce** segments onto one executor (fewer threads/stacks
+  on tiny MCUs, at the cost of intra-executor priority shaping)?
+- **(realization)** Do the six dims attach to the **segment** (leaning — the
+  thread inherits them) or per-**callback** within a segment (PiCAS
+  granularity — richer, but needs intra-executor scheduling even in the
+  run-to-completion case)? Note this is the RTOS-side mirror of the SSoT's
+  per-path-rank granularity — the resolved structure carries per-(node, path)
+  facts, so callback-granularity is available if wanted.
 
 ## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18
 
@@ -256,3 +266,92 @@ Ask of this track: (1) confirm where the resolved chain data lands —
 bind a callback-group priority from `ChainAwareDetail.path`, or project to a
 per-node task priority like POSIX). play_launch's 45.2/45.3 are held pending
 this coordination.
+
+## nano-ros answer + realization design (2026-07-18, reconciled)
+
+**Accepted: the Scheduling SSoT.** `play_launch resolve` runs the chain
+mapper ONCE and embeds the resolved chain/graph **structure** in the model;
+nano-ros **consumes** it and does NOT re-derive the DAG. The split that
+reconciles the two tracks: **the SSoT owns the *structure*; each back-end
+owns its *realization*.**
+
+**Answer to ask (1) — where chain data lands:** `execution:` (alongside
+`tiers`/`bindings`), as resolved **structure** — the FQN-qualified `chains`
+(with `via` topics + the segment/boundary decomposition) plus the
+per-(node, path) **requirement facts** that drive scheduling: effective
+`trigger` (Timer/Event/Sporadic/Once), `deadline`, `budget`/WCET,
+`criticality`. That structure is exactly nano-ros's mapper input.
+
+**Answer to ask (2) — per-path-rank consumption:** nano-ros does **not**
+bind priorities from `ChainAwareDetail` ranks — those are play_launch's
+**Linux realization** (PiCAS fixed-priority). nano-ros runs its **own**
+RTOS-framework-aware mapper over the shared structure, binding at
+segment/callback granularity through **kernel features** (EDF /
+preemption-threshold / sporadic-reservation / affinity) — see below. Keeping
+the per-path ranks in the model is harmless (nano-ros ignores them; the
+`provenance` string may be surfaced for diagnostics), but nano-ros does not
+require them. **SSoT for structure, per-platform for realization.**
+
+### The realization — causal segments over tiers
+
+The tier tables in §"The mapper" are a **fixed-priority realization**, not
+the model. nano-ros's mapper works on the **causal segment** — a maximal
+`input`-triggered run between two timer boundaries, **already decomposed in
+the resolved structure** (SSoT `chains` segment/boundary elements; nano-ros
+does not recompute it). Each segment → **one executor, run-to-completion in
+causal order on one thread** (rclc / PiCAS model). The tier survives only as
+the fixed-priority fallback realization.
+
+**Six-dim agnostic scheduling requirement**, read from the resolved
+requirement facts; a **union of intents** resolved at bake time to
+`Native | Backfill | Degrade(recorded)`:
+
+| Dim | Intent | Native | Fallback (recorded) |
+|---|---|---|---|
+| `activation` | Timer{P} \| Event{srcs,sync} \| Sporadic{iat} \| Once | kernel timer / wait-obj; NuttX/Linux sporadic | executor Sporadic SC |
+| `urgency` | criticality ordinal | kernel priority (dir-normalized) | — (universal) |
+| `deadline` | D | Zephyr/Linux EDF | executor EDF, else deadline-monotonic priority + feasibility check |
+| `budget` | C/WCET | Linux/NuttX reservation | executor Sporadic budget, else advisory-only |
+| `non_preempt_scope` | run-to-completion / threshold | ThreadX threshold, Zephyr coop, RTIC SRP | priority-ceiling emulation |
+| `placement` | core/mask | SMP affinity | ignored (single-core) |
+
+(Expansion — jitter/release-precision, mutual-exclusion groups,
+energy/tickless — is deferred; the six are locked for v1.)
+
+**Two scheduling layers — executor/kernel split.** Prefer kernel-native
+primitives; the nano-ros executor's own `SchedContext` **backfills** only
+what the kernel lacks. Per-platform guarantees therefore differ **by design
+and on the record**, never silently.
+
+- **Unified executor** (kernel-can't; ROS-callback-level, portable): callback
+  dispatch + wait-set demux; intra-segment causal run-to-completion order;
+  LET / TT release; callback-group mutual exclusion; backfill `SchedContext`s
+  (Sporadic budget, EDF-among-callbacks) — already present, unwired (§Baseline).
+- **Delegated to the kernel** (native where possible): thread priority, EDF
+  deadline, reservation budget, preemption scope, core placement.
+
+**Three-layer architecture:**
+
+```
+L1  REALIZER (host, bake-time)
+      6-dim segment reqs (from the SSoT structure) × board CAPS
+      → per-dim realization + degradation record
+L2  PlatformSched (runtime, thin board trait)
+      const CAPS { edf, reservation, preempt_threshold, affinity, n_prio, prio_dir }
+      spawn(ThreadAttrs) / now / block_on / sleep_until [+ set_deadline / replenish]
+L3  UNIFIED EXECUTOR (runtime, portable): dispatch, causal order, LET/TT,
+      group mutex, backfill SchedContexts
+```
+
+`ThreadAttrs = { priority, core?, deadline?, budget?, preempt_threshold? }`.
+L1 pre-decides, so the board never silently drops an attribute — anything it
+can't honor was already routed to executor-backfill or degraded **and
+recorded** (fail-loud, the W2 rejection-table philosophy).
+
+Grounding: **PiCAS** (RTAS'21) — chain→priority + node→executor→core;
+**rclc** (micro-ROS) — LET + static order on RTOS threads; **Casini et al.**
+(ECRTS'19) — reservation-based chains + callback-group concurrency.
+
+Extraction of the chain structure is play_launch's (the SSoT); nano-ros owns
+the **realizer** (per-platform). See RFC-0050 §"Shared input + SSoT
+structure, per-platform realization."

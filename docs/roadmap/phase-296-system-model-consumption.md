@@ -229,6 +229,39 @@ Landed (2026-07-17):
   and the FVP/AVH smoke passes (needs the ASI dev container / AVH lane —
   not runnable on this host; ASI phase-3 §W3.b tracks the checkbox).
 
+### W5 — RTOS-framework-aware realizer over the SSoT structure (DESIGN LANDED 2026-07-18, impl future)
+
+Consumes play_launch's Scheduling-SSoT (phase-45): the resolved chain/graph
+**structure** rides in the model's `execution:` layer; nano-ros reads it and
+**realizes** it per platform via its own mapper (RFC-0052 §"nano-ros answer").
+Depends on play_launch 45.2 landing the `execution:` structure fields; the
+type-sharing (45.3) reuses `ros-launch-manifest` `sched`/`types` structs (no
+third mirror).
+
+- W5.1 — **consume the resolved structure**: read `execution.chains`
+  (segment/boundary decomposition + per-(node, path) requirement facts) from
+  the model; do NOT re-derive the DAG. Ignore `ChainAwareDetail` ranks (Linux
+  realization); keep `provenance` for diagnostics only.
+- W5.2 — **realizer** `L1`: six dims (`activation, urgency, deadline, budget,
+  non_preempt_scope, placement`) → per-dim `Native | Backfill |
+  Degrade(recorded)` against a board `SchedCaps`; emit thread attrs + backfill
+  `SchedContext` config + the degradation record (fail-loud; extends W2's
+  rejection table).
+- W5.3 — **`PlatformSched` seam** `L2`: capability-typed board trait; realize
+  deadline/budget/preempt via kernel natives where present (EDF, sporadic,
+  preemption-threshold, affinity), executor `SchedContext` where not.
+- W5.4 — **wire the existing backfill**: the executor already has Sporadic
+  budget + TT windows + EDF-among-callbacks (RFC-0052 §Baseline), reachable
+  only via the programmatic API — feed them from the realizer output.
+- **Done when:** a two-boundary chain crossing two platforms bakes distinct
+  realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
+  resolved structure, with the guarantee difference recorded; and the realizer
+  produces a plan PLAN-equivalent to the tier path for the degenerate
+  single-segment case.
+- Open forks (RFC-0052 §Open questions): segment↔executor↔thread cardinality;
+  dims-on-segment vs dims-on-callback (the RTOS mirror of the SSoT's per-path
+  granularity).
+
 ## Notes / risks
 
 - `[deploy]` SSoT decision (RFC-0050 open question) closes as: deploy
