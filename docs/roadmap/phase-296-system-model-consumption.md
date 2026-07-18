@@ -284,9 +284,29 @@ parity. Ordered gates (each verifiable before the next):
     rides into the bake plan (`transports` section in `nros-plan.json`,
     same `PlanTransport` shape the board network bake consumes; unknown
     kind = refused bake; transport-free model stays byte-identical).
-- R2 — migration: ASI pilot (W4.3) + in-tree workspace examples
-  (`ws-realtime-rust` first) build from resolved models; book chapters
-  switch to the resolve→bake flow.
+- R2 — migration (IN PROGRESS): ASI pilot (W4.3, wired) + in-tree
+  workspace examples build from resolved models; book chapters switch to
+  the resolve→bake flow.
+  - **`nros::main!(model = "…")` arm LANDED (2026-07-18)** — the
+    canonical Rust bake path. Reads a committed
+    `<bringup>/config/system_model.yaml` (default path) instead of
+    re-parsing launch XML + system.toml: slices nodes by the entry's
+    board, resolves params/identity/lifecycle from the model, and
+    resolves the tier table through the SHARED
+    `nros_orchestration_ir::tier_from_model` + `resolve_tiers` (the same
+    path `codegen-system --model` uses — no drift). `launch`/`model` are
+    mutually exclusive; `launch` stays the transitional arm.
+  - `tier_from_model` relocated from nros-cli-core into
+    nros-orchestration-ir (the crate whose charter is "shared by the CLI
+    codegen + the nros::main! proc-macro"), with its drift-guard test.
+  - **`ws-realtime-rust/native_entry` migrated** to
+    `nros::main!(model = "demo_bringup")` + a committed
+    `demo_bringup/config/system_model.yaml` (no deploy layer — the
+    homogeneous multi-board demo keeps every node on each board and
+    resolves tiers for the entry's own RTOS). Validated: the
+    `realtime_tiers` native-rust e2e passes on the model-baked entry.
+    Remaining: the RTOS entries (nuttx/zephyr/riscv) migrate once their
+    QEMU lanes can validate; book chapters.
 - R3 — deprecation: `codegen-system` WITHOUT `--model` and `nros plan`'s
   launch-XML path warn; `launch_synth` marked deprecated. One release of
   overlap.

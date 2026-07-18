@@ -17,11 +17,14 @@
 use std::{collections::BTreeMap, path::Path};
 
 use eyre::{Context, Result, bail};
+// RFC-0052 — `tier_from_model` moved to nros-orchestration-ir (the shared home
+// for the CLI codegen + the nros::main! proc-macro); re-exported here so the
+// existing `model_ingest::tier_from_model` call sites and tests keep working.
+pub use nros_orchestration_ir::tier_from_model;
 use nros_orchestration_ir::{CallbackGroupDecl, CallbackGroupOverride, NodeOverride};
 use ros_launch_manifest_model::SystemModel;
-use ros_launch_manifest_sched::{TierDef as ModelTierDef, TierPlatformSpec};
 
-use crate::orchestration::cargo_metadata_schema::{SystemToml, TierDef, TierRtosSpec};
+use crate::orchestration::cargo_metadata_schema::SystemToml;
 
 /// Load + schema-gate a SystemModel.
 pub fn load_model(path: &Path) -> Result<SystemModel> {
@@ -29,41 +32,6 @@ pub fn load_model(path: &Path) -> Result<SystemModel> {
         .with_context(|| format!("read SystemModel {}", path.display()))?;
     SystemModel::from_yaml_str(&yaml)
         .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", path.display()))
-}
-
-fn rtos_spec(spec: &TierPlatformSpec) -> TierRtosSpec {
-    TierRtosSpec {
-        priority: spec.priority,
-        stack_bytes: spec.stack_bytes,
-        preempt_threshold: spec.preempt_threshold,
-        sched_class: spec.sched_class.clone(),
-    }
-}
-
-/// Convert one shared-schema tier into the orchestration-ir shape.
-///
-/// Two deliberate seams (the schemas differ here, conversion is the
-/// contract):
-/// - `core` lives per-platform in the model but at the tier head in the
-///   ir — hoisted from the SELECTED target's sub-table.
-/// - a per-platform `deadline_us` override (model) tightens the portable
-///   head value for the selected target.
-pub fn tier_from_model(t: &ModelTierDef, target_rtos: &str) -> TierDef {
-    let selected = t.platform(target_rtos);
-    TierDef {
-        spin_period_us: t.spin_period_us,
-        class: t.class.clone(),
-        period_us: t.period_us,
-        budget_us: t.budget_us,
-        deadline_us: selected.and_then(|s| s.deadline_us).or(t.deadline_us),
-        deadline_policy: t.deadline_policy.clone(),
-        core: selected.and_then(|s| s.core),
-        freertos: t.freertos.as_ref().map(rtos_spec),
-        zephyr: t.zephyr.as_ref().map(rtos_spec),
-        threadx: t.threadx.as_ref().map(rtos_spec),
-        nuttx: t.nuttx.as_ref().map(rtos_spec),
-        posix: t.posix.as_ref().map(rtos_spec),
-    }
 }
 
 /// Bare node name from a model FQN (`/ns/node` → `node`).
@@ -163,71 +131,6 @@ pub fn apply_model_execution(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Mirror-drift guard: every field of the shared-schema tier must
-    /// survive conversion. If either schema grows a field, this test is
-    /// the tripwire — extend the conversion AND this fixture together.
-    #[test]
-    fn tier_roundtrip_covers_every_field() {
-        let model_tier = ModelTierDef {
-            class: Some("real_time".to_string()),
-            deadline_us: Some(2000),
-            period_us: Some(1000),
-            budget_us: Some(500),
-            deadline_policy: Some("skip".to_string()),
-            spin_period_us: Some(250),
-            posix: Some(TierPlatformSpec {
-                priority: 80,
-                stack_bytes: Some(65536),
-                core: Some(2),
-                sched_class: Some("SCHED_FIFO".to_string()),
-                preempt_threshold: None,
-                deadline_us: Some(1500), // per-platform tighten
-            }),
-            freertos: Some(TierPlatformSpec {
-                priority: 5,
-                stack_bytes: Some(32768),
-                core: None,
-                sched_class: None,
-                preempt_threshold: None,
-                deadline_us: None,
-            }),
-            zephyr: None,
-            threadx: Some(TierPlatformSpec {
-                priority: 4,
-                stack_bytes: None,
-                core: Some(1),
-                sched_class: None,
-                preempt_threshold: Some(4),
-                deadline_us: None,
-            }),
-            nuttx: None,
-        };
-
-        // Selected target = posix: head core + deadline hoist from posix.
-        let ir = tier_from_model(&model_tier, "posix");
-        assert_eq!(ir.spin_period_us, Some(250));
-        assert_eq!(ir.class.as_deref(), Some("real_time"));
-        assert_eq!(ir.period_us, Some(1000));
-        assert_eq!(ir.budget_us, Some(500));
-        assert_eq!(ir.deadline_us, Some(1500), "per-platform override wins");
-        assert_eq!(ir.deadline_policy.as_deref(), Some("skip"));
-        assert_eq!(ir.core, Some(2), "core hoisted from selected platform");
-        let posix = ir.posix.as_ref().unwrap();
-        assert_eq!(posix.priority, 80);
-        assert_eq!(posix.stack_bytes, Some(65536));
-        assert_eq!(posix.sched_class.as_deref(), Some("SCHED_FIFO"));
-        let tx = ir.threadx.as_ref().unwrap();
-        assert_eq!(tx.priority, 4);
-        assert_eq!(tx.preempt_threshold, Some(4));
-        assert_eq!(ir.freertos.as_ref().unwrap().stack_bytes, Some(32768));
-        assert!(ir.zephyr.is_none() && ir.nuttx.is_none());
-
-        // Selected target = threadx: its core hoists; head deadline stands.
-        let ir_tx = tier_from_model(&model_tier, "threadx");
-        assert_eq!(ir_tx.core, Some(1));
-        assert_eq!(ir_tx.deadline_us, Some(2000));
-    }
 
     #[test]
     fn binding_to_unknown_tier_or_node_fails_loud() {

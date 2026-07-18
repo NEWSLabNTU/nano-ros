@@ -7,4 +7,10 @@
 //! the single-tier `run`. (On native, priorities are advisory; the tiers are real
 //! priority tasks on an RTOS deploy.)
 
-nros::main!(launch = "demo_bringup");
+// RFC-0052 / phase-296 R2 — the CANONICAL bake path: the entry resolves the
+// 2-tier system from the committed `demo_bringup/config/system_model.yaml`
+// (a play_launch-resolved artifact) instead of re-parsing launch XML +
+// system.toml. The `deploy = "native"` metadata (Cargo.toml) picks the board
+// and the POSIX tier sub-table; the same model drives the nuttx/zephyr/riscv
+// entries against their own RTOS sub-tables.
+nros::main!(model = "demo_bringup");

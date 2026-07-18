@@ -470,9 +470,119 @@ pub fn validate_tier_platform_applicability(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// RFC-0052 — SystemModel → orchestration-ir tier conversion.
+//
+// The resolved model's tier schema (`ros_launch_manifest_sched::TierDef`)
+// differs from this crate's `TierDef` in two deliberate seams; conversion is
+// the contract. Both the CLI's `codegen-system --model` and the
+// `nros::main!(model = …)` proc-macro call this, so the mapping has ONE home.
+// ---------------------------------------------------------------------------
+
+fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> TierRtosSpec {
+    TierRtosSpec {
+        priority: spec.priority,
+        stack_bytes: spec.stack_bytes,
+        preempt_threshold: spec.preempt_threshold,
+        sched_class: spec.sched_class.clone(),
+    }
+}
+
+/// Convert one resolved-model tier into the orchestration-ir shape for a
+/// target RTOS.
+///
+/// Two seams (the schemas differ here on purpose):
+/// - `core` lives per-platform in the model but at the tier head in the ir —
+///   hoisted from the SELECTED target's sub-table.
+/// - a per-platform `deadline_us` override (model) tightens the generic head
+///   deadline.
+pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str) -> TierDef {
+    let selected = t.platform(target_rtos);
+    TierDef {
+        spin_period_us: t.spin_period_us,
+        class: t.class.clone(),
+        period_us: t.period_us,
+        budget_us: t.budget_us,
+        deadline_us: selected.and_then(|s| s.deadline_us).or(t.deadline_us),
+        deadline_policy: t.deadline_policy.clone(),
+        core: selected.and_then(|s| s.core),
+        freertos: t.freertos.as_ref().map(rtos_spec_from_model),
+        zephyr: t.zephyr.as_ref().map(rtos_spec_from_model),
+        threadx: t.threadx.as_ref().map(rtos_spec_from_model),
+        nuttx: t.nuttx.as_ref().map(rtos_spec_from_model),
+        posix: t.posix.as_ref().map(rtos_spec_from_model),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mirror-drift guard: every field of the shared-schema tier must survive
+    /// `tier_from_model`. If either schema grows a field, this test is the
+    /// tripwire — extend the conversion AND this fixture together.
+    #[test]
+    fn tier_from_model_covers_every_field() {
+        use ros_launch_manifest_sched::{TierDef as ModelTierDef, TierPlatformSpec};
+        let model_tier = ModelTierDef {
+            class: Some("real_time".to_string()),
+            deadline_us: Some(2000),
+            period_us: Some(1000),
+            budget_us: Some(500),
+            deadline_policy: Some("skip".to_string()),
+            spin_period_us: Some(250),
+            posix: Some(TierPlatformSpec {
+                priority: 80,
+                stack_bytes: Some(65536),
+                core: Some(2),
+                sched_class: Some("SCHED_FIFO".to_string()),
+                preempt_threshold: None,
+                deadline_us: Some(1500), // per-platform tighten
+            }),
+            freertos: Some(TierPlatformSpec {
+                priority: 5,
+                stack_bytes: Some(32768),
+                core: None,
+                sched_class: None,
+                preempt_threshold: None,
+                deadline_us: None,
+            }),
+            zephyr: None,
+            threadx: Some(TierPlatformSpec {
+                priority: 4,
+                stack_bytes: None,
+                core: Some(1),
+                sched_class: None,
+                preempt_threshold: Some(4),
+                deadline_us: None,
+            }),
+            nuttx: None,
+        };
+
+        // Selected target = posix: head core + deadline hoist from posix.
+        let ir = tier_from_model(&model_tier, "posix");
+        assert_eq!(ir.spin_period_us, Some(250));
+        assert_eq!(ir.class.as_deref(), Some("real_time"));
+        assert_eq!(ir.period_us, Some(1000));
+        assert_eq!(ir.budget_us, Some(500));
+        assert_eq!(ir.deadline_us, Some(1500), "per-platform override wins");
+        assert_eq!(ir.deadline_policy.as_deref(), Some("skip"));
+        assert_eq!(ir.core, Some(2), "core hoisted from selected platform");
+        let posix = ir.posix.as_ref().unwrap();
+        assert_eq!(posix.priority, 80);
+        assert_eq!(posix.stack_bytes, Some(65536));
+        assert_eq!(posix.sched_class.as_deref(), Some("SCHED_FIFO"));
+        let tx = ir.threadx.as_ref().unwrap();
+        assert_eq!(tx.priority, 4);
+        assert_eq!(tx.preempt_threshold, Some(4));
+        assert_eq!(ir.freertos.as_ref().unwrap().stack_bytes, Some(32768));
+        assert!(ir.zephyr.is_none() && ir.nuttx.is_none());
+
+        // Selected target = threadx: its core hoists; head deadline stands.
+        let ir_tx = tier_from_model(&model_tier, "threadx");
+        assert_eq!(ir_tx.core, Some(1));
+        assert_eq!(ir_tx.deadline_us, Some(2000));
+    }
 
     fn names<'a>(items: &'a [&'a str]) -> BTreeSet<&'a str> {
         items.iter().copied().collect()

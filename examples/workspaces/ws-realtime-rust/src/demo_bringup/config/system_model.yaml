@@ -1,0 +1,43 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R2 — resolved SystemModel for the ws-realtime-rust
+# demo. Hand-authored to mirror the equivalent `system.toml` (2 nodes,
+# 2 tiers, group→tier bindings) because play_launch resolves tiers from a
+# `--sched` platform file, not `[tiers.*]` in system.toml; the shape here is
+# what `play_launch resolve --sched <platform.yaml>` would emit. NO deploy
+# layer: this is a homogeneous multi-board demo (the SAME two nodes build for
+# native / nuttx / zephyr / riscv), so every entry keeps all nodes and
+# resolves the tier table for its own board's RTOS.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+      zephyr:
+        priority: 5
+      nuttx:
+        priority: 110
+    low:
+      spin_period_us: 10000
+      posix:
+        priority: 10
+      zephyr:
+        priority: 10
+      nuttx:
+        priority: 100
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low

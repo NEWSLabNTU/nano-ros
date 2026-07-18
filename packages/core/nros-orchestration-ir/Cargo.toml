@@ -10,6 +10,13 @@ description = "Shared per-tier orchestration schema + resolver (RFC-0015), consu
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 thiserror = { workspace = true }
+# RFC-0052 — the shared SystemModel tier schema. Both consumers of this crate
+# (the CLI's codegen-system and the nros::main! proc-macro) resolve tiers from
+# a resolved model, so the model→ir tier conversion lives here (one SSoT, no
+# drift). Path crosses into the cli sub-workspace's vendored submodule — fine,
+# a path dep groups by lockfile, not visibility (same rationale as nros-macros
+# depping nros-pkg-index / nros-launch-parser).
+ros-launch-manifest-sched = { path = "../../cli/third-party/ros-launch-manifest/sched" }
 
 [lints]
 workspace = true

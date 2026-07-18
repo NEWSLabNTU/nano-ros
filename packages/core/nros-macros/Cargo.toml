@@ -40,6 +40,11 @@ nros-launch-parser = { path = "../../cli/nros-launch-parser" }
 # codegen-system uses, so the macro's compile-time tier resolution can't drift
 # from the bake path (RFC-0032 §6). Proc-macro deps are host-only.
 nros-orchestration-ir = { workspace = true }
+# RFC-0052 / phase-296 R2 — `model = "..."` arm: parse a play_launch-resolved
+# SystemModel at compile time (the canonical bake input). Same vendored crate
+# the CLI uses; path crosses into the cli sub-workspace (host-only proc-macro
+# dep, same rationale as nros-pkg-index / nros-launch-parser above).
+ros-launch-manifest-model = { path = "../../cli/third-party/ros-launch-manifest/model" }
 
 [lints]
 workspace = true

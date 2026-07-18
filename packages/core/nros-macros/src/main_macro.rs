@@ -64,6 +64,13 @@ struct MainArgs {
     /// triggers the single-node self-bringup path (emit
     /// `<this_pkg>::register(runtime)?;`).
     launch: Option<LitStr>,
+    /// RFC-0052 / phase-296 R2 — `model = "<bringup_pkg>"` or
+    /// `model = "<bringup_pkg>:<file.yaml>"` (default file
+    /// `config/system_model.yaml`). The CANONICAL path: bake from a
+    /// play_launch-resolved SystemModel committed in the bringup pkg
+    /// instead of re-parsing launch XML + system.toml. Mutually exclusive
+    /// with `launch`.
+    model: Option<LitStr>,
     /// `args = [("k", "v"), ...]`. Forwarded to the launch parser as
     /// argument overrides.
     args: Vec<(String, String)>,
@@ -129,6 +136,20 @@ impl Parse for MainArgs {
                     };
                     out.launch = Some(s);
                 }
+                "model" => {
+                    let s = match value {
+                        KvValue::Str(s) => s,
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`model = ` takes a string literal \
+                                 (e.g. `\"demo_bringup\"` or \
+                                 `\"demo_bringup:config/system_model.yaml\"`)",
+                            ));
+                        }
+                    };
+                    out.model = Some(s);
+                }
                 "host" => {
                     let s = match value {
                         KvValue::Str(s) => s,
@@ -175,11 +196,18 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, host, args, custom_tasks)"
+                             (expected one of: board, launch, model, host, args, custom_tasks)"
                         ),
                     ));
                 }
             }
+        }
+        if out.launch.is_some() && out.model.is_some() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "nros::main!: `launch` and `model` are mutually exclusive — `model` is the \
+                 canonical resolved-artifact path, `launch` the transitional one",
+            ));
         }
         Ok(out)
     }
@@ -404,301 +432,550 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut node_identity_bakes: Vec<(String, String)> = Vec::new();
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
-    let pkg_idents: Vec<Ident> = match &args.launch {
-        None => {
-            // Form 1 / Form 2 — single-node self-bringup. Use this
-            // pkg's own name as the register target. The codegen-
-            // emitted ident is snake_case; we read CARGO_PKG_NAME and
-            // sanitise via the same `-` → `_` rule the existing
-            // `nros::node!()` macro uses (see `lib.rs::sanitize_pkg_name_for_symbol`).
-            //
-            // The bin target depends on the lib target of the same
-            // pkg via Cargo's automatic `extern crate <my_pkg>;`,
-            // so `<my_pkg>::register(runtime)?;` resolves at build
-            // time.
-            let pkg_name = std::env::var("CARGO_PKG_NAME").map_err(|_| {
-                syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
-            })?;
-            let crate_ident = pkg_to_crate_ident(&pkg_name);
-            // Form 1 self-bringup is opt-in: the user's lib crate
-            // must expose a `pub fn register(runtime)`. If this
-            // Entry pkg is binary-only (no companion lib), the
-            // emitted `<this_pkg>::register(...)` will fail to
-            // compile with a clear error; we don't try to detect
-            // that here.
-            vec![Ident::new(&crate_ident, Span::call_site())]
+    let pkg_idents: Vec<Ident> = if let Some(model_lit) = &args.model {
+        // RFC-0052 / phase-296 R2 — the CANONICAL arm: bake from a
+        // play_launch-resolved SystemModel committed in the bringup pkg. The
+        // model's execution layer already carries the resolved tiers +
+        // bindings + params, so this arm never touches launch XML or
+        // system.toml (the tier resolution reuses the SAME
+        // nros-orchestration-ir path the CLI's codegen-system --model does).
+        let workspace_root = nros_pkg_index::detect_workspace_root(&manifest_dir).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: detect_workspace_root: {e}"),
+            )
+        })?;
+        let pkg_index = nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: build_pkg_index: {e}"),
+            )
+        })?;
+        for (_, pkg_dir) in pkg_index.pkgs() {
+            tracked.push(pkg_dir.join("package.xml"));
         }
-        Some(launch_lit) => {
-            let launch_value = launch_lit.value();
-            // Walk the workspace from the Entry pkg's manifest dir.
-            let workspace_root =
-                nros_pkg_index::detect_workspace_root(&manifest_dir).map_err(|e| {
-                    syn::Error::new(
-                        launch_lit.span(),
-                        format!("nros::main!: detect_workspace_root: {e}"),
-                    )
-                })?;
-            let pkg_index = nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+
+        // `"bringup[:relative/model.yaml]"` (default `config/system_model.yaml`).
+        let model_value = model_lit.value();
+        let (bringup_name, file_override) = match model_value.split_once(':') {
+            Some((b, f)) => (b.trim().to_string(), Some(f.trim().to_string())),
+            None => (model_value.trim().to_string(), None),
+        };
+        if bringup_name.is_empty() {
+            return Err(syn::Error::new(
+                model_lit.span(),
+                "nros::main!: empty bringup pkg name in `model = \"...\"`",
+            ));
+        }
+        let bringup_dir = pkg_index
+            .resolve_pkg(&bringup_name)
+            .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+        let model_rel = file_override.unwrap_or_else(|| "config/system_model.yaml".to_string());
+        let model_path = bringup_dir.join(&model_rel);
+        tracked.push(model_path.clone());
+        if !model_path.exists() {
+            return Err(syn::Error::new(
+                model_lit.span(),
+                format!(
+                    "nros::main!: SystemModel not found: `{}` — resolve it with \
+                     `play_launch resolve <launch> --system <system.toml> -o {}`",
+                    model_path.display(),
+                    model_rel
+                ),
+            ));
+        }
+        let yaml = std::fs::read_to_string(&model_path).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: read `{}`: {e}", model_path.display()),
+            )
+        })?;
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!(
+                    "nros::main!: parse SystemModel `{}`: {e}",
+                    model_path.display()
+                ),
+            )
+        })?;
+
+        let rtos = derive_target_rtos(deploy_for_framework.as_deref());
+        let board_key = deploy_for_framework.as_deref().unwrap_or("native");
+
+        // Slice: keep the nodes this Entry's board deploys. No deploy layer =
+        // every node (single-image default). Board match mirrors the CLI's
+        // `plan_from_model`: Linux target ⇒ native/posix; Mcu target ⇒ exact
+        // board key OR the deploy's `kind` family (extra.kind, e.g. "zephyr").
+        use ros_launch_manifest_model::{ExtraValue, Target};
+        let keep = |fqn: &str| -> bool {
+            let Some(dep) = model.execution.deploy.get(fqn) else {
+                return model.execution.deploy.is_empty();
+            };
+            match (&dep.target, board_key) {
+                (Target::Linux, "native" | "posix") => true,
+                (Target::Mcu { board: b }, key) => {
+                    b == key
+                        || matches!(
+                            dep.extra.get("kind"),
+                            Some(ExtraValue::Str(k)) if k == key
+                        )
+                }
+                _ => false,
+            }
+        };
+
+        // Walk nodes in FQN order (BTreeMap = deterministic, matches the CLI).
+        let mut idents = Vec::new();
+        for (fqn, inst) in &model.structure.nodes {
+            if !keep(fqn) {
+                continue;
+            }
+            let pkg = inst.pkg.clone().ok_or_else(|| {
                 syn::Error::new(
-                    launch_lit.span(),
-                    format!("nros::main!: build_pkg_index: {e}"),
+                    model_lit.span(),
+                    format!("nros::main!: model node `{fqn}` has no `pkg`"),
                 )
             })?;
-            // Track every package.xml the index walked.
-            for (_, pkg_dir) in pkg_index.pkgs() {
-                tracked.push(pkg_dir.join("package.xml"));
-            }
-
-            // Split `"bringup_pkg[:file.launch.xml]"`.
-            let (bringup_name, file_override) = match launch_value.split_once(':') {
-                Some((b, f)) => (b.trim().to_string(), Some(f.trim().to_string())),
-                None => (launch_value.trim().to_string(), None),
-            };
-            if bringup_name.is_empty() {
+            let node_pkg_dir = pkg_index.resolve_pkg(&pkg).map_err(|e| {
+                syn::Error::new(
+                    model_lit.span(),
+                    format!("nros::main!: node pkg `{pkg}`: {e}"),
+                )
+            })?;
+            tracked.push(node_pkg_dir.join("package.xml"));
+            let cargo_toml = node_pkg_dir.join("Cargo.toml");
+            if !cargo_toml.exists() {
                 return Err(syn::Error::new(
-                    launch_lit.span(),
-                    "nros::main!: empty bringup pkg name in `launch = \"...\"`",
-                ));
-            }
-            let bringup_dir = pkg_index
-                .resolve_pkg(&bringup_name)
-                .map_err(|e| syn::Error::new(launch_lit.span(), format!("nros::main!: {e}")))?;
-
-            // Phase 264 W2 — read `[lifecycle]` so the macro can emit the REP-2002
-            // service registration + autostart (mirrors the bake). Unconditional
-            // (independent of the launch-file override below). Phase 264 W4b — also
-            // read `[param_services]` so the macro can emit the parameter-service
-            // registration + store seeding.
-            {
-                let st = bringup_dir.join("system.toml");
-                if st.exists() {
-                    tracked.push(st.clone());
-                    lifecycle_code = read_lifecycle_autostart(&st);
-                    param_services_enabled = read_param_services_enabled(&st);
-                    if read_has_bridge(&st) {
-                        let cfg = bringup_dir.join("nros-bridge.toml");
-                        if cfg.exists() {
-                            tracked.push(cfg.clone());
-                            bridge_config_path = Some(cfg);
-                            // Issue 0106 — collect the bridge's RMW backends so
-                            // the entry force-registers them (anti dead-strip).
-                            bridge_rmws = read_bridge_rmws(&st);
-                        }
-                    }
-                }
-            }
-
-            // Resolve the launch file. If no override, consult
-            // `system.toml::[system] default_launch` (default
-            // `system.launch.xml`).
-            let launch_filename = match file_override {
-                Some(s) => s,
-                None => {
-                    let system_toml = bringup_dir.join("system.toml");
-                    if system_toml.exists() {
-                        tracked.push(system_toml.clone());
-                        read_default_launch(&system_toml)
-                            .map_err(|e| {
-                                syn::Error::new(
-                                    launch_lit.span(),
-                                    format!("nros::main!: parse `{}`: {e}", system_toml.display()),
-                                )
-                            })?
-                            .unwrap_or_else(|| "system.launch.xml".to_string())
-                    } else {
-                        "system.launch.xml".to_string()
-                    }
-                }
-            };
-            let launch_path = bringup_dir.join("launch").join(&launch_filename);
-            tracked.push(launch_path.clone());
-            if !launch_path.exists() {
-                return Err(syn::Error::new(
-                    launch_lit.span(),
+                    model_lit.span(),
                     format!(
-                        "nros::main!: launch file not found: `{}`",
-                        launch_path.display()
+                        "nros::main!: node pkg `{pkg}` has no Cargo.toml at `{}`. \
+                         C++ Node pkgs are not supported in Rust Entry pkgs.",
+                        node_pkg_dir.display()
                     ),
                 ));
             }
+            idents.push(Ident::new(&pkg_to_crate_ident(&pkg), Span::call_site()));
 
-            // Parse the launch file via N.11.
-            let arg_overrides: Vec<(String, String)> = args.args.clone();
-            let desc =
-                nros_launch_parser::parse_launch_file(&launch_path, &pkg_index, &arg_overrides)
-                    .map_err(|e| {
-                        syn::Error::new(
-                            launch_lit.span(),
-                            format!(
-                                "nros::main!: parse launch file `{}`: {e}",
-                                launch_path.display()
-                            ),
-                        )
-                    })?;
+            // Params (resolved values ride the model — the embedded target has
+            // no record.json to read them from).
+            node_param_bakes.push(
+                inst.params
+                    .iter()
+                    .map(|(k, v)| {
+                        use ros_launch_manifest_model::ParamValue;
+                        let s = match v {
+                            ParamValue::Bool(b) => b.to_string(),
+                            ParamValue::Int(i) => i.to_string(),
+                            ParamValue::Float(f) => f.to_string(),
+                            ParamValue::Str(s) => s.clone(),
+                            ParamValue::StrList(l) => l.join(","),
+                        };
+                        (k.clone(), s)
+                    })
+                    .collect(),
+            );
 
-            // Walk every `<node>` (top-level + inside groups) and
-            // resolve to its Rust crate ident.
-            let mut node_specs = Vec::new();
-            for n in &desc.nodes {
-                node_specs.push(n.clone());
-            }
-            for g in &desc.groups {
-                for n in &g.nodes {
-                    node_specs.push(n.clone());
+            // Identity: bare name + namespace from the FQN.
+            let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
+            let namespace = {
+                let ns = &fqn[..fqn.len() - bare.len()];
+                let ns = ns.trim_end_matches('/');
+                if ns.is_empty() {
+                    "/".to_string()
+                } else {
+                    ns.to_string()
+                }
+            };
+            node_identity_bakes.push((bare.clone(), namespace));
+
+            // Callback groups → tier, straight from the model's resolved
+            // bindings (`<fqn>/<group>` → tier). A whole-node binding
+            // (`<fqn>` → tier) assigns the node's default group.
+            let prefix = format!("{fqn}/");
+            let mut decls: Vec<CallbackGroupDecl> = Vec::new();
+            for (key, tier) in &model.execution.bindings {
+                if let Some(group) = key.strip_prefix(&prefix) {
+                    decls.push(CallbackGroupDecl {
+                        id: group.to_string(),
+                        r#type: "MutuallyExclusive".to_string(),
+                        tier: tier.clone(),
+                    });
+                } else if key == fqn {
+                    decls.push(CallbackGroupDecl {
+                        id: nros_orchestration_ir::DEFAULT_TIER.to_string(),
+                        r#type: "MutuallyExclusive".to_string(),
+                        tier: tier.clone(),
+                    });
                 }
             }
+            if !decls.is_empty() {
+                node_groups.insert(bare.clone(), decls);
+            }
+            node_instances.push(bare);
+        }
+        if idents.is_empty() {
+            return Err(syn::Error::new(
+                model_lit.span(),
+                format!(
+                    "nros::main!(model = …): SystemModel `{}` places no nodes on board \
+                     `{board_key}` — check execution.deploy targets",
+                    model_path.display()
+                ),
+            ));
+        }
 
-            // Phase 211.F — multi-host partition: when `host = "<id>"` is set,
-            // keep only this host's nodes (`<node machine="<id>">`) + all
-            // unhosted (shared) nodes. Mirrors `nros codegen entry --host` /
-            // `Plan::for_host`, giving the macro path parity so a per-host Entry
-            // pkg (`nros::main!(launch = …, host = "<id>")`) bakes a runnable
-            // single-host slice of a multi-host launch.
-            if let Some(host) = args.host.as_deref() {
-                node_specs.retain(|n| match &n.machine {
-                    Some(m) => m == host,
-                    None => true,
-                });
-                if node_specs.is_empty() {
+        // Tiers: convert the model's execution tiers for this RTOS and resolve
+        // the table via the SHARED nros-orchestration-ir path.
+        if !model.execution.tiers.is_empty() {
+            let tiers: BTreeMap<String, nros_orchestration_ir::TierDef> = model
+                .execution
+                .tiers
+                .iter()
+                .map(|(name, t)| {
+                    (
+                        name.clone(),
+                        nros_orchestration_ir::tier_from_model(t, &rtos),
+                    )
+                })
+                .collect();
+            let component_names: BTreeSet<&str> =
+                node_instances.iter().map(String::as_str).collect();
+            let table =
+                resolve_tiers(&tiers, &[], &component_names, &node_groups, &rtos).map_err(|e| {
+                    syn::Error::new(
+                        model_lit.span(),
+                        format!("nros::main!: tier resolution: {e}"),
+                    )
+                })?;
+            nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            resolved_tiers = Some(table);
+        }
+
+        // Lifecycle autostart + param-services capability from the model.
+        // `lifecycle_code` is the u8 boot-transition level (0 none / 1
+        // configure / 2 active), same encoding as `read_lifecycle_autostart`.
+        lifecycle_code = model
+            .structure
+            .nodes
+            .values()
+            .find_map(|n| n.lifecycle_autostart)
+            .map(|a| {
+                use ros_launch_manifest_model::Autostart;
+                match a {
+                    Autostart::None => 0u8,
+                    Autostart::Configure => 1,
+                    Autostart::Active => 2,
+                }
+            });
+        param_services_enabled = model
+            .execution
+            .features
+            .iter()
+            .any(|f| f == "param_services");
+
+        idents
+    } else {
+        match &args.launch {
+            None => {
+                // Form 1 / Form 2 — single-node self-bringup. Use this
+                // pkg's own name as the register target. The codegen-
+                // emitted ident is snake_case; we read CARGO_PKG_NAME and
+                // sanitise via the same `-` → `_` rule the existing
+                // `nros::node!()` macro uses (see `lib.rs::sanitize_pkg_name_for_symbol`).
+                //
+                // The bin target depends on the lib target of the same
+                // pkg via Cargo's automatic `extern crate <my_pkg>;`,
+                // so `<my_pkg>::register(runtime)?;` resolves at build
+                // time.
+                let pkg_name = std::env::var("CARGO_PKG_NAME").map_err(|_| {
+                    syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
+                })?;
+                let crate_ident = pkg_to_crate_ident(&pkg_name);
+                // Form 1 self-bringup is opt-in: the user's lib crate
+                // must expose a `pub fn register(runtime)`. If this
+                // Entry pkg is binary-only (no companion lib), the
+                // emitted `<this_pkg>::register(...)` will fail to
+                // compile with a clear error; we don't try to detect
+                // that here.
+                vec![Ident::new(&crate_ident, Span::call_site())]
+            }
+            Some(launch_lit) => {
+                let launch_value = launch_lit.value();
+                // Walk the workspace from the Entry pkg's manifest dir.
+                let workspace_root =
+                    nros_pkg_index::detect_workspace_root(&manifest_dir).map_err(|e| {
+                        syn::Error::new(
+                            launch_lit.span(),
+                            format!("nros::main!: detect_workspace_root: {e}"),
+                        )
+                    })?;
+                let pkg_index = nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+                    syn::Error::new(
+                        launch_lit.span(),
+                        format!("nros::main!: build_pkg_index: {e}"),
+                    )
+                })?;
+                // Track every package.xml the index walked.
+                for (_, pkg_dir) in pkg_index.pkgs() {
+                    tracked.push(pkg_dir.join("package.xml"));
+                }
+
+                // Split `"bringup_pkg[:file.launch.xml]"`.
+                let (bringup_name, file_override) = match launch_value.split_once(':') {
+                    Some((b, f)) => (b.trim().to_string(), Some(f.trim().to_string())),
+                    None => (launch_value.trim().to_string(), None),
+                };
+                if bringup_name.is_empty() {
+                    return Err(syn::Error::new(
+                        launch_lit.span(),
+                        "nros::main!: empty bringup pkg name in `launch = \"...\"`",
+                    ));
+                }
+                let bringup_dir = pkg_index
+                    .resolve_pkg(&bringup_name)
+                    .map_err(|e| syn::Error::new(launch_lit.span(), format!("nros::main!: {e}")))?;
+
+                // Phase 264 W2 — read `[lifecycle]` so the macro can emit the REP-2002
+                // service registration + autostart (mirrors the bake). Unconditional
+                // (independent of the launch-file override below). Phase 264 W4b — also
+                // read `[param_services]` so the macro can emit the parameter-service
+                // registration + store seeding.
+                {
+                    let st = bringup_dir.join("system.toml");
+                    if st.exists() {
+                        tracked.push(st.clone());
+                        lifecycle_code = read_lifecycle_autostart(&st);
+                        param_services_enabled = read_param_services_enabled(&st);
+                        if read_has_bridge(&st) {
+                            let cfg = bringup_dir.join("nros-bridge.toml");
+                            if cfg.exists() {
+                                tracked.push(cfg.clone());
+                                bridge_config_path = Some(cfg);
+                                // Issue 0106 — collect the bridge's RMW backends so
+                                // the entry force-registers them (anti dead-strip).
+                                bridge_rmws = read_bridge_rmws(&st);
+                            }
+                        }
+                    }
+                }
+
+                // Resolve the launch file. If no override, consult
+                // `system.toml::[system] default_launch` (default
+                // `system.launch.xml`).
+                let launch_filename = match file_override {
+                    Some(s) => s,
+                    None => {
+                        let system_toml = bringup_dir.join("system.toml");
+                        if system_toml.exists() {
+                            tracked.push(system_toml.clone());
+                            read_default_launch(&system_toml)
+                                .map_err(|e| {
+                                    syn::Error::new(
+                                        launch_lit.span(),
+                                        format!(
+                                            "nros::main!: parse `{}`: {e}",
+                                            system_toml.display()
+                                        ),
+                                    )
+                                })?
+                                .unwrap_or_else(|| "system.launch.xml".to_string())
+                        } else {
+                            "system.launch.xml".to_string()
+                        }
+                    }
+                };
+                let launch_path = bringup_dir.join("launch").join(&launch_filename);
+                tracked.push(launch_path.clone());
+                if !launch_path.exists() {
                     return Err(syn::Error::new(
                         launch_lit.span(),
                         format!(
-                            "nros::main!(host = {host:?}): no nodes for this host in `{}` \
-                             (no `<node machine={host:?}>` and no unhosted/shared node)",
+                            "nros::main!: launch file not found: `{}`",
                             launch_path.display()
                         ),
                     ));
                 }
-            }
 
-            let mut idents = Vec::new();
-            for node in node_specs {
-                // Look up the node pkg in the index, then derive the
-                // Rust crate ident from its `package.xml::<name>`.
-                let node_pkg_dir = pkg_index.resolve_pkg(&node.pkg).map_err(|e| {
-                    syn::Error::new(
-                        launch_lit.span(),
-                        format!("nros::main!: node pkg `{}`: {e}", node.pkg),
-                    )
-                })?;
-                tracked.push(node_pkg_dir.join("package.xml"));
-                // Is this a Rust pkg? Check for `Cargo.toml`. If
-                // missing, surface a clear error — C++ Node pkgs are
-                // out of scope for v1.
-                let cargo_toml = node_pkg_dir.join("Cargo.toml");
-                if !cargo_toml.exists() {
-                    return Err(syn::Error::new(
-                        launch_lit.span(),
-                        format!(
-                            "nros::main!: node pkg `{}` has no Cargo.toml at `{}`. \
-                             C++ Node pkgs are not yet supported in Rust Entry pkgs.",
-                            node.pkg,
-                            node_pkg_dir.display()
-                        ),
-                    ));
-                }
-                let crate_ident = pkg_to_crate_ident(&node.pkg);
-                idents.push(Ident::new(&crate_ident, Span::call_site()));
-
-                // Phase 264 W4a — bake this node's launch `<param>` initials (RFC-0004 §10).
-                // Parallel to `idents`: index i's params seed pkg `idents[i]`'s NodeContext.
-                node_param_bakes.push(
-                    node.params
-                        .iter()
-                        .map(|p| (p.name.clone(), p.value.clone()))
-                        .collect(),
-                );
-
-                // Phase 228.G — collect the node instance + its declared
-                // callback groups for tier resolution. The instance name keys
-                // the group map (RFC-0032 §7); when the launch `<node>` has no
-                // explicit name, fall back to the executable name.
-                let instance = node
-                    .name
-                    .clone()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| node.exec.clone());
-
-                // Phase 268 W1 — bake the launch `<node name= namespace=>` identity
-                // (RFC-0046). The instance name is already resolved above (same logic as
-                // the W4a param rail). Namespace: `node.namespace` when present and
-                // non-empty; default `"/"` (ROS convention). `NodeSpec::namespace` is
-                // `Option<String>` in the launch parser.
-                {
-                    let baked_name = instance.clone();
-                    let baked_ns = node
-                        .namespace
-                        .as_deref()
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or("/")
-                        .to_string();
-                    node_identity_bakes.push((baked_name, baked_ns));
-                }
-                let groups = read_node_callback_groups(&cargo_toml);
-                if !groups.is_empty() {
-                    node_groups.insert(instance.clone(), groups);
-                }
-                node_instances.push(instance);
-            }
-
-            // Phase 228.G — resolve the tier table from `system.toml` when it
-            // declares `[tiers.*]`. No tiers → leave `resolved_tiers = None`
-            // (the single-tier `BoardEntry::run` emit, byte-identical).
-            let system_toml = bringup_dir.join("system.toml");
-            if system_toml.exists() {
-                let cfg = read_system_tier_config(&system_toml).map_err(|e| {
-                    syn::Error::new(
-                        launch_lit.span(),
-                        format!(
-                            "nros::main!: parse tiers in `{}`: {e}",
-                            system_toml.display()
-                        ),
-                    )
-                })?;
-                if cfg.has_tiers {
-                    tracked.push(system_toml.clone());
-                    // Instance-identity (RFC-0032 §7): every launch node that
-                    // carries callback groups must name a `[[component]]`.
-                    let component_names: BTreeSet<&str> =
-                        cfg.component_names.iter().map(String::as_str).collect();
-                    for inst in node_groups.keys() {
-                        if !component_names.contains(inst.as_str()) {
-                            return Err(syn::Error::new(
+                // Parse the launch file via N.11.
+                let arg_overrides: Vec<(String, String)> = args.args.clone();
+                let desc =
+                    nros_launch_parser::parse_launch_file(&launch_path, &pkg_index, &arg_overrides)
+                        .map_err(|e| {
+                            syn::Error::new(
                                 launch_lit.span(),
                                 format!(
-                                    "nros::main!: launch node `{inst}` declares callback groups \
-                                     but is not a `[[component]]` in `{}` (the launch \
-                                     `<node name>` must match a `system.toml` component name).",
-                                    system_toml.display()
+                                    "nros::main!: parse launch file `{}`: {e}",
+                                    launch_path.display()
                                 ),
-                            ));
-                        }
+                            )
+                        })?;
+
+                // Walk every `<node>` (top-level + inside groups) and
+                // resolve to its Rust crate ident.
+                let mut node_specs = Vec::new();
+                for n in &desc.nodes {
+                    node_specs.push(n.clone());
+                }
+                for g in &desc.groups {
+                    for n in &g.nodes {
+                        node_specs.push(n.clone());
                     }
-                    let rtos = derive_target_rtos(deploy_for_framework.as_deref());
-                    let table = resolve_tiers(
-                        &cfg.tiers,
-                        &cfg.node_overrides,
-                        &component_names,
-                        &node_groups,
-                        &rtos,
-                    )
-                    .map_err(|e| {
+                }
+
+                // Phase 211.F — multi-host partition: when `host = "<id>"` is set,
+                // keep only this host's nodes (`<node machine="<id>">`) + all
+                // unhosted (shared) nodes. Mirrors `nros codegen entry --host` /
+                // `Plan::for_host`, giving the macro path parity so a per-host Entry
+                // pkg (`nros::main!(launch = …, host = "<id>")`) bakes a runnable
+                // single-host slice of a multi-host launch.
+                if let Some(host) = args.host.as_deref() {
+                    node_specs.retain(|n| match &n.machine {
+                        Some(m) => m == host,
+                        None => true,
+                    });
+                    if node_specs.is_empty() {
+                        return Err(syn::Error::new(
+                            launch_lit.span(),
+                            format!(
+                                "nros::main!(host = {host:?}): no nodes for this host in `{}` \
+                             (no `<node machine={host:?}>` and no unhosted/shared node)",
+                                launch_path.display()
+                            ),
+                        ));
+                    }
+                }
+
+                let mut idents = Vec::new();
+                for node in node_specs {
+                    // Look up the node pkg in the index, then derive the
+                    // Rust crate ident from its `package.xml::<name>`.
+                    let node_pkg_dir = pkg_index.resolve_pkg(&node.pkg).map_err(|e| {
                         syn::Error::new(
                             launch_lit.span(),
-                            format!("nros::main!: tier resolution: {e}"),
+                            format!("nros::main!: node pkg `{}`: {e}", node.pkg),
                         )
                     })?;
-                    // RFC-0052 W2 — reject platform-inapplicable tier knobs at
-                    // compile time (same shared check the CLI bake runs).
-                    nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
-                        .map_err(|e| {
-                            syn::Error::new(launch_lit.span(), format!("nros::main!: {e}"))
-                        })?;
-                    resolved_tiers = Some(table);
-                }
-            }
+                    tracked.push(node_pkg_dir.join("package.xml"));
+                    // Is this a Rust pkg? Check for `Cargo.toml`. If
+                    // missing, surface a clear error — C++ Node pkgs are
+                    // out of scope for v1.
+                    let cargo_toml = node_pkg_dir.join("Cargo.toml");
+                    if !cargo_toml.exists() {
+                        return Err(syn::Error::new(
+                            launch_lit.span(),
+                            format!(
+                                "nros::main!: node pkg `{}` has no Cargo.toml at `{}`. \
+                             C++ Node pkgs are not yet supported in Rust Entry pkgs.",
+                                node.pkg,
+                                node_pkg_dir.display()
+                            ),
+                        ));
+                    }
+                    let crate_ident = pkg_to_crate_ident(&node.pkg);
+                    idents.push(Ident::new(&crate_ident, Span::call_site()));
 
-            idents
+                    // Phase 264 W4a — bake this node's launch `<param>` initials (RFC-0004 §10).
+                    // Parallel to `idents`: index i's params seed pkg `idents[i]`'s NodeContext.
+                    node_param_bakes.push(
+                        node.params
+                            .iter()
+                            .map(|p| (p.name.clone(), p.value.clone()))
+                            .collect(),
+                    );
+
+                    // Phase 228.G — collect the node instance + its declared
+                    // callback groups for tier resolution. The instance name keys
+                    // the group map (RFC-0032 §7); when the launch `<node>` has no
+                    // explicit name, fall back to the executable name.
+                    let instance = node
+                        .name
+                        .clone()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| node.exec.clone());
+
+                    // Phase 268 W1 — bake the launch `<node name= namespace=>` identity
+                    // (RFC-0046). The instance name is already resolved above (same logic as
+                    // the W4a param rail). Namespace: `node.namespace` when present and
+                    // non-empty; default `"/"` (ROS convention). `NodeSpec::namespace` is
+                    // `Option<String>` in the launch parser.
+                    {
+                        let baked_name = instance.clone();
+                        let baked_ns = node
+                            .namespace
+                            .as_deref()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("/")
+                            .to_string();
+                        node_identity_bakes.push((baked_name, baked_ns));
+                    }
+                    let groups = read_node_callback_groups(&cargo_toml);
+                    if !groups.is_empty() {
+                        node_groups.insert(instance.clone(), groups);
+                    }
+                    node_instances.push(instance);
+                }
+
+                // Phase 228.G — resolve the tier table from `system.toml` when it
+                // declares `[tiers.*]`. No tiers → leave `resolved_tiers = None`
+                // (the single-tier `BoardEntry::run` emit, byte-identical).
+                let system_toml = bringup_dir.join("system.toml");
+                if system_toml.exists() {
+                    let cfg = read_system_tier_config(&system_toml).map_err(|e| {
+                        syn::Error::new(
+                            launch_lit.span(),
+                            format!(
+                                "nros::main!: parse tiers in `{}`: {e}",
+                                system_toml.display()
+                            ),
+                        )
+                    })?;
+                    if cfg.has_tiers {
+                        tracked.push(system_toml.clone());
+                        // Instance-identity (RFC-0032 §7): every launch node that
+                        // carries callback groups must name a `[[component]]`.
+                        let component_names: BTreeSet<&str> =
+                            cfg.component_names.iter().map(String::as_str).collect();
+                        for inst in node_groups.keys() {
+                            if !component_names.contains(inst.as_str()) {
+                                return Err(syn::Error::new(
+                                    launch_lit.span(),
+                                    format!(
+                                        "nros::main!: launch node `{inst}` declares callback groups \
+                                     but is not a `[[component]]` in `{}` (the launch \
+                                     `<node name>` must match a `system.toml` component name).",
+                                        system_toml.display()
+                                    ),
+                                ));
+                            }
+                        }
+                        let rtos = derive_target_rtos(deploy_for_framework.as_deref());
+                        let table = resolve_tiers(
+                            &cfg.tiers,
+                            &cfg.node_overrides,
+                            &component_names,
+                            &node_groups,
+                            &rtos,
+                        )
+                        .map_err(|e| {
+                            syn::Error::new(
+                                launch_lit.span(),
+                                format!("nros::main!: tier resolution: {e}"),
+                            )
+                        })?;
+                        // RFC-0052 W2 — reject platform-inapplicable tier knobs at
+                        // compile time (same shared check the CLI bake runs).
+                        nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+                            .map_err(|e| {
+                                syn::Error::new(launch_lit.span(), format!("nros::main!: {e}"))
+                            })?;
+                        resolved_tiers = Some(table);
+                    }
+                }
+
+                idents
+            }
         }
     };
 
