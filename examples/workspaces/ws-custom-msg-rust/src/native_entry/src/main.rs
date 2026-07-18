@@ -5,4 +5,4 @@
 //! the generated `custom_msgs` crate they share. Run `nros ws sync` once first to
 //! codegen `generated/custom_msgs` from `src/custom_msgs/msg/Reading.msg`.
 
-nros::main!(launch = "demo_bringup");
+nros::main!(model = "demo_bringup");

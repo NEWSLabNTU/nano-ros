@@ -1,0 +1,16 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R4 — resolved model for the custom-msg demo (2 nodes).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /reading_talker:
+      scope: /
+      pkg: reading_talker_pkg
+      exec: reading_talker
+    /reading_listener:
+      scope: /
+      pkg: reading_listener_pkg
+      exec: reading_listener
+execution: {}
