@@ -1,31 +1,23 @@
-//! Phase 217.D.3 — FVP runtime smoke for the Rust cyclonedds talker on
-//! `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`.
+//! FVP runtime lane for the Rust cyclonedds talker on
+//! `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` (Phase 217.D.3; deepened for
+//! issue #232).
 //!
-//! Sibling of `phase217_c_fvp_runtime.rs` (cpp/cyclonedds smoke). Drives
-//! the Phase 217.D.2 recipe `just zephyr run-fvp-aemv8r-cyclonedds-rust`
-//! and asserts the FVP boots the Rust ELF (Zephyr boot banner reaches
-//! UART). The recipe owns env wiring (workspace `cd`, pinned
+//! Sibling of `fvp_runtime.rs` (cpp/cyclonedds). Drives the recipe
+//! `just zephyr run-fvp-aemv8r-cyclonedds-rust` and asserts the talker
+//! reaches its `Publishing:` line — i.e. cyclone actually created a
+//! participant + writer and delivered a sample on the FVP, not merely that
+//! the ELF booted. The recipe owns env wiring (workspace `cd`, pinned
 //! `make`/`ninja` on PATH, `ZEPHYR_SDK_INSTALL_DIR`, `west fvp run`
-//! resolver).
+//! resolver); the `build-fvp-aemv8r-cyclonedds-rust` recipe bakes
+//! `cache_state_modelled=0` so the busy DDS path runs fast-functional.
 //!
-//! Scope (intentional, 2026-06-04):
-//!   - Asserts the Zephyr 3.7 boot banner reaches UART 0. This proves
-//!     the Rust artifact links + executes on Cortex-A SMP under the
-//!     FVP — the gating signal for Phase 215 board-crate-import +
-//!     Phase 217.A run recipes against the Rust path.
-//!   - Does NOT yet assert the talker's `Published:` line. The example
-//!     is Component-pkg shape (`src/lib.rs` exports `nros::node!(Talker)`
-//!     → `register(runtime)`); the generated `rust_main` driver that
-//!     opens the executor + runs the spin loop is emitted by
-//!     `nros codegen-system` via the H.1 Zephyr adapter shim. Both
-//!     prereqs (Phase 212.L.7 self-bringup planner + Phase 212.M-F.3
-//!     Zephyr self-pkg shim case) are LANDED; the example's
-//!     `CMakeLists.txt` was wired to call
-//!     `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` on
-//!     2026-06-04. The remaining gap is a real FVP run on a host with
-//!     the Arm FVP installed + the `aarch64-zephyr-elf` toolchain — at
-//!     which point the assertion below bumps from boot-banner-only to
-//!     `Published:`, unblocking Phase 217.C.3 parity.
+//! Issue #232 — the pre-existing assertion was boot-banner-only, which
+//! passes even when cyclone dies at participant creation: walls
+//! #4/#5/#8/#9 (snippet conf, loopback getifaddrs, missing descriptor
+//! codegen, mutex-pool exhaustion) all shipped invisible behind it and were
+//! found only when the ASI consumer RAN on the model (phase-292 W2). Phase-
+//! 292 W2 also proved the SMP `system_main.c` shim boots + runs cyclone on
+//! the real FVP, unblocking this bump (and Phase 217.C.3 Rust↔C parity).
 //!
 //! Skip preconditions (`nros_tests::skip!`):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`
@@ -89,7 +81,7 @@ fn resolve_zephyr_workspace(root: &Path) -> Option<PathBuf> {
 }
 
 #[test]
-fn fvp_rust_cyclonedds_talker_boots() {
+fn fvp_rust_cyclonedds_talker_publishes() {
     let root = project_root();
 
     // 1. FVP installed?
@@ -134,32 +126,43 @@ fn fvp_rust_cyclonedds_talker_boots() {
     let mut proc = ManagedProcess::spawn_command(cmd, "fvp-cyclonedds-rust-talker")
         .expect("spawn just zephyr run-fvp-aemv8r-cyclonedds-rust");
 
-    // FVP cold-boots in ~30 s. 120 s budget to the boot banner is
-    // comfortable for cold start + host load. ManagedProcess::Drop kills
-    // the FVP group on timeout / panic / SIGKILL.
+    // FVP cold-boots in ~30 s; cyclone discovery + first publish is the
+    // busy path — but the FVP build bakes `cache_state_modelled=0`
+    // (issue #232, `build-fvp-*` recipes) so it runs fast-functional, not
+    // the ~1000x-slower cache-modelled default. 120 s budget to the first
+    // `Publishing:` line covers cold start + host load. ManagedProcess::Drop
+    // kills the FVP group on hit / timeout / panic / SIGKILL.
+    //
+    // Issue #232 — assert the DEEP signal (cyclone actually published a
+    // sample), not just the boot banner. The boot banner passes even when
+    // cyclone dies at participant creation (walls #4/#5/#8/#9 shipped
+    // invisible behind a boot-banner-only gate); `Publishing:` only appears
+    // after `dds_create_participant` + writer create + a live send. Parity
+    // with the C/cpp lane (`fvp_runtime.rs`); unblocked by phase-292 W2,
+    // which proved the SMP `system_main.c` shim boots + runs cyclone on the
+    // real FVP.
     let timeout = Duration::from_secs(120);
-    let output = match proc.wait_for_output_pattern("Booting Zephyr OS", timeout) {
+    let output = match proc.wait_for_output_pattern(nros_tests::output::TALKER_LOG_PREFIX, timeout)
+    {
         Ok(o) => o,
         Err(e) => panic!(
-            "FVP Rust talker did not print Zephyr boot banner within {:?}: {}",
+            "FVP Rust talker did not reach `Publishing:` within {:?}: {}\n\
+             (boot may have reached the banner but cyclone failed at \
+             participant/writer create — the exact class this lane guards)",
             timeout, e
         ),
     };
 
+    // Sanity: the boot banner must precede the publish (a `Publishing:` with
+    // no banner would mean stale/leaked output, not a real run).
     assert!(
         output.contains("Booting Zephyr OS"),
         "missing Zephyr boot banner in FVP UART output:\n{output}"
     );
-
-    // TODO: once a real FVP run on a host with the Arm FVP installed
-    // confirms the H.1 shim's `system_main.c` boots cleanly on
-    // Cortex-A SMP, raise this assertion to also require the
-    // `Published:` line (parity with `phase217_c_fvp_runtime.rs`). At
-    // that point Phase 217.C.3 (Rust↔C wire-parity check) is unblocked.
-    // The upstream prereqs (Phase 212.L.7 + 212.M-F.3) and the
-    // `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` wire-up in
-    // `examples/zephyr/rust/cyclonedds/talker-aemv8r/CMakeLists.txt`
-    // are LANDED (2026-06-04).
+    assert!(
+        output.contains(nros_tests::output::TALKER_LOG_PREFIX),
+        "missing talker `Publishing:` line — cyclone did not deliver on the FVP:\n{output}"
+    );
 
     drop(proc);
 }

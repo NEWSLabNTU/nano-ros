@@ -174,6 +174,14 @@ build-fvp-aemv8r-cyclonedds:
     cd "$workspace"
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    # Issue #232 — bake `cache_state_modelled=0` into this dir's run_armfvp
+    # target (Zephyr armfvp.cmake reads ARMFVP_EXTRA_FLAGS at configure and
+    # appends AFTER the board default `=1`; FVP takes the last `-C` value).
+    # The AEMv8-R model fast-forwards idle at `=1` but crawls ~1000x under
+    # busy code — the runtime lane's `Publishing:` (busy DDS discovery) would
+    # never arrive in budget without `=0`. Affects only the run target, not
+    # the build smoke.
+    export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
     echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     # phase-292 W2 — this example uses `find_package(Zephyr)` + `-b` directly
     # (the module-verb path, not `nano_ros_use_board`), so it never received
@@ -247,6 +255,10 @@ build-fvp-aemv8r-cyclonedds-rust:
     # `find_package(Zephyr)`; export the repo root so the include
     # resolves.
     export NROS_REPO_DIR="$nros_root"
+    # Issue #232 — same `cache_state_modelled=0` bake as the cpp cyclone
+    # recipe: the Rust FVP runtime lane asserts `Publishing:` (busy DDS path)
+    # and needs fast-functional mode to reach it in budget.
+    export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
     echo "Building examples/zephyr/rust/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build \
         -d build-fvp-aemv8r-cyclonedds-rust-talker -p auto \

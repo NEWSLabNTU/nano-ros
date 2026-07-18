@@ -66,17 +66,24 @@ STACK of gaps behind the false green, peeled in order:
   interface to be up before the first participant create (finding #3 above —
   a static IP alone did not suffice; bind still raced net_config at 15 ms).
   Then the existing `fvp_runtime.rs` publish assertion passes.
-- Raise `fvp_runtime_rust.rs` from the boot-banner pattern to
-  `nros_tests::output::TALKER_LOG_PREFIX` (`"Publishing:"`) — parity with the
-  cpp lane (the rust talker already logs `Publishing:`).
+- ~~Raise `fvp_runtime_rust.rs` from the boot-banner pattern to
+  `nros_tests::output::TALKER_LOG_PREFIX` (`"Publishing:"`)~~ — **DONE** (the
+  assertion + boot-banner sanity check + rename `..._boots` → `..._publishes`;
+  parity with the cpp lane).
 - The run recipes delegate to `west fvp run`, which needs the `fvp` west
   extension registered in the workspace (absent on this host — the recipe
   errored "unknown command fvp"); a direct-FVP fallback or documenting the
   extension provisioning would make the lane host-portable.
-- Speed: `west fvp run` inherits the board.cmake `cache_state_modelled=1`
-  (aarch64) which is ~1000x slower under busy code; the runtime lane must
-  override via `ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"` (appended
-  last by `armfvp.cmake`, FVP takes last-wins).
+- ~~Speed: override `cache_state_modelled=1` via
+  `ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"`~~ — **DONE** (both cyclone
+  FVP build recipes export it before `west build`, so it bakes into the
+  configure-time `run_armfvp` target; scoped to AEMv8-R, NOT the S32Z recipe
+  whose model would reject the flag).
+
+Remaining (model-host, the active phase-292 session): the talker net-config
++ iface-up wait (finding #3), and the `west fvp` extension provisioning /
+direct-FVP fallback (bullet 1 above). The assertion + speed halves are
+landed.
 
 Only when the talker actually publishes on the model is the lane a real
 regression gate — until then it stays a skip-only false green.
