@@ -369,3 +369,48 @@ parity. Ordered gates (each verifiable before the next):
   time, until the deprecation warning fires nowhere. The test suite is the
   merge gate that enforces this — R4 code-removal is not mergeable until
   the ecosystem is green on the model path.
+
+### R4 migration inventory (2026-07-18)
+
+The retirement WILL happen; the remaining work is mechanical and
+low-friction — per the design intent, the user-side CMake / build-script
+change is tiny. Each entry is a **one-line keyword swap**:
+
+```cmake
+-    LAUNCH  "demo_bringup:system.launch.xml"
++    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
+```
+```rust
+-nros::main!(launch = "demo_bringup");
++nros::main!(model  = "demo_bringup");
+```
+
+plus **one committed `<bringup>/config/system_model.yaml` per workspace**
+(resolved once with `play_launch resolve … --system … -o …`, or authored
+directly — the ws-realtime models are ~40 lines). No source, wiring, or
+runtime change; the emitters/IR/`run_tiers` seam are identical.
+
+**Migration units — 35 distinct example workspaces** (each = 1 model +
+the per-entry swap), plus the `packages/testing/nros-tests/fixtures/*`
+entry fixtures:
+
+- **Migrated (flagship):** `ws-realtime-rust`, `ws-realtime-cpp`.
+- **Remaining workspaces** (`examples/workspaces/`): `rust`, `c`, `cpp`,
+  `mixed`; `ws-{safety,lifecycle,qos,params,custom-msg,bridge,bridge-xrce,
+  launch}-{rust,c,cpp,mixed}` (per language variant); the
+  `ws-realtime-{c,c-mps2,cpp-fvp,cpp-mps2,cpp-rclcpp,cpp-subnode,
+  cpp-subnode-portable}` board/shape variants.
+- **Templates** (`examples/templates/`): `multi-node-workspace`,
+  `multi-node-workspace-cpp`, `c-and-cpp-mixed-workspace`,
+  `pure-c-workspace`.
+- **Keep on `launch` until R4 deletes it:** the tests that deliberately
+  exercise the deprecated form — `native_main_macro_forms.rs`,
+  `native_main_macro_misuse.rs`, and the `nros-macros` doc examples. These
+  are validators OF the launch arm, not consumers to migrate; they move to
+  `model` (or are removed) in the same commit that deletes the arm.
+
+Suggested cadence: migrate one workspace family per PR (author the model,
+swap its entries, rebuild its fixtures, run its e2e), so each step stays
+green. When the R3 deprecation warning fires in zero fixture builds, R4's
+code removal (require `--model`, delete the `launch` arm + `launch_synth`)
+becomes a mergeable, test-green change.
