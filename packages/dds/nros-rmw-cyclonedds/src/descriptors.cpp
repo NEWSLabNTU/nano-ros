@@ -143,9 +143,23 @@ bool action_topic_type(const char *topic_name, const char *type_name,
     }
     // Action feedback: bare base `<A>_` → `<A>_FeedbackMessage_`. Strip
     // the single trailing `_`, append `_FeedbackMessage_`.
-    if (blen > 0 && base[blen - 1] == '_') --blen;
+    //
+    // issue #234 — idempotent, same as `action_effective_base`: the raw / C /
+    // C++ path passes the BARE action type `<A>_` and relies on us appending
+    // `_FeedbackMessage_`; the typed Rust path advertises the ALREADY-per-channel
+    // `<A>_FeedbackMessage_` (what a real rcl_action peer's feedback reader
+    // matches on). Appending it again produced the doubled
+    // `<A>_FeedbackMessage_FeedbackMessage_` that resolved no descriptor → the
+    // feedback publisher create returned UNSUPPORTED. Pass an already-suffixed
+    // form through unchanged.
     const char *infix = "_FeedbackMessage_";
     std::size_t ilen = strlen(infix);
+    if (blen >= ilen && strcmp(base + blen - ilen, infix) == 0) {
+        if (blen + 1 > out_cap) return false;
+        memcpy(out, base, blen + 1);
+        return true;
+    }
+    if (blen > 0 && base[blen - 1] == '_') --blen;
     if (blen + ilen + 1 > out_cap) return false;
     memcpy(out, base, blen);
     memcpy(out + blen, infix, ilen);

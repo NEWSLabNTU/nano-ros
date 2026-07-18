@@ -799,24 +799,41 @@ impl RosAction for {{ action_name }} {
     const ACTION_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_";
     const ACTION_HASH: &'static str = "{{ type_hash }}";
 
-    // phase-244 E3 (RFC-0044) — register the fixed `action_msgs` protocol types
-    // the cancel service + status publisher serialize. The 8 action envelopes
-    // auto-register generically in nros-node; these three are not RosAction
-    // associated types, so the generated impl registers them. No-op unless the
-    // cyclonedds backend is selected (zenoh / xrce self-describe types at the
-    // wire); gated by the crate's `rmw-cyclonedds` feature so non-cyclonedds /
-    // no_std builds pull no std RMW dep. Replaces the per-example hand-rolled
-    // `#[cfg(feature = "rmw-cyclonedds")] { … }` registration block.
+    // phase-244 E3 (RFC-0044) / issue #234 — register the fixed `action_msgs`
+    // protocol types the cancel service + status publisher serialize
+    // (`CancelGoal_{Request,Response}`, `GoalStatusArray`). The 8 action
+    // envelopes auto-register generically in nros-node via `register_type::<M>()`;
+    // these three are not `RosAction` associated types (they live in
+    // `action_msgs`, which `nros-core` cannot name), so the generated impl
+    // registers them here through the SAME generic
+    // `nros_rmw::register_type_descriptor` seam.
+    //
+    // No `#[cfg(feature = "rmw-cyclonedds")]` gate and no named-backend
+    // dependency (issue #60): the seam is a no-op when no descriptor-needing
+    // backend installed a registrar (zenoh / xrce self-describe types at the
+    // wire), and forwards the schema to Cyclone DDS's runtime type registry
+    // when it is linked. The pre-#234 body called
+    // `nros_rmw_cyclonedds::register::<M>()` behind this crate's own
+    // `rmw-cyclonedds` feature — which the standard example build never turned
+    // on, so the block compiled out and the CancelGoal / GoalStatusArray
+    // descriptors were never built, failing the cancel-service / status-publisher
+    // sub-creates with `ActionCreationFailed`.
     fn register_protocol_types() -> ::core::result::Result<(), ()> {
-        #[cfg(feature = "rmw-cyclonedds")]
-        {
-            ::nros_rmw_cyclonedds::register::<::action_msgs::srv::CancelGoalRequest>()
-                .map_err(|_| ())?;
-            ::nros_rmw_cyclonedds::register::<::action_msgs::srv::CancelGoalResponse>()
-                .map_err(|_| ())?;
-            ::nros_rmw_cyclonedds::register::<::action_msgs::msg::GoalStatusArray>()
-                .map_err(|_| ())?;
-        }
+        ::nros_rmw::register_type_descriptor(
+            <::action_msgs::srv::CancelGoalRequest as ::nros_serdes::Message>::TYPE_NAME,
+            <::action_msgs::srv::CancelGoalRequest as ::nros_serdes::Message>::FIELDS,
+        )
+        .map_err(|_| ())?;
+        ::nros_rmw::register_type_descriptor(
+            <::action_msgs::srv::CancelGoalResponse as ::nros_serdes::Message>::TYPE_NAME,
+            <::action_msgs::srv::CancelGoalResponse as ::nros_serdes::Message>::FIELDS,
+        )
+        .map_err(|_| ())?;
+        ::nros_rmw::register_type_descriptor(
+            <::action_msgs::msg::GoalStatusArray as ::nros_serdes::Message>::TYPE_NAME,
+            <::action_msgs::msg::GoalStatusArray as ::nros_serdes::Message>::FIELDS,
+        )
+        .map_err(|_| ())?;
         ::core::result::Result::Ok(())
     }
 }

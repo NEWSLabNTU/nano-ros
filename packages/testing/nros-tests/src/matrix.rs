@@ -288,11 +288,12 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Rust, Cyclonedds, Service, Example, Runtime),
     cell(Native, C,    Cyclonedds, Action,  Example, Runtime),
     cell(Native, Cpp,  Cyclonedds, Action,  Example, Runtime),
-    // issue #233 — rust cyclone action fails at CREATION
-    // (ActionCreationFailed): the typed-action-descriptor path C/C++'s
-    // descriptors.cpp fills, the pure-rust path does not. Not a fixture gap.
-    cell(Native, Rust, Cyclonedds, Action,  Example,
-         BuildOnly("rust cyclone action = ActionCreationFailed (typed-descriptor gap) — issue #234")),
+    // issue #234 — RESOLVED: rust cyclone action pair delivers the order-10
+    // Fibonacci result (test_native_cyclonedds_rust_action). The action's
+    // `register_protocol_types` now registers the `action_msgs` descriptors
+    // through the generic `nros_rmw::register_type_descriptor` seam instead of
+    // the cfg-gated named-backend call that compiled out of the example build.
+    cell(Native, Rust, Cyclonedds, Action,  Example, Runtime),
     cell(Native, C,    Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Rust, Xrce,       Pubsub,  Example, Runtime),
     cell(Native, Cpp,  Xrce,       Pubsub,  Example, Runtime),

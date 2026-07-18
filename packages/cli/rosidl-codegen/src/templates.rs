@@ -274,10 +274,14 @@ pub struct CargoNrosTomlTemplate<'a> {
     pub package_name: &'a str,
     pub package_version: &'a str,
     pub dependencies: &'a [String],
-    /// phase-244 E3 — action packages emit an `rmw-cyclonedds` feature + an
-    /// optional `nros-rmw-cyclonedds` dep so the generated `impl RosAction`'s
-    /// `register_protocol_types()` can register the `action_msgs` protocol types
-    /// under cyclonedds. `false` for plain msg/srv packages.
+    /// issue #234 — action packages emit an unconditional `nros-rmw` dep so the
+    /// generated `impl RosAction`'s `register_protocol_types()` can register the
+    /// `action_msgs` protocol types through the generic
+    /// `nros_rmw::register_type_descriptor` seam (a no-op unless a
+    /// descriptor-needing backend like Cyclone DDS is linked). `false` for plain
+    /// msg/srv packages. Superseded the pre-#234 `rmw-cyclonedds`-feature +
+    /// optional `nros-rmw-cyclonedds` dep, which was inert unless the consumer
+    /// also enabled this crate's `rmw-cyclonedds` feature.
     pub has_actions: bool,
 }
 

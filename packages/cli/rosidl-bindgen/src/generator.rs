@@ -343,17 +343,6 @@ fn generate_cargo_toml(
     }
     let std_feature_list = std_features.join(", ");
 
-    // Phase 244 E3 — action packages expose an `rmw-cyclonedds` feature so the
-    // generated `RosAction::register_protocol_types` can register the
-    // `action_msgs` protocol types with the cyclonedds backend. The consumer's
-    // `rmw-cyclonedds` feature forwards to `<pkg>/rmw-cyclonedds`; inert (and no
-    // std RMW dep pulled) otherwise.
-    let action_feature = if has_actions {
-        "rmw-cyclonedds = [\"dep:nros-rmw-cyclonedds\"]\n"
-    } else {
-        ""
-    };
-
     // Use crates.io version specifiers for nros crates.
     // For development, use .cargo/config.toml [patch.crates-io] to point to local paths.
     let mut cargo_toml = format!(
@@ -365,7 +354,7 @@ edition = "2021"
 [features]
 default = []
 std = [{std_features}]
-{action_feature}
+
 [dependencies]
 # nros crates (patched to local via .cargo/config.toml during development)
 nros-core = {{ version = "*", default-features = false }}
@@ -375,16 +364,23 @@ heapless = "0.8"
         package_name,
         package_version,
         std_features = std_feature_list,
-        action_feature = action_feature,
     );
 
-    // Phase 244 E3 — the optional cyclonedds RMW backend (not a sibling
-    // generated crate; resolved via the workspace `[patch.crates-io]` that
-    // `nros ws sync` writes — see `nros_crate_path_lookup`).
+    // issue #234 — action packages register their fixed `action_msgs` protocol
+    // types (CancelGoal_{Request,Response}, GoalStatusArray) in
+    // `RosAction::register_protocol_types` through the generic
+    // `nros_rmw::register_type_descriptor` seam. That seam is a no-op unless a
+    // descriptor-needing backend (Cyclone DDS) installs a registrar, so the dep
+    // is unconditional and unfeatured — no named-backend dep and no cfg gate
+    // (issue #60). The pre-#234 `rmw-cyclonedds`-feature-gated
+    // `nros_rmw_cyclonedds::register::<M>()` path compiled out whenever the
+    // consumer did not also turn on this crate's `rmw-cyclonedds` feature (the
+    // standard example build never did), leaving the CancelGoal / GoalStatusArray
+    // descriptors unregistered → `ActionCreationFailed`. `nros-rmw` is resolved
+    // via the workspace `[patch.crates-io]` that `nros sync` writes (see
+    // `nros_crate_path_lookup` — `nros-rmw` → `packages/core/nros-rmw`).
     if has_actions {
-        cargo_toml.push_str(
-            "nros-rmw-cyclonedds = { version = \"*\", default-features = false, optional = true }\n",
-        );
+        cargo_toml.push_str("nros-rmw = { version = \"*\", default-features = false }\n");
     }
 
     // Add cross-package dependencies

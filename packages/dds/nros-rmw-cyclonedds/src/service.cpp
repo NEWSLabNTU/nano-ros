@@ -631,6 +631,23 @@ bool action_effective_base(const char* service_name, const char* type_name, char
     } else if (ends_with("/_action/get_result")) {
         infix = "_GetResult_";
     }
+    // issue #234 — idempotent infix injection. Two callers pass different
+    // `type_name` forms for the same action send_goal / get_result service: the
+    // raw / C / C++ path passes the BARE action type `<pkg>::action::dds_::<A>_`
+    // and relies on us appending the wrapper infix (`_SendGoal_` / `_GetResult_`)
+    // to reach `<A>_SendGoal_`; the typed Rust path (`node.rs` +
+    // `executor/action.rs`) advertises the ALREADY-per-channel wrapper type
+    // `<A>_SendGoal_` (what a real rcl_action peer matches on). Appending it
+    // again produced the doubled `<A>_SendGoal_SendGoal_` that resolved no
+    // descriptor → every rust cyclone action failed at creation with
+    // UNSUPPORTED. Detect an already-suffixed form and pass it through unchanged.
+    if (infix != nullptr) {
+        std::size_t tlen = std::strlen(type_name);
+        std::size_t ilen = std::strlen(infix);
+        if (tlen >= ilen && std::strcmp(type_name + tlen - ilen, infix) == 0) {
+            infix = nullptr;
+        }
+    }
     if (infix == nullptr) {
         std::size_t blen = std::strlen(type_name);
         if (blen + 1 > out_cap) return false;

@@ -49,10 +49,18 @@ Recently resolved: **#235** — threadx-riscv64 C++ cyclone pubsub lane added (t
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
 
-**#234** — native rust cyclone action fails at creation (`ActionCreationFailed`): the
-typed-action-descriptor path C/C++'s descriptors.cpp fills has no pure-rust equivalent (#67
-marker covers pub/sub+service, not action types). Carved from #233. See
-`0234-rust-cyclone-action-creation-fails.md`.
+**#233** — RMW runtime-coverage backlog: every fixture-wireable cyclone cell is now Runtime
+(native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++
+pubsub); no open sub-items remain. See `0233-rmw-runtime-coverage-backlog.md`.
+
+Recently resolved: **#234** — native rust cyclone action now delivers the order-10 Fibonacci
+result. Two root causes: (1) `RosAction::register_protocol_types` registered the `action_msgs`
+descriptors (CancelGoal_*, GoalStatusArray) via a `#[cfg(feature = "rmw-cyclonedds")]`-gated
+named-backend call that compiled out of the example build → now routed through the generic
+`nros_rmw::register_type_descriptor` seam, and CALLED from the `node.rs` typed action paths (they
+never invoked it); (2) the Cyclone backend's `action_effective_base` / `action_topic_type`
+doubled the per-channel wrapper infix (`Fibonacci_SendGoal_SendGoal_Request_`) when the typed path
+passed the already-suffixed type → made idempotent. See `archived/0234-*`.
 
 **#233** — RMW runtime-coverage backlog: the phase-295 matrix makes the cyclone/xrce-on-RTOS
 debt visible as BuildOnly cells; the fixture-wireable ones are done (native rust cyclone service,

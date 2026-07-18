@@ -1695,10 +1695,7 @@ features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
-# server sees the request, client prints `Result of add_two_ints: 5`). The
-# rust action pair over cyclone stays absent — ActionCreationFailed, the
-# typed-action-descriptor gap the C/C++ descriptors.cpp path fills; tracked
-# in #233.
+# server sees the request, client prints `Result of add_two_ints: 5`).
 [[fixture]]
 platform = "native"
 lang = "rust"
@@ -1713,6 +1710,31 @@ platform = "native"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/service-client"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
+# issue #234 — native rust CycloneDDS action pair (now delivers: server sees
+# `Received goal request with order`, client prints the order-10 Fibonacci
+# `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`). Fixed by routing
+# `RosAction::register_protocol_types` through the generic
+# `nros_rmw::register_type_descriptor` seam (was a cfg-gated named-backend call
+# that compiled out of the example build → ActionCreationFailed). Consumed by
+# tests/native_api.rs (test_native_cyclonedds_rust_action).
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/action-server"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+target_dir = "target-cyclonedds"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/native/rust/action-client"
 no_default_features = true
 features = ["rmw-cyclonedds"]
 target_dir = "target-cyclonedds"

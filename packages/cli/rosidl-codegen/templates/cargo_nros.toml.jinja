@@ -8,20 +8,24 @@ license = "Apache-2.0"
 default = ["std"]
 std = ["nros-core/std", "nros-serdes/std"]
 alloc = ["nros-core/alloc", "nros-serdes/alloc"]
-{%- if has_actions %}
-# phase-244 E3 — register the action_msgs protocol types (CancelGoal_*,
-# GoalStatusArray) with the cyclonedds backend in
-# `RosAction::register_protocol_types`. Forwarded from the consumer's
-# `rmw-cyclonedds` feature; inert otherwise.
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds"]
-{%- endif %}
 
 [dependencies]
 nros-core = { version = "0.1", default-features = false }
 nros-serdes = { version = "0.1", default-features = false }
 heapless = "0.8"
 {%- if has_actions %}
-nros-rmw-cyclonedds = { version = "*", default-features = false, optional = true }
+# issue #234 — `RosAction::register_protocol_types` registers the fixed
+# `action_msgs` protocol types (CancelGoal_{Request,Response}, GoalStatusArray)
+# that the cancel service + status publisher serialize, through the generic
+# `nros_rmw::register_type_descriptor` seam. That seam is a no-op unless a
+# descriptor-needing backend (Cyclone DDS) installs a registrar, so no cfg
+# gate and no named-backend dependency are needed (issue #60): the 8 action
+# envelopes already register the same way via `register_type::<M>()` in
+# nros-node. Replaces the pre-#234 `rmw-cyclonedds`-feature-gated
+# `nros_rmw_cyclonedds::register::<M>()` path, which was inert whenever the
+# consumer did not also turn on this crate's `rmw-cyclonedds` feature
+# (the standard example build never did) → `ActionCreationFailed`.
+nros-rmw = { version = "*", default-features = false }
 {%- endif %}
 {%- for dep in dependencies %}
 {{ dep }} = { version = "*", default-features = false }

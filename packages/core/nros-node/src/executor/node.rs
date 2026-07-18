@@ -937,6 +937,17 @@ impl<'a> NodeHandle<'a> {
         register_type::<A::GetResultRequest>()?;
         register_type::<A::GetResultResponse>()?;
         register_type::<A::FeedbackMessage>()?;
+        // issue #234 — also register the fixed `action_msgs` protocol types
+        // (`CancelGoal_{Request,Response}`, `GoalStatusArray`) the cancel service
+        // + status publisher created below serialize. They are not `RosAction`
+        // associated types (they live in `action_msgs`, which `nros-core` cannot
+        // name), so the generated `impl RosAction::register_protocol_types` — which
+        // routes them through the generic `nros_rmw::register_type_descriptor` seam —
+        // registers them. Without this the cancel_goal service + status publisher
+        // have no Cyclone descriptor → `ActionCreationFailed`. The callback executor
+        // path (`executor/action.rs`) already did this; this node.rs path — the one
+        // `create_action_server` materialises through — did not.
+        A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -1099,6 +1110,12 @@ impl<'a> NodeHandle<'a> {
         register_type::<A::GetResultRequest>()?;
         register_type::<A::GetResultResponse>()?;
         register_type::<A::FeedbackMessage>()?;
+        // issue #234 — register the `action_msgs` protocol types the cancel-goal
+        // service client below serializes (`CancelGoal_{Request,Response}`; the impl
+        // also registers `GoalStatusArray`, harmlessly unused client-side) via the
+        // generic seam. Without it the cancel_goal client has no Cyclone descriptor
+        // → `ActionCreationFailed`. Mirrors the server path.
+        A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 

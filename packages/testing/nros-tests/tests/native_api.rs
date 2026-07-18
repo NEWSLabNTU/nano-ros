@@ -24,8 +24,8 @@ use nros_tests::{
         require_cmake, require_zenohd, zenohd_unique,
     },
     output::{
-        ACTION_EXECUTING_MARKER, ACTION_RESULT_PREFIX, ACTION_SERVER_READY_MARKER,
-        SERVICE_RESULT_PREFIX, service_result_line,
+        ACTION_EXECUTING_MARKER, ACTION_GOAL_REQUEST_PREFIX, ACTION_RESULT_PREFIX,
+        ACTION_SERVER_READY_MARKER, SERVICE_RESULT_PREFIX, service_result_line,
     },
 };
 use rstest::rstest;
@@ -1515,6 +1515,64 @@ fn test_native_cyclonedds_rust_service() {
     assert!(
         calls >= 1 || handled >= 1,
         "Rust Cyclone service roundtrip produced no calls/requests.\nclient:\n{client_out}\nserver:\n{server_out}"
+    );
+}
+
+/// issue #234 — native **Rust** CycloneDDS action pair (Fibonacci).
+///
+/// The rust cyclone action pair previously failed at CREATION
+/// (`ActionCreationFailed`), before any goal: `RosAction::register_protocol_types`
+/// registered the `action_msgs` protocol descriptors (`CancelGoal_{Request,
+/// Response}`, `GoalStatusArray`) through a `#[cfg(feature = "rmw-cyclonedds")]`-gated
+/// `nros_rmw_cyclonedds::register::<M>()` call — but the example build never turned
+/// that generated-crate feature on, so the block compiled out and the cancel-service
+/// / status-publisher sub-creates found no descriptor. The codegen now routes those
+/// three registrations through the generic `nros_rmw::register_type_descriptor` seam
+/// (the same one the 8 action envelopes already use via `register_type::<M>()` in
+/// nros-node), which forwards to Cyclone's runtime type registry when linked and is a
+/// no-op otherwise. This proves the pair now delivers: the server sees the goal, the
+/// client prints the order-10 Fibonacci `Result received: [...]`.
+///
+/// Mirrors `test_native_cyclonedds_rust_service`: Rust cyclone fixtures resolve via
+/// `build_native_rust_example_rmw` (target-cyclonedds), not the CMake
+/// `cyclone_role_binary`.
+#[rstest]
+fn test_native_cyclonedds_rust_action() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain = next_cyclonedds_domain();
+    let server_bin = nros_tests::fixtures::build_native_rust_example_rmw(
+        "action-server",
+        "action-server",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds action-server", e));
+    let client_bin = nros_tests::fixtures::build_native_rust_example_rmw(
+        "action-client",
+        "action-client",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds action-client", e));
+
+    let mut server = spawn_cyclone_binary(&server_bin, "rust-cyclonedds-action-server", &domain);
+    let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
+    let mut client = spawn_cyclone_binary(&client_bin, "rust-cyclonedds-action-client", &domain);
+
+    let client_out = client
+        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(40))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_out = server
+        .wait_for_output_pattern(ACTION_GOAL_REQUEST_PREFIX, Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!("Rust Cyclone action client:\n{client_out}\n--- server ---\n{server_out}");
+    assert!(
+        client_out.contains(ACTION_RESULT_PREFIX),
+        "Rust Cyclone action client did not reach a result (expected `{ACTION_RESULT_PREFIX}`).\nclient:\n{client_out}\nserver:\n{server_out}"
     );
 }
 
