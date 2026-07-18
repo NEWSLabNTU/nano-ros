@@ -1,0 +1,16 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R4 — resolved model for the qos demo (2 nodes).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /reliable_talker:
+      scope: /
+      pkg: reliable_talker_pkg
+      exec: reliable_talker
+    /qos_listener:
+      scope: /
+      pkg: qos_listener_pkg
+      exec: qos_listener
+execution: {}

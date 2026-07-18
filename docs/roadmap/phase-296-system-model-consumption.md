@@ -357,8 +357,17 @@ parity. Ordered gates (each verifiable before the next):
   in-crate callers compile under `-D warnings` until R4 deletes both).
   RFC-0004/0015/0032 gain a canonical-path banner pointing at the model
   pipeline. CLI test suite green with the warnings (416 pass).
-- R4 — retirement **BLOCKED on ecosystem migration** (the release-overlap
-  window): removing the launch-XML / `system.toml` bake path (make
+- R4 — retirement **IN PROGRESS (2026-07-18)**: migrating the ecosystem
+  to the model path family-by-family (models hand-authored — play_launch's
+  `system_config` reads features/deploy but not `[tiers]`/`[lifecycle]`,
+  so a resolve would drop those; hand-authoring keeps the model faithful).
+  Each family: author `<bringup>/config/system_model.yaml`, swap its
+  entries to `model`/`MODEL`, rebuild fixtures, run e2e — kept green.
+  When the R3 deprecation warning fires in zero fixture builds, the code
+  removal (require `--model`, delete the `launch` arm + `launch_synth`)
+  lands as one test-green change. Progress tracked in the inventory below.
+  Original blocker analysis:
+  removing the launch-XML / `system.toml` bake path (make
   `codegen-system` require `--model`, delete the `nros::main!(launch)` arm
   + `launch_synth`) breaks **~145 unmigrated consumers** (52 Rust
   `nros::main!(launch)`, 65 CMake `LAUNCH`, 28 C++ `NROS_MAIN(…launch…)`)
@@ -394,7 +403,14 @@ runtime change; the emitters/IR/`run_tiers` seam are identical.
 the per-entry swap), plus the `packages/testing/nros-tests/fixtures/*`
 entry fixtures:
 
-- **Migrated (flagship):** `ws-realtime-rust`, `ws-realtime-cpp`.
+- **Migrated + validated:** `ws-realtime-rust`, `ws-realtime-cpp`
+  (flagship, tiers); `ws-lifecycle-rust` (native `case_11` + zephyr
+  `case_14` green — lifecycle autostart rides the model),
+  `ws-params-rust` (zephyr `case_12` green — the launch `<param>` rides
+  `structure.nodes[].params`), `ws-qos-rust` (zephyr `case_13` green).
+  Lesson: the model must capture EVERY launch detail — node params,
+  remaps, lifecycle, features — or the platform test catches the gap
+  (params initially failed until `publish_period_ms: 250` was added).
 - **Remaining workspaces** (`examples/workspaces/`): `rust`, `c`, `cpp`,
   `mixed`; `ws-{safety,lifecycle,qos,params,custom-msg,bridge,bridge-xrce,
   launch}-{rust,c,cpp,mixed}` (per language variant); the

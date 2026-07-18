@@ -1,0 +1,19 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R4 — resolved model for the params demo. The launch
+# `<param publish_period_ms=250>` rides the node's resolved params (the
+# embedded target has no record.json to read them from); param_services is
+# the capability that registers the ROS 2 parameter services.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /param_talker:
+      scope: /
+      pkg: param_talker_pkg
+      exec: param_talker
+      params:
+        publish_period_ms: 250
+execution:
+  features:
+    - param_services

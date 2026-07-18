@@ -7,4 +7,4 @@
 //! so the launch file configures the node with no per-app glue and no extra `nros`
 //! feature.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup");

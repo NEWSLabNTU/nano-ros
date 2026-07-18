@@ -1,0 +1,14 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R4 — resolved SystemModel for the lifecycle demo
+# (mirrors demo_bringup/system.toml: one lifecycle node, autostart active).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      lifecycle_autostart: active
+execution: {}

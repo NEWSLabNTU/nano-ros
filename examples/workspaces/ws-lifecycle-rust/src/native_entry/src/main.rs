@@ -6,4 +6,4 @@
 //! driving Configure → Activate at boot. `lifecycle-services` is enabled on the
 //! `nros` dep in Cargo.toml.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup");
