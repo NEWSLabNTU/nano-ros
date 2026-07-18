@@ -66,16 +66,41 @@ STACK of gaps behind the false green, peeled in order:
      mdio DTS wiring beyond the three `status=okay` lines) that the talker
      lacks. Diagnosing the driver's null base is a further DTS layer.
    Retrofitting the build-only talker into a working networked FVP image thus
-   means recreating ASI's full network setup piece by piece (eth device DTS +
-   driver config + IP + net-up), each step revealing the next — a mini-project.
-   **Better target:** point the runtime lane at `build-fvp-ws-entry`
-   (`examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry`, phase-292 W1.a),
-   which uses the FULL canonical ASI-shaped consumption
-   (`nano_ros_use_board(fvp-aemv8r-smp)` + `find_package(nano_ros)` + a
-   `nano_ros_add_executable(BOARD zephyr LAUNCH …)`) — the exact shape ASI
-   runs, PROVEN to publish end-to-end on this model (the closed-loop demo).
-   Give ws-entry a run recipe + a `Publishing:`/participant assertion instead
-   of retrofitting the legacy talker.
+   means recreating ASI's full network setup piece by piece.
+4. **[FIXED — board crate now provides a working ethernet device]** The root
+   of finding #3: the nros board crate's overlay was a UART-only stub that
+   punted ethernet to the app, so NO in-tree consumer had an eth device. Now
+   the board crate (`nros-board-fvp-aemv8r-smp`) enables it properly, flowing
+   to every consumer via `nano_ros_use_board`:
+   - overlay: `&eth`/`&mdio`/`&phy` `status = "okay"`;
+   - conf: `CONFIG_ETH_SMSC91X` + `CONFIG_MDIO`, with init priorities
+     `ETH=80 < MDIO=81 < PHY=82` — the SMSC bank-switches ONE MMIO window
+     between eth and mdio/phy, so the eth driver must set up the base FIRST;
+     the defaults (mdio=60, phy=70) put them before eth → the mdio driver's
+     `smsc_select_bank` faulted on a null base at init;
+   - `CONFIG_CHECK_INIT_PRIORITIES=n` — the runtime-correct eth-first order
+     trips Zephyr's build-time checker (eth declares a phy-handle dependency);
+     the hardware constraint wins (matches the ASI image).
+   Verified on the FVP: eth now inits clean — `phy_mii PHY ID 16F840`,
+   `Link speed 10 Mb`, `eth_smsc91x MAC 00:02:f7:ef:27:a9`, no crash.
+5. **[OPEN — new last blocker, on ws-entry] Cyclone worker-thread allocation
+   fails under `run_tiers`.** With eth up + a static IP in the SLIRP subnet
+   (`172.20.51.15`), ws-entry gets all the way to `dds_create_participant`
+   (bind succeeds), then panics spawning Cyclone's `tev` worker:
+   `tid ... is in use! / create_thread: tev: ddsrt_thread_create failed`,
+   Kernel panic. ws-entry uses `ZephyrBoard::run_tiers` (a pthread per tier:
+   ctrl + telem) on top of Cyclone's ~6 workers + the net-stack threads
+   (tcp_work, dhcp) — the dynamic thread-stack pool (each 32 KiB, allocated
+   from `HEAP_MEM_POOL_SIZE`) or the k_thread slot pool exhausts. Raising
+   `POSIX_THREAD_THREADS_MAX` to 32 did NOT help (it's the k_thread/stack
+   alloc, not the pthread count cap). Next: size the heap / dynamic-thread
+   pool for the multi-tier + cyclone thread count, or reduce it. The static
+   IP + net-config wiring that got ws-entry this far is exploratory (reverted;
+   the board-crate eth fix is the landed piece) — the run recipe / assertion
+   is still pending a publishing image.
+   **Runtime-lane target remains ws-entry** (canonical `nano_ros_use_board`
+   shape); it now boots → eth up → binds → creates the participant, blocked
+   only on the run_tiers thread budget.
 
 ## Remaining fix direction
 

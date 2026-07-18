@@ -28,5 +28,23 @@
 	status = "okay";
 };
 
-/* Stub: when an upstream binding for the FVP's ethernet model lands,
- * enable it here. Today users override at the example-app level. */
+/* SMSC 91C111 ethernet + its MDIO bus + PHY. The stock board DTS ships
+ * these nodes disabled; enable them here so every consumer of this board
+ * crate gets a working L2 interface via `nano_ros_use_board` (Cyclone DDS
+ * needs one to bind its RTPS sockets — without it `dds_create_participant`
+ * fails `bind to ANY:0`). Pairs with `CONFIG_ETH_SMSC91X` + `CONFIG_MDIO` +
+ * `CONFIG_ETH_INIT_PRIORITY=80` in the per-board conf. phase-292 W2 / issue
+ * 0232 — previously a stub that punted eth to the app; the ASI reference
+ * consumer carried its own copy, but the in-tree examples had no ethernet
+ * device at all. */
+&eth {
+	status = "okay";
+};
+
+&mdio {
+	status = "okay";
+};
+
+&phy {
+	status = "okay";
+};
