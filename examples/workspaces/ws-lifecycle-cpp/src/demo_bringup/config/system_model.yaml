@@ -1,0 +1,34 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-lifecycle-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: 7505e3439465f175bbf5a84f26dbdb1a76716b5deca5efe17b9da02135641f1c
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-lifecycle-cpp/src/demo_bringup/launch/system.launch.xml
+    sha256: 7b5024abb8d3a6d959689a8afb0b40aee6e10c744cdc7ebdccb46a36ad06729f
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-lifecycle-cpp/src/demo_bringup/system.toml
+    sha256: 2f4644fa5090c6f02ed74497253e4e88c69dc3295530126eecc62f8e7e81c7ea
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-lifecycle-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: 7505e3439465f175bbf5a84f26dbdb1a76716b5deca5efe17b9da02135641f1c
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: cpp_lifecycle_talker_pkg
+      exec: talker
+      lifecycle_autostart: active
+execution:
+  deploy:
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

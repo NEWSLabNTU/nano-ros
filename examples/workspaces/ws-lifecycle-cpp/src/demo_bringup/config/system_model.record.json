@@ -1,0 +1,42 @@
+{
+  "container": [],
+  "file_data": {},
+  "lifecycle_node": [],
+  "load_node": [],
+  "node": [
+    {
+      "args": null,
+      "cmd": [
+        "/opt/ros/humble/lib/cpp_lifecycle_talker_pkg/talker",
+        "--ros-args",
+        "-r",
+        "__node:=talker"
+      ],
+      "env": null,
+      "exec_name": "talker",
+      "executable": "talker",
+      "global_params": null,
+      "name": "talker",
+      "namespace": null,
+      "package": "cpp_lifecycle_talker_pkg",
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 0
+    }
+  ],
+  "scopes": [
+    {
+      "id": 0,
+      "origin": {
+        "file": "system.launch.xml",
+        "path": "/home/aeon/repos/nano-ros/examples/workspaces/ws-lifecycle-cpp/src/demo_bringup/launch/system.launch.xml"
+      },
+      "ns": "/",
+      "parent": null
+    }
+  ]
+}
