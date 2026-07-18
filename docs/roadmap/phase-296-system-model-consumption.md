@@ -403,14 +403,30 @@ runtime change; the emitters/IR/`run_tiers` seam are identical.
 the per-entry swap), plus the `packages/testing/nros-tests/fixtures/*`
 entry fixtures:
 
-- **Migrated + validated:** `ws-realtime-rust`, `ws-realtime-cpp`
-  (flagship, tiers); `ws-lifecycle-rust` (native `case_11` + zephyr
-  `case_14` green — lifecycle autostart rides the model),
-  `ws-params-rust` (zephyr `case_12` green — the launch `<param>` rides
-  `structure.nodes[].params`), `ws-qos-rust` (zephyr `case_13` green).
-  Lesson: the model must capture EVERY launch detail — node params,
-  remaps, lifecycle, features — or the platform test catches the gap
-  (params initially failed until `publish_period_ms: 250` was added).
+- **Migrated + validated (7 rust workspaces so far):**
+  `ws-realtime-rust`, `ws-realtime-cpp` (flagship, tiers);
+  `ws-lifecycle-rust` (native `case_11` + zephyr `case_14` — autostart
+  rides the model); `ws-params-rust` (zephyr `case_12` — the launch
+  `<param>` rides `structure.nodes[].params`); `ws-qos-rust` (zephyr
+  `case_13`); `ws-custom-msg-rust` (build-validated — the runtime cases
+  are C/cpp); `ws-safety-rust` (native `case_14` — MULTI-MODEL: three
+  launch variants → three committed models via the
+  `model = "demo_bringup:config/<file>.yaml"` file-override form).
+  Lesson: the hand-authored model must capture EVERY launch detail —
+  node params, remaps, lifecycle, features — or the platform test
+  catches the gap (params initially failed until `publish_period_ms: 250`
+  was added).
+- **Harder tail (needs `play_launch resolve`, not hand-authoring):**
+  `ws-launch-rust` is the launch-FEATURE showcase (`<arg>`+`$(var)`,
+  `<group ns=>`, `<remap>`, `<include>` of a sub-launch) — its resolved
+  model (namespaces + remaps + included nodes) is exactly what
+  play_launch resolves and error-prone to hand-author; `ws-bridge-rust` /
+  `ws-bridge-xrce-rust` carry `[[bridge]]` topic relays; the
+  `examples/workspaces/rust` monolith is 16 entries across every
+  platform. These, plus every cpp/c/mixed workspace, are the remaining
+  bulk — best driven either by fixing `play_launch resolve` to read the
+  nano-ros `system.toml` `[tiers]`/`[lifecycle]` (so it batch-resolves
+  faithfully) or per-family hand-migration where the config is simple.
 - **Remaining workspaces** (`examples/workspaces/`): `rust`, `c`, `cpp`,
   `mixed`; `ws-{safety,lifecycle,qos,params,custom-msg,bridge,bridge-xrce,
   launch}-{rust,c,cpp,mixed}` (per language variant); the
