@@ -1,0 +1,14 @@
+meta:
+  version: 1
+# RFC-0052 R4 — safety demo, listener-only process variant.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /safe_listener:
+      scope: /
+      pkg: safe_listener_pkg
+      exec: safe_listener
+execution:
+  features:
+    - safety

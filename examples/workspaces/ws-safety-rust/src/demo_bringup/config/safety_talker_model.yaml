@@ -1,0 +1,14 @@
+meta:
+  version: 1
+# RFC-0052 R4 — safety demo, talker-only process variant.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+execution:
+  features:
+    - safety

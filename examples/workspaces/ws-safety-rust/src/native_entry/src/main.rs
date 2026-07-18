@@ -3,4 +3,4 @@
 //! `safety-e2e` features wired in Cargo.toml; the system declares
 //! `[system].features = ["safety"]`).
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup");

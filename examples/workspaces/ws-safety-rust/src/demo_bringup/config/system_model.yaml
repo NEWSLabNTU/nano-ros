@@ -1,0 +1,18 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R4 — safety demo, system variant (talker + safe_listener).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+    /safe_listener:
+      scope: /
+      pkg: safe_listener_pkg
+      exec: safe_listener
+execution:
+  features:
+    - safety
