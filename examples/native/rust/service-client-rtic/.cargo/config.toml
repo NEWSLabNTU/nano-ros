@@ -6,6 +6,6 @@ example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-board-native = { path = "../../../../packages/boards/nros-board-native" }  # nros-managed
 nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi" }  # nros-managed
-nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }  # nros-managed
+nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed
