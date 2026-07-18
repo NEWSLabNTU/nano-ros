@@ -103,10 +103,10 @@ STACK of gaps behind the false green, peeled in order:
   configure-time `run_armfvp` target; scoped to AEMv8-R, NOT the S32Z recipe
   whose model would reject the flag).
 
-Remaining (model-host, the active phase-292 session): the talker net-config
-+ iface-up wait (finding #3), and the `west fvp` extension provisioning /
-direct-FVP fallback (bullet 1 above). The assertion + speed halves are
-landed.
+Remaining (model-host): retarget the lane at `build-fvp-ws-entry` (finding #3
+— the legacy talker is build-only with no working ethernet), plus the
+`west fvp` extension provisioning / direct-FVP fallback. The assertion +
+speed halves are landed.
 
-Only when the talker actually publishes on the model is the lane a real
-regression gate — until then it stays a skip-only false green.
+Only when a canonical FVP image actually publishes on the model is the lane a
+real regression gate — until then it stays a skip-only false green.

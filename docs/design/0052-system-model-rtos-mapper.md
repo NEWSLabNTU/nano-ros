@@ -214,3 +214,45 @@ extras are small.
   knob + privilege check).
 - `bindings` targeting a callback group that the node code never declares:
   bake-time error vs warn (leaning error — same fail-loud family).
+
+## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18
+
+play_launch's RT-scheduling track (vocab v2 + the `chain_aware` mapper,
+play_launch Phases 41/42/44) and the SystemModel track are being unified so
+that **the SystemModel is the single source of truth for scheduling**:
+`play_launch resolve` runs the mapper once and embeds its *complete* output
+into the model; every consumer — including this RTOS mapper — reads
+scheduling from the model and never re-derives it. Design of record:
+play_launch `docs/design/system-model-sched-ssot.md`; work breakdown:
+play_launch `docs/roadmap/phase-45-sched_ssot_unification.md`.
+
+What this RFC's consumer side gains, and the cross-track asks:
+
+- **The model's `execution:` layer gains resolved scheduling structure**
+  (Phase 45.2, in the shared `model` crate — a joint decision with this
+  track): `mapper` identity, resolved `chains` (FQN-qualified `via` topics +
+  the segment/boundary decomposition), and **per-path ranks**
+  (`ChainAwareDetail`, one per (node, path)). Today `execution` is
+  `tiers` + `bindings` only; these are additive fields.
+- **Per-path ranks are exactly what this RFC's callback-granularity mapping
+  wants.** play_launch's POSIX apply layer projects per-path ranks down to a
+  per-node max (a documented lossy compression); an RTOS executor can
+  discriminate at callback granularity (this RFC's `sched_context.rs` already
+  has the machinery). Embedding the per-path ranks means nano-ros need not
+  inherit play_launch's POSIX lossy projection — the finer fact is carried in
+  the artifact.
+- **Type sharing (Phase 45.3):** the resolved chain/trigger structs
+  (`types::{Trigger,EffectiveTrigger,ChainDecl,...}`, `sched::{ResolvedChain,
+  ChainElement,MapperPath,ChainAwareDetail}`) are shared from
+  ros-launch-manifest — no third hand-mirror in the `model` crate. The
+  translation `types::ChainDecl` + launch DAG → `sched::ResolvedChain` is
+  `sched_derive::resolve_chains` (play_launch); it must be shared, not
+  reimplemented. This is the same "one schema, no hand-mirroring" rule
+  RFC-0050 already states (issue 0160 / FFI struct-mirror lesson).
+
+Ask of this track: (1) confirm where the resolved chain data lands —
+`execution:` (alongside `tiers`/`bindings`) vs `contracts:` layer — and
+(2) the per-path-rank consumption model on the RTOS side (does the executor
+bind a callback-group priority from `ChainAwareDetail.path`, or project to a
+per-node task priority like POSIX). play_launch's 45.2/45.3 are held pending
+this coordination.

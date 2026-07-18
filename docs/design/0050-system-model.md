@@ -186,3 +186,16 @@ declares contracts, the integrator decides placement.
 - RFC-0015 scheduling tiers, RFC-0045 boot-config resolution, RFC-0047
   sched-context binding, RFC-0048 CMake consumption (the seams the embedded
   slice lands on)
+
+## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18
+
+play_launch is unifying its RT-scheduling track onto the SystemModel as the
+single source of truth for scheduling: `resolve` embeds the full derived
+sched plan (mapper identity, resolved FQN-qualified chains, per-path ranks)
+into the model, and all consumers read it. The model's `execution:` layer
+gains these as additive fields (Phase 45.2, shared `model` crate — joint
+decision with this track). See play_launch
+`docs/design/system-model-sched-ssot.md` +
+`docs/roadmap/phase-45-sched_ssot_unification.md`, and RFC-0052's
+cross-track note for the RTOS-consumer implications (per-path ranks feed
+callback-granularity mapping).
