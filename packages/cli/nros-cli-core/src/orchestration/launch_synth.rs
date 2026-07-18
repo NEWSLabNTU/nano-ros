@@ -1,5 +1,14 @@
 //! Phase 212.L.6 — launch file synthesis + multi-launch resolution.
 //!
+//! **DEPRECATED (phase-296 R3, removed in R4).** This module is the heart of
+//! the legacy launch-XML bake path. The canonical config path is the
+//! play_launch-resolved SystemModel (`--model` / `MODEL` /
+//! `nros::main!(model = …)`), which never synthesises or parses launch XML.
+//! Do not add new callers; migrate the remaining ones (`plan`,
+//! `codegen-system` without `--model`) to the model path. Left un-attributed
+//! (no `#[deprecated]`) only because its in-crate callers compile under
+//! `-D warnings` until R4 deletes both.
+//!
 //! Every nros verb that needs a launch file (`plan`, `launch`,
 //! `codegen-system`) shares the same resolution policy:
 //!

@@ -171,6 +171,14 @@ pub fn run(args: Args) -> Result<()> {
         bringup_owned = owned;
         &bringup_owned
     } else {
+        // RFC-0052 / phase-296 R3 — deprecation: baking straight from
+        // `system.toml` (no resolved SystemModel) is the transitional path.
+        // The canonical path is `--model <system_model.yaml>` (produced by
+        // `play_launch resolve`). Silence with `NROS_ALLOW_LEGACY_BAKE=1`
+        // once you have acknowledged it; the legacy path is removed in R4.
+        crate::deprecation::warn_legacy_bake(
+            "nros codegen-system without --model (baking from system.toml directly)",
+        );
         bringup
     };
     let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)

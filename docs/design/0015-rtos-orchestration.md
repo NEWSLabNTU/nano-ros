@@ -11,6 +11,16 @@ superseded-by: null
 
 # RTOS Orchestration via Launch Tree + Manifest Codegen
 
+> **Canonical path (phase-296 R3/R4).** Tier tables, bindings, and budgets
+> now come from the play_launch-resolved **SystemModel** (RFC-0050/0052):
+> `codegen-system --model` / `nano_ros_add_executable(... MODEL …)` /
+> `nros::main!(model = …)` resolve the tiers through the shared
+> `nros_orchestration_ir::tier_from_model` + `resolve_tiers`. The launch-tree
+> + `system.toml [tiers.*]` orchestration this RFC describes is
+> **transitional** — deprecated in R3, removed in R4 once consumers migrate.
+> The tier *schema* and resolver are unchanged; only the input surface moves
+> from `system.toml` to `execution.tiers` in the resolved model.
+
 **Status:** Stable (execution model); manifest homes reconciled to Phase 212 (see banner)
 **Companion roadmap:** [Phase 94](../roadmap/archived/phase-94-rtos-orchestration.md)
 **Related repos:** `~/repos/nano-ros`, `~/repos/play_launch`, `~/repos/play_launch/src/ros-launch-manifest`, `~/repos/autoware-nano-ros`

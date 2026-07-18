@@ -347,9 +347,25 @@ parity. Ordered gates (each verifiable before the next):
     message + the SDK-index comment were corrected to the canonical
     `nros setup` path (they had pointed at apt / claimed genromfs
     unneeded). **ws-realtime-rust is fully migrated.**
-- R3 — deprecation: `codegen-system` WITHOUT `--model` and `nros plan`'s
-  launch-XML path warn; `launch_synth` marked deprecated. One release of
-  overlap.
-- R4 — retirement: legacy path removed; `nros codegen-system` requires a
-  model (or is folded into a slimmer `nros bake`). RFC-0004/0015/0032
-  updated to point at the model pipeline; superseded sections archived.
+- R3 — deprecation **DONE (2026-07-18)**: the legacy launch-XML /
+  `system.toml` bake paths emit `warning[deprecated]` (once per process,
+  silence with `NROS_ALLOW_LEGACY_BAKE=1`) — `codegen-system` without
+  `--model`, `nros codegen entry --launch`, `nros plan`, and
+  `nros::main!(launch = …)` (build-time notice from the proc-macro).
+  Shared helper: `nros_cli_core::deprecation`. `launch_synth` carries a
+  module-level deprecation note (no `#[deprecated]` attribute — its
+  in-crate callers compile under `-D warnings` until R4 deletes both).
+  RFC-0004/0015/0032 gain a canonical-path banner pointing at the model
+  pipeline. CLI test suite green with the warnings (416 pass).
+- R4 — retirement **BLOCKED on ecosystem migration** (the release-overlap
+  window): removing the launch-XML / `system.toml` bake path (make
+  `codegen-system` require `--model`, delete the `nros::main!(launch)` arm
+  + `launch_synth`) breaks **~145 unmigrated consumers** (52 Rust
+  `nros::main!(launch)`, 65 CMake `LAUNCH`, 28 C++ `NROS_MAIN(…launch…)`)
+  vs the 8 migrated ws-realtime entries — the full `build-test-fixtures` /
+  `test-all` suite would go red. R4's non-breaking parts are DONE (the
+  RFC canonical-path banners above); the code removal is gated behind
+  migrating those consumers to `model` / `MODEL`, one example family at a
+  time, until the deprecation warning fires nowhere. The test suite is the
+  merge gate that enforces this — R4 code-removal is not mergeable until
+  the ecosystem is green on the model path.

@@ -233,6 +233,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         let Some(launch) = args.launch.as_deref() else {
             bail!("codegen entry: pass --launch <pkg[:file]> or --model <system_model.yaml>");
         };
+        // phase-296 R3 — the launch-XML entry bake is transitional.
+        crate::deprecation::warn_legacy_bake(
+            "nros codegen entry --launch (parsing launch XML at build time)",
+        );
         let input = entry_codegen::PlanInput {
             workspace: workspace.as_path(),
             launch_spec: launch,

@@ -11,6 +11,17 @@ superseded-by: null
 
 # Entry-Codegen Pipeline — `main()` emission across frameworks + tiers
 
+> **Canonical path (phase-296 R3/R4).** The entry `main()` emission now bakes
+> from the play_launch-resolved **SystemModel** (RFC-0050/0052): the Rust
+> `nros::main!(model = "<bringup>")` arm and the C/C++
+> `nano_ros_add_executable(... MODEL <system_model.yaml>)` keyword read a
+> committed `<bringup>/config/system_model.yaml` instead of parsing launch
+> XML + `system.toml` at build time. The `launch = …` / `LAUNCH` inputs this
+> RFC describes are **transitional** — deprecated in R3
+> (`warning[deprecated]`), removed in R4. The emitters, plan IR, and per-tier
+> `run_tiers` seam are unchanged; only the plan's *source* moves to the model
+> (`plan_from_model` alongside `plan_from_launch`).
+
 **Status:** Draft (design-of-record for the entry emitter; the multi-tier slice
 is tracked by Phase 228).
 

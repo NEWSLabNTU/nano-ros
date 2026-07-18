@@ -80,6 +80,9 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // phase-296 R3 — `nros plan` parses launch XML (or synthesises one) at
+    // build time; the canonical path bakes from a resolved SystemModel.
+    crate::deprecation::warn_legacy_bake("nros plan (launch-XML resolution)");
     let workspace_root = args.workspace.unwrap_or(std::env::current_dir()?);
 
     // Phase 212.L.7 — single-arg self-bringup shape. When the user

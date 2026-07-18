@@ -702,6 +702,20 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 vec![Ident::new(&crate_ident, Span::call_site())]
             }
             Some(launch_lit) => {
+                // phase-296 R3 — the `launch = …` arm parses launch XML +
+                // system.toml at build time; the canonical path is
+                // `model = "<bringup>"` (a play_launch-resolved
+                // system_model.yaml). Warn once at build time unless the
+                // consumer opted in via `NROS_ALLOW_LEGACY_BAKE=1`. Removed
+                // in R4.
+                if std::env::var_os("NROS_ALLOW_LEGACY_BAKE").is_none() {
+                    eprintln!(
+                        "warning[deprecated]: nros::main!(launch = …) is deprecated \
+                         (phase-296 R3) — migrate to nros::main!(model = \"<bringup>\") \
+                         with a committed <bringup>/config/system_model.yaml. \
+                         Set NROS_ALLOW_LEGACY_BAKE=1 to silence. Removed in R4."
+                    );
+                }
                 let launch_value = launch_lit.value();
                 // Walk the workspace from the Entry pkg's manifest dir.
                 let workspace_root =

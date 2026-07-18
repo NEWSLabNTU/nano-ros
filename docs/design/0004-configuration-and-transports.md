@@ -11,6 +11,17 @@ superseded-by: null
 
 # Configuration model: language-agnostic config across single-node and workspace
 
+> **Canonical path (phase-296 R3/R4).** The play_launch-resolved
+> **SystemModel** (RFC-0050 consumer half, RFC-0052 RTOS mapper) is now the
+> canonical configuration input: `play_launch resolve … -o system_model.yaml`,
+> then `--model` / `MODEL` / `nros::main!(model = …)`. The `system.toml` +
+> launch-XML bake path this RFC describes is **transitional** — deprecated in
+> phase-296 R3 (emits `warning[deprecated]`, silence with
+> `NROS_ALLOW_LEGACY_BAKE=1`) and removed in R4 once the example/consumer
+> ecosystem has migrated. `system.toml` survives as the integrator's
+> *authoring* input that `play_launch resolve` consumes; nothing downstream
+> parses it directly on the canonical path.
+
 > **Revised 2026-06 to the unified Phase 212 model.** The earlier Phase 172.K
 > shape — a single `nros.toml` whose *kind* (workspace root / `[component]` /
 > direct-mode `[node]`) was discriminated by which sections were present, with
