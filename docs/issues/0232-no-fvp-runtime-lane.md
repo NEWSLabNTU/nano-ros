@@ -43,29 +43,40 @@ STACK of gaps behind the false green, peeled in order:
    recipe-level: `build-fvp-aemv8r-cyclonedds` now layers the snippet conf via
    `-DEXTRA_CONF_FILE=zephyr/snippets/nros-cyclonedds/cyclonedds.conf`
    (mutex=1024, stacks=32K/4K, socketpair). No more SMP-4 crash.
-3. **[OPEN — last blocker to green] the talker creates its participant before
-   the network interface is up.** `ddsi_udp_create_conn: failed to bind to
-   ANY:0` → `dds_create_participant returned -1`, always at ~15 ms. Adding a
-   static IP to the example (`CONFIG_NET_CONFIG_MY_IPV4_ADDR="10.0.2.15"` +
-   netmask/gw matching the SLIRP `10.0.2.0/24` subnet, `NEED_IPV4=y`) did
-   NOT fix it — the bind still fails at 15 ms, i.e. the participant is created
-   before `net_config` has brought the interface up and applied the address.
-   The ASI image published because its boot sequence explicitly WAITS for the
-   interface ("Waiting interface 1 to be up") before opening the DDS session;
-   the talker example's typed carrier opens it immediately at boot. So the fix
-   is two-part: (a) an IP config (static or `CONFIG_NET_DHCPV4=y`), AND (b) the
-   example must block on the interface being up (or on
-   `CONFIG_NET_CONFIG_INIT_TIMEOUT` with `NET_CONFIG_NEED_IPV4`) before the
-   first `nros::init`/participant create. This is net-stack init ordering,
-   distinct from every wall above.
+3. **[OPEN — last blocker to green; CONF-ONLY RULED OUT] the typed carrier
+   opens the DDS session at t≈0, before net_config runs at all.**
+   `ddsi_udp_create_conn: failed to bind to ANY:0` → `dds_create_participant
+   returned -1`. Cyclone's `session_open` logs at `00:00:00.000` — the FIRST
+   app output, with NO `net_config: Initializing network` line before it. So
+   the participant is created before the net stack has any interface with an
+   IPv4 address (Zephyr's `bind(INADDR_ANY)` needs one → EADDRNOTAVAIL).
+   Two conf attempts were cleanly REFUTED: (a) a static IP alone, and (b) the
+   full net_config blocking set (`AUTO_INIT=y` + `NEED_IPV4=y` +
+   `MY_IPV4_ADDR=10.0.2.15` + `INIT_TIMEOUT=30`) — both still bind-fail at
+   t≈0 because the carrier beats net_config's SYS_INIT. This is NOT a conf
+   problem. The ASI image publishes because its app owns
+   `network_config.cpp`, which adds the IP and BLOCKS on a net-mgmt
+   `L4_CONNECTED` semaphore BEFORE `run_components` runs — its `session_open`
+   lands at `00:00:00.157`, after the iface is up. The fix must give the
+   Zephyr typed carrier (`ZephyrBoard::run_components`) — or the example — an
+   equivalent "wait for network up" step before the first entity create.
+   Investigate the carrier's init ordering vs net_config's APPLICATION-level
+   SYS_INIT; a carrier-side wait would fix every cyclone-on-Zephyr example at
+   once. Net-stack init ordering, distinct from every wall above and from a
+   conf tweak.
 
 ## Remaining fix direction
 
-- Give the talker example a network config (static addr matching the SLIRP
-  `10.0.2.0/24` subnet, or `CONFIG_NET_DHCPV4=y`) AND make it wait for the
-  interface to be up before the first participant create (finding #3 above —
-  a static IP alone did not suffice; bind still raced net_config at 15 ms).
-  Then the existing `fvp_runtime.rs` publish assertion passes.
+- Make the DDS session open AFTER the network is up. Conf-only is RULED OUT
+  (finding #3): the typed carrier creates the participant at t≈0, before
+  net_config's SYS_INIT — a static IP and the full net_config blocking set
+  both still bind-fail. The carrier (`ZephyrBoard::run_components`) or the
+  example needs a "wait for L4/iface up" step before the first entity create,
+  the way ASI's `network_config.cpp` blocks on an `L4_CONNECTED` semaphore
+  before `run_components`. A carrier-side wait fixes every cyclone-on-Zephyr
+  example at once. Plus an IP config (static SLIRP `10.0.2.15` or
+  `CONFIG_NET_DHCPV4=y`). Then the existing `fvp_runtime.rs` publish assertion
+  passes.
 - ~~Raise `fvp_runtime_rust.rs` from the boot-banner pattern to
   `nros_tests::output::TALKER_LOG_PREFIX` (`"Publishing:"`)~~ — **DONE** (the
   assertion + boot-banner sanity check + rename `..._boots` → `..._publishes`;
