@@ -9,4 +9,4 @@
 //! the resolved launch record (args → `alpha`, remap + param recorded) and the
 //! lowered orchestration plan.
 
-nros::main!(launch = "demo_bringup");
+nros::main!(model = "demo_bringup");

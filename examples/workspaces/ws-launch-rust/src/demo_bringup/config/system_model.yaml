@@ -1,0 +1,37 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-launch-rust/src/demo_bringup/config/system_model.record.json
+    sha256: 4dd00849a93bbb646510142364b1971e67aa1d224f708430be98a705d9984bb3
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-launch-rust/src/demo_bringup/launch/sensors.launch.xml
+    sha256: 227e3a92bdbbe2cf08459d46159338c96ede24ecc6d04279b5835c5cf9738310
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-launch-rust/src/demo_bringup/launch/system.launch.xml
+    sha256: 09175cc3b06a067773f2eeb2243dd5527ba91e92d75e83c14833149cc6beda17
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-launch-rust/src/demo_bringup/system.toml
+    sha256: 954e753a701e9a696dad1b298327584d9a0571efe298701ee444295b39f3ea84
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-launch-rust/src/demo_bringup/config/system_model.record.json
+    sha256: 4dd00849a93bbb646510142364b1971e67aa1d224f708430be98a705d9984bb3
+structure:
+  scopes:
+    /#0: {}
+    /#2:
+      parent: /#0
+    /alpha#1:
+      parent: /#0
+    /alpha#3:
+      parent: /#2
+  nodes:
+    /alpha/listener:
+      scope: /alpha#3
+      pkg: listener_pkg
+      exec: listener
+    /alpha/talker:
+      scope: /alpha#1
+      pkg: talker_pkg
+      exec: talker
+      params:
+        rate_hz: 1

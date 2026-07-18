@@ -428,16 +428,36 @@ entry fixtures:
   bindings), matching the hand-authored ones. So the remaining simple +
   tiered workspaces (cpp/c/mixed feature families, the realtime board
   variants) can be batch-resolved rather than hand-authored.
-- **Blocked on a deeper play_launch gap — namespaces:** `ws-launch-rust`
-  (the `<arg>`/`$(var)`/`<group ns=>`/`<remap>`/`<include>` showcase)
-  resolves to a model whose node FQNs DROP the `<group ns=>` (play_launch
-  models scopes as opaque `/#N` ids and does not fold the group namespace
-  into the node FQN, so `/alpha/talker` resolves as `/talker`). Migrating
-  it would silently change node identity + topic names. This needs a
-  play_launch fix (fold `<group ns=>` into the node FQN / carry the
-  resolved namespace) before ns-using workspaces migrate. `ws-bridge-rust`
-  / `ws-bridge-xrce-rust` (`[[bridge]]` relays) and the 16-entry
-  `examples/workspaces/rust` monolith are the other complex remainders.
+- **play_launch `<group ns=>` gap — ROOT-CAUSED + FIXED (2026-07-18).**
+  `ws-launch-rust` (the `<arg>`/`$(var)`/`<group ns=>`/`<remap>`/
+  `<include>` showcase) resolved to a model whose node FQNs DROPPED the
+  group namespace (`/alpha/talker` → `/talker`). Root cause: play_launch's
+  `play_launch_parser` deliberately ignored the `ns=` attribute on
+  `<group>` (`GroupAction::from_entity` set `namespace = None`, with a
+  comment wrongly claiming ROS 2 rejects it) — while nano-ros's own
+  `nros-launch-parser` (RFC-0024) HONORS it, so the two parsers DISAGREED
+  (nano-ros launch → `/alpha/talker`; play_launch model → `/talker`), the
+  exact cross-runtime inconsistency the model exists to prevent. Fix
+  (play_launch_parser `7582c77`, play_launch `af0c614`, nano-ros vendored
+  pin `19b04f606`): `GroupAction` parses `ns`/`namespace`, and the entity
+  traverser pushes it onto the namespace stack for the group body (scoped
+  groups pop it via save/restore_scope). 420 parser tests green; verified
+  `ws-launch-rust` now resolves `/alpha/talker` + `/alpha/listener`. So
+  ns-using workspaces are now migratable.
+- **`<remap>` — NOT a gap for nano-ros (design finding).** The SystemModel
+  schema carries no per-node remaps, but nano-ros's entry codegen does not
+  ROUTE remaps either (`nros-launch-parser` parses `<remap>` into
+  `NodeSpec.remaps`, but neither the `nros::main!` launch arm nor the
+  model arm bakes them — nodes use their declared topic names; the
+  codegen carries a "future `<remap>` routing" TODO). Launch and model
+  therefore AGREE (both ignore remaps), so no inconsistency today. If
+  nano-ros ever routes remaps, the model needs a `NodeInstance.remaps`
+  field + the consumer to apply it — tracked as future work, not an R4
+  blocker.
+- **Still complex:** `ws-bridge-rust` / `ws-bridge-xrce-rust` (`[[bridge]]`
+  in-binary relays — the model carries `execution.bridges`, but the
+  workspaces also need `nros-bridge.toml` wiring checked) and the
+  16-entry `examples/workspaces/rust` monolith (many bringups × platforms).
 - **Remaining workspaces** (`examples/workspaces/`): `rust`, `c`, `cpp`,
   `mixed`; `ws-{safety,lifecycle,qos,params,custom-msg,bridge,bridge-xrce,
   launch}-{rust,c,cpp,mixed}` (per language variant); the
