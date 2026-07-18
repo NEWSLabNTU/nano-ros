@@ -1,7 +1,8 @@
 ---
 id: 233
 title: "RMW runtime-coverage backlog — the cyclone/xrce-on-RTOS cells the phase-295 matrix makes visible as BuildOnly"
-status: open
+status: resolved
+resolved_in: "2026-07-18 — every worth-implementing cell landed Runtime: native rust cyclone service (this issue) + action (#234), threadx-linux C cyclone service+action + C++ pubsub (this issue), threadx-riscv64 C++ cyclone pubsub (#235). No open sub-items remain."
 type: enhancement
 area: testing
 related: [rfc-0051, phase-295, issue-0067, issue-0214, issue-0215]
@@ -68,3 +69,17 @@ Take cell (1) first (cheapest, highest parity value — closes the last
 native rust RMW gap). Each cell landed flips one `BuildOnly` → `Runtime` in
 the matrix + adds its fixtures.toml row; the coverage gate keeps both sides
 honest. When all four ship, this issue resolves.
+
+## RESOLVED (2026-07-18)
+
+Every cell this backlog tracked is now `Runtime`:
+- native rust cyclone service (#233), action (**#234** — the
+  register_protocol_types + double-infix fix);
+- threadx-linux C cyclone service + action, threadx-linux C++ cyclone
+  pubsub (#233);
+- threadx-riscv64 C++ cyclone pubsub (**#235**).
+
+The firm CarveOuts (rust×cyclone-on-RTOS, rust×XRCE-off-Zephyr,
+threadx-riscv64 action) remain recorded in the matrix as design
+decisions, not debt. The matrix + fixtures⊆⊇ gate keep every new
+Runtime cell honest.

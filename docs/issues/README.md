@@ -44,14 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved: **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
+Recently resolved: **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 `struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
-
-**#233** — RMW runtime-coverage backlog: every fixture-wireable cyclone cell is now Runtime
-(native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++
-pubsub); no open sub-items remain. See `0233-rmw-runtime-coverage-backlog.md`.
 
 Recently resolved: **#234** — native rust cyclone action now delivers the order-10 Fibonacci
 result. Two root causes: (1) `RosAction::register_protocol_types` registered the `action_msgs`
@@ -61,11 +57,6 @@ named-backend call that compiled out of the example build → now routed through
 never invoked it); (2) the Cyclone backend's `action_effective_base` / `action_topic_type`
 doubled the per-channel wrapper infix (`Fibonacci_SendGoal_SendGoal_Request_`) when the typed path
 passed the already-suffixed type → made idempotent. See `archived/0234-*`.
-
-**#233** — RMW runtime-coverage backlog: the phase-295 matrix makes the cyclone/xrce-on-RTOS
-debt visible as BuildOnly cells; the fixture-wireable ones are done (native rust cyclone service,
-threadx-linux C cyclone service+action, threadx-linux C++ cyclone pubsub), the rest carved to
-#234/#235. See `0233-rmw-runtime-coverage-backlog.md`.
 
 **#232** — no FVP runtime lane: the fvp-aemv8r recipe is a build smoke, so
 cyclone-on-Zephyr-hardware regressions (phase-292 walls #4/#5/#8/#9) shipped
