@@ -416,17 +416,28 @@ entry fixtures:
   node params, remaps, lifecycle, features — or the platform test
   catches the gap (params initially failed until `publish_period_ms: 250`
   was added).
-- **Harder tail (needs `play_launch resolve`, not hand-authoring):**
-  `ws-launch-rust` is the launch-FEATURE showcase (`<arg>`+`$(var)`,
-  `<group ns=>`, `<remap>`, `<include>` of a sub-launch) — its resolved
-  model (namespaces + remaps + included nodes) is exactly what
-  play_launch resolves and error-prone to hand-author; `ws-bridge-rust` /
-  `ws-bridge-xrce-rust` carry `[[bridge]]` topic relays; the
-  `examples/workspaces/rust` monolith is 16 entries across every
-  platform. These, plus every cpp/c/mixed workspace, are the remaining
-  bulk — best driven either by fixing `play_launch resolve` to read the
-  nano-ros `system.toml` `[tiers]`/`[lifecycle]` (so it batch-resolves
-  faithfully) or per-family hand-migration where the config is simple.
+- **`play_launch resolve` is now the batch tool for the simple/tiered
+  tail (2026-07-18).** play_launch's `system_config` reader was extended
+  (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored
+  pin bumped to `468504a`) to read the nano-ros inline `system.toml`
+  sections it previously ignored: `[tiers.*]` → `execution.tiers`,
+  `[[component]].group_tiers` → `execution.bindings`, `[lifecycle].
+  autostart` → `structure.nodes[].lifecycle_autostart`. Verified:
+  `play_launch resolve --system system.toml` now emits COMPLETE models
+  for `ws-lifecycle-rust` (lifecycle) and `ws-realtime-rust` (2 tiers +
+  bindings), matching the hand-authored ones. So the remaining simple +
+  tiered workspaces (cpp/c/mixed feature families, the realtime board
+  variants) can be batch-resolved rather than hand-authored.
+- **Blocked on a deeper play_launch gap — namespaces:** `ws-launch-rust`
+  (the `<arg>`/`$(var)`/`<group ns=>`/`<remap>`/`<include>` showcase)
+  resolves to a model whose node FQNs DROP the `<group ns=>` (play_launch
+  models scopes as opaque `/#N` ids and does not fold the group namespace
+  into the node FQN, so `/alpha/talker` resolves as `/talker`). Migrating
+  it would silently change node identity + topic names. This needs a
+  play_launch fix (fold `<group ns=>` into the node FQN / carry the
+  resolved namespace) before ns-using workspaces migrate. `ws-bridge-rust`
+  / `ws-bridge-xrce-rust` (`[[bridge]]` relays) and the 16-entry
+  `examples/workspaces/rust` monolith are the other complex remainders.
 - **Remaining workspaces** (`examples/workspaces/`): `rust`, `c`, `cpp`,
   `mixed`; `ws-{safety,lifecycle,qos,params,custom-msg,bridge,bridge-xrce,
   launch}-{rust,c,cpp,mixed}` (per language variant); the
