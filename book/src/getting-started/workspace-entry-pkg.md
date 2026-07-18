@@ -83,7 +83,7 @@ find the board crate and verify the topology. Keep it short and descriptive —
 it becomes the identifier in `nros plan` output and in `system.toml`'s
 `[deploy.<name>]` table when you later add a Bringup pkg.
 
-## `nros::main!()` — four forms
+## `nros::main!()` — the forms
 
 ```rust
 // 1. Single-node self-bringup: reads [package.metadata.nros.entry] deploy
@@ -103,10 +103,30 @@ nros::main!(launch = "demo_bringup:sim.launch.xml");
 
 // 5. Full form: board + launch file + runtime arg overrides.
 nros::main!(board = NativeBoard, launch = "demo_bringup:sim.launch.xml", args = [("use_sim","true")]);
+
+// 6. Model form (canonical): bake from a play_launch-resolved SystemModel
+//    committed in the Bringup pkg. Reads
+//    `<bringup>/config/system_model.yaml` by default; pass an explicit
+//    relative path after `:`.
+nros::main!(model = "demo_bringup");
+nros::main!(model = "demo_bringup:config/variant-b.yaml");
 ```
 
-The macro reads `[package.metadata.nros.entry]` at compile time to select the
-right board and executor backend. On Embassy / RTIC targets it emits the
+`launch` and `model` are mutually exclusive. `model` is the **canonical**
+path — the same resolved artifact drives the Linux runtime (play_launch) and
+every embedded image, so contract budgets, tiers, and QoS never drift between
+runtimes. `launch` is the transitional path (parses launch XML + `system.toml`
+at build time). Produce the model once with:
+
+```console
+$ play_launch resolve demo_bringup/launch/system.launch.xml \
+      --system demo_bringup/system.toml \
+      -o demo_bringup/config/system_model.yaml
+```
+
+then commit it. The macro reads `[package.metadata.nros.entry]` at compile
+time to select the right board and executor backend; the same model resolves
+its tier table for whichever RTOS that board targets. On Embassy / RTIC targets it emits the
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body so your
 `src/main.rs` stays a single line.
 

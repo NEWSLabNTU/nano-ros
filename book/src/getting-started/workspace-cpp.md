@@ -215,8 +215,29 @@ emits `${CMAKE_BINARY_DIR}/native_entry_nros_main_generated.cpp` (the canonical
 `int main()` body that constructs each launch node's component + calls
 `configure(node)` on the real executor via `NativeBoard::run_components`),
 appends it to the target's sources, and auto-links every
-`<pkg>_<exec>_component` static lib the launch XML named (Phase 219.J). The
-user's `main.cpp` is a single declarative line:
+`<pkg>_<exec>_component` static lib the launch XML named (Phase 219.J).
+
+### `MODEL` — the canonical resolved-artifact path
+
+`LAUNCH` re-parses the launch XML + `system.toml` at configure time. The
+**canonical** path is `MODEL`: bake from a play_launch-resolved
+`system_model.yaml` committed in the Bringup pkg, so the same artifact drives
+the Linux runtime and every embedded image (contracts, tiers, QoS never drift).
+The two keywords are mutually exclusive:
+
+```cmake
+nano_ros_add_executable(
+    native_entry
+    SOURCES src/main.cpp
+    BOARD   native
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/src/demo_bringup/config/system_model.yaml"
+    TYPED
+    DEPLOY  native)
+```
+
+Resolve the model once (`play_launch resolve … --system … -o
+config/system_model.yaml`) and commit it. The user's `main.cpp` is a single
+declarative line:
 
 ```cpp
 // src/native_entry/src/main.cpp
@@ -237,7 +258,11 @@ $ nros new my-entry --lang cpp --platform native
 
 ```bash
 nros sync
-nros codegen-system --bringup demo_bringup
+# Canonical: resolve the model once, then bake from it.
+play_launch resolve src/demo_bringup/launch/system.launch.xml \
+    --system src/demo_bringup/system.toml \
+    -o src/demo_bringup/config/system_model.yaml
+nros codegen-system --bringup demo_bringup --model src/demo_bringup/config/system_model.yaml
 cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>
 cmake --build build
 ./build/src/native_entry/native_entry
