@@ -10,6 +10,6 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_entry
     SOURCES src/main.c
     BOARD   native
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  native)

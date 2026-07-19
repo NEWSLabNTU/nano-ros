@@ -1,0 +1,33 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-qos-c/src/demo_bringup/config/talker_model.record.json
+    sha256: 7a931be49e59ad2919b539e81f32b5c8db83c4623385519ccc66a895082edac4
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-qos-c/src/demo_bringup/launch/talker.launch.xml
+    sha256: 92dbc375134cf3d07e457014d4447d2796a5fcb32e9e57103f1391da82c5ae61
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-qos-c/src/demo_bringup/system.toml
+    sha256: 1b0d5ef127d538433a93331cb3c03c65506200d9c44a3cdda927f439c832fc32
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-qos-c/src/demo_bringup/config/talker_model.record.json
+    sha256: 7a931be49e59ad2919b539e81f32b5c8db83c4623385519ccc66a895082edac4
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /qos_talker:
+      scope: /
+      pkg: qos_talker_pkg
+      exec: qos_talker
+execution:
+  deploy:
+    /qos_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
