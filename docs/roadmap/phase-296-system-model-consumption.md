@@ -7,13 +7,16 @@ the Linux runtime consumes it; shared schema in the vendored
 `packages/cli/third-party/`).
 
 Status (2026-07-19): W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime
-parity fixture). **R2 migration** in progress — ws-realtime-{rust,cpp}
-flagship (all 8 entries, QEMU/native `realtime_tiers` validated) + 7 more
-rust/cpp feature workspaces on the model path; ~26 example workspaces + the
-`examples/workspaces/rust` monolith remain (the R4 tail). **R3
-(deprecation warnings) DONE + merged.** **R4 (legacy-path removal) IN
-PROGRESS** — the migration tail is the only blocker; code removal lands
-once the R3 warning fires in zero fixture builds (test-suite gated).
+parity fixture). **R2/R4 migration** in progress — **19 workspaces** on
+the model path (ws-realtime-{rust,cpp} flagship, all feature families
+across rust/cpp/c/mixed, the launch showcase, + the `rust` monolith's 7
+single-host native entries); **~16 remain** (the monolith's embedded +
+multihost entries, `ws-safety-{cpp,c}`, `ws-realtime-{c,cpp-*}` variants,
+`ws-bridge-{rust,xrce}`, the 4 templates — see the R4 migration inventory
+below + the two sub-blocker issues #236/#237). **R3 (deprecation warnings)
+DONE + merged.** **R4 (legacy-path removal) IN PROGRESS** — the migration
+tail is the only blocker; code removal lands once the R3 warning fires in
+zero fixture builds (test-suite gated).
 
 **Reconciled design (2026-07-19, RFC-0050/0052 §"SSoT structure,
 per-platform realization"):** play_launch's `resolve` is the SSoT for the
@@ -481,12 +484,12 @@ entry fixtures:
     `execution.deploy[fqn].host` in `model_builder`. Fix spans: add
     `machine` to launch_dump's node record + map machine→deploy.host in
     model_builder + have the nano-ros model arm's `host` filter read it.
-    Until then, the robot/multihost entries stay on `launch`.
+    Until then, the robot/multihost entries stay on `launch`. Tracked: issue #236.
   - **`ws-safety-{cpp,c}` safety build flag.** Their node sources use
     `create_subscription_with_safety`, gated behind the safety-e2e build
     flag the plain workspace cmake configure does not set (the fixture
     builder uses a `-safety-*` build_subdir with the flag). Migrate once
-    the build wires it.
+    the build wires it. Tracked: issue #237.
   - **Straightforward remainder** (no blocker, resolve-batchable like the
     families above): `ws-{safety,qos,params,custom-msg,lifecycle}-mixed`,
     the `ws-realtime-{c,cpp-*}` board/shape variants, `ws-bridge-{rust,

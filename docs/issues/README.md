@@ -44,6 +44,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#236** — phase-296 R4: `play_launch resolve` drops `<node machine=>`, so
+multi-host workspaces can't migrate to the model path (the machine is captured
+by `play_launch_parser` but dropped at the `launch_dump` layer + never mapped
+to `deploy.host`). Blocks the monolith's `native_entry_robot1/robot2`. Fix
+spans launch_dump + model_builder + the nano-ros host filter. See
+`0236-multihost-machine-not-in-resolved-model.md`.
+
+**#237** — phase-296 R4: `ws-safety-{cpp,c}` can't be build-validated by a
+plain workspace cmake — `SafetyListener.cpp` needs the safety-e2e flag the
+fixture builder sets via a `-safety-*` build_subdir. Migrate via the fixture
+builder or enable the safety path in the workspace CMake. See
+`0237-safety-workspace-cmake-flag-not-set.md`.
+
 Recently resolved: **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 `struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
