@@ -6,15 +6,23 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status: W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime parity
-fixture). R2 migration: the ws-realtime flagship is fully on the model
-path — ws-realtime-rust (all 4 entries: native + nuttx-arm + nuttx-riscv
-+ zephyr) and ws-realtime-cpp (all 4 entries) — each validated by its
-QEMU/native `realtime_tiers` e2e (the one exception, zephyr-cpp, fails
-identically on LAUNCH and MODEL on this host — a pre-existing native_sim
-low-tier scheduling issue, orthogonal to the migration). Book chapters
-done. Only R3 (deprecation warnings) + R4 (removal) remain — future,
-release-gated phases in the retirement trajectory, not phase-296 impl.
+Status (2026-07-19): W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime
+parity fixture). **R2 migration** in progress — ws-realtime-{rust,cpp}
+flagship (all 8 entries, QEMU/native `realtime_tiers` validated) + 7 more
+rust/cpp feature workspaces on the model path; ~26 example workspaces + the
+`examples/workspaces/rust` monolith remain (the R4 tail). **R3
+(deprecation warnings) DONE + merged.** **R4 (legacy-path removal) IN
+PROGRESS** — the migration tail is the only blocker; code removal lands
+once the R3 warning fires in zero fixture builds (test-suite gated).
+
+**Reconciled design (2026-07-19, RFC-0050/0052 §"SSoT structure,
+per-platform realization"):** play_launch's `resolve` is the SSoT for the
+resolved chain/graph **structure** (chains + segments + 6-dim requirement
+facts in `execution:`); nano-ros CONSUMES that structure and runs its OWN
+RTOS realizer (it does NOT bind play_launch's Linux per-path ranks). This
+adds **W5 — the RTOS-framework-aware realizer** as a phase-296 impl wave
+(design landed, impl gated on play_launch landing `execution.chains`,
+phase-45.2/45.3). Runtime E2E monitoring stays stamp-based (no chain-id).
 
 ## Waves
 
