@@ -13,6 +13,6 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_talker_entry
     SOURCES src/main.cpp
     BOARD   native
-    LAUNCH  "demo_bringup:talker.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/talker_model.yaml"
     TYPED
     DEPLOY  native)

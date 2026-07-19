@@ -1,0 +1,45 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: 08105b80e816568d69d0d52e70942be177cbb3fcc1cd798fc1dac375d33b7d5b
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/launch/system.launch.xml
+    sha256: 126b69850f9526e76e13d3c9cf911e856002fd31cedc4d070bf2d4e5b5d44751
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/system.toml
+    sha256: a98b381b5e15bef6b260f24e8368baabf57aaeda947958253a9e10c7c9fedd33
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: 08105b80e816568d69d0d52e70942be177cbb3fcc1cd798fc1dac375d33b7d5b
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /reading_listener:
+      scope: /
+      pkg: reading_listener_pkg
+      exec: reading_listener
+    /reading_talker:
+      scope: /
+      pkg: reading_talker_pkg
+      exec: reading_talker
+execution:
+  deploy:
+    /reading_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /reading_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

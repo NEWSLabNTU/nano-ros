@@ -1,0 +1,33 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/config/listener_model.record.json
+    sha256: 6cc310bffaee9338907dc6d27118f369ed3c3f041a85b5a52086832d9b186363
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/launch/listener.launch.xml
+    sha256: ab18e2309d9572331686b6b6e64ff52b43bb2f32d4e57b4cdaef9fe14966f4ca
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/system.toml
+    sha256: a98b381b5e15bef6b260f24e8368baabf57aaeda947958253a9e10c7c9fedd33
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-cpp/src/demo_bringup/config/listener_model.record.json
+    sha256: 6cc310bffaee9338907dc6d27118f369ed3c3f041a85b5a52086832d9b186363
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /reading_listener:
+      scope: /
+      pkg: reading_listener_pkg
+      exec: reading_listener
+execution:
+  deploy:
+    /reading_listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

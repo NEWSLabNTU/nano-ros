@@ -1,0 +1,35 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-params-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: a85da062871cb182a8e84c4904edd1a0f5522d796129dfb7bcd97653393c76f6
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-params-cpp/src/demo_bringup/launch/system.launch.xml
+    sha256: 25fd001e3e257e1a68158675c73c03e323e5c22caeeb3b7a93a62a313760b3fa
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-params-cpp/src/demo_bringup/system.toml
+    sha256: a793b66851e6817225864730339c6793b24a72af849a5f346e5581c1f69a1d6c
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-params-cpp/src/demo_bringup/config/system_model.record.json
+    sha256: a85da062871cb182a8e84c4904edd1a0f5522d796129dfb7bcd97653393c76f6
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /param_talker:
+      scope: /
+      pkg: cpp_param_talker_pkg
+      exec: param_talker
+      params:
+        publish_period_ms: 250
+execution:
+  deploy:
+    /param_talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
