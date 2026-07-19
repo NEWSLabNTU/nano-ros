@@ -6,4 +6,4 @@
 //! the result's last sequence element on /fib_result. In-process node-to-node delivery
 //! does not happen (issue 0096), hence the two-process split.
 
-nros::main!(launch = "demo_bringup:action_client.launch.xml");
+nros::main!(model = "demo_bringup:config/action_client_model.yaml");

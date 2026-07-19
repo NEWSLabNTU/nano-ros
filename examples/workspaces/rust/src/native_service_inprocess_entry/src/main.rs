@@ -9,4 +9,4 @@
 //! (loopback) query→queryable delivery — the path issue 0096 is about. The
 //! cross-process variant lives in `native_service_{server,client}_entry`.
 
-nros::main!(launch = "demo_bringup:service_inprocess.launch.xml");
+nros::main!(model = "demo_bringup:config/service_inprocess_model.yaml");

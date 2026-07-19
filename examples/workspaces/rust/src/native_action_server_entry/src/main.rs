@@ -6,4 +6,4 @@
 //! a SEPARATE process (`native_action_client_entry`); in-process node-to-node delivery
 //! does not happen (issue 0096).
 
-nros::main!(launch = "demo_bringup:action_server.launch.xml");
+nros::main!(model = "demo_bringup:config/action_server_model.yaml");

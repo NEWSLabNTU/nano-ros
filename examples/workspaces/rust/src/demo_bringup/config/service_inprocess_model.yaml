@@ -1,0 +1,25 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/service_inprocess_model.record.json
+    sha256: 2e8a4defb57a2de60bad27edce94facf71a81cd5eedbbeaed71c381226875595
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/launch/service_inprocess.launch.xml
+    sha256: 2bcd29192613a44a260b8d0f536ba38fb5b05ae1fc541e622abc1954c9bd22f2
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/service_inprocess_model.record.json
+    sha256: 2e8a4defb57a2de60bad27edce94facf71a81cd5eedbbeaed71c381226875595
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /add_client:
+      scope: /
+      pkg: service_client_pkg
+      exec: add_client
+    /add_server:
+      scope: /
+      pkg: service_server_pkg
+      exec: add_server

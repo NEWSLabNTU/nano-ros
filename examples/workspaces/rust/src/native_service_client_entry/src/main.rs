@@ -7,4 +7,4 @@
 //! tick and republishes the server-computed sum on /sum. In-process
 //! server+client do not talk (issue 0096), hence the two-process split.
 
-nros::main!(launch = "demo_bringup:service_client.launch.xml");
+nros::main!(model = "demo_bringup:config/service_client_model.yaml");

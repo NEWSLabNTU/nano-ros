@@ -7,4 +7,4 @@
 //! lives in a SEPARATE process (`native_service_client_entry`); in-process
 //! server+client do not talk (issue 0096).
 
-nros::main!(launch = "demo_bringup:service_server.launch.xml");
+nros::main!(model = "demo_bringup:config/service_server_model.yaml");

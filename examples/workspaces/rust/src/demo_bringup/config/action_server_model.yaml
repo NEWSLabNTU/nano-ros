@@ -1,0 +1,21 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/action_server_model.record.json
+    sha256: f3e2fa6431e91b26d40fb0a7b9ab026446823253c0fb224d8b4e57781095c629
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/launch/action_server.launch.xml
+    sha256: 164e157a1539fd6a11d9a12f02c376eed84f1120bde16d58c9874b4588d4a335
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/action_server_model.record.json
+    sha256: f3e2fa6431e91b26d40fb0a7b9ab026446823253c0fb224d8b4e57781095c629
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /fibonacci_server:
+      scope: /
+      pkg: action_server_pkg
+      exec: fibonacci_server

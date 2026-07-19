@@ -1,0 +1,41 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/showcase_model.record.json
+    sha256: ed53c9be66be8489154197a9a43775fbbbbf5478cac37c6eae3d2bf3aa581c52
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/launch/showcase.launch.xml
+    sha256: a2ccfccfab771fd2533a1ca160b23e633df564c16b7a8253e297f87b9b750147
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+  record:
+    path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/showcase_model.record.json
+    sha256: ed53c9be66be8489154197a9a43775fbbbbf5478cac37c6eae3d2bf3aa581c52
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /add_client:
+      scope: /
+      pkg: service_client_pkg
+      exec: add_client
+    /add_server:
+      scope: /
+      pkg: service_server_pkg
+      exec: add_server
+    /fibonacci_client:
+      scope: /
+      pkg: action_client_pkg
+      exec: fibonacci_client
+    /fibonacci_server:
+      scope: /
+      pkg: action_server_pkg
+      exec: fibonacci_server
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker

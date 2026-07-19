@@ -14,4 +14,4 @@
 //! Drop the `:system.launch.xml` suffix to use the bringup's
 //! `system.toml::[system].default_launch` instead.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");

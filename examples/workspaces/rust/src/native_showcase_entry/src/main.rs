@@ -7,4 +7,4 @@
 //! `service_client_pkg` — then drive the board's executor + spin loop. The
 //! minimal `native_entry` (system.launch.xml) stays the quickstart.
 
-nros::main!(launch = "demo_bringup:showcase.launch.xml");
+nros::main!(model = "demo_bringup:config/showcase_model.yaml");
