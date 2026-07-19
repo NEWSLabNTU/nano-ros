@@ -444,19 +444,31 @@ runtime change; the emitters/IR/`run_tiers` seam are identical.
 the per-entry swap), plus the `packages/testing/nros-tests/fixtures/*`
 entry fixtures:
 
-- **Migrated + validated (7 rust workspaces so far):**
-  `ws-realtime-rust`, `ws-realtime-cpp` (flagship, tiers);
-  `ws-lifecycle-rust` (native `case_11` + zephyr `case_14` — autostart
-  rides the model); `ws-params-rust` (zephyr `case_12` — the launch
-  `<param>` rides `structure.nodes[].params`); `ws-qos-rust` (zephyr
-  `case_13`); `ws-custom-msg-rust` (build-validated — the runtime cases
-  are C/cpp); `ws-safety-rust` (native `case_14` — MULTI-MODEL: three
-  launch variants → three committed models via the
-  `model = "demo_bringup:config/<file>.yaml"` file-override form).
-  Lesson: the hand-authored model must capture EVERY launch detail —
-  node params, remaps, lifecycle, features — or the platform test
-  catches the gap (params initially failed until `publish_period_ms: 250`
-  was added).
+- **Migrated (16 workspaces so far, 2026-07-18/19):**
+  - **rust (9):** `ws-realtime-rust`, `ws-realtime-cpp` (flagship, tiers);
+    `ws-lifecycle-rust` (native `case_11` + zephyr `case_14`);
+    `ws-params-rust` (zephyr `case_12` — launch `<param>` rides
+    `structure.nodes[].params`); `ws-qos-rust` (zephyr `case_13`);
+    `ws-custom-msg-rust` (build-validated); `ws-safety-rust` (native
+    `case_14` — MULTI-MODEL, three launch variants → three models via the
+    `model = "demo_bringup:config/<file>.yaml"` file-override form);
+    `ws-launch-rust` (the launch showcase — the `<group ns=>` fix gives
+    it `/alpha/talker`).
+  - **cpp (3):** `ws-lifecycle-cpp` (native `case_13`, resolve-generated);
+    `ws-qos-cpp` (native `case_09`), `ws-custom-msg-cpp` (native
+    `case_02`), `ws-params-cpp` (build-validated). All resolve-generated.
+  - **c (4):** `ws-{params,qos,custom-msg,lifecycle}-c` — resolve-
+    generated, compile-validated (same typed-C++ codegen the cpp cases
+    runtime-validate; CI runs the c runtime cases).
+  Lesson: the model must capture EVERY launch detail — node params,
+  remaps, lifecycle, features, namespaces — or the platform test catches
+  the gap (params failed until `publish_period_ms: 250` was added; the
+  `<group ns=>` parser fix was needed for namespaced showcases).
+- **Remaining tail (~19):** the 16-entry `examples/workspaces/rust`
+  monolith; `ws-safety-{cpp,c}` (need the safety build flag);
+  `ws-{safety,qos,params,custom-msg,lifecycle}-mixed`; the
+  `ws-realtime-{c,cpp-*}` board/shape variants; `ws-bridge-{rust,xrce}`
+  (`[[bridge]]` relays); the 4 templates.
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored
