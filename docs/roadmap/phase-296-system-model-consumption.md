@@ -464,11 +464,35 @@ entry fixtures:
   remaps, lifecycle, features, namespaces — or the platform test catches
   the gap (params failed until `publish_period_ms: 250` was added; the
   `<group ns=>` parser fix was needed for namespaced showcases).
-- **Remaining tail (~19):** the 16-entry `examples/workspaces/rust`
-  monolith; `ws-safety-{cpp,c}` (need the safety build flag);
-  `ws-{safety,qos,params,custom-msg,lifecycle}-mixed`; the
-  `ws-realtime-{c,cpp-*}` board/shape variants; `ws-bridge-{rust,xrce}`
-  (`[[bridge]]` relays); the 4 templates.
+- **Monolith native (7 entries) DONE (2026-07-19):** the single-host
+  native entries of `examples/workspaces/rust` (native_entry +
+  service_{server,client,inprocess} + action_{server,client} + showcase)
+  bake from per-launch resolved models (resolved WITHOUT `--system` — the
+  monolith's multi-`[deploy]` system.toml carries no tiers/lifecycle/
+  features, so the no-deploy model has each board-entry keep all its
+  nodes). native_entry runtime-validated (`deployed_native_system_e2e`).
+- **Remaining tail (~18) + two sub-blockers to fix first:**
+  - **Multihost (`<node machine=>`) capture — play_launch follow-up.**
+    The `rust` monolith's `native_entry_robot1/robot2` use
+    `nros::main!(model = …, host = "robotN")`; the resolved model must
+    carry each node's target host. play_launch_parser DOES capture
+    `machine` (record/types.rs `machine`), but it is DROPPED at the
+    `launch_dump` layer (no `machine` field there) and never mapped to
+    `execution.deploy[fqn].host` in `model_builder`. Fix spans: add
+    `machine` to launch_dump's node record + map machine→deploy.host in
+    model_builder + have the nano-ros model arm's `host` filter read it.
+    Until then, the robot/multihost entries stay on `launch`.
+  - **`ws-safety-{cpp,c}` safety build flag.** Their node sources use
+    `create_subscription_with_safety`, gated behind the safety-e2e build
+    flag the plain workspace cmake configure does not set (the fixture
+    builder uses a `-safety-*` build_subdir with the flag). Migrate once
+    the build wires it.
+  - **Straightforward remainder** (no blocker, resolve-batchable like the
+    families above): `ws-{safety,qos,params,custom-msg,lifecycle}-mixed`,
+    the `ws-realtime-{c,cpp-*}` board/shape variants, `ws-bridge-{rust,
+    xrce}` (`[[bridge]]` relays — model carries `execution.bridges`), the
+    4 templates, and the monolith's embedded entries (zephyr/freertos/
+    nuttx/esp32/threadx — need per-platform fixture rebuilds).
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored
