@@ -75,6 +75,40 @@ Phase 46 specifically to unblock the phase-296 R4 multihost migration.
 `execution.deploy[fqn].host` and keeps host-matching + unhosted nodes (mirror
 the launch arm's `Plan::for_host`).
 
+### Step 3 — DONE (nano-ros, 2026-07-20)
+
+The macro model arm (`nros-macros` `keep` closure) now partitions by host as
+well as board: with `host = "<id>"` it keeps only nodes whose
+`execution.deploy[fqn].host` matches, plus unhosted (`host == None`) nodes —
+mirroring the launch arm's `Plan::for_host`. The CLI path (`plan_from_model` +
+`Plan::for_host`) already did this. Validated E2E against the 46.1 model:
+`resolve multihost.launch.xml` → `deploy./talker.host=robot1`,
+`deploy./listener.host=robot2`; building `native_entry_robot1` compiles
+`talker_pkg` only, `native_entry_robot2` compiles `listener_pkg` only.
+`native_entry_robot1/robot2` migrated to `model =
+"demo_bringup:config/multihost_model.yaml"`.
+
+### Remaining sub-gap — board≠host orthogonality (needs play_launch)
+
+`zephyr_entry_robot1` stays on the deprecated `launch =` arm. A HOST (robot1) is
+orthogonal to a BOARD (image): both `native_entry_robot1` and
+`zephyr_entry_robot1` deploy to host `robot1` with *different* boards. A
+launch-only model carries no board placement, so 46.1 defaults every
+machine-derived deploy to `target: linux`. The board slice
+(`(Target::Linux, "native"|"posix") => true`, else `false`) then drops every
+node on a `"zephyr"` entry — the model can't tell "explicitly placed on linux"
+(a mixed-workspace node the zephyr image must skip) from "machine-only,
+board-unplaced" (the entry's board decides). The launch arm never hit this
+because `Plan::for_host` filters host-only; board comes from the entry pkg.
+
+Fix is play_launch-side: give a machine-only deploy an **unplaced** target
+(e.g. `Target` gains `Unspecified`, or `Deploy.target` becomes optional) so a
+launch-only model marks board as entry-determined. nano-ros then treats an
+unplaced target as board-agnostic (host filter still applies), and a zephyr/any
+entry bakes its host's nodes. An explicit `target: linux` from a system config
+keeps its current board-rejecting meaning. Until then, board-heterogeneous
+multi-host entries (any non-native board sharing a host) stay on `launch =`.
+
 Context — play_launch's broader design this is part of:
 **Unified SystemModel** (play_launch `docs/design/unified-system-model.md`,
 `docs/roadmap/phase-46-unified_system_model.md`): the two artifacts

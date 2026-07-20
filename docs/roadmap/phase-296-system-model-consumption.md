@@ -6,12 +6,17 @@ the Linux runtime consumes it; shared schema in the vendored
 `ros-launch-manifest` `model`/`sched` crates, already pinned in
 `packages/cli/third-party/`).
 
-Status (2026-07-19): W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime
-parity fixture). **R2/R4 migration** in progress — **19 workspaces** on
+Status (2026-07-20): W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime
+parity fixture). **R2/R4 migration** in progress — **21 workspaces** on
 the model path (ws-realtime-{rust,cpp} flagship, all feature families
-across rust/cpp/c/mixed, the launch showcase, + the `rust` monolith's 7
-single-host native entries); **~16 remain** (the monolith's embedded +
-multihost entries, `ws-safety-{cpp,c}`, `ws-realtime-{c,cpp-*}` variants,
+across rust/cpp/c/mixed, the launch showcase, the `rust` monolith's 7
+single-host native entries, + `native_entry_robot1/robot2` on the model
+`host =` slice now that #236 steps 1–3 landed — play_launch 46.1 carries
+`<node machine=>` → `deploy.host`, and the macro/CLI host filter is
+validated E2E: robot1→talker, robot2→listener); **~14 remain** (the
+monolith's embedded entries + `zephyr_entry_robot1` — blocked on the #236
+board≠host unplaced-target sub-gap, `ws-safety-{cpp,c}`,
+`ws-realtime-{c,cpp-*}` variants,
 `ws-bridge-{rust,xrce}`, the 4 templates — see the R4 migration inventory
 below + the two sub-blocker issues #236/#237). **R3 (deprecation warnings)
 DONE + merged.** **R4 (legacy-path removal) IN PROGRESS** — the migration
@@ -475,16 +480,20 @@ entry fixtures:
   features, so the no-deploy model has each board-entry keep all its
   nodes). native_entry runtime-validated (`deployed_native_system_e2e`).
 - **Remaining tail (~18) + two sub-blockers to fix first:**
-  - **Multihost (`<node machine=>`) capture — play_launch follow-up.**
-    The `rust` monolith's `native_entry_robot1/robot2` use
-    `nros::main!(model = …, host = "robotN")`; the resolved model must
-    carry each node's target host. play_launch_parser DOES capture
-    `machine` (record/types.rs `machine`), but it is DROPPED at the
-    `launch_dump` layer (no `machine` field there) and never mapped to
-    `execution.deploy[fqn].host` in `model_builder`. Fix spans: add
-    `machine` to launch_dump's node record + map machine→deploy.host in
-    model_builder + have the nano-ros model arm's `host` filter read it.
-    Until then, the robot/multihost entries stay on `launch`. Tracked: issue #236.
+  - **Multihost (`<node machine=>`) — LANDED (2026-07-20).**
+    `native_entry_robot1/robot2` now bake with
+    `nros::main!(model = "demo_bringup:config/multihost_model.yaml", host =
+    "robotN")`. play_launch 46.1 carries `machine` through launch_dump →
+    `model_builder` → `execution.deploy[fqn].host`; the macro + CLI `host`
+    filter keep host-matching + unhosted nodes (mirror `Plan::for_host`),
+    validated E2E (robot1→talker, robot2→listener). **`zephyr_entry_robot1`
+    stays on `launch`** — board≠host orthogonality: a launch-only model
+    defaults the machine-only deploy to `target: linux`, which the zephyr
+    board slice rejects. Needs a play_launch *unplaced* target so board is
+    entry-determined. Tracked: issue #236 (“Remaining sub-gap”) + the
+    RFC-0050 reply flagging the field. Also fixed the example's invalid XML
+    comment (`--host` → literal `--` inside `<!-- -->`, which spec-strict
+    roxmltree rejected; our lenient `nros-launch-parser` had tolerated it).
   - **`ws-safety-{cpp,c}` safety build flag.** Their node sources use
     `create_subscription_with_safety`, gated behind the safety-e2e build
     flag the plain workspace cmake configure does not set (the fixture

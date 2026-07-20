@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!-- Phase 211.F — multi-host launch: the talker runs on `robot1`, the listener
-     on `robot2` (ROS 2 `<node machine="…">`). `nros codegen entry --host <id>`
+     on `robot2` (ROS 2 `<node machine="…">`). the per-host entry bake (`host = "<id>"`)
      partitions this into a per-host entry (robot1 → talker only; robot2 →
      listener only). A node without `machine=` would be kept on every host
      (shared); here both are explicitly hosted. -->

@@ -256,3 +256,31 @@ What this means for the nano-ros bake:
 Asks: (1) confirm you've reviewed the unified-model design; (2) flag any field
 your bake reads that the resolved model still omits (beyond `machine`, which is
 being fixed) — so Phase 46 fills it while it reworks the launch→model path.
+
+### nano-ros reply (2026-07-20)
+
+**(1) Reviewed.** The unify-into-one-model + each-consumer-derives-its-own-
+platform-specifics direction matches our canonical-path decision (RFC-0052
+§Canonical path): the bake reads system semantics from the model and never
+touches `record.json`. Merging the two artifacts and retiring `record.json`
+removes the `meta.record` sha-pairing footgun for us — good. The additive
+`NodeInstance` launch fields (`remaps`/`ros_args`/`respawn`/`env`) are inert to
+our bake (we consume resolved `structure.topics`, not raw remaps; no
+argv/respawn/env target) — the no-`deny_unknown_fields` staged rollout is safe
+on our side. No objection.
+
+**(2) One omitted field — an *unplaced* deploy target.** `machine → host` (46.1)
+closes the field we named; #236 step 3 is done and validated. But 46.1 defaults
+a machine-only deploy to `target: linux`, and that collides with board≠host
+orthogonality: one host (`robot1`) can be realized by *different boards*
+(`native_entry_robot1` vs `zephyr_entry_robot1`). A launch-only model has no
+board placement, so a defaulted `target: linux` is ambiguous — our board slice
+can't tell "explicitly on linux, a zephyr image must skip it" from "board
+unplaced, the entry decides". Ask: when a deploy is derived from `machine`
+alone (no system-config placement), emit an **unplaced** target — a new
+`Target::Unspecified` (or make `Deploy.target` optional) — instead of defaulting
+to `linux`. Then a launch-only model marks board as entry-determined and any
+board's entry bakes its host's nodes; an explicit system-config `target: linux`
+keeps its board-rejecting meaning. Detail + our consumer side in issue #236
+(“Remaining sub-gap”). This is the only field blocking a board-heterogeneous
+multi-host workspace from fully leaving the `launch =` arm.

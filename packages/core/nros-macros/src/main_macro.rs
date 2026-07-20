@@ -507,12 +507,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // every node (single-image default). Board match mirrors the CLI's
         // `plan_from_model`: Linux target ⇒ native/posix; Mcu target ⇒ exact
         // board key OR the deploy's `kind` family (extra.kind, e.g. "zephyr").
+        // #236 step 3 — when `host = "<id>"` is set, ALSO partition by host:
+        // keep only nodes whose `deploy.host` matches (plus unhosted/shared
+        // nodes, `host == None`), mirroring the launch arm's `Plan::for_host`.
+        // `execution.deploy[fqn].host` is filled from `<node machine=>` by
+        // play_launch resolve (Phase 46.1).
         use ros_launch_manifest_model::{ExtraValue, Target};
+        let host_filter = args.host.as_deref();
         let keep = |fqn: &str| -> bool {
             let Some(dep) = model.execution.deploy.get(fqn) else {
                 return model.execution.deploy.is_empty();
             };
-            match (&dep.target, board_key) {
+            let board_ok = match (&dep.target, board_key) {
                 (Target::Linux, "native" | "posix") => true,
                 (Target::Mcu { board: b }, key) => {
                     b == key
@@ -522,7 +528,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         )
                 }
                 _ => false,
-            }
+            };
+            let host_ok = match host_filter {
+                None => true, // unpartitioned
+                Some(h) => dep.host.as_deref().map(|dh| dh == h).unwrap_or(true),
+            };
+            board_ok && host_ok
         };
 
         // Walk nodes in FQN order (BTreeMap = deterministic, matches the CLI).
