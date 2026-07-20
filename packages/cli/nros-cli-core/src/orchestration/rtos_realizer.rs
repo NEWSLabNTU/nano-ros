@@ -17,7 +17,9 @@
 //! carries a WCET). `non_preempt_scope` and `placement` are `NotRequested`
 //! until the derivation supplies them (later waves).
 
-use ros_launch_manifest_sched::{MapperInput, RankedPlan, chain::EffectiveTrigger};
+use ros_launch_manifest_sched::{
+    MapperInput, RankedPlan, ResolvedTier, ResolvedTierTable, chain::EffectiveTrigger,
+};
 use std::collections::BTreeMap;
 
 /// A board's scheduling capabilities — what the realizer may target natively.
@@ -344,6 +346,56 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
     }
 }
 
+/// W5.4 — wire the realization into the existing bake: convert an [`RtosPlan`]
+/// into the [`ResolvedTierTable`] the `codegen-system` plan emitter + the
+/// `run_tiers` const table already consume (one tier per realized node; the
+/// executor lowers `class`/`period_us`/`budget_us`/`deadline_us` into its
+/// `SchedContext` — Sporadic budget / EDF / TT — per W3a). `low_number_is_high`
+/// (from [`SchedCaps`]) is needed to order the table by URGENCY (the table is
+/// "most urgent first"; the realized priority is already board-direction-
+/// normalized, so the numeric sort flips with the platform).
+pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> ResolvedTierTable {
+    let mut tiers: Vec<ResolvedTier> = plan
+        .nodes
+        .iter()
+        .map(|n| {
+            // A node carrying a deadline/budget is real-time; otherwise a plain
+            // fixed-priority best-effort tier (mirrors W3a's class lowering).
+            let class = if n.deadline_us.is_some() || n.budget_us.is_some() {
+                "real_time"
+            } else {
+                "best_effort"
+            };
+            ResolvedTier {
+                name: n.name.clone(),
+                priority: n.priority,
+                sched_class: Some(n.sched_class.to_string()),
+                class: Some(class.to_string()),
+                period_us: n.period_us,
+                budget_us: n.budget_us,
+                deadline_us: n.deadline_us,
+                core: n.core,
+                preempt_threshold: n.preempt_threshold,
+                members: vec![n.name.clone()],
+                stack_bytes: None,
+                spin_period_us: None,
+                deadline_policy: None,
+            }
+        })
+        .collect();
+    // Most-urgent-first. Urgency = smaller priority number when low=high, else
+    // larger. Name breaks ties (deterministic).
+    tiers.sort_by(|a, b| {
+        let urgency = if low_number_is_high {
+            a.priority.cmp(&b.priority)
+        } else {
+            b.priority.cmp(&a.priority)
+        };
+        urgency.then_with(|| a.name.cmp(&b.name))
+    });
+    ResolvedTierTable { tiers }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,6 +527,27 @@ mod tests {
         assert_eq!(hi_f.sched_class, "fifo");
         assert!(matches!(hi_f.deadline_real, DimRealization::Degrade { .. }));
         assert!(!freertos.degradations.is_empty());
+    }
+
+    #[test]
+    fn wires_into_tier_table() {
+        // W5.4: RtosPlan → ResolvedTierTable the existing bake consumes. Six-dim
+        // fields ride through; ordering is most-urgent-first per direction.
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_for("zephyr"); // edf, low_number_is_high
+        let plan = realize_rtos(&ranked, &input, &caps);
+        let table = rtos_plan_to_tier_table(&plan, caps.low_number_is_high);
+
+        assert_eq!(table.tiers.len(), 2, "one tier per node");
+        // /hi is most urgent → first (zephyr low=high → smaller number first).
+        let hi = &table.tiers[0];
+        assert_eq!(hi.name, "/hi");
+        assert_eq!(hi.members, vec!["/hi".to_string()]);
+        assert_eq!(hi.class.as_deref(), Some("real_time")); // has a deadline
+        assert_eq!(hi.sched_class.as_deref(), Some("edf")); // EDF board
+        assert_eq!(hi.deadline_us, Some(10_000));
+        assert_eq!(hi.period_us, Some(20_000)); // 50 Hz
     }
 
     #[test]

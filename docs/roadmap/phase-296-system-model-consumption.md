@@ -295,10 +295,20 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   **runtime** `PlatformSched` trait (`spawn(ThreadAttrs)`/`set_deadline`/
   `replenish`) so boards apply the native attrs at run time; `n_priorities`
   refinement from the board descriptor.
-- W5.4 — **wire the existing backfill**: the executor already has Sporadic
-  budget + TT windows + EDF-among-callbacks (RFC-0052 §Baseline), reachable
-  only via the programmatic API — feed them from the realizer output. (posix/
-  native tier→SchedContext landed in W3a; the embedded boards are the gap.)
+- W5.4 — **wire the realization into the bake — ✅ DONE (host half)**
+  (`rtos_realizer.rs` `rtos_plan_to_tier_table`): convert `RtosPlan` →
+  `ResolvedTierTable` (one tier per realized node; `class`/`period_us`/
+  `budget_us`/`deadline_us`/`core`/`preempt_threshold` ride through; urgency-
+  ordered per board direction) so the existing `codegen-system` plan emitter +
+  `run_tiers` const table consume it unchanged. The full pipeline now exists:
+  `SystemModel → mapper_input_from_model → chain_aware_rank → realize_rtos →
+  rtos_plan_to_tier_table → ResolvedTierTable → bake`. The executor already
+  lowers `class`/budget/period/deadline → `SchedContext` (Sporadic/EDF/TT) for
+  posix/native (W3a). Remaining: extend that `SchedContext` lowering + the
+  runtime `PlatformSched` primitives (`set_deadline`/`replenish`) to the
+  embedded boards (zephyr/freertos/threadx/nuttx) so they apply the native attrs
+  at run time; hook the realizer path into `codegen-system` as an alternative to
+  `tier_resolver`.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer
