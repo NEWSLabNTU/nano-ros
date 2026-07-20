@@ -285,9 +285,16 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   Sporadic; `non_preempt_scope`/`placement` `NotRequested` pending derivation.
   Flat `Degradation` record (fail-loud). (Follow-up: priority band-scarcity
   collapse; core placement from `execution.deploy`.)
-- W5.3 — **`PlatformSched` seam** `L2`: capability-typed board trait; realize
-  deadline/budget/preempt via kernel natives where present (EDF, sporadic,
-  preemption-threshold, affinity), executor `SchedContext` where not.
+- W5.3 — **`SchedCaps` board seam — ✅ DONE (host half)** (`rtos_realizer.rs`
+  `sched_caps_for`): per-platform `SchedCaps` grounded in the scheduler survey
+  (posix EDF+reservation; zephyr EDF, low=high; freertos fixed-prio; threadx
+  preemption-threshold, low=high; nuttx reservation; bare-metal single-core).
+  Drives the realizer; kept consistent with W2's applicability. **Done-when
+  met:** the same ranking realizes differently on Zephyr (EDF native) vs
+  FreeRTOS (deadline→DM-priority, recorded). Remaining (folds into W5.4): the
+  **runtime** `PlatformSched` trait (`spawn(ThreadAttrs)`/`set_deadline`/
+  `replenish`) so boards apply the native attrs at run time; `n_priorities`
+  refinement from the board descriptor.
 - W5.4 — **wire the existing backfill**: the executor already has Sporadic
   budget + TT windows + EDF-among-callbacks (RFC-0052 §Baseline), reachable
   only via the programmatic API — feed them from the realizer output. (posix/

@@ -98,6 +98,79 @@ pub struct RtosPlan {
     pub degradations: Vec<Degradation>,
 }
 
+/// The board seam (W5.3): the per-platform [`SchedCaps`] the realizer targets.
+/// Grounded in the platform scheduler survey (RFC-0052 §"Scheduling model
+/// evolution"). `target` is the RTOS name (`posix`/`native`/`freertos`/
+/// `zephyr`/`threadx`/`nuttx`/`nuttx-riscv`/bare-metal aliases), normalized like
+/// `nros_orchestration_ir`'s board routing. Kept consistent with W2's
+/// applicability table (e.g. preemption-threshold is ThreadX-only).
+///
+/// `n_priorities` is a conservative platform default; a board descriptor can
+/// refine it (Kconfig `CONFIG_NUM_PREEMPT_PRIORITIES` / `configMAX_PRIORITIES`
+/// / `TX_MAX_PRIORITIES`) — a follow-up.
+pub fn sched_caps_for(target: &str) -> SchedCaps {
+    let t = target.trim().to_ascii_lowercase();
+    let fam = t.as_str();
+    match fam {
+        // Linux / POSIX host: SCHED_DEADLINE (EDF + CBS budget), affinity.
+        "posix" | "native" => SchedCaps {
+            edf: true,
+            reservation: true,
+            preempt_threshold: false,
+            affinity: true,
+            n_priorities: 99,
+            low_number_is_high: false,
+        },
+        // Zephyr: CONFIG_SCHED_DEADLINE (EDF), SMP cpu_mask; no reservation /
+        // preemption-threshold (cooperative priorities instead); low = high.
+        "zephyr" => SchedCaps {
+            edf: true,
+            reservation: false,
+            preempt_threshold: false,
+            affinity: true,
+            n_priorities: 32,
+            low_number_is_high: true,
+        },
+        // FreeRTOS: fixed-priority only; SMP core affinity; high = high.
+        f if f.contains("freertos") => SchedCaps {
+            edf: false,
+            reservation: false,
+            preempt_threshold: false,
+            affinity: true,
+            n_priorities: 16,
+            low_number_is_high: false,
+        },
+        // ThreadX: native preemption-threshold; SMP core exclude; low = high.
+        f if f.contains("threadx") => SchedCaps {
+            edf: false,
+            reservation: false,
+            preempt_threshold: true,
+            affinity: true,
+            n_priorities: 32,
+            low_number_is_high: true,
+        },
+        // NuttX: POSIX SCHED_SPORADIC (reservation); SMP affinity; high = high.
+        f if f.contains("nuttx") => SchedCaps {
+            edf: false,
+            reservation: true,
+            preempt_threshold: false,
+            affinity: true,
+            n_priorities: 255,
+            low_number_is_high: false,
+        },
+        // Bare-metal (RTIC / Cortex-M NVIC): hardware priorities, single core,
+        // SRP ceiling (not a preemption-threshold knob); high = high (RTIC).
+        _ => SchedCaps {
+            edf: false,
+            reservation: false,
+            preempt_threshold: false,
+            affinity: false,
+            n_priorities: 8,
+            low_number_is_high: false,
+        },
+    }
+}
+
 /// Per-node facts distilled from the [`MapperInput`] (v1: activation +
 /// deadline + budget; the ranking supplies urgency).
 struct NodeFacts {
@@ -365,6 +438,43 @@ mod tests {
         let bf = realize_rtos(&ranked, &input, &caps(true, false, false));
         let hi_b = bf.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert_eq!(hi_b.budget_real, DimRealization::Backfill);
+    }
+
+    #[test]
+    fn sched_caps_per_platform() {
+        assert!(sched_caps_for("zephyr").edf);
+        assert!(!sched_caps_for("zephyr").reservation);
+        assert!(sched_caps_for("zephyr").low_number_is_high);
+        assert!(!sched_caps_for("qemu-arm-freertos").edf);
+        assert!(sched_caps_for("threadx-linux").preempt_threshold);
+        assert!(sched_caps_for("threadx-linux").low_number_is_high);
+        assert!(sched_caps_for("nuttx").reservation);
+        assert!(!sched_caps_for("nuttx").low_number_is_high);
+        let posix = sched_caps_for("native");
+        assert!(posix.edf && posix.reservation && !posix.low_number_is_high);
+        // Unknown → bare-metal defaults (single-core, no EDF).
+        assert!(!sched_caps_for("stm32f4-rtic").affinity);
+    }
+
+    #[test]
+    fn same_ranking_realizes_differently_per_platform() {
+        // W5.3 done-when: one ranking, two platforms, guarantee difference
+        // recorded — Zephyr honors the deadline natively (EDF); FreeRTOS
+        // degrades it to deadline-monotonic priority.
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+
+        let zephyr = realize_rtos(&ranked, &input, &sched_caps_for("zephyr"));
+        let hi_z = zephyr.nodes.iter().find(|n| n.name == "/hi").unwrap();
+        assert_eq!(hi_z.sched_class, "edf");
+        assert_eq!(hi_z.deadline_real, DimRealization::Native);
+        assert!(zephyr.degradations.is_empty());
+
+        let freertos = realize_rtos(&ranked, &input, &sched_caps_for("freertos"));
+        let hi_f = freertos.nodes.iter().find(|n| n.name == "/hi").unwrap();
+        assert_eq!(hi_f.sched_class, "fifo");
+        assert!(matches!(hi_f.deadline_real, DimRealization::Degrade { .. }));
+        assert!(!freertos.degradations.is_empty());
     }
 
     #[test]
