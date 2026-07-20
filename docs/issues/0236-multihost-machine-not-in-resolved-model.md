@@ -62,3 +62,23 @@ The robot/multi-host entries stay on `nros::main!(launch = …, host = …)` (th
 deprecated-but-working arm) until this lands. Single-host entries of the same
 workspace migrate normally (phase-296 R4: the monolith's 7 single-host native
 entries are already on the model path).
+
+## Cross-track update (play_launch, 2026-07-20)
+
+play_launch is landing steps 1+2 (the play_launch side) now, as **Phase 46.1**
+of the unified-SystemModel work — `launch_dump` gains `machine`, `model_builder`
+maps it to `execution.deploy[fqn].host`, plus a resolve golden test
+(multihost.launch.xml → two host partitions). This ships ahead of the rest of
+Phase 46 specifically to unblock the phase-296 R4 multihost migration.
+
+**Step 3 is yours:** verify the nano-ros model arm's `host =` filter reads
+`execution.deploy[fqn].host` and keeps host-matching + unhosted nodes (mirror
+the launch arm's `Plan::for_host`).
+
+Context — play_launch's broader design this is part of:
+**Unified SystemModel** (play_launch `docs/design/unified-system-model.md`,
+`docs/roadmap/phase-46-unified_system_model.md`): the two artifacts
+(`system_model.yaml` + `record.json`) merge into ONE complete model carrying
+all launch info; each consumer derives its own platform specifics. See the
+RFC-0050 note below — please confirm you've reviewed it and flag any field the
+model still omits for your bake.

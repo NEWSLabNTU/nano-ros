@@ -225,3 +225,34 @@ decision with this track). See play_launch
 `docs/roadmap/phase-45-sched_ssot_unification.md`, and RFC-0052's
 cross-track note for the RTOS-consumer implications (per-path ranks feed
 callback-granularity mapping).
+
+## Cross-track note — play_launch Phase 46 (Unified SystemModel), 2026-07-20
+
+play_launch is unifying its two artifacts into **one complete SystemModel**.
+Today `resolve` emits `system_model.yaml` (portable) + `record.json`
+(LaunchDump, Linux spawn detail), bound by `meta.record` sha256. Phase 46
+merges them: the model carries ALL launch-derived info (+ optional contract +
+system config), and each consumer derives its own platform specifics (Linux:
+exec path via ament, argv, injected env; nano-ros: bake). `record.json`
+retires; the user perceives one kind of dump. Design of record: play_launch
+`docs/design/unified-system-model.md`; work breakdown:
+`docs/roadmap/phase-46-unified_system_model.md`.
+
+What this means for the nano-ros bake:
+
+- **`<node machine=>` → `execution.deploy[fqn].host`** — the one field you
+  genuinely need that the resolved model dropped (issue #236). play_launch is
+  landing the fix now (Phase 46.1), ahead of the rest, to unblock the
+  phase-296 R4 multihost migration. Your side (issue #236 step 3): the
+  `host =` filter reads `deploy.host`.
+- **`NodeInstance` gains launch fields** — `remaps`, `ros_args`,
+  `respawn`/`respawn_delay`, launch-declared `env` — additive/optional, in the
+  shared `model` crate. Your bake ignores the ones it doesn't consume (you
+  already bake from resolved `structure.topics`, not raw remaps; you have no
+  argv/respawn/env model). They ride along so the model is the one complete
+  record of the launch. No `deny_unknown_fields`, so this is a safe staged
+  rollout.
+
+Asks: (1) confirm you've reviewed the unified-model design; (2) flag any field
+your bake reads that the resolved model still omits (beyond `machine`, which is
+being fixed) — so Phase 46 fills it while it reworks the launch→model path.
