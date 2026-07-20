@@ -262,13 +262,13 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
 - W5.0 — **cross-repo rework (prereq; tracked in play_launch phase-45 §45.10)**:
   (a) ~~revert `model.execution.sched`/`ExecutionSched` + `sched`-struct
   re-exports in `model`~~ **DONE** (rlm `f090400`; play_launch phase-45
-  §45.10.a); (b) split `chain_aware_mapper` (in the already-shared
-  `ros-launch-manifest-sched`) into a platform-agnostic **core** (feasibility +
-  clock-segmentation + priorityless ranking) and the `posix` Linux realizer
-  (`rt_priority_band` → `ResolvedTierTable`) — exposing a priorityless
-  ranked/segmented output the RTOS realizer also consumes (play_launch phase-45
-  §45.10.b). play_launch keeps `sched_derive` (its `LaunchDump → MapperInput`)
-  + the Linux realizer.
+  §45.10.a); (b) ~~split `chain_aware_mapper`~~ **DONE** (rlm `f5c0403`; play_launch phase-45
+  §45.10.b): `chain_aware_rank(&MapperInput) -> RankedPlan` is the platform-agnostic
+  core (feasibility + clock-segmentation + priorityless `Vec<RankItem>`; order =
+  priority order, `fine_group` = segment membership); `realize_posix` is the
+  `posix` Linux realizer. W5 consumes `RankedPlan` via `chain_aware_rank` /
+  `ChainAwareMapper::rank`. play_launch keeps `sched_derive`
+  (`LaunchDump → MapperInput`) + `realize_posix`.
 - W5.1 — **derive the segments (own `SystemModel → MapperInput`)**: build the causal
   DAG from `contracts.node_paths` (input→output; `input: []` = timer boundary)
   + `structure.topics` wiring; cut into run-to-completion segments. Read the
