@@ -221,9 +221,19 @@ extras are small.
 - **(realization)** Do the six dims attach to the **segment** (leaning — the
   thread inherits them) or per-**callback** within a segment (PiCAS
   granularity — richer, but needs intra-executor scheduling even in the
-  run-to-completion case)? Note this is the RTOS-side mirror of the SSoT's
-  per-path-rank granularity — the resolved structure carries per-(node, path)
-  facts, so callback-granularity is available if wanted.
+  run-to-completion case)? nano-ros derives the per-(node, path) facts itself
+  from the input contracts, so callback-granularity is available either way.
+
+## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18 — REVERTED
+
+**Superseded 2026-07-20 (maintainer decision):** the sched-embedding this note
+proposes **landed** (rlm `78f637d`, `model.execution.sched`) but is being
+**reverted**. play_launch is a parser (input only); causality + execution
+modeling is each consumer's job (RFC-0050 §"Input model; causality + execution
+modeling per consumer"; §"nano-ros execution modeling"). The algorithm is
+extracted into standalone reusable crate(s) instead of embedding its output.
+Phase-46 (unified **input** model) continues. The original note is kept below
+for provenance.
 
 ## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18
 
@@ -267,44 +277,44 @@ bind a callback-group priority from `ChainAwareDetail.path`, or project to a
 per-node task priority like POSIX). play_launch's 45.2/45.3 are held pending
 this coordination.
 
-## nano-ros answer + realization design (2026-07-18, reconciled)
+## nano-ros execution modeling — self-derived, per-platform (2026-07-20)
 
-**Accepted: the Scheduling SSoT.** `play_launch resolve` runs the chain
-mapper ONCE and embeds the resolved chain/graph **structure** in the model;
-nano-ros **consumes** it and does NOT re-derive the DAG. The split that
-reconciles the two tracks: **the SSoT owns the *structure*; each back-end
-owns its *realization*.**
+**Supersedes the 2026-07-18 SSoT reconciliation** (maintainer decision). The
+earlier version had nano-ros *consume* a resolved chain structure that
+`play_launch resolve` would embed in the model. That embedding **landed**
+(rlm `78f637d`, `model.execution.sched`) but is being **reverted**:
 
-**Answer to ask (1) — where chain data lands:** `execution:` (alongside
-`tiers`/`bindings`), as resolved **structure** — the FQN-qualified `chains`
-(with `via` topics + the segment/boundary decomposition) plus the
-per-(node, path) **requirement facts** that drive scheduling: effective
-`trigger` (Timer/Event/Sporadic/Once), `deadline`, `budget`/WCET,
-`criticality`. That structure is exactly nano-ros's mapper input.
+- **play_launch is a parser** — it gathers all input into the model; it does
+  **not** do execution/scheduling modeling, and the model carries **no
+  `execution.sched` / no resolved sched plan** (RFC-0050 §"Input model;
+  causality + execution modeling per consumer"). The `sched` chain mapper is
+  play_launch's Linux-runtime execution model, not a model-crate field.
+- **The algorithm is shared, not the output.** The DAG/causality/segment +
+  chain-resolution algorithm is extracted into standalone reusable crate(s)
+  (decoupled from `ros-launch-manifest/sched`) that both runtimes call.
+  nano-ros derives its DAG/segments through that crate from the **input** —
+  `contracts.node_paths` (input→output, `input: []` = timer boundary) +
+  `structure.topics` wiring — and reads the integrator's **declared**
+  `tiers`/`bindings`. It then realizes per platform (below). One algorithm,
+  two realizers; no consumed `execution.sched`.
 
-**Answer to ask (2) — per-path-rank consumption:** nano-ros does **not**
-bind priorities from `ChainAwareDetail` ranks — those are play_launch's
-**Linux realization** (PiCAS fixed-priority). nano-ros runs its **own**
-RTOS-framework-aware mapper over the shared structure, binding at
-segment/callback granularity through **kernel features** (EDF /
-preemption-threshold / sporadic-reservation / affinity) — see below. Keeping
-the per-path ranks in the model is harmless (nano-ros ignores them; the
-`provenance` string may be surfaced for diagnostics), but nano-ros does not
-require them. **SSoT for structure, per-platform for realization.**
+The realization design below is unchanged; it operates on the DAG the shared
+extraction crate produces, realized with RTOS kernel features.
 
 ### The realization — causal segments over tiers
 
 The tier tables in §"The mapper" are a **fixed-priority realization**, not
 the model. nano-ros's mapper works on the **causal segment** — a maximal
-`input`-triggered run between two timer boundaries, **already decomposed in
-the resolved structure** (SSoT `chains` segment/boundary elements; nano-ros
-does not recompute it). Each segment → **one executor, run-to-completion in
-causal order on one thread** (rclc / PiCAS model). The tier survives only as
-the fixed-priority fallback realization.
+`input`-triggered run between two timer boundaries, **derived by nano-ros**
+from the input (`contracts.node_paths` input→output + wiring; `input: []`
+marks a boundary). Each segment → **one executor, run-to-completion in causal
+order on one thread** (rclc / PiCAS model). The tier survives only as the
+fixed-priority fallback realization.
 
-**Six-dim agnostic scheduling requirement**, read from the resolved
-requirement facts; a **union of intents** resolved at bake time to
-`Native | Backfill | Degrade(recorded)`:
+**Six-dim agnostic scheduling requirement**, read from the input contract +
+declared-tier facts (activation from `node_paths`/trigger, deadline/budget/
+criticality from the contract + the declared tier); a **union of intents**
+resolved at bake time to `Native | Backfill | Degrade(recorded)`:
 
 | Dim | Intent | Native | Fallback (recorded) |
 |---|---|---|---|
@@ -334,7 +344,7 @@ and on the record**, never silently.
 
 ```
 L1  REALIZER (host, bake-time)
-      6-dim segment reqs (from the SSoT structure) × board CAPS
+      6-dim segment reqs (nano-ros-derived from the input) × board CAPS
       → per-dim realization + degradation record
 L2  PlatformSched (runtime, thin board trait)
       const CAPS { edf, reservation, preempt_threshold, affinity, n_prio, prio_dir }
@@ -352,6 +362,8 @@ Grounding: **PiCAS** (RTAS'21) — chain→priority + node→executor→core;
 **rclc** (micro-ROS) — LET + static order on RTOS threads; **Casini et al.**
 (ECRTS'19) — reservation-based chains + callback-group concurrency.
 
-Extraction of the chain structure is play_launch's (the SSoT); nano-ros owns
-the **realizer** (per-platform). See RFC-0050 §"Shared input + SSoT
-structure, per-platform realization."
+The DAG **extraction** is a **shared standalone crate** (reused by
+play_launch's Linux runtime too); the **realizer** is nano-ros's (per
+platform). play_launch contributes only the input model. See RFC-0050
+§"Input model; causality + execution modeling per consumer" + its rework
+items (revert `execution.sched`; extract the algorithm crate).

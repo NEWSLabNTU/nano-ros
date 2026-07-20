@@ -23,14 +23,19 @@ DONE + merged.** **R4 (legacy-path removal) IN PROGRESS** — the migration
 tail is the only blocker; code removal lands once the R3 warning fires in
 zero fixture builds (test-suite gated).
 
-**Reconciled design (2026-07-19, RFC-0050/0052 §"SSoT structure,
-per-platform realization"):** play_launch's `resolve` is the SSoT for the
-resolved chain/graph **structure** (chains + segments + 6-dim requirement
-facts in `execution:`); nano-ros CONSUMES that structure and runs its OWN
-RTOS realizer (it does NOT bind play_launch's Linux per-path ranks). This
-adds **W5 — the RTOS-framework-aware realizer** as a phase-296 impl wave
-(design landed, impl gated on play_launch landing `execution.chains`,
-phase-45.2/45.3). Runtime E2E monitoring stays stamp-based (no chain-id).
+**Design (2026-07-20, RFC-0050/0052 — supersedes the 2026-07-19 SSoT note):**
+play_launch is a **parser** — it gathers all input into the model (declared
+`deploy`/`tiers`/`bindings` stay as input); it does **not** embed a resolved
+sched plan. The landed `model.execution.sched` (play_launch 45.2/45.3, rlm
+`78f637d`) is being **reverted**. **Causality + execution modeling is the
+consumer's job**, and the reusable value is the *algorithm*, not the output:
+the DAG/causality/segment + chain-resolution algorithm is **extracted into
+standalone reusable crate(s)** that both runtimes call; nano-ros derives its
+DAG/segments through that crate from the input (`contracts.node_paths` +
+wiring), reads the declared tiers/bindings, and runs its OWN RTOS realizer.
+This adds **W5 — the RTOS-framework-aware realizer** as a phase-296 impl wave;
+**no dependency on `execution.sched`** (it's reverted). Runtime E2E monitoring
+stays stamp-based (no chain-id).
 
 ## Waves
 
@@ -245,38 +250,44 @@ Landed (2026-07-17):
   and the FVP/AVH smoke passes (needs the ASI dev container / AVH lane —
   not runnable on this host; ASI phase-3 §W3.b tracks the checkbox).
 
-### W5 — RTOS-framework-aware realizer over the SSoT structure (DESIGN LANDED 2026-07-18, impl future)
+### W5 — RTOS-framework-aware realizer over a shared extraction crate (DESIGN LANDED 2026-07-20, impl future)
 
-Consumes play_launch's Scheduling-SSoT (phase-45): the resolved chain/graph
-**structure** rides in the model's `execution:` layer; nano-ros reads it and
-**realizes** it per platform via its own mapper (RFC-0052 §"nano-ros answer").
-Depends on play_launch 45.2 landing the `execution:` structure fields; the
-type-sharing (45.3) reuses `ros-launch-manifest` `sched`/`types` structs (no
-third mirror).
+nano-ros does its OWN causality + execution modeling from the **input** model
+(RFC-0052 §"nano-ros execution modeling"): no dependency on play_launch
+embedding scheduling. The reusable value is the *algorithm*, extracted into
+standalone crate(s) both runtimes call; nano-ros adds its RTOS realizer.
+Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
+`model.execution.sched`, and extract the algorithm crate.
 
-- W5.1 — **consume the resolved structure**: read `execution.chains`
-  (segment/boundary decomposition + per-(node, path) requirement facts) from
-  the model; do NOT re-derive the DAG. Ignore `ChainAwareDetail` ranks (Linux
-  realization); keep `provenance` for diagnostics only.
+- W5.0 — **cross-repo rework (prereq)**: (a) revert the landed
+  `model.execution.sched`/`ExecutionSched` + `sched`-struct re-exports in
+  `model` (rlm `78f637d`/`5016b4d`/`c47c5bd`) — coordinate with the paused
+  play_launch track; (b) extract the DAG/causality/segment + chain-mapper
+  algorithm from `ros-launch-manifest/sched` into standalone reusable crate(s).
+- W5.1 — **derive the segments (via the extraction crate)**: build the causal
+  DAG from `contracts.node_paths` (input→output; `input: []` = timer boundary)
+  + `structure.topics` wiring; cut into run-to-completion segments. Read the
+  declared `execution.tiers`/`bindings` as the integrator's input.
 - W5.2 — **realizer** `L1`: six dims (`activation, urgency, deadline, budget,
-  non_preempt_scope, placement`) → per-dim `Native | Backfill |
-  Degrade(recorded)` against a board `SchedCaps`; emit thread attrs + backfill
-  `SchedContext` config + the degradation record (fail-loud; extends W2's
-  rejection table).
+  non_preempt_scope, placement`, from the contract + declared tier) → per-dim
+  `Native | Backfill | Degrade(recorded)` against a board `SchedCaps`; emit
+  thread attrs + backfill `SchedContext` config + the degradation record
+  (fail-loud; extends W2's rejection table).
 - W5.3 — **`PlatformSched` seam** `L2`: capability-typed board trait; realize
   deadline/budget/preempt via kernel natives where present (EDF, sporadic,
   preemption-threshold, affinity), executor `SchedContext` where not.
 - W5.4 — **wire the existing backfill**: the executor already has Sporadic
   budget + TT windows + EDF-among-callbacks (RFC-0052 §Baseline), reachable
-  only via the programmatic API — feed them from the realizer output.
+  only via the programmatic API — feed them from the realizer output. (posix/
+  native tier→SchedContext landed in W3a; the embedded boards are the gap.)
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
-  resolved structure, with the guarantee difference recorded; and the realizer
+  self-derived DAG, with the guarantee difference recorded; and the realizer
   produces a plan PLAN-equivalent to the tier path for the degenerate
   single-segment case.
 - Open forks (RFC-0052 §Open questions): segment↔executor↔thread cardinality;
-  dims-on-segment vs dims-on-callback (the RTOS mirror of the SSoT's per-path
-  granularity).
+  dims-on-segment vs dims-on-callback (nano-ros derives the per-(node,path)
+  facts itself, so callback-granularity is available either way).
 
 ## Notes / risks
 

@@ -158,31 +158,51 @@ declares contracts, the integrator decides placement.
    side monitors its local slice, and `max_age_ms` at the Linux subscriber
    catches the end-to-end total (age is E2E by construction).
 
-### Shared input + SSoT structure, per-platform realization (2026-07-18)
+### Input model; causality + execution modeling per consumer (2026-07-20)
 
-Reconciles the SystemModel track with play_launch's Scheduling-SSoT track
-(RFC-0052 §"nano-ros answer"; play_launch phase-45):
+**Supersedes the 2026-07-19 "SSoT structure" note** (maintainer decision).
+The earlier note had `play_launch resolve` embed a *resolved scheduling
+structure* (chains + per-path ranks) into the model. That is **reverted**
+(the landed `model.execution.sched` / `ExecutionSched` — play_launch 45.2/45.3
+— is removed; see the rework below). The settled split:
 
-- **SSoT for structure.** `play_launch resolve` runs the chain mapper once
-  and embeds the resolved chain/graph **structure** in the model's
-  `execution:` layer — FQN-qualified chains (`via` topics + segment/boundary
-  decomposition) and the per-(node, path) requirement facts (trigger,
-  deadline, budget, criticality). Both back-ends read this one structure; the
-  DAG is resolved once, not re-derived per consumer.
-- **Per-platform realization.** The *ranks/priorities* are NOT shared:
-  play_launch realizes the structure as Linux fixed-priority (PiCAS);
-  nano-ros runs its **own** RTOS-framework-aware mapper (RFC-0052) that binds
-  the structure to kernel features (EDF / preemption-threshold / sporadic /
-  affinity). Same input structure, different realization — nano-ros does not
-  consume play_launch's per-path ranks.
-- **Runtime E2E monitoring stays stamp-based, no chain-id.** The graph in the
-  model is a *bake-time* input to the mappers. At run time, E2E freshness is
-  still `age = now − header.stamp` at the sink (`sub_endpoints.max_age_ms`);
-  the subscription topic disambiguates the budget, the message carries its own
-  origin time — no chain-id on the wire. The one behavioral dependency is
-  **stamp preservation**: a relay node forwards the incoming `header.stamp`
-  (age-transparent); a node that re-stamps is modeled as a periodic path
-  (`input: []`), which resets the age clock by design.
+- **play_launch is a parser.** It gathers **all input** into the model —
+  launch tree (nodes/wiring/topics), contracts (rates/ages/budgets/paths/QoS),
+  system config, and the integrator's **declared** assignments (`deploy`,
+  `tiers`, callback-group `bindings`). The model is the complete **input**;
+  nothing resolved-for-execution lives in it. Phase-46 (Unified SystemModel —
+  merging `record.json`/LaunchDump) is exactly this parser job and continues.
+- **Causality + execution modeling is the consumer's job.** The chain/DAG
+  resolution, scheduling, and task/thread creation are done by each
+  **runtime**: play_launch's *Linux runtime* does its (chain_aware/PiCAS)
+  modeling; nano-ros does its RTOS modeling (RFC-0052). Neither is embedded in
+  the shared model — so **no `execution.sched` / no resolved chains / no
+  per-path ranks in the model**.
+- **The algorithm is shared as standalone reusable crate(s), not the output.**
+  The reusable value is the *algorithm* — DAG/causality derivation from the
+  input (`node_paths` + wiring), segment decomposition, chain resolution — not
+  a serialized result. It is extracted into standalone crate(s) (decoupled
+  from the launch-manifest/`model` layer) that BOTH runtimes' mappers call;
+  each then applies its own **realizer** (play_launch → Linux fixed-priority;
+  nano-ros → RTOS kernel features, RFC-0052). One algorithm, two realizations,
+  zero embedded output.
+- **Declared config stays.** `deploy`/`tiers`/`bindings` are integrator input
+  the parser gathers; they stay in `execution:`. nano-ros reads them and
+  models its RTOS execution on top (it does not treat them as a finished
+  scheduling plan).
+- **Runtime E2E monitoring stays stamp-based, no chain-id.** `age = now −
+  header.stamp` at the sink (`sub_endpoints.max_age_ms`); the subscription
+  topic disambiguates the budget; the message carries its own origin time. The
+  one behavioral dependency is **stamp preservation**: a relay forwards the
+  incoming `header.stamp`; a re-stamping node is modeled periodic
+  (`input: []`), resetting the age clock by design.
+
+**Rework items (2026-07-20):** (1) revert `model.execution.sched` /
+`ExecutionSched` and the `sched`-struct re-exports into `model` (rlm
+`78f637d`/`5016b4d`/`c47c5bd`) — coordinate with the paused play_launch track;
+(2) extract the DAG/causality/segment + chain-mapper algorithm from
+`ros-launch-manifest/sched` into standalone reusable crate(s); (3) both
+runtimes depend on the extracted crate + their own realizer.
 
 ## Non-goals
 
@@ -213,7 +233,16 @@ Reconciles the SystemModel track with play_launch's Scheduling-SSoT track
   sched-context binding, RFC-0048 CMake consumption (the seams the embedded
   slice lands on)
 
-## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18
+## Cross-track note — play_launch Phase 45 (Scheduling SSoT), 2026-07-18 — REVERTED
+
+**Superseded 2026-07-20 (maintainer decision):** embedding the resolved sched
+plan (chains + per-path ranks) into the model is **reverted** — see §"Input
+model; causality + execution modeling per consumer." Phase-45.2/45.3 *landed*
+(rlm `78f637d` etc., `model.execution.sched`) but are being backed out; the
+algorithm is instead extracted into standalone reusable crate(s) each runtime
+calls. play_launch is a parser; execution modeling is the consumer's job.
+Phase-46 (unified **input** model, below) continues. Original note kept for
+provenance:
 
 play_launch is unifying its RT-scheduling track onto the SystemModel as the
 single source of truth for scheduling: `resolve` embeds the full derived
