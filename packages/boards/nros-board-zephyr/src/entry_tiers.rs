@@ -122,6 +122,15 @@ where
     let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     crt.executor_mut().set_active_groups(ctx.tier.groups);
+    // W5.4 — lower this tier's class/budget/period/deadline onto the executor's
+    // default SchedContext (Sporadic / EDF / TT), shared with every board.
+    crt.apply_tier_sched_policy(
+        ctx.tier.class,
+        ctx.tier.period_us,
+        ctx.tier.budget_us,
+        ctx.tier.deadline_us,
+        ctx.tier.deadline_policy,
+    );
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
@@ -209,6 +218,13 @@ impl ZephyrBoard {
         // declare-vs-declare races the interest handshake).
         let boot_tier = &tiers[0];
         crt.executor_mut().set_active_groups(boot_tier.groups);
+        crt.apply_tier_sched_policy(
+            boot_tier.class,
+            boot_tier.period_us,
+            boot_tier.budget_us,
+            boot_tier.deadline_us,
+            boot_tier.deadline_policy,
+        );
         {
             let mut runtime = RuntimeCtx::with_runtime(&mut crt);
             setup(&mut runtime)?;

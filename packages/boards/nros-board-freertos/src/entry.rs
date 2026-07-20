@@ -486,6 +486,14 @@ where
     let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     crt.executor_mut().set_active_groups(ctx.tier.groups);
+    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
+    crt.apply_tier_sched_policy(
+        ctx.tier.class,
+        ctx.tier.period_us,
+        ctx.tier.budget_us,
+        ctx.tier.deadline_us,
+        ctx.tier.deadline_policy,
+    );
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {

@@ -304,11 +304,20 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `SystemModel → mapper_input_from_model → chain_aware_rank → realize_rtos →
   rtos_plan_to_tier_table → ResolvedTierTable → bake`. The executor already
   lowers `class`/budget/period/deadline → `SchedContext` (Sporadic/EDF/TT) for
-  posix/native (W3a). Remaining: extend that `SchedContext` lowering + the
-  runtime `PlatformSched` primitives (`set_deadline`/`replenish`) to the
-  embedded boards (zephyr/freertos/threadx/nuttx) so they apply the native attrs
-  at run time; hook the realizer path into `codegen-system` as an alternative to
-  `tier_resolver`.
+  posix/native (W3a).
+- **Embedded runtime lowering — ✅ DONE** (W5.4 follow-on): the W3a
+  tier→SchedContext lowering is now a **portable** method
+  `ExecutorNodeRuntime::apply_tier_sched_policy(class, period_us, budget_us,
+  deadline_us, deadline_policy)` (nros `node_runtime.rs`), shared by every
+  board (posix refactored to delegate; **zephyr/freertos/nuttx** `run_tiers`
+  call it after `set_active_groups`). So `class`/budget/period/deadline lower to
+  `SchedContext` (Sporadic/EDF/TT) on the embedded boards too. Host-verified via
+  posix (2 tests); the calls type-check against `TierSpec`. ThreadX (single-
+  executor entry) + embedded SDK build verification (fixture/CI) are follow-ups.
+- Remaining: the runtime `PlatformSched` primitives (`set_deadline`/`replenish`)
+  so boards apply *kernel-native* EDF/reservation (today the executor's own
+  `SchedContext` backfills); hook the realizer path into `codegen-system` as an
+  alternative to `tier_resolver`.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer

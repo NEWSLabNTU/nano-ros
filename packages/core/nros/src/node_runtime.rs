@@ -271,6 +271,63 @@ impl ExecutorNodeRuntime {
         &mut self.executor
     }
 
+    /// RFC-0052 / phase-296 W5.4 — lower a tier's RTOS-agnostic scheduling
+    /// policy onto this executor's DEFAULT scheduling context. One `Executor`
+    /// per tier means "the tier's policy" == "this executor's default SC";
+    /// per-group/per-handle bindings still take precedence.
+    ///
+    /// **Portable** across every board — call from each board's `run_tiers`
+    /// after building the runtime. Takes the tier fields as primitives (not a
+    /// `TierSpec`) so `nros` needs no board/platform dependency; a board passes
+    /// `tier.class`, `tier.period_us`, … straight through.
+    ///
+    /// `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`];
+    /// `best_effort` → [`SchedClass::BestEffort`]; `time_triggered` +
+    /// `period_us` → the cyclic dispatcher (major frame = period, window =
+    /// `budget_us` or the whole frame); `deadline_us` sets the SC deadline and
+    /// `deadline_policy` its action. A tier with no class/budget/deadline
+    /// leaves the default `Fifo` SC untouched (byte-identical pre-W3 behavior).
+    pub fn apply_tier_sched_policy(
+        &mut self,
+        class: Option<&str>,
+        period_us: Option<u64>,
+        budget_us: Option<u64>,
+        deadline_us: Option<u64>,
+        deadline_policy: Option<&str>,
+    ) {
+        use crate::{DeadlineAction, OptUs, SchedClass, SchedContext};
+        let sporadic =
+            class == Some("real_time") && budget_us.is_some() && period_us.is_some();
+        let best_effort = class == Some("best_effort");
+        let time_triggered = class == Some("time_triggered") && period_us.is_some();
+        if !sporadic && !best_effort && !time_triggered && deadline_us.is_none() {
+            return;
+        }
+        let mut sc = SchedContext::default();
+        if sporadic {
+            sc.class = SchedClass::Sporadic;
+            sc.budget_us = OptUs::from_us(budget_us.unwrap_or(0).min(u32::MAX as u64) as u32);
+            sc.period_us = OptUs::from_us(period_us.unwrap_or(0).min(u32::MAX as u64) as u32);
+        } else if best_effort {
+            sc.class = SchedClass::BestEffort;
+        } else if time_triggered {
+            let frame_us = period_us.unwrap_or(0).min(u32::MAX as u64) as u32;
+            let window_us = budget_us
+                .unwrap_or(period_us.unwrap_or(0))
+                .min(u32::MAX as u64) as u32;
+            self.executor_mut()
+                .register_time_triggered_dispatcher(frame_us);
+            sc.tt_window_duration_us = OptUs::from_us(window_us);
+        }
+        if let Some(d) = deadline_us {
+            sc.deadline_us = OptUs::from_us(d.min(u32::MAX as u64) as u32);
+        }
+        if let Some(action) = deadline_policy {
+            sc.deadline_action = DeadlineAction::from_tier_str(action);
+        }
+        self.executor_mut().set_default_sched_context(sc);
+    }
+
     /// Number of registered components.
     pub fn component_count(&self) -> usize {
         self.components.len()

@@ -398,43 +398,15 @@ impl PosixBoard {
 /// dispatcher wired at this altitude too). A tier with no class/budget
 /// leaves the default Fifo SC untouched — byte-identical pre-W3 behavior.
 fn apply_tier_sched(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'_>) {
-    use ::nros::{DeadlineAction, OptUs, SchedClass, SchedContext};
-    let sporadic =
-        tier.class == Some("real_time") && tier.budget_us.is_some() && tier.period_us.is_some();
-    let best_effort = tier.class == Some("best_effort");
-    // W3b.5 — a `time_triggered` tier maps to the executor's cyclic
-    // dispatcher: the tier period is the major frame, `budget_us` the
-    // execution window (whole frame when unset), offset 0 (multi-window
-    // schedules use the schedule-table API; a single tier IS one window).
-    let time_triggered = tier.class == Some("time_triggered") && tier.period_us.is_some();
-    if !sporadic && !best_effort && !time_triggered && tier.deadline_us.is_none() {
-        return;
-    }
-    let mut sc = SchedContext::default();
-    if sporadic {
-        sc.class = SchedClass::Sporadic;
-        sc.budget_us = OptUs::from_us(tier.budget_us.unwrap_or(0).min(u32::MAX as u64) as u32);
-        sc.period_us = OptUs::from_us(tier.period_us.unwrap_or(0).min(u32::MAX as u64) as u32);
-    } else if best_effort {
-        sc.class = SchedClass::BestEffort;
-    } else if time_triggered {
-        let frame_us = tier.period_us.unwrap_or(0).min(u32::MAX as u64) as u32;
-        let window_us = tier
-            .budget_us
-            .unwrap_or(tier.period_us.unwrap_or(0))
-            .min(u32::MAX as u64) as u32;
-        crt.executor_mut()
-            .register_time_triggered_dispatcher(frame_us);
-        // Offset 0 sentinel still gates: duration set = window [0, dur).
-        sc.tt_window_duration_us = OptUs::from_us(window_us);
-    }
-    if let Some(d) = tier.deadline_us {
-        sc.deadline_us = OptUs::from_us(d.min(u32::MAX as u64) as u32);
-    }
-    if let Some(action) = tier.deadline_policy {
-        sc.deadline_action = DeadlineAction::from_tier_str(action);
-    }
-    crt.executor_mut().set_default_sched_context(sc);
+    // W3a lowering now lives portably on `ExecutorNodeRuntime` (W5.4) so every
+    // board shares it; posix just forwards its tier fields.
+    crt.apply_tier_sched_policy(
+        tier.class,
+        tier.period_us,
+        tier.budget_us,
+        tier.deadline_us,
+        tier.deadline_policy,
+    );
 }
 
 /// Register + spin one tier on a freshly-opened borrowed-session

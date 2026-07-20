@@ -438,6 +438,14 @@ where
     // issue #144 — boot-tier declares FIRST, before spawning any other tier.
     let boot_tier = &tiers[0];
     boot_crt.executor_mut().set_active_groups(boot_tier.groups);
+    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
+    boot_crt.apply_tier_sched_policy(
+        boot_tier.class,
+        boot_tier.period_us,
+        boot_tier.budget_us,
+        boot_tier.deadline_us,
+        boot_tier.deadline_policy,
+    );
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut boot_crt);
         if let Err(e) = setup(&mut ctx) {
@@ -513,6 +521,14 @@ fn nuttx_run_one_tier<F, E>(
 {
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
+    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
+    crt.apply_tier_sched_policy(
+        tier.class,
+        tier.period_us,
+        tier.budget_us,
+        tier.deadline_us,
+        tier.deadline_policy,
+    );
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
