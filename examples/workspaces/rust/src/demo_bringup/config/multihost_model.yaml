@@ -1,16 +1,11 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/multihost_model.record.json
-    sha256: 60c5e387b454ba8c6fe4d239f2b7e850774825a9616aea231daf58cc7709f488
   - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/launch/multihost.launch.xml
     sha256: 4d922641296357912d4afdeaf56aa67d6cc633d3938e8fe737a9bc78f6f7600d
   resolver:
     tool: play_launch
     version: 0.8.2
-  record:
-    path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/multihost_model.record.json
-    sha256: 60c5e387b454ba8c6fe4d239f2b7e850774825a9616aea231daf58cc7709f488
 structure:
   scopes:
     /: {}
@@ -19,10 +14,12 @@ structure:
       scope: /
       pkg: listener_pkg
       exec: listener
+      node_name: listener
     /talker:
       scope: /
       pkg: talker_pkg
       exec: talker
+      node_name: talker
 execution:
   deploy:
     /listener:
