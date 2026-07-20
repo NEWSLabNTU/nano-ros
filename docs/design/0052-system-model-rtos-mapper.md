@@ -289,14 +289,20 @@ earlier version had nano-ros *consume* a resolved chain structure that
   `execution.sched` / no resolved sched plan** (RFC-0050 §"Input model;
   causality + execution modeling per consumer"). The `sched` chain mapper is
   play_launch's Linux-runtime execution model, not a model-crate field.
-- **The algorithm is shared, not the output.** The DAG/causality/segment +
-  chain-resolution algorithm is extracted into standalone reusable crate(s)
-  (decoupled from `ros-launch-manifest/sched`) that both runtimes call.
-  nano-ros derives its DAG/segments through that crate from the **input** —
+- **The algorithm is shared, not the output.** `ros-launch-manifest-sched` is
+  already the shared, pure crate (no parser deps) both runtimes vendor. The
+  arrangement: **split `chain_aware_mapper`** into (a) a platform-agnostic
+  **core** — feasibility + clock-segmentation + chain/segment **ranking**, a
+  *priorityless* ordered/segmented structure — and (b) the **Linux realizer**
+  (`rt_priority_band` → `ResolvedTierTable`, `posix`-tagged). nano-ros calls
+  the agnostic core (a) + its **own RTOS realizer** (below); it does NOT use
+  (b). **Derivation is nano-ros's own**, sharing the `MapperInput` type:
+  nano-ros builds `MapperInput` from the **input** SystemModel —
   `contracts.node_paths` (input→output, `input: []` = timer boundary) +
-  `structure.topics` wiring — and reads the integrator's **declared**
-  `tiers`/`bindings`. It then realizes per platform (below). One algorithm,
-  two realizers; no consumed `execution.sched`.
+  `structure.topics` wiring + the declared `tiers`/`bindings` — where
+  play_launch instead derives it from its `LaunchDump` (`sched_derive`,
+  parser-coupled, Linux-side). One agnostic core, two derivations, two
+  realizers; no consumed `execution.sched`.
 
 The realization design below is unchanged; it operates on the DAG the shared
 extraction crate produces, realized with RTOS kernel features.

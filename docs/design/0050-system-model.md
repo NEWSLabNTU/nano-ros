@@ -178,14 +178,17 @@ structure* (chains + per-path ranks) into the model. That is **reverted**
   modeling; nano-ros does its RTOS modeling (RFC-0052). Neither is embedded in
   the shared model — so **no `execution.sched` / no resolved chains / no
   per-path ranks in the model**.
-- **The algorithm is shared as standalone reusable crate(s), not the output.**
-  The reusable value is the *algorithm* — DAG/causality derivation from the
-  input (`node_paths` + wiring), segment decomposition, chain resolution — not
-  a serialized result. It is extracted into standalone crate(s) (decoupled
-  from the launch-manifest/`model` layer) that BOTH runtimes' mappers call;
-  each then applies its own **realizer** (play_launch → Linux fixed-priority;
-  nano-ros → RTOS kernel features, RFC-0052). One algorithm, two realizations,
-  zero embedded output.
+- **The algorithm is shared, not the output.** `ros-launch-manifest-sched` is
+  already the shared, pure crate (no parser deps) both runtimes vendor. The
+  reusable value is the *algorithm*: split `chain_aware_mapper` into (a) a
+  platform-agnostic **core** (feasibility + clock-segmentation + a priorityless
+  chain/segment **ranking**) and (b) the Linux **realizer** (`rt_priority_band`
+  → `ResolvedTierTable`). Both runtimes call (a); each applies its own realizer
+  ((b) for play_launch's Linux runtime; an RTOS realizer for nano-ros, RFC-0052).
+  **Derivation stays per-consumer**, sharing the `MapperInput` type — play_launch
+  derives it from its `LaunchDump` (`sched_derive`, parser-coupled); nano-ros
+  derives it from the SystemModel (`node_paths` + wiring + declared tiers). One
+  agnostic core, two derivations, two realizers, zero embedded output.
 - **Declared config stays.** `deploy`/`tiers`/`bindings` are integrator input
   the parser gathers; they stay in `execution:`. nano-ros reads them and
   models its RTOS execution on top (it does not treat them as a finished
@@ -197,12 +200,13 @@ structure* (chains + per-path ranks) into the model. That is **reverted**
   incoming `header.stamp`; a re-stamping node is modeled periodic
   (`input: []`), resetting the age clock by design.
 
-**Rework items (2026-07-20):** (1) revert `model.execution.sched` /
-`ExecutionSched` and the `sched`-struct re-exports into `model` (rlm
-`78f637d`/`5016b4d`/`c47c5bd`) — coordinate with the paused play_launch track;
-(2) extract the DAG/causality/segment + chain-mapper algorithm from
-`ros-launch-manifest/sched` into standalone reusable crate(s); (3) both
-runtimes depend on the extracted crate + their own realizer.
+**Rework items (2026-07-20):** (1) ~~revert `model.execution.sched` /
+`ExecutionSched` + the `sched`-struct re-exports~~ **DONE** (rlm `f090400`);
+(2) split `chain_aware_mapper` (in the already-shared `ros-launch-manifest-sched`)
+into a platform-agnostic core + a `posix` Linux realizer, exposing a
+priorityless ranked/segmented output; (3) nano-ros builds its own
+`SystemModel → MapperInput` derivation + RTOS realizer over that core (phase-296
+W5); play_launch keeps `sched_derive` + the Linux realizer.
 
 ## Non-goals
 

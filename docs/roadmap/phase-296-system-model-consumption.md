@@ -259,12 +259,15 @@ standalone crate(s) both runtimes call; nano-ros adds its RTOS realizer.
 Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
 `model.execution.sched`, and extract the algorithm crate.
 
-- W5.0 — **cross-repo rework (prereq)**: (a) revert the landed
-  `model.execution.sched`/`ExecutionSched` + `sched`-struct re-exports in
-  `model` (rlm `78f637d`/`5016b4d`/`c47c5bd`) — coordinate with the paused
-  play_launch track; (b) extract the DAG/causality/segment + chain-mapper
-  algorithm from `ros-launch-manifest/sched` into standalone reusable crate(s).
-- W5.1 — **derive the segments (via the extraction crate)**: build the causal
+- W5.0 — **cross-repo rework (prereq)**: (a) ~~revert `model.execution.sched`
+  /`ExecutionSched` + `sched`-struct re-exports in `model`~~ **DONE** (rlm
+  `f090400`); (b) split `chain_aware_mapper` (in the already-shared
+  `ros-launch-manifest-sched`) into a platform-agnostic **core** (feasibility +
+  clock-segmentation + priorityless ranking) and the `posix` Linux realizer
+  (`rt_priority_band` → `ResolvedTierTable`) — exposing a priorityless
+  ranked/segmented output the RTOS realizer also consumes. play_launch keeps
+  `sched_derive` (its `LaunchDump → MapperInput`) + the Linux realizer.
+- W5.1 — **derive the segments (own `SystemModel → MapperInput`)**: build the causal
   DAG from `contracts.node_paths` (input→output; `input: []` = timer boundary)
   + `structure.topics` wiring; cut into run-to-completion segments. Read the
   declared `execution.tiers`/`bindings` as the integrator's input.
