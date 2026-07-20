@@ -16,6 +16,7 @@ pub mod manifest;
 pub mod metadata_build;
 pub mod mapper_input;
 pub mod model_ingest;
+pub mod rtos_realizer;
 pub mod names;
 pub mod nros_config;
 pub mod params;
