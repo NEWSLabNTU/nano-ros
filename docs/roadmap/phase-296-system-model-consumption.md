@@ -313,7 +313,8 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   call it after `set_active_groups`). So `class`/budget/period/deadline lower to
   `SchedContext` (Sporadic/EDF/TT) on the embedded boards too. Host-verified via
   posix (2 tests); the calls type-check against `TierSpec`. ThreadX (single-
-  executor entry) + embedded SDK build verification (fixture/CI) are follow-ups.
+  executor entry — needs multi-tier first: **RFC-0053 / phase-297**) + embedded
+  SDK build verification (fixture/CI) are follow-ups.
 - Remaining: the runtime `PlatformSched` primitives (`set_deadline`/`replenish`)
   so boards apply *kernel-native* EDF/reservation (today the executor's own
   `SchedContext` backfills); hook the realizer path into `codegen-system` as an
