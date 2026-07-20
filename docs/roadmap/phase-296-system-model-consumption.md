@@ -269,15 +269,22 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `posix` Linux realizer. W5 consumes `RankedPlan` via `chain_aware_rank` /
   `ChainAwareMapper::rank`. play_launch keeps `sched_derive`
   (`LaunchDump → MapperInput`) + `realize_posix`.
-- W5.1 — **derive the segments (own `SystemModel → MapperInput`)**: build the causal
-  DAG from `contracts.node_paths` (input→output; `input: []` = timer boundary)
-  + `structure.topics` wiring; cut into run-to-completion segments. Read the
-  declared `execution.tiers`/`bindings` as the integrator's input.
-- W5.2 — **realizer** `L1`: six dims (`activation, urgency, deadline, budget,
-  non_preempt_scope, placement`, from the contract + declared tier) → per-dim
-  `Native | Backfill | Degrade(recorded)` against a board `SchedCaps`; emit
-  thread attrs + backfill `SchedContext` config + the degradation record
-  (fail-loud; extends W2's rejection table).
+- W5.1 — **derive `SystemModel → MapperInput` — ✅ DONE** (`c2c9cf31f`,
+  `orchestration/mapper_input.rs`): `MapperNode` from `structure.nodes` (scope,
+  criticality) + `contracts.node_paths` → `MapperPath` (`EffectiveTrigger`:
+  empty input = `Timer` at the output's contracted rate, else `Input`;
+  `max_latency_ms`; `exec_ms` None). Chains empty in v1 → the core degrades to
+  criticality-bucketed RM/DM. `rank_from_model()` runs the pipeline to a
+  `RankedPlan`. (Follow-up: chain-declaration input — needs a model contracts
+  addition — for full chain-aware ranking.)
+- W5.2 — **realizer** `L1` — ✅ DONE (`59c176a01`,
+  `orchestration/rtos_realizer.rs`): `realize_rtos(&RankedPlan, &MapperInput,
+  &SchedCaps) -> RtosPlan`. Six dims → per-dim `Native | Backfill |
+  Degrade(recorded)`: urgency→priority (rank+direction), activation→Timer
+  period, deadline→EDF-native-or-DM-priority, budget→reservation-or-executor-
+  Sporadic; `non_preempt_scope`/`placement` `NotRequested` pending derivation.
+  Flat `Degradation` record (fail-loud). (Follow-up: priority band-scarcity
+  collapse; core placement from `execution.deploy`.)
 - W5.3 — **`PlatformSched` seam** `L2`: capability-typed board trait; realize
   deadline/budget/preempt via kernel natives where present (EDF, sporadic,
   preemption-threshold, affinity), executor `SchedContext` where not.
