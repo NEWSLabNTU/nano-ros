@@ -4,7 +4,11 @@ Implements RFC-0053 (ThreadX multi-tier via codegen static per-tier stacks +
 native preemption-threshold). Builds on phase-296 W5.4 (the portable
 `ExecutorNodeRuntime::apply_tier_sched_policy` every board shares).
 
-**Status (2026-07-21):** design landed (RFC-0053); implementation pending.
+**Status (2026-07-21):** design landed (RFC-0053). W1 C++ path DONE
+(commit `cf69b09f2` — single-executor `emit_cpp` lowers `real_time` tiers to
+Sporadic). W1 Rust/C path pending — found to be `run_tiers`-shaped (the macro
+routes any single *named* tier to `<board>::run_tiers`), so it merges into the
+W4 `run_tiers` work starting from the single-tier case.
 
 ## Goal
 
@@ -19,14 +23,48 @@ emulated.
 
 ### W1 — v0 stepping stone: single-executor tier policy
 
-- Thread the boot tier into `run_app_thread`/`run_entry` so the single
-  executor calls `apply_tier_sched_policy(class, period_us, budget_us,
-  deadline_us, deadline_policy)` (the SchedContext lowering, W5.4) and the app
-  thread takes the tier's `priority` + `preempt_threshold`.
-- **Done when:** a single-tier ThreadX image lowers a `real_time` tier's
-  budget/period to a Sporadic `SchedContext` and applies its priority — same
-  observable behavior as the posix/native single-tier path. No new stack
-  machinery. Verified on `threadx-linux` (host sim) or `threadx-qemu-riscv64`.
+The tier's RTOS-agnostic policy (class/budget/period/deadline) must reach the
+single ThreadX executor. There are **two** entry paths, and the codegen
+routing differs per language — both need the lowering:
+
+- **C++ path (`nros_cpp_create_sched_context`) — DONE (commit `cf69b09f2`).**
+  The single-executor codegen path (`emit_cpp`, used by ThreadX + group-split
+  plans per `ResolvedTierTable::has_group_split_node`) hardcoded
+  `__sc.class_ = Fifo` and carried only `os_pri` + the spin cadence, so a
+  `real_time` tier silently ran best-effort. `emit_cpp` now mirrors
+  `apply_tier_sched_policy`: `real_time`+budget+period → Sporadic (`class_=2`)
+  with `budget_us`/`period_us` (RT period, not spin cadence);
+  `best_effort` → BestEffort; `deadline_us` → `__sc.deadline_us`. `Fifo`
+  output stays byte-identical when no RT `class` is declared. Test:
+  `typed_emit_single_executor_lowers_real_time_tier_to_sporadic`. Deferred:
+  `time_triggered` (the C ABI deprecates the TT class — `nros-c` maps it to
+  `Fifo` — and it needs a separate `register_time_triggered_dispatcher` seam
+  the single-executor codegen does not emit) and `deadline_action`/miss-policy
+  (no C sched-context field).
+
+- **Rust-board path — PENDING, and it is `run_tiers`-shaped, not a
+  `run_app_thread` tweak.** The `nros::main!` macro routes **any** tier table
+  that is not the synthesized single `default` tier (`is_single_tier()`) to
+  `<board>::run_tiers(&overlay, &[TierSpec{class, period_us, budget_us,
+  deadline_us, preempt_threshold, …}], closure)`. So even a *single named*
+  `real_time` tier on ThreadX routes to `run_tiers` — which ThreadX does not
+  implement, i.e. it does not compile today. The C path (`emit_c`,
+  `native_threadx_entry`) likewise emits `TierSpec` tokens, not
+  `create_sched_context`, so it too needs a ThreadX `run_tiers`. Therefore the
+  v0 Rust deliverable is a **`run_tiers` that handles the single-tier case**
+  (boot tier only: build the executor, `apply_tier_sched_policy(tier[0])`,
+  apply the tier's `priority` + native `preempt_threshold` to the app thread,
+  spin) and errors clearly on `> 1` tier until W4 adds the per-tier threads +
+  stacks. This is the `run_app_thread` boot-tier idea from RFC-0053's v0
+  ladder, realized through the entry method the macro actually calls. The
+  legacy synthesized single-`default`-tier ThreadX image keeps
+  `run_with_deploy` → `run_app_thread` unchanged (no RT policy to apply).
+
+- **Done when:** a single *named* `real_time` tier ThreadX image compiles,
+  lowers budget/period to a Sporadic `SchedContext`, and applies its priority
+  — same observable behavior as the posix/native single-tier path. No new
+  stack machinery. Verified on `threadx-linux` (host sim) or
+  `threadx-qemu-riscv64`.
 
 ### W2 — C FFI create-task shim
 
@@ -52,11 +90,14 @@ emulated.
 
 ### W4 — `run_tiers` multi-tier + native preempt-threshold
 
-- Add `run_tiers(tiers)` to `nros-board-threadx`: boot tier declares FIRST
-  (issue #144), then each remaining tier spawns via the W2 shim with its W3
-  stack, running one `Executor` + `setup` over the shared RMW session and
-  calling `apply_tier_sched_policy` on its executor. `preempt_threshold` →
-  `tx_thread_preemption_change` (native `non_preempt_scope`).
+- **Extend the W1 single-tier `run_tiers`** on `nros-board-threadx` to the
+  multi-tier case: boot tier declares FIRST (issue #144), then each remaining
+  tier spawns via the W2 shim with its W3 stack, running one `Executor` +
+  `setup` over the shared RMW session and calling `apply_tier_sched_policy` on
+  its executor. `preempt_threshold` → `tx_thread_preemption_change` (native
+  `non_preempt_scope`). (W1 already establishes the `run_tiers` entry method,
+  the macro routing, and the boot-tier policy/priority application for one
+  tier; W4 adds the additional per-tier threads + stacks.)
 - Wire the per-board crates (`nros-board-threadx-linux`,
   `nros-board-threadx-qemu-riscv64`) to route their multi-tier entry through it.
 - **Done when:** a multi-tier ThreadX image (e.g. a `real_time` control tier +
@@ -68,9 +109,12 @@ emulated.
 
 ## Order and dependencies
 
-W1 (v0, independent — delivers the SchedContext lowering + preempt-threshold on
-the single-tier path immediately) → W2 (shim) → W3 (codegen stacks) → W4
-(multi-tier `run_tiers`). W3 and W2 can proceed in parallel; W4 needs both.
+W1 (v0 — delivers the SchedContext lowering on the single-tier path
+immediately). W1 has **two independent sub-paths**: the C++ codegen lowering
+(DONE, `cf69b09f2`) and the Rust/C `run_tiers` v0 (pending — it establishes the
+ThreadX `run_tiers` entry the macro already routes to). → W2 (shim) → W3
+(codegen stacks) → W4 (extend the W1 `run_tiers` to multi-tier). W3 and W2 can
+proceed in parallel; W4 needs both, plus the W1 Rust `run_tiers` v0.
 
 ## Non-goals
 
