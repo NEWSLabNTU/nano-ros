@@ -655,12 +655,44 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
                 "        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
             );
             for (ti, tier) in tiers.tiers.iter().enumerate() {
-                let period_us = tier.spin_period_us.unwrap_or(0) as u32;
                 let os_pri = (tier.priority.clamp(0, 255)) as u8;
+                // RFC-0052 / phase-297 W1 — lower the tier's RTOS-agnostic
+                // real-time policy (class/budget/period/deadline) onto its
+                // sched-context, mirroring `ExecutorNodeRuntime::apply_tier_sched_policy`
+                // (nros/src/node_runtime.rs). The single-executor path (ThreadX +
+                // group-split plans, see `ResolvedTierTable::has_group_split_node`)
+                // reaches the runtime through this C ABI, so before this a
+                // `real_time` tier silently ran as `Fifo`. Byte-identical `Fifo`
+                // output stays for tiers that declare no RT `class` (the common
+                // single-tier case). `time_triggered` is deferred: the C ABI
+                // deprecates the TT class (nros-c executor.rs → maps it to `Fifo`)
+                // and needs a separate `register_time_triggered_dispatcher` seam
+                // the single-executor codegen does not emit. `deadline_action`
+                // (the miss policy) has no C sched-context field yet.
+                let class = tier.class.as_deref();
+                let sporadic = class == Some("real_time")
+                    && tier.budget_us.is_some()
+                    && tier.period_us.is_some();
+                let best_effort = class == Some("best_effort");
+                // SC period: the RT replenishment period when Sporadic; otherwise
+                // the executor spin cadence (legacy `spin_period_us` semantics).
+                let period_us = if sporadic {
+                    tier.period_us.unwrap_or(0).min(u32::MAX as u64) as u32
+                } else {
+                    tier.spin_period_us.unwrap_or(0) as u32
+                };
+                let (class_val, class_name): (u8, &str) = if sporadic {
+                    (2, "Sporadic")
+                } else if best_effort {
+                    (3, "BestEffort")
+                } else {
+                    (0, "Fifo")
+                };
                 out.push_str("        {\n");
                 out.push_str("            nros_cpp_sched_context_t __sc = {};\n");
-                out.push_str(
-                    "            __sc.class_ = static_cast<nros_cpp_sched_class_t>(0);  /* Fifo */\n",
+                let _ = writeln!(
+                    out,
+                    "            __sc.class_ = static_cast<nros_cpp_sched_class_t>({class_val});  /* {class_name} */"
                 );
                 out.push_str(
                     "            __sc.priority = static_cast<nros_cpp_priority_t>(1);  /* Normal */\n",
@@ -669,6 +701,14 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
                     "            __sc.deadline_policy = static_cast<nros_cpp_deadline_policy_t>(0);  /* Released */\n",
                 );
                 let _ = writeln!(out, "            __sc.period_us = {period_us}u;");
+                if sporadic {
+                    let budget_us = tier.budget_us.unwrap_or(0).min(u32::MAX as u64) as u32;
+                    let _ = writeln!(out, "            __sc.budget_us = {budget_us}u;");
+                }
+                if let Some(d) = tier.deadline_us {
+                    let d = d.min(u32::MAX as u64) as u32;
+                    let _ = writeln!(out, "            __sc.deadline_us = {d}u;");
+                }
                 let _ = writeln!(out, "            __sc.os_pri = {os_pri}u;");
                 let _ = writeln!(
                     out,
@@ -1736,6 +1776,68 @@ mod tests {
         assert!(
             !src.contains("NativeBoard::run_tiers"),
             "embedded board must not emit run_tiers; src:\n{src}"
+        );
+    }
+
+    #[test]
+    fn typed_emit_single_executor_lowers_real_time_tier_to_sporadic() {
+        // Phase 297 W1 — the single-executor sched-context path (ThreadX +
+        // group-split) lowers a `real_time` tier's class/budget/period/deadline
+        // onto its sched-context, mirroring `apply_tier_sched_policy`. Before W1
+        // it hardcoded `Fifo` + only os_pri/spin-period, so a `real_time` tier
+        // silently ran best-effort. `time_triggered` stays deferred (C ABI
+        // deprecates the TT class).
+        use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+        let rt_tier = ResolvedTier {
+            name: "control".into(),
+            priority: 90,
+            stack_bytes: None,
+            spin_period_us: Some(5_000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: Some("real_time".into()),
+            period_us: Some(20_000),
+            budget_us: Some(3_000),
+            deadline_us: Some(15_000),
+            deadline_policy: Some("fault".into()),
+            core: None,
+            members: vec![("ctrl".into(), "ctrl_grp".into())],
+        };
+        let mut plan = fixture_plan_typed(&[(
+            "ctrl_pkg",
+            "ctrl",
+            "ctrl",
+            "ctrl_pkg::Ctrl",
+            "ctrl_pkg/Ctrl.hpp",
+        )]);
+        plan.board = "threadx".into();
+        plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
+        plan.nodes[0].sched_context = Some(0);
+        plan.resolved_tiers = Some(ResolvedTierTable {
+            tiers: vec![rt_tier],
+        });
+        let src = emit_typed(&plan).expect("typed cpp real_time tier emit ok");
+        // class_ lowered to Sporadic (2), not the hardcoded Fifo (0).
+        assert!(
+            src.contains("__sc.class_ = static_cast<nros_cpp_sched_class_t>(2);  /* Sporadic */"),
+            "real_time tier must lower to Sporadic; got:\n{src}"
+        );
+        // period_us comes from the RT period (20000), NOT the spin cadence (5000).
+        assert!(
+            src.contains("__sc.period_us = 20000u;"),
+            "expected RT period_us=20000; got:\n{src}"
+        );
+        assert!(
+            src.contains("__sc.budget_us = 3000u;"),
+            "expected budget_us=3000; got:\n{src}"
+        );
+        assert!(
+            src.contains("__sc.deadline_us = 15000u;"),
+            "expected deadline_us=15000; got:\n{src}"
+        );
+        assert!(
+            src.contains("__sc.os_pri = 90u;"),
+            "expected os_pri=90; got:\n{src}"
         );
     }
 
