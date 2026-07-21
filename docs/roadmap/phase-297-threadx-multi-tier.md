@@ -5,10 +5,21 @@ native preemption-threshold). Builds on phase-296 W5.4 (the portable
 `ExecutorNodeRuntime::apply_tier_sched_policy` every board shares).
 
 **Status (2026-07-21):** design landed (RFC-0053). W1 C++ path DONE
-(commit `cf69b09f2` — single-executor `emit_cpp` lowers `real_time` tiers to
-Sporadic). W1 Rust/C path pending — found to be `run_tiers`-shaped (the macro
-routes any single *named* tier to `<board>::run_tiers`), so it merges into the
-W4 `run_tiers` work starting from the single-tier case.
+(`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering is single-sourced
+in `SchedContext::from_tier_policy`; `emit_cpp` forwards raw fields to it via
+the new `nros_cpp_create_sched_context_from_policy` FFI). W1 Rust/C path
+pending — found to be `run_tiers`-shaped (the macro routes any single *named*
+tier to `<board>::run_tiers`), so it merges into the W4 `run_tiers` work
+starting from the single-tier case.
+
+**Common-backend principle (applies to every wave).** One backend serves all
+languages; no logic is re-derived per codegen path. The tier→SchedContext
+lowering lives once (`SchedContext::from_tier_policy`) and is reached by C,
+C++, and Rust alike (W1, done). By the same rule: the ThreadX `run_tiers`
+(W1-Rust / W4) must call `apply_tier_sched_policy` (never re-lower), and the C
+`nros_threadx_create_task` shim (W2) is the single thread-creation backend the
+Rust `run_tiers` and any C/C++ entry both call — mirroring the FreeRTOS
+`nros_freertos_create_task` shape, not a parallel per-language implementation.
 
 ## Goal
 
@@ -27,20 +38,26 @@ The tier's RTOS-agnostic policy (class/budget/period/deadline) must reach the
 single ThreadX executor. There are **two** entry paths, and the codegen
 routing differs per language — both need the lowering:
 
-- **C++ path (`nros_cpp_create_sched_context`) — DONE (commit `cf69b09f2`).**
-  The single-executor codegen path (`emit_cpp`, used by ThreadX + group-split
-  plans per `ResolvedTierTable::has_group_split_node`) hardcoded
-  `__sc.class_ = Fifo` and carried only `os_pri` + the spin cadence, so a
-  `real_time` tier silently ran best-effort. `emit_cpp` now mirrors
-  `apply_tier_sched_policy`: `real_time`+budget+period → Sporadic (`class_=2`)
-  with `budget_us`/`period_us` (RT period, not spin cadence);
-  `best_effort` → BestEffort; `deadline_us` → `__sc.deadline_us`. `Fifo`
-  output stays byte-identical when no RT `class` is declared. Test:
-  `typed_emit_single_executor_lowers_real_time_tier_to_sporadic`. Deferred:
-  `time_triggered` (the C ABI deprecates the TT class — `nros-c` maps it to
-  `Fifo` — and it needs a separate `register_time_triggered_dispatcher` seam
-  the single-executor codegen does not emit) and `deadline_action`/miss-policy
-  (no C sched-context field).
+- **C++ path — DONE (commits `cf69b09f2` then `650a4d7e9`).** The
+  single-executor codegen path (`emit_cpp`, used by ThreadX + group-split plans
+  per `ResolvedTierTable::has_group_split_node`) hardcoded `__sc.class_ = Fifo`
+  and carried only `os_pri` + the spin cadence, so a `real_time` tier silently
+  ran best-effort. **Per the common-backend principle** (one backend for all
+  languages), the fix does NOT re-derive the mapping in the codegen. The
+  tier→SchedContext lowering is single-sourced in
+  `SchedContext::from_tier_policy` (nros-node); `apply_tier_sched_policy` (Rust
+  runtime) and a new FFI `nros_cpp_create_sched_context_from_policy` (nros-cpp)
+  both call it. `emit_cpp` now emits a `from_policy` call forwarding the **raw**
+  tier fields (`class` string / periods / `os_pri`), re-deriving nothing — so a
+  `real_time` tier lowers to the identical Sporadic SC on every language and
+  the mapping cannot drift. `Fifo` behavior unchanged when no RT `class`.
+  Backend tests `from_tier_policy_*` (nros-node); codegen test
+  `typed_emit_single_executor_forwards_real_time_tier_to_backend`. Deferred:
+  `time_triggered` single-executor (the backend returns the major frame, but
+  the codegen would need to also emit the `register_time_triggered_dispatcher`
+  call) and `deadline_action`/miss-policy carry across the FFI (the backend
+  sets it; the `from_policy` FFI forwards `deadline_policy`, so this is
+  actually covered — unlike the retired hand-derived path).
 
 - **Rust-board path — PENDING, and it is `run_tiers`-shaped, not a
   `run_app_thread` tweak.** The `nros::main!` macro routes **any** tier table
