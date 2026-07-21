@@ -4,7 +4,7 @@ title: "No exercised FVP runtime lane — cyclone-on-Zephyr-hardware regressions
 status: open
 type: tech-debt
 area: testing
-related: [phase-292]
+related: [phase-292, phase-298]
 ---
 
 ## Summary
