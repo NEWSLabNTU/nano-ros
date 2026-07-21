@@ -44,6 +44,36 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
+header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
+See `0244-*`. (RMW/platform audit 2026-07-21)
+
+**#243** — platform board-trait family duplicated during transition (nros-platform::board vs legacy
+nros-board-common::board_init, both live) with no recorded convergence end-state. See `0243-*`.
+(audit 2026-07-21)
+
+**#242** — RMW parity gaps vs rmw.h: no publisher GID (rmw_get_gid_for_publisher) and no
+message-info out-param (rmw_message_info_t) at the take slot; decide add-vs-carveout. See `0242-*`.
+(audit 2026-07-21)
+
+**#241** — RMW QoS boundary conversions silently lose the user's value: depth u32→u16 saturates,
+rmw_time_t durations clamp to u32 ms with 0 overloaded as infinite (should error under the
+no-silent-downgrade philosophy). See `0241-*`. (audit 2026-07-21)
+
+**#240** — RMW vtable naming/shape diverges from rmw.h without RTOS reason: open/close verbs,
+session/subscriber/service_server terms, transport hints (tx_express/rx_buffer_hint) inside the QoS
+struct instead of an options struct, a deprecated blocking call_raw slot. The rename/reshape
+cleanup bucket. See `0240-*`. (audit 2026-07-21)
+
+**#239** — no FFI-mirror drift gate for the RMW vtable/entity ABI nor an exhaustive one for the
+76-symbol platform ABI (check-ffi-struct-mirrors covers only the cpp qos/integrity pair) — the
+#131/#160 stale-mirror class is open on both; this is what let #238 sit undetected. See `0239-*`.
+(audit 2026-07-21)
+
+**#238** — RMW C-ABI bug: NrosRmwEventKind is repr(u8) in Rust but the C nros_rmw_event_kind_t is an
+int-sized enum, passed BY VALUE across the vtable (register_*_event + the event callback) — strictly
+non-conforming, latent portability bug. See `0238-*`. (audit 2026-07-21)
+
 **#236** — phase-296 R4: `play_launch resolve` drops `<node machine=>`, so
 multi-host workspaces can't migrate to the model path (the machine is captured
 by `play_launch_parser` but dropped at the `launch_dump` layer + never mapped
