@@ -295,34 +295,23 @@ impl ExecutorNodeRuntime {
         deadline_us: Option<u64>,
         deadline_policy: Option<&str>,
     ) {
-        use crate::{DeadlineAction, OptUs, SchedClass, SchedContext};
-        let sporadic = class == Some("real_time") && budget_us.is_some() && period_us.is_some();
-        let best_effort = class == Some("best_effort");
-        let time_triggered = class == Some("time_triggered") && period_us.is_some();
-        if !sporadic && !best_effort && !time_triggered && deadline_us.is_none() {
+        use crate::SchedContext;
+        // Common backend (RFC-0052): the tier→SchedContext lowering lives ONCE
+        // in `SchedContext::from_tier_policy`, shared with the C / C++ entries
+        // (`nros_{c,cpp}_create_sched_context_from_policy`) so the mapping never
+        // drifts between languages. `None` → keep the default `Fifo` SC.
+        let Some((sc, tt_frame)) = SchedContext::from_tier_policy(
+            class,
+            period_us,
+            budget_us,
+            deadline_us,
+            deadline_policy,
+        ) else {
             return;
-        }
-        let mut sc = SchedContext::default();
-        if sporadic {
-            sc.class = SchedClass::Sporadic;
-            sc.budget_us = OptUs::from_us(budget_us.unwrap_or(0).min(u32::MAX as u64) as u32);
-            sc.period_us = OptUs::from_us(period_us.unwrap_or(0).min(u32::MAX as u64) as u32);
-        } else if best_effort {
-            sc.class = SchedClass::BestEffort;
-        } else if time_triggered {
-            let frame_us = period_us.unwrap_or(0).min(u32::MAX as u64) as u32;
-            let window_us = budget_us
-                .unwrap_or(period_us.unwrap_or(0))
-                .min(u32::MAX as u64) as u32;
+        };
+        if let Some(frame_us) = tt_frame {
             self.executor_mut()
                 .register_time_triggered_dispatcher(frame_us);
-            sc.tt_window_duration_us = OptUs::from_us(window_us);
-        }
-        if let Some(d) = deadline_us {
-            sc.deadline_us = OptUs::from_us(d.min(u32::MAX as u64) as u32);
-        }
-        if let Some(action) = deadline_policy {
-            sc.deadline_action = DeadlineAction::from_tier_str(action);
         }
         self.executor_mut().set_default_sched_context(sc);
     }

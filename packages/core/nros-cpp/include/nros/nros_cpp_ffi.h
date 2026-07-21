@@ -784,6 +784,40 @@ nros_cpp_ret_t nros_cpp_create_sched_context(void *handle,
                                              uint8_t *out_sc_id);
 
 /**
+ * RFC-0052 — create a scheduling context from a RAW tier policy, routing
+ * through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_tier_policy`]
+ * so the C++ entry codegen never re-derives the class/budget/period/deadline
+ * mapping. This is the single-source-of-truth shared with the Rust runtime
+ * (`ExecutorNodeRuntime::apply_tier_sched_policy`) — the C++ single-executor
+ * entry path emits a call to THIS instead of building an
+ * `nros_cpp_sched_context_t` field-by-field, so a `real_time` tier lowers to
+ * the same Sporadic SC on every language.
+ *
+ * `class` / `deadline_policy` are NUL-terminated UTF-8 or null (= absent);
+ * `period_us` / `budget_us` / `deadline_us` use `0` as the absent sentinel.
+ * A tier with no real-time policy yields a `Fifo` SC carrying only `os_pri`
+ * (byte-identical to the pre-policy single-executor SC). When the policy is
+ * `time_triggered`, the major-frame dispatcher is registered on the executor
+ * as a side effect (same as the Rust path).
+ *
+ * On success writes the new SC id through `out_sc_id` and returns
+ * `NROS_CPP_RET_OK`.
+ *
+ * # Safety
+ * `handle` must be a context returned by `nros_cpp_init`; `class` and
+ * `deadline_policy` must each be null or a NUL-terminated C string;
+ * `out_sc_id` must be a valid `*mut u8`.
+ */
+nros_cpp_ret_t nros_cpp_create_sched_context_from_policy(void *handle,
+                                                         const char *class_,
+                                                         uint64_t period_us,
+                                                         uint64_t budget_us,
+                                                         uint64_t deadline_us,
+                                                         const char *deadline_policy,
+                                                         uint8_t os_pri,
+                                                         uint8_t *out_sc_id);
+
+/**
  * Bind a registered callback to a scheduling context. Phase 110.B.
  *
  * `handle` is the executor context; `callback_handle` is the index

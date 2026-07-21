@@ -395,6 +395,66 @@ impl SchedContext {
             tt_window_duration_us: OptUs::NONE,
         }
     }
+
+    /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic tier
+    /// policy (`[tiers.<t>]` class / budget / period / deadline) to a
+    /// [`SchedContext`]. ONE implementation shared by every language: the Rust
+    /// runtime ([`crate::node_runtime::ExecutorNodeRuntime::apply_tier_sched_policy`])
+    /// and the C / C++ entries (`nros_{c,cpp}_create_sched_context_from_policy`)
+    /// all call this, so the mapping can never drift between codegen paths.
+    ///
+    /// - `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`]
+    ///   (budget + RT replenishment period on the SC);
+    /// - `best_effort` → [`SchedClass::BestEffort`];
+    /// - `time_triggered` + `period_us` → a TT window (major frame =
+    ///   `period_us`, window = `budget_us` or the whole frame). The returned
+    ///   `Some(frame_us)` is the major frame the caller must install via
+    ///   [`crate::executor::Executor::register_time_triggered_dispatcher`]
+    ///   (the SC itself stays `Fifo`-class per the 110.G TT refactor);
+    /// - `deadline_us` sets the SC deadline; `deadline_policy` its
+    ///   [`DeadlineAction`].
+    ///
+    /// Returns `None` when the tier declares no class / budget / deadline — the
+    /// caller keeps the default `Fifo` SC (byte-identical pre-policy behavior).
+    /// `os_pri` is intentionally NOT set here (it is an orthogonal per-callback
+    /// OS-priority knob the caller applies); this fn covers only the
+    /// RTOS-agnostic real-time policy.
+    pub fn from_tier_policy(
+        class: Option<&str>,
+        period_us: Option<u64>,
+        budget_us: Option<u64>,
+        deadline_us: Option<u64>,
+        deadline_policy: Option<&str>,
+    ) -> Option<(Self, Option<u32>)> {
+        let sporadic =
+            class == Some("real_time") && budget_us.is_some() && period_us.is_some();
+        let best_effort = class == Some("best_effort");
+        let time_triggered = class == Some("time_triggered") && period_us.is_some();
+        if !sporadic && !best_effort && !time_triggered && deadline_us.is_none() {
+            return None;
+        }
+        let clamp = |v: u64| v.min(u32::MAX as u64) as u32;
+        let mut sc = Self::default();
+        let mut tt_frame = None;
+        if sporadic {
+            sc.class = SchedClass::Sporadic;
+            sc.budget_us = OptUs::from_us(clamp(budget_us.unwrap_or(0)));
+            sc.period_us = OptUs::from_us(clamp(period_us.unwrap_or(0)));
+        } else if best_effort {
+            sc.class = SchedClass::BestEffort;
+        } else if time_triggered {
+            tt_frame = Some(clamp(period_us.unwrap_or(0)));
+            let window_us = clamp(budget_us.unwrap_or(period_us.unwrap_or(0)));
+            sc.tt_window_duration_us = OptUs::from_us(window_us);
+        }
+        if let Some(d) = deadline_us {
+            sc.deadline_us = OptUs::from_us(clamp(d));
+        }
+        if let Some(action) = deadline_policy {
+            sc.deadline_action = DeadlineAction::from_tier_str(action);
+        }
+        Some((sc, tt_frame))
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -532,5 +592,75 @@ mod tests {
         assert!(!sc.budget_us.is_some());
         assert!(!sc.deadline_us.is_some());
         assert_eq!(sc.deadline_policy, DeadlinePolicy::Activated);
+    }
+
+    // RFC-0052 — the common-backend tier→SchedContext lowering, shared by the
+    // Rust runtime (`apply_tier_sched_policy`) and the C/C++ FFI
+    // (`nros_{c,cpp}_create_sched_context_from_policy`). One place, one test.
+
+    #[test]
+    fn from_tier_policy_real_time_lowers_to_sporadic() {
+        let (sc, tt) = SchedContext::from_tier_policy(
+            Some("real_time"),
+            Some(20_000),
+            Some(3_000),
+            Some(15_000),
+            Some("fault"),
+        )
+        .expect("real_time+budget+period is a policy");
+        assert_eq!(sc.class, SchedClass::Sporadic);
+        assert_eq!(sc.period_us.raw(), 20_000);
+        assert_eq!(sc.budget_us.raw(), 3_000);
+        assert_eq!(sc.deadline_us.raw(), 15_000);
+        assert_eq!(sc.deadline_action, DeadlineAction::Fault);
+        assert_eq!(tt, None);
+    }
+
+    #[test]
+    fn from_tier_policy_real_time_without_budget_or_period_is_not_sporadic() {
+        // `real_time` needs BOTH budget and period to be a sporadic server; a
+        // bare `real_time` with neither (and no deadline) declares no policy.
+        assert!(
+            SchedContext::from_tier_policy(Some("real_time"), None, None, None, None).is_none()
+        );
+    }
+
+    #[test]
+    fn from_tier_policy_best_effort() {
+        let (sc, tt) =
+            SchedContext::from_tier_policy(Some("best_effort"), None, None, None, None)
+                .expect("best_effort is a policy");
+        assert_eq!(sc.class, SchedClass::BestEffort);
+        assert_eq!(tt, None);
+    }
+
+    #[test]
+    fn from_tier_policy_time_triggered_returns_major_frame() {
+        // TT stays Fifo-class (110.G) but returns the major frame to register
+        // and sets the window duration (budget → window, else whole frame).
+        let (sc, tt) =
+            SchedContext::from_tier_policy(Some("time_triggered"), Some(10_000), Some(4_000), None, None)
+                .expect("time_triggered+period is a policy");
+        assert_eq!(sc.class, SchedClass::Fifo);
+        assert_eq!(tt, Some(10_000));
+        assert_eq!(sc.tt_window_duration_us.raw(), 4_000);
+    }
+
+    #[test]
+    fn from_tier_policy_deadline_only() {
+        // A deadline with no RT class still yields a policy (Fifo + deadline).
+        let (sc, _tt) =
+            SchedContext::from_tier_policy(None, None, None, Some(8_000), Some("warn"))
+                .expect("a deadline is a policy");
+        assert_eq!(sc.class, SchedClass::Fifo);
+        assert_eq!(sc.deadline_us.raw(), 8_000);
+        assert_eq!(sc.deadline_action, DeadlineAction::Warn);
+    }
+
+    #[test]
+    fn from_tier_policy_none_when_no_policy() {
+        // No class, no deadline → None → caller keeps the default Fifo SC.
+        assert!(SchedContext::from_tier_policy(None, Some(1_000), None, None, None).is_none());
+        assert!(SchedContext::from_tier_policy(Some("default"), None, None, None, None).is_none());
     }
 }

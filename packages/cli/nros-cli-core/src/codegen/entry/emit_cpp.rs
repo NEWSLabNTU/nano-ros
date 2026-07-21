@@ -656,63 +656,30 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             );
             for (ti, tier) in tiers.tiers.iter().enumerate() {
                 let os_pri = (tier.priority.clamp(0, 255)) as u8;
-                // RFC-0052 / phase-297 W1 — lower the tier's RTOS-agnostic
-                // real-time policy (class/budget/period/deadline) onto its
-                // sched-context, mirroring `ExecutorNodeRuntime::apply_tier_sched_policy`
-                // (nros/src/node_runtime.rs). The single-executor path (ThreadX +
-                // group-split plans, see `ResolvedTierTable::has_group_split_node`)
-                // reaches the runtime through this C ABI, so before this a
-                // `real_time` tier silently ran as `Fifo`. Byte-identical `Fifo`
-                // output stays for tiers that declare no RT `class` (the common
-                // single-tier case). `time_triggered` is deferred: the C ABI
-                // deprecates the TT class (nros-c executor.rs → maps it to `Fifo`)
-                // and needs a separate `register_time_triggered_dispatcher` seam
-                // the single-executor codegen does not emit. `deadline_action`
-                // (the miss policy) has no C sched-context field yet.
-                let class = tier.class.as_deref();
-                let sporadic = class == Some("real_time")
-                    && tier.budget_us.is_some()
-                    && tier.period_us.is_some();
-                let best_effort = class == Some("best_effort");
-                // SC period: the RT replenishment period when Sporadic; otherwise
-                // the executor spin cadence (legacy `spin_period_us` semantics).
-                let period_us = if sporadic {
-                    tier.period_us.unwrap_or(0).min(u32::MAX as u64) as u32
-                } else {
-                    tier.spin_period_us.unwrap_or(0) as u32
+                // RFC-0052 (common backend) — route the tier's RTOS-agnostic
+                // policy through `nros_cpp_create_sched_context_from_policy`,
+                // whose body calls `SchedContext::from_tier_policy` — the SAME
+                // lowering the Rust runtime's `apply_tier_sched_policy` uses. The
+                // C++ entry forwards RAW tier fields only (no class/budget/period
+                // mapping here), so a `real_time` tier lowers to the identical
+                // Sporadic SC on every language and the mapping can never drift
+                // between codegen paths. `nullptr` / `0` mean "absent"; a tier
+                // with no RT class yields a `Fifo` SC carrying just `os_pri`.
+                let c_str = |s: Option<&str>| match s {
+                    Some(v) => {
+                        format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""))
+                    }
+                    None => "nullptr".to_string(),
                 };
-                let (class_val, class_name): (u8, &str) = if sporadic {
-                    (2, "Sporadic")
-                } else if best_effort {
-                    (3, "BestEffort")
-                } else {
-                    (0, "Fifo")
-                };
+                let class_arg = c_str(tier.class.as_deref());
+                let dpolicy_arg = c_str(tier.deadline_policy.as_deref());
+                let period_us = tier.period_us.unwrap_or(0);
+                let budget_us = tier.budget_us.unwrap_or(0);
+                let deadline_us = tier.deadline_us.unwrap_or(0);
                 out.push_str("        {\n");
-                out.push_str("            nros_cpp_sched_context_t __sc = {};\n");
                 let _ = writeln!(
                     out,
-                    "            __sc.class_ = static_cast<nros_cpp_sched_class_t>({class_val});  /* {class_name} */"
-                );
-                out.push_str(
-                    "            __sc.priority = static_cast<nros_cpp_priority_t>(1);  /* Normal */\n",
-                );
-                out.push_str(
-                    "            __sc.deadline_policy = static_cast<nros_cpp_deadline_policy_t>(0);  /* Released */\n",
-                );
-                let _ = writeln!(out, "            __sc.period_us = {period_us}u;");
-                if sporadic {
-                    let budget_us = tier.budget_us.unwrap_or(0).min(u32::MAX as u64) as u32;
-                    let _ = writeln!(out, "            __sc.budget_us = {budget_us}u;");
-                }
-                if let Some(d) = tier.deadline_us {
-                    let d = d.min(u32::MAX as u64) as u32;
-                    let _ = writeln!(out, "            __sc.deadline_us = {d}u;");
-                }
-                let _ = writeln!(out, "            __sc.os_pri = {os_pri}u;");
-                let _ = writeln!(
-                    out,
-                    "            nros_cpp_ret_t __scr{ti} = nros_cpp_create_sched_context(__exec, &__sc, &__nros_sc_ids[{ti}]);"
+                    "            nros_cpp_ret_t __scr{ti} = nros_cpp_create_sched_context_from_policy(__exec, {class_arg}, {period_us}ull, {budget_us}ull, {deadline_us}ull, {dpolicy_arg}, {os_pri}u, &__nros_sc_ids[{ti}]);"
                 );
                 let _ = writeln!(
                     out,
@@ -1749,15 +1716,14 @@ mod tests {
             src.contains("uint8_t __nros_sc_ids[2] = {0};"),
             "embedded tier must emit sc_ids array; got:\n{src}"
         );
-        // High tier: os_pri=80, period_us=10000.
-        assert!(src.contains("__sc.os_pri = 80u;"), "expected os_pri=80");
+        // High tier: no RT class → Fifo SC via the common-backend call, carrying
+        // only os_pri=80 (nullptr/0 = absent policy). RFC-0052: the codegen
+        // forwards RAW tier fields; the lowering lives in the FFI backend.
         assert!(
-            src.contains("__sc.period_us = 10000u;"),
-            "expected period_us=10000"
-        );
-        assert!(
-            src.contains("nros_cpp_create_sched_context(__exec, &__sc, &__nros_sc_ids[0])"),
-            "expected tier 0 sc create"
+            src.contains(
+                "nros_cpp_create_sched_context_from_policy(__exec, nullptr, 0ull, 0ull, 0ull, nullptr, 80u, &__nros_sc_ids[0])"
+            ),
+            "expected tier 0 from_policy call (Fifo, os_pri=80); got:\n{src}"
         );
         // Bind seeds for each tiered node.
         assert!(
@@ -1780,13 +1746,13 @@ mod tests {
     }
 
     #[test]
-    fn typed_emit_single_executor_lowers_real_time_tier_to_sporadic() {
-        // Phase 297 W1 — the single-executor sched-context path (ThreadX +
-        // group-split) lowers a `real_time` tier's class/budget/period/deadline
-        // onto its sched-context, mirroring `apply_tier_sched_policy`. Before W1
-        // it hardcoded `Fifo` + only os_pri/spin-period, so a `real_time` tier
-        // silently ran best-effort. `time_triggered` stays deferred (C ABI
-        // deprecates the TT class).
+    fn typed_emit_single_executor_forwards_real_time_tier_to_backend() {
+        // Phase 297 W1 / RFC-0052 (common backend) — the single-executor
+        // sched-context path (ThreadX + group-split) forwards a `real_time`
+        // tier's RAW class/budget/period/deadline to
+        // `nros_cpp_create_sched_context_from_policy`, whose backend
+        // (`SchedContext::from_tier_policy`) does the class→Sporadic lowering —
+        // the SAME one the Rust runtime uses. The codegen re-derives nothing.
         use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
         let rt_tier = ResolvedTier {
             name: "control".into(),
@@ -1817,27 +1783,20 @@ mod tests {
             tiers: vec![rt_tier],
         });
         let src = emit_typed(&plan).expect("typed cpp real_time tier emit ok");
-        // class_ lowered to Sporadic (2), not the hardcoded Fifo (0).
+        // RFC-0052 common backend: the codegen forwards the RAW tier fields to
+        // `nros_cpp_create_sched_context_from_policy`; the class→Sporadic +
+        // budget/period lowering happens in the FFI backend
+        // (`SchedContext::from_tier_policy`), unit-tested in nros-node. The
+        // codegen must NOT re-derive the mapping (no `__sc.class_ = ...`).
         assert!(
-            src.contains("__sc.class_ = static_cast<nros_cpp_sched_class_t>(2);  /* Sporadic */"),
-            "real_time tier must lower to Sporadic; got:\n{src}"
-        );
-        // period_us comes from the RT period (20000), NOT the spin cadence (5000).
-        assert!(
-            src.contains("__sc.period_us = 20000u;"),
-            "expected RT period_us=20000; got:\n{src}"
-        );
-        assert!(
-            src.contains("__sc.budget_us = 3000u;"),
-            "expected budget_us=3000; got:\n{src}"
+            src.contains(
+                "nros_cpp_create_sched_context_from_policy(__exec, \"real_time\", 20000ull, 3000ull, 15000ull, \"fault\", 90u, &__nros_sc_ids[0])"
+            ),
+            "real_time tier must forward raw fields to the backend; got:\n{src}"
         );
         assert!(
-            src.contains("__sc.deadline_us = 15000u;"),
-            "expected deadline_us=15000; got:\n{src}"
-        );
-        assert!(
-            src.contains("__sc.os_pri = 90u;"),
-            "expected os_pri=90; got:\n{src}"
+            !src.contains("__sc.class_"),
+            "codegen must not re-derive the class mapping (common backend); got:\n{src}"
         );
     }
 

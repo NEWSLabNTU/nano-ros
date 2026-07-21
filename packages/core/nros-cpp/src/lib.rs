@@ -1412,6 +1412,82 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
     }
 }
 
+/// RFC-0052 — create a scheduling context from a RAW tier policy, routing
+/// through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_tier_policy`]
+/// so the C++ entry codegen never re-derives the class/budget/period/deadline
+/// mapping. This is the single-source-of-truth shared with the Rust runtime
+/// (`ExecutorNodeRuntime::apply_tier_sched_policy`) — the C++ single-executor
+/// entry path emits a call to THIS instead of building an
+/// `nros_cpp_sched_context_t` field-by-field, so a `real_time` tier lowers to
+/// the same Sporadic SC on every language.
+///
+/// `class` / `deadline_policy` are NUL-terminated UTF-8 or null (= absent);
+/// `period_us` / `budget_us` / `deadline_us` use `0` as the absent sentinel.
+/// A tier with no real-time policy yields a `Fifo` SC carrying only `os_pri`
+/// (byte-identical to the pre-policy single-executor SC). When the policy is
+/// `time_triggered`, the major-frame dispatcher is registered on the executor
+/// as a side effect (same as the Rust path).
+///
+/// On success writes the new SC id through `out_sc_id` and returns
+/// `NROS_CPP_RET_OK`.
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`; `class` and
+/// `deadline_policy` must each be null or a NUL-terminated C string;
+/// `out_sc_id` must be a valid `*mut u8`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
+    handle: *mut c_void,
+    class: *const c_char,
+    period_us: u64,
+    budget_us: u64,
+    deadline_us: u64,
+    deadline_policy: *const c_char,
+    os_pri: u8,
+    out_sc_id: *mut u8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || out_sc_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    use nros_node::executor::sched_context::SchedContext;
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    // null → None; a non-UTF-8 string is treated as absent (the bake already
+    // validated the tier vocabulary, so this only guards a caller ABI bug).
+    let class_str = if class.is_null() {
+        None
+    } else {
+        unsafe { core::ffi::CStr::from_ptr(class) }.to_str().ok()
+    };
+    let deadline_policy_str = if deadline_policy.is_null() {
+        None
+    } else {
+        unsafe { core::ffi::CStr::from_ptr(deadline_policy) }
+            .to_str()
+            .ok()
+    };
+    let opt_u64 = |v: u64| if v == 0 { None } else { Some(v) };
+    let (mut sc, tt_frame) = SchedContext::from_tier_policy(
+        class_str,
+        opt_u64(period_us),
+        opt_u64(budget_us),
+        opt_u64(deadline_us),
+        deadline_policy_str,
+    )
+    .unwrap_or((SchedContext::new_fifo(), None));
+    sc.os_pri = os_pri;
+    if let Some(frame_us) = tt_frame {
+        ctx.executor.register_time_triggered_dispatcher(frame_us);
+    }
+    match ctx.executor.create_sched_context(sc) {
+        Ok(id) => {
+            unsafe { *out_sc_id = id.0 };
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_FULL,
+    }
+}
+
 /// Bind a registered callback to a scheduling context. Phase 110.B.
 ///
 /// `handle` is the executor context; `callback_handle` is the index
