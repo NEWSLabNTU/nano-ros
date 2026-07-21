@@ -221,3 +221,76 @@ void tx_application_define(void *first_unused_memory)
     }
     nros_board_log("[app_define] App thread created, returning to kernel...\n");
 }
+
+/* ---- Phase 297 W2 — multi-tier thread-creation shim (RFC-0053) --------------
+ *
+ * `nros_threadx_create_task` is the SINGLE thread-creation backend the Rust
+ * `run_tiers` (W4) and any C/C++ entry call to spawn a per-tier thread —
+ * mirroring the FreeRTOS `nros_freertos_create_task` shape, not a per-language
+ * reimplementation (the common-backend principle).
+ *
+ * ThreadX has no default heap: `tx_thread_create` needs a caller-provided
+ * STACK. W3 bakes one aligned `static` stack per tier and passes `(ptr, len)`
+ * here (RFC-0053 Option A) — the RAM-heavy part stays exact, no pool. The
+ * TX_THREAD control blocks are small and fixed-size, so this file owns a
+ * bounded static array of them rather than exposing the port-specific
+ * `sizeof(TX_THREAD)` to the Rust side.
+ *
+ * `entry` is ThreadX-native `void(*)(ULONG)`; `arg` (the Rust spawn context,
+ * cast to `usize`) rides in as the ULONG thread input — no trampoline. A
+ * `preempt_threshold` of `-1` means "= priority" (no preemption-threshold
+ * effect); a value `0..TX_MAX_PRIORITIES-1` is ThreadX's native
+ * `non_preempt_scope` realization (RFC-0052) — a thread with a threshold
+ * higher-priority (lower-number) than its own priority cannot be preempted by
+ * threads at or below that threshold. `tx_thread_create` applies the threshold
+ * directly (no separate `tx_thread_preemption_change` needed at creation).
+ *
+ * Returns 0 on success, -1 on failure (cap exceeded, null/empty stack, or
+ * `tx_thread_create` error). */
+#define NROS_TX_MAX_TASKS 8
+static TX_THREAD nros_tx_task_blocks[NROS_TX_MAX_TASKS];
+static int nros_tx_task_count = 0;
+
+int nros_threadx_create_task(
+    const char *name,
+    void (*entry)(ULONG),
+    ULONG arg,
+    void *stack_ptr,
+    unsigned long stack_len,
+    unsigned int priority,
+    int preempt_threshold)
+{
+    UINT status;
+    UINT pt;
+    TX_THREAD *thread;
+
+    if (entry == 0) {
+        nros_board_log("ERROR: nros_threadx_create_task: null entry\n");
+        return -1;
+    }
+    if (stack_ptr == 0 || stack_len == 0) {
+        nros_board_log("ERROR: nros_threadx_create_task: null/empty stack\n");
+        return -1;
+    }
+    if (nros_tx_task_count >= NROS_TX_MAX_TASKS) {
+        nros_board_log("ERROR: nros_threadx_create_task: NROS_TX_MAX_TASKS exceeded\n");
+        return -1;
+    }
+
+    thread = &nros_tx_task_blocks[nros_tx_task_count];
+    /* -1 sentinel → threshold == priority (ThreadX's "no threshold" state). */
+    pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
+
+    status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_tier"),
+                               entry, arg,
+                               stack_ptr, (ULONG)stack_len,
+                               priority, pt,
+                               TX_NO_TIME_SLICE, TX_AUTO_START);
+    if (status != TX_SUCCESS) {
+        nros_board_log("ERROR: nros_threadx_create_task: tx_thread_create failed\n");
+        return -1;
+    }
+
+    nros_tx_task_count++;
+    return 0;
+}

@@ -112,11 +112,69 @@ unsafe extern "C" {
 
     fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
 
+    /// Phase 297 W2 (RFC-0053) — the shared ThreadX thread-creation backend
+    /// (`nros_board_common`'s `threadx_hooks.c`). Mirrors the FreeRTOS
+    /// `nros_freertos_create_task` shape; the single spawn path `run_tiers`
+    /// (W4) and any C/C++ entry both call. `entry` is ThreadX-native
+    /// `void(*)(ULONG)`; `arg` (the spawn context cast to `usize`) rides in as
+    /// the ULONG thread input. `stack_ptr`/`stack_len` are a caller-provided
+    /// (W3-baked, static) stack. `preempt_threshold < 0` ⇒ `= priority` (no
+    /// threshold); `>= 0` is the native `non_preempt_scope` value. Returns 0 on
+    /// success, -1 on failure.
+    fn nros_threadx_create_task(
+        name: *const u8,
+        entry: unsafe extern "C" fn(core::ffi::c_ulong),
+        arg: core::ffi::c_ulong,
+        stack_ptr: *mut c_void,
+        stack_len: core::ffi::c_ulong,
+        priority: core::ffi::c_uint,
+        preempt_threshold: core::ffi::c_int,
+    ) -> core::ffi::c_int;
+
     #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
 
     #[link_name = "_tx_thread_sleep"]
     fn tx_thread_sleep(ticks: u32);
+}
+
+/// Phase 297 W2 (RFC-0053) — safe wrapper over the [`nros_threadx_create_task`]
+/// C shim: spawn one ThreadX thread running `entry(arg)` on the caller-supplied
+/// static `stack`, at `priority` with an optional native `preempt_threshold`
+/// (`None` ⇒ no threshold, the ThreadX `non_preempt_scope` realization per
+/// RFC-0052). W4's `run_tiers` calls this once per non-boot tier; the boot tier
+/// keeps the `tx_application_define` app thread.
+///
+/// # Safety
+/// `stack` must point at a `'static`, exclusively-owned, correctly-aligned
+/// buffer of `stack_len` bytes that outlives the thread (never reused).
+/// `entry` + `arg` must stay valid for the thread's whole lifetime.
+#[allow(dead_code)] // W4 (`run_tiers`) is the caller; wired there.
+pub(crate) unsafe fn spawn_tier_thread(
+    name: &core::ffi::CStr,
+    entry: unsafe extern "C" fn(core::ffi::c_ulong),
+    arg: usize,
+    stack: *mut u8,
+    stack_len: usize,
+    priority: u32,
+    preempt_threshold: Option<u32>,
+) -> Result<(), ()> {
+    let pt: core::ffi::c_int = match preempt_threshold {
+        Some(v) => v as core::ffi::c_int,
+        None => -1,
+    };
+    let rc = unsafe {
+        nros_threadx_create_task(
+            name.as_ptr() as *const u8,
+            entry,
+            arg as core::ffi::c_ulong,
+            stack as *mut c_void,
+            stack_len as core::ffi::c_ulong,
+            priority as core::ffi::c_uint,
+            pt,
+        )
+    };
+    if rc == 0 { Ok(()) } else { Err(()) }
 }
 
 /// Wrapper passed through the ThreadX thread `void *` arg.

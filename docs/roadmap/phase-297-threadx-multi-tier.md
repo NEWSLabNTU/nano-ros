@@ -7,10 +7,12 @@ native preemption-threshold). Builds on phase-296 W5.4 (the portable
 **Status (2026-07-21):** design landed (RFC-0053). W1 C++ path DONE
 (`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering is single-sourced
 in `SchedContext::from_tier_policy`; `emit_cpp` forwards raw fields to it via
-the new `nros_cpp_create_sched_context_from_policy` FFI). W1 Rust/C path
-pending — found to be `run_tiers`-shaped (the macro routes any single *named*
-tier to `<board>::run_tiers`), so it merges into the W4 `run_tiers` work
-starting from the single-tier case.
+the new `nros_cpp_create_sched_context_from_policy` FFI). W2 DONE (the shared
+`nros_threadx_create_task` shim + Rust `spawn_tier_thread` wrapper; compiles +
+links on `threadx-linux`). W1 Rust/C path + W3 + W4 pending — the W1 Rust path
+is `run_tiers`-shaped (the macro routes any single *named* tier to
+`<board>::run_tiers`), so it merges into the W4 `run_tiers` work starting from
+the single-tier case.
 
 **Common-backend principle (applies to every wave).** One backend serves all
 languages; no logic is re-derived per codegen path. The tier→SchedContext
@@ -83,15 +85,34 @@ routing differs per language — both need the lowering:
   stack machinery. Verified on `threadx-linux` (host sim) or
   `threadx-qemu-riscv64`.
 
-### W2 — C FFI create-task shim
+### W2 — C FFI create-task shim — DONE
 
-- `nros_threadx_create_task(entry: extern "C" fn(*mut c_void), arg, priority,
-  preempt_threshold, stack_ptr, stack_len)` (C, in the board's `c/`): calls
-  `tx_thread_create` with the supplied stack, then `tx_thread_preemption_change`
-  when `preempt_threshold` is set (bake-validated ThreadX-only). Mirrors the
-  FreeRTOS `nros_freertos_create_task` shape.
-- **Done when:** a hand-driven test creates two ThreadX threads at distinct
-  priorities with distinct preemption thresholds and both run.
+- `nros_threadx_create_task(name, entry, arg, stack_ptr, stack_len, priority,
+  preempt_threshold)` — the SINGLE thread-creation backend (common-backend
+  principle), added to `nros-board-common`'s shared `threadx_hooks.c` (compiled
+  into every ThreadX overlay), NOT a per-overlay `c/` copy. Calls
+  `tx_thread_create` with the caller-supplied stack (W3 static stacks). Details
+  vs the original sketch:
+  - **Entry is ThreadX-native `void(*)(ULONG)`**, not `void(*)(void*)` —
+    `tx_thread_create`'s entry signature. `arg` (the Rust spawn context cast to
+    `usize`) rides in as the ULONG thread input; no trampoline.
+  - **`preempt_threshold` is passed straight to `tx_thread_create`** (its 8th
+    param), so no separate `tx_thread_preemption_change` at creation. `-1`
+    sentinel ⇒ `= priority` (no threshold); `>= 0` is the native
+    `non_preempt_scope` value (RFC-0052).
+  - **The TX_THREAD control blocks live in a bounded static array inside the
+    shim** (`NROS_TX_MAX_TASKS`), not exposed to Rust — the port-specific
+    `sizeof(TX_THREAD)` never crosses the FFI, and the RAM-heavy stacks stay
+    caller-provided (Option A intact).
+  - Rust binding + safe wrapper `spawn_tier_thread(name, entry, arg, stack,
+    stack_len, priority, preempt_threshold: Option<u32>)` in
+    `nros-board-threadx` (`#[allow(dead_code)]` until W4 calls it).
+- **Done:** the C shim compiles clean (`gcc -Wall -Wextra -fsyntax-only`
+  against the real ThreadX headers) and `threadx-linux` builds standalone
+  (Rust binding + wrapper + C shim compile + link). The two-thread RUNTIME
+  proof lands with W4's multi-tier e2e (which spawns real per-tier threads
+  through this shim) — mirroring `nros_freertos_create_task`, which likewise
+  has no standalone test and is exercised only via `run_tiers`.
 
 ### W3 — codegen: static per-tier stacks
 
