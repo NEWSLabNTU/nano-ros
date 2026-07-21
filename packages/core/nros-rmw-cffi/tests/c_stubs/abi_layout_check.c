@@ -42,19 +42,19 @@ _Static_assert(sizeof(nros_rmw_qos_t) == 28,
 /* Opaque handle structs are pointer-aligned (they carry a `void*`
  * backend_data / backend pointer). Rust mirror asserts the same via
  * `align_of >= size_of::<*mut c_void>()`. */
-_Static_assert(_Alignof(nros_rmw_session_t) >= sizeof(void *),
+_Static_assert(_Alignof(nros_rmw_session_t) >= sizeof(void*),
                "nros_rmw_session_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_publisher_t) >= sizeof(void *),
+_Static_assert(_Alignof(nros_rmw_publisher_t) >= sizeof(void*),
                "nros_rmw_publisher_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_subscriber_t) >= sizeof(void *),
+_Static_assert(_Alignof(nros_rmw_subscriber_t) >= sizeof(void*),
                "nros_rmw_subscriber_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_service_server_t) >= sizeof(void *),
+_Static_assert(_Alignof(nros_rmw_service_server_t) >= sizeof(void*),
                "nros_rmw_service_server_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_service_client_t) >= sizeof(void *),
+_Static_assert(_Alignof(nros_rmw_service_client_t) >= sizeof(void*),
                "nros_rmw_service_client_t under-aligned vs pointer");
 
 /* The vtable is all function pointers — its size must be a whole number
  * of pointer slots. Mirrors the Rust
  * `size_of::<NrosRmwVtable>() % ptr == 0` assertion. */
-_Static_assert(sizeof(nros_rmw_vtable_t) % sizeof(void *) == 0,
+_Static_assert(sizeof(nros_rmw_vtable_t) % sizeof(void*) == 0,
                "nros_rmw_vtable_t is not a whole number of pointer slots");
