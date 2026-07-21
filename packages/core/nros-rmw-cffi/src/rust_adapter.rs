@@ -939,10 +939,10 @@ unsafe extern "C" fn register_subscriber_event_trampoline<R: RustBackend>(
     let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    // SAFETY: cffi `NrosRmwEventKind` and trait `EventKind` are both
-    // `#[repr(u8)]` with identical variant numbering (asserted at
-    // compile time above).
-    let trait_kind: nros_rmw::EventKind = unsafe { core::mem::transmute(kind) };
+    // Explicit conversion, not a transmute: `NrosRmwEventKind` is
+    // C-int-sized (#238) while trait `EventKind` is `#[repr(u8)]` —
+    // reinterpreting bytes would be UB.
+    let trait_kind: nros_rmw::EventKind = kind.into();
     // SAFETY: see module-level note. `cb`'s parameter types
     // `(NrosRmwEventKind, *const NrosRmwEventPayload, *mut c_void)` are
     // ABI-compatible with the trait's `(EventKind, *const c_void, *mut c_void)`.
@@ -983,7 +983,8 @@ unsafe extern "C" fn register_publisher_event_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let p = unsafe { &mut *p_ptr };
-    let trait_kind: nros_rmw::EventKind = unsafe { core::mem::transmute(kind) };
+    // Explicit conversion, not a transmute (see subscriber trampoline / #238).
+    let trait_kind: nros_rmw::EventKind = kind.into();
     let trait_cb: nros_rmw::EventCallback = unsafe { core::mem::transmute(cb) };
     let res = unsafe {
         Publisher::register_event_callback(p, trait_kind, deadline_ms, trait_cb, user_context)

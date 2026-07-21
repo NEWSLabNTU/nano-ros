@@ -1694,6 +1694,17 @@ check-c: check-c-fmt
         -include packages/core/nros-cpp/include/nros/nros_cpp_ffi.h \
         -include packages/core/nros-c/include/nros/component.h \
         -x c /dev/null
+    echo "  - rmw ABI layout static-asserts (issue #238/#239)"
+    # The RMW C headers and their Rust `#[repr(C)]` mirrors are hand-kept
+    # in lockstep. `abi_layout_check.c` is a `_Static_assert`-only TU that
+    # pins the C-side widths (event-kind int-size, qos size, handle
+    # alignment, vtable pointer-slot count); the Rust half is the
+    # `abi_layout` const-assert block in nros-rmw-cffi/src/lib.rs. Either
+    # side drifting fails exactly one guard. `-fsyntax-only` still
+    # evaluates static asserts.
+    cc -fsyntax-only \
+        -Ipackages/core/nros-rmw-cffi/include \
+        packages/core/nros-rmw-cffi/tests/c_stubs/abi_layout_check.c
     echo "All C checks passed!"
 
 # Check C++ formatting only (clang-format) — BUILDLESS, source-free → push lane.

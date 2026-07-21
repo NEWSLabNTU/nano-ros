@@ -68,11 +68,10 @@ cleanup bucket. See `0240-*`. (audit 2026-07-21)
 **#239** — no FFI-mirror drift gate for the RMW vtable/entity ABI nor an exhaustive one for the
 76-symbol platform ABI (check-ffi-struct-mirrors covers only the cpp qos/integrity pair) — the
 #131/#160 stale-mirror class is open on both; this is what let #238 sit undetected. See `0239-*`.
-(audit 2026-07-21)
-
-**#238** — RMW C-ABI bug: NrosRmwEventKind is repr(u8) in Rust but the C nros_rmw_event_kind_t is an
-int-sized enum, passed BY VALUE across the vtable (register_*_event + the event callback) — strictly
-non-conforming, latent portability bug. See `0238-*`. (audit 2026-07-21)
+(audit 2026-07-21) — PARTIAL: #238 added compile-time layout assertions on both sides of the RMW
+mirror (Rust `abi_layout` const block + C `abi_layout_check.c` in the `check-c` lane); the width
+class is now gated. Still open: the platform 76-symbol side, per-field (not just size) parity, and
+the cbindgen-codegen SSoT.
 
 **#236** — phase-296 R4: `play_launch resolve` drops `<node machine=>`, so
 multi-host workspaces can't migrate to the model path (the machine is captured
@@ -87,7 +86,7 @@ fixture builder sets via a `-safety-*` build_subdir. Migrate via the fixture
 builder or enable the safety path in the workspace CMake. See
 `0237-safety-workspace-cmake-flag-not-set.md`.
 
-Recently resolved: **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
+Recently resolved: **#238** — RMW event-kind ABI width bug fixed: `NrosRmwEventKind` `#[repr(u8)]`→`#[repr(C)]` to match the int-sized C `nros_rmw_event_kind_t` passed by value across the vtable; drift now gated both sides by compile-time layout assertions (Rust `abi_layout` const block + C `abi_layout_check.c`), both proven to fire on injected drift; also fixed two latent 1-byte `transmute(kind)` sites in the adapter (now an explicit `From`) — `archived/0238-*`. **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 `struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.

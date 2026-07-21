@@ -748,9 +748,14 @@ pub struct NrosRmwVtable {
 // Phase 108 — status-event types (mirror `<nros/rmw_event.h>`)
 // ============================================================================
 
-/// Tier-1 event kinds. Stable u8 values matching
-/// `nros_rmw_event_kind_t` in the C header.
-#[repr(u8)]
+/// Tier-1 event kinds. `#[repr(C)]` (C-`int`-sized) to match the C
+/// `nros_rmw_event_kind_t` enum, which is an UNFIXED enum and therefore
+/// `int`-sized on every supported toolchain — this type is passed BY VALUE
+/// across the vtable (`register_{subscriber,publisher}_event` + the event
+/// callback), so a narrower Rust repr would be a by-value ABI mismatch
+/// (issue #238). The width is pinned by the `abi_layout` static assertion
+/// below.
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NrosRmwEventKind {
     LivelinessChanged = 0,
@@ -770,6 +775,24 @@ impl From<nros_rmw::EventKind> for NrosRmwEventKind {
             K::LivelinessLost => NrosRmwEventKind::LivelinessLost,
             K::OfferedDeadlineMissed => NrosRmwEventKind::OfferedDeadlineMissed,
             _ => NrosRmwEventKind::MessageLost, // unreachable for now (#[non_exhaustive])
+        }
+    }
+}
+
+impl From<NrosRmwEventKind> for nros_rmw::EventKind {
+    fn from(k: NrosRmwEventKind) -> Self {
+        use nros_rmw::EventKind as K;
+        // Explicit map — NOT a transmute: the two enums differ in
+        // width (`NrosRmwEventKind` is C-int-sized `#[repr(C)]` per
+        // issue #238; `EventKind` is `#[repr(u8)]`). A byte reinterpret
+        // would be UB. Variant numbering is identical, asserted at
+        // compile time in the `abi_layout` block.
+        match k {
+            NrosRmwEventKind::LivelinessChanged => K::LivelinessChanged,
+            NrosRmwEventKind::RequestedDeadlineMissed => K::RequestedDeadlineMissed,
+            NrosRmwEventKind::MessageLost => K::MessageLost,
+            NrosRmwEventKind::LivelinessLost => K::LivelinessLost,
+            NrosRmwEventKind::OfferedDeadlineMissed => K::OfferedDeadlineMissed,
         }
     }
 }
@@ -806,6 +829,68 @@ pub type NrosRmwEventCallback = unsafe extern "C" fn(
     payload: *const NrosRmwEventPayload,
     user_context: *mut c_void,
 );
+
+// ============================================================================
+// ABI layout single-source-of-truth (issue #238 / #239)
+// ============================================================================
+//
+// The `NrosRmw*` types above are the Rust half of a HAND-MIRRORED C ABI
+// (the C half is `packages/core/nros-rmw-cffi/include/nros/rmw_*.h`, and the
+// C/C++ backends positionally initialise `nros_rmw_vtable_t`). There is no
+// codegen keeping the two halves in lockstep, so a width/layout divergence
+// like issue #238 (a `#[repr(u8)]` enum passed by value against an
+// `int`-sized C enum) can slip in silently.
+//
+// These `const` assertions are the Rust-side guard: they are evaluated at
+// COMPILE time (`cargo build` fails, not just a test), and each number is
+// mirrored by a `_Static_assert` in `tests/c_stubs/abi_layout_check.c`
+// compiled against the real headers. Drift on EITHER side now fails a build:
+//   * Rust drifts (e.g. someone re-narrows an ABI enum) -> these fail here;
+//   * C drifts (e.g. a struct grows) -> the C `_Static_assert` fails.
+// Keep the two lists in sync; the pair IS the anti-drift contract until a
+// fuller cbindgen SSoT (issue #239) replaces the hand mirror.
+
+// Enums passed BY VALUE across the vtable / callbacks — the issue #238 class.
+// `nros_rmw_event_kind_t` is an UNFIXED C enum, so its width is whatever the
+// target C ABI gives an int-enum: `int`-sized on SysV/AAPCS64/RISC-V, but ONE
+// byte on ARM EABI (`-fshort-enums`, the AAPCS32 default). `#[repr(C)]` on the
+// Rust mirror tracks that per-target choice automatically, which is exactly
+// why the fix for #238 was `#[repr(C)]` and NOT a fixed `#[repr(u8)]`/`i32`:
+//   * a fixed repr is right on at most one class of target and wrong on the
+//     other (repr(u8) matched ARM but was a by-value ABI mismatch on host —
+//     the actual #238 bug; repr(i32) would be the mirror-image mistake);
+//   * repr(C) matches C on BOTH.
+// So the regression to catch is "someone pins a fixed width again". That can
+// only mis-size on int-enum targets (on ARM a 0..=4 enum is 1 byte either
+// way), so the width pin is meaningful there and is gated to those targets —
+// comparing against `c_int` rather than a hardcoded 4 so it stays honest if a
+// future ILP64-ish target ever appears. The C-side `_Static_assert` in
+// `abi_layout_check.c` is compiled host-side (int-enum), pinning `== 4` there.
+#[cfg(not(target_arch = "arm"))]
+const _: () =
+    assert!(core::mem::size_of::<NrosRmwEventKind>() == core::mem::size_of::<core::ffi::c_int>());
+
+const _: () = {
+    use core::mem::{align_of, size_of};
+
+    // Entity structs (repr(C)) — each mirrors a `nros_rmw_*_t` in the header;
+    // the C side pins the same sizes via `_Static_assert`.
+    assert!(size_of::<NrosRmwQos>() == 28);
+    assert!(align_of::<NrosRmwQos>() == 4);
+    // Handle structs carry an opaque `backend_data` ptr + reserved tail;
+    // their size is pointer-width dependent, so assert alignment + that they
+    // are at least one pointer (layout parity is enforced by the C
+    // `_Static_assert` on `sizeof`, which is target-evaluated there).
+    assert!(align_of::<NrosRmwSession>() >= size_of::<*mut core::ffi::c_void>());
+    assert!(align_of::<NrosRmwPublisher>() >= size_of::<*mut core::ffi::c_void>());
+    assert!(align_of::<NrosRmwSubscriber>() >= size_of::<*mut core::ffi::c_void>());
+    assert!(align_of::<NrosRmwServiceServer>() >= size_of::<*mut core::ffi::c_void>());
+    assert!(align_of::<NrosRmwServiceClient>() >= size_of::<*mut core::ffi::c_void>());
+
+    // The vtable is a flat struct of fn pointers; its size must be an exact
+    // multiple of the pointer width (no padding / non-ptr field crept in).
+    assert!(size_of::<NrosRmwVtable>().is_multiple_of(size_of::<*mut core::ffi::c_void>()));
+};
 
 // ============================================================================
 // Registration
@@ -2098,7 +2183,7 @@ impl CffiPublisher {
 
 /// Phase 124.A — writable slot returned by
 /// [`CffiPublisher::try_lend_slot`]. Holds the backend's raw buffer
-/// + opaque token until `commit_slot` consumes it or `Drop` fires
+/// and opaque token until `commit_slot` consumes it or `Drop` fires
 /// `pub_discard`.
 #[cfg(feature = "lending")]
 pub struct CffiSlot<'a> {

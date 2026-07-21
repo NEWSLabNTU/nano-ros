@@ -44,6 +44,8 @@ fn emit_max_backends() {
 fn maybe_build_c_stub() {
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.c");
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.h");
+    println!("cargo:rerun-if-changed=tests/c_stubs/abi_layout_check.c");
+    println!("cargo:rerun-if-changed=include/nros");
 
     if std::env::var_os("CARGO_FEATURE_C_STUB_TEST").is_none() {
         return;
@@ -55,4 +57,16 @@ fn maybe_build_c_stub() {
         .warnings(true)
         .extra_warnings(true)
         .compile("nros_c_stub_transport");
+
+    // ABI-layout single-source-of-truth (issue #238 / #239): a header
+    // TU of `_Static_assert`s that pin the C-side widths of the RMW
+    // mirror. Its Rust counterpart is the `abi_layout` const-assert
+    // block in `src/lib.rs`. If either side's layout drifts, exactly
+    // one guard fails the build. Compiled against the public headers.
+    cc::Build::new()
+        .file("tests/c_stubs/abi_layout_check.c")
+        .include("include")
+        .warnings(true)
+        .extra_warnings(true)
+        .compile("nros_abi_layout_check");
 }
