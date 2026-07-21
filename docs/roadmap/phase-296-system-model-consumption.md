@@ -10,15 +10,22 @@ Status (2026-07-20): W1–W4 + W3b.1–.5 all LANDED (incl. the cross-runtime
 parity fixture). **R2/R4 migration** in progress — **21 workspaces** on
 the model path (ws-realtime-{rust,cpp} flagship, all feature families
 across rust/cpp/c/mixed, the launch showcase, the `rust` monolith's 7
-single-host native entries, + `native_entry_robot1/robot2` on the model
-`host =` slice now that #236 steps 1–3 landed — play_launch 46.1 carries
-`<node machine=>` → `deploy.host`, and the macro/CLI host filter is
-validated E2E: robot1→talker, robot2→listener); **~14 remain** (the
-monolith's embedded entries + `zephyr_entry_robot1` — blocked on the #236
-board≠host unplaced-target sub-gap, `ws-safety-{cpp,c}`,
-`ws-realtime-{c,cpp-*}` variants,
-`ws-bridge-{rust,xrce}`, the 4 templates — see the R4 migration inventory
-below + the two sub-blocker issues #236/#237). **R3 (deprecation warnings)
+single-host native entries, `native_entry_robot1/robot2` on the model
+`host =` slice (#236 steps 1–3, play_launch 46.1 carries
+`<node machine=>` → `deploy.host`, host filter validated E2E), + **`ws-bridge-rust`
+and `ws-bridge-xrce-rust`** (2026-07-21 — `execution.bridges` from the bringup
+`[[bridge]]`; both native entries bake the bridge backend on the model arm).
+**Precise holdout inventory (classifier, 2026-07-21): 48 CMake `LAUNCH` entries
++ 7 Rust `main!(launch=)` remain** (the earlier `~14/~18 workspaces` was a
+rough count). Grouped: the `examples/workspaces/{c,cpp,mixed}` monolith
+native/service/action/robot/embedded entries (34 CMake — their rust siblings
+are done), `ws-realtime-{c,c-mps2,cpp-fvp,cpp-mps2,cpp-rclcpp,cpp-subnode*}`
+board/shape variants (12 CMake), `ws-safety-{c,cpp}` (4 CMake, blocked #237),
+3 templates (`{c-and-cpp-mixed,multi-node-workspace-cpp,pure-c}`), the rust
+monolith embedded entries (`esp32`/`qemu_freertos`/`qemu_nuttx`/`threadx_linux`/
+`zephyr` = 5 Rust), `multi-node-workspace` template robot_entry (1 Rust), and
+`zephyr_entry_robot1` (1 Rust, blocked #236). C/C++ migration state lives in the
+CMake `LAUNCH`/`MODEL` keyword, not the `.c`/`.cpp` source. **R3 (deprecation warnings)
 DONE + merged.** **R4 (legacy-path removal) IN PROGRESS** — the migration
 tail is the only blocker; code removal lands once the R3 warning fires in
 zero fixture builds (test-suite gated).
@@ -27,15 +34,30 @@ zero fixture builds (test-suite gated).
 play_launch is a **parser** — it gathers all input into the model (declared
 `deploy`/`tiers`/`bindings` stay as input); it does **not** embed a resolved
 sched plan. The landed `model.execution.sched` (play_launch 45.2/45.3, rlm
-`78f637d`) is being **reverted**. **Causality + execution modeling is the
-consumer's job**, and the reusable value is the *algorithm*, not the output:
-the DAG/causality/segment + chain-resolution algorithm is **extracted into
+`78f637d`) was **reverted** (W5.0, rlm `f090400`→`f5c0403`; the crate no longer
+exposes `ExecutionSched`). **Causality + execution modeling is the consumer's
+job**, and the reusable value is the *algorithm*, not the output: the
+DAG/causality/segment + chain-resolution algorithm is **extracted into
 standalone reusable crate(s)** that both runtimes call; nano-ros derives its
 DAG/segments through that crate from the input (`contracts.node_paths` +
 wiring), reads the declared tiers/bindings, and runs its OWN RTOS realizer.
-This adds **W5 — the RTOS-framework-aware realizer** as a phase-296 impl wave;
-**no dependency on `execution.sched`** (it's reverted). Runtime E2E monitoring
-stays stamp-based (no chain-id).
+This adds **W5 — the RTOS-framework-aware realizer** (LANDED W5.0–W5.4) as a
+phase-296 impl wave; **no dependency on `execution.sched`** (it's reverted).
+Runtime E2E monitoring stays stamp-based (no chain-id).
+
+**Reconciliation check (2026-07-21) — our consumption is consistent with the
+reverted-sched design.** Verified after the W5 landings + rlm pin `f5c0403`:
+(1) no nano-ros source reads `execution.sched`/`ExecutionSched` (the only
+mention is a comment in `orchestration/mapper_input.rs` noting the field was
+reverted); nano-ros derives its own plan via
+`mapper_input_from_model → chain_aware_rank → realize_rtos`. (2) No committed
+example model carries an `execution.sched` block — models are pure INPUT
+(declared `tiers`/`bindings`, baked by the existing `tier_resolver`; the W5
+realizer is the landed alternative path, not yet the default). (3) Artifact
+hygiene: 31 of 41 committed models still carry a stale `meta.record:` from a
+pre-46.5 play_launch binary (the unified design drops it — see the play_launch
+Phase 46 note in RFC-0050); harmless (our crate has no `deny_unknown_fields`),
+regenerate on next touch. Newly-resolved models (46.5 binary) are clean.
 
 ## Waves
 
@@ -549,12 +571,19 @@ entry fixtures:
     flag the plain workspace cmake configure does not set (the fixture
     builder uses a `-safety-*` build_subdir with the flag). Migrate once
     the build wires it. Tracked: issue #237.
+  - **`ws-bridge-{rust,xrce}` — DONE (2026-07-21).** Both resolved with
+    `--system` (1 bridge each → `execution.bridges`: zenoh→cyclonedds /
+    zenoh→xrce), committed `demo_bringup/config/system_model.yaml`, swapped
+    `nros::main!(launch=)` → `model = "demo_bringup"`. Native entries build on
+    the model arm with the bridge backend baked (proves the model arm reads
+    `execution.bridges` to register the two RMWs). `ws-{qos,custom-msg}-mixed`
+    were already migrated (their `native_{talker,listener}_entry` use `MODEL`).
   - **Straightforward remainder** (no blocker, resolve-batchable like the
-    families above): `ws-{safety,qos,params,custom-msg,lifecycle}-mixed`,
-    the `ws-realtime-{c,cpp-*}` board/shape variants, `ws-bridge-{rust,
-    xrce}` (`[[bridge]]` relays — model carries `execution.bridges`), the
-    4 templates, and the monolith's embedded entries (zephyr/freertos/
-    nuttx/esp32/threadx — need per-platform fixture rebuilds).
+    families above): the `examples/workspaces/{c,cpp,mixed}` monolith
+    native/service/action/robot entries (34 CMake — rust siblings done), the
+    `ws-realtime-{c,cpp-*}` board/shape variants, the 3 remaining templates,
+    and the monolith's embedded entries (zephyr/freertos/nuttx/esp32/threadx —
+    need per-platform fixture rebuilds).
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored

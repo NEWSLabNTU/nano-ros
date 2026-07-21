@@ -1,0 +1,24 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-bridge-rust/src/demo_bringup/launch/system.launch.xml
+    sha256: cf45a0234714dc84c21882e2bab10b2759c60fc195fecfeb23add1b06814a943
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-bridge-rust/src/demo_bringup/system.toml
+    sha256: 76fb9eebc108eb428996042c1e9b13c3f1def0b7f0c3ac70b54885e9cd29b964
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      node_name: talker
+execution:
+  bridges:
+  - name: gw
+    from: zenoh:zen
+    to: cyclonedds:dds
