@@ -296,8 +296,7 @@ impl ExecutorNodeRuntime {
         deadline_policy: Option<&str>,
     ) {
         use crate::{DeadlineAction, OptUs, SchedClass, SchedContext};
-        let sporadic =
-            class == Some("real_time") && budget_us.is_some() && period_us.is_some();
+        let sporadic = class == Some("real_time") && budget_us.is_some() && period_us.is_some();
         let best_effort = class == Some("best_effort");
         let time_triggered = class == Some("time_triggered") && period_us.is_some();
         if !sporadic && !best_effort && !time_triggered && deadline_us.is_none() {
