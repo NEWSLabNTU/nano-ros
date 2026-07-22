@@ -11,9 +11,10 @@ W3 DISSOLVED (byte-pool stacks — RFC-0053 revised from codegen-static Option A
 to byte-pool Option B; no codegen change). W4 DONE (impl) — `run_tiers_entry`
 on `nros-board-threadx` (boot tier + #144 chain-spawn + per-tier executors over
 one shared session + `apply_tier_sched_policy`) + both board ZSTs wired;
-`threadx-linux` builds + clippy-clean. Remaining: a 2-tier `threadx-linux`
-runtime e2e (retarget `demo_bringup`). The W1 Rust/C path is subsumed by W4
-(the macro routes any single *named* tier to `<Board>::run_tiers`).
+`threadx-linux` builds + clippy-clean. W5 TODO (documented) — the 2-tier
+`threadx-linux` runtime e2e that is the acceptance gate (fixture + test, retarget
+`ws-realtime-rust`). The W1 Rust/C path is subsumed by W4 (the macro routes any
+single *named* tier to `<Board>::run_tiers`).
 
 **Common-backend principle (applies to every wave).** One backend serves all
 languages; no logic is re-derived per codegen path. The tier→SchedContext
@@ -145,24 +146,116 @@ optimization for constrained MCUs (RFC-0053 §Revision).
 - Per-board ZSTs `ThreadxLinux::run_tiers` + `ThreadxQemuRiscv64::run_tiers`
   route the macro's `<Board>::run_tiers(&overlay, TIERS, setup)` here (mirrors
   `Mps2An385::run_tiers`).
-- **Verified:** `threadx-linux` builds standalone + clippy-clean with the full
-  `run_tiers` machinery + reworked shim (the whole spawn path compiles + links).
-  `threadx-qemu-riscv64`'s method is structurally identical (its standalone
-  build is blocked only by a pre-existing cc-rs cross-CFLAGS env issue, not this
-  code). **Remaining acceptance:** a 2-tier `threadx-linux` runtime e2e — retarget
-  the existing `demo_bringup` (`[tiers.high]`+`[tiers.low]`, ctrl 10 ms / telem
-  100 ms) to `threadx-linux` (add `[tiers.*.threadx]` priority sub-tables + a
-  fixtures.toml entry + a `realtime_tiers_threadx_e2e` test), asserting both
-  tiers deliver over one session.
+- **Verified (static):** `threadx-linux` builds standalone + clippy-clean with
+  the full `run_tiers` machinery + reworked shim (the whole spawn path compiles
+  + links). `threadx-qemu-riscv64`'s method is structurally identical (its
+  standalone build is blocked only by a pre-existing cc-rs cross-CFLAGS env
+  issue, not this code).
+- **Runtime acceptance is W5** (the 2-tier `threadx-linux` e2e).
+
+### W5 — runtime e2e: 2-tier `threadx-linux` (acceptance) — TODO
+
+Prove W4 at runtime by retargeting the existing RT-tiers workspace
+`examples/workspaces/ws-realtime-rust` (`src/demo_bringup`: `control_node`
+`/ctrl` on the `high` tier, `telem_node` `/telem` on the `low` tier) to
+`threadx-linux`. This is fixture + test authoring — no more board code.
+`threadx-linux` builds for the **host** `x86_64-unknown-linux-gnu` target
+(ThreadX threads are pthreads; the C kernel needs `THREADX_DIR` set, already
+wired) and uses NSOS host sockets, so no cross-toolchain and no QEMU — the
+cheapest ThreadX runtime lane.
+
+**Steps (each item is a concrete edit):**
+
+1. **`src/demo_bringup/system.toml`** — add the ThreadX priority sub-tables
+   next to the existing `posix`/`zephyr`/`nuttx` ones. ThreadX priorities are
+   `0..TX_MAX_PRIORITIES-1` with **lower number = higher priority**, so the
+   `high` tier must be the smaller number, and both should sit near the app
+   thread priority (`nros_board_app_priority()` = 4). The boot tier is
+   `tiers[0]` (the numerically-highest-priority = smallest number):
+   ```toml
+   [tiers.high.threadx]
+   priority = 5
+   [tiers.low.threadx]
+   priority = 15
+   ```
+   (Optionally a `preempt_threshold` on `high` to exercise the native
+   `non_preempt_scope` path — start without it to isolate the basic case.)
+
+2. **`src/threadx_entry/`** — new entry crate mirroring `src/nuttx_entry`:
+   - `Cargo.toml`: `[package.metadata.nros.entry] deploy = "threadx-linux"`;
+     `[package.metadata.nros.deploy.threadx-linux]` with `rmw = "zenoh"`,
+     `domain_id = 0`, `locator = "tcp/127.0.0.1:<PORT>"` (pick an unused port,
+     e.g. `17297`; NSOS dials the host loopback directly — no slirp gateway
+     like the nuttx rows). Deps: `nros` (`std`, `rmw-cffi`, `ros-humble`),
+     `nros-board-threadx-linux` (feature `rmw-zenoh`), `nros-platform`
+     (`platform-threadx`), `ctrl_pkg`, `telem_pkg`.
+   - `src/main.rs`: `nros::main!(model = "demo_bringup");` (same one-liner as
+     `native_entry`/`nuttx_entry`; the `deploy = "threadx-linux"` +
+     `[tiers.*.threadx]` route the macro to `<ThreadxLinux>::run_tiers`).
+   - `package.xml`: copy the nuttx_entry shape.
+
+3. **`examples/fixtures.toml`** — add a `[[workspace_fixture]]`:
+   ```toml
+   id = "workspace-rust-threadx-linux-realtime"
+   platform = "threadx-linux"
+   lang = "rust"
+   rmw = "zenoh"
+   dir = "examples/workspaces/ws-realtime-rust"
+   bringup = "src/demo_bringup"
+   entry = "threadx_entry"
+   target_dir = "target-fixtures/threadx-linux"
+   target = "x86_64-unknown-linux-gnu"
+   env = { NROS_LOCATOR = "tcp/127.0.0.1:17297", NROS_DOMAIN_ID = "0" }
+   ```
+   (Match the `codegen_out`/`target` fields of the existing
+   `workspace-rust-threadx-linux` row; confirm whether the realtime rows use
+   `codegen_out` by diffing against `workspace-rust-native-realtime`.)
+
+4. **`packages/testing/nros-tests/tests/realtime_tiers_threadx_e2e.rs`** —
+   mirror `tests/realtime_tiers_e2e.rs`: run the prebuilt `threadx_entry`
+   fixture binary, subscribe `/ctrl` + `/telem` from an external observer over
+   the baked locator, and assert the high tier publishes ~10× the low tier
+   (both tiers scheduled over the one shared session). Use
+   `nros_tests::output::*` marker constants, `unique_ros_domain_id()` if the
+   harness seeds domains, and **fail** (`assert!`/`skip!`) on unmet
+   preconditions — never bare `eprintln!`+return.
+
+5. **Build + run:** add the fixture to the build step (`just build-test-fixtures`
+   / `scripts/build/workspace-fixtures-build.sh threadx rust` — confirm the
+   exact lane), then run the test. Rebuild the fixture after any board/core
+   change (the mtime treadmill). Retest a red SOLO before filing (sim lanes
+   flake under sweep load).
+
+**Done when:** the `threadx-linux` 2-tier image boots one session, both the
+boot tier (`control_node`) and the spawned tier (`telem_node`) deliver, and the
+`/ctrl`:`/telem` rate ratio is ~10:1 — the runtime proof that `run_tiers` spawns
+one executor per tier over one shared session with per-tier sched policy. This
+simultaneously discharges the W2 shim's "two threads run" proof and the W1 Rust
+`run_tiers` path.
+
+**Watch-outs:**
+- **Priorities:** ThreadX lower-number = higher-priority (opposite of NuttX
+  SCHED_FIFO). A `high` tier numerically ABOVE `low` silently inverts the
+  tiers. Keep both below `NROS_TX_MAX_TASKS`-worth of headroom and near the
+  app-thread priority (4).
+- **Byte-pool sizing:** each spawned tier `tx_byte_allocate`s a
+  `nros_board_app_stack_size()` stack from the 4 MB pool. Two tiers ×
+  (executor stack + zenoh) must fit; if `Executor::open` fails on the spawned
+  tier, bump `BYTE_POOL_SIZE` in `threadx_hooks.c` or the overlay stack size.
+- **Discovery:** the #144 chain-spawn means `telem_node` declares only AFTER
+  `control_node`'s setup returns — expect telem's first `/telem` slightly
+  later than ctrl's; the ratio assertion should tolerate a startup transient
+  (count over a window after both are up, as `realtime_tiers_e2e.rs` does).
 
 ## Order and dependencies
 
 W1 (SchedContext lowering, C++ path DONE; Rust path folded into W4) → W2 (shim,
 DONE) → W3 (dissolved — byte-pool stacks, no codegen) → W4 (`run_tiers`
-multi-tier, DONE impl; runtime e2e pending). The macro already routes any
-non-`default` tier table on ThreadX to `<Board>::run_tiers`, so W4 also closes
-the W1 Rust/C path (a single named tier is just the one-tier case of
-`run_tiers`).
+multi-tier, DONE impl) → W5 (runtime e2e, TODO — the acceptance gate). The macro
+already routes any non-`default` tier table on ThreadX to `<Board>::run_tiers`,
+so W4 also closes the W1 Rust/C path (a single named tier is just the one-tier
+case of `run_tiers`). W5 needs only W4 (+ the existing `ws-realtime-rust`
+workspace) — no other wave blocks it.
 
 ## Non-goals
 
