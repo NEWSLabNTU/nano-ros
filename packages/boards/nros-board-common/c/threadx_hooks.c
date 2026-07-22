@@ -222,19 +222,28 @@ void tx_application_define(void *first_unused_memory)
     nros_board_log("[app_define] App thread created, returning to kernel...\n");
 }
 
-/* ---- Phase 297 W2 — multi-tier thread-creation shim (RFC-0053) --------------
+/* ---- Phase 297 W2/W4 — multi-tier thread-creation shim (RFC-0053) -----------
  *
  * `nros_threadx_create_task` is the SINGLE thread-creation backend the Rust
  * `run_tiers` (W4) and any C/C++ entry call to spawn a per-tier thread —
  * mirroring the FreeRTOS `nros_freertos_create_task` shape, not a per-language
  * reimplementation (the common-backend principle).
  *
- * ThreadX has no default heap: `tx_thread_create` needs a caller-provided
- * STACK. W3 bakes one aligned `static` stack per tier and passes `(ptr, len)`
- * here (RFC-0053 Option A) — the RAM-heavy part stays exact, no pool. The
- * TX_THREAD control blocks are small and fixed-size, so this file owns a
- * bounded static array of them rather than exposing the port-specific
- * `sizeof(TX_THREAD)` to the Rust side.
+ * Stack strategy (RFC-0053, revised): each tier's stack is `tx_byte_allocate`d
+ * from the shared 4 MB byte pool — the SAME mechanism `tx_application_define`
+ * already uses for the boot app thread's stack (above). This was chosen over
+ * codegen-baked static per-tier stacks (the RFC's original "Option A") because
+ * A's stated rationale — "consistency with the freertos/zephyr codegen" — was
+ * false: freertos spawns on its heap (`xTaskCreate`) and zephyr on a static
+ * `k_thread` pool; neither bakes per-tier static stacks. The byte pool is
+ * consistent with ThreadX's OWN app thread, adds no new static RAM (a tier
+ * executor stack is ~hundreds of KB — a fixed static pool would cost
+ * MAX_TIERS × that in BSS), and its one downside (runtime-alloc failure) is
+ * handled here (return -1 → the tier does not spawn). Exact per-tier static
+ * stacks remain a future RAM optimization for constrained MCU targets.
+ *
+ * The small, fixed-size TX_THREAD control blocks live in a bounded static
+ * array here, so the port-specific `sizeof(TX_THREAD)` never crosses the FFI.
  *
  * `entry` is ThreadX-native `void(*)(ULONG)`; `arg` (the Rust spawn context,
  * cast to `usize`) rides in as the ULONG thread input — no trampoline. A
@@ -245,7 +254,8 @@ void tx_application_define(void *first_unused_memory)
  * threads at or below that threshold. `tx_thread_create` applies the threshold
  * directly (no separate `tx_thread_preemption_change` needed at creation).
  *
- * Returns 0 on success, -1 on failure (cap exceeded, null/empty stack, or
+ * `stack_bytes == 0` falls back to the overlay's app-thread stack size.
+ * Returns 0 on success, -1 on failure (cap exceeded, alloc failure, or
  * `tx_thread_create` error). */
 #define NROS_TX_MAX_TASKS 8
 static TX_THREAD nros_tx_task_blocks[NROS_TX_MAX_TASKS];
@@ -255,25 +265,30 @@ int nros_threadx_create_task(
     const char *name,
     void (*entry)(ULONG),
     ULONG arg,
-    void *stack_ptr,
-    unsigned long stack_len,
+    unsigned long stack_bytes,
     unsigned int priority,
     int preempt_threshold)
 {
     UINT status;
     UINT pt;
     TX_THREAD *thread;
+    UCHAR *stack;
+    ULONG stack_size;
 
     if (entry == 0) {
         nros_board_log("ERROR: nros_threadx_create_task: null entry\n");
         return -1;
     }
-    if (stack_ptr == 0 || stack_len == 0) {
-        nros_board_log("ERROR: nros_threadx_create_task: null/empty stack\n");
-        return -1;
-    }
     if (nros_tx_task_count >= NROS_TX_MAX_TASKS) {
         nros_board_log("ERROR: nros_threadx_create_task: NROS_TX_MAX_TASKS exceeded\n");
+        return -1;
+    }
+
+    /* Stack from the shared byte pool (same as the boot app thread). */
+    stack_size = (stack_bytes != 0) ? (ULONG)stack_bytes : nros_board_app_stack_size();
+    status = tx_byte_allocate(&byte_pool, (VOID **)&stack, stack_size, TX_NO_WAIT);
+    if (status != TX_SUCCESS) {
+        nros_board_log("ERROR: nros_threadx_create_task: stack alloc failed\n");
         return -1;
     }
 
@@ -283,7 +298,7 @@ int nros_threadx_create_task(
 
     status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_tier"),
                                entry, arg,
-                               stack_ptr, (ULONG)stack_len,
+                               stack, stack_size,
                                priority, pt,
                                TX_NO_TIME_SLICE, TX_AUTO_START);
     if (status != TX_SUCCESS) {
@@ -293,4 +308,27 @@ int nros_threadx_create_task(
 
     nros_tx_task_count++;
     return 0;
+}
+
+/* Allocate `bytes` from the shared ThreadX byte pool. The Rust `run_tiers`
+ * uses this for each spawned tier's heap context (mirrors the FreeRTOS
+ * `nros_platform_alloc` → `pvPortMalloc` shape). Returns NULL on failure. */
+void *nros_threadx_alloc(unsigned long bytes)
+{
+    UCHAR *p;
+    if (bytes == 0) {
+        return 0;
+    }
+    if (tx_byte_allocate(&byte_pool, (VOID **)&p, (ULONG)bytes, TX_NO_WAIT) != TX_SUCCESS) {
+        return 0;
+    }
+    return p;
+}
+
+/* Free a block previously returned by `nros_threadx_alloc`. */
+void nros_threadx_free(void *ptr)
+{
+    if (ptr != 0) {
+        tx_byte_release(ptr);
+    }
 }

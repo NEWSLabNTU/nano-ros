@@ -4,15 +4,16 @@ Implements RFC-0053 (ThreadX multi-tier via codegen static per-tier stacks +
 native preemption-threshold). Builds on phase-296 W5.4 (the portable
 `ExecutorNodeRuntime::apply_tier_sched_policy` every board shares).
 
-**Status (2026-07-21):** design landed (RFC-0053). W1 C++ path DONE
-(`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering is single-sourced
-in `SchedContext::from_tier_policy`; `emit_cpp` forwards raw fields to it via
-the new `nros_cpp_create_sched_context_from_policy` FFI). W2 DONE (the shared
-`nros_threadx_create_task` shim + Rust `spawn_tier_thread` wrapper; compiles +
-links on `threadx-linux`). W1 Rust/C path + W3 + W4 pending — the W1 Rust path
-is `run_tiers`-shaped (the macro routes any single *named* tier to
-`<board>::run_tiers`), so it merges into the W4 `run_tiers` work starting from
-the single-tier case.
+**Status (2026-07-22):** design landed (RFC-0053). W1 C++ path DONE
+(`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering single-sourced in
+`SchedContext::from_tier_policy`). W2 DONE (`nros_threadx_create_task` shim).
+W3 DISSOLVED (byte-pool stacks — RFC-0053 revised from codegen-static Option A
+to byte-pool Option B; no codegen change). W4 DONE (impl) — `run_tiers_entry`
+on `nros-board-threadx` (boot tier + #144 chain-spawn + per-tier executors over
+one shared session + `apply_tier_sched_policy`) + both board ZSTs wired;
+`threadx-linux` builds + clippy-clean. Remaining: a 2-tier `threadx-linux`
+runtime e2e (retarget `demo_bringup`). The W1 Rust/C path is subsumed by W4
+(the macro routes any single *named* tier to `<Board>::run_tiers`).
 
 **Common-backend principle (applies to every wave).** One backend serves all
 languages; no logic is re-derived per codegen path. The tier→SchedContext
@@ -114,45 +115,54 @@ routing differs per language — both need the lowering:
   through this shim) — mirroring `nros_freertos_create_task`, which likewise
   has no standalone test and is exercised only via `run_tiers`.
 
-### W3 — codegen: static per-tier stacks
+### W3 — per-tier stacks — DISSOLVED into the byte-pool strategy (W4)
 
-- The entry codegen emits one aligned `static mut TIER_STACK_i: [u8;
-  stack_bytes_i]` per tier (Cortex-M/R 8-byte alignment; MPU power-of-two
-  rounding where the target enables it), and threads each `(ptr, len)` into
-  the `TierSpec`/spawn call. A stack too large for the image is a **link**
-  error (no runtime alloc). Default size when `stack_bytes` unset mirrors the
-  freertos default policy.
-- **Done when:** a two-tier bake emits two sized, aligned stack arrays and the
-  linker places them; changing a tier's `stack_bytes` changes the emitted
-  array size.
+The original plan (codegen-baked static per-tier stack arrays, RFC-0053 Option
+A) was **dropped** in favor of byte-pool stacks (Option B) — see the RFC-0053
+revision. The premise for A ("consistency with the freertos/zephyr codegen")
+was false: freertos spawns on its heap, zephyr on a static `k_thread` pool.
+`nros_threadx_create_task` (W2/W4) allocates each tier's stack from the SAME
+4 MB `TX_BYTE_POOL` the boot app thread already uses — no codegen change, no new
+static RAM. So there is no separate W3 deliverable; the "stack" concern is
+handled inside the W2 shim. Exact per-tier static stacks remain a future RAM
+optimization for constrained MCUs (RFC-0053 §Revision).
 
-### W4 — `run_tiers` multi-tier + native preempt-threshold
+### W4 — `run_tiers` multi-tier + native preempt-threshold — DONE (impl)
 
-- **Extend the W1 single-tier `run_tiers`** on `nros-board-threadx` to the
-  multi-tier case: boot tier declares FIRST (issue #144), then each remaining
-  tier spawns via the W2 shim with its W3 stack, running one `Executor` +
-  `setup` over the shared RMW session and calling `apply_tier_sched_policy` on
-  its executor. `preempt_threshold` → `tx_thread_preemption_change` (native
-  `non_preempt_scope`). (W1 already establishes the `run_tiers` entry method,
-  the macro routing, and the boot-tier policy/priority application for one
-  tier; W4 adds the additional per-tier threads + stacks.)
-- Wire the per-board crates (`nros-board-threadx-linux`,
-  `nros-board-threadx-qemu-riscv64`) to route their multi-tier entry through it.
-- **Done when:** a multi-tier ThreadX image (e.g. a `real_time` control tier +
-  a `best_effort` tier) spawns one thread/executor per tier over one session,
-  each executor carries its tier's SchedContext, and the control tier's
-  `preempt_threshold` is applied natively — verified on `threadx-linux` and/or
-  `threadx-qemu-riscv64` (a two-QEMU or host-sim runtime lane, matching the
-  existing threadx e2e fixtures).
+- `run_tiers_entry<B,C,F,E>` on `nros-board-threadx` (mirrors freertos
+  `run_tiers_entry`): the boot tier (`tiers[0]`, highest priority) runs on the
+  `tx_application_define` app thread; it opens the ONE session, runs the boot
+  tier's `setup` FIRST (issue #144), then CHAIN-spawns `tiers[1..]` — each tier
+  spawns the next only after its own `setup` returns, so no two tiers' entity
+  declares race the shared session's interest handshake. Each spawned tier
+  (`tier_task_entry`, a ThreadX-native `void(*)(ULONG)` whose `ULONG` input is
+  the `TierTaskCtx` pointer) opens an `Executor::open_with_session_handle` over
+  the shared session, applies its groups + `apply_tier_sched_policy` (the common
+  backend, W1), registers, chain-spawns the next, and spins at its period.
+- `preempt_threshold` flows through `TierSpec.preempt_threshold` →
+  `nros_threadx_create_task` → `tx_thread_create`'s 8th arg (native
+  `non_preempt_scope`); `-1` sentinel ⇒ `= priority`.
+- Per-board ZSTs `ThreadxLinux::run_tiers` + `ThreadxQemuRiscv64::run_tiers`
+  route the macro's `<Board>::run_tiers(&overlay, TIERS, setup)` here (mirrors
+  `Mps2An385::run_tiers`).
+- **Verified:** `threadx-linux` builds standalone + clippy-clean with the full
+  `run_tiers` machinery + reworked shim (the whole spawn path compiles + links).
+  `threadx-qemu-riscv64`'s method is structurally identical (its standalone
+  build is blocked only by a pre-existing cc-rs cross-CFLAGS env issue, not this
+  code). **Remaining acceptance:** a 2-tier `threadx-linux` runtime e2e — retarget
+  the existing `demo_bringup` (`[tiers.high]`+`[tiers.low]`, ctrl 10 ms / telem
+  100 ms) to `threadx-linux` (add `[tiers.*.threadx]` priority sub-tables + a
+  fixtures.toml entry + a `realtime_tiers_threadx_e2e` test), asserting both
+  tiers deliver over one session.
 
 ## Order and dependencies
 
-W1 (v0 — delivers the SchedContext lowering on the single-tier path
-immediately). W1 has **two independent sub-paths**: the C++ codegen lowering
-(DONE, `cf69b09f2`) and the Rust/C `run_tiers` v0 (pending — it establishes the
-ThreadX `run_tiers` entry the macro already routes to). → W2 (shim) → W3
-(codegen stacks) → W4 (extend the W1 `run_tiers` to multi-tier). W3 and W2 can
-proceed in parallel; W4 needs both, plus the W1 Rust `run_tiers` v0.
+W1 (SchedContext lowering, C++ path DONE; Rust path folded into W4) → W2 (shim,
+DONE) → W3 (dissolved — byte-pool stacks, no codegen) → W4 (`run_tiers`
+multi-tier, DONE impl; runtime e2e pending). The macro already routes any
+non-`default` tier table on ThreadX to `<Board>::run_tiers`, so W4 also closes
+the W1 Rust/C path (a single named tier is just the one-tier case of
+`run_tiers`).
 
 ## Non-goals
 

@@ -199,6 +199,33 @@ impl nros_platform::BoardEntry for ThreadxLinux {
     }
 }
 
+impl ThreadxLinux {
+    /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
+    /// emits `<ThreadxLinux>::run_tiers(&overlay, TIERS, setup)` whenever a
+    /// system declares more than the synthesized single `default` tier; this
+    /// routes to [`nros_board_threadx::run_tiers_entry`], which runs one
+    /// `Executor` per tier over one shared session. Mirrors
+    /// `Mps2An385::run_tiers` (the FreeRTOS analogue).
+    pub fn run_tiers<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        tiers: &'static [nros_platform::TierSpec<'static>],
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
+        E: core::fmt::Debug,
+    {
+        line_buffer_stdout();
+        crate::node::register_log_writer_public();
+        nros_board_threadx::run_tiers_entry::<ThreadxLinux, Config, F, E>(
+            config_with_overlay(deploy),
+            deploy.boot_config,
+            tiers,
+            setup,
+        )
+    }
+}
+
 /// Phase 244 E5 — overlay the `nros::main!()` deploy block onto `Config::default()`.
 /// Fields the deploy block omits keep the board default.
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {

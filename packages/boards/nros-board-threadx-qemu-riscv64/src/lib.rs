@@ -219,6 +219,29 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
     }
 }
 
+impl ThreadxQemuRiscv64 {
+    /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
+    /// emits `<ThreadxQemuRiscv64>::run_tiers(&overlay, TIERS, setup)` for a
+    /// system with more than the synthesized single `default` tier; routes to
+    /// [`nros_board_threadx::run_tiers_entry`] (one `Executor` per tier over one
+    /// shared session). Mirrors `ThreadxLinux::run_tiers`.
+    pub fn run_tiers<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        tiers: &'static [nros_platform::TierSpec<'static>],
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
+        E: core::fmt::Debug,
+    {
+        nros_board_threadx::run_tiers_entry::<ThreadxQemuRiscv64, Config, F, E>(
+            config_with_overlay(deploy),
+            deploy.boot_config,
+            setup,
+        )
+    }
+}
+
 /// Phase 245 — bare-metal CycloneDDS app-thread entry.
 ///
 /// The CMake/CycloneDDS firmware boots through a **C** `startup.c::main` that

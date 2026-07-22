@@ -67,6 +67,30 @@ The cross-RTOS norm for a *fixed* thread set is per-task static stacks
 (Zephyr `K_THREAD_STACK_DEFINE`, FreeRTOS `xTaskCreateStatic`, ThreadX static
 arrays, RTIC on bare-metal); A is that norm.
 
+### Revision (phase-297 W4, 2026-07-22) — implemented as byte-pool (B)
+
+Implementation revised this to **B (byte pool)**. The table's "Consistency"
+row was **wrong**: it claimed A "matches freertos/zephyr per-tier codegen", but
+neither board bakes per-tier static stacks — FreeRTOS spawns on its **heap**
+(`xTaskCreate`, dynamic) and Zephyr on a **static `k_thread` pool** bounded by
+`NROS_ZEPHYR_MAX_TIERS` (a C shim), not codegen-baked arrays. So A was
+consistent with nothing that actually ships.
+
+Decisive: nano-ros's own `threadx_hooks.c` **already** allocates the boot app
+thread's stack from a 4 MB `TX_BYTE_POOL` via `tx_byte_allocate`. Allocating
+each tier's stack the same way is consistent with ThreadX's OWN app thread,
+adds **no** new static RAM (a tier executor stack is hundreds of KB — a fixed
+static pool would cost `MAX_TIERS ×` that in BSS, and exact codegen arrays are
+still `Σ stack_bytes` of BSS), and its one downside — runtime-alloc failure —
+is handled (`nros_threadx_create_task` returns `-1` → the tier does not spawn).
+The small fixed-size `TX_THREAD` control blocks live in a bounded static array
+in the shim, so `sizeof(TX_THREAD)` never crosses the FFI.
+
+Exact per-tier static stacks (A) remain a **future RAM optimization** for
+constrained MCU targets; it is not required for the ThreadX-Linux /
+ThreadX-QEMU-RISC-V64 boards here (both simulate threads with generous host /
+QEMU RAM). The rest of this doc reads "static stack" as "byte-pool stack".
+
 ## Architecture
 
 ```

@@ -51,7 +51,7 @@ use core::{
 };
 
 use nros_board_common::ThreadxConfig;
-use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
 // #131 — no_std `log` sink routing to the board's UART. The concrete print path
 // depends on the board type `B`, which a `static` logger can't name, so the
@@ -112,24 +112,31 @@ unsafe extern "C" {
 
     fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
 
-    /// Phase 297 W2 (RFC-0053) — the shared ThreadX thread-creation backend
+    /// Phase 297 W2/W4 (RFC-0053) — the shared ThreadX thread-creation backend
     /// (`nros_board_common`'s `threadx_hooks.c`). Mirrors the FreeRTOS
     /// `nros_freertos_create_task` shape; the single spawn path `run_tiers`
     /// (W4) and any C/C++ entry both call. `entry` is ThreadX-native
     /// `void(*)(ULONG)`; `arg` (the spawn context cast to `usize`) rides in as
-    /// the ULONG thread input. `stack_ptr`/`stack_len` are a caller-provided
-    /// (W3-baked, static) stack. `preempt_threshold < 0` ⇒ `= priority` (no
-    /// threshold); `>= 0` is the native `non_preempt_scope` value. Returns 0 on
-    /// success, -1 on failure.
+    /// the ULONG thread input. `stack_bytes` (0 ⇒ the overlay's app-stack size)
+    /// is `tx_byte_allocate`d from the shared byte pool (same as the boot app
+    /// thread). `preempt_threshold < 0` ⇒ `= priority` (no threshold); `>= 0`
+    /// is the native `non_preempt_scope` value. Returns 0 on success, -1 on
+    /// failure.
     fn nros_threadx_create_task(
         name: *const u8,
         entry: unsafe extern "C" fn(core::ffi::c_ulong),
         arg: core::ffi::c_ulong,
-        stack_ptr: *mut c_void,
-        stack_len: core::ffi::c_ulong,
+        stack_bytes: core::ffi::c_ulong,
         priority: core::ffi::c_uint,
         preempt_threshold: core::ffi::c_int,
     ) -> core::ffi::c_int;
+
+    /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-tier heap
+    /// context). Mirrors the FreeRTOS `nros_platform_alloc`. NULL on failure.
+    fn nros_threadx_alloc(bytes: core::ffi::c_ulong) -> *mut c_void;
+
+    /// Free a block from [`nros_threadx_alloc`].
+    fn nros_threadx_free(ptr: *mut c_void);
 
     #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
@@ -138,43 +145,376 @@ unsafe extern "C" {
     fn tx_thread_sleep(ticks: u32);
 }
 
-/// Phase 297 W2 (RFC-0053) — safe wrapper over the [`nros_threadx_create_task`]
-/// C shim: spawn one ThreadX thread running `entry(arg)` on the caller-supplied
-/// static `stack`, at `priority` with an optional native `preempt_threshold`
-/// (`None` ⇒ no threshold, the ThreadX `non_preempt_scope` realization per
-/// RFC-0052). W4's `run_tiers` calls this once per non-boot tier; the boot tier
-/// keeps the `tx_application_define` app thread.
-///
-/// # Safety
-/// `stack` must point at a `'static`, exclusively-owned, correctly-aligned
-/// buffer of `stack_len` bytes that outlives the thread (never reused).
-/// `entry` + `arg` must stay valid for the thread's whole lifetime.
-#[allow(dead_code)] // W4 (`run_tiers`) is the caller; wired there.
-pub(crate) unsafe fn spawn_tier_thread(
-    name: &core::ffi::CStr,
-    entry: unsafe extern "C" fn(core::ffi::c_ulong),
-    arg: usize,
-    stack: *mut u8,
-    stack_len: usize,
-    priority: u32,
-    preempt_threshold: Option<u32>,
-) -> Result<(), ()> {
-    let pt: core::ffi::c_int = match preempt_threshold {
-        Some(v) => v as core::ffi::c_int,
+// ============================================================================
+// Phase 297 W4 (RFC-0053) — ThreadX multi-tier `run_tiers`.
+//
+// One `Executor` per tier over ONE shared RMW session, mirroring the FreeRTOS
+// `run_tiers_entry`. The boot tier (`tiers[0]`, highest priority) runs on the
+// `tx_application_define` app thread; each remaining tier is spawned via the
+// W2 `nros_threadx_create_task` shim (byte-pool stack). Spawns are CHAINED —
+// a tier spawns the next only after its own `setup` returns — so no two
+// tiers' entity declares race the shared zenoh-pico session's interest
+// handshake (issue #144). Each spawned tier calls `apply_tier_sched_policy`
+// (the common backend, W1) on its own executor.
+// ============================================================================
+
+/// Boot context for the multi-tier path, written into `CTX_STORAGE` by
+/// [`run_tiers_entry`] and read once on the app thread.
+struct TiersContext<C, F> {
+    config: C,
+    boot_config: Option<&'static BakedBootConfig>,
+    tiers: &'static [TierSpec<'static>],
+    setup: F,
+}
+
+/// Byte-pool context handed to each spawned (non-boot) tier thread. Allocated
+/// with [`nros_threadx_alloc`], read + freed by [`tier_task_entry`].
+struct TierTaskCtx<F> {
+    session: ::nros::SessionHandle,
+    tier: TierSpec<'static>,
+    /// Tiers still to spawn AFTER this one — the chained-spawn tail (#144).
+    rest: &'static [TierSpec<'static>],
+    setup: F,
+}
+
+/// Lower a `TierSpec` onto the executor runtime: the active-groups filter + the
+/// common-backend `apply_tier_sched_policy` (W1). Shared by the boot tier and
+/// every spawned tier so the lowering never diverges.
+fn apply_tier(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'static>) {
+    crt.executor_mut().set_active_groups(tier.groups);
+    crt.apply_tier_sched_policy(
+        tier.class,
+        tier.period_us,
+        tier.budget_us,
+        tier.deadline_us,
+        tier.deadline_policy,
+    );
+}
+
+/// issue #144 — chained tier spawn. Spawns exactly ONE ThreadX thread for
+/// `remaining[0]`, handing it `remaining[1..]` as its own `rest` so the chain
+/// continues once that tier's setup completes. Empty `remaining` → `Ok`.
+/// `Err(())` on ctx-alloc or spawn failure (the caller decides fatality).
+fn spawn_next_tier<B, C, F, E>(
+    session: ::nros::SessionHandle,
+    remaining: &'static [TierSpec<'static>],
+    setup: F,
+) -> core::result::Result<(), ()>
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let Some((tier, rest)) = remaining.split_first() else {
+        return Ok(());
+    };
+    let size = core::mem::size_of::<TierTaskCtx<F>>();
+    let ptr = unsafe { nros_threadx_alloc(size as core::ffi::c_ulong) as *mut TierTaskCtx<F> };
+    if ptr.is_null() {
+        B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
+        return Err(());
+    }
+    unsafe {
+        core::ptr::write(
+            ptr,
+            TierTaskCtx::<F> {
+                session,
+                tier: *tier,
+                rest,
+                setup,
+            },
+        );
+    }
+    // Raw per-RTOS priority; `preempt_threshold` < 0 sentinel ⇒ = priority.
+    let prio = tier.priority.clamp(0, u32::MAX as i64) as core::ffi::c_uint;
+    let pt: core::ffi::c_int = match tier.preempt_threshold {
+        Some(v) => v.clamp(0, u32::MAX as i64) as core::ffi::c_int,
         None => -1,
     };
+    let stack_bytes = tier.stack_bytes as core::ffi::c_ulong;
     let rc = unsafe {
         nros_threadx_create_task(
-            name.as_ptr() as *const u8,
-            entry,
-            arg as core::ffi::c_ulong,
-            stack as *mut c_void,
-            stack_len as core::ffi::c_ulong,
-            priority as core::ffi::c_uint,
+            b"nros_tier\0".as_ptr(),
+            tier_task_entry::<B, C, F, E>,
+            ptr as usize as core::ffi::c_ulong,
+            stack_bytes,
+            prio,
             pt,
         )
     };
-    if rc == 0 { Ok(()) } else { Err(()) }
+    if rc != 0 {
+        B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
+        unsafe { nros_threadx_free(ptr as *mut c_void) };
+        return Err(());
+    }
+    Ok(())
+}
+
+/// Spawned-tier thread body. ThreadX-native `void(*)(ULONG)` entry: `input` is
+/// the [`TierTaskCtx`] pointer (from [`spawn_next_tier`]). Opens an `Executor`
+/// over the SHARED session, applies this tier's groups + sched policy,
+/// registers (off-tier callbacks gated out), chain-spawns the next tier once
+/// its own setup returns (#144), then spins forever at the tier's period.
+///
+/// # Safety
+/// `input` must be a `nros_threadx_alloc`-allocated `TierTaskCtx<F>` from
+/// [`spawn_next_tier`]; this thread consumes + frees it.
+unsafe extern "C" fn tier_task_entry<B, C, F, E>(input: core::ffi::c_ulong)
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let arg = input as usize as *mut TierTaskCtx<F>;
+    let ctx = unsafe { core::ptr::read(arg) };
+    unsafe { nros_threadx_free(arg as *mut c_void) };
+
+    // SAFETY: the boot thread owns the session for the firmware lifetime (its
+    // spin loop never returns), so the handle stays valid.
+    let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+    apply_tier(&mut crt, &ctx.tier);
+    {
+        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
+        if let Err(e) = (ctx.setup)(&mut runtime) {
+            B::println(format_args!(
+                "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
+                ctx.tier.name,
+                e,
+                ctx.rest.len()
+            ));
+            B::exit_failure();
+        }
+    }
+    // #144 — setup done, so bringing up the next tier can no longer race our
+    // declares. Mint a fresh handle off this executor (the boot handle was
+    // consumed above). A DOWNSTREAM spawn failure must not stop this tier
+    // spinning, so warn + continue.
+    let next_session = crt.executor_mut().session_handle();
+    if spawn_next_tier::<B, C, F, E>(next_session, ctx.rest, ctx.setup).is_err() {
+        B::println(format_args!(
+            "nros: tier `{}` failed to spawn next tier; continuing",
+            ctx.tier.name
+        ));
+    }
+    let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    loop {
+        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
+            B::println(format_args!(
+                "nros: tier `{}` spin error: {:?}",
+                ctx.tier.name, err
+            ));
+            B::exit_failure();
+        }
+    }
+}
+
+/// App-thread body for the multi-tier path (mirrors [`run_app_thread`] but per
+/// tier). Boots the one session, runs `tiers[0]` (boot tier) setup, CHAIN-spawns
+/// `tiers[1..]`, then spins the boot tier forever. Diverges.
+///
+/// # Safety
+/// `arg` must point at a valid `TiersContext<C, F>` in `CTX_STORAGE` from
+/// [`run_tiers_entry`], living until the kernel terminates.
+unsafe extern "C" fn app_task_entry_tiers<B, C, F, E>(arg: *mut c_void) -> !
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { &*(arg as *const TiersContext<C, F>) };
+    let config = unsafe { core::ptr::read(&ctx.config) };
+    let boot_config = ctx.boot_config;
+    let tiers = ctx.tiers;
+    let setup = ctx.setup;
+
+    if tiers.is_empty() {
+        B::println(format_args!("nros: run_tiers called with no tiers"));
+        B::exit_failure();
+    }
+
+    // Network stabilisation (mirrors `run_app_thread`).
+    unsafe {
+        tx_thread_sleep(200);
+    }
+
+    let baked = boot_config
+        .map(::nros::BootConfig::from_baked)
+        .unwrap_or_default();
+    let exec_cfg = ::nros::ExecutorConfig::resolve(
+        ::nros::BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(config.zenoh_locator()),
+            domain_id: Some(config.domain_id()),
+            namespace: None,
+        },
+        /* hosted_env = */ false,
+    );
+
+    // #131 — register the linked zenoh CFFI backend before `Executor::open`.
+    #[cfg(feature = "rmw-zenoh")]
+    if let Err(err) = ::nros_rmw_zenoh::register() {
+        B::println(format_args!(
+            "nros: zenoh RMW backend register failed: {:?}",
+            err
+        ));
+    }
+
+    let executor = match ::nros::Executor::open(&exec_cfg) {
+        Ok(e) => e,
+        Err(err) => {
+            B::println(format_args!("Executor::open failed: {:?}", err));
+            B::exit_failure();
+        }
+    };
+    install_uart_logger::<B>();
+    B::println(format_args!("nros entry ready"));
+
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+
+    // Boot tier = tiers[0] (highest priority). Its declares run FIRST, before
+    // any spawn (#144), so no concurrent declare can race the handshake.
+    let boot_tier = &tiers[0];
+    apply_tier(&mut crt, boot_tier);
+    {
+        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
+        if let Err(e) = setup(&mut runtime) {
+            B::println(format_args!("Application error (boot tier): {:?}", e));
+            B::exit_failure();
+        }
+    }
+
+    // Chain-spawn the remaining tiers off this executor's session.
+    if spawn_next_tier::<B, C, F, E>(crt.executor_mut().session_handle(), &tiers[1..], setup)
+        .is_err()
+    {
+        B::exit_failure();
+    }
+
+    B::println(format_args!(
+        "Multi-tier setup complete — entering boot-tier spin loop."
+    ));
+    let period_ms = (boot_tier.spin_period_us / 1000).max(1) as u32;
+    loop {
+        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
+            B::println(format_args!("spin_once error: {:?}", err));
+            B::exit_failure();
+        }
+    }
+}
+
+/// Phase 297 W4 — multi-tier entry for the ThreadX family. The `nros::main!`
+/// macro emits `<Board>::run_tiers(&overlay, TIERS, setup)` whenever a system
+/// declares more than the synthesized single `default` tier; the per-board ZST
+/// routes here. Mirrors [`run_entry`] (build the boot context into
+/// `CTX_STORAGE`, push the network config + app callback through the C glue,
+/// `tx_kernel_enter()`) but runs one `Executor` per tier over one shared
+/// session (see [`app_task_entry_tiers`]).
+///
+/// `tiers` is the macro-baked `&'static [TierSpec]`; `setup` is the
+/// register-only closure (invoked once per tier — `Fn + Copy`).
+pub fn run_tiers_entry<B, C, F, E>(
+    config: C,
+    boot_config: Option<&'static BakedBootConfig>,
+    tiers: &'static [TierSpec<'static>],
+    setup: F,
+) -> core::result::Result<(), E>
+where
+    B: BoardInit + BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    B::println(format_args!(""));
+    B::println(format_args!("========================================"));
+    B::println(format_args!("  nros ThreadX Platform (multi-tier)"));
+    B::println(format_args!("========================================"));
+    B::init_hardware();
+
+    // Boot context into the shared static storage (single-threaded here —
+    // pre-kernel-enter). Reuses `CTX_STORAGE` (run_entry vs run_tiers are
+    // mutually exclusive per image).
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<TiersContext<C, F>>();
+        let align = core::mem::align_of::<TiersContext<C, F>>();
+        assert!(
+            size <= CTX_STORAGE_SIZE,
+            "TiersContext too large for CTX_STORAGE — bump CTX_STORAGE_SIZE"
+        );
+        let storage_ptr = core::ptr::addr_of_mut!(CTX_STORAGE) as *mut u8;
+        let addr = storage_ptr as usize;
+        let aligned = (addr + align - 1) & !(align - 1);
+        let offset = aligned - addr;
+        assert!(
+            offset + size <= CTX_STORAGE_SIZE,
+            "TiersContext alignment + size exceeds CTX_STORAGE"
+        );
+        let ptr = storage_ptr.add(offset) as *mut TiersContext<C, F>;
+        core::ptr::write(
+            ptr,
+            TiersContext {
+                config,
+                boot_config,
+                tiers,
+                setup,
+            },
+        );
+        ptr
+    };
+
+    let iface_ptr: *const u8 = unsafe {
+        let cfg = &(*ctx_ptr).config;
+        match cfg.interface() {
+            Some(iface) => {
+                let buf_ptr = core::ptr::addr_of_mut!(IFACE_BUF) as *mut u8;
+                let bytes = iface.as_bytes();
+                let n = bytes.len().min(IFACE_BUF_SIZE - 1);
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_ptr, n);
+                *buf_ptr.add(n) = 0;
+                buf_ptr as *const u8
+            }
+            None => core::ptr::null(),
+        }
+    };
+
+    unsafe {
+        let cfg = &(*ctx_ptr).config;
+        nros_threadx_set_config(
+            cfg.ip().as_ptr(),
+            cfg.netmask().as_ptr(),
+            cfg.gateway().as_ptr(),
+            cfg.mac().as_ptr(),
+            iface_ptr,
+        );
+        // The multi-tier app callback runs `app_task_entry_tiers` (which
+        // diverges); the `void(*)(void*)` app-callback shape is preserved.
+        nros_threadx_set_app_callback(
+            app_task_entry_tiers_trampoline::<B, C, F, E>,
+            ctx_ptr as *mut c_void,
+        );
+        tx_kernel_enter();
+    }
+
+    B::exit_failure()
+}
+
+/// `nros_threadx_set_app_callback` wants `extern "C" fn(*mut c_void)` (a
+/// non-diverging signature); [`app_task_entry_tiers`] diverges (`-> !`). This
+/// thin trampoline bridges the two.
+///
+/// # Safety
+/// Same contract as [`app_task_entry_tiers`].
+unsafe extern "C" fn app_task_entry_tiers_trampoline<B, C, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    unsafe { app_task_entry_tiers::<B, C, F, E>(arg) }
 }
 
 /// Wrapper passed through the ThreadX thread `void *` arg.
