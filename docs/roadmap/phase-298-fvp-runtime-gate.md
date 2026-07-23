@@ -87,17 +87,21 @@ participant, then fails. Root causes, both proven on the model:
   in use` warnings during Cyclone thread setup match the ASI image.)
 
 ### W2 — provision `west fvp`
-- [ ] W2.1 Register nano-ros's `scripts/west-commands.yml` (which declares the
+- [x] W2.1 (2026-07-23) Register nano-ros's `scripts/west-commands.yml` (which declares the
   `fvp` command → `scripts/west_commands/fvp.py`) in the workspace so
   `west fvp run` resolves when nano-ros is consumed as a MODULE (the
   "unknown command fvp" gap — it self-registers only when nano-ros is the
   manifest repo). Wire via the west manifest `self.west-commands` /
   `scripts/zephyr/setup.sh`, whichever the workspace setup owns. Follows the
   Zephyr west-extension convention (no manual `west config`).
-- [ ] W2.2 Confirm `west fvp run -d build-fvp-ws-entry` delegates to
+- [x] W2.2 (2026-07-23) VALIDATED: `west fvp run -d build-fvp-ws-entry` delegates to
   `west build -t run` with `ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"`
   honored (last-wins over the board default `=1`; the aarch64
-  `armfvp.cmake` appends env flags after the board flags).
+  `armfvp.cmake` appends env flags after the board flags). 249 k ctrl +
+  27 k telem publishes in a 240 s run (~9:1, the 10 ms/100 ms cadence).
+  Root cause of the "unknown command fvp" gap: `west.yml`'s `self:` section
+  never declared `west-commands: scripts/west-commands.yml`, so the extension
+  never registered in ANY workspace, module or manifest alike.
 
 ### W3 — the gate (recipe + test + verb)
 - [ ] W3.1 `just zephyr run-fvp-ws-entry`: `west fvp run -d build-fvp-ws-entry`
