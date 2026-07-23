@@ -73,21 +73,13 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # test-all staleness probe). The remaining platforms have no manifest rows
     # for this broad find, or are built by their own platform recipes
     # (freertos/nuttx/threadx/zephyr/px4).
-    # PRUNE the huge build trees (`target/`/`build*/`/`_deps/`) so find does not
-    # descend into them (the vendored `_deps/` under cmake build dirs has thousands
-    # of files; `-not -path` alone only FILTERS, find still traverses). Selection
-    # filters stay as `-not -path` (small dirs, depth-independent).
-    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
-                       -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
-                       -not -path '*/build/*' -not -path '*/build-*/*' \
-                       -not -path '*/_deps/*' -not -path '*/zephyr/*' \
-                       -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
-                       -not -path '*/threadx-linux/*' \
-                       -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/qemu-arm-baremetal/*' -not -path '*/stm32f4/*' \
-                       -not -path '*/esp32/*' -not -path '*/qemu-esp32-baremetal/*' \
-                       -not -path '*/px4/*' -print | sort > "$toml_list"
+    # Enumerate via the git index (tracked files only) — no filesystem
+    # traversal, so untracked build/target trees can never slow this down or
+    # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
+    # workspace-root manifests). Selection filters stay as greps.
+    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
+        | grep -vE '/zephyr/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/stm32f4/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
     # are excluded from this find and built from the manifest below, so this
@@ -306,15 +298,11 @@ format:
     #!/usr/bin/env bash
     set -e
     echo "Formatting examples..."
-    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
-        -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
-        -not -path '*/build/*' -not -path '*/build-*/*' \
-        -not -path '*/generated/*' -not -path '*/zephyr/*' \
-        -not -path '*/multi-package-workspace/*' \
-        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
-        -not -path '*/threadx-linux/*' \
-        -not -path '*/qemu-riscv64-threadx/*' \
-        -exec dirname {} \; | sort \
+    # Tracked-file enumeration via the git index (no filesystem traversal;
+    # untracked build/target trees can never slow this down or leak in).
+    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/' \
+        | xargs -r -n1 dirname | sort \
     | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
     echo "All examples formatted!"
@@ -344,21 +332,11 @@ check JOBS="75%":
     #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
     #     `esp32_entry` configures `portable-atomic` single-core, which fails to
     #     compile for the host x86_64 target.
-    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
-                       -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
-                       -not -path '*/build/*' -not -path '*/build-*/*' \
-                       -not -path '*/zephyr/*' \
-                       -not -path '*/multi-package-workspace/*' \
-                       -not -path '*/templates/local-msg-package/*' \
-                       -not -path '*/templates/multi-node-workspace/*' \
-                       -not -path '*/templates/workspace-shadowing/*' \
-                       -not -path '*/workspaces/*' \
-                       -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
-                       -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
-                       -not -path '*/threadx-linux/*' \
-                       -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' -print | sort > "$toml_list"
+    # Tracked-file enumeration via the git index (no filesystem traversal;
+    # untracked build/target trees can never slow this down or leak in).
+    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|qemu-esp32-baremetal/rust/dds/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/px4/' \
+        | sort > "$toml_list"
 
     # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
     # crates (`generated/<msg>/`) are BUILD-TIME + ROS-version-dependent, so they

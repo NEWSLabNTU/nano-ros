@@ -583,9 +583,8 @@ _pinned-toolchain-files:
     emit rust-toolchain.toml
     emit tools/rust-toolchain.toml
     emit packages/verification/nros-verification/rust-toolchain.toml
-    find examples \
-        -type d \( -name target -o -name 'target-*' -o -name 'build-*' -o -name build \) -prune \
-        -o -name rust-toolchain.toml -print 2>/dev/null
+    # Tracked-file enumeration via the git index (no traversal of build trees).
+    git ls-files 'examples/**/rust-toolchain.toml' 2>/dev/null
 
 # Install every pinned toolchain referenced by a checked-in
 # `rust-toolchain.toml`, together with the components each file declares.

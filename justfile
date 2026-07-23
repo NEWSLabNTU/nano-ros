@@ -403,20 +403,13 @@ check-source-gates:
 check-example-fmt:
     #!/usr/bin/env bash
     set -e
-    # PRUNE the build trees (target/build*/_deps) so find does not DESCEND into
-    # them — `-not -path` alone only filters output while still traversing the
-    # millions of files under build-workspace-fixtures/cargo-target (same fix
-    # as the native.just finds).
-    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
-        -mindepth 4 -name Cargo.toml \
-        -not -path '*/target/*' -not -path '*/generated/*' \
-        -not -path '*/build/*' -not -path '*/build-*/*' \
-        -not -path '*/install/*' -not -path '*/log/*' \
-        -not -path '*/zephyr/*' -not -path '*/multi-package-workspace/*' \
-        -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
-        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
-        -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' \
-        -not -path '*/px4/*' -print | sort | while read -r toml; do
+    # Enumerate via the git index (tracked files only) — no filesystem
+    # traversal, so the multi-million-file build/target trees (untracked by
+    # definition) can never slow this down or leak in. `NF>=5` = the old
+    # `-mindepth 4` (leaf crates, not workspace-root manifests).
+    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
+        | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|qemu-esp32-baremetal/rust/dds/|examples/qemu-arm-freertos/|examples/qemu-arm-nuttx/|examples/threadx-linux/|examples/qemu-riscv64-threadx/|examples/px4/' \
+        | sort | while read -r toml; do
         dir="$(dirname "$toml")"
         echo "  fmt $dir"
         ( cd "$dir" && cargo "+{{NIGHTLY}}" fmt --check )

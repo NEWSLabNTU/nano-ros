@@ -32,17 +32,15 @@ pat='allow.multiple.definition'
 mapfile -t files < <(
     {
         echo "CMakeLists.txt"
-        find cmake scripts just -type f \( -name '*.cmake' -o -name '*.sh' -o -name '*.just' \) 2>/dev/null
-        # PRUNE the build trees so find does not DESCEND into them — `-not
-        # -path` alone only filters output while still traversing the millions
-        # of files under build-workspace-fixtures/target (same fix as the
-        # justfile/native.just finds).
-        find examples packages \
-            \( -name build -o -name 'build-*' -o -name target -o -name 'target-*' \
-               -o -name generated -o -name third-party -o -name _deps -o -name cargo-target \) -prune -o \
-            -type f \( -name 'CMakeLists.txt' -o -name '*.cmake' \) \
-            -not -path '*/build/*' -not -path '*/build-*/*' -not -path '*/target/*' \
-            -not -path '*/generated/*' -not -path '*/third-party/*' -not -path '*/_deps/*' -print 2>/dev/null
+        # Enumerate via the git index (tracked files only) — no filesystem
+        # traversal, so build/target/_deps trees (untracked) can never slow
+        # this down or leak in. Submodules list as one gitlink entry, never
+        # their contents, so third-party is excluded for free.
+        git ls-files 'cmake/**' 'scripts/**' 'just/**' \
+            | grep -E '\.(cmake|sh|just)$'
+        git ls-files 'examples/**/CMakeLists.txt' 'examples/**/*.cmake' \
+                     'packages/**/CMakeLists.txt' 'packages/**/*.cmake' \
+            | grep -vE '/(build|build-[^/]*|target|generated|third-party|_deps)/'
         echo "justfile"
     } | sort -u
 )
