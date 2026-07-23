@@ -31,6 +31,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <zephyr/kernel.h> /* phase-296 W5.5 — k_thread_deadline_set / k_current_get / k_us_to_cyc_near32 */
+
 /* --- Zephyr k_thread tier shim (zephyr/nros_platform_zephyr_shims.c) ---
  *
  * `nros_zephyr_tier_task_create`: spawn one tier task on a static pool thread
@@ -47,6 +49,20 @@ extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_
                                         const char* name);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 extern int32_t nros_zephyr_msleep(int32_t ms);
+
+/* phase-296 W5.5 — apply a per-thread earliest-deadline on the CALLING
+ * thread. `k_thread_deadline_set` takes CYCLES; convert from us. Compiled
+ * to a no-op when the kernel lacks EDF so the image still links; the Rust
+ * side additionally gates the CALL behind the `zephyr-edf` feature, so a
+ * no-op here means an honest fall-through to the executor's cooperative
+ * deadline monitor. */
+void nros_zephyr_set_current_deadline(unsigned int deadline_us) {
+#ifdef CONFIG_SCHED_DEADLINE
+    k_thread_deadline_set(k_current_get(), (int)k_us_to_cyc_near32(deadline_us));
+#else
+    (void)deadline_us;
+#endif
+}
 
 /* --- nros-cpp C FFI forward declarations ---
  *

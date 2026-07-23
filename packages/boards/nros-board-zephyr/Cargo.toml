@@ -23,6 +23,10 @@ name = "nros_board_zephyr"
 # `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
 # enables this on its `nros-board-zephyr` dep.
 tiers = ["dep:nros", "dep:log"]
+# phase-296 W5.5 — gate the k_thread_deadline_set call path. On ⇒ real-time
+# tiers with a deadline get kernel EDF ordering; off ⇒ executor-only
+# (cooperative) deadline monitor. Must match the image's CONFIG_SCHED_DEADLINE.
+zephyr-edf = []
 
 [dependencies]
 nros-platform = { path = "../../core/nros-platform", default-features = false }

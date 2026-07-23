@@ -43,7 +43,31 @@ unsafe extern "C" {
     /// runs `tiers[0]` itself, so it must take that tier's declared priority
     /// (`k_thread_priority_set(k_current_get(), …)`).
     fn nros_zephyr_set_current_priority(priority: i32);
+    /// phase-296 W5.5 — apply an earliest-deadline (µs) on the CALLING
+    /// thread via `k_thread_deadline_set`. No-op when the image lacks
+    /// `CONFIG_SCHED_DEADLINE`.
+    fn nros_zephyr_set_current_deadline(deadline_us: u32);
 }
+
+/// Apply this tier's kernel EDF deadline on the CALLING thread, when the
+/// tier is real-time and carries a deadline. Gated by the `zephyr-edf`
+/// feature; off ⇒ the executor's cooperative `SchedContext` deadline
+/// monitor is the sole enforcement (an honest Backfill). The `::log::info!`
+/// literal MUST match `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`.
+#[cfg(feature = "zephyr-edf")]
+fn apply_tier_deadline(tier: &TierSpec<'_>) {
+    if tier.class == Some("real_time") {
+        if let Some(us) = tier.deadline_us {
+            let us = us.min(u32::MAX as u64) as u32;
+            unsafe { nros_zephyr_set_current_deadline(us) };
+            ::log::info!("nros: EDF deadline set tier=`{}` {}us", tier.name, us);
+        }
+    }
+}
+
+#[cfg(not(feature = "zephyr-edf"))]
+#[inline]
+fn apply_tier_deadline(_tier: &TierSpec<'_>) {}
 
 /// Leaked per-tier context, consumed by [`tier_task_entry`].
 struct TierTaskCtx<F> {
@@ -131,6 +155,7 @@ where
         ctx.tier.deadline_us,
         ctx.tier.deadline_policy,
     );
+    apply_tier_deadline(&ctx.tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
@@ -244,6 +269,7 @@ impl ZephyrBoard {
                 boot_tier.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
             );
         }
+        apply_tier_deadline(boot_tier);
         ::log::info!(
             "nros: zephyr multi-tier entry up ({} tiers, boot tier `{}`)",
             tiers.len(),

@@ -420,6 +420,13 @@ pub const RULE_RATE_HIERARCHY_RUNTIME: &str = "rate-hierarchy-runtime";
 /// Subscriber max-data-age violation rule id (`max_age_ms` assumption).
 pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 
+/// Emitted by `nros-board-zephyr`'s `run_tiers` when a real-time tier's
+/// kernel EDF deadline is applied (phase-296 W5.5). MIRRORS the literal
+/// `::log::info!` prefix in `nros-board-zephyr/src/entry_tiers.rs`
+/// (`apply_tier_deadline`) — keep the two in lockstep (the no_std board
+/// crate cannot depend on this crate).
+pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.
