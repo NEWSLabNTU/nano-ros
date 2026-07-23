@@ -9,7 +9,8 @@ This template is the Phase 223 reference shape:
 
 The C Node pkg is a static library with no `main()`. The C++ Entry pkg
 owns boot and links both Node pkg libraries through
-`nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`.
+`nano_ros_entry(MODEL "…/demo_bringup/config/system_model.yaml")` — the
+resolved SystemModel emitted by `play_launch resolve` from the launch file.
 
 ```sh
 cmake -S . -B build

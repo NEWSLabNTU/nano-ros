@@ -1,0 +1,42 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/templates/c-and-cpp-mixed-workspace/src/demo_bringup/launch/system.launch.xml
+    sha256: c087717ab29335bb92db6eebb4145ad2e7949cf992f88723232808bd16e91f2e
+  - path: /home/aeon/repos/nano-ros/examples/templates/c-and-cpp-mixed-workspace/src/demo_bringup/system.toml
+    sha256: 5b0693b129fbded6cb09b085721031f01c481f3bbf4ec531468d6eb0c42f8857
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: cpp_listener_pkg
+      exec: listener
+      node_name: listener
+    /talker:
+      scope: /
+      pkg: c_talker_pkg
+      exec: talker
+      node_name: talker
+execution:
+  deploy:
+    /listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

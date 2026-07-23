@@ -13,7 +13,7 @@ multi-node-workspace/
     ├── listener_pkg/       # Node pkg  — lib, nros::node!(Listener), subscribes /chatter
     ├── demo_bringup/       # Bringup pkg — declarative (package.xml + system.toml + launch/);
     │                       #               NO Cargo.toml, NO src/. Not a workspace member.
-    └── robot_entry/        # Entry pkg — bin, nros::main!(launch = "demo_bringup:system.launch.xml")
+    └── robot_entry/        # Entry pkg — bin, nros::main!(model = "demo_bringup")
 ```
 
 ## The three roles
@@ -32,9 +32,10 @@ multi-node-workspace/
 | `<pkg>_bringup` with `launch/*.launch.xml`  | **Bringup pkg** (declarative — same launch XML)     |
 | Per-target launch + deploy config           | `system.toml` (`[system]`, `[[component]]`, `[deploy.*]`) |
 | `ros2 launch <pkg> <file>` (ament install)  | `cargo run -p <entry_pkg>`; the Entry binary is the launch product |
-| Composition container / main               | **Entry pkg** (`nros::main!(launch = "...")`)        |
+| Composition container / main               | **Entry pkg** (`nros::main!(model = "...")`)         |
 
-The launch file (`src/demo_bringup/launch/system.launch.xml`) is the
+The resolved SystemModel (`src/demo_bringup/config/system_model.yaml`,
+emitted by `play_launch resolve` from the launch file) is the
 **ROS 2 launch schema, verbatim** — `<launch>`, `<arg>`, `<node>`,
 `<param>`, `<remap>`, `<group>`, `<include>` with `$(find)` / `$(var)` /
 `$(env)` substitutions. nav2 / Autoware / turtlebot3 XML pastes in and
@@ -49,7 +50,7 @@ cargo build
 ```
 
 Builds the two Node pkg rlibs + the `robot_entry` binary. The
-`nros::main!(launch = "demo_bringup:system.launch.xml")` macro in
+`nros::main!(model = "demo_bringup")` macro in
 `robot_entry/src/main.rs` walks the workspace package index, parses the
 launch XML, and emits one `<node_pkg>::register(runtime)?;` call per
 `<node>` entry — so `robot_entry` links and boots both nodes in a single

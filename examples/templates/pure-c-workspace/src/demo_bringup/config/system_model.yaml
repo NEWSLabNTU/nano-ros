@@ -1,0 +1,22 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/templates/pure-c-workspace/src/demo_bringup/launch/system.launch.xml
+    sha256: da30e28be9c2846424414464acef2c6def3f40c170961e4a0fd3100ce4846d98
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: c_listener_pkg
+      exec: listener
+      node_name: listener
+    /talker:
+      scope: /
+      pkg: c_talker_pkg
+      exec: talker
+      node_name: talker
