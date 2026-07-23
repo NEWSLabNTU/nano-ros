@@ -33,11 +33,14 @@ declare -A actual
 while IFS= read -r f; do
     n=$(grep -cE '__attribute__\(\(weak\)\)|\.weak ' "$f" 2>/dev/null || true)
     [ "${n:-0}" -gt 0 ] && actual["$f"]="$n"
-done < <(find packages -type f \
+done < <(find packages \
+            \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' \
+               -o -name generated -o -name zenoh-pico -o -name mbedtls -o -name third-party \) -prune -o \
+            -type f \
             \( -name '*.c' -o -name '*.cpp' -o -name '*.cc' -o -name '*.h' \
                -o -name '*.hpp' -o -name '*.S' -o -name '*.s' \) \
             -not -path '*/target/*' -not -path '*/build/*' -not -path '*/generated/*' \
-            -not -path '*/zenoh-pico/*' -not -path '*/mbedtls/*' -not -path '*/third-party/*')
+            -not -path '*/zenoh-pico/*' -not -path '*/mbedtls/*' -not -path '*/third-party/*' -print)
 
 fails=0
 

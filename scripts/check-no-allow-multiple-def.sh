@@ -33,9 +33,16 @@ mapfile -t files < <(
     {
         echo "CMakeLists.txt"
         find cmake scripts just -type f \( -name '*.cmake' -o -name '*.sh' -o -name '*.just' \) 2>/dev/null
-        find examples packages -type f \( -name 'CMakeLists.txt' -o -name '*.cmake' \) \
+        # PRUNE the build trees so find does not DESCEND into them — `-not
+        # -path` alone only filters output while still traversing the millions
+        # of files under build-workspace-fixtures/target (same fix as the
+        # justfile/native.just finds).
+        find examples packages \
+            \( -name build -o -name 'build-*' -o -name target -o -name 'target-*' \
+               -o -name generated -o -name third-party -o -name _deps -o -name cargo-target \) -prune -o \
+            -type f \( -name 'CMakeLists.txt' -o -name '*.cmake' \) \
             -not -path '*/build/*' -not -path '*/build-*/*' -not -path '*/target/*' \
-            -not -path '*/generated/*' -not -path '*/third-party/*' -not -path '*/_deps/*' 2>/dev/null
+            -not -path '*/generated/*' -not -path '*/third-party/*' -not -path '*/_deps/*' -print 2>/dev/null
         echo "justfile"
     } | sort -u
 )

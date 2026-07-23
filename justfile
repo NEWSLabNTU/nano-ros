@@ -2144,7 +2144,7 @@ clean-bindings:
     set -e
     echo "Removing generated bindings..."
     # Auto-discover all generated/ directories under examples/
-    for d in $(find examples -name generated -type d -not -path '*/target/*' | sort); do
+    for d in $(find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps \) -prune -o -name generated -type d -print | sort); do
         rm -rf "$d"
         echo "  removed $d"
     done
