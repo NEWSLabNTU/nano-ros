@@ -46,13 +46,19 @@ The board-crate ethernet fix (phase-292 W2, commit `b1876bbd2`) landed the eth
 device; ws-entry now boots → eth up → binds a routable IP → creates the Cyclone
 participant, then fails. Root causes, both proven on the model:
 
-1. **Thread pool too small.** `zephyr/nros_platform_zephyr_shims.c` hardcodes
-   `NROS_ZEPHYR_MAX_THREADS 8` (a static `K_THREAD_STACK_ARRAY` pool). Cyclone's
-   worker set — recv, tev, gcreq, lease, dq, listen, threadmon — exhausts it:
-   `create_thread: tev: ddsrt_thread_create failed` / `tid … is in use!` →
-   kernel panic. (Note: `run_tiers`' per-tier threads use a SEPARATE pool
-   `nros_tier_stacks[NROS_ZEPHYR_MAX_TIERS]`, so this is a Cyclone-RMW budget,
-   not a tiers one.)
+1. **Thread-stack heap too small.** Cyclone spawns ~8 worker threads (recv,
+   tev, gcreq, lease, dq, listen, threadmon) via `ddsrt_thread_create →
+   pthread_create` (Zephyr POSIX, NOT the nros shim pool). With
+   `DYNAMIC_THREAD_POOL_SIZE=0` each worker's 32 KiB `DYNAMIC_THREAD` stack is
+   allocated from `HEAP_MEM_POOL_SIZE` — ~256 KiB of stacks. ws-entry's
+   `prj-cyclonedds.conf` set `HEAP_MEM_POOL_SIZE=196608` (192 KiB), appended
+   AFTER (so overriding) the `nros-cyclonedds` snippet's 4 MiB, so
+   `pthread_create` failed: `create_thread: tev: ddsrt_thread_create failed`,
+   `tid … is in use!` (the `k_thread_stack_free -EBUSY` on the failed thread) →
+   kernel panic. Fix: raise ws-entry's heap to 4 MiB (the value the working ASI
+   image uses; the snippet already carries it). (A first attempt raised
+   `NROS_ZEPHYR_MAX_THREADS` — the WRONG pool: that static shim pool serves the
+   platform/zenoh path, not Cyclone's pthread workers. Reverted.)
 2. **No routable IP.** With eth up but no address, `getifaddrs` (the
    `link_stubs.c` net_if walk) finds none → Cyclone binds loopback → the native
    stack rejects it. A DHCP attempt got a wrong SLIRP address; a static IP in
@@ -61,20 +67,24 @@ participant, then fails. Root causes, both proven on the model:
 ## Work items
 
 ### W1 — make ws-entry publish (the two blockers)
-- [ ] W1.1 `NROS_ZEPHYR_MAX_THREADS`: make it Kconfig-driven
-  (`CONFIG_NROS_ZEPHYR_MAX_THREADS`, default 8 for back-compat; the shim's
-  `#ifndef` fallback stays 8). Set it to **16** in the cyclone snippet conf
-  `zephyr/snippets/nros-cyclonedds/cyclonedds.conf` — every cyclone-on-Zephyr
-  consumer needs the headroom, the same place wall #9's mutex-pool bump lives.
-  (16 covers Cyclone's ~7–8 workers + margin.)
-- [ ] W1.2 ws-entry routable IP: static `172.20.51.15/24` (the FVP SLIRP
+- [x] W1.1 (2026-07-23) Cyclone thread-stack heap: raise ws-entry's
+  `prj-cyclonedds.conf` `HEAP_MEM_POOL_SIZE` from 192 KiB → 4 MiB (its
+  override was undercutting the `nros-cyclonedds` snippet's 4 MiB). Cyclone's
+  ~8 pthread workers each take a 32 KiB DYNAMIC_THREAD stack from the heap
+  (POOL_SIZE=0), ~256 KiB, which 192 KiB could not hold → `pthread_create`
+  failed. (NOT the nros shim pool — that serves platform/zenoh, not Cyclone.)
+- [x] W1.2 (2026-07-23) ws-entry routable IP: static `172.20.51.15/24` (the FVP SLIRP
   subnet, gateway `.2`) + `CONFIG_NET_CONFIG_{SETTINGS,AUTO_INIT,NEED_IPV4}` in
   `examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry/prj.conf`. NOT DHCP
   (SLIRP handed a non-bindable address). A comment records the SLIRP-subnet
   dependency.
-- [ ] W1.3 Validate on the model: ws-entry reaches `/ctrl` + `/telem`
-  `Publishing:` under `cache_state_modelled=0` + SLIRP, no crash. This is the
-  gating proof for the rest of the phase.
+- [x] W1.3 (2026-07-23) VALIDATED on the model: ws-entry boots → eth up →
+  binds 172.20.51.15 → `dds_create_participant` returns a positive handle →
+  BOTH tiers publish. Assertion marker correction: the components print
+  `[ctrl] tick=N` / `[telem] tick=N` **only on `publish().ok()`** (Ctrl.cpp /
+  Telem.cpp), so those are the publish-success markers, NOT `Publishing:`.
+  W3.2 asserts both `[ctrl] tick=` and `[telem] tick=`. (The 7× benign `tid …
+  in use` warnings during Cyclone thread setup match the ASI image.)
 
 ### W2 — provision `west fvp`
 - [ ] W2.1 Register nano-ros's `scripts/west-commands.yml` (which declares the
@@ -95,8 +105,9 @@ participant, then fails. Root causes, both proven on the model:
   `ARMFVP_EXTRA_FLAGS=-C cache_state_modelled=0`). Skips cleanly when
   west/workspace/SDK/ELF absent — same shape as `run-fvp-aemv8r-cyclonedds`.
 - [ ] W3.2 `fvp_runtime_ws.rs` (`nros_tests`): drives `just zephyr
-  run-fvp-ws-entry`, waits for BOTH `/ctrl` and `/telem` `Publishing:` (the
-  `run_tiers` two-tier proof) within a ~180 s budget, `skip!`s on the four
+  run-fvp-ws-entry`, waits for BOTH `[ctrl] tick=` and `[telem] tick=` (the
+  publish-success markers — printed only on `publish().ok()` — proving the
+  `run_tiers` two-tier publish path) within a ~180 s budget, `skip!`s on the four
   preconditions (FVP resolvable via `resolve-fvp-bin.sh`, `west` on PATH,
   workspace set up, `build-fvp-ws-entry/zephyr/zephyr.elf` prebuilt).
   `ManagedProcess` kills the FVP group on timeout/panic.
