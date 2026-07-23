@@ -237,6 +237,7 @@ impl ThreadxQemuRiscv64 {
         nros_board_threadx::run_tiers_entry::<ThreadxQemuRiscv64, Config, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
+            tiers,
             setup,
         )
     }

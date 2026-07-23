@@ -1118,8 +1118,9 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     fi
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
         env_exclude+=("not binary(fvp_smoke)")
-        env_exclude+=("not binary(fvp_runtime)")
-        env_exclude+=("not binary(fvp_runtime_rust)")
+        # phase-298 W4 — the legacy fvp_runtime/fvp_runtime_rust binaries are
+        # deleted; fvp_runtime_ws is the runtime gate over ws-entry.
+        env_exclude+=("not binary(fvp_runtime_ws)")
         # board_import west-builds the FVP board (needs the FVP SDK gate).
         env_exclude+=("not binary(board_import)")
     fi
