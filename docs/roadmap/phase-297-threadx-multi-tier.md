@@ -4,17 +4,48 @@ Implements RFC-0053 (ThreadX multi-tier via codegen static per-tier stacks +
 native preemption-threshold). Builds on phase-296 W5.4 (the portable
 `ExecutorNodeRuntime::apply_tier_sched_policy` every board shares).
 
-**Status (2026-07-22):** design landed (RFC-0053). W1 C++ path DONE
-(`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering single-sourced in
-`SchedContext::from_tier_policy`). W2 DONE (`nros_threadx_create_task` shim).
-W3 DISSOLVED (byte-pool stacks — RFC-0053 revised from codegen-static Option A
-to byte-pool Option B; no codegen change). W4 DONE (impl) — `run_tiers_entry`
-on `nros-board-threadx` (boot tier + #144 chain-spawn + per-tier executors over
-one shared session + `apply_tier_sched_policy`) + both board ZSTs wired;
-`threadx-linux` builds + clippy-clean. W5 TODO (documented) — the 2-tier
-`threadx-linux` runtime e2e that is the acceptance gate (fixture + test, retarget
-`ws-realtime-rust`). The W1 Rust/C path is subsumed by W4 (the macro routes any
-single *named* tier to `<Board>::run_tiers`).
+**Status (2026-07-23):** ALL WAVES DONE — phase complete pending archive. W1
+C++ path DONE (`cf69b09f2` + `650a4d7e9` — the tier→SchedContext lowering
+single-sourced in `SchedContext::from_tier_policy`). W2 DONE
+(`nros_threadx_create_task` shim). W3 DISSOLVED (byte-pool stacks — RFC-0053
+revised from codegen-static Option A to byte-pool Option B; no codegen
+change). W4 DONE (impl) — `run_tiers_entry` on `nros-board-threadx` (boot
+tier + #144 chain-spawn + per-tier executors over one shared session +
+`apply_tier_sched_policy`) + both board ZSTs wired. W5 DONE (2026-07-23) —
+`realtime_tiers_e2e::threadx_linux_rust` passes (both tiers deliver,
+`CounterRatio3x` holds). The W1 Rust/C path is subsumed by W4 (the macro
+routes any single *named* tier to `<Board>::run_tiers`).
+
+**W5 runtime findings — four real bugs the first boot surfaced (all fixed):**
+1. **ULONG pointer truncation (SEGV).** The x86_64 ThreadX *linux port*
+   defines `ULONG` as `unsigned int` (32-bit, `tx_port.h`), so passing the
+   tier ctx pointer through the thread-entry ULONG truncated it. The W2 shim
+   now parks pointer-width `{entry, arg}` in a slot table and passes only the
+   slot index through the ULONG input to a C trampoline (portable across
+   every port's ULONG width). The Rust extern block had mirrored `c_ulong`
+   (64-bit) — a hand-mirror FFI drift that built clean and could only fail
+   at runtime.
+2. **Boot tier never adopted its ThreadX priority.** The app thread keeps
+   `nros_board_app_priority()` (4), so the boot (low) tier outranked the
+   spawned high tier (5) — strict-priority starvation, zero high-tier
+   publishes. New `nros_threadx_set_current_priority` shim; the boot tier
+   re-prioritizes itself to `tiers[0]`'s declared values before setup.
+3. **`zpico_spin_once` (ZENOH_THREADX) waited in host `select()`.** A host
+   syscall blocks the pthread while the ThreadX scheduler still counts the
+   thread as running — under strict priority every other tier starves (the
+   known z_sleep_ms-not-select pitfall, now applied to the threadx branch:
+   sleep first via `tx_thread_sleep`, then zero-timeout poll). Also added a
+   single-reader guard: the polled `_zp_unicast_read` takes no `_mutex_rx`,
+   so two tiers polling concurrently raced on the shared rx zbuf.
+4. **zenoh-pico polled read dropped batched frames (the zero-delivery
+   root cause).** `_zp_unicast_read(single_read=false)` resets the rx zbuf
+   each call and processes only the FIRST stream frame a recv pulled in —
+   frames after it are discarded by the next poll's reset. The spawned
+   tier's CURRENT-interest reply (DeclareSubscriber + Final) rode the same
+   TCP burst as the boot tier's and vanished, so its publisher write filter
+   never opened. Fixed in the vendored fork (`zenoh-pico` commit
+   `15d46b3f`, local — maintainer pushes + pointer bump per the fork
+   workflow): drain every complete buffered frame per poll.
 
 **Common-backend principle (applies to every wave).** One backend serves all
 languages; no logic is re-derived per codegen path. The tier→SchedContext
@@ -153,7 +184,7 @@ optimization for constrained MCUs (RFC-0053 §Revision).
   issue, not this code).
 - **Runtime acceptance is W5** (the 2-tier `threadx-linux` e2e).
 
-### W5 — runtime e2e: 2-tier `threadx-linux` (acceptance) — TODO
+### W5 — runtime e2e: 2-tier `threadx-linux` (acceptance) — DONE (2026-07-23)
 
 Prove W4 at runtime by retargeting the existing RT-tiers workspace
 `examples/workspaces/ws-realtime-rust` (`src/demo_bringup`: `control_node`
@@ -289,7 +320,7 @@ simultaneously discharges the W2 shim's "two threads run" proof and the W1 Rust
 
 W1 (SchedContext lowering, C++ path DONE; Rust path folded into W4) → W2 (shim,
 DONE) → W3 (dissolved — byte-pool stacks, no codegen) → W4 (`run_tiers`
-multi-tier, DONE impl) → W5 (runtime e2e, TODO — the acceptance gate). The macro
+multi-tier, DONE impl) → W5 (runtime e2e, DONE — the acceptance gate). The macro
 already routes any non-`default` tier table on ThreadX to `<Board>::run_tiers`,
 so W4 also closes the W1 Rust/C path (a single named tier is just the one-tier
 case of `run_tiers`). W5 needs only W4 (+ the existing `ws-realtime-rust`
