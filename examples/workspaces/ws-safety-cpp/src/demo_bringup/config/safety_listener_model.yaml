@@ -1,0 +1,17 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-safety-cpp/src/demo_bringup/launch/safety_listener.launch.xml
+    sha256: 877e6e516f5bd9560946fa03334cf9eb25e314f0459c6c553e07ded7570856e2
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /safe_listener:
+      scope: /
+      pkg: cpp_safety_listener_pkg
+      exec: safe_listener
+      node_name: safe_listener

@@ -1,7 +1,7 @@
 ---
 id: 237
 title: "ws-safety-{cpp,c} plain workspace cmake doesn't set the safety-e2e build flag"
-status: open
+status: resolved
 type: tech-debt
 area: cmake
 related: [phase-296]
@@ -42,3 +42,13 @@ so it stays on `LAUNCH` until the migration wires the flag.
 
 `ws-safety-{cpp,c}` remain on `LAUNCH`; the safety demo is otherwise covered by
 `ws-safety-rust` (migrated + native `case_14` validated).
+
+## Resolution (2026-07-24)
+
+Fix option 1: migrated `ws-safety-{c,cpp}` to `MODEL` (4 entries, per-variant
+`safety_{talker,listener}_model.yaml` resolved with the 46.5 play_launch
+binary) and validated via the REAL fixture builder — the `[[workspace_fixture]]`
+`-safety-*` build_subdir rows set the safety flag, and both native c + cpp
+lanes rebuilt green (4 fresh entry binaries). The plain-cmake configure still
+does not set the flag (that gap stands, but it never blocked anything except
+the ad-hoc build); users build these workspaces through the fixture/CI path.

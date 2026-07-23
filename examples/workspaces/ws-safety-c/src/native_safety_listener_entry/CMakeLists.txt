@@ -13,6 +13,6 @@ find_package(nano_ros REQUIRED)
 nano_ros_add_executable(native_safety_listener_entry
     SOURCES src/main.c
     BOARD   native
-    LAUNCH  "demo_bringup:safety_listener.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/safety_listener_model.yaml"
     TYPED
     DEPLOY  native)

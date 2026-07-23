@@ -703,7 +703,11 @@ not R4.
 robot entries. Templates are user-facing scaffolds — swap + commit a model +
 update the template README so `nros new` users start on the model path.
 
-**M3 — blocked pair:** `ws-safety-{c,cpp}` (4 CMake, #237 build-flag wiring);
+**M3 — blocked pair:** `ws-safety-{c,cpp}` — **DONE (2026-07-24, #237
+resolved)**: the "blocker" was only the ad-hoc plain-cmake validation route;
+migrated via fix option 1 (4 entries → per-variant
+`safety_{talker,listener}_model.yaml`, validated through the fixture
+builder's `-safety-*` rows, both native lanes green). Remaining:
 `zephyr_entry_robot1` (1 Rust, #236 unplaced-target — play_launch side).
 
 **M4 — test fixtures:** `packages/testing/nros-tests/fixtures/*` workspaces
