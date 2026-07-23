@@ -21,6 +21,11 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 ] }
 # The data-driven bridge runtime the macro calls (run_from_config_str).
 nros-bridge = { path = "../../../../../packages/bridge/nros-bridge", features = ["std", "config"] }
+# phase-296 R4 followup — the MODEL arm bakes node registration into the
+# entry, so the macro-generated code references the board runner and the
+# workspace's node pkg (the launch arm's bridge-only entry never did).
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
 # POSIX platform symbols (wake / clock) the backends + executor need.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
 # The two RMW backends — linked here so they self-register on the native host
