@@ -3,7 +3,7 @@ rfc: 0052
 title: "SystemModel → RTOS primitives — the execution/contract mapper for embedded consumption"
 status: Draft
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-07-23
 implements-tracked-by: [phase-296]
 supersedes: []
 superseded-by: null
@@ -363,6 +363,44 @@ L3  UNIFIED EXECUTOR (runtime, portable): dispatch, causal order, LET/TT,
 L1 pre-decides, so the board never silently drops an attribute — anything it
 can't honor was already routed to executor-backfill or degraded **and
 recorded** (fail-loud, the W2 rejection-table philosophy).
+
+### CAPS provenance — bake-authoritative (decided 2026-07-23)
+
+L1 runs on the host at bake time; the board's *actual* kernel capability
+(e.g. Zephyr `CONFIG_SCHED_DEADLINE`) lives in the downstream image build.
+For the degradation record to be **honest** — never "L1 claimed `Native`
+while the built image lacks the feature" — the capability is
+**bake-authoritative from a single source**, not inferred by the CLI:
+
+- A per-deploy capability knob is the SSoT — `[deploy.<board>]` in the
+  deploy config (e.g. `edf = true`), integrator-owned like the rest of L3.
+- `codegen-system` **fans that one knob out** to the three places that must
+  agree: (a) L1's `SchedCaps` (so `realize_rtos` sees the real value, not a
+  hardcoded per-platform guess — replaces the string-matched
+  `sched_caps_for` default); (b) the generated board config (Zephyr
+  `prj.conf` → `CONFIG_SCHED_DEADLINE=y`) so the kernel feature is compiled
+  in; (c) a runtime `cfg` gate (board cargo feature) so the native-apply
+  call path is live only when the feature is.
+- Knob absent/false ⇒ L1 records `Degrade` **accurately** (the same knob
+  gated the build), no kernel feature, executor `SchedContext` backfills.
+
+So the board `const CAPS` is the *generated reflection* of the SSoT knob, and
+the L1 record is provably consistent with the image. This closes the "where
+does `const CAPS` come from" gap the L2 sketch left open.
+
+**Runtime honoring (the L2 seam, minimally).** `set_deadline`/`replenish` need
+not be a full trait to start: `run_tiers` calls a `cfg`-gated board shim
+(Zephyr `k_thread_deadline_set` on the tier thread) when the tier's
+`sched_class` is `edf` and the feature is on — mirroring the existing
+`k_thread_priority_set` adoption. The executor's `SchedContext` deadline
+monitor stays live in **both** the `Native` and `Backfill` cases: under
+`Native` the kernel supplies the *ordering* and the monitor supplies the
+*miss handler* (`DeadlineAction`); under `Backfill` the monitor is both.
+Semantic note for Zephyr: `CONFIG_SCHED_DEADLINE` orders **equal-priority**
+threads by earliest deadline (a tiebreak, not a global EDF) — which matches
+the one-`k_thread`-per-tier model. First realized on Zephyr for the deadline
+dim (phase-296 W5.5); the other dims + a formal `PlatformSched` trait follow
+the same shape.
 
 Grounding: **PiCAS** (RTAS'21) — chain→priority + node→executor→core;
 **rclc** (micro-ROS) — LET + static order on RTOS threads; **Casini et al.**

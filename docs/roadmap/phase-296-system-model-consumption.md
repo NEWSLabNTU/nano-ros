@@ -337,8 +337,42 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   posix (2 tests); the calls type-check against `TierSpec`. ThreadX (single-
   executor entry — needs multi-tier first: **RFC-0053 / phase-297**) + embedded
   SDK build verification (fixture/CI) are follow-ups.
-- Remaining: the runtime `PlatformSched` primitives (`set_deadline`/`replenish`)
-  so boards apply *kernel-native* EDF/reservation (today the executor's own
+- W5.5 — **Zephyr Native EDF — first runtime honoring of a `Native` dim
+  (design 2026-07-23, RFC-0052 §"CAPS provenance").** Closes the plan/runtime
+  gap: today L1 records `deadline_real = Native` for Zephyr (`sched_class="edf"`),
+  but the runtime only sets `k_thread_priority_set` — no `k_thread_deadline_set`,
+  no `CONFIG_SCHED_DEADLINE` — so the deadline is really the executor's
+  cooperative monitor (`Backfill`) mislabeled `Native`. The slice makes the claim
+  true end-to-end, or degrades honestly:
+  - **SSoT knob (bake-authoritative):** a per-deploy `edf` capability
+    (`[deploy.<zephyr>]`) fanned out by `codegen-system` to (a) L1 `SchedCaps.edf`
+    (replaces the hardcoded `sched_caps_for("zephyr")` `edf: true`), (b) generated
+    `prj.conf` `CONFIG_SCHED_DEADLINE=y`, (c) a `nros-board-zephyr` cargo feature
+    gating the apply path. Knob false ⇒ L1 `Degrade` is accurate against the image.
+  - **Runtime seam (L2, minimal):** a `cfg`-gated Zephyr shim
+    `nros_zephyr_set_current_deadline(deadline_us)` → `k_thread_deadline_set`
+    (µs→cycles), called by `run_tiers` for boot + spawned tier tasks when
+    `sched_class == "edf"` and the feature is on. Mirrors the existing
+    `k_thread_priority_set` adoption. Executor `SchedContext` deadline monitor
+    stays live as the miss-handler (`DeadlineAction`) in both cases.
+  - **Host (mostly exists):** extend `rtos_realizer` honesty tests so `caps.edf`
+    is sourced from the knob (a `[deploy.zephyr] edf = false` → accurate `Degrade`
+    record); codegen test: knob on ⇒ `prj.conf` has `CONFIG_SCHED_DEADLINE=y` +
+    tier carries `sched_class="edf"`/`deadline_us`; off ⇒ neither.
+  - **Build fixture + QEMU e2e:** a Zephyr fixture with ≥2 equal-priority deadline
+    tiers builds with the feature on (`CONFIG_SCHED_DEADLINE` + the deadline-set
+    path link); boot asserts via trace marker that `set_current_deadline` fired
+    per EDF tier (the `Native` claim honored end-to-end).
+  - **Done when:** knob-on Zephyr image boots with `k_thread_deadline_set` applied
+    (trace-confirmed) and `CONFIG_SCHED_DEADLINE` compiled in; knob-off bakes an
+    accurate `Degrade` record and no kernel feature. **Non-goals (follow-ups):**
+    *behavioral* earliest-deadline-ordering proof (Zephyr's equal-priority
+    tiebreak makes a deterministic QEMU ordering test fiddly); the other five dims;
+    a formal `PlatformSched` Rust trait (this slice uses the C-shim + `run_tiers`
+    seam); RTOS-side priority band-scarcity collapse.
+- Remaining (beyond W5.5): the rest of the runtime `PlatformSched` primitives
+  (`replenish`, native reservation/preemption-threshold/affinity on the other
+  boards) so every `Native` dim is honored (today the executor's own
   `SchedContext` backfills); hook the realizer path into `codegen-system` as an
   alternative to `tier_resolver`.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
