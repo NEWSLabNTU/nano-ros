@@ -361,3 +361,24 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
 void nros_zephyr_set_current_priority(int32_t priority) {
     k_thread_priority_set(k_current_get(), (int)priority);
 }
+
+/**
+ * phase-296 W5.5 — apply a per-thread earliest-deadline (µs) on the CALLING
+ * thread. `k_thread_deadline_set` takes CYCLES; convert from µs. Compiled to a
+ * no-op when the kernel lacks EDF (`CONFIG_SCHED_DEADLINE`) so the image still
+ * links; the Rust caller (`entry_tiers::apply_tier_deadline`) additionally gates
+ * the CALL behind the `zephyr-edf` feature, so a no-op here means an honest
+ * fall-through to the executor's cooperative deadline monitor.
+ *
+ * NOTE: this lives here (the Zephyr-module C shims, linked by BOTH the pure-Rust
+ * `ZephyrBoard::run_tiers` image and the C/C++ `nros_board_zephyr_run_tiers`
+ * path) rather than in `c/zephyr_run_tiers.c` — that file is compiled only into
+ * the C/C++ entry image, so a definition there is invisible to the Rust link.
+ */
+void nros_zephyr_set_current_deadline(unsigned int deadline_us) {
+#ifdef CONFIG_SCHED_DEADLINE
+    k_thread_deadline_set(k_current_get(), (int)k_us_to_cyc_near32(deadline_us));
+#else
+    (void)deadline_us;
+#endif
+}

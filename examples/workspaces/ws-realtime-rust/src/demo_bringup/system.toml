@@ -23,6 +23,15 @@ group_tiers = { telem = "low" }
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
+# phase-296 W5.5 — the CONSUMED tier model for every entry is the hand-authored
+# `demo_bringup/config/system_model.yaml` (all four entries use
+# `nros::main!(model = ...)`). There the `high` tier gains `class = "real_time"`
+# plus a ZEPHYR-SCOPED `[tiers.high.zephyr].deadline_us` that fires the Zephyr
+# kernel-EDF path (k_thread_deadline_set) while lowering to None (Fifo,
+# unchanged) on posix/nuttx. This system.toml table is NOT re-parsed for tiers
+# here; the sub-table `deadline_us` field the model uses is not in this file's
+# stricter `nros_orchestration_ir` schema, so it is intentionally left in the
+# YAML only.
 [tiers.high]
 spin_period_us = 1000
 [tiers.high.posix]

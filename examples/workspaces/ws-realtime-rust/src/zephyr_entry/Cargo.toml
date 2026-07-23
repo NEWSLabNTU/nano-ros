@@ -68,7 +68,7 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 # Zephyr family board — `ZephyrBoard`. `tiers` (issue #128 half 2) brings
 # `ZephyrBoard::run_tiers`, the per-tier k_thread entry the macro's multi-tier
 # Zephyr emit targets.
-nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr", features = ["tiers"] }
+nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr", features = ["tiers", "zephyr-edf"] }
 
 # Concrete platform vtable — the Zephyr board/CMake also links it.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }

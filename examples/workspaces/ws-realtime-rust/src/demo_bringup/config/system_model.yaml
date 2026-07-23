@@ -22,12 +22,22 @@ structure:
       exec: telem_node
 execution:
   tiers:
+    # phase-296 W5.5 — the `high` tier is real_time; `deadline_us` lives in the
+    # `zephyr` sub-table (ZEPHYR-SCOPED, tier_from_model selects it only for the
+    # zephyr bake) so the Zephyr build's boot tier fires the Task-2 EDF path
+    # (class == real_time && deadline_us.is_some() ⇒ k_thread_deadline_set +
+    # the `nros: EDF deadline set tier=` marker). The generic `class` head is
+    # shared by every bake, but with NO generic `deadline_us`/`budget_us`/
+    # `period_us` it lowers to `None` (Fifo, byte-identical) on posix/nuttx —
+    # only zephyr's sub-table deadline turns on a SchedContext monitor.
     high:
+      class: real_time
       spin_period_us: 1000
       posix:
         priority: 80
       zephyr:
         priority: 5
+        deadline_us: 10000
       nuttx:
         priority: 110
     low:
