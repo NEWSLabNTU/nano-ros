@@ -403,7 +403,12 @@ check-source-gates:
 check-example-fmt:
     #!/usr/bin/env bash
     set -e
-    find examples -mindepth 4 -name Cargo.toml \
+    # PRUNE the build trees (target/build*/_deps) so find does not DESCEND into
+    # them — `-not -path` alone only filters output while still traversing the
+    # millions of files under build-workspace-fixtures/cargo-target (same fix
+    # as the native.just finds).
+    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
+        -mindepth 4 -name Cargo.toml \
         -not -path '*/target/*' -not -path '*/generated/*' \
         -not -path '*/build/*' -not -path '*/build-*/*' \
         -not -path '*/install/*' -not -path '*/log/*' \
@@ -411,7 +416,7 @@ check-example-fmt:
         -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
         -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
         -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' \
-        -not -path '*/px4/*' | sort | while read -r toml; do
+        -not -path '*/px4/*' -print | sort | while read -r toml; do
         dir="$(dirname "$toml")"
         echo "  fmt $dir"
         ( cd "$dir" && cargo "+{{NIGHTLY}}" fmt --check )

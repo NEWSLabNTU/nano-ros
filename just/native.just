@@ -77,7 +77,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # descend into them (the vendored `_deps/` under cmake build dirs has thousands
     # of files; `-not -path` alone only FILTERS, find still traverses). Selection
     # filters stay as `-not -path` (small dirs, depth-independent).
-    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
                        -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
@@ -306,7 +306,7 @@ format:
     #!/usr/bin/env bash
     set -e
     echo "Formatting examples..."
-    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
         -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
         -not -path '*/build/*' -not -path '*/build-*/*' \
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
@@ -344,7 +344,7 @@ check JOBS="75%":
     #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
     #     `esp32_entry` configures `portable-atomic` single-core, which fails to
     #     compile for the host x86_64 target.
-    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+    find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps -o -name cargo-target -o -name generated -o -name install -o -name log \) -prune -o \
                        -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
