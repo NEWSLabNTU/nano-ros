@@ -10,5 +10,5 @@ builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
-nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }  # nros-managed
+nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed
