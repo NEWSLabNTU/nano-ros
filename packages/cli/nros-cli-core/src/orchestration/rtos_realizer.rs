@@ -173,6 +173,25 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
     }
 }
 
+/// [`SchedCaps`] for a target, with the per-deploy `edf` capability knob
+/// applied. The knob is the bake-authoritative SSoT (RFC-0052 §"CAPS
+/// provenance"): a `[deploy.<board>] edf = <bool>` in the deploy config
+/// (carried on `Deploy.extra`) OVERRIDES the platform default, so the
+/// realizer's `Native`-vs-`Degrade` decision is accurate against the image
+/// that will actually be built. Absent knob → the platform default stands.
+pub fn sched_caps_from_deploy(
+    target: &str,
+    deploy: Option<&ros_launch_manifest_model::Deploy>,
+) -> SchedCaps {
+    let mut caps = sched_caps_for(target);
+    if let Some(d) = deploy {
+        if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
+            caps.edf = *b;
+        }
+    }
+    caps
+}
+
 /// Per-node facts distilled from the [`MapperInput`] (v1: activation +
 /// deadline + budget; the ranking supplies urgency).
 struct NodeFacts {
@@ -399,7 +418,9 @@ pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ros_launch_manifest_sched::{MapperNode, chain::MapperPath, chain_aware_rank, mapper::Criticality};
+    use ros_launch_manifest_sched::{
+        MapperNode, chain::MapperPath, chain_aware_rank, mapper::Criticality,
+    };
 
     fn caps(edf: bool, reservation: bool, low_high: bool) -> SchedCaps {
         SchedCaps {
@@ -456,7 +477,10 @@ mod tests {
         assert_eq!(hi.sched_class, "edf");
         assert_eq!(hi.deadline_real, DimRealization::Native);
         assert_eq!(hi.deadline_us, Some(10_000));
-        assert!(plan.degradations.is_empty(), "EDF board: no deadline degrade");
+        assert!(
+            plan.degradations.is_empty(),
+            "EDF board: no deadline degrade"
+        );
         // 50 Hz → 20 ms period.
         assert_eq!(hi.period_us, Some(20_000));
     }
@@ -471,7 +495,11 @@ mod tests {
         assert_eq!(hi.sched_class, "fifo");
         assert!(matches!(hi.deadline_real, DimRealization::Degrade { .. }));
         // Fail-loud: the weakening is on the record.
-        assert!(plan.degradations.iter().any(|d| d.node == "/hi" && d.dim == "deadline"));
+        assert!(
+            plan.degradations
+                .iter()
+                .any(|d| d.node == "/hi" && d.dim == "deadline")
+        );
     }
 
     #[test]
@@ -565,5 +593,51 @@ mod tests {
         let hi2 = ln.nodes.iter().find(|n| n.name == "/hi").unwrap();
         let lo2 = ln.nodes.iter().find(|n| n.name == "/lo").unwrap();
         assert!(hi2.priority < lo2.priority, "urgent node lower number");
+    }
+
+    use ros_launch_manifest_model::{Deploy, ExtraValue, Target};
+
+    fn zephyr_deploy_with_edf(edf: bool) -> Deploy {
+        let mut extra = std::collections::BTreeMap::new();
+        extra.insert("edf".to_string(), ExtraValue::Bool(edf));
+        Deploy {
+            target: Target::default(),
+            extra,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn deploy_knob_overrides_platform_edf_default() {
+        // Platform default for zephyr is edf = true.
+        assert!(sched_caps_for("zephyr").edf);
+        // A deploy that turns edf OFF must be honored.
+        let caps = sched_caps_from_deploy("zephyr", Some(&zephyr_deploy_with_edf(false)));
+        assert!(
+            !caps.edf,
+            "deploy edf=false must override the platform default"
+        );
+        // A deploy with no edf key falls back to the platform default.
+        let caps_default = sched_caps_from_deploy("zephyr", None);
+        assert!(
+            caps_default.edf,
+            "no knob → platform default (true for zephyr)"
+        );
+    }
+
+    #[test]
+    fn deploy_edf_false_produces_accurate_degrade() {
+        // The honesty property: edf=false → realize_rtos records a deadline Degrade.
+        let input = input_two();
+        let ranked = chain_aware_rank(&input);
+        let caps = sched_caps_from_deploy("zephyr", Some(&zephyr_deploy_with_edf(false)));
+        let plan = realize_rtos(&ranked, &input, &caps);
+        let hi = plan.nodes.iter().find(|n| n.name == "/hi").unwrap();
+        assert!(matches!(hi.deadline_real, DimRealization::Degrade { .. }));
+        assert!(
+            plan.degradations
+                .iter()
+                .any(|d| d.node == "/hi" && d.dim == "deadline")
+        );
     }
 }
