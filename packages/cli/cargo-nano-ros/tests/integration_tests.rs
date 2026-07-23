@@ -19,6 +19,14 @@ fn is_ros_available() -> bool {
     std::env::var("AMENT_PREFIX_PATH").is_ok()
 }
 
+// Process env is shared across the parallel test threads:
+// `test_ament_index_not_available` REMOVES `AMENT_PREFIX_PATH` for its
+// negative probe, and any env-reading ament test that interleaves with that
+// window sees ROS "unsourced" and fails ("Failed to load ament index" under
+// the full suite, green solo). Every test that reads OR mutates the ament env
+// takes this lock.
+static AMENT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // Get path to test fixtures directory
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -129,6 +137,7 @@ mod with_ros {
 
     #[test]
     fn test_ament_index_available() {
+        let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
             eprintln!("Skipping test: ROS not sourced");
             return;
@@ -142,6 +151,7 @@ mod with_ros {
 
     #[test]
     fn test_discover_ament_packages() {
+        let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
             eprintln!("Skipping test: ROS not sourced");
             return;
@@ -163,6 +173,7 @@ mod with_ros {
 
     #[test]
     fn test_find_std_msgs() {
+        let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
             eprintln!("Skipping test: ROS not sourced");
             return;
@@ -492,6 +503,7 @@ mod error_tests {
 
     #[test]
     fn test_ament_index_not_available() {
+        let _env = AMENT_ENV_LOCK.lock().unwrap();
         // Temporarily unset AMENT_PREFIX_PATH if it exists
         let original = std::env::var("AMENT_PREFIX_PATH").ok();
         unsafe { std::env::remove_var("AMENT_PREFIX_PATH") };
