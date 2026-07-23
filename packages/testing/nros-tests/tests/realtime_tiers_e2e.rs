@@ -220,7 +220,10 @@ fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
 /// pre-consolidation files: missing fixture / west image / qemu → skip).
 fn require_cell_env(boot: Boot) {
     match boot {
-        Boot::Native | Boot::NuttxArm | Boot::NuttxRiscv | Boot::FreertosMps2
+        Boot::Native
+        | Boot::NuttxArm
+        | Boot::NuttxRiscv
+        | Boot::FreertosMps2
         | Boot::ThreadxLinux => {
             if !require_zenohd() {
                 nros_tests::skip!("zenohd not found");
