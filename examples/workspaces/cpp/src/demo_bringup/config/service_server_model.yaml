@@ -1,0 +1,17 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/cpp/src/demo_bringup/launch/service_server.launch.xml
+    sha256: 1d182ee1fd0a00b2c13afd6fce45c0a905110daa5a762c49e9e14c151eed66f5
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /add_server:
+      scope: /
+      pkg: cpp_add_server_pkg
+      exec: add_server
+      node_name: add_server

@@ -1,0 +1,17 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/mixed/src/demo_bringup/launch/action_server.launch.xml
+    sha256: dad67a0eccec4cc592f9f6d3c7d0397e256bc233ebf771960a10e100eda4d756
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /fib_server:
+      scope: /
+      pkg: c_fib_server_pkg
+      exec: fib_server
+      node_name: fib_server

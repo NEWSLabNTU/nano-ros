@@ -1,0 +1,22 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/cpp/src/demo_bringup/launch/system.launch.xml
+    sha256: f5a550aecbeb157bc731b831a051ba9bf3dd0158fdee9bb7e4869cf9531d697d
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+      node_name: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      node_name: talker

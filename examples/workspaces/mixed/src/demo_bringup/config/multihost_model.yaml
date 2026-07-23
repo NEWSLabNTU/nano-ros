@@ -1,0 +1,38 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/mixed/src/demo_bringup/launch/multihost.launch.xml
+    sha256: d8295df870a2c68e7d2d0608503a8252494f5e2c37b05aedc3b9e2f6ce7222e7
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /heartbeat:
+      scope: /
+      pkg: rust_heartbeat_pkg
+      exec: heartbeat
+      node_name: heartbeat
+    /listener:
+      scope: /
+      pkg: cpp_listener_pkg
+      exec: listener
+      node_name: listener
+    /talker:
+      scope: /
+      pkg: c_talker_pkg
+      exec: talker
+      node_name: talker
+execution:
+  deploy:
+    /heartbeat:
+      target: linux
+      host: robot1
+    /listener:
+      target: linux
+      host: robot2
+    /talker:
+      target: linux
+      host: robot1

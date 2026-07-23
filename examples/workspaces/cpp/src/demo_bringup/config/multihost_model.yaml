@@ -1,0 +1,30 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/cpp/src/demo_bringup/launch/multihost.launch.xml
+    sha256: cabe7e7617becd72c1a7e3f42a49d9ed5ea75ee639d108108181e4b33a59516a
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+      node_name: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      node_name: talker
+execution:
+  deploy:
+    /listener:
+      target: linux
+      host: robot2
+    /talker:
+      target: linux
+      host: robot1

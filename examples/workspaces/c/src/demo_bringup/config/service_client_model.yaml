@@ -1,0 +1,17 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/c/src/demo_bringup/launch/service_client.launch.xml
+    sha256: 8cce8136abc52bbc15fe2d28cf9d5f77ec42d2a814fdbd3eb26b118659ab936f
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /add_client:
+      scope: /
+      pkg: c_add_client_pkg
+      exec: add_client
+      node_name: add_client

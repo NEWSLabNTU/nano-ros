@@ -612,12 +612,22 @@ entry fixtures:
     the model arm with the bridge backend baked (proves the model arm reads
     `execution.bridges` to register the two RMWs). `ws-{qos,custom-msg}-mixed`
     were already migrated (their `native_{talker,listener}_entry` use `MODEL`).
+  - **`{c,cpp,mixed}` monolith native entries — DONE (2026-07-23).** All 21
+    native/service/action/robot CMake entries swapped `LAUNCH` → `MODEL`
+    (robots keep `HOST`); 18 models resolved (6 per workspace, 46.5 binary —
+    no meta.record/companion; fixed the same `--host` XML-comment bug in each
+    `multihost.launch.xml`). Fresh workspace-fixture rebuilds green for all
+    three; robot host slices verified in the generated mains (robot1→talker
+    only, robot2→listener only). **Seam fix:** the first C/C++ entry PAIR
+    sharing one model (robot1/robot2 → multihost_model.yaml) hit ninja
+    "defined as an output multiple times" — the codegen depfile's
+    CONFIGURE_DEPENDS carried two `../` spellings of the same file;
+    `NanoRosEntry.cmake` now REALPATH-canonicalizes each dep before appending.
   - **Straightforward remainder** (no blocker, resolve-batchable like the
-    families above): the `examples/workspaces/{c,cpp,mixed}` monolith
-    native/service/action/robot entries (34 CMake — rust siblings done), the
-    `ws-realtime-{c,cpp-*}` board/shape variants, the 3 remaining templates,
-    and the monolith's embedded entries (zephyr/freertos/nuttx/esp32/threadx —
-    need per-platform fixture rebuilds).
+    families above): the `ws-realtime-{c,cpp-*}` board/shape variants, the 3
+    remaining templates, and the monolith's embedded entries (zephyr/freertos/
+    nuttx/esp32/threadx across rust/c/cpp/mixed — need per-platform fixture
+    rebuilds).
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored

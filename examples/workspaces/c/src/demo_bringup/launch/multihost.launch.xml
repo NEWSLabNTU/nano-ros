@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <!-- phase-263 Track C — multi-host launch (C parity with the Rust workspace): the
      talker runs on `robot1`, the listener on `robot2` (`<node machine="…">`). The
-     CMake `nano_ros_entry(HOST <id> …)` passthrough shells `nros codegen entry --host
-     <id>`, which keeps only that host's node (plus any unhosted/shared), so
+     CMake `nano_ros_entry(HOST <id> …)` passthrough runs the per-host entry bake
+     (`HOST <id>`), which keeps only that host's node (plus any unhosted/shared), so
      `native_entry_robot1` bakes talker-only and `native_entry_robot2` listener-only. -->
 <launch>
   <node pkg="c_talker_pkg" exec="talker" name="talker" machine="robot1"/>

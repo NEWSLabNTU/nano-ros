@@ -692,8 +692,17 @@ function(_nros_entry_invoke_codegen)
         string(REPLACE " " ";" _dep_list "${_dep_text}")
         foreach(_dep IN LISTS _dep_list)
             if(_dep AND EXISTS "${_dep}")
+                # Canonicalize before appending: two entries that share one
+                # input (e.g. native_entry_robot1/robot2 both baking the same
+                # multihost MODEL) reference it via different `../` spellings
+                # relative to their own CMAKE_CURRENT_SOURCE_DIR. Ninja
+                # aggregates every directory's CMAKE_CONFIGURE_DEPENDS into one
+                # phony and rejects the same file declared as an output twice
+                # ("defined as an output multiple times") unless the spellings
+                # are identical. REALPATH collapses them to one canonical path.
+                get_filename_component(_dep_real "${_dep}" REALPATH)
                 set_property(DIRECTORY APPEND PROPERTY
-                    CMAKE_CONFIGURE_DEPENDS "${_dep}")
+                    CMAKE_CONFIGURE_DEPENDS "${_dep_real}")
             endif()
         endforeach()
     endif()
