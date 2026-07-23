@@ -426,8 +426,7 @@ impl SchedContext {
         deadline_us: Option<u64>,
         deadline_policy: Option<&str>,
     ) -> Option<(Self, Option<u32>)> {
-        let sporadic =
-            class == Some("real_time") && budget_us.is_some() && period_us.is_some();
+        let sporadic = class == Some("real_time") && budget_us.is_some() && period_us.is_some();
         let best_effort = class == Some("best_effort");
         let time_triggered = class == Some("time_triggered") && period_us.is_some();
         if !sporadic && !best_effort && !time_triggered && deadline_us.is_none() {
@@ -627,9 +626,8 @@ mod tests {
 
     #[test]
     fn from_tier_policy_best_effort() {
-        let (sc, tt) =
-            SchedContext::from_tier_policy(Some("best_effort"), None, None, None, None)
-                .expect("best_effort is a policy");
+        let (sc, tt) = SchedContext::from_tier_policy(Some("best_effort"), None, None, None, None)
+            .expect("best_effort is a policy");
         assert_eq!(sc.class, SchedClass::BestEffort);
         assert_eq!(tt, None);
     }
@@ -638,9 +636,14 @@ mod tests {
     fn from_tier_policy_time_triggered_returns_major_frame() {
         // TT stays Fifo-class (110.G) but returns the major frame to register
         // and sets the window duration (budget → window, else whole frame).
-        let (sc, tt) =
-            SchedContext::from_tier_policy(Some("time_triggered"), Some(10_000), Some(4_000), None, None)
-                .expect("time_triggered+period is a policy");
+        let (sc, tt) = SchedContext::from_tier_policy(
+            Some("time_triggered"),
+            Some(10_000),
+            Some(4_000),
+            None,
+            None,
+        )
+        .expect("time_triggered+period is a policy");
         assert_eq!(sc.class, SchedClass::Fifo);
         assert_eq!(tt, Some(10_000));
         assert_eq!(sc.tt_window_duration_us.raw(), 4_000);
@@ -649,9 +652,8 @@ mod tests {
     #[test]
     fn from_tier_policy_deadline_only() {
         // A deadline with no RT class still yields a policy (Fifo + deadline).
-        let (sc, _tt) =
-            SchedContext::from_tier_policy(None, None, None, Some(8_000), Some("warn"))
-                .expect("a deadline is a policy");
+        let (sc, _tt) = SchedContext::from_tier_policy(None, None, None, Some(8_000), Some("warn"))
+            .expect("a deadline is a policy");
         assert_eq!(sc.class, SchedClass::Fifo);
         assert_eq!(sc.deadline_us.raw(), 8_000);
         assert_eq!(sc.deadline_action, DeadlineAction::Warn);
