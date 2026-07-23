@@ -1,0 +1,56 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-c-mps2/src/demo_bringup/launch/system.launch.xml
+    sha256: d43a001d1ab49eaa983e0e23e10b177c0ad4b4fee09cb212b7446cd6a4eb82da
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-c-mps2/src/demo_bringup/system.toml
+    sha256: 9ed29287da8fef7924e2b9d05abcd0bf9602b7e125d95720057fb55112bb82be
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /ctrl_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: ctrl
+      node_name: ctrl_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem
+      node_name: telem_node
+execution:
+  deploy:
+    /ctrl_node:
+      target: mcu:mps2-an385-freertos
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: freertos
+        kind: embedded
+    /telem_node:
+      target: mcu:mps2-an385-freertos
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: freertos
+        kind: embedded
+  tiers:
+    high:
+      spin_period_us: 10000
+      posix:
+        priority: 80
+      freertos:
+        priority: 5
+    low:
+      spin_period_us: 100000
+      posix:
+        priority: 10
+      freertos:
+        priority: 2
+  bindings:
+    /ctrl_node/ctrl: high
+    /telem_node/telem: low

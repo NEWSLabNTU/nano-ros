@@ -1,0 +1,75 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-mps2/src/demo_bringup/launch/system.launch.xml
+    sha256: 048d971aae2ee56baa8b3004ae8e2d24e1aad233b7d2d98fc29d697d22afbb38
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-mps2/src/demo_bringup/system.toml
+    sha256: 044d4fe3b396c7e382467a4bf9328c3480eaafe35ae269eaca60238b6b90f245
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /aux_node:
+      scope: /
+      pkg: aux_pkg
+      exec: aux
+      node_name: aux_node
+    /ctrl_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: ctrl
+      node_name: ctrl_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem
+      node_name: telem_node
+execution:
+  deploy:
+    /aux_node:
+      target: mcu:mps2-an385-freertos
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: freertos
+        kind: embedded
+    /ctrl_node:
+      target: mcu:mps2-an385-freertos
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: freertos
+        kind: embedded
+    /telem_node:
+      target: mcu:mps2-an385-freertos
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: freertos
+        kind: embedded
+  tiers:
+    high:
+      spin_period_us: 10000
+      posix:
+        priority: 80
+      freertos:
+        priority: 5
+    low:
+      spin_period_us: 100000
+      posix:
+        priority: 10
+      freertos:
+        priority: 2
+    mid:
+      spin_period_us: 50000
+      posix:
+        priority: 40
+      freertos:
+        priority: 3
+  bindings:
+    /aux_node/aux: mid
+    /ctrl_node/ctrl: high
+    /telem_node/telem: low

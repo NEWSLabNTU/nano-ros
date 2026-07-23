@@ -1,0 +1,54 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-rclcpp/src/demo_bringup/launch/system.launch.xml
+    sha256: c7cf84499ffd7717324dfc8d6d9ac114e769f5fe70b4911525d7f8279b595690
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-rclcpp/src/demo_bringup/system.toml
+    sha256: 1ad7a567748fd45a258c6143764a9c6f512ef0e55b150792fdac56fc31ed2db1
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /ctrl_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: ctrl
+      node_name: ctrl_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem
+      node_name: telem_node
+execution:
+  deploy:
+    /ctrl_node:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /telem_node:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  tiers:
+    high:
+      spin_period_us: 10000
+      posix:
+        priority: 80
+    low:
+      spin_period_us: 100000
+      posix:
+        priority: 10
+  bindings:
+    /ctrl_node/ctrl: high
+    /telem_node/telem: low

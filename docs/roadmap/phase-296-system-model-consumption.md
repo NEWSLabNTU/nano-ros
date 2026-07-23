@@ -15,17 +15,15 @@ single-host native entries, `native_entry_robot1/robot2` on the model
 `<node machine=>` → `deploy.host`, host filter validated E2E), + **`ws-bridge-rust`
 and `ws-bridge-xrce-rust`** (2026-07-21 — `execution.bridges` from the bringup
 `[[bridge]]`; both native entries bake the bridge backend on the model arm).
-**Precise holdout inventory (classifier, 2026-07-21): 48 CMake `LAUNCH` entries
-+ 7 Rust `main!(launch=)` remain** (the earlier `~14/~18 workspaces` was a
-rough count). Grouped: the `examples/workspaces/{c,cpp,mixed}` monolith
-native/service/action/robot/embedded entries (34 CMake — their rust siblings
-are done), `ws-realtime-{c,c-mps2,cpp-fvp,cpp-mps2,cpp-rclcpp,cpp-subnode*}`
-board/shape variants (12 CMake), `ws-safety-{c,cpp}` (4 CMake, blocked #237),
-3 templates (`{c-and-cpp-mixed,multi-node-workspace-cpp,pure-c}`), the rust
-monolith embedded entries (`esp32`/`qemu_freertos`/`qemu_nuttx`/`threadx_linux`/
-`zephyr` = 5 Rust), `multi-node-workspace` template robot_entry (1 Rust), and
-`zephyr_entry_robot1` (1 Rust, blocked #236). C/C++ migration state lives in the
-CMake `LAUNCH`/`MODEL` keyword, not the `.c`/`.cpp` source. **R3 (deprecation warnings)
+2026-07-23: the `{c,cpp,mixed}` monolith native entries (21 CMake) and the
+`ws-realtime-{c,c-mps2,cpp-fvp,cpp-mps2,cpp-rclcpp,cpp-subnode,
+cpp-subnode-portable}` variants (10 CMake) are migrated too. **Holdout
+inventory (classifier): 17 CMake + 7 Rust remain** — see "Remaining migration
++ retirement jobs" below (M1 monolith embedded, M2 templates, M3 blocked
+#236/#237 pair, M4 test fixtures, M5 book; then R-code.1–.3 incl. MODEL
+becoming the convention-discovered DEFAULT users never spell). C/C++ migration
+state lives in the CMake `LAUNCH`/`MODEL` keyword, not the `.c`/`.cpp` source.
+**R3 (deprecation warnings)
 DONE + merged.** **R4 (legacy-path removal) IN PROGRESS** — the migration
 tail is the only blocker; code removal lands once the R3 warning fires in
 zero fixture builds (test-suite gated).
@@ -623,11 +621,70 @@ entry fixtures:
     "defined as an output multiple times" — the codegen depfile's
     CONFIGURE_DEPENDS carried two `../` spellings of the same file;
     `NanoRosEntry.cmake` now REALPATH-canonicalizes each dep before appending.
-  - **Straightforward remainder** (no blocker, resolve-batchable like the
-    families above): the `ws-realtime-{c,cpp-*}` board/shape variants, the 3
-    remaining templates, and the monolith's embedded entries (zephyr/freertos/
-    nuttx/esp32/threadx across rust/c/cpp/mixed — need per-platform fixture
-    rebuilds).
+  - **`ws-realtime-{c,c-mps2,cpp-fvp,cpp-mps2,cpp-rclcpp,cpp-subnode,
+    cpp-subnode-portable}` — DONE (2026-07-23).** All 10 CMake entries swapped
+    `LAUNCH` → `MODEL`. 5 workspaces batch-resolved with `--system` (tiers +
+    bindings carried); `ws-realtime-c` + `cpp-fvp` hand-authored from the
+    ws-realtime-cpp template — their multi-`[deploy.*]` system.tomls are
+    per-BOARD pickers (cmake `DEPLOY`), not per-node placement, which the
+    resolver refuses ("node not placed"), so like the rust flagship the model
+    carries NO deploy layer and every board entry keeps all nodes. Native
+    fixture rebuilds green (ws-realtime-c native, cpp-rclcpp, cpp-subnode,
+    cpp-subnode-portable); embedded entries (nuttx×2/zephyr/freertos×2/fvp)
+    are the same board-agnostic MODEL seam, validated in their platform lanes.
+
+### Remaining migration + retirement jobs (2026-07-23 inventory)
+
+The classifier (entry files whose non-comment lines still carry `LAUNCH "…"`
+/ `launch = "…"`) now reports **17 CMake + 7 Rust** holdouts — every one
+grouped below. Standalone examples (`examples/native`, `examples/qemu-*`,
+`examples/zephyr`, `examples/threadx-linux`, `examples/px4`) use plain
+`nano_ros_add_executable(<target> <srcs>)` with hand-written mains — no
+launch/model bake at all — and are NOT migration targets.
+
+**M1 — monolith embedded entries (10 CMake + 5 Rust; per-platform fixture
+rebuilds):** `{c,cpp,mixed}` × {freertos, threadx, zephyr} + c nuttx (CMake),
+and the rust monolith's `esp32_entry`, `qemu_freertos_entry`,
+`qemu_nuttx_entry`, `threadx_linux_entry`, `zephyr_entry` (Rust). Models
+already exist (the per-launch monolith models). Each swap needs its platform
+fixture family rebuilt (freertos/nuttx/zephyr/esp32/threadx lanes).
+
+**M2 — templates (3 CMake + 1 Rust):** `multi-node-workspace` (rust),
+`multi-node-workspace-cpp`, `pure-c-workspace`, `c-and-cpp-mixed-workspace`
+robot entries. Templates are user-facing scaffolds — swap + commit a model +
+update the template README so `nros new` users start on the model path.
+
+**M3 — blocked pair:** `ws-safety-{c,cpp}` (4 CMake, #237 build-flag wiring);
+`zephyr_entry_robot1` (1 Rust, #236 unplaced-target — play_launch side).
+
+**M4 — test fixtures:** `packages/testing/nros-tests/fixtures/*` workspaces
+(`n9_workspace`, `multi_pkg_workspace_{zephyr,nuttx,esp_idf,platformio}`, …)
+still author `launch =` entries + system.toml; migrate when their consuming
+tests move (they gate CLI/workspace planning behavior, so they flip together
+with R-code below).
+
+**M5 — book + docs:** `book/src/getting-started/workspace-*.md` +
+`user-guide/component-and-entry-pkg.md` teach the `LAUNCH`/`launch =` form;
+rewrite to the model workflow (resolve → commit model → `MODEL`/`model =`)
+once M1–M2 land, before the code removal ships.
+
+**Retirement (code) — after M1–M5, R3 warning fires nowhere:**
+
+- **R-code.1** Delete the legacy arms: `nros::main!(launch = …)` +
+  `launch_synth`, CLI `--launch` on `codegen entry`/`codegen-system` (+ the
+  system.toml bake pair), CMake `LAUNCH` keyword. ~145-consumer blast radius
+  is gone once M1–M5 land; the full test suite is the merge gate.
+- **R-code.2 — MODEL becomes the DEFAULT, not a required arg.** End state:
+  users never spell it. Convention discovery — `nros::main!()` (no arg) and
+  `nano_ros_add_executable(... )` (no MODEL) resolve
+  `<bringup>/config/system_model.yaml` via the entry pkg's bringup dep
+  (package.xml exec_depend, same lookup the `"demo_bringup"` shorthand
+  already does); explicit `MODEL`/`model =` stays as the override for
+  multi-model bringups (the file-override form) and `host =` slicing.
+  Missing model file = fail-loud with the resolve command to run.
+- **R-code.3** Deprecation plumbing removal: the R3 `nros_cli_core::
+  deprecation` warning + `NROS_ALLOW_LEGACY_BAKE` escape hatch go away with
+  the arms they guard.
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored

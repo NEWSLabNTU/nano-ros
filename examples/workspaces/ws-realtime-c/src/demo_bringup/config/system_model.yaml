@@ -1,0 +1,44 @@
+meta:
+  version: 1
+# RFC-0052 / phase-296 R2 — resolved SystemModel for ws-realtime-c demo (C entries).
+# Hand-authored to mirror the equivalent `system.toml` (2 nodes, 2 tiers,
+# group→tier bindings); play_launch resolves tiers from a `--sched` platform
+# file, so this is the shape `play_launch resolve --sched <platform.yaml>`
+# emits. NO deploy layer: the system.toml's multi-[deploy.*] blocks pick the
+# BOARD per entry (cmake DEPLOY), not a per-node placement — the SAME nodes
+# build for every board, so every entry keeps all nodes and resolves the tier
+# table for its board's RTOS. The typed C++ path resolves each node's component class from the cmake
+# metadata by (pkg, exec); the model carries pkg + exec.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /ctrl_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: ctrl
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem
+execution:
+  tiers:
+    high:
+      spin_period_us: 10000
+      posix:
+        priority: 80
+      zephyr:
+        priority: 5
+      nuttx:
+        priority: 110
+    low:
+      spin_period_us: 100000
+      posix:
+        priority: 10
+      zephyr:
+        priority: 10
+      nuttx:
+        priority: 100
+  bindings:
+    /ctrl_node/ctrl: high
+    /telem_node/telem: low
