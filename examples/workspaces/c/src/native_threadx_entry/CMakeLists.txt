@@ -16,7 +16,7 @@ find_package(nano_ros REQUIRED)
 # the generated `.cpp` TU carries the entry; no hand-written `main`.
 nano_ros_add_executable(native_threadx_entry
     BOARD   threadx-linux
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     LANG    c
     TYPED
     DEPLOY  threadx-linux)

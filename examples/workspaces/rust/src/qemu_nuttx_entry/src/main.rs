@@ -1,7 +1,7 @@
 //! Entry pkg for the shared Rust workspace on NuttX QEMU ARM virt.
 //!
 //! Phase 225.O follow-up (known-issue #18) — the body is the SAME
-//! one-line `nros::main!(launch = …)` the native / freertos / threadx /
+//! one-line `nros::main!(model = …)` the native / freertos / threadx /
 //! zephyr / esp32 entries use. `[package.metadata.nros.entry] deploy =
 //! "nuttx"` maps the board to `nros_board_nuttx_qemu_arm::QemuArmVirt`
 //! and (since NuttX rides `Framework::OwnedSpin`) emits a hosted
@@ -27,4 +27,4 @@
 //! `#![no_std] #![no_main]` freertos/esp32 entries — this is a plain
 //! `std` bin. The prebuilt NuttX kernel libs are linked by `build.rs`.
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");

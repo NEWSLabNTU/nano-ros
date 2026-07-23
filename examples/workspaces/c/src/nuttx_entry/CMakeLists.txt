@@ -18,7 +18,7 @@ find_package(nano_ros REQUIRED)
 # host zenoh router at the baked slirp locator. LAUNCH-only.
 nano_ros_add_executable(nuttx_entry
     BOARD   nuttx-qemu-arm
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     LANG    c
     TYPED
     DEPLOY  nuttx-qemu-arm)

@@ -5,4 +5,4 @@
 
 extern crate panic_semihosting;
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");

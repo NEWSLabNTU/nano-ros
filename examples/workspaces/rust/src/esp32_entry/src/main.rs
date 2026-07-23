@@ -1,6 +1,6 @@
 //! Entry pkg for the shared Rust workspace on ESP32-C3 QEMU (OpenETH).
 //!
-//! Phase 225.O — the body is the SAME one-line `nros::main!(launch = …)`
+//! Phase 225.O — the body is the SAME one-line `nros::main!(model = …)`
 //! the native / freertos / threadx / zephyr entries use.
 //! `[package.metadata.nros.entry] deploy = "esp32-qemu"` routes the macro
 //! onto its `Framework::Esp32` emit branch, which:
@@ -28,4 +28,4 @@ use esp_backtrace as _;
 // ESP-IDF app descriptor — the second-stage bootloader scans for it.
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");

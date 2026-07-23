@@ -15,6 +15,6 @@ find_package(nano_ros REQUIRED)
 # the FreeRTOS entry shape; the embedded pass links the bootable ELF + bakes the slirp locator.
 nano_ros_add_executable(freertos_entry
     BOARD   mps2-an385-freertos
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  mps2-an385-freertos)

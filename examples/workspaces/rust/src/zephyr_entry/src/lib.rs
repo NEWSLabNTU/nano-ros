@@ -7,7 +7,7 @@
 //! `rust_main`, which `zephyr-lang-rust`'s `rust_cargo_application()`
 //! invokes after kernel + net init.
 //!
-//! The body is the SAME one-line `nros::main!(launch = ...)` the
+//! The body is the SAME one-line `nros::main!(model = ...)` the
 //! native / freertos / threadx entries use. `[package.metadata.nros.entry]
 //! deploy = "zephyr"` routes the macro onto its `Framework::Zephyr` emit
 //! branch, which:
@@ -29,4 +29,4 @@
 // in so the kernel's Rust glue (`set_logger`, allocator hookup) links.
 extern crate zephyr;
 
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");

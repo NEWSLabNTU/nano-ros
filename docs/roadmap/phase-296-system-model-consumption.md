@@ -684,12 +684,19 @@ grouped below. Standalone examples (`examples/native`, `examples/qemu-*`,
 `nano_ros_add_executable(<target> <srcs>)` with hand-written mains — no
 launch/model bake at all — and are NOT migration targets.
 
-**M1 — monolith embedded entries (10 CMake + 5 Rust; per-platform fixture
-rebuilds):** `{c,cpp,mixed}` × {freertos, threadx, zephyr} + c nuttx (CMake),
-and the rust monolith's `esp32_entry`, `qemu_freertos_entry`,
-`qemu_nuttx_entry`, `threadx_linux_entry`, `zephyr_entry` (Rust). Models
-already exist (the per-launch monolith models). Each swap needs its platform
-fixture family rebuilt (freertos/nuttx/zephyr/esp32/threadx lanes).
+**M1 — monolith embedded entries — SWAPPED + LANE-VALIDATED (2026-07-23).**
+All 15 entries migrated (`{c,cpp,mixed}` × {freertos, threadx, zephyr} + c
+nuttx CMake; rust `esp32`/`qemu_freertos`/`qemu_nuttx`/`threadx_linux`/
+`zephyr`). Platform lanes: **9/12 green** (threadx-linux ×4 langs, freertos
+c/cpp/mixed, nuttx-c, esp32-rust). The 3 red rust lanes are **pre-existing
+infra breakage, proven independent of the migration** (freertos-rust reruns
+with the OLD `launch =` form and fails identically):
+`freertos-rust` — `NROS_PLATFORM_FREERTOS_SRC not set` (env overlay);
+`nuttx-rust` — `ld: cannot find -lopenamp/-lboard` (NuttX SDK export libs
+absent); `zephyr-rust` — `package ID zephyr_entry did not match any packages`
+(lane package-graph plumbing). Those lanes were broken on main before the
+swap (cf. the broad-build-blockers memory); fixing them is lane infra work,
+not R4.
 
 **M2 — templates (3 CMake + 1 Rust):** `multi-node-workspace` (rust),
 `multi-node-workspace-cpp`, `pure-c-workspace`, `c-and-cpp-mixed-workspace`

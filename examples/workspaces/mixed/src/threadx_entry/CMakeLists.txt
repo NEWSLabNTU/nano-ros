@@ -15,6 +15,6 @@ find_package(nano_ros REQUIRED)
 # issue 0097); the embedded pass links the image + bakes the locator. LAUNCH-only.
 nano_ros_add_executable(threadx_entry
     BOARD   threadx-linux
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     TYPED
     DEPLOY  threadx-linux)
