@@ -48,6 +48,10 @@ unsafe extern "C" {
     /// actually applied it (EDF present), 0 when it was a no-op (image
     /// lacks `CONFIG_SCHED_DEADLINE`).
     fn nros_zephyr_set_current_deadline(deadline_us: u32) -> i32;
+    /// Phase 110.D shim — pin the CALLING thread to a CPU
+    /// (`k_thread_cpu_pin`). Returns 0 on success, `-ENOSYS` when the image
+    /// lacks `CONFIG_SCHED_CPU_MASK_PIN_ONLY`, else the kernel error.
+    fn nros_zephyr_thread_cpu_pin(cpu: i32) -> i32;
 }
 
 /// Apply this tier's kernel EDF deadline on the CALLING thread, when the
@@ -74,6 +78,29 @@ fn apply_tier_deadline(tier: &TierSpec<'_>) {
 #[cfg(not(feature = "zephyr-edf"))]
 #[inline]
 fn apply_tier_deadline(_tier: &TierSpec<'_>) {}
+
+/// phase-296 W5.5 follow-up (placement dim) — pin the CALLING thread to the
+/// tier's declared CPU. The `core` knob rode the W2-widened pipe into
+/// `TierSpec` but no Zephyr consumer applied it (a silently-dropped knob —
+/// the RFC-0052 fail-loud violation class). A declared core that the image
+/// cannot honor (`CONFIG_SCHED_CPU_MASK_PIN_ONLY` off, bad cpu id) is a LOUD
+/// warn — the declared placement did not take effect.
+fn apply_tier_core_pin(tier: &TierSpec<'_>) {
+    if let Some(cpu) = tier.core {
+        let rc = unsafe { nros_zephyr_thread_cpu_pin(cpu.min(i32::MAX as u32) as i32) };
+        if rc == 0 {
+            ::log::info!("nros: core pin tier=`{}` cpu={}", tier.name, cpu);
+        } else {
+            ::log::warn!(
+                "nros: core pin FAILED tier=`{}` cpu={} rc={} (CONFIG_SCHED_CPU_MASK_PIN_ONLY \
+                 off, or invalid cpu) — tier runs unpinned",
+                tier.name,
+                cpu,
+                rc
+            );
+        }
+    }
+}
 
 /// Leaked per-tier context, consumed by [`tier_task_entry`].
 struct TierTaskCtx<F> {
@@ -162,6 +189,7 @@ where
         ctx.tier.deadline_policy,
     );
     apply_tier_deadline(&ctx.tier);
+    apply_tier_core_pin(&ctx.tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
@@ -276,6 +304,7 @@ impl ZephyrBoard {
             );
         }
         apply_tier_deadline(boot_tier);
+        apply_tier_core_pin(boot_tier);
         ::log::info!(
             "nros: zephyr multi-tier entry up ({} tiers, boot tier `{}`)",
             tiers.len(),

@@ -380,11 +380,21 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   them unchanged. Declared tiers always win; ranked nodes with no declared
   callback groups stay on the default tier (loud note); every degradation is
   printed. Unit-tested (derive/groupless/edf-conflict).
-- Remaining (beyond W5.5/W5.6): the rest of the runtime `PlatformSched`
+- W5.7 — **Zephyr placement (core-pin) consumer — ✅ DONE** (2026-07-23): the
+  `core` knob rode the W2-widened pipe into `TierSpec` but no Zephyr consumer
+  applied it (silently-dropped knob). The Rust `run_tiers` arm now self-applies
+  `k_thread_cpu_pin` per tier (boot + spawned, mirroring the W5.5 deadline
+  pattern, via the existing Phase-110.D `nros_zephyr_thread_cpu_pin` shim);
+  an unhonorable pin (`CONFIG_SCHED_CPU_MASK_PIN_ONLY` off / bad cpu) warns
+  loud and the tier runs unpinned. Gap recorded: the C/C++ zephyr image
+  (`zephyr_run_tiers.c`) transports `core_plus1` (and deadline) but applies
+  NEITHER — its consumer is a follow-up.
+- Remaining (beyond W5.5–W5.7): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
-  `SchedContext` backfills); per-board deploy slicing for the `edf` knob; an
-  E2E fixture exercising the derived-schedule path on a real workspace.
+  `SchedContext` backfills); the C/C++ zephyr tier image's core/deadline
+  consumers; per-board deploy slicing for the `edf` knob; an E2E fixture
+  exercising the derived-schedule path on a real workspace.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer
