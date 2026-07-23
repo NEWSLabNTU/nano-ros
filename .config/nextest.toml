@@ -53,6 +53,17 @@ max-threads = 3
 [test-groups.zephyr-qos-port]
 max-threads = 1
 
+# phase-296 W5.5 (final-review finding 1) — issue-#141-style RESOURCE: one
+# baked image serves two tests. The ws-realtime-rust Zephyr native_sim entry
+# (`build_zephyr_workspace_rust_realtime_entry`) and its baked router port
+# (`port_of(ZephyrNativeSim, Rust, RealtimeTiers)`) are shared by
+# `realtime_tiers_e2e`'s `zephyr_rust` cell and the new
+# `zephyr_edf_deadline_applied` e2e — serialize them so the two router
+# starts never collide. (The `zephyr_cpp`/`zephyr_c` cells bake their own
+# distinct ports and stay ungrouped.)
+[test-groups.zephyr-realtime-rust-port]
+max-threads = 1
+
 # Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
 # test). Ports are allocator-unique per (variant, lang) since phase-89.13/
 # W4, so the per-variant `qemu-freertos-{pubsub,service,action}` sub-groups
@@ -323,6 +334,16 @@ retries = 2
 filter = "binary(c_riscv_nuttx_e2e) | (binary(realtime_tiers_e2e) & test(nuttx_riscv))"
 slow-timeout = { period = "150s", terminate-after = 2 }
 retries = 1
+
+# phase-296 W5.5 (final-review finding 1) — see
+# [test-groups.zephyr-realtime-rust-port]. Same slow-timeout/retries as the
+# other Zephyr native_sim (NSOS) QEMU-class lanes below (cold boot + zenoh
+# discovery flakes under host load).
+[[profile.default.overrides]]
+filter = "binary(zephyr_edf_deadline_applied) or (binary(realtime_tiers_e2e) and test(zephyr_rust))"
+test-group = "zephyr-realtime-rust-port"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(nuttx_qemu) or (binary(entry_e2e) and test(nuttx_arm)) or (binary(rtos_e2e) and test(Platform__Nuttx))"

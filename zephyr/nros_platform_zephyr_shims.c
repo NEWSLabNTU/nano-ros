@@ -374,11 +374,18 @@ void nros_zephyr_set_current_priority(int32_t priority) {
  * `ZephyrBoard::run_tiers` image and the C/C++ `nros_board_zephyr_run_tiers`
  * path) rather than in `c/zephyr_run_tiers.c` — that file is compiled only into
  * the C/C++ entry image, so a definition there is invisible to the Rust link.
+ *
+ * Returns 1 when the kernel actually applied the deadline (EDF present) and 0
+ * when it was a no-op (`CONFIG_SCHED_DEADLINE` unset) — the Rust caller logs
+ * its "EDF deadline set" marker ONLY on a 1, so the marker can never fire
+ * from an image where the kernel never applied anything.
  */
-void nros_zephyr_set_current_deadline(unsigned int deadline_us) {
+int nros_zephyr_set_current_deadline(unsigned int deadline_us) {
 #ifdef CONFIG_SCHED_DEADLINE
     k_thread_deadline_set(k_current_get(), (int)k_us_to_cyc_near32(deadline_us));
+    return 1; /* applied — kernel EDF present */
 #else
     (void)deadline_us;
+    return 0; /* not applied — no kernel EDF; executor monitor is sole enforcement */
 #endif
 }
