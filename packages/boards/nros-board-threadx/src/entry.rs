@@ -115,18 +115,32 @@ unsafe extern "C" {
     /// Phase 297 W2/W4 (RFC-0053) — the shared ThreadX thread-creation backend
     /// (`nros_board_common`'s `threadx_hooks.c`). Mirrors the FreeRTOS
     /// `nros_freertos_create_task` shape; the single spawn path `run_tiers`
-    /// (W4) and any C/C++ entry both call. `entry` is ThreadX-native
-    /// `void(*)(ULONG)`; `arg` (the spawn context cast to `usize`) rides in as
-    /// the ULONG thread input. `stack_bytes` (0 ⇒ the overlay's app-stack size)
-    /// is `tx_byte_allocate`d from the shared byte pool (same as the boot app
-    /// thread). `preempt_threshold < 0` ⇒ `= priority` (no threshold); `>= 0`
-    /// is the native `non_preempt_scope` value. Returns 0 on success, -1 on
-    /// failure.
+    /// (W4) and any C/C++ entry both call. `entry`/`arg` are POINTER-WIDTH
+    /// (`void(*)(void*)` / `void*`), NOT ThreadX ULONG: the x86_64 linux port
+    /// defines ULONG as `unsigned int` (32-bit), so a pointer through the
+    /// thread input truncates and SEGVs (found at first W5 boot). The shim
+    /// parks {entry, arg} in a slot table and passes only the slot index
+    /// through the ULONG input to a C trampoline. `stack_bytes` (0 ⇒ the
+    /// overlay's app-stack size) is `tx_byte_allocate`d from the shared byte
+    /// pool (same as the boot app thread). `preempt_threshold < 0` ⇒
+    /// `= priority` (no threshold); `>= 0` is the native `non_preempt_scope`
+    /// value. Returns 0 on success, -1 on failure.
     fn nros_threadx_create_task(
         name: *const u8,
-        entry: unsafe extern "C" fn(core::ffi::c_ulong),
-        arg: core::ffi::c_ulong,
+        entry: unsafe extern "C" fn(*mut c_void),
+        arg: *mut c_void,
         stack_bytes: core::ffi::c_ulong,
+        priority: core::ffi::c_uint,
+        preempt_threshold: core::ffi::c_int,
+    ) -> core::ffi::c_int;
+
+    /// Re-prioritize the CALLING thread to a tier's sched values (W5). The
+    /// boot tier runs on the app thread, created at the fixed
+    /// `nros_board_app_priority()` — without this, a boot tier whose declared
+    /// priority is numerically above a spawned tier's silently inverts the
+    /// tiers (the W5 e2e caught exactly that: app@4 starved `high`@5).
+    /// `preempt_threshold < 0` ⇒ `= priority`. Returns 0 on success.
+    fn nros_threadx_set_current_priority(
         priority: core::ffi::c_uint,
         preempt_threshold: core::ffi::c_int,
     ) -> core::ffi::c_int;
@@ -237,7 +251,7 @@ where
         nros_threadx_create_task(
             b"nros_tier\0".as_ptr(),
             tier_task_entry::<B, C, F, E>,
-            ptr as usize as core::ffi::c_ulong,
+            ptr as *mut c_void,
             stack_bytes,
             prio,
             pt,
@@ -251,7 +265,9 @@ where
     Ok(())
 }
 
-/// Spawned-tier thread body. ThreadX-native `void(*)(ULONG)` entry: `input` is
+/// Spawned-tier thread body, reached through the shim's slot-table trampoline
+/// (pointer-width `input` — NEVER ThreadX ULONG, which is 32-bit on the
+/// x86_64 linux port): `input` is
 /// the [`TierTaskCtx`] pointer (from [`spawn_next_tier`]). Opens an `Executor`
 /// over the SHARED session, applies this tier's groups + sched policy,
 /// registers (off-tier callbacks gated out), chain-spawns the next tier once
@@ -260,16 +276,17 @@ where
 /// # Safety
 /// `input` must be a `nros_threadx_alloc`-allocated `TierTaskCtx<F>` from
 /// [`spawn_next_tier`]; this thread consumes + frees it.
-unsafe extern "C" fn tier_task_entry<B, C, F, E>(input: core::ffi::c_ulong)
+unsafe extern "C" fn tier_task_entry<B, C, F, E>(input: *mut c_void)
 where
     B: BoardPrint + BoardExit,
     C: ThreadxConfig,
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
-    let arg = input as usize as *mut TierTaskCtx<F>;
+    let arg = input as *mut TierTaskCtx<F>;
     let ctx = unsafe { core::ptr::read(arg) };
     unsafe { nros_threadx_free(arg as *mut c_void) };
+    B::println(format_args!("nros: tier `{}` thread up", ctx.tier.name));
 
     // SAFETY: the boot thread owns the session for the firmware lifetime (its
     // spin loop never returns), so the handle stays valid.
@@ -300,6 +317,10 @@ where
         ));
     }
     let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    B::println(format_args!(
+        "nros: tier `{}` setup complete — spinning at {} ms",
+        ctx.tier.name, period_ms
+    ));
     loop {
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
             B::println(format_args!(
@@ -375,9 +396,28 @@ where
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
 
-    // Boot tier = tiers[0] (highest priority). Its declares run FIRST, before
-    // any spawn (#144), so no concurrent declare can race the handshake.
+    // Boot tier = tiers[0]. NOTE `resolve_tiers` sorts descending by RAW
+    // priority number without per-RTOS inversion, so on ThreadX (lower =
+    // higher) tiers[0] is the numerically-largest = LOWEST-priority tier.
+    // Its declares still run FIRST, before any spawn (#144), so no
+    // concurrent declare can race the handshake.
     let boot_tier = &tiers[0];
+    // W5 — adopt the boot tier's ThreadX priority: the app thread was
+    // created at the fixed `nros_board_app_priority()`; keeping that would
+    // let the boot tier outrank every spawned tier regardless of the
+    // declared numbers (the e2e's app@4 starved the spawned high@5 to zero
+    // publishes). Non-fatal on error: the tiers still run, mis-ranked.
+    let boot_prio = boot_tier.priority.clamp(0, u32::MAX as i64) as core::ffi::c_uint;
+    let boot_pt: core::ffi::c_int = match boot_tier.preempt_threshold {
+        Some(v) => v.clamp(0, u32::MAX as i64) as core::ffi::c_int,
+        None => -1,
+    };
+    if unsafe { nros_threadx_set_current_priority(boot_prio, boot_pt) } != 0 {
+        B::println(format_args!(
+            "nros: boot tier `{}` priority change failed; tiers may be mis-ranked",
+            boot_tier.name
+        ));
+    }
     apply_tier(&mut crt, boot_tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);

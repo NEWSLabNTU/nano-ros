@@ -1748,24 +1748,51 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // task can block in the host-backed BSD recv path and prevent the lease
     // task from running before the 10s router lease expires. Poll here instead
     // so every executor spin also refreshes the transport keepalive.
+    //
+    // phase-297 W5 — the timed wait MUST be `z_sleep_ms` (tx_thread_sleep),
+    // never a host select(): a host syscall blocks the pthread while the
+    // ThreadX scheduler still counts this thread as running, so under strict
+    // priority scheduling every other tier thread starves (the multi-tier
+    // e2e saw the higher-priority tier's select() wait pin the whole image
+    // to one tier — zero publishes from the other). Sleep first (a REAL
+    // ThreadX yield — lower-priority tiers run inside it), then poll the fd
+    // with a zero timeout and drain only what is already there. Same shape
+    // as the other multi-threaded platforms (see the pitfall in
+    // platform-implementation-notes.md).
+    // phase-297 W5 — single-reader guard: the polled `zp_read` path
+    // (`_zp_unicast_read`, single_read=false) does NOT take the transport's
+    // `_mutex_rx` (only the background read task does), so two tier threads
+    // polling concurrently race on the shared rx zbuf (`_z_zbuf_reset` mid
+    // parse) and silently LOSE inbound frames — the multi-tier e2e saw the
+    // spawned tier's interest replies/subscriber declares vanish, leaving its
+    // write filter closed forever (zero publishes). Only one thread reads at
+    // a time; a busy loser skips the read — the reader dispatches every
+    // subscriber's data regardless of which tier thread it is.
+    static volatile int reading = 0;
     int fd = get_session_fd();
     int ret = ZPICO_ERR_TIMEOUT;
-    if (fd >= 0 && timeout_ms > 0) {
+    if (timeout_ms > 0) {
+        z_sleep_ms(timeout_ms);
+    }
+    if (__sync_lock_test_and_set(&reading, 1) != 0) {
+        return ZPICO_OK;
+    }
+    if (fd >= 0) {
 #if defined(__linux__)
         fd_set read_fds;
         FD_ZERO(&read_fds);
         FD_SET(fd, &read_fds);
         struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
         int ready = select(fd + 1, &read_fds, NULL, NULL, &tv);
 #else
         nx_bsd_fd_set read_fds;
         NX_BSD_FD_ZERO(&read_fds);
         NX_BSD_FD_SET(fd, &read_fds);
         struct nx_bsd_timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
         int ready = nx_bsd_select(fd + 1, &read_fds, NULL, NULL, &tv);
 #endif
         if (ready > 0) {
@@ -1778,6 +1805,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     }
     _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    __sync_lock_release(&reading);
     return ret;
 
 #elif defined(ZENOH_FREERTOS_LWIP)

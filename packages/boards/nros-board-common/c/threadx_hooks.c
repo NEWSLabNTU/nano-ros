@@ -245,8 +245,13 @@ void tx_application_define(void *first_unused_memory)
  * The small, fixed-size TX_THREAD control blocks live in a bounded static
  * array here, so the port-specific `sizeof(TX_THREAD)` never crosses the FFI.
  *
- * `entry` is ThreadX-native `void(*)(ULONG)`; `arg` (the Rust spawn context,
- * cast to `usize`) rides in as the ULONG thread input — no trampoline. A
+ * `entry`/`arg` are pointer-width (`void(*)(void *)` / `void *`): the ThreadX
+ * thread input is ULONG, which the x86_64 linux port defines as `unsigned
+ * int` (32-BIT — tx_port.h) — passing a heap pointer through it truncates
+ * and SEGVs (phase-297 W5 found this at first boot). So the shim parks
+ * {entry, arg} in a per-task slot table and passes only the SLOT INDEX
+ * through the ULONG input to a trampoline — portable across every port's
+ * ULONG width. A
  * `preempt_threshold` of `-1` means "= priority" (no preemption-threshold
  * effect); a value `0..TX_MAX_PRIORITIES-1` is ThreadX's native
  * `non_preempt_scope` realization (RFC-0052) — a thread with a threshold
@@ -259,12 +264,50 @@ void tx_application_define(void *first_unused_memory)
  * `tx_thread_create` error). */
 #define NROS_TX_MAX_TASKS 8
 static TX_THREAD nros_tx_task_blocks[NROS_TX_MAX_TASKS];
+static void (*nros_tx_task_entries[NROS_TX_MAX_TASKS])(void *);
+static void *nros_tx_task_args[NROS_TX_MAX_TASKS];
 static int nros_tx_task_count = 0;
+
+/* ULONG carries only the slot index (fits any port's ULONG width); the
+ * pointer-width {entry, arg} pair is read back from the slot table. */
+static VOID nros_tx_task_trampoline(ULONG slot)
+{
+    nros_tx_task_entries[slot](nros_tx_task_args[slot]);
+}
+
+/* Re-prioritize the CALLING thread to a tier's sched values (phase-297 W5).
+ * The boot tier runs on the `tx_application_define` app thread, which was
+ * created at the fixed `nros_board_app_priority()` — NOT the tier's declared
+ * priority. Left alone, a boot-tier priority numerically above the app
+ * priority silently inverts the tiers (the W5 e2e caught this: the app
+ * thread at 4 starved the spawned `high` tier at 5 — zero publishes).
+ * `preempt_threshold < 0` ⇒ = priority (no threshold effect).
+ * Returns 0 on success, -1 on any ThreadX error. */
+int nros_threadx_set_current_priority(unsigned int priority, int preempt_threshold)
+{
+    TX_THREAD *self = tx_thread_identify();
+    UINT old_prio;
+    UINT old_pt;
+    UINT pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
+
+    if (self == TX_NULL) {
+        return -1;
+    }
+    /* Order matters when RAISING priority: a threshold may not exceed the
+     * current priority, so set priority first, then the threshold. */
+    if (tx_thread_priority_change(self, (UINT)priority, &old_prio) != TX_SUCCESS) {
+        return -1;
+    }
+    if (tx_thread_preemption_change(self, pt, &old_pt) != TX_SUCCESS) {
+        return -1;
+    }
+    return 0;
+}
 
 int nros_threadx_create_task(
     const char *name,
-    void (*entry)(ULONG),
-    ULONG arg,
+    void (*entry)(void *),
+    void *arg,
     unsigned long stack_bytes,
     unsigned int priority,
     int preempt_threshold)
@@ -293,11 +336,13 @@ int nros_threadx_create_task(
     }
 
     thread = &nros_tx_task_blocks[nros_tx_task_count];
+    nros_tx_task_entries[nros_tx_task_count] = entry;
+    nros_tx_task_args[nros_tx_task_count] = arg;
     /* -1 sentinel → threshold == priority (ThreadX's "no threshold" state). */
     pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
 
     status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_tier"),
-                               entry, arg,
+                               nros_tx_task_trampoline, (ULONG)nros_tx_task_count,
                                stack, stack_size,
                                priority, pt,
                                TX_NO_TIME_SLICE, TX_AUTO_START);
