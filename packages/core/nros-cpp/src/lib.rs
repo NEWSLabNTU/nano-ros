@@ -1803,6 +1803,20 @@ pub struct NativeTierSpecC {
     pub core_plus1: u32,
     /// ThreadX-only (bake-validated); -1 = unset. Never consumed on native.
     pub preempt_threshold: i64,
+    /// phase-296 W5.7 append — RTOS-agnostic scheduling class
+    /// (`"best_effort"`|`"real_time"`|`"time_triggered"`); NULL = unset.
+    /// ABI append-only: keep main.h/main.hpp/board mirrors/emitters in sync.
+    pub tier_class: *const c_char,
+    /// Sporadic replenishment period (µs); 0 = unset.
+    pub period_us: u64,
+    /// Execution budget (µs); 0 = unset.
+    pub budget_us: u64,
+    /// Relative deadline (µs); 0 = unset. Kernel-native consumers apply it
+    /// where the RTOS offers the feature (Zephyr EDF); never consumed on
+    /// native (the cooperative lowering is codegen-emitted per tier).
+    pub deadline_us: u64,
+    /// On-miss action (`"ignore"`|`"warn"`|`"skip"`|`"fault"`); NULL = unset.
+    pub deadline_policy: *const c_char,
 }
 
 /// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one

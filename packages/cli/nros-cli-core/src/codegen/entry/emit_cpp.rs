@@ -576,6 +576,18 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             let stack_bytes = tier.stack_bytes.unwrap_or(0);
             let core_plus1 = tier.core.map(|c| c + 1).unwrap_or(0);
             let preempt = tier.preempt_threshold.unwrap_or(-1);
+            // phase-296 W5.7 — the generic real-time policy rides the spec so
+            // kernel-native consumers (Zephyr EDF) can self-apply it on the
+            // tier thread; NULL/0 = unset.
+            let c_lit = |s: Option<&str>| match s {
+                Some(v) => format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
+                None => "nullptr".to_string(),
+            };
+            let tier_class = c_lit(tier.class.as_deref());
+            let dpolicy = c_lit(tier.deadline_policy.as_deref());
+            let period_us = tier.period_us.unwrap_or(0);
+            let budget_us = tier.budget_us.unwrap_or(0);
+            let deadline_us = tier.deadline_us.unwrap_or(0);
             let groups = &tier_groups_vecs[ti];
             let (groups_expr, n_groups_val) = if groups.is_empty() {
                 ("nullptr".to_string(), 0usize)
@@ -586,7 +598,9 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 out,
                 "    {{ \"{name_lit}\", {groups_expr}, {n_groups_val}u, \
                  {priority}LL, {stack_bytes}u, {spin_period_us}ull, \
-                 &__nros_entry_setup_tier_{ti}, {core_plus1}u, {preempt}LL }},"
+                 &__nros_entry_setup_tier_{ti}, {core_plus1}u, {preempt}LL, \
+                 {tier_class}, {period_us}ull, {budget_us}ull, {deadline_us}ull, \
+                 {dpolicy} }},"
             );
         }
         out.push_str("};\n\n");

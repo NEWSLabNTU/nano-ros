@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#245** — realtime_tiers_e2e zephyr_cpp + zephyr_c cells TIME OUT on a fresh native_sim image
+(banner-then-silence before any nros output; zephyr_rust sibling passes). Baseline-verified
+pre-existing — NOT the W5.5/W5.7 tier-spec append. See `0245-*`. (2026-07-23)
+
 **#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
 header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
 See `0244-*`. (RMW/platform audit 2026-07-21)

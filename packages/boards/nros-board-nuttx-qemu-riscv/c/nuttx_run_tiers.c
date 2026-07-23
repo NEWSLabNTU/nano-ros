@@ -112,6 +112,14 @@ typedef struct {
      * comment above in sync when appending further. */
     uint32_t core_plus1;
     int64_t preempt_threshold;
+    /* phase-296 W5.7 — appended: RTOS-agnostic real-time policy (NULL/0 =
+     * unset). Not consumed by this mirror yet (NuttX kernel-native sporadic
+     * is a follow-up); rides for layout parity. */
+    const char* tier_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
 } nros_tier_spec_t;
 
 /* --- Per-tier thread context ---

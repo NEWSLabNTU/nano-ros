@@ -47,6 +47,55 @@ extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_
                                         const char* name);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 extern int32_t nros_zephyr_msleep(int32_t ms);
+/* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
+ * Returns 0 on success, -ENOSYS when the image lacks
+ * CONFIG_SCHED_CPU_MASK_PIN_ONLY, else the kernel error. */
+extern int nros_zephyr_thread_cpu_pin(int cpu);
+/* phase-296 W5.5 shim — apply an earliest-deadline (µs) on the CALLING
+ * thread (`k_thread_deadline_set`, µs→cycles). Returns 1 when the kernel
+ * actually applied it (CONFIG_SCHED_DEADLINE present), 0 on no-op. */
+extern int nros_zephyr_set_current_deadline(unsigned int deadline_us);
+/* printk — loud channel for placement/deadline application notes. Zephyr's
+ * printk returns void (sys/printk.h); signature must match exactly. */
+extern void printk(const char* fmt, ...);
+
+/* phase-296 W5.5/W5.7 (C/C++ arm) — apply the tier's kernel EDF deadline on
+ * the CALLING thread when the tier is real-time and carries a deadline.
+ * Mirrors the Rust arm's `apply_tier_deadline`: the marker line prints ONLY
+ * when the shim reports the kernel actually applied it (else a
+ * CONFIG_SCHED_DEADLINE-less image would claim EDF while nothing happened).
+ * The literal matches `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`. */
+static void zephyr_apply_tier_deadline(const char* name, const char* tier_class,
+                                       uint64_t deadline_us) {
+    if (tier_class == NULL || strcmp(tier_class, "real_time") != 0 || deadline_us == 0u) {
+        return;
+    }
+    unsigned int us = (deadline_us > 0xFFFFFFFFull) ? 0xFFFFFFFFu : (unsigned int)deadline_us;
+    if (nros_zephyr_set_current_deadline(us) != 0) {
+        printk("nros: EDF deadline set tier=`%s` %uus\n", (name != NULL) ? name : "?", us);
+    }
+}
+
+/* phase-296 W5.7 (C/C++ arm) — apply the tier's declared CPU pin on the
+ * CALLING thread. `core_plus1` rode the RFC-0052 W2 ABI append but this image
+ * never consumed it (a silently-dropped knob — the fail-loud violation
+ * class). Mirrors the Rust arm's `apply_tier_core_pin`: an unhonorable pin
+ * (CONFIG_SCHED_CPU_MASK_PIN_ONLY off, invalid cpu) warns loud and the tier
+ * runs unpinned. */
+static void zephyr_apply_core_pin(const char* name, uint32_t core_plus1) {
+    if (core_plus1 == 0u) {
+        return; /* unpinned */
+    }
+    int cpu = (int)(core_plus1 - 1u);
+    int rc = nros_zephyr_thread_cpu_pin(cpu);
+    if (rc == 0) {
+        printk("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
+    } else {
+        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "
+               "(CONFIG_SCHED_CPU_MASK_PIN_ONLY off, or invalid cpu) — tier runs unpinned\n",
+               (name != NULL) ? name : "?", cpu, rc);
+    }
+}
 
 /* --- nros-cpp C FFI forward declarations ---
  *
@@ -111,6 +160,14 @@ typedef struct {
      * comment above in sync when appending further. */
     uint32_t core_plus1;
     int64_t preempt_threshold;
+    /* phase-296 W5.7 — appended: the RTOS-agnostic real-time policy
+     * (NULL/0 = unset). This mirror consumes tier_class + deadline_us
+     * (Zephyr kernel EDF); the rest ride for layout parity. */
+    const char* tier_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
 } nros_tier_spec_t;
 
 /* --- Per-tier task context ---
@@ -132,6 +189,13 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* phase-296 W5.5/W5.7 — tier name + declared CPU pin (+1; 0 = unpinned)
+     * + generic real-time policy, carried so the tier task can self-apply
+     * its kernel placement/deadline. */
+    const char* name;
+    uint32_t core_plus1;
+    const char* tier_class;
+    uint64_t deadline_us;
 } nros_zephyr_tier_ctx_t;
 
 /* Forward decl — zephyr_tier_task and zephyr_spawn_next_tier are mutually
@@ -152,6 +216,12 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
  * nros_zephyr_tier_task_create shim's entry type. */
 static void* zephyr_tier_task(void* arg) {
     nros_zephyr_tier_ctx_t* ctx = (nros_zephyr_tier_ctx_t*)arg;
+
+    /* phase-296 W5.7 — self-apply the tier's declared CPU pin (the spawned
+     * task got its PRIORITY at k_thread_create; placement is self-applied,
+     * like the Rust arm). */
+    zephyr_apply_core_pin(ctx->name, ctx->core_plus1);
+    zephyr_apply_tier_deadline(ctx->name, ctx->tier_class, ctx->deadline_us);
 
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot thread) must outlive this task — the boot spin loop runs
@@ -253,6 +323,10 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this task will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->name = t->name;
+    ctx->core_plus1 = t->core_plus1;
+    ctx->tier_class = t->tier_class;
+    ctx->deadline_us = t->deadline_us;
 
     /* RAW Zephyr priority from the tier spec (the system.toml
      * [tiers.*.zephyr].priority is the numeric Zephyr value verbatim —
@@ -374,6 +448,10 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
         }
         nros_zephyr_set_current_priority((int32_t)bp);
     }
+    /* phase-296 W5.5/W5.7 — boot tier self-applies its declared CPU pin +
+     * kernel EDF deadline too. */
+    zephyr_apply_core_pin(boot->name, boot->core_plus1);
+    zephyr_apply_tier_deadline(boot->name, boot->tier_class, boot->deadline_us);
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin

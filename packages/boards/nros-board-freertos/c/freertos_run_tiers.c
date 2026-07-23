@@ -77,7 +77,14 @@ extern void nros_platform_dealloc(void* ptr);
  *   offset 40: setup (fn ptr, 4 B)
  *   offset 44: core_plus1 (uint32_t, 4 B)
  *   offset 48: preempt_threshold (int64_t, 8 B)
- *   total: 56 B */
+ *   offset 56: tier_class (ptr, 4 B)
+ *   offset 60: [pad 4 B]
+ *   offset 64: period_us (uint64_t, 8 B)
+ *   offset 72: budget_us (uint64_t, 8 B)
+ *   offset 80: deadline_us (uint64_t, 8 B)
+ *   offset 88: deadline_policy (ptr, 4 B)
+ *   offset 92: [tail pad 4 B]
+ *   total: 96 B */
 typedef int32_t (*nros_tier_setup_fn_t)(void* executor);
 
 typedef struct {
@@ -94,6 +101,14 @@ typedef struct {
      * comment above in sync when appending further. */
     uint32_t core_plus1;
     int64_t preempt_threshold;
+    /* phase-296 W5.7 — appended: RTOS-agnostic real-time policy (NULL/0 =
+     * unset). Not consumed by this mirror yet (FreeRTOS has no kernel
+     * EDF); rides for layout parity. */
+    const char* tier_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
 } nros_tier_spec_t;
 
 /* --- Per-tier task context ---

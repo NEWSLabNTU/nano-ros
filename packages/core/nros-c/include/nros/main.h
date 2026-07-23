@@ -68,7 +68,18 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_n
  *                    the kernel offers affinity (SMP builds); ignored with a
  *                    note on uniprocessor targets.
  * `preempt_threshold` — ThreadX preemption threshold; -1 = unset. Bake-time
- *                    validated ThreadX-only (other targets never see it). */
+ *                    validated ThreadX-only (other targets never see it).
+ * `tier_class`     — phase-296 W5.7 append: RTOS-agnostic scheduling class
+ *                    ("best_effort" | "real_time" | "time_triggered");
+ *                    NULL = unset. Static string from codegen.
+ * `period_us` / `budget_us` / `deadline_us` — generic real-time policy
+ *                    (sporadic period/budget, relative deadline); 0 = unset.
+ * `deadline_policy` — on-miss action ("ignore"|"warn"|"skip"|"fault");
+ *                    NULL = unset.
+ *                    Kernel-native consumers read these where the RTOS offers
+ *                    the feature (Zephyr EDF: tier_class=="real_time" +
+ *                    deadline_us → k_thread_deadline_set); the cooperative
+ *                    executor lowering stays codegen-emitted per tier. */
 typedef struct {
     const char* name;
     const char* const* groups;
@@ -79,6 +90,14 @@ typedef struct {
     nros_c_entry_setup_fn setup;
     uint32_t core_plus1;
     int64_t preempt_threshold;
+    /* phase-296 W5.7 — appended (ABI append-only, keep every mirror in sync:
+     * main.hpp NativeTierSpec, nros-cpp NativeTierSpecC, the 4 board
+     * `nros_tier_spec_t` mirrors, and both entry emitters). */
+    const char* tier_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
 } nros_native_tier_spec_t;
 
 /* Phase 274.W2 (RFC-0015 Model 1) — run a multi-tier native entry over one

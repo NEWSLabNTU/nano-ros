@@ -158,6 +158,10 @@ void nros_board_network_wait(void);
 ///                    with the tier executor handle; returns 0 on success.
 /// `core_plus1` — RFC-0052 W2: CPU pin + 1; 0 = unpinned.
 /// `preempt_threshold` — ThreadX-only (bake-validated); -1 = unset.
+/// `tier_class`/`period_us`/`budget_us`/`deadline_us`/`deadline_policy` —
+/// phase-296 W5.7 append: the RTOS-agnostic real-time policy (NULL/0 =
+/// unset), consumed kernel-natively where the RTOS offers the feature
+/// (Zephyr EDF); the cooperative executor lowering stays codegen-emitted.
 struct NativeTierSpec {
     const char* name;
     const char** groups;
@@ -168,6 +172,13 @@ struct NativeTierSpec {
     int32_t (*setup)(void* executor);
     uint32_t core_plus1;
     int64_t preempt_threshold;
+    /* phase-296 W5.7 — ABI append-only; keep every mirror in sync (main.h
+     * nros_native_tier_spec_t, NativeTierSpecC, 4 board mirrors, emitters). */
+    const char* tier_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
 };
 
 class NativeBoard {

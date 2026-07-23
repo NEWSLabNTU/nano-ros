@@ -386,9 +386,29 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `k_thread_cpu_pin` per tier (boot + spawned, mirroring the W5.5 deadline
   pattern, via the existing Phase-110.D `nros_zephyr_thread_cpu_pin` shim);
   an unhonorable pin (`CONFIG_SCHED_CPU_MASK_PIN_ONLY` off / bad cpu) warns
-  loud and the tier runs unpinned. Gap recorded: the C/C++ zephyr image
-  (`zephyr_run_tiers.c`) transports `core_plus1` (and deadline) but applies
-  NEITHER — its consumer is a follow-up.
+  loud and the tier runs unpinned.
+- W5.8 — **C/C++ zephyr consumers + tier-spec policy append — ✅ DONE**
+  (2026-07-23): the C/C++ zephyr tier image now applies BOTH kernel knobs.
+  (a) `core_plus1` consumer: `zephyr_apply_core_pin` (tier task + boot) via
+  the Phase-110.D shim, loud-warn on unhonorable. (b) Kernel EDF: the tier
+  spec lacked the generic policy entirely, so the ABI was appended
+  (append-only, W2 dance) with `tier_class`/`period_us`/`budget_us`/
+  `deadline_us`/`deadline_policy` across ALL mirrors — `nros_native_tier_spec_t`
+  (main.h), `NativeTierSpec` (main.hpp), `NativeTierSpecC` (nros-cpp), the 4
+  board `nros_tier_spec_t` mirrors (zephyr/freertos/nuttx×2, freertos offset
+  table extended to 96 B) — and BOTH entry emitters (emit_cpp/emit_c bake the
+  5 literals). `zephyr_apply_tier_deadline` (tier task + boot) applies
+  `k_thread_deadline_set` when `tier_class=="real_time" && deadline_us>0`,
+  printing the `ZEPHYR_EDF_DEADLINE_MARKER` literal ONLY when the shim reports
+  the kernel applied it (three-way marker lockstep: entry_tiers.rs +
+  zephyr_run_tiers.c + output.rs). Gotcha: Zephyr `printk` returns void — an
+  `int` extern is a conflicting-types build break. Compile proof: full zephyr
+  west matrix green (C+C+++Rust images, 14-field initializers); zephyr_rust +
+  EDF e2es green. NOTE: the C/C++ consumers are dormant until a C/C++
+  workspace declares a real_time+deadline tier (fixture exercising them =
+  follow-up); #245 filed — the zephyr_cpp/zephyr_c realtime cells time out
+  PRE-EXISTING (baseline-verified with stashed changes + baseline CLI +
+  fresh fixture: identical timeout; banner-then-silence).
 - Remaining (beyond W5.5–W5.7): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
