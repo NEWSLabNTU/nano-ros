@@ -23,6 +23,10 @@ members = [
     # call is `target_os = "nuttx"`-gated); the fixture lane builds it
     # `-p riscv_nuttx_entry --target …`, never wholesale on host.
     "src/riscv_nuttx_entry",
+    # phase-297 W5 — ThreadX-Linux hosted-simulation entry (host x86_64;
+    # ThreadX threads are pthreads). Needs `THREADX_DIR` (activate.sh) for the
+    # board dep's kernel build, like the monolith ws's threadx_linux_entry.
+    "src/threadx_entry",
 ]
 # `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W2) — excluded
 # so plain `cargo build` in the workspace never tries to link the RTOS app.

@@ -1,0 +1,63 @@
+# Entry pkg — boots the RT-tiers `demo_bringup` system on ThreadX Linux.
+#
+# phase-297 W5 (RFC-0053) — the tiers-on-ThreadX projection of
+# `ws-realtime-rust`: the SAME one-line `nros::main!(model = ...)` entry as the
+# native / nuttx siblings, deployed as a hosted ThreadX-Linux simulation
+# (ThreadX threads are pthreads; host `x86_64-unknown-linux-gnu`, NSOS host
+# sockets — no QEMU). The model's `execution.tiers.*.threadx` sub-tables route
+# the macro onto `<ThreadxLinux>::run_tiers`: one ThreadX thread per tier
+# (stacks from the shared byte pool via `nros_threadx_create_task`) over ONE
+# shared zenoh session. NOTE `resolve_tiers` sorts descending by raw priority
+# number (no per-RTOS inversion), so on ThreadX (lower = higher) the boot tier
+# is `low` (telem, 100 ms) and `high` (ctrl, 10 ms) is chain-spawned.
+#
+# Built by the cargo lane (`scripts/build/workspace-fixtures-build.sh
+# threadx-linux rust`); the ThreadX kernel C sources come from `THREADX_DIR`
+# (activate.sh) via the board dep's build.rs — ZERO entry build.rs.
+
+[package]
+name = "threadx_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the RT-tiers system on ThreadX Linux."
+
+[[bin]]
+name = "threadx_entry"
+path = "src/main.rs"
+test = false
+bench = false
+
+# Entry pkg metadata — `deploy = "threadx-linux"` routes the `nros::main!()`
+# proc-macro onto the ThreadX-Linux board (`ThreadxLinux`, OwnedSpin) and
+# feeds `nros check`. Locator port 9091 is allocator-derived:
+# `nros_tests::alloc::port_of(ThreadxLinux, Rust, RealtimeTiers)` — never
+# hand-picked (phase-295 W4).
+[package.metadata.nros.entry]
+deploy = "threadx-linux"
+
+[package.metadata.nros.deploy.threadx-linux]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:9091"
+
+[dependencies]
+# Agnostic `nros`. ThreadX-Linux is a hosted std simulation, so the ENTRY pins
+# `std`; the board brings the zenoh backend + `platform-threadx`.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# ThreadX-Linux board crate — supplies `ThreadxLinux` (`BoardEntry` +
+# `run_tiers`) + the ThreadX kernel/port build. `rmw-zenoh` (#131/#194) → the
+# board links `nros-rmw-zenoh` and its `run_{entry,tiers}` register it; without
+# it `Executor::open` finds NoBackend and fails with ZERO wire I/O.
+nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux", features = ["rmw-zenoh"] }
+# Concrete platform impl — also pulled by the board; kept explicit for the link map.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+
+# The model-named Node pkgs (platform/RMW-agnostic) — the macro emits both
+# `register` calls; the bin links both.
+ctrl_pkg = { path = "../ctrl_pkg", default-features = false }
+telem_pkg = { path = "../telem_pkg", default-features = false }

@@ -547,6 +547,10 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxRiscv, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, C,   Zenoh, RealtimeTiers, Workspace, Runtime),
+    // phase-297 W5 (RFC-0053) — ThreadX multi-tier run_tiers acceptance:
+    // hosted simulation (pthread-backed ThreadX, host binary + NSOS host
+    // sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeTiers).
+    cell(ThreadxLinux, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(Native, Rust,  Zenoh, Multihost, Workspace, Runtime),
     cell(Native, C,     Zenoh, Multihost, Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Multihost, Workspace, Runtime),

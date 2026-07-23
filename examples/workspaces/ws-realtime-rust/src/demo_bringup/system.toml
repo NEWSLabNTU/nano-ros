@@ -46,6 +46,11 @@ priority = 5
 # per tier over one shared session.
 [tiers.high.nuttx]
 priority = 110
+# phase-297 W5 — RAW ThreadX priority (lower number = higher priority), near
+# the app thread priority (4). Mirrors config/system_model.yaml (the entries
+# read the model; this file feeds `play_launch resolve --system`).
+[tiers.high.threadx]
+priority = 5
 
 [tiers.low]
 spin_period_us = 10000
@@ -55,3 +60,5 @@ priority = 10
 priority = 10
 [tiers.low.nuttx]
 priority = 100
+[tiers.low.threadx]
+priority = 15

@@ -57,8 +57,9 @@ use nros_tests::{
         build_nuttx_riscv_workspace_cpp_realtime_entry,
         build_nuttx_riscv_workspace_rust_realtime_entry, build_nuttx_workspace_c_realtime_entry,
         build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_cpp_realtime_entry,
-        build_zephyr_workspace_rust_realtime_entry, freertos, is_qemu_available, require_zenohd,
+        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
+        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        freertos, is_qemu_available, require_zenohd,
     },
     matrix::{Lang as ML, PlatformId as MP, Workload as MW},
 };
@@ -83,6 +84,11 @@ enum Boot {
     /// FreeRTOS QEMU mps2-an385 guest (static 192.0.3.x lwIP + board-net
     /// slirp; observed via serial ticks, no host subscribers).
     FreertosMps2,
+    /// ThreadX-Linux hosted simulation (phase-297 W5): a host process like
+    /// [`Boot::Native`] (pthread-backed ThreadX, NSOS host sockets), but the
+    /// fixture bakes the allocator locator, so the router runs on the cell's
+    /// `port` instead of an ephemeral one.
+    ThreadxLinux,
 }
 
 /// The per-cell assertion, preserved 1:1 from the pre-consolidation files.
@@ -158,6 +164,9 @@ fn nuttx_riscv_cpp_entry() -> TestResult<PathBuf> {
 fn freertos_c_entry() -> TestResult<PathBuf> {
     build_freertos_workspace_c_realtime_entry().map(|p| p.to_path_buf())
 }
+fn threadx_linux_rust_entry() -> TestResult<PathBuf> {
+    build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf())
+}
 fn freertos_cpp_entry() -> TestResult<PathBuf> {
     build_freertos_workspace_cpp_realtime_entry().map(|p| p.to_path_buf())
 }
@@ -211,7 +220,8 @@ fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
 /// pre-consolidation files: missing fixture / west image / qemu → skip).
 fn require_cell_env(boot: Boot) {
     match boot {
-        Boot::Native | Boot::NuttxArm | Boot::NuttxRiscv | Boot::FreertosMps2 => {
+        Boot::Native | Boot::NuttxArm | Boot::NuttxRiscv | Boot::FreertosMps2
+        | Boot::ThreadxLinux => {
             if !require_zenohd() {
                 nros_tests::skip!("zenohd not found");
             }
@@ -245,7 +255,7 @@ fn require_cell_env(boot: Boot) {
                 nros_tests::skip!("qemu-system-arm not found");
             }
         }
-        Boot::Native | Boot::ZephyrNativeSim => {}
+        Boot::Native | Boot::ZephyrNativeSim | Boot::ThreadxLinux => {}
     }
 }
 
@@ -253,7 +263,9 @@ fn require_cell_env(boot: Boot) {
 /// cold-boot + zenoh-discovery budget; native connects in seconds.
 fn anchor_timeout(boot: Boot) -> Duration {
     match boot {
-        Boot::Native => Duration::from_secs(20),
+        // ThreadX-Linux is a host process (no QEMU) but boots the ThreadX
+        // kernel + chain-spawns the second tier — give it the middle budget.
+        Boot::Native | Boot::ThreadxLinux => Duration::from_secs(20),
         Boot::ZephyrNativeSim => Duration::from_secs(60),
         // Freertos cells never take this path (serial proof).
         Boot::NuttxArm | Boot::NuttxRiscv | Boot::FreertosMps2 => Duration::from_secs(90),
@@ -356,6 +368,17 @@ fn anchor_timeout(boot: Boot) -> Duration {
     proof: Proof::SerialTicks(&["ctrl", "aux", "telem"]),
     note: "phase-274 W3 (#126) + #144 chained tier spawn: ctrl(10ms)/aux(50ms)/telem(100ms)",
 })]
+// ThreadX-Linux hosted simulation (ThreadxLinux::run_tiers, one ThreadX
+// thread per tier, byte-pool stacks — phase-297 W5 / RFC-0053 acceptance).
+#[case::threadx_linux_rust(Cell {
+    platform: "threadx-linux", lang: "rust", resolver: threadx_linux_rust_entry,
+    port: Some(port_of(MP::ThreadxLinux, ML::Rust, MW::RealtimeTiers)),
+    boot: Boot::ThreadxLinux, proof: Proof::CounterRatio3x,
+    note: "phase-297 W4/W5: ThreadxLinux::run_tiers over nros_threadx_create_task \
+           (RFC-0053 byte-pool stacks); also the W2 shim's two-threads-run proof. \
+           NOTE resolve_tiers sorts descending by raw number, so on ThreadX the \
+           BOOT tier is `low` (telem) and `high` (ctrl) is chain-spawned",
+})]
 #[case::freertos_c(Cell {
     platform: "freertos", lang: "c", resolver: freertos_c_entry,
     port: Some(port_of(MP::FreertosMps2, ML::C, MW::RealtimeTiers)),
@@ -381,8 +404,12 @@ fn realtime_tiers(#[case] cell: Cell) {
     let router = match (cell.boot, cell.port) {
         (Boot::Native, _) => ZenohRouter::start_unique()
             .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}")),
-        (Boot::ZephyrNativeSim, Some(port)) => ZenohRouter::start_on("127.0.0.1", port)
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}")),
+        // Loopback suffices for native_sim NSOS sockets and the ThreadX-Linux
+        // host process (both dial 127.0.0.1 directly — no slirp gateway).
+        (Boot::ZephyrNativeSim | Boot::ThreadxLinux, Some(port)) => {
+            ZenohRouter::start_on("127.0.0.1", port)
+                .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}"))
+        }
         (_, Some(port)) => ZenohRouter::start_on("0.0.0.0", port)
             .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}")),
         (_, None) => unreachable!("non-native cells carry a baked port"),
@@ -447,6 +474,16 @@ fn realtime_tiers(#[case] cell: Cell) {
             QemuProcess::start_nuttx_riscv(&entry, true)
                 .unwrap_or_else(|e| panic!("boot NuttX rv-virt QEMU: {e}")),
         ),
+        // Host process like Native, but on the baked allocator locator (the
+        // ThreadX kernel never returns from tx_kernel_enter — killed below).
+        Boot::ThreadxLinux => {
+            let mut cmd = Command::new(&entry);
+            cmd.env("RUST_LOG", "info");
+            Guest::Managed(
+                ManagedProcess::spawn_command(cmd, "realtime-threadx-entry")
+                    .unwrap_or_else(|e| panic!("spawn threadx-linux realtime entry: {e}")),
+            )
+        }
         Boot::FreertosMps2 => unreachable!("freertos cells use SerialTicks"),
     };
 

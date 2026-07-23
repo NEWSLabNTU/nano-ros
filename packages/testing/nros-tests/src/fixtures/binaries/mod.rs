@@ -1847,6 +1847,36 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
         .map(|p| p.as_path())
 }
 
+/// phase-297 W5 (RFC-0053) — the 2-tier **Rust** realtime ThreadX-Linux entry
+/// (`ws-realtime-rust/src/threadx_entry`): ctrl (high tier, 10 ms) + telem
+/// (low tier, 100 ms) Rust nodes over ONE shared session via
+/// `<ThreadxLinux>::run_tiers` (one ThreadX thread per tier, stacks from the
+/// shared byte pool — `nros_threadx_create_task`). Hosted simulation: a plain
+/// host `x86_64-unknown-linux-gnu` cargo cross-dir build (ThreadX threads are
+/// pthreads, NSOS host sockets — no QEMU), so it resolves the prebuilt binary
+/// from the row's `target_dir` at the default fixture profile. Built by
+/// `workspace-fixtures-build.sh threadx-linux rust`
+/// (`just threadx_linux build-fixtures`).
+pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
+    static THREADX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    THREADX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            let fixture_id = "workspace-rust-threadx-linux-realtime";
+            let example_dir = workspace_example_dir("ws-realtime-rust")?;
+            let target_dir = example_dir.join("target-fixtures/threadx-linux");
+            let binary_path = target_dir.join(format!(
+                "x86_64-unknown-linux-gnu/{}/threadx_entry",
+                cargo_target_profile_dir()
+            ));
+            require_prebuilt_workspace_binary(
+                fixture_id,
+                &binary_path,
+                &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-263 C2c — the threadx-linux C++ workspace embedded entry (cached).
 pub fn build_threadx_linux_workspace_cpp_entry() -> TestResult<&'static Path> {
     THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY

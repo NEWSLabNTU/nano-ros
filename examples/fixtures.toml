@@ -449,6 +449,30 @@ target = "armv7a-nuttx-eabihf"
 skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
 
+# phase-297 W5 (RFC-0053) — the 2-tier RT-tiers Rust ThreadX-Linux Entry
+# (`ws-realtime-rust/src/threadx_entry`): the model's
+# `execution.tiers.*.threadx` sub-tables route the macro onto
+# `<ThreadxLinux>::run_tiers` — one ThreadX thread (pthread-backed) per tier
+# over ONE shared zenoh session, stacks from the shared byte pool
+# (`nros_threadx_create_task`). Hosted simulation, host x86_64 + NSOS host
+# sockets — no QEMU, dials loopback directly (no slirp). Locator port 9091 =
+# `alloc::port_of(ThreadxLinux, Rust, RealtimeTiers)` (phase-295 W4 SSoT).
+# Built by the cargo lane (`workspace-fixtures-build.sh threadx-linux rust`;
+# needs THREADX_DIR from activate.sh). Consumed by
+# tests/realtime_tiers_e2e.rs (`threadx_linux_rust` case, CounterRatio3x).
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-realtime"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-rust"
+bringup = "src/demo_bringup"
+entry = "threadx_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/threadx-linux"
+target = "x86_64-unknown-linux-gnu"
+env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
+
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "native"

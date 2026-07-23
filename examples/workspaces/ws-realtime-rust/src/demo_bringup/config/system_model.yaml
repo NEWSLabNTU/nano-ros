@@ -40,6 +40,12 @@ execution:
         deadline_us: 10000
       nuttx:
         priority: 110
+      # phase-297 W5 — RAW ThreadX priority (lower number = higher priority),
+      # near the app thread priority (nros_board_app_priority() = 4). NOTE:
+      # resolve_tiers sorts descending by raw number without per-RTOS
+      # inversion, so on ThreadX tiers[0] (the boot tier) is `low`.
+      threadx:
+        priority: 5
     low:
       spin_period_us: 10000
       posix:
@@ -48,6 +54,8 @@ execution:
         priority: 10
       nuttx:
         priority: 100
+      threadx:
+        priority: 15
   bindings:
     /control_node/ctrl: high
     /telem_node/telem: low

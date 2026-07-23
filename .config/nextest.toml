@@ -376,9 +376,11 @@ filter = "binary(esp32_emulator)"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ThreadX Linux sim (veth bridge) — allocator window 9000+.
+# ThreadX Linux sim (veth bridge) — allocator window 9000+. The
+# realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
+# host-load throttle.
 [[profile.default.overrides]]
-filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
+filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux)) or (binary(realtime_tiers_e2e) and test(threadx_linux))"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
