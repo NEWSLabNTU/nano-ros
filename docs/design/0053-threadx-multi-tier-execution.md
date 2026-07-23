@@ -96,29 +96,33 @@ QEMU RAM). The rest of this doc reads "static stack" as "byte-pool stack".
 ```
 codegen (host)                          runtime (ThreadX, no_std + C shim)
 ──────────────                          ─────────────────────────────────
-emit per tier i:                        run_tiers(tiers):
-  static mut TIER_STACK_i:                boot tier declares FIRST (issue #144)
-    [u8; stack_bytes_i]  (aligned)        for tier in rest:
-  → TierSpec.stack ptr/len                  nros_threadx_create_task(
-                                              entry, arg, priority,
-                                              preempt_threshold,
-                                              stack_ptr, stack_len)
-                                            └─ C shim: tx_thread_create(... stack ...)
-                                                       + tx_thread_preemption_change
+TierSpec per tier i:                    run_tiers(tiers):
+  priority, preempt_threshold,            boot tier declares FIRST (issue #144)
+  stack_bytes (0 = overlay default)       for tier in rest:
+                                            nros_threadx_create_task(
+                                              name, entry, arg, stack_bytes,
+                                              priority, preempt_threshold)
+                                            └─ C shim: tx_byte_allocate stack
+                                               + tx_thread_create(..., priority,
+                                                 threshold, ...)
                                           each spawned thread:
                                             Executor over shared session
                                             + apply_tier_sched_policy (W5.4)
 ```
 
-- **C-side FFI shim** `nros_threadx_create_task(entry, arg, priority,
-  preempt_threshold, stack_ptr, stack_len)` → `tx_thread_create` with the
-  supplied stack + `tx_thread_preemption_change` when `preempt_threshold` is
-  set. This is the one new native surface (the FreeRTOS board has its
-  analogue; ThreadX does not yet).
-- **Static stacks (Option A):** the entry codegen emits one aligned `static`
-  array per tier, sized to `TierSpec.stack_bytes` (Cortex-M/R 8-byte
-  alignment; MPU power-of-two rounding where enabled, mirroring Zephyr). A
-  stack too large for the image is a **link** error, not a runtime fault.
+- **C-side FFI shim** `nros_threadx_create_task(name, entry, arg,
+  stack_bytes, priority, preempt_threshold)` (as landed, phase-297 W2/W4) →
+  allocates the stack from the shared `TX_BYTE_POOL` (see Revision above),
+  then `tx_thread_create` with the threshold passed directly as the create
+  argument (`-1` sentinel → threshold = priority, ThreadX's "no threshold"
+  state; no separate `tx_thread_preemption_change` needed at creation).
+  `TX_THREAD` control blocks live in a bounded static array
+  (`NROS_TX_MAX_TASKS`) inside the shim. This is the one new native surface
+  (the FreeRTOS board has its analogue; ThreadX did not).
+- **Byte-pool stacks (Option B, per the Revision):** `stack_bytes == 0`
+  falls back to `nros_board_app_stack_size()`; allocation failure returns
+  `-1` and the tier does not spawn. Exact per-tier static stacks (A) remain
+  a future RAM optimization for constrained MCU targets.
 - **`run_tiers` (Rust):** boot tier declares first, then each remaining tier
   spawns via the shim, running one `Executor` + `setup` over the shared RMW
   session, calling `apply_tier_sched_policy(tier.class, tier.period_us,
@@ -136,11 +140,10 @@ emit per tier i:                        run_tiers(tiers):
    tier's priority / `preempt_threshold`. Unlocks the SchedContext lowering +
    native preempt-threshold immediately (the degenerate single-tier case), no
    new stack machinery.
-2. **A (end state):** codegen static per-tier stacks + multi-tier `run_tiers`.
-
-Option B (`TX_BYTE_POOL`) is explicitly **not** taken — it carries a
-pool-size tuning constant, a runtime-alloc failure path, and a pattern
-divergent from the other boards, for no lasting benefit over A.
+2. **End state (as landed):** multi-tier `run_tiers` with byte-pool stacks
+   (Option B — see the Revision above; the original plan here said "A
+   (codegen static stacks) + B explicitly not taken", which the phase-297 W4
+   implementation reversed).
 
 ## Non-goals / open questions
 

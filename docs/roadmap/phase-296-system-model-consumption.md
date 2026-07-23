@@ -332,9 +332,10 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   board (posix refactored to delegate; **zephyr/freertos/nuttx** `run_tiers`
   call it after `set_active_groups`). So `class`/budget/period/deadline lower to
   `SchedContext` (Sporadic/EDF/TT) on the embedded boards too. Host-verified via
-  posix (2 tests); the calls type-check against `TierSpec`. ThreadX (single-
-  executor entry — needs multi-tier first: **RFC-0053 / phase-297**) + embedded
-  SDK build verification (fixture/CI) are follow-ups.
+  posix (2 tests); the calls type-check against `TierSpec`. ThreadX multi-tier
+  `run_tiers` (calling `apply_tier_sched_policy`) landed with **phase-297 W4**
+  (runtime e2e = 297 W5); embedded SDK build verification (fixture/CI) remains
+  a follow-up.
 - W5.5 — **Zephyr Native EDF — first runtime honoring of a `Native` dim
   (design 2026-07-23, RFC-0052 §"CAPS provenance").** Closes the plan/runtime
   gap: today L1 records `deadline_real = Native` for Zephyr (`sched_class="edf"`),

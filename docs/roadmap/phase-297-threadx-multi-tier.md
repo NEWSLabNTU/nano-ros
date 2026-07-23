@@ -166,27 +166,45 @@ cheapest ThreadX runtime lane.
 
 **Steps (each item is a concrete edit):**
 
-1. **`src/demo_bringup/system.toml`** — add the ThreadX priority sub-tables
-   next to the existing `posix`/`zephyr`/`nuttx` ones. ThreadX priorities are
-   `0..TX_MAX_PRIORITIES-1` with **lower number = higher priority**, so the
-   `high` tier must be the smaller number, and both should sit near the app
-   thread priority (`nros_board_app_priority()` = 4). The boot tier is
-   `tiers[0]` (the numerically-highest-priority = smallest number):
-   ```toml
-   [tiers.high.threadx]
-   priority = 5
-   [tiers.low.threadx]
-   priority = 15
+1. **`src/demo_bringup/config/system_model.yaml`** — the load-bearing edit.
+   All `ws-realtime-rust` entries are `nros::main!(model = "demo_bringup")`
+   (phase-296 R2 migrated the workspace), so tier platform tables are read from
+   the committed model YAML, NOT `system.toml`. Add `threadx:` sub-tables to
+   `execution.tiers.{high,low}` next to the existing `posix`/`zephyr`/`nuttx`
+   ones:
+   ```yaml
+   # under execution.tiers.high:
+   threadx:
+     priority: 5
+   # under execution.tiers.low:
+   threadx:
+     priority: 15
    ```
-   (Optionally a `preempt_threshold` on `high` to exercise the native
-   `non_preempt_scope` path — start without it to isolate the basic case.)
+   Mirror the same sub-tables into `system.toml` for
+   `play_launch resolve --system` parity. ThreadX priorities are
+   `0..TX_MAX_PRIORITIES-1` with **lower number = higher priority**, so the
+   `high` tier gets the smaller number, both near the app thread priority
+   (`nros_board_app_priority()` = 4). **Boot-tier note:** `resolve_tiers`
+   sorts tiers **descending by raw priority number and does not invert per
+   RTOS direction** (`nros-orchestration-ir/src/lib.rs:395-397`), so on
+   ThreadX `tiers[0]` = `low` (15) — the LOWEST-priority tier boots first
+   (same as the shipped zephyr rows; the ratio proof is unaffected, but the
+   "boot tier = highest priority" comments in `nros-board-threadx/src/entry.rs`
+   are wrong on inverted-direction RTOSes — direction-aware ordering is a
+   cross-board follow-up, not W5 scope). (Optionally a `preempt_threshold` on
+   `high` to exercise the native `non_preempt_scope` path — start without it
+   to isolate the basic case.)
 
 2. **`src/threadx_entry/`** — new entry crate mirroring `src/nuttx_entry`:
    - `Cargo.toml`: `[package.metadata.nros.entry] deploy = "threadx-linux"`;
      `[package.metadata.nros.deploy.threadx-linux]` with `rmw = "zenoh"`,
-     `domain_id = 0`, `locator = "tcp/127.0.0.1:<PORT>"` (pick an unused port,
-     e.g. `17297`; NSOS dials the host loopback directly — no slirp gateway
-     like the nuttx rows). Deps: `nros` (`std`, `rmw-cffi`, `ros-humble`),
+     `domain_id = 0`, `locator = "tcp/127.0.0.1:9091"` — the port is NOT
+     hand-picked: it is `nros_tests::alloc::port_of(ThreadxLinux, Rust,
+     RealtimeTiers)` = 9000 (platform base) + 91 (RealtimeTiers offset) + 0
+     (rust lane), per the phase-295 W4 allocator SSoT (hand-picked `17xxx`
+     ports trip the E8 audit grep). NSOS dials the host loopback directly —
+     no slirp gateway like the nuttx rows. Deps: `nros` (`std`, `rmw-cffi`,
+     `ros-humble`),
      `nros-board-threadx-linux` (feature `rmw-zenoh`), `nros-platform`
      (`platform-threadx`), `ctrl_pkg`, `telem_pkg`.
    - `src/main.rs`: `nros::main!(model = "demo_bringup");` (same one-liner as
@@ -194,7 +212,11 @@ cheapest ThreadX runtime lane.
      `[tiers.*.threadx]` route the macro to `<ThreadxLinux>::run_tiers`).
    - `package.xml`: copy the nuttx_entry shape.
 
-3. **`examples/fixtures.toml`** — add a `[[workspace_fixture]]`:
+3. **`examples/fixtures.toml` + `src/matrix.rs` — land TOGETHER** (the
+   fixtures⊆⊇matrix cross-check `matrix_fixture_coverage` asserts BOTH
+   directions; either alone fails it). Fixture row (template = the nuttx
+   realtime rows, which carry `codegen_out`; the native realtime row is the
+   odd one out that omits it):
    ```toml
    id = "workspace-rust-threadx-linux-realtime"
    platform = "threadx-linux"
@@ -203,32 +225,45 @@ cheapest ThreadX runtime lane.
    dir = "examples/workspaces/ws-realtime-rust"
    bringup = "src/demo_bringup"
    entry = "threadx_entry"
+   codegen_out = "build-fixtures/demo_bringup"
    target_dir = "target-fixtures/threadx-linux"
    target = "x86_64-unknown-linux-gnu"
-   env = { NROS_LOCATOR = "tcp/127.0.0.1:17297", NROS_DOMAIN_ID = "0" }
+   env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
    ```
-   (Match the `codegen_out`/`target` fields of the existing
-   `workspace-rust-threadx-linux` row; confirm whether the realtime rows use
-   `codegen_out` by diffing against `workspace-rust-native-realtime`.)
+   Matrix cell: `cell(ThreadxLinux, Rust, Zenoh, RealtimeTiers, Workspace,
+   Runtime)` in the RealtimeTiers block of
+   `packages/testing/nros-tests/src/matrix.rs`.
 
-4. **`packages/testing/nros-tests/tests/realtime_tiers_threadx_e2e.rs`** —
-   mirror `tests/realtime_tiers_e2e.rs`: run the prebuilt `threadx_entry`
-   fixture binary, subscribe `/ctrl` + `/telem` from an external observer over
-   the baked locator, and assert the high tier publishes ~10× the low tier
-   (both tiers scheduled over the one shared session). Use
-   `nros_tests::output::*` marker constants, `unique_ros_domain_id()` if the
-   harness seeds domains, and **fail** (`assert!`/`skip!`) on unmet
-   preconditions — never bare `eprintln!`+return.
+4. **Extend `tests/realtime_tiers_e2e.rs` — NO new test file.** That file is
+   THE realtime-tiers matrix consumer (phase-295 W3.b / RFC-0051); a new
+   per-cell `*_e2e.rs` re-forks what 295 consolidated and is an automatic E6
+   audit finding. Concretely: add a `Boot::ThreadxLinux` variant (host
+   process like `Boot::Native` but a baked locator, no ephemeral port), a
+   `#[case::threadx_linux_rust]` with
+   `port: Some(alloc::port_of(ThreadxLinux, Rust, RealtimeTiers))` (derive,
+   never a literal) and `proof: Proof::CounterRatio3x` (the consumer's
+   startup-transient-tolerant ratio proof — NOT a literal 10× assert), plus a
+   `build_threadx_workspace_rust_realtime_entry` resolver in
+   `fixtures/binaries/mod.rs` mirroring the native one. Router/observer binds
+   `127.0.0.1`. No `unique_ros_domain_id()` — baked image, domain 0 like the
+   nuttx siblings. **Fail** (`assert!`/`skip!`) on unmet preconditions —
+   never bare `eprintln!`+return. Also extend the `threadx-linux` nextest
+   group filter (`.config/nextest.toml`) to route the new case, e.g.
+   `… or (binary(realtime_tiers_e2e) and test(threadx_linux))` — same
+   host-load throttle rationale as the existing threadx lanes.
 
-5. **Build + run:** add the fixture to the build step (`just build-test-fixtures`
-   / `scripts/build/workspace-fixtures-build.sh threadx rust` — confirm the
-   exact lane), then run the test. Rebuild the fixture after any board/core
+5. **Build + run:** the lane is
+   `scripts/build/workspace-fixtures-build.sh threadx-linux rust` (wired via
+   `just/threadx-linux.just`; platform string is `threadx-linux`, not
+   `threadx`), then run the test. Rebuild the fixture after any board/core
    change (the mtime treadmill). Retest a red SOLO before filing (sim lanes
    flake under sweep load).
 
-**Done when:** the `threadx-linux` 2-tier image boots one session, both the
-boot tier (`control_node`) and the spawned tier (`telem_node`) deliver, and the
-`/ctrl`:`/telem` rate ratio is ~10:1 — the runtime proof that `run_tiers` spawns
+**Done when:** the `threadx-linux` 2-tier image boots one session, both tiers
+deliver (on ThreadX the sort makes `telem_node`/`low` the boot tier and
+`control_node`/`high` the spawned one — see step 1), and
+`Proof::CounterRatio3x` passes (nominal rate ratio 10:1, asserted ≥3× after
+the slow-tier anchor window) — the runtime proof that `run_tiers` spawns
 one executor per tier over one shared session with per-tier sched policy. This
 simultaneously discharges the W2 shim's "two threads run" proof and the W1 Rust
 `run_tiers` path.
@@ -237,15 +272,18 @@ simultaneously discharges the W2 shim's "two threads run" proof and the W1 Rust
 - **Priorities:** ThreadX lower-number = higher-priority (opposite of NuttX
   SCHED_FIFO). A `high` tier numerically ABOVE `low` silently inverts the
   tiers. Keep both below `NROS_TX_MAX_TASKS`-worth of headroom and near the
-  app-thread priority (4).
+  app-thread priority (4). And remember the boot-tier ordering is ALSO
+  inverted on ThreadX (step 1): `tiers[0]` = `low`.
 - **Byte-pool sizing:** each spawned tier `tx_byte_allocate`s a
   `nros_board_app_stack_size()` stack from the 4 MB pool. Two tiers ×
   (executor stack + zenoh) must fit; if `Executor::open` fails on the spawned
   tier, bump `BYTE_POOL_SIZE` in `threadx_hooks.c` or the overlay stack size.
-- **Discovery:** the #144 chain-spawn means `telem_node` declares only AFTER
-  `control_node`'s setup returns — expect telem's first `/telem` slightly
-  later than ctrl's; the ratio assertion should tolerate a startup transient
-  (count over a window after both are up, as `realtime_tiers_e2e.rs` does).
+- **Discovery:** the #144 chain-spawn means the spawned tier declares only
+  AFTER the boot tier's setup returns — on ThreadX that is `control_node`
+  (`high`) declaring after `telem_node` (`low`, boot tier); expect ctrl's
+  first `/ctrl` slightly later than telem's. `Proof::CounterRatio3x` already
+  tolerates the startup transient (counts over a window after the slow-tier
+  anchor).
 
 ## Order and dependencies
 
