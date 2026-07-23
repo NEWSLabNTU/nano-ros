@@ -168,6 +168,24 @@ pub fn run(args: Args) -> Result<()> {
             model.execution.tiers.len(),
             model.execution.bindings.len(),
         );
+        // phase-296 W5.5 follow-up — no declared tiers ⇒ derive the schedule
+        // from the contract layer via the RFC-0052 realizer (declared tiers
+        // always win; an uncontracted model derives nothing and bakes
+        // tier-less exactly as before).
+        if model.execution.tiers.is_empty() {
+            let derived = crate::orchestration::model_ingest::derive_execution_from_contracts(
+                &mut owned.system,
+                &model,
+                &target_rtos,
+                &callback_groups,
+            )?;
+            if derived > 0 {
+                eprintln!(
+                    "codegen-system: derived {derived} scheduling tier(s) from model \
+                     contracts (RFC-0052 realizer; no declared tiers)"
+                );
+            }
+        }
         bringup_owned = owned;
         &bringup_owned
     } else {

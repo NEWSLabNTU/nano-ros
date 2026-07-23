@@ -128,6 +128,141 @@ pub fn apply_model_execution(
     Ok(())
 }
 
+/// phase-296 W5.5 follow-up — the RFC-0052 realizer as the DERIVED-schedule
+/// path: when the model declares NO `execution.tiers`, derive per-node tiers
+/// from the contract layer (`node_paths` + criticality) via the shared
+/// platform-agnostic core + the RTOS realizer, and synthesize them into the
+/// bringup as ordinary `[tiers.*]` + `[[node_overrides]]` rows so the ENTIRE
+/// existing pipeline (resolve_system_tiers → validation → plan → run_tiers)
+/// consumes them unchanged. Declared tiers always win — this only engages on
+/// an empty tier table.
+///
+/// The board capability (`SchedCaps`) honors the per-deploy `edf` knob
+/// (`Deploy.extra["edf"]`, RFC-0052 §"CAPS provenance"): entries carrying the
+/// knob must agree, else the bake fails loud. Every degradation the realizer
+/// records is printed — a guarantee weakening is never silent.
+///
+/// Returns the number of derived tiers (0 = nothing schedulable; the bake
+/// proceeds tier-less exactly as before).
+pub fn derive_execution_from_contracts(
+    system: &mut SystemToml,
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+) -> Result<usize> {
+    use crate::orchestration::{
+        mapper_input::mapper_input_from_model,
+        rtos_realizer::{realize_rtos, sched_caps_from_deploy},
+    };
+    use nros_orchestration_ir::{TierDef, TierRtosSpec};
+    use ros_launch_manifest_sched::chain_aware_rank;
+
+    let input = mapper_input_from_model(model);
+    let ranked = chain_aware_rank(&input);
+    if ranked.items.is_empty() {
+        return Ok(0);
+    }
+
+    // Per-deploy `edf` capability knob: unanimous-or-error across the entries
+    // that carry it. (Per-board deploy slicing is a follow-up; a split-brain
+    // knob on one image's bake is the domain-0 class of bug — reject it.)
+    let mut edf_deploy: Option<(&String, &ros_launch_manifest_model::Deploy)> = None;
+    for (node, d) in &model.execution.deploy {
+        if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
+            if let Some((prev_node, prev)) = edf_deploy {
+                let prev_b = matches!(
+                    prev.extra.get("edf"),
+                    Some(ros_launch_manifest_model::ExtraValue::Bool(true))
+                );
+                if prev_b != *b {
+                    bail!(
+                        "SystemModel deploy entries disagree on the `edf` capability \
+                         knob ('{prev_node}' vs '{node}') — one image has one kernel; \
+                         make the knob unanimous"
+                    );
+                }
+            }
+            edf_deploy = Some((node, d));
+        }
+    }
+    let caps = sched_caps_from_deploy(target_rtos, edf_deploy.map(|(_, d)| d));
+
+    let plan = realize_rtos(&ranked, &input, &caps);
+    for d in &plan.degradations {
+        eprintln!(
+            "codegen-system: derived-schedule degradation — {} [{}]: {}",
+            d.node, d.dim, d.reason
+        );
+    }
+
+    let mut tiers: BTreeMap<String, TierDef> = BTreeMap::new();
+    let mut overrides: Vec<NodeOverride> = Vec::new();
+    for n in &plan.nodes {
+        let node = bare(&n.name).to_string();
+        // A ranked node with no declared callback groups has nothing for the
+        // gating executor to bind — it stays on the default tier. Loud note,
+        // not an error: the schedule is advisory-derived, not authored.
+        let Some(groups) = callback_groups.get(&node).filter(|g| !g.is_empty()) else {
+            eprintln!(
+                "codegen-system: derived-schedule note — node '{}' declares no \
+                 callback groups; it stays on the default tier",
+                n.name
+            );
+            continue;
+        };
+        let tier_name = format!("derived{}", n.name.replace('/', "-"));
+        let spec = TierRtosSpec {
+            priority: n.priority,
+            stack_bytes: None,
+            preempt_threshold: n.preempt_threshold,
+            // sched_class deliberately unset: the runtime consumes the
+            // GENERIC policy (class/period/budget/deadline → SchedContext,
+            // and on Zephyr class+deadline → kernel EDF); the realizer's
+            // internal vocab ("edf"/"sporadic") is not the sub-table's
+            // POSIX-class vocab.
+            sched_class: None,
+        };
+        let mut def = TierDef {
+            class: Some(
+                if n.deadline_us.is_some() || n.budget_us.is_some() {
+                    "real_time"
+                } else {
+                    "best_effort"
+                }
+                .to_string(),
+            ),
+            period_us: n.period_us,
+            budget_us: n.budget_us,
+            deadline_us: n.deadline_us,
+            core: n.core,
+            ..Default::default()
+        };
+        match target_rtos {
+            t if t.contains("zephyr") => def.zephyr = Some(spec),
+            t if t.contains("freertos") => def.freertos = Some(spec),
+            t if t.contains("threadx") => def.threadx = Some(spec),
+            t if t.contains("nuttx") => def.nuttx = Some(spec),
+            _ => def.posix = Some(spec),
+        }
+        tiers.insert(tier_name.clone(), def);
+        overrides.push(NodeOverride {
+            name: node,
+            callback_groups: groups
+                .iter()
+                .map(|g| CallbackGroupOverride {
+                    id: g.id.clone(),
+                    tier: tier_name.clone(),
+                })
+                .collect(),
+        });
+    }
+
+    let n = tiers.len();
+    system.tiers = tiers;
+    system.node_overrides = overrides;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +282,139 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("undeclared tier 'high'"), "got: {err}");
+    }
+
+    fn contract_model() -> ros_launch_manifest_model::SystemModel {
+        use ros_launch_manifest_model::{
+            Contracts, NodeInstance, PathContract, Structure, SystemModel,
+        };
+        let mut nodes = BTreeMap::new();
+        nodes.insert(
+            "/ctrl".to_string(),
+            NodeInstance {
+                scope: "/".to_string(),
+                criticality: Some("high".to_string()),
+                ..Default::default()
+            },
+        );
+        let mut node_paths = BTreeMap::new();
+        // Periodic 100 Hz control path with a 5 ms deadline.
+        node_paths.insert(
+            "/ctrl/loop".to_string(),
+            PathContract {
+                input: vec![],
+                output: vec!["/ctrl/cmd".to_string()],
+                max_latency_ms: Some(5.0),
+                ..Default::default()
+            },
+        );
+        let mut pub_endpoints = BTreeMap::new();
+        pub_endpoints.insert(
+            "/ctrl/cmd".to_string(),
+            ros_launch_manifest_model::PubContract {
+                min_rate_hz: Some(100.0),
+                ..Default::default()
+            },
+        );
+        SystemModel {
+            structure: Structure {
+                nodes,
+                ..Default::default()
+            },
+            contracts: Contracts {
+                node_paths,
+                pub_endpoints,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn ctrl_groups() -> BTreeMap<String, Vec<CallbackGroupDecl>> {
+        let mut groups = BTreeMap::new();
+        groups.insert(
+            "ctrl".to_string(),
+            vec![CallbackGroupDecl {
+                id: "main".to_string(),
+                r#type: "MutuallyExclusive".to_string(),
+                tier: "default".to_string(),
+            }],
+        );
+        groups
+    }
+
+    #[test]
+    fn derives_tiers_from_contracts_when_none_declared() {
+        let mut system: SystemToml =
+            toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
+        let model = contract_model();
+
+        let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &ctrl_groups())
+            .expect("derivation succeeds");
+        assert_eq!(n, 1, "one contracted node → one derived tier");
+
+        let tier = system
+            .tiers
+            .get("derived-ctrl")
+            .expect("derived tier present");
+        assert_eq!(
+            tier.class.as_deref(),
+            Some("real_time"),
+            "deadline ⇒ real_time"
+        );
+        assert_eq!(tier.deadline_us, Some(5_000));
+        assert_eq!(tier.period_us, Some(10_000), "100 Hz → 10 ms period");
+        let z = tier
+            .zephyr
+            .as_ref()
+            .expect("zephyr sub-table on a zephyr bake");
+        assert!(
+            z.sched_class.is_none(),
+            "generic policy carries the semantics"
+        );
+
+        // Binding: the node's declared group is reassigned to the derived tier.
+        assert_eq!(system.node_overrides.len(), 1);
+        assert_eq!(system.node_overrides[0].name, "ctrl");
+        assert_eq!(
+            system.node_overrides[0].callback_groups[0].tier,
+            "derived-ctrl"
+        );
+    }
+
+    #[test]
+    fn groupless_node_stays_on_default_tier() {
+        let mut system: SystemToml =
+            toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
+        let model = contract_model();
+        // No callback groups declared → nothing to bind → no derived tier.
+        let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &BTreeMap::new())
+            .expect("derivation succeeds");
+        assert_eq!(n, 0);
+        assert!(system.tiers.is_empty());
+    }
+
+    #[test]
+    fn conflicting_edf_knobs_fail_loud() {
+        use ros_launch_manifest_model::{Deploy, ExtraValue};
+        let mut system: SystemToml =
+            toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
+        let mut model = contract_model();
+        for (node, edf) in [("/ctrl", true), ("/telem", false)] {
+            let mut extra = BTreeMap::new();
+            extra.insert("edf".to_string(), ExtraValue::Bool(edf));
+            model.execution.deploy.insert(
+                node.to_string(),
+                Deploy {
+                    extra,
+                    ..Default::default()
+                },
+            );
+        }
+        let err = derive_execution_from_contracts(&mut system, &model, "zephyr", &ctrl_groups())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("disagree on the `edf`"), "got: {err}");
     }
 }
 

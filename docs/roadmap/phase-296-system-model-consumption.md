@@ -368,11 +368,23 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
     tiebreak makes a deterministic QEMU ordering test fiddly); the other five dims;
     a formal `PlatformSched` Rust trait (this slice uses the C-shim + `run_tiers`
     seam); RTOS-side priority band-scarcity collapse.
-- Remaining (beyond W5.5): the rest of the runtime `PlatformSched` primitives
-  (`replenish`, native reservation/preemption-threshold/affinity on the other
-  boards) so every `Native` dim is honored (today the executor's own
-  `SchedContext` backfills); hook the realizer path into `codegen-system` as an
-  alternative to `tier_resolver`.
+- W5.6 — **realizer wired into the bake as the DERIVED-schedule path — ✅ DONE**
+  (2026-07-23): `model_ingest::derive_execution_from_contracts` engages when a
+  `--model` bake declares NO `execution.tiers` — `mapper_input_from_model →
+  chain_aware_rank → realize_rtos` (with `sched_caps_from_deploy` honoring the
+  per-deploy `edf` knob, now LIVE — unanimous-or-error across entries carrying
+  it), then synthesizes the plan into ordinary `[tiers.*]` + `[[node_overrides]]`
+  rows (`derived-<node>` tiers; generic class/period/budget/deadline + per-RTOS
+  priority sub-table; sched_class left unset — the generic policy carries the
+  semantics) so `resolve_system_tiers` → validation → plan → `run_tiers` consume
+  them unchanged. Declared tiers always win; ranked nodes with no declared
+  callback groups stay on the default tier (loud note); every degradation is
+  printed. Unit-tested (derive/groupless/edf-conflict).
+- Remaining (beyond W5.5/W5.6): the rest of the runtime `PlatformSched`
+  primitives (`replenish`, native reservation/preemption-threshold/affinity on
+  the other boards) so every `Native` dim is honored (today the executor's own
+  `SchedContext` backfills); per-board deploy slicing for the `edf` knob; an
+  E2E fixture exercising the derived-schedule path on a real workspace.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer

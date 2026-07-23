@@ -19,8 +19,10 @@
 
 use ros_launch_manifest_model::SystemModel;
 use ros_launch_manifest_sched::{
-    MapperInput, MapperNode, RankedPlan, chain::EffectiveTrigger, chain::MapperPath,
-    chain_aware_rank, mapper::Criticality,
+    MapperInput, MapperNode, RankedPlan,
+    chain::{EffectiveTrigger, MapperPath},
+    chain_aware_rank,
+    mapper::Criticality,
 };
 
 /// Parse the model's advisory criticality string (`high`|`medium`|`low`) into
