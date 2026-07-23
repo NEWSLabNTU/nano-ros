@@ -465,25 +465,16 @@ test-group = "qemu-zephyr"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# Phase 217.C.2 — FVP runtime smoke. The test drives `just zephyr
-# run-fvp-aemv8r-cyclonedds` end-to-end (cold FVP boot ~30 s + Cyclone DDS
-# discovery + Published: line) under a 120 s wall-clock budget. Allow up to
-# 180 s × 2 terminate-after for the cold-cache first run; skip cleanly when
-# ARM FVP isn't installed.
+# phase-298 W3.2 (issue 0232) — the FVP runtime gate over the
+# ws-realtime-cpp-fvp workspace Entry (replaces the retired 217.C.2/D.3
+# legacy talker smokes — those targeted build-only images that could never
+# publish). Budgets a possible `west build -t run` reconfigure + FVP boot +
+# two-tier publish under fast-sim; single FVP license seat + UART port →
+# serial `zephyr-fvp` group. Skips cleanly when the ARM FVP isn't installed.
 [[profile.default.overrides]]
-filter = "binary(fvp_runtime)"
+filter = "binary(fvp_runtime_ws)"
 test-group = "zephyr-fvp"
-slow-timeout = { period = "180s", terminate-after = 2 }
-retries = 1
-
-# Phase 217.D.3 — Rust sibling smoke on the same FVP. Boots the Rust
-# Component-pkg ELF (no `Published:` assertion yet — pending Phase
-# 212.L.7 self-pkg `rust_main` codegen). Same group / timeout as C.1
-# so the two tests don't race the single FVP license seat.
-[[profile.default.overrides]]
-filter = "binary(fvp_runtime_rust)"
-test-group = "zephyr-fvp"
-slow-timeout = { period = "180s", terminate-after = 2 }
+slow-timeout = { period = "240s", terminate-after = 2 }
 retries = 1
 
 # Phase 215.G — FVP smoke through the board-crate IMPORT surface. Drives

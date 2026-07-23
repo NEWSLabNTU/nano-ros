@@ -11,6 +11,12 @@ gap; this phase closes it.
 
 Implements the fix direction recorded on `docs/issues/0232-no-fvp-runtime-lane.md`.
 
+**Status (2026-07-23): ALL WAVES DONE.** Gate validated on the model:
+`just zephyr verify-fvp-runtime` → `fvp_ws_entry_two_tier_publishes` PASS
+(1.9 s under fast-sim); skip ladder verified (clean `[SKIPPED]` without the
+FVP). Legacy false-green tests deleted; nextest `zephyr-fvp` group re-pointed
+at the new binary.
+
 ## Design (brainstormed 2026-07-21)
 
 Four decisions frame the gate:
@@ -104,23 +110,23 @@ participant, then fails. Root causes, both proven on the model:
   never registered in ANY workspace, module or manifest alike.
 
 ### W3 — the gate (recipe + test + verb)
-- [ ] W3.1 `just zephyr run-fvp-ws-entry`: `west fvp run -d build-fvp-ws-entry`
+- [x] W3.1 (2026-07-23) `just zephyr run-fvp-ws-entry`: `west fvp run -d build-fvp-ws-entry`
   with the env wiring (workspace `cd`, pinned make/ninja, `ZEPHYR_SDK_*`,
   `ARMFVP_EXTRA_FLAGS=-C cache_state_modelled=0`). Skips cleanly when
   west/workspace/SDK/ELF absent — same shape as `run-fvp-aemv8r-cyclonedds`.
-- [ ] W3.2 `fvp_runtime_ws.rs` (`nros_tests`): drives `just zephyr
+- [x] W3.2 (2026-07-23) `fvp_runtime_ws.rs` (`nros_tests`): drives `just zephyr
   run-fvp-ws-entry`, waits for BOTH `[ctrl] tick=` and `[telem] tick=` (the
   publish-success markers — printed only on `publish().ok()` — proving the
   `run_tiers` two-tier publish path) within a ~180 s budget, `skip!`s on the four
   preconditions (FVP resolvable via `resolve-fvp-bin.sh`, `west` on PATH,
   workspace set up, `build-fvp-ws-entry/zephyr/zephyr.elf` prebuilt).
   `ManagedProcess` kills the FVP group on timeout/panic.
-- [ ] W3.3 `just zephyr verify-fvp-runtime` maintainer verb:
+- [x] W3.3 (2026-07-23) `just zephyr verify-fvp-runtime` maintainer verb:
   `build-fvp-ws-entry` then run the `fvp_runtime_ws` test (or the recipe +
   assertion). One command the maintainer runs before an ASI pin bump / release.
 
 ### W4 — retire the false-green legacy tests
-- [ ] W4.1 `fvp_runtime.rs` / `fvp_runtime_rust.rs` (the talker publish/boot
+- [x] W4.1 (2026-07-23) DELETED `fvp_runtime.rs` / `fvp_runtime_rust.rs` (the talker publish/boot
   tests): the talkers are build-only single-node images with no ethernet device
   and can never publish, so these were pure false green. Delete them, or
   downgrade to boot-banner-only build proofs clearly labelled as such. Keep the

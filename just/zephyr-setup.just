@@ -132,6 +132,10 @@ build-fvp-ws-entry:
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     export NROS_REPO_DIR="$nros_root"
+    # phase-298 W3 — bake the fast-sim flag into the configure-time
+    # run_armfvp target (Zephyr armfvp.cmake reads ARMFVP_EXTRA_FLAGS at
+    # configure; last -C wins over the board default =1). AEMv8-R only.
+    export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
     echo "Building examples/workspaces/ws-realtime-cpp-fvp/src/fvp_entry (board from nano_ros_use_board)..."
     west build \
         -d build-fvp-ws-entry -p auto \
@@ -315,6 +319,48 @@ run-fvp-aemv8r-cyclonedds-rust:
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-aemv8r-cyclonedds-rust-talker
+
+# phase-298 W3.1 (issue 0232) — run the ws-realtime-cpp-fvp workspace Entry
+# (the canonical ASI-consumption mirror: nano_ros_use_board + MODEL +
+# run_tiers) on the FVP via `west fvp run`. The publish-success markers are
+# `[ctrl] tick=` / `[telem] tick=` (printed only on publish().ok());
+# `fvp_runtime_ws.rs` greps them. NROS_REPO_DIR is exported because
+# `west build -t run` may reconfigure, and the entry's CMakeLists include()s
+# the board helper via $ENV{NROS_REPO_DIR}. Runs until killed — callers
+# bound it (the test uses its own timeout).
+[group("examples")]
+run-fvp-ws-entry:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-ws-entry run skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-ws-entry run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    if [ ! -f "$workspace/build-fvp-ws-entry/zephyr/zephyr.elf" ]; then
+        echo "Zephyr/FVP-ws-entry run skip: build-fvp-ws-entry/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-ws-entry\` first"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    export NROS_REPO_DIR="$nros_root"
+    export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
+    west fvp run -d build-fvp-ws-entry
+
+# phase-298 W3.3 (issue 0232) — the maintainer pre-release gate: build the
+# ws-entry image, then run the `fvp_runtime_ws` assertion test. One command
+# a maintainer (with the license-gated FVP installed) runs before an ASI pin
+# bump or release. Skips cleanly (never false-fails) when the model is absent.
+[group("examples")]
+verify-fvp-runtime:
+    #!/usr/bin/env bash
+    set -e
+    just zephyr build-fvp-ws-entry
+    cargo nextest run -p nros-tests --test fvp_runtime_ws --no-capture
 
 # Phase 215.G.1 — build the minimal ASI-shaped board-import fixture
 # (`packages/testing/nros-tests/fixtures/board_import_fvp`) for the FVP

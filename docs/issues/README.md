@@ -86,7 +86,7 @@ fixture builder sets via a `-safety-*` build_subdir. Migrate via the fixture
 builder or enable the safety path in the workspace CMake. See
 `0237-safety-workspace-cmake-flag-not-set.md`.
 
-Recently resolved: **#238** — RMW event-kind ABI width bug fixed: `NrosRmwEventKind` `#[repr(u8)]`→`#[repr(C)]` to match the int-sized C `nros_rmw_event_kind_t` passed by value across the vtable; drift now gated both sides by compile-time layout assertions (Rust `abi_layout` const block + C `abi_layout_check.c`), both proven to fire on injected drift; also fixed two latent 1-byte `transmute(kind)` sites in the adapter (now an explicit `From`) — `archived/0238-*`. **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
+Recently resolved: **#232** — FVP runtime gate landed (phase-298): ws-entry publishes on the model (board eth + heap + SLIRP IP), `west fvp` registered, `verify-fvp-runtime` maintainer verb + `fvp_runtime_ws.rs` (asserts `[ctrl] tick=`/`[telem] tick=`), false-green legacy talker tests deleted — `archived/0232-*`. **#238** — RMW event-kind ABI width bug fixed: `NrosRmwEventKind` `#[repr(u8)]`→`#[repr(C)]` to match the int-sized C `nros_rmw_event_kind_t` passed by value across the vtable; drift now gated both sides by compile-time layout assertions (Rust `abi_layout` const block + C `abi_layout_check.c`), both proven to fire on injected drift; also fixed two latent 1-byte `transmute(kind)` sites in the adapter (now an explicit `From`) — `archived/0238-*`. **#233** — the RMW runtime-coverage backlog is empty: every worth-implementing cyclone cell (native rust service+action, threadx-linux C service+action + C++ pubsub, threadx-riscv64 C++ pubsub) is now Runtime — `archived/0233-*`. **#235** — threadx-riscv64 C++ cyclone pubsub lane added (the fixture already existed with distinct per-node identity; only the two-QEMU consumer was missing) — `archived/0235-*`. **#231** — Zephyr multicast join fixed (fork 1d794c0a:
 `struct ip_mreqn` + `-EALREADY`-is-success; Zephyr's handler rejects the
 classic `ip_mreq` by optlen). Both joins clean on the FVP, closed loop at
 ~19 Hz, unicast-only fallback no longer engages. See `archived/0231-*`.
@@ -99,12 +99,6 @@ named-backend call that compiled out of the example build → now routed through
 never invoked it); (2) the Cyclone backend's `action_effective_base` / `action_topic_type`
 doubled the per-channel wrapper infix (`Fibonacci_SendGoal_SendGoal_Request_`) when the typed path
 passed the already-suffixed type → made idempotent. See `archived/0234-*`.
-
-**#232** — no FVP runtime lane: the fvp-aemv8r recipe is a build smoke, so
-cyclone-on-Zephyr-hardware regressions (phase-292 walls #4/#5/#8/#9) shipped
-invisible until the ASI consumer hit them. Wanted: a model-gated
-`run-fvp-talker` lane asserting participant creation. See
-`0232-no-fvp-runtime-lane.md`.
 
 **#230** — SMP: spurious `ComponentNode failed at ? (code=0)` FATAL print on a
 healthy boot (cross-CPU visibility race on the ok-flag; single-core never

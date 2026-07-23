@@ -1,7 +1,7 @@
 ---
 id: 232
 title: "No exercised FVP runtime lane — cyclone-on-Zephyr-hardware regressions invisible (skip-only gate)"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [phase-292, phase-298]
@@ -135,3 +135,13 @@ speed halves are landed.
 
 Only when a canonical FVP image actually publishes on the model is the lane a
 real regression gate — until then it stays a skip-only false green.
+
+## Resolution (2026-07-23, phase-298)
+
+All four waves landed: W1 ws-entry publishes on the model (board-crate eth +
+heap 192 KiB→4 MiB + static SLIRP IP); W2 `west fvp` registered
+(`west-commands:` in west.yml's `self:`); W3 `run-fvp-ws-entry` recipe +
+`fvp_runtime_ws.rs` (asserts BOTH `[ctrl] tick=` / `[telem] tick=`
+publish-success markers) + `verify-fvp-runtime` maintainer verb; W4 the
+false-green legacy talker runtime tests deleted. Gate validated end-to-end on
+FVP_BaseR_AEMv8R (PASS 1.9 s fast-sim; clean skip without the model).
