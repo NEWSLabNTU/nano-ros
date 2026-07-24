@@ -42,3 +42,32 @@ a status admonition — Pattern A (hand-written main/tasks,
 `EmbassyBoardEntry`/Deferred path is marked scaffold-only pending this
 issue. Remaining scope: implement the C.3 dispatch body + board entry
 methods and stand up a QEMU lane mirroring the RTIC set (phase-289 shape).
+
+## Decision (2026-07-24) — ship de-advertised; finish is a future phase
+
+**Chosen for the release: option 1 (as landed).** The release story is
+"Embassy: hand-written Pattern A supported and documented; streamlined
+board-entry path scaffold-only." This issue STAYS OPEN as the tracker for
+the finish.
+
+**State ledger (phase-216.C):** C.1 trait landed (`9de4b227e`). C.2
+half-landed — `EmbassyRuntime` channel + `signal_callback` real
+(`fc4213c4e` + `d7cbd8148`), `init_hardware` placeholder, entry methods
+`todo!()`. C.3 half-landed — macro Embassy arm exists, dispatch-task body
+is a placeholder (a Deferred image boots, signals callbacks into the
+channel, nothing drains it). C.4 unstarted.
+
+**Structural constraint that shaped the decision:** the Embassy crates pin
+to stm32f4, which is hardware-gated (#221 — QEMU has no F4 ethernet), so
+finishing "as stm32f4" can never earn a CI runtime lane — it would produce
+exactly the untested-but-advertised state this issue exists to prevent.
+The RTIC twin only reached Complete (phase-289) by living on
+qemu-arm-baremetal (MPS2).
+
+**Recorded finish plan (the future phase, when scheduled):** mirror
+phase-289 — an Embassy variant on qemu-arm-baremetal (embassy-executor is
+chip-agnostic; needs a SysTick time-driver on MPS2), complete the C.3
+dispatch body, one pubsub fixture + QEMU runtime lane. The stm32f4 crate
+then inherits the proven dispatch path and stays build-only until hardware
+CI exists (full stm32f4 `init_hardware` HAL bring-up is parked behind a
+hardware-rig decision).
