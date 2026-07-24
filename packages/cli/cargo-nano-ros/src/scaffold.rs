@@ -12,7 +12,30 @@ use eyre::{Result, bail};
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
+
+/// Issue 0249 — maintainer line for generated `package.xml`. Sourced from
+/// `git config user.name`/`user.email` so scaffolded packages carry the real
+/// author; falls back to an instructional placeholder (never `TODO@todo.com`,
+/// which shipped verbatim through colcon/bloom surfaces).
+fn maintainer_xml() -> String {
+    fn git_config(key: &str) -> Option<String> {
+        let out = Command::new("git").args(["config", key]).output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let v = String::from_utf8(out.stdout).ok()?.trim().to_string();
+        (!v.is_empty()).then_some(v)
+    }
+    let name = git_config("user.name");
+    let email = git_config("user.email");
+    match (name, email) {
+        (Some(n), Some(e)) => format!(r#"<maintainer email="{e}">{n}</maintainer>"#),
+        (Some(n), None) => format!(r#"<maintainer email="you@example.com">{n}</maintainer>"#),
+        _ => r#"<maintainer email="you@example.com">Your Name</maintainer>"#.to_string(),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ScaffoldConfig {
@@ -72,7 +95,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
   <name>{name}</name>
   <version>0.1.0</version>
   <description>{name} — nano-ros {platform} package</description>
-  <maintainer email="TODO@todo.com">TODO</maintainer>
+  {maintainer}
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
@@ -82,6 +105,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
 "#,
         name = cfg.name,
         platform = cfg.platform,
+        maintainer = maintainer_xml(),
     );
     fs::write(dir.join("package.xml"), package_xml)?;
 
@@ -172,11 +196,12 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <name>{name}</name>
   <version>0.1.0</version>
   <description>{name} — nano-ros reusable component.</description>
-  <maintainer email="TODO@todo.com">TODO</maintainer>
+  {maintainer}
   <license>Apache-2.0</license>
 </package>
 "#,
         name = cfg.name,
+        maintainer = maintainer_xml(),
     );
     fs::write(dir.join("package.xml"), package_xml)?;
 
@@ -333,7 +358,7 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <name>{name}</name>
   <version>0.1.0</version>
   <description>{name} — nano-ros C++ Node pkg.</description>
-  <maintainer email="TODO@todo.com">TODO</maintainer>
+  {maintainer}
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
@@ -343,6 +368,7 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
 </package>
 "#,
         name = cfg.name,
+        maintainer = maintainer_xml(),
     );
     fs::write(dir.join("package.xml"), package_xml)?;
 
@@ -492,7 +518,7 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <name>{name}</name>
   <version>0.1.0</version>
   <description>{name} — nano-ros C Node pkg.</description>
-  <maintainer email="TODO@todo.com">TODO</maintainer>
+  {maintainer}
   <license>Apache-2.0</license>
   <export>
     <build_type>ament_cmake</build_type>
@@ -501,6 +527,7 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
 </package>
 "#,
         name = cfg.name,
+        maintainer = maintainer_xml(),
     );
     fs::write(dir.join("package.xml"), package_xml)?;
 

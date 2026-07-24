@@ -268,6 +268,23 @@ pub fn run(args: Args) -> Result<()> {
             &bake_dir.join("vendor_hint.json"),
             &render_vendor_hint(bringup, mode),
         )?;
+        // Issue 0247 — the vendor artifacts are deliberate SKELETONS (H.6/H.7
+        // finish them); without a loud notice they read as complete output.
+        // Name exactly what is missing and the manual step the operator owns.
+        match mode {
+            AheadOfVendor::Pio => eprintln!(
+                "nros codegen system: WARNING — PlatformIO output is a SKELETON \
+                 (H.6 pending): library.json carries no transport/framework \
+                 selection and no extra_script.py is emitted. Manual PIO \
+                 project wiring is required before this bake is usable."
+            ),
+            AheadOfVendor::Px4 => eprintln!(
+                "nros codegen system: WARNING — PX4 output is a SKELETON (H.7 \
+                 pending): module dirs are emitted but NO board overlay is \
+                 generated. Enable each module by hand in your .px4board file \
+                 (CONFIG_MODULES_NROS_<NAME>=y) before building the firmware."
+            ),
+        }
     }
 
     eprintln!(

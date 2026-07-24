@@ -308,11 +308,21 @@ fn idl_type_to_field_type(idl_type: &IdlType, package_name: &str) -> FieldType {
             }
         }
         IdlType::Array(inner, dimensions) => {
-            // Arrays in IDL can be multi-dimensional, but we'll handle the first dimension
-            // TODO: Support multi-dimensional arrays properly
-            let element_type = Box::new(idl_type_to_field_type(inner, package_name));
-            let size = dimensions.first().copied().unwrap_or(1);
-            FieldType::Array { element_type, size }
+            // Issue 0250 — multi-dimensional IDL arrays lower to NESTED fixed
+            // arrays, outermost dimension last in the fold (row-major). CDR
+            // fixed arrays are contiguous with no per-element headers, so
+            // nested arrays are byte-identical to the flat multi-dim layout —
+            // the old first-dimension-only lowering silently produced a
+            // wire-incompatible type. A dimensionless array (shouldn't
+            // parse) degenerates to the bare element type.
+            let mut ty = idl_type_to_field_type(inner, package_name);
+            for size in dimensions.iter().rev() {
+                ty = FieldType::Array {
+                    element_type: Box::new(ty),
+                    size: *size,
+                };
+            }
+            ty
         }
         IdlType::UserDefined(type_name) => {
             // Check if it's a scoped name (package::Type)
@@ -375,6 +385,33 @@ mod tests {
         },
         types::{IdlPrimitiveType, IdlType},
     };
+
+    /// Issue 0250 — multi-dim IDL arrays lower to nested fixed arrays
+    /// (outer dimension outermost), never a first-dimension-only flatten.
+    #[test]
+    fn test_multidim_array_lowers_to_nested_arrays() {
+        let idl = IdlType::Array(
+            Box::new(IdlType::Primitive(IdlPrimitiveType::Float)),
+            vec![3, 4],
+        );
+        let ft = idl_type_to_field_type(&idl, "pkg");
+        match ft {
+            FieldType::Array { element_type, size } => {
+                assert_eq!(size, 3, "outer dimension first");
+                match *element_type {
+                    FieldType::Array {
+                        element_type: inner,
+                        size,
+                    } => {
+                        assert_eq!(size, 4, "inner dimension nested");
+                        assert!(matches!(*inner, FieldType::Primitive(_)));
+                    }
+                    other => panic!("inner not an array: {other:?}"),
+                }
+            }
+            other => panic!("outer not an array: {other:?}"),
+        }
+    }
 
     #[test]
     fn test_generate_constant_module() {
