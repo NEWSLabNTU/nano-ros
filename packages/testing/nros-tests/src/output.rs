@@ -434,6 +434,12 @@ pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
 /// (phase-296 W5.9). MIRRORS the printf literal there — keep in lockstep.
 pub const NUTTX_SPORADIC_MARKER: &str = "nros: sporadic budget set tier=";
 
+/// The honest-fallback sibling: printed when a tier DECLARED a sporadic
+/// budget but the running kernel lacks `CONFIG_SCHED_SPORADIC` (the
+/// executor's cooperative Sporadic SchedContext stays the enforcement).
+/// MIRRORS the printf literal in `nuttx_run_tiers.c` — keep in lockstep.
+pub const NUTTX_SPORADIC_FALLBACK_MARKER: &str = "nros: sporadic budget declared for tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

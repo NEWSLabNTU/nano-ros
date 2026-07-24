@@ -40,6 +40,13 @@ execution:
         deadline_us: 10000
       nuttx:
         priority: 110
+        # phase-296 W5.9 — NUTTX-SCOPED sporadic policy: with class real_time
+        # this arms the kernel sporadic server (SCHED_SPORADIC) when the
+        # kernel has CONFIG_SCHED_SPORADIC, else the boot logs the loud
+        # "executor SchedContext only" note. Other platforms' bakes see no
+        # budget/period (sub-table scoped — no cooperative gating flips).
+        budget_us: 5000
+        period_us: 10000
     low:
       spin_period_us: 100000
       posix:

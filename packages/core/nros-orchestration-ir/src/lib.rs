@@ -508,9 +508,14 @@ pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str
     TierDef {
         spin_period_us: t.spin_period_us,
         class: t.class.clone(),
-        period_us: t.period_us,
-        budget_us: t.budget_us,
+        period_us: selected.and_then(|sp| sp.period_us).or(t.period_us),
+        budget_us: selected.and_then(|sp| sp.budget_us).or(t.budget_us),
         deadline_us: selected.and_then(|s| s.deadline_us).or(t.deadline_us),
+        // phase-296 W5.9 — per-platform sporadic override (NuttX
+        // SCHED_SPORADIC): the SELECTED platform's budget/period hoist into
+        // this bake's head, so one platform's kernel sporadic server engages
+        // without a generic head budget flipping every other platform's
+        // executor into cooperative Sporadic gating.
         deadline_policy: t.deadline_policy.clone(),
         core: selected.and_then(|s| s.core),
         freertos: t.freertos.as_ref().map(rtos_spec_from_model),
@@ -545,6 +550,8 @@ mod tests {
                 sched_class: Some("SCHED_FIFO".to_string()),
                 preempt_threshold: None,
                 deadline_us: Some(1500), // per-platform tighten
+                budget_us: Some(400),    // per-platform sporadic override
+                period_us: Some(900),
             }),
             freertos: Some(TierPlatformSpec {
                 priority: 5,
@@ -553,6 +560,8 @@ mod tests {
                 sched_class: None,
                 preempt_threshold: None,
                 deadline_us: None,
+                budget_us: None,
+                period_us: None,
             }),
             zephyr: None,
             threadx: Some(TierPlatformSpec {
@@ -562,6 +571,8 @@ mod tests {
                 sched_class: None,
                 preempt_threshold: Some(4),
                 deadline_us: None,
+                budget_us: None,
+                period_us: None,
             }),
             nuttx: None,
         };
@@ -570,11 +581,17 @@ mod tests {
         let ir = tier_from_model(&model_tier, "posix");
         assert_eq!(ir.spin_period_us, Some(250));
         assert_eq!(ir.class.as_deref(), Some("real_time"));
-        assert_eq!(ir.period_us, Some(1000));
-        assert_eq!(ir.budget_us, Some(500));
+        assert_eq!(ir.period_us, Some(900), "per-platform sporadic period wins");
+        assert_eq!(ir.budget_us, Some(400), "per-platform sporadic budget wins");
         assert_eq!(ir.deadline_us, Some(1500), "per-platform override wins");
         assert_eq!(ir.deadline_policy.as_deref(), Some("skip"));
         assert_eq!(ir.core, Some(2), "core hoisted from selected platform");
+
+        // Non-selected sub-table values must NOT leak: freertos declares no
+        // sporadic override, so its bake keeps the GENERIC head budget/period.
+        let ir_f = tier_from_model(&model_tier, "freertos");
+        assert_eq!(ir_f.period_us, Some(1000), "head period stands");
+        assert_eq!(ir_f.budget_us, Some(500), "head budget stands");
         let posix = ir.posix.as_ref().unwrap();
         assert_eq!(posix.priority, 80);
         assert_eq!(posix.stack_bytes, Some(65536));

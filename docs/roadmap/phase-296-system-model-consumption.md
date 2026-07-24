@@ -439,6 +439,25 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   executor to Sporadic gating; the rlm schema addition is maintainer-gated
   — submodule push). #246 filed: the nuttx_arm_rust realtime cell times out
   PRE-EXISTING (baseline-verified); riscv trio precondition-skips.
+- W5.9b — **sporadic server EXERCISED end-to-end — KERNEL-ACCEPTED** (2026-07-24):
+  rlm `TierPlatformSpec` gained per-platform `budget_us`/`period_us` (rlm
+  `6a8e287`, pushed — sub-table override, deadline_us precedent) +
+  `tier_from_model` hoists the SELECTED platform's pair over the generic head
+  (tripwire test extended: posix override wins; freertos falls back to head).
+  ws-realtime-{rust,cpp,c} nuttx sub-tables declare `budget_us: 5000` /
+  `period_us: 10000` — zephyr/posix bakes unchanged (sub-table scoped).
+  `nuttx_sporadic_budget_applied` e2e: boots the cpp arm image and asserts
+  the policy is NEVER silently dropped — kernel-accept marker OR the honest
+  fallback note; measured **KERNEL-ACCEPTED (SCHED_SPORADIC live)** — the
+  fixture lane builds the kernel from the board `nuttx-config/defconfig`, so
+  the W5.9 `CONFIG_SCHED_SPORADIC=y` took effect without a separate
+  provision. arm cpp/c realtime cells PASS unchanged. Gotchas: a poisoned
+  cmake configure leaves a STALE generated TU that the next lane run
+  silently reuses (delete the TU to force regen — #222 family); a raced
+  regen left a corrupt `nros_config_generated.h` (duplicate tail) — purge
+  the generated dir; `just setup-cli` may not rebuild after a submodule-only
+  change (run `cargo build --release -p nros-cli` in packages/cli to be
+  sure).
 - Remaining (beyond W5.5–W5.9): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own

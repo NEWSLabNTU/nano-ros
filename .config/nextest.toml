@@ -65,6 +65,12 @@ max-threads = 1
 [test-groups.zephyr-realtime-rust-port]
 max-threads = 1
 
+# phase-296 W5.9 — same RESOURCE pattern for NuttX: the arm cpp realtime
+# image + its baked router port are shared by realtime_tiers_e2e's
+# nuttx_arm_cpp cell and the sporadic-policy e2e — serialize them.
+[test-groups.nuttx-realtime-cpp-port]
+max-threads = 1
+
 # Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
 # test). Ports are allocator-unique per (variant, lang) since phase-89.13/
 # W4, so the per-variant `qemu-freertos-{pubsub,service,action}` sub-groups
@@ -343,6 +349,14 @@ retries = 1
 [[profile.default.overrides]]
 filter = "binary(zephyr_edf_deadline_applied) or (binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
 test-group = "zephyr-realtime-rust-port"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# phase-296 W5.9 — serialize the shared nuttx cpp realtime image/port; QEMU
+# lane timeout/retries mirror the nuttx cells' own budget.
+[[profile.default.overrides]]
+filter = "binary(nuttx_sporadic_budget_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_cpp))"
+test-group = "nuttx-realtime-cpp-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
