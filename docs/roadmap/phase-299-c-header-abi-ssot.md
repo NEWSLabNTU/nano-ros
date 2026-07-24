@@ -64,6 +64,15 @@ Design decisions + rationale → [RFC-0054](../design/0054-c-header-abi-ssot.md)
   AGENTS.md C/C++-integration note; issue cross-links (#238/#239
   archived notes point here).
 
+### W5 — board surface (2026-07-24, follow-on request)
+- [x] W5.1 `board.h` gains `NROS_BOARD_NORETURN` (noreturn is contract;
+  bindgen `--enable-function-attribute-detection` carries it as `-> !`).
+- [x] W5.2 generated declarations (`nros-board-cffi/src/generated.rs`,
+  board section in gen-abi-bindings.sh); hand extern block deleted;
+  `nros_board_export!` stays hand-written.
+- [x] W5.3 `check-board-abi-mirror.sh` extern half → allowlist-completeness
+  vs generated.rs; board file added to the `check-abi-bindings` diff set.
+
 ## Acceptance
 - `rg "pub struct NrosRmw(Vtable|Qos|Session)" packages/core/nros-rmw-cffi/src/lib.rs`
   finds nothing (definitions only in generated.rs).
@@ -73,6 +82,4 @@ Design decisions + rationale → [RFC-0054](../design/0054-c-header-abi-ssot.md)
   this phase moves definitions, it does not change them).
 
 ## Out of scope
-- Board ABI (`nros-board-cffi/include/nros/board.h`) — same treatment
-  later if this proves out.
 - Any ABI layout/semantic change.

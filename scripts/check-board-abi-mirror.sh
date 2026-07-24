@@ -18,6 +18,11 @@
 set -euo pipefail
 
 RUST="packages/boards/nros-board-cffi/src/lib.rs"
+# RFC-0054 (phase-299): the extern-"C" declaration half is GENERATED from
+# the header (src/generated.rs); the (1) check survives as an
+# allowlist-completeness guard against it. The (2) macro-emission half
+# checks the hand-written nros_board_export! in lib.rs unchanged.
+GENERATED="packages/boards/nros-board-cffi/src/generated.rs"
 HEADER="packages/boards/nros-board-cffi/include/nros/board.h"
 
 if [[ ! -f "$RUST" ]]; then
@@ -47,7 +52,7 @@ fi
 missing_extern=()
 missing_macro=()
 for sym in "${SYMBOLS[@]}"; do
-    if ! grep -qE "pub fn ${sym}\s*\(" "$RUST"; then
+    if ! grep -qE "pub fn ${sym}\s*\(" "$GENERATED"; then
         missing_extern+=("$sym")
     fi
     if ! grep -qE "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then

@@ -61,6 +61,13 @@ Three sub-decisions (brainstormed 2026-07-24):
   logic, no Rust.
 - `packages/core/nros-platform-api/` — unchanged home for
   `include/nros/platform*.h` (plus its existing small Rust crate).
+- `packages/boards/nros-board-cffi/include/nros/board.h` — the board-entry
+  ABI joined the same model (phase-299 W5): generated declarations in
+  `src/generated.rs`, hand-written `nros_board_export!` macro (definitions),
+  `check-board-abi-mirror.sh`'s extern half as allowlist-completeness.
+  `noreturn` became part of the contract (`NROS_BOARD_NORETURN` — C11
+  `_Noreturn`/C++ `[[noreturn]]`), carried into Rust as `-> !` via
+  bindgen's `--enable-function-attribute-detection`.
 
 ### Rust side
 

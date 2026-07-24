@@ -8,6 +8,17 @@
 extern "C" {
 #endif
 
+/* RFC-0054: `noreturn` is part of the contract (the Rust bindings are
+ * generated from this header, and divergence must survive as `-> !`).
+ * C11 `_Noreturn` / C++11 `[[noreturn]]` / GNU-attribute fallback. */
+#if defined(__cplusplus)
+#define NROS_BOARD_NORETURN [[noreturn]]
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define NROS_BOARD_NORETURN _Noreturn
+#else
+#define NROS_BOARD_NORETURN __attribute__((noreturn))
+#endif
+
 /**
  * @file board.h
  * @brief Canonical C ABI for the nros board-entry layer.
@@ -62,7 +73,7 @@ typedef int32_t (*nros_board_app_fn)(void *user);
  * context. Both shapes export this same symbol (the Rust side routes
  * through `BoardEntry::run`). Never returns.
  */
-void nros_board_run(const void *cfg, nros_board_app_fn app, void *user);
+NROS_BOARD_NORETURN void nros_board_run(const void *cfg, nros_board_app_fn app, void *user);
 
 /* ---- Board primitives ---- */
 
@@ -76,10 +87,10 @@ void nros_board_init_hardware(const void *cfg);
 void nros_board_println(const uint8_t *msg, size_t len);
 
 /** Terminate the firmware after a successful run. Never returns. */
-void nros_board_exit_success(void);
+NROS_BOARD_NORETURN void nros_board_exit_success(void);
 
 /** Terminate the firmware after a failed run. Never returns. */
-void nros_board_exit_failure(void);
+NROS_BOARD_NORETURN void nros_board_exit_failure(void);
 
 #ifdef __cplusplus
 }

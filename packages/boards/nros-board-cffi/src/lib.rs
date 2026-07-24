@@ -35,28 +35,15 @@ use core::ffi::c_void;
 pub type NrosBoardAppFn = extern "C" fn(user: *mut c_void) -> i32;
 
 // ============================================================================
-// Canonical ABI declarations
+// Canonical ABI declarations — GENERATED (RFC-0054, phase-299)
 // ----------------------------------------------------------------------------
-// Hand-written mirror of `include/nros/board.h`. Names and types track
-// the header. Updates land in the header first, then here.
+// `include/nros/board.h` is the SSoT; src/generated.rs is committed
+// bindgen output (scripts/gen-abi-bindings.sh). The nros_board_export!
+// macro below stays hand-written — it EMITS the definitions (port side).
 // ============================================================================
 
-unsafe extern "C" {
-    /// Direct-exec board entry driver. Never returns.
-    pub fn nros_board_run(cfg: *const c_void, app: NrosBoardAppFn, user: *mut c_void) -> !;
-
-    /// Run board-specific hardware init for the opaque config.
-    pub fn nros_board_init_hardware(cfg: *const c_void);
-
-    /// Emit one status / banner / error line (UTF-8, `len` bytes).
-    pub fn nros_board_println(msg: *const u8, len: usize);
-
-    /// Terminate the firmware after a successful run. Never returns.
-    pub fn nros_board_exit_success() -> !;
-
-    /// Terminate the firmware after a failed run. Never returns.
-    pub fn nros_board_exit_failure() -> !;
-}
+pub mod generated;
+pub use generated::*;
 
 // ============================================================================
 // Export macro
