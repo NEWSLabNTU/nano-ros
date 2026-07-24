@@ -35,6 +35,21 @@ fix the row's platform key). The riscv cpp/c rows built fine with the
 `nuttx-riscv` arg but their cells still skipped-red in the same sweep —
 re-verify after the rust lane question is settled.
 
+## Update (2026-07-24c) — NOT the same fix as #247
+
+#247 (threadx_linux_rust) is RESOLVED, but its fix does NOT carry to this
+cell — retested after #247 landed: still TIMEOUT. The #247 root cause was a
+guest-side read drop on the ThreadX **select-driven spin-read** arm
+(two tier threads sharing one `zp_read` on the TCP stream); the fix
+serializes that spin read. NuttX uses a DIFFERENT zpico arm — background
+read + lease TASKS (`Z_FEATURE_MULTI_THREAD=1`, `zp_start_read_task`), NOT
+the select-spin path — so the ThreadX serialization is irrelevant here. This
+cell needs its own investigation of the background-read-task + multi-tier
+declare interaction (likely the same *class* — a spawned-tier publisher's
+write-filter interest reply lost — but a different code path). W5.9b's
+nuttx sporadic budget is NOT the cause: this cell timed out at filing,
+before W5.9b, and the arm cpp/c cells (which also gained the budget) pass.
+
 ## Note (2026-07-24b)
 
 Likely the SAME family as #247 (both are the RUST multi-tier arm over the
