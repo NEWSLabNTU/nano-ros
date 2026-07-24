@@ -404,11 +404,14 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   zephyr_run_tiers.c + output.rs). Gotcha: Zephyr `printk` returns void — an
   `int` extern is a conflicting-types build break. Compile proof: full zephyr
   west matrix green (C+C+++Rust images, 14-field initializers); zephyr_rust +
-  EDF e2es green. NOTE: the C/C++ consumers are dormant until a C/C++
-  workspace declares a real_time+deadline tier (fixture exercising them =
-  follow-up); #245 filed — the zephyr_cpp/zephyr_c realtime cells time out
-  PRE-EXISTING (baseline-verified with stashed changes + baseline CLI +
-  fresh fixture: identical timeout; banner-then-silence).
+  EDF e2es green. UPDATE (2026-07-24, post-#245): the C/C++ consumers are
+  now EXERCISED — ws-realtime-{cpp,c}'s model `high` tiers carry
+  `class: real_time` + zephyr-scoped `deadline_us` + CONFIG_SCHED_DEADLINE,
+  and `zephyr_edf_deadline_applied` is parametrized rust/cpp/c (kernel EDF
+  applied in every language arm, marker-confirmed; serial group widened to
+  the cpp/c realtime cells). #245 itself (the cells' timeout) was RESOLVED —
+  executor storage 32 bytes short of the generated size, heap corruption;
+  see `archived/0245-*`.
 - Remaining (beyond W5.5–W5.7): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
