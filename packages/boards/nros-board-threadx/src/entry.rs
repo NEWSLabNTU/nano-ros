@@ -264,6 +264,15 @@ where
         unsafe { nros_threadx_free(ptr as *mut c_void) };
         return Err(());
     }
+    if tier.preempt_threshold.is_some() {
+        // phase-296 W5.10 — non_preempt_scope trace marker: tx_thread_create
+        // applied the threshold at creation (rc == 0). Literal mirrors
+        // `nros_tests::output::THREADX_PREEMPT_MARKER`.
+        B::println(format_args!(
+            "nros: preempt threshold set tier=`{}` {}",
+            tier.name, pt
+        ));
+    }
     Ok(())
 }
 
@@ -418,6 +427,15 @@ where
         B::println(format_args!(
             "nros: boot tier `{}` priority change failed; tiers may be mis-ranked",
             boot_tier.name
+        ));
+    } else if boot_tier.preempt_threshold.is_some() {
+        // phase-296 W5.10 — the non_preempt_scope dim, trace-confirmed: the
+        // kernel accepted the preemption threshold (printed ONLY on success,
+        // the W5.5 marker discipline). Literal mirrors
+        // `nros_tests::output::THREADX_PREEMPT_MARKER`.
+        B::println(format_args!(
+            "nros: preempt threshold set tier=`{}` {}",
+            boot_tier.name, boot_pt
         ));
     }
     apply_tier(&mut crt, boot_tier);

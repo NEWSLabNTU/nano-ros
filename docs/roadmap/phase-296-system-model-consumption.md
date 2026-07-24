@@ -458,7 +458,22 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   the generated dir; `just setup-cli` may not rebuild after a submodule-only
   change (run `cargo build --release -p nros-cli` in packages/cli to be
   sure).
-- Remaining (beyond W5.5–W5.9): the rest of the runtime `PlatformSched`
+- W5.10 — **ThreadX preempt-threshold exercised (non_preempt_scope dim) —
+  KERNEL-ACCEPTED** (2026-07-24): the transport + consumers already existed
+  (W2 pipe + phase-297's `nros_threadx_create_task` create-time threshold +
+  `nros_threadx_set_current_priority` boot reprioritize) but were dormant +
+  silent. Added: kernel-accept-gated trace markers at both apply sites
+  (`nros: preempt threshold set tier=` = `THREADX_PREEMPT_MARKER`, W5.5
+  discipline); ws-realtime-rust declares `threadx.preempt_threshold: 10` on
+  the LOW tier (scope: priorities 10-15 can't preempt telem mid-callback;
+  ctrl@5 + transport threads unaffected — a threshold on the HIGH tier is
+  NOT the demo vehicle while #247 is open); new
+  `threadx_preempt_threshold_applied` e2e boots the threadx-linux image and
+  asserts exactly 1 kernel-accepted marker — PASS. Serialized with the
+  realtime cell (`threadx-realtime-rust-port` group). #247 filed: the
+  threadx_linux_rust realtime cell's spawned-high-tier-publishes-zero is
+  PRE-EXISTING (baseline-verified) — coordinate with phase-297.
+- Remaining (beyond W5.5–W5.10): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
   `SchedContext` backfills); the C/C++ zephyr tier image's core/deadline

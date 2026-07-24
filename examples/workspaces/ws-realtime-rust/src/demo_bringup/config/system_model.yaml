@@ -63,6 +63,13 @@ execution:
         priority: 100
       threadx:
         priority: 15
+        # phase-296 W5.10 — non_preempt_scope on the LOW tier: threads at
+        # priorities 10-15 cannot preempt telem mid-callback; the ctrl tier
+        # (5) and the transport threads still can, so the high-rate path is
+        # unaffected (prefer thresholds BELOW the transport priorities). On
+        # ThreadX `low` is the BOOT tier, so the marker comes from the boot
+        # reprioritize (tx_thread_preemption_change), kernel-accept-gated.
+        preempt_threshold: 10
   bindings:
     /control_node/ctrl: high
     /telem_node/telem: low

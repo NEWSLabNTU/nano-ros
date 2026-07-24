@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#247** — realtime_tiers_e2e threadx_linux_rust: spawned `high`/ctrl tier publishes ZERO on a
+fresh image (baseline-verified pre-existing — not the W5.10 preempt-threshold work; telem + the
+W5.10 marker e2e pass on the same image). Coordinate with phase-297. See `0247-*`. (2026-07-24)
+
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
 phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)

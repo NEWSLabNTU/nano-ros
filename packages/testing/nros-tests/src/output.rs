@@ -440,6 +440,12 @@ pub const NUTTX_SPORADIC_MARKER: &str = "nros: sporadic budget set tier=";
 /// MIRRORS the printf literal in `nuttx_run_tiers.c` — keep in lockstep.
 pub const NUTTX_SPORADIC_FALLBACK_MARKER: &str = "nros: sporadic budget declared for tier=";
 
+/// Emitted by the ThreadX board (`nros-board-threadx/src/entry.rs`, both the
+/// boot reprioritize and the spawn path) when the kernel ACCEPTED a tier's
+/// preemption threshold (phase-296 W5.10, the non_preempt_scope dim).
+/// MIRRORS the `B::println` literal there — keep in lockstep.
+pub const THREADX_PREEMPT_MARKER: &str = "nros: preempt threshold set tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.
