@@ -799,10 +799,21 @@ DEPRECATED examples that R-code.1 deletes.
 
 **Retirement (code) — after M1–M5, R3 warning fires nowhere:**
 
-- **R-code.1** Delete the legacy arms: `nros::main!(launch = …)` +
-  `launch_synth`, CLI `--launch` on `codegen entry`/`codegen-system` (+ the
-  system.toml bake pair), CMake `LAUNCH` keyword. ~145-consumer blast radius
-  is gone once M1–M5 land; the full test suite is the merge gate.
+- **R-code.1** Delete the legacy arms — **entry side DONE (2026-07-24)**:
+  `nros::main!(launch = …)` is a compile error with the migrate recipe (arm +
+  launch-only helpers deleted, −531 lines; the bridge emit was ported to the
+  model arm reading `execution.bridges` — it had lived ONLY in the launch arm,
+  so a model bridge entry compiled but emitted a plain main); `codegen entry
+  --launch`/`--args` are removal errors; the CMake `LAUNCH` keyword is a
+  FATAL_ERROR in both fns. **Remaining (next slice): the codegen-system /
+  system.toml bake.** Callers that must flip to `--model` first:
+  `scripts/build/workspace-fixtures-build.sh:127` (`codegen-system --bringup`
+  for every C/C++ workspace fixture — this is why the R3 warning still fires
+  in fixture builds), the west `multi_pkg_workspace_{zephyr,nuttx,esp_idf,
+  platformio}` fixtures (`cli_bringup_*` consumers), `nros plan`'s launch
+  resolution, and `launch_synth` itself. Then delete the system.toml bake +
+  `launch_synth` + the R3 `deprecation` module (R-code.3) in one test-green
+  change.
 - **R-code.2 — MODEL becomes the DEFAULT, not a required arg.** End state:
   users never spell it. Convention discovery — `nros::main!()` (no arg) and
   `nano_ros_add_executable(... )` (no MODEL) resolve
