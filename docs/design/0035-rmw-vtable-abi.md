@@ -31,12 +31,12 @@ enumerated freeze that RFC-0006 left to follow-up.
   built against an older slot count linked against a newer runtime (or vice
   versa) has no version field to reject, so a layout skew is silent UB.
 - The sibling transport vtable `NrosTransportOps`
-  (`nros-rmw-cffi/include/nros/rmw_transport.h:84`) already carries
+  (`nros-rmw-abi/include/nros/rmw_transport.h:84`) already carries
   `abi_version: u32` + `NROS_TRANSPORT_OPS_ABI_VERSION_V1 = 1` and a
   registration check; the RMW vtable does not, despite being the more
   load-bearing interface.
 - `NROS_RMW_RET_INCOMPATIBLE_ABI = -14`
-  (`nros-rmw-cffi/include/nros/rmw_ret.h:99`) is defined but never returned.
+  (`nros-rmw-abi/include/nros/rmw_ret.h:99`) is defined but never returned.
 - NULL-slot semantics (runtime fallback vs `RET_UNSUPPORTED`) are decided
   per-slot in code with no contract a backend author can rely on.
 
@@ -47,7 +47,7 @@ backends that must not break.
 
 ### Canonical header
 
-`packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h` is the **source of
+`packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` is the **source of
 truth** (hand-written canonical C, per RFC-0006 R2). The `#[repr(C)]`
 `NrosRmwVtable` in `nros-rmw-cffi/src/lib.rs` must match it field-for-field and
 in order. This RFC records the contract; the header records the exact
@@ -147,5 +147,5 @@ the layout is frozen.
 
 - 2026-06 — created (Draft). Records the 34-slot ABI as canonical; defines the
   append-only rule, NULL-slot contract, and the `abi_version` field to add.
-  Grounded in `nros-rmw-cffi/include/nros/rmw_vtable.h` + `rmw_ret.h`; rationale
+  Grounded in `nros-rmw-abi/include/nros/rmw_vtable.h` + `rmw_ret.h`; rationale
   from RFC-0006.

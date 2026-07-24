@@ -26,14 +26,16 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
     // address so it's inherently non-null; the smoke check is
     // that this all *type-checks* with `ZenohRmw` filling the
     // `RustBackend` bundle.
+    // RFC-0054: vtable slots are now `Option<fn>` (generated from the C
+    // header's nullable fn pointers) — assert the adapter filled each one.
     let vt = &RustBackendAdapter::<ZenohRmw>::VTABLE;
-    let _ = vt.open as usize;
-    let _ = vt.close as usize;
-    let _ = vt.drive_io as usize;
-    let _ = vt.create_publisher as usize;
-    let _ = vt.create_subscriber as usize;
-    let _ = vt.create_service_server as usize;
-    let _ = vt.create_service_client as usize;
+    assert!(vt.open.is_some());
+    assert!(vt.close.is_some());
+    assert!(vt.drive_io.is_some());
+    assert!(vt.create_publisher.is_some());
+    assert!(vt.create_subscriber.is_some());
+    assert!(vt.create_service_server.is_some());
+    assert!(vt.create_service_client.is_some());
     assert_eq!(NROS_RMW_RET_OK, 0);
 }
 

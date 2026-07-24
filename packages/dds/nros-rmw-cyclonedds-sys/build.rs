@@ -56,7 +56,7 @@ fn vendored_build() {
     let backend_dir = repo_root.join("packages/dds/nros-rmw-cyclonedds");
     let backend_src = backend_dir.join("src");
     let backend_inc = backend_dir.join("include");
-    let rmw_cffi_inc = repo_root.join("packages/core/nros-rmw-cffi/include");
+    let rmw_cffi_inc = repo_root.join("packages/core/nros-rmw-abi/include");
 
     if !backend_src.is_dir() {
         panic!(

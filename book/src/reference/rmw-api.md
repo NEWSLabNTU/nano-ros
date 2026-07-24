@@ -16,7 +16,7 @@ loaned slots live in the Doxygen output.
 
 | Surface | Link |
 |---|---|
-| **rmw-cffi Doxygen** (canonical) | [HTML](../api/rmw-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h) |
+| **rmw-cffi Doxygen** (canonical) | [HTML](../api/rmw-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw-abi/include/nros/rmw_vtable.h) |
 
 To regenerate locally:
 

@@ -96,7 +96,7 @@ Today, when we change `nros-rmw::Subscriber::try_recv_raw_with_info`,
 we update:
 1. `nros-rmw/src/traits.rs` (the trait)
 2. `nros-rmw-cffi/src/lib.rs` (the vtable)
-3. `nros-rmw-cffi/include/nros/rmw_vtable.h` (regenerated)
+3. `nros-rmw-abi/include/nros/rmw_vtable.h` (regenerated)
 4. `nros-c/src/subscription.rs` (C surface)
 5. `nros-cpp/include/nros/subscription.hpp` (C++ surface)
 

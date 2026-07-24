@@ -159,7 +159,7 @@ if(NOT TARGET NanoRos)
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-platform-api/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-c/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-cpp/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-cffi/include")
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-abi/include")
     endif()
     # Phase 159 — NanoRos::NanoRosCpp ALIAS for NuttX path (where
     # nros-cpp's add_subdirectory is skipped). C++ examples

@@ -289,7 +289,7 @@ zephyr_library_sources(${_nros_cdds_cpp} ${_nros_graph_desc_srcs})
 zephyr_include_directories(
     ${NROS_RMW_CDDS_DIR}/include
     ${NROS_RMW_CDDS_DIR}/src
-    ${NROS_REPO_DIR}/packages/core/nros-rmw-cffi/include
+    ${NROS_REPO_DIR}/packages/core/nros-rmw-abi/include
     ${_nros_graph_types_dir}
 )
 

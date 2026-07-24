@@ -41,10 +41,10 @@ static LAST_PUBLISH_BYTES: [AtomicUsize; 16] = [
 ];
 
 unsafe extern "C" fn open(
-    _: *const u8,
+    _: *const core::ffi::c_char,
     _: u8,
     _: u32,
-    _: *const u8,
+    _: *const core::ffi::c_char,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe { (*out).backend_data = 0xF0F0_F0F0usize as *mut c_void };
@@ -58,9 +58,9 @@ unsafe extern "C" fn drive_io(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet {
 }
 unsafe extern "C" fn create_publisher(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     out: *mut NrosRmwPublisher,
@@ -87,9 +87,9 @@ unsafe extern "C" fn publish_raw(
 }
 unsafe extern "C" fn noop_csub(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwSubscriber,
@@ -105,9 +105,9 @@ unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscriber) -> i32 {
 }
 unsafe extern "C" fn noop_csrv(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwServiceServer,
@@ -136,9 +136,9 @@ unsafe extern "C" fn noop_reply(
 }
 unsafe extern "C" fn noop_ccli(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwServiceClient,
@@ -178,29 +178,29 @@ unsafe extern "C" fn noop_alv(_: *mut NrosRmwPublisher) -> NrosRmwRet {
 }
 
 static VTABLE: NrosRmwVtable = NrosRmwVtable {
-    open,
-    close,
-    drive_io,
-    create_publisher,
-    destroy_publisher,
-    publish_raw,
-    create_subscriber: noop_csub,
-    destroy_subscriber: noop_dsub,
-    try_recv_raw: noop_recv,
-    has_data: noop_hasd,
-    create_service_server: noop_csrv,
-    destroy_service_server: noop_dsrv,
-    try_recv_request: noop_recvreq,
-    has_request: noop_hasreq,
-    send_reply: noop_reply,
-    create_service_client: noop_ccli,
-    destroy_service_client: noop_dcli,
-    call_raw: noop_call,
+    open: Some(open),
+    close: Some(close),
+    drive_io: Some(drive_io),
+    create_publisher: Some(create_publisher),
+    destroy_publisher: Some(destroy_publisher),
+    publish_raw: Some(publish_raw),
+    create_subscriber: Some(noop_csub),
+    destroy_subscriber: Some(noop_dsub),
+    try_recv_raw: Some(noop_recv),
+    has_data: Some(noop_hasd),
+    create_service_server: Some(noop_csrv),
+    destroy_service_server: Some(noop_dsrv),
+    try_recv_request: Some(noop_recvreq),
+    has_request: Some(noop_hasreq),
+    send_reply: Some(noop_reply),
+    create_service_client: Some(noop_ccli),
+    destroy_service_client: Some(noop_dcli),
+    call_raw: Some(noop_call),
     send_request_raw: None,
     try_recv_reply_raw: None,
-    register_subscriber_event: noop_regsubev,
-    register_publisher_event: noop_regpubev,
-    assert_publisher_liveliness: noop_alv,
+    register_subscriber_event: Some(noop_regsubev),
+    register_publisher_event: Some(noop_regpubev),
+    assert_publisher_liveliness: Some(noop_alv),
     next_deadline_ms: None,
     set_wake_callback: None,
     // Phase 124.A.3 — NULL pub_loan: runtime falls back to arena.

@@ -45,7 +45,7 @@ fn maybe_build_c_stub() {
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.c");
     println!("cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.h");
     println!("cargo:rerun-if-changed=tests/c_stubs/abi_layout_check.c");
-    println!("cargo:rerun-if-changed=include/nros");
+    println!("cargo:rerun-if-changed=../nros-rmw-abi/include/nros");
 
     if std::env::var_os("CARGO_FEATURE_C_STUB_TEST").is_none() {
         return;
@@ -65,18 +65,8 @@ fn maybe_build_c_stub() {
     // one guard fails the build. Compiled against the public headers.
     cc::Build::new()
         .file("tests/c_stubs/abi_layout_check.c")
-        .include("include")
+        .include("../nros-rmw-abi/include")
         .warnings(true)
         .extra_warnings(true)
         .compile("nros_abi_layout_check");
-
-    // Issue #239 — compiler-derived offset/size export for the hand-mirrored
-    // RMW structs; consumed by tests/abi_offsets.rs (offset_of! comparison).
-    println!("cargo:rerun-if-changed=tests/c_stubs/abi_offsets.c");
-    cc::Build::new()
-        .file("tests/c_stubs/abi_offsets.c")
-        .include("include")
-        .warnings(true)
-        .extra_warnings(true)
-        .compile("nros_abi_offsets");
 }

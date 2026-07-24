@@ -1,7 +1,7 @@
 # nano-ros RMW C ABI — coverage status vs upstream `rmw.h`
 
 **Last updated:** 2026-05-14 (post-Phase-124.A+B+C+D landings).
-**Scope:** Compare `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`
+**Scope:** Compare `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`
 against upstream `rmw/rmw.h` (~69 functions) and group by capability.
 Identify gaps worth closing and gaps that are won't-do.
 
@@ -229,7 +229,7 @@ for historical context.
 
 Reality was more nuanced than "missing entirely":
 
-- `nros-rmw-cffi/include/nros/rmw_entity.h` defines a
+- `nros-rmw-abi/include/nros/rmw_entity.h` defines a
   `can_loan_messages` flag on both `nros_rmw_publisher_t` and
   `nros_rmw_subscriber_t`. Backend opts in by setting the flag
   during `create_*`. Today's data plane treats it as an opaque

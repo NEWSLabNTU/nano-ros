@@ -44,12 +44,12 @@ nros_provide_cyclonedds()
 # `nros_rmw_cffi_register()`. Path is exposed via cache var so callers
 # (or `find_package(NrosRmwCyclonedds)`) can override it for out-of-tree
 # builds.
-set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-cffi/include"
+set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
 if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
     message(FATAL_ERROR
         "nros-rmw-cffi headers not found at NROS_RMW_CFFI_DIR='${NROS_RMW_CFFI_DIR}'. "
-        "Set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-cffi/include>.")
+        "Set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-abi/include>.")
 endif()
 
 # ---- Static library --------------------------------------------------------

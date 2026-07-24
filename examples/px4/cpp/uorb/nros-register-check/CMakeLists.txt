@@ -20,7 +20,7 @@
 set(NROS_RMW_UORB_CPP_DIR
     ${CMAKE_CURRENT_LIST_DIR}/../../../../../packages/px4/nros-rmw-uorb)
 set(NROS_RMW_CFFI_INCLUDE_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../../../../packages/core/nros-rmw-cffi/include)
+    ${CMAKE_CURRENT_LIST_DIR}/../../../../../packages/core/nros-rmw-abi/include)
 
 if(NOT EXISTS "${NROS_RMW_UORB_CPP_DIR}/src/vtable.cpp")
     message(FATAL_ERROR

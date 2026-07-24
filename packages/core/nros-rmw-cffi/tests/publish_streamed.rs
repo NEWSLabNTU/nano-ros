@@ -41,10 +41,10 @@ static FALLBACK_CALLS: AtomicUsize = AtomicUsize::new(0);
 // ----- stubs reused across both vtables --------------------------------------
 
 unsafe extern "C" fn stub_open(
-    _: *const u8,
+    _: *const core::ffi::c_char,
     _: u8,
     _: u32,
-    _: *const u8,
+    _: *const core::ffi::c_char,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe { (*out).backend_data = std::ptr::dangling_mut::<c_void>() };
@@ -58,9 +58,9 @@ unsafe extern "C" fn stub_drive_io(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet
 }
 unsafe extern "C" fn stub_create_publisher(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     out: *mut NrosRmwPublisher,
@@ -87,9 +87,9 @@ unsafe extern "C" fn stub_publish_raw(
 
 unsafe extern "C" fn stub_create_subscriber(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwSubscriber,
@@ -105,9 +105,9 @@ unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
 }
 unsafe extern "C" fn stub_create_service_server(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwServiceServer,
@@ -136,9 +136,9 @@ unsafe extern "C" fn stub_send_reply(
 }
 unsafe extern "C" fn stub_create_service_client(
     _: *mut NrosRmwSession,
-    _: *const u8,
-    _: *const u8,
-    _: *const u8,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
+    _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
     _: *mut NrosRmwServiceClient,
@@ -181,15 +181,21 @@ unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmw
 // would and record the streamed bytes.
 unsafe extern "C" fn stub_publish_streamed(
     _: *mut NrosRmwPublisher,
-    size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void),
-    chunk_cb: unsafe extern "C" fn(
-        out_buf: *mut u8,
-        cap: usize,
-        out_written: *mut usize,
-        user_ctx: *mut c_void,
-    ),
+    size_cb: Option<unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void)>,
+    chunk_cb: Option<
+        unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut c_void,
+        ),
+    >,
     user_ctx: *mut c_void,
 ) -> NrosRmwRet {
+    let (size_cb, chunk_cb) = (
+        size_cb.expect("vtable slot"),
+        chunk_cb.expect("vtable slot"),
+    );
     NATIVE_CALLS.fetch_add(1, Ordering::SeqCst);
     let mut total = 0usize;
     unsafe { size_cb(&mut total as *mut usize, user_ctx) };
@@ -219,29 +225,29 @@ unsafe extern "C" fn stub_publish_streamed(
 
 const fn make_base() -> NrosRmwVtable {
     NrosRmwVtable {
-        open: stub_open,
-        close: stub_close,
-        drive_io: stub_drive_io,
-        create_publisher: stub_create_publisher,
-        destroy_publisher: stub_destroy_publisher,
-        publish_raw: stub_publish_raw,
-        create_subscriber: stub_create_subscriber,
-        destroy_subscriber: stub_destroy_subscriber,
-        try_recv_raw: stub_try_recv_raw,
-        has_data: stub_has_data,
-        create_service_server: stub_create_service_server,
-        destroy_service_server: stub_destroy_service_server,
-        try_recv_request: stub_try_recv_request,
-        has_request: stub_has_request,
-        send_reply: stub_send_reply,
-        create_service_client: stub_create_service_client,
-        destroy_service_client: stub_destroy_service_client,
-        call_raw: stub_call_raw,
+        open: Some(stub_open),
+        close: Some(stub_close),
+        drive_io: Some(stub_drive_io),
+        create_publisher: Some(stub_create_publisher),
+        destroy_publisher: Some(stub_destroy_publisher),
+        publish_raw: Some(stub_publish_raw),
+        create_subscriber: Some(stub_create_subscriber),
+        destroy_subscriber: Some(stub_destroy_subscriber),
+        try_recv_raw: Some(stub_try_recv_raw),
+        has_data: Some(stub_has_data),
+        create_service_server: Some(stub_create_service_server),
+        destroy_service_server: Some(stub_destroy_service_server),
+        try_recv_request: Some(stub_try_recv_request),
+        has_request: Some(stub_has_request),
+        send_reply: Some(stub_send_reply),
+        create_service_client: Some(stub_create_service_client),
+        destroy_service_client: Some(stub_destroy_service_client),
+        call_raw: Some(stub_call_raw),
         send_request_raw: None,
         try_recv_reply_raw: None,
-        register_subscriber_event: stub_reg_sub_event,
-        register_publisher_event: stub_reg_pub_event,
-        assert_publisher_liveliness: stub_assert_liveliness,
+        register_subscriber_event: Some(stub_reg_sub_event),
+        register_publisher_event: Some(stub_reg_pub_event),
+        assert_publisher_liveliness: Some(stub_assert_liveliness),
         next_deadline_ms: None,
         set_wake_callback: None,
         pub_loan: None,

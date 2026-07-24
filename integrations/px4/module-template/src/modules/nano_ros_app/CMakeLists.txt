@@ -29,7 +29,7 @@ px4_add_module(
     INCLUDES
         ${_nros_root}/packages/core/nros-cpp/include
         ${_nros_root}/packages/core/nros-c/include
-        ${_nros_root}/packages/core/nros-rmw-cffi/include
+        ${_nros_root}/packages/core/nros-rmw-abi/include
     SRCS
         ${CMAKE_CURRENT_LIST_DIR}/nano_ros_app.cpp
 )

@@ -64,5 +64,5 @@ WFE wake.
 * `examples/native/rust/custom-transport-{talker,listener}/`
   — Rust-side equivalents (two-process loopback over a Unix
   socket).
-* `packages/core/nros-rmw-cffi/include/nros/rmw_transport.h` —
+* `packages/core/nros-rmw-abi/include/nros/rmw_transport.h` —
   canonical C ABI header for `nros_transport_ops_t`.

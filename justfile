@@ -339,7 +339,7 @@ check: check-fast check-build
 # is the per-push CI gate (`check.yml`).
 [group("main")]
 check-fast: \
-    check-platform-abi-mirror check-rmw-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
+    check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
@@ -477,12 +477,6 @@ check-dep-chain:
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
-# Issue #239 — RMW C ABI hand-mirror field-parity gate: `nros_rmw_vtable_t`
-# slot names/order + every `nros_rmw_*_t` entity struct vs the Rust
-# `NrosRmw*` twins. Complements the #238 abi_layout size/align asserts
-# (which a same-width split/rename/reorder slips past).
-check-rmw-abi-mirror:
-    @bash scripts/check-rmw-abi-mirror.sh
 
 # Phase 176.4 — verify <nros/board.h> matches the Rust extern block
 # and the `nros_board_export!` macro emission in nros-board-cffi.
@@ -1709,7 +1703,7 @@ check-c: check-c-fmt
     # side drifting fails exactly one guard. `-fsyntax-only` still
     # evaluates static asserts.
     cc -fsyntax-only \
-        -Ipackages/core/nros-rmw-cffi/include \
+        -Ipackages/core/nros-rmw-abi/include \
         packages/core/nros-rmw-cffi/tests/c_stubs/abi_layout_check.c
     echo "All C checks passed!"
 

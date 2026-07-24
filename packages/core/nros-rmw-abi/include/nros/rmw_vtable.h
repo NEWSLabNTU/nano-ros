@@ -444,15 +444,6 @@ const nros_rmw_vtable_t *nros_rmw_cffi_lookup(const char *name);
  *  `buf=NULL, cap=0` to query the count only. */
 size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
 
-/** Phase 128.A.2 — walk the `.nros_rmw_init` linker section, invoking
- *  every backend init entry exactly once. Idempotent; subsequent calls
- *  are no-ops. Returns the number of entries invoked on this call (0
- *  on the second and later calls, or when no `nros-rmw-*` library is
- *  linked).
- *
- *  Called automatically from `Executor::open` / `nros::init`; backends
- *  should not call this themselves. */
-size_t nros_rmw_cffi_walk_init_section(void);
 
 /** Phase 249 P4b.2 — convenience macro for static-library backends.
  *  Place in exactly one TU per backend to self-register the backend

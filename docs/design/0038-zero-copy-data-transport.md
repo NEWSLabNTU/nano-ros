@@ -349,7 +349,7 @@ transport-agnostic, but only because the backend upholds two obligations. The
 link (TCP / UDP / serial / Bluetooth / raw-eth / CAN) is configured **below** the
 RMW boundary — zenoh-pico `Z_FEATURE_LINK_{TCP,SERIAL,BLUETOOTH,WS,RAWETH}`,
 micro-XRCE UART/UDP transports, the runtime-pluggable `NrosTransportOps`
-(`nros-rmw-cffi/include/nros/rmw_transport.h`). The `Subscriber` never sees the
+(`nros-rmw-abi/include/nros/rmw_transport.h`). The `Subscriber` never sees the
 link; it sees a reassembled message in a slot. For that to hold:
 
 ### T1. Linearization is the backend's job (the one unavoidable copy)

@@ -68,7 +68,7 @@ unsafe extern "C" {
 }
 
 /// Failure mode when the runtime rejects the vtable. Mirrors
-/// `NROS_RMW_RET_*` in `packages/core/nros-rmw-cffi/include/nros/rmw_ret.h`.
+/// `NROS_RMW_RET_*` in `packages/core/nros-rmw-abi/include/nros/rmw_ret.h`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct RegisterError(pub c_int);
 

@@ -125,7 +125,7 @@ fn main() {
         .include(microxrce.join("src/c"))
         .include(xrce_c.join("src"))
         .include(xrce_c.join("include"))
-        .include(workspace.join("packages/core/nros-rmw-cffi/include"))
+        .include(workspace.join("packages/core/nros-rmw-abi/include"))
         .include(workspace.join("packages/core/nros-platform-api/include"));
     if is_posix {
         // `_POSIX_C_SOURCE` is what unlocks `clock_gettime`,

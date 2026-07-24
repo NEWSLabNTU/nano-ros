@@ -12,22 +12,30 @@ Design decisions + rationale → [RFC-0054](../design/0054-c-header-abi-ssot.md)
 ## Work items
 
 ### W1 — RMW surface
-- [ ] W1.1 Extract `packages/core/nros-rmw-abi/`: move
+- [x] W1.1 (2026-07-24) Extract `packages/core/nros-rmw-abi/`: move
   `nros-rmw-cffi/include/nros/rmw_*.h` + Doxyfile; add a CMake INTERFACE
   target; repoint every C/C++ include path (cyclonedds, uorb, xrce-cffi
   build.rs, cyclonedds-sys build.rs, zephyr module, CMakeLists).
-- [ ] W1.2 `scripts/gen-abi-bindings.sh` + committed
+- [x] W1.2 (2026-07-24) `scripts/gen-abi-bindings.sh` + committed
   `nros-rmw-cffi/src/generated.rs` (pinned bindgen-cli; `--use-core`,
   `ctypes-prefix core::ffi`, moduleconsts enums, allowlist `nros_rmw_.*`,
   layout tests on, version stamp).
-- [ ] W1.3 `lib.rs` surgery: delete the hand type definitions, re-export
+- [x] W1.3 (2026-07-24) `lib.rs` surgery: delete the hand type definitions, re-export
   generated items, add compat aliases (`NrosRmwVtable`, `NrosRmwQos`, …),
   keep constants/helper impls. Migrate doc comments into the headers where
   they aren't already.
-- [ ] W1.4 Fix consumer churn: vtable-authoring sites (`nros-rmw-zenoh`,
+- [x] W1.4 (2026-07-24) Fix consumer churn: vtable-authoring sites (`nros-rmw-zenoh`,
   xrce/cyclonedds adapters, `rust_adapter.rs`) to the generated fn-ptr
   signatures (`*const c_char` etc.). All 8 dependent crates green.
-- [ ] W1.5 Retire the rmw drift gates: `check-rmw-abi-mirror.sh`,
+- [x] W1.5 (2026-07-24) Retired: check-rmw-abi-mirror.sh, gen-rmw-abi-offsets.py,
+  tests/abi_offsets.{rs,c} + build.rs block, the Rust `abi_layout` const
+  asserts, the justfile hook. KEPT `abi_layout_check.c` — its
+  `_Static_assert`s guard the HEADER's own layout stability (C-side-only
+  invariant, not mirror parity). Extras landed with W1: dead
+  `nros_rmw_cffi_walk_init_section` decl removed from rmw_vtable.h (walker
+  deleted in phase-249 — latent undefined-symbol trap);
+  `--default-macro-constant-type signed` so `NROS_RMW_RET_OK` types i32
+  (no typed shadow needed). Retire the rmw drift gates (detail superseded above): `check-rmw-abi-mirror.sh`,
   `tests/abi_offsets.*`, `gen-rmw-abi-offsets.py`, the rmw `abi_layout`
   const block + `abi_layout_check.c` width asserts (keep any that guard
   C-side-only invariants). justfile hooks updated.

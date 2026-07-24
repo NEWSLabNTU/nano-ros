@@ -81,7 +81,7 @@ pub struct NrosRmwXrceTransportOps {
 /// Failure mode when the runtime rejects the vtable.
 ///
 /// Mirrors `NROS_RMW_RET_*` constants from
-/// `packages/core/nros-rmw-cffi/include/nros/rmw_ret.h`. v1 is opaque
+/// `packages/core/nros-rmw-abi/include/nros/rmw_ret.h`. v1 is opaque
 /// — callers should treat any non-zero return as a hard failure and
 /// abort startup.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

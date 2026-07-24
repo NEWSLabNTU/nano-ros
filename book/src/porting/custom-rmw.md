@@ -234,7 +234,7 @@ If your transport library is C or C++, use `nros-rmw-cffi` — a vtable
 of C function pointers that map one-to-one onto the Rust trait methods.
 
 The hand-written header lives at
-`packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`. Browse the
+`packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`. Browse the
 rendered reference at [/api/rmw-cffi/](../api/rmw-cffi/index.html) for
 per-field return-value, threading, and blocking conventions.
 

@@ -50,7 +50,7 @@ use crate::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
     NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
-    ret_from_error,
+    event_kind_from_c, ret_from_error,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -200,10 +200,11 @@ where
 ///
 /// `ptr`, if non-null, must point to a valid null-terminated byte
 /// sequence that outlives the returned borrow.
-unsafe fn cstr_to_str<'a>(ptr: *const u8) -> &'a str {
+unsafe fn cstr_to_str<'a>(ptr: *const core::ffi::c_char) -> &'a str {
     if ptr.is_null() {
         return "";
     }
+    let ptr = ptr.cast::<u8>();
     let mut len = 0usize;
     // Bound the scan so a missing terminator can't read off the end of
     // a small caller buffer. 1 KiB matches the typical NAME_BUF_LEN
@@ -276,24 +277,24 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
     /// lifetime — safe to hand to `nros_rmw_cffi_register`.
     pub const VTABLE: NrosRmwVtable = NrosRmwVtable {
-        open: open_trampoline::<R>,
-        close: close_trampoline::<R>,
-        drive_io: drive_io_trampoline::<R>,
-        create_publisher: create_publisher_trampoline::<R>,
-        destroy_publisher: destroy_publisher_trampoline::<R>,
-        publish_raw: publish_raw_trampoline::<R>,
-        create_subscriber: create_subscriber_trampoline::<R>,
-        destroy_subscriber: destroy_subscriber_trampoline::<R>,
-        try_recv_raw: try_recv_raw_trampoline::<R>,
-        has_data: has_data_trampoline::<R>,
-        create_service_server: create_service_server_trampoline::<R>,
-        destroy_service_server: destroy_service_server_trampoline::<R>,
-        try_recv_request: try_recv_request_trampoline::<R>,
-        has_request: has_request_trampoline::<R>,
-        send_reply: send_reply_trampoline::<R>,
-        create_service_client: create_service_client_trampoline::<R>,
-        destroy_service_client: destroy_service_client_trampoline::<R>,
-        call_raw: call_raw_trampoline::<R>,
+        open: Some(open_trampoline::<R>),
+        close: Some(close_trampoline::<R>),
+        drive_io: Some(drive_io_trampoline::<R>),
+        create_publisher: Some(create_publisher_trampoline::<R>),
+        destroy_publisher: Some(destroy_publisher_trampoline::<R>),
+        publish_raw: Some(publish_raw_trampoline::<R>),
+        create_subscriber: Some(create_subscriber_trampoline::<R>),
+        destroy_subscriber: Some(destroy_subscriber_trampoline::<R>),
+        try_recv_raw: Some(try_recv_raw_trampoline::<R>),
+        has_data: Some(has_data_trampoline::<R>),
+        create_service_server: Some(create_service_server_trampoline::<R>),
+        destroy_service_server: Some(destroy_service_server_trampoline::<R>),
+        try_recv_request: Some(try_recv_request_trampoline::<R>),
+        has_request: Some(has_request_trampoline::<R>),
+        send_reply: Some(send_reply_trampoline::<R>),
+        create_service_client: Some(create_service_client_trampoline::<R>),
+        destroy_service_client: Some(destroy_service_client_trampoline::<R>),
+        call_raw: Some(call_raw_trampoline::<R>),
         // Phase 130.8 — wire non-blocking trampolines so Rust-backed
         // CFFI consumers (dust-DDS, future Rust Cyclone wrapper)
         // skip the legacy blocking call_raw fallback inside
@@ -302,9 +303,9 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // Ok(None)" base behaviour.
         send_request_raw: Some(send_request_raw_trampoline::<R>),
         try_recv_reply_raw: Some(try_recv_reply_raw_trampoline::<R>),
-        register_subscriber_event: register_subscriber_event_trampoline::<R>,
-        register_publisher_event: register_publisher_event_trampoline::<R>,
-        assert_publisher_liveliness: assert_publisher_liveliness_trampoline::<R>,
+        register_subscriber_event: Some(register_subscriber_event_trampoline::<R>),
+        register_publisher_event: Some(register_publisher_event_trampoline::<R>),
+        assert_publisher_liveliness: Some(assert_publisher_liveliness_trampoline::<R>),
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
         set_wake_callback: Some(set_wake_callback_trampoline::<R>),
         // Phase 124.A — zero-copy slots default to NULL on the
@@ -356,10 +357,10 @@ impl<R: RustBackend> RustBackendAdapter<R> {
 // ============================================================================
 
 unsafe extern "C" fn open_trampoline<R: RustBackend>(
-    locator: *const u8,
+    locator: *const core::ffi::c_char,
     mode: u8,
     domain_id: u32,
-    node_name: *const u8,
+    node_name: *const core::ffi::c_char,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     if out.is_null() {
@@ -422,9 +423,9 @@ unsafe extern "C" fn drive_io_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
-    topic_name: *const u8,
-    type_name: *const u8,
-    type_hash: *const u8,
+    topic_name: *const core::ffi::c_char,
+    type_name: *const core::ffi::c_char,
+    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwPublisher,
@@ -493,9 +494,9 @@ unsafe extern "C" fn publish_raw_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
-    topic_name: *const u8,
-    type_name: *const u8,
-    type_hash: *const u8,
+    topic_name: *const core::ffi::c_char,
+    type_name: *const core::ffi::c_char,
+    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwSubscriber,
@@ -625,9 +626,12 @@ unsafe extern "C" fn subscriber_supports_in_place_trampoline<R: RustBackend>(
 unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscriber,
     ctx: *mut core::ffi::c_void,
-    cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
+    cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize)>,
 ) -> i32 {
     let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(cb) = cb else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     match Subscriber::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
@@ -643,9 +647,9 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
-    service_name: *const u8,
-    type_name: *const u8,
-    type_hash: *const u8,
+    service_name: *const core::ffi::c_char,
+    type_name: *const core::ffi::c_char,
+    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwServiceServer,
@@ -764,9 +768,9 @@ unsafe extern "C" fn send_reply_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
-    service_name: *const u8,
-    type_name: *const u8,
-    type_hash: *const u8,
+    service_name: *const core::ffi::c_char,
+    type_name: *const core::ffi::c_char,
+    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwServiceClient,
@@ -912,20 +916,21 @@ const _: () = {
     );
     assert!(size_of::<crate::NrosRmwCountStatus>() == size_of::<nros_rmw::CountStatus>());
     assert!(align_of::<crate::NrosRmwCountStatus>() == align_of::<nros_rmw::CountStatus>());
-    // EventKind enum tags must round-trip 0..=4 between the two
-    // `#[repr(u8)]` definitions.
+    // EventKind tags must round-trip 0..=4 between the generated C
+    // discriminants and the `#[repr(u8)]` trait enum.
+    use crate::nros_rmw_event_kind_t as ck;
     assert!(
-        NrosRmwEventKind::LivelinessChanged as u8 == nros_rmw::EventKind::LivelinessChanged as u8
+        ck::NROS_RMW_EVENT_LIVELINESS_CHANGED == nros_rmw::EventKind::LivelinessChanged as ck::Type
     );
     assert!(
-        NrosRmwEventKind::RequestedDeadlineMissed as u8
-            == nros_rmw::EventKind::RequestedDeadlineMissed as u8
+        ck::NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED
+            == nros_rmw::EventKind::RequestedDeadlineMissed as ck::Type
     );
-    assert!(NrosRmwEventKind::MessageLost as u8 == nros_rmw::EventKind::MessageLost as u8);
-    assert!(NrosRmwEventKind::LivelinessLost as u8 == nros_rmw::EventKind::LivelinessLost as u8);
+    assert!(ck::NROS_RMW_EVENT_MESSAGE_LOST == nros_rmw::EventKind::MessageLost as ck::Type);
+    assert!(ck::NROS_RMW_EVENT_LIVELINESS_LOST == nros_rmw::EventKind::LivelinessLost as ck::Type);
     assert!(
-        NrosRmwEventKind::OfferedDeadlineMissed as u8
-            == nros_rmw::EventKind::OfferedDeadlineMissed as u8
+        ck::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
+            == nros_rmw::EventKind::OfferedDeadlineMissed as ck::Type
     );
 };
 
@@ -940,9 +945,14 @@ unsafe extern "C" fn register_subscriber_event_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     // Explicit conversion, not a transmute: `NrosRmwEventKind` is
-    // C-int-sized (#238) while trait `EventKind` is `#[repr(u8)]` —
+    // C-uint-sized (#238) while trait `EventKind` is `#[repr(u8)]` —
     // reinterpreting bytes would be UB.
-    let trait_kind: nros_rmw::EventKind = kind.into();
+    let trait_kind: nros_rmw::EventKind = event_kind_from_c(kind);
+    // The generated callback type is nullable; a NULL callback can't be
+    // forwarded into the trait's non-null callback surface.
+    let Some(cb) = cb else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
     // SAFETY: see module-level note. `cb`'s parameter types
     // `(NrosRmwEventKind, *const NrosRmwEventPayload, *mut c_void)` are
     // ABI-compatible with the trait's `(EventKind, *const c_void, *mut c_void)`.
@@ -984,7 +994,10 @@ unsafe extern "C" fn register_publisher_event_trampoline<R: RustBackend>(
     }
     let p = unsafe { &mut *p_ptr };
     // Explicit conversion, not a transmute (see subscriber trampoline / #238).
-    let trait_kind: nros_rmw::EventKind = kind.into();
+    let trait_kind: nros_rmw::EventKind = event_kind_from_c(kind);
+    let Some(cb) = cb else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
     let trait_cb: nros_rmw::EventCallback = unsafe { core::mem::transmute(cb) };
     let res = unsafe {
         Publisher::register_event_callback(p, trait_kind, deadline_ms, trait_cb, user_context)
@@ -1068,13 +1081,15 @@ unsafe extern "C" fn ping_session_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
-    size_cb: unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void),
-    chunk_cb: unsafe extern "C" fn(
-        out_buf: *mut u8,
-        cap: usize,
-        out_written: *mut usize,
-        user_ctx: *mut c_void,
-    ),
+    size_cb: Option<unsafe extern "C" fn(out_total_len: *mut usize, user_ctx: *mut c_void)>,
+    chunk_cb: Option<
+        unsafe extern "C" fn(
+            out_buf: *mut u8,
+            cap: usize,
+            out_written: *mut usize,
+            user_ctx: *mut c_void,
+        ),
+    >,
     user_ctx: *mut c_void,
 ) -> NrosRmwRet {
     // Phase 124.E.1 — delegate to the Rust backend's
@@ -1083,6 +1098,10 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     // in by overriding for true streamed publish into the network
     // buffer.
     let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    // Generated ABI marks the callbacks nullable; the trait surface is not.
+    let (Some(size_cb), Some(chunk_cb)) = (size_cb, chunk_cb) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     // SAFETY: this trampoline is entered from the C ABI with the same
