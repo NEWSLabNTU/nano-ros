@@ -44,21 +44,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#250** — rosidl-codegen silently flattens multi-dimensional IDL arrays to the first dimension
-(wire-incompatible layout, no error; `.idl`-sourced packages only). Reject loudly until supported.
-See `0250-*`. (release-prep audit 2026-07-24)
-
-**#249** — cargo-nano-ros scaffold bakes `TODO@todo.com` maintainer placeholders into every
-generated package.xml; take from git config with an instructional fallback. See `0249-*`.
-(release-prep audit 2026-07-24)
-
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
 phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
-
-**#247** — `nros codegen-system` PIO/PX4 ahead-of-vendor arms emit literal `TODO(E.3)` stub output
-that looks like a real artifact; implement or fail loudly. See `0247-*`. (release-prep audit
-2026-07-24)
 
 **#246** — realtime_tiers_e2e nuttx_arm_rust cell TIMES OUT on a fresh image (baseline-verified
 pre-existing — NOT the W5.9 sporadic work; cpp/c siblings pass ~13 s); riscv trio

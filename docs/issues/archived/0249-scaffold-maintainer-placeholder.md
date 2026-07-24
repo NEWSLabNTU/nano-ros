@@ -1,7 +1,7 @@
 ---
 id: 249
 title: "cargo-nano-ros scaffold bakes maintainer TODO@todo.com into generated package.xml"
-status: open
+status: resolved
 type: polish
 severity: low
 area: cli
@@ -25,3 +25,9 @@ Take maintainer name/email from git config (`user.name`/`user.email`) at
 scaffold time, falling back to a clearly-instructional placeholder
 (`<maintainer email="you@example.com">Your Name</maintainer>` plus a
 scaffold-time stdout note). One helper, four call sites.
+
+## Resolution (2026-07-24)
+
+Landed (`7004c50fd`): maintainer sourced from `git config user.name`/
+`user.email`, instructional `you@example.com` fallback. One helper, all four
+package.xml sites.

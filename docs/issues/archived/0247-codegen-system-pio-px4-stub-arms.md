@@ -1,7 +1,7 @@
 ---
 id: 247
 title: "nros codegen-system PIO/PX4 ahead-of-vendor arms emit literal TODO(E.3) stub output"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: cli
@@ -30,3 +30,10 @@ board overlay emission — RFC-0039), or make the arms fail loudly
 ("PlatformIO/PX4 codegen-system output not yet implemented") instead of
 emitting a plausible-looking stub file. Loud failure is the cheap
 release-safe option.
+
+## Resolution (2026-07-24)
+
+Loud-warning option landed (`7004c50fd`): `--ahead-of-vendor` prints a
+prominent WARNING naming what the PIO/PX4 skeletons lack and the manual
+operator step. Artifacts stay the designed E.3 skeletons (spec-tested);
+H.6/H.7 remain the implementation follow-ups.

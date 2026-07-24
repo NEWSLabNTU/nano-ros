@@ -1,7 +1,7 @@
 ---
 id: 250
 title: "rosidl-codegen silently flattens multi-dimensional IDL arrays to the first dimension"
-status: open
+status: resolved
 type: bug
 severity: low
 area: codegen
@@ -29,3 +29,10 @@ mode is silent data corruption at the CDR boundary, not a build error.
 Reject multi-dim arrays loudly at generation time ("multi-dimensional IDL
 arrays not supported") until proper support lands. Silent flattening is the
 worst of the three options.
+
+## Resolution (2026-07-24)
+
+Landed (`7004c50fd`) — better than reject-loudly: multi-dim IDL arrays now
+lower to NESTED fixed arrays (row-major; CDR-identical to the flat layout),
+so they are supported, not refused. Regression test
+`test_multidim_array_lowers_to_nested_arrays`.
