@@ -50,11 +50,18 @@ marker print, extend the W5.x-style e2e to assert it on the rust cell.
 - `sched_class`: bake-time reject until a consumer exists (kill the
   silent dead end); revisit as implement when phase-162 lands.
 
-### W5 — verification
+### W5 — verification + housekeeping
 
 Per-wave marker e2e where kernel-visible; bake-reject unit tests in
 orchestration-ir; `just check` + affected fixture families + the
 realtime lanes. Resolve + archive 0261–0265.
+
+Housekeeping folded in (2026-07-25): the stale-CLI mtime loop —
+`setup-cli` now touches the binary after a successful build, because a
+pull/rebase bumps cli source mtimes without changing content, cargo
+skips the relink, and both mtime-based guards (setup-cli's scan +
+cargo.sh's #197 gate) then flag the CLI stale forever until a manual
+`touch`. Bit four fixture-lane runs in one session before the fix.
 
 ## Non-goals
 

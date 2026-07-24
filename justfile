@@ -2145,6 +2145,14 @@ setup-cli:
     fi
     echo "[setup-cli] building nros CLI (packages/cli)…"
     cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
+    # phase-302 W5 — freshen the binary's mtime even when cargo skipped the
+    # relink (fingerprint-fresh sources whose mtimes were bumped by a
+    # pull/rebase). Without this, the mtime-based staleness scans here and in
+    # cargo.sh's #197 guard flag the CLI stale FOREVER: cargo never rewrites
+    # an up-to-date binary, so every fixture lane loops on "rebuild via
+    # setup-cli" until someone touches the file by hand. Build success means
+    # the binary matches the current sources — stamp it so.
+    touch "$bin"
     echo "[setup-cli] built: $bin"
     warn_stale_shadow
 
