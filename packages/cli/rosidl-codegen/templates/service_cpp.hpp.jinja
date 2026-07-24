@@ -41,6 +41,13 @@ struct {{ service_name }} {
 {%- if !has_request_fields %}
         uint8_t _dummy;
 {%- endif %}
+{%- if !request_constants.is_empty() %}
+
+        // Message constants (rosidl C++ convention: `Svc::Request::CONSTANT`)
+{%- for constant in request_constants %}
+        static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
+{%- endif %}
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Request_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
@@ -64,6 +71,13 @@ struct {{ service_name }} {
 {%- endfor %}
 {%- if !has_response_fields %}
         uint8_t _dummy;
+{%- endif %}
+{%- if !response_constants.is_empty() %}
+
+        // Message constants (rosidl C++ convention: `Svc::Response::CONSTANT`)
+{%- for constant in response_constants %}
+        static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
 {%- endif %}
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Response_";

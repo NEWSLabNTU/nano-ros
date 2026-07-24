@@ -44,6 +44,13 @@ struct {{ message_name }} {
 {%- if !has_fields %}
     uint8_t _dummy; // Empty struct placeholder
 {%- endif %}
+{%- if !constants.is_empty() %}
+
+    // Message constants (rosidl C++ convention: `Msg::CONSTANT`)
+{%- for constant in constants %}
+    static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
+{%- endif %}
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "{{ package_name }}::msg::dds_::{{ message_name }}_";
@@ -91,7 +98,8 @@ struct {{ message_name }}View {
 };
 {%- endif %}
 
-// Constants
+// Constants — namespace-level `<Msg>_<NAME>` aliases (legacy shape; prefer
+// the struct-member `<Msg>::<NAME>` above, which matches rosidl C++).
 {%- for constant in constants %}
 static constexpr {{ constant.c_type }} {{ message_name }}_{{ constant.name }} = {{ constant.value }};
 {%- endfor %}

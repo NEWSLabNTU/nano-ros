@@ -473,18 +473,32 @@ function(nros_find_interfaces)
     #    packages as DEPENDENCIES (a superset of the transitive closure) so the
     #    C++ FFI include!() chain sees every cross-package type; the C path
     #    ignores the surplus.
+    #
+    #    C++ FFI dedupe: each pkg's FFI crate is a flat-module superset of every
+    #    preceding pkg, so only the topo-LAST pkg builds one (NO_FFI_CRATE on
+    #    the others) and its archive is attached to every pkg's INTERFACE
+    #    target below — two sibling superset archives on one link line would
+    #    duplicate every shared `nros_cpp_*` symbol (multi-interface-pkg
+    #    consumers, e.g. autoware_control_msgs + tier4_system_msgs).
+    list(GET _NROS_RESOLVED_PACKAGES -1 _nros_last_pkg)
+    string(TOUPPER "${_ARG_LANGUAGE}" _nros_lang_upper) # verbs pass lowercase "cpp"
     set(_all_preceding_pkgs "")
     foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
         set(_skip "")
         if(_ARG_SKIP_INSTALL)
             set(_skip "SKIP_INSTALL")
         endif()
+        set(_no_ffi "")
+        if(_nros_lang_upper STREQUAL "CPP" AND NOT _pkg STREQUAL _nros_last_pkg)
+            set(_no_ffi "NO_FFI_CRATE")
+        endif()
         nros_generate_interfaces(${_pkg}
             ${_NROS_RESOLVED_${_pkg}_FILES}
             DEPENDENCIES ${_all_preceding_pkgs}
             LANGUAGE ${_ARG_LANGUAGE}
             ROS_EDITION ${_ARG_ROS_EDITION}
-            ${_skip})
+            ${_skip}
+            ${_no_ffi})
         # Re-export per-package vars to the caller (canonical sets all of these;
         # the zephyr generator only sets GENERATED_RS_FILES — the rest re-export
         # empty, harmless).
@@ -495,4 +509,17 @@ function(nros_find_interfaces)
         set(${_pkg}_GENERATED_RS_FILES "${${_pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
         list(APPEND _all_preceding_pkgs "${_pkg}")
     endforeach()
+
+    # 3. C++ FFI dedupe (see above): route the topo-last pkg's superset archive
+    #    through every earlier pkg's INTERFACE target, so a consumer linking any
+    #    subset still resolves all `nros_cpp_*` symbols from ONE archive (the
+    #    same imported target twice on a link line is de-duped by CMake).
+    if(_nros_lang_upper STREQUAL "CPP" AND TARGET ${_nros_last_pkg}__nano_ros_cpp_ffi_lib)
+        foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
+            if(NOT _pkg STREQUAL _nros_last_pkg AND TARGET ${_pkg}__nano_ros_cpp)
+                target_link_libraries(${_pkg}__nano_ros_cpp
+                    INTERFACE ${_nros_last_pkg}__nano_ros_cpp_ffi_lib)
+            endif()
+        endforeach()
+    endif()
 endfunction()

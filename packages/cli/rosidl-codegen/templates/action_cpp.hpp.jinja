@@ -44,6 +44,13 @@ struct {{ action_name }} {
 {%- if !has_goal_fields %}
         uint8_t _dummy;
 {%- endif %}
+{%- if !goal_constants.is_empty() %}
+
+        // Message constants (rosidl C++ convention: `Action::Goal::CONSTANT`)
+{%- for constant in goal_constants %}
+        static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
+{%- endif %}
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Goal_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
@@ -68,6 +75,13 @@ struct {{ action_name }} {
 {%- if !has_result_fields %}
         uint8_t _dummy;
 {%- endif %}
+{%- if !result_constants.is_empty() %}
+
+        // Message constants (rosidl C++ convention: `Action::Result::CONSTANT`)
+{%- for constant in result_constants %}
+        static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
+{%- endif %}
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Result_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
@@ -91,6 +105,13 @@ struct {{ action_name }} {
 {%- endfor %}
 {%- if !has_feedback_fields %}
         uint8_t _dummy;
+{%- endif %}
+{%- if !feedback_constants.is_empty() %}
+
+        // Message constants (rosidl C++ convention: `Action::Feedback::CONSTANT`)
+{%- for constant in feedback_constants %}
+        static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
+{%- endfor %}
 {%- endif %}
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Feedback_";

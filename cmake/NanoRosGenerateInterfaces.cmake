@@ -109,7 +109,7 @@ endfunction()
 # =========================================================================
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
-    "SKIP_INSTALL"
+    "SKIP_INSTALL;NO_FFI_CRATE"
     "ROS_EDITION;LANGUAGE;CODEGEN_CONFIG"
     "DEPENDENCIES"
     ${ARGN}
@@ -370,7 +370,14 @@ function(nros_generate_interfaces target)
     # ---- Build Rust FFI glue for generated message types ----
     # The generated .rs files provide extern "C" publish/serialize/deserialize
     # functions. We compile them into a static library via cargo.
-    if(_generated_rs_files)
+    #
+    # NO_FFI_CRATE (issue: multi-interface-pkg consumers): each pkg's FFI crate
+    # include!()s the rs closure of EVERY preceding pkg (flat module), so two
+    # sibling crates on one link line = duplicate `nros_cpp_*` definitions.
+    # `nros_find_interfaces` therefore builds ONLY the topo-last pkg's crate
+    # (the superset) and attaches its archive to every pkg's INTERFACE target;
+    # the flag suppresses the per-pkg crate for the non-terminal pkgs.
+    if(_generated_rs_files AND NOT _ARG_NO_FFI_CRATE)
       # Phase 123.A.7 — share the FFI crate build dir across packages
       # when NANO_ROS_GEN_CACHE_DIR is set.
       if(_gen_cache_root)

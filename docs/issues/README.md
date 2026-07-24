@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#253** — C++ interface FFI crates are flat-module supersets: two interface pkgs on one link
+line duplicated every shared `nros_cpp_*` symbol (hit by the autoware-safety-island example's
+control+tier4 pair; `local-msg-package` template already broken on main via the
+`nros_workspace_interfaces` route). Mitigated for the `nros_find_interfaces` route
+(topo-last-only crate + shared archive); proper fix = per-pkg-symbol crates. See `0253-*`.
+
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
 phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
