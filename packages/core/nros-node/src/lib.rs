@@ -135,7 +135,9 @@ pub use nros_rmw::{
 
 // Re-export RMW protocol traits so thin wrappers (nros-c, nros-cpp) can
 // pull them through nros-node instead of going around it. Phase 91.B.
-pub use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Session, Subscription};
+pub use nros_rmw::{
+    ClientTrait, Publisher, ServiceTrait, Session, Subscription as SubscriptionTrait,
+};
 
 // Re-export action protocol types from nros-core. Same motivation as the
 // RMW trait re-exports above — keeps thin wrappers off the

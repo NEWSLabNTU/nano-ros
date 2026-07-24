@@ -23,8 +23,8 @@
 
 use core::ffi::c_void;
 use nros_rmw::{
-    EventCallback, EventKind, Publisher, QosSettings, Session, SessionMode, Subscriber, TopicInfo,
-    Transport, TransportConfig, TransportError,
+    EventCallback, EventKind, Publisher, QosSettings, Session, SessionMode, Subscription,
+    TopicInfo, Transport, TransportConfig, TransportError,
 };
 use nros_rmw_zenoh::ZenohTransport;
 use std::{
@@ -133,8 +133,8 @@ fn zenoh_event_matrix() {
 
     // ---- Subscriber-side mask ----
     let mut sub = sess
-        .create_subscriber(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
-        .expect("create_subscriber");
+        .create_subscription(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
+        .expect("create_subscription");
 
     // Full Tier-1 sub-side set: MessageLost (attachment seq gap),
     // RequestedDeadlineMissed (clock check), LivelinessChanged

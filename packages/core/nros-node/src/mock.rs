@@ -10,7 +10,7 @@ use core::cell::{Cell, RefCell};
 
 use nros_rmw::{
     ClientTrait, Publisher, QosSettings, ServiceInfo, ServiceRequest, ServiceTrait, Session,
-    Subscriber, TopicInfo, TransportError,
+    Subscription, TopicInfo, TransportError,
 };
 
 /// Mock subscriber that can be loaded with canned CDR data. Holds a small
@@ -34,7 +34,7 @@ impl MockSubscriber {
     }
 }
 
-impl Subscriber for MockSubscriber {
+impl Subscription for MockSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {

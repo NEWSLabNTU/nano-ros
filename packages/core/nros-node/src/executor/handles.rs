@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
-use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription, TransportError};
+use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription as _, TransportError};
 
 use crate::session;
 
@@ -1369,7 +1369,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     pub fn try_recv_validated(
         &mut self,
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, NodeError> {
-        use nros_rmw::Subscription;
+        use nros_rmw::Subscription as _;
         self.handle
             .try_recv_validated(&mut self.buffer)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
@@ -1393,7 +1393,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         max_msgs: usize,
         out_lens: &mut [usize],
     ) -> Result<usize, NodeError> {
-        use nros_rmw::Subscription;
+        use nros_rmw::Subscription as _;
         self.handle
             .try_recv_sequence(buf, per_msg_cap, max_msgs, out_lens)
             .map_err(NodeError::Transport)
@@ -1404,7 +1404,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// service-client wake plumbing. No-op on backends that don't
     /// support waking — caller falls back to polling.
     pub fn register_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::Subscription;
+        use nros_rmw::Subscription as _;
         self.handle.register_waker(waker);
     }
 

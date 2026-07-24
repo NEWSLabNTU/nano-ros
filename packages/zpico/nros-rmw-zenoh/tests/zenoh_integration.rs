@@ -6,7 +6,8 @@
 #![cfg(feature = "platform-posix")]
 
 use nros_rmw::{
-    Publisher, QosSettings, Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig,
+    Publisher, QosSettings, Session, SessionMode, Subscription, TopicInfo, Transport,
+    TransportConfig,
 };
 use nros_rmw_zenoh::{ZenohTransport, keyexpr::TopicKeyExpr};
 use std::{thread, time::Duration};
@@ -110,7 +111,7 @@ fn test_pubsub_loopback() {
 
     // Create subscriber first
     let mut subscriber = session
-        .create_subscriber(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QosSettings::BEST_EFFORT)
         .expect("Failed to create subscriber");
 
     // Wait for subscriber to be established
@@ -199,7 +200,7 @@ fn test_pubsub_separate_sessions() {
 
     // Create subscriber
     let mut subscriber = sub_session
-        .create_subscriber(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QosSettings::BEST_EFFORT)
         .expect("Failed to create subscriber");
 
     // Wait for subscriber to be discovered
@@ -304,11 +305,11 @@ fn test_multiple_subscribers() {
     let topic2 = TopicInfo::new("test/sub2", "Int32", "hash2");
 
     let _sub1 = session
-        .create_subscriber(&topic1, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic1, QosSettings::BEST_EFFORT)
         .expect("Failed to create subscriber 1");
 
     let _sub2 = session
-        .create_subscriber(&topic2, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic2, QosSettings::BEST_EFFORT)
         .expect("Failed to create subscriber 2");
 
     session.close().expect("Failed to close session");
@@ -485,7 +486,7 @@ fn test_pubsub_loopback_with_scouting_disabled() {
     let topic = TopicInfo::new("test/props-loopback", "Int32", "hash_props");
 
     let mut subscriber = session
-        .create_subscriber(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QosSettings::BEST_EFFORT)
         .expect("Failed to create subscriber");
 
     thread::sleep(Duration::from_secs(1));

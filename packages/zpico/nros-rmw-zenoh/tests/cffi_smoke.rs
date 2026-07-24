@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use nros_rmw::{Publisher, QosSettings, Session, Subscriber, TopicInfo};
+use nros_rmw::{Publisher, QosSettings, Session, Subscription, TopicInfo};
 use nros_rmw_cffi::{CffiSession, NROS_RMW_RET_OK, RustBackendAdapter};
 use nros_rmw_zenoh::ZenohRmw;
 
@@ -29,11 +29,11 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
     // RFC-0054: vtable slots are now `Option<fn>` (generated from the C
     // header's nullable fn pointers) — assert the adapter filled each one.
     let vt = &RustBackendAdapter::<ZenohRmw>::VTABLE;
-    assert!(vt.open.is_some());
-    assert!(vt.close.is_some());
+    assert!(vt.create_session.is_some());
+    assert!(vt.destroy_session.is_some());
     assert!(vt.drive_io.is_some());
     assert!(vt.create_publisher.is_some());
-    assert!(vt.create_subscriber.is_some());
+    assert!(vt.create_subscription.is_some());
     assert!(vt.create_service_server.is_some());
     assert!(vt.create_service_client.is_some());
     assert_eq!(NROS_RMW_RET_OK, 0);
@@ -136,8 +136,8 @@ fn cffi_pubsub_round_trip() {
     let qos = QosSettings::BEST_EFFORT;
 
     let mut subscriber = session
-        .create_subscriber(&topic, qos)
-        .expect("create_subscriber");
+        .create_subscription(&topic, qos)
+        .expect("create_subscription");
     std::thread::sleep(Duration::from_secs(1));
     let publisher = session
         .create_publisher(&topic, qos)
