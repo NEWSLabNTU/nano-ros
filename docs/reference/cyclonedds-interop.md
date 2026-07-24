@@ -132,7 +132,7 @@ best-effort subscriber under strict matching).
 The vtable's three event slots are NULL in 117.3:
 
 ```c
-.register_subscriber_event   = NULL,
+.register_subscription_event   = NULL,
 .register_publisher_event    = NULL,
 .assert_publisher_liveliness = NULL,
 ```

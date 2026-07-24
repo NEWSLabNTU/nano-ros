@@ -94,8 +94,8 @@ domain of Phase 104.C, layered ABOVE the vtable.
 
 | Upstream | nano-ros | Status |
 |---|---|---|
-| `rmw_create_subscription` | `create_subscriber` | ✅ |
-| `rmw_destroy_subscription` | `destroy_subscriber` | ✅ |
+| `rmw_create_subscription` | `create_subscription` | ✅ |
+| `rmw_destroy_subscription` | `destroy_subscription` | ✅ |
 | `rmw_take` (typed) | (collapsed) | 🔀 |
 | `rmw_take_with_info` | (no `_with_info` variant — see §3.2) | ⚠ |
 | `rmw_take_serialized_message[_with_info]` | `try_recv_raw(*sub, *buf, cap)` | ✅ |
@@ -106,7 +106,7 @@ domain of Phase 104.C, layered ABOVE the vtable.
 | `rmw_subscription_get_actual_qos` | not exposed | ❌ deferred |
 | `rmw_subscription_set_content_filter` | not exposed | ❌ deferred |
 | `rmw_subscription_get_content_filter` | not exposed | ❌ deferred |
-| `rmw_subscription_set_on_new_message_callback` | `register_subscriber_event` (different scope) | ⚠ |
+| `rmw_subscription_set_on_new_message_callback` | `register_subscription_event` (different scope) | ⚠ |
 | `rmw_init_subscription_allocation` | (won't-do) | ❌ |
 | `has_data` (poll) | `has_data(*sub) -> i32` | nano-ros-specific |
 
@@ -114,11 +114,11 @@ domain of Phase 104.C, layered ABOVE the vtable.
 
 | Upstream | nano-ros | Status |
 |---|---|---|
-| `rmw_create_service` | `create_service_server` | ✅ |
-| `rmw_destroy_service` | `destroy_service_server` | ✅ |
+| `rmw_create_service` | `create_service` | ✅ |
+| `rmw_destroy_service` | `destroy_service` | ✅ |
 | `rmw_take_request` | `try_recv_request(*srv, *buf, cap, *seq_out)` | ✅ |
 | `rmw_send_response` | `send_reply(*srv, seq, *bytes, len)` | ✅ |
-| `rmw_service_set_on_new_request_callback` | `register_subscriber_event` (shared API) | ⚠ |
+| `rmw_service_set_on_new_request_callback` | `register_subscription_event` (shared API) | ⚠ |
 | `rmw_service_request_subscription_get_actual_qos` | not exposed | ❌ deferred |
 | `rmw_service_response_publisher_get_actual_qos` | not exposed | ❌ deferred |
 
@@ -126,9 +126,9 @@ domain of Phase 104.C, layered ABOVE the vtable.
 
 | Upstream | nano-ros | Status |
 |---|---|---|
-| `rmw_create_client` | `create_service_client` | ✅ |
+| `rmw_create_client` | `create_client` | ✅ |
 | `rmw_destroy_client` | (implicit via session close) | ⚠ |
-| `rmw_send_request` + `rmw_take_response` | `call_raw(*client, *req, req_len, *reply_buf, cap)` | 🔀 (collapsed round-trip) |
+| `rmw_send_request` + `rmw_take_response` | `send_request_raw` + `try_recv_reply_raw` (phase-301: the collapsed blocking `call_raw` slot was deleted) | ✅ |
 | `rmw_service_server_is_available` | `service_server_available` (Phase 124.C) | ✅ |
 | `rmw_client_set_on_new_response_callback` | (same shared event API) | ⚠ |
 | `rmw_client_request_publisher_get_actual_qos` | not exposed | ❌ deferred |
@@ -193,7 +193,7 @@ yet justified by a concrete user need.
 
 | Upstream | nano-ros | Status |
 |---|---|---|
-| `rmw_event_set_callback` | `register_publisher_event` / `register_subscriber_event` | ⚠ |
+| `rmw_event_set_callback` | `register_publisher_event` / `register_subscription_event` | ⚠ |
 | `rmw_take_event` | (callbacks fire directly) | 🔀 |
 | Statuses: `OFFERED_DEADLINE_MISSED` etc. | `nros_rmw_event_kind_t` | ✅ |
 | Liveliness statuses | covered via `assert_publisher_liveliness` + events | ✅ |
@@ -231,7 +231,7 @@ Reality was more nuanced than "missing entirely":
 
 - `nros-rmw-abi/include/nros/rmw_entity.h` defines a
   `can_loan_messages` flag on both `nros_rmw_publisher_t` and
-  `nros_rmw_subscriber_t`. Backend opts in by setting the flag
+  `nros_rmw_subscription_t`. Backend opts in by setting the flag
   during `create_*`. Today's data plane treats it as an opaque
   capability advertisement that no consumer reads.
 - `nros-node/src/executor/handles.rs` exposes a Rust-side
@@ -257,9 +257,9 @@ typedef struct nros_rmw_vtable_t {
     nros_rmw_ret_t (*commit_publish)(nros_rmw_publisher_t *pub,
         uint8_t *buf, size_t actual_len);
 
-    int32_t (*loan_recv)(nros_rmw_subscriber_t *sub,
+    int32_t (*loan_recv)(nros_rmw_subscription_t *sub,
         const uint8_t **out_buf, size_t *out_len);
-    void (*release_recv)(nros_rmw_subscriber_t *sub,
+    void (*release_recv)(nros_rmw_subscription_t *sub,
         const uint8_t *buf);
 } nros_rmw_vtable_t;
 ```
@@ -424,7 +424,7 @@ trips.
 /* Phase 124 — batch take. Returns number of messages taken
  * (0..max), or negative `nros_rmw_ret_t` on error. NULL slot
  * = backend doesn't support; runtime loops `try_recv_raw`. */
-int32_t (*try_recv_sequence)(nros_rmw_subscriber_t *sub,
+int32_t (*try_recv_sequence)(nros_rmw_subscription_t *sub,
     uint8_t *buf, size_t per_msg_cap, size_t max_msgs,
     size_t *out_lens);
 ```
@@ -453,7 +453,7 @@ historical context.
 
 **Use case.** Startup ordering — client should know the server
 is up before issuing the first call. Today users either
-time-out a `call_raw` and infer (costly + adds discovery
+time-out a service request and infer (costly + adds discovery
 latency) or hardcode startup delays.
 
 **Vtable addition:**
@@ -463,7 +463,7 @@ latency) or hardcode startup delays.
  * least one matching server has been discovered, 0 otherwise.
  * Negative `nros_rmw_ret_t` on error. NULL slot = backend can't
  * answer; runtime returns NROS_RMW_RET_UNSUPPORTED. */
-int32_t (*service_server_available)(nros_rmw_service_client_t *client);
+int32_t (*service_server_available)(nros_rmw_client_t *client);
 ```
 
 **Backend impl notes.** All three RMWs already track discovery

@@ -72,7 +72,7 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 - Discovery via SPDP multicast or unicast peer list (mirrors Cyclone's standard config knobs).
 - Heap required (Cyclone uses `malloc`); `BUILD_SHARED_LIBS=ON` produces `libddsc.so` for POSIX, static link for embedded.
 - **No services / actions yet** — service create/recv/reply currently returns `NROS_RMW_RET_UNSUPPORTED`.
-- **No status events yet** — `register_subscriber_event` / `register_publisher_event` / `assert_publisher_liveliness` slots are not wired to Cyclone listeners yet.
+- **No status events yet** — `register_subscription_event` / `register_publisher_event` / `assert_publisher_liveliness` slots are not wired to Cyclone listeners yet.
 
 **Build:**
 ```bash

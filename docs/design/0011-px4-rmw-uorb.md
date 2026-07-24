@@ -67,7 +67,7 @@ from [`topics.toml`](../../packages/px4/nros-rmw-uorb/topics.toml) by
 
 Lookup is O(1) hash + string compare; misses return
 `TransportError::InvalidConfig` from `Session::create_publisher` /
-`create_subscriber`.
+`create_subscription`.
 
 ## 4. Two API layers
 

@@ -46,7 +46,7 @@ or vendor the small subset of `dds/ddsi/ddsi_serdata_default.h` +
 The vtable's three event hooks are NULL:
 
 ```c
-.register_subscriber_event   = NULL,
+.register_subscription_event   = NULL,
 .register_publisher_event    = NULL,
 .assert_publisher_liveliness = NULL,
 ```

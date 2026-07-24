@@ -461,12 +461,12 @@ This is dramatically simpler than zpico-platform-mps2-an385's 55 FFI symbols (z_
 | `Rmw::open(config)` | `uxr_set_custom_transport_callbacks` + `uxr_init_custom_transport` + `uxr_init_session` + `uxr_create_session` + create streams |
 | `Session::create_publisher(topic, qos)` | `uxr_buffer_create_participant_bin` (once) + `create_topic_bin` + `create_publisher_bin` + `create_datawriter_bin` + `uxr_run_session_until_all_status` |
 | `Publisher::publish_raw(data)` | `uxr_buffer_topic(session, stream, datawriter_id, data, len)` |
-| `Session::create_subscriber(topic, qos)` | `create_subscriber_bin` + `create_datareader_bin` + `uxr_buffer_request_data` + `uxr_set_topic_callback` |
+| `Session::create_subscription(topic, qos)` | `create_subscriber_bin` + `create_datareader_bin` + `uxr_buffer_request_data` + `uxr_set_topic_callback` |
 | `Subscriber::try_recv_raw(buf)` | Read from callback-populated static buffer |
 | `Session::spin_once(timeout)` | `uxr_run_session_time(timeout)` |
 | `ServiceServer::try_recv_request` | Read from `uxrOnRequestFunc` callback buffer |
 | `ServiceServer::send_reply` | `uxr_buffer_reply(session, stream, replier_id, sample_id, data, len)` |
-| `ServiceClient::call_raw` | `uxr_buffer_request` + `uxr_run_session_until_data` for reply |
+| `ClientTrait::send_request_raw` / `try_recv_reply_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
 
 ### Key differences in the mapping
 

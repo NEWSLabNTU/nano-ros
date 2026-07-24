@@ -47,7 +47,7 @@ let response = promise.wait(&mut executor, 5000)?; // spins executor
 ```
 
 `Promise::wait` is the only blocking convenience. The lower-level
-`ServiceClientTrait::call_raw` is deprecated (Phase 82.9).
+`call_raw` (deprecated in Phase 82.9) was deleted from the RMW trait/vtable surface in phase-301 — `send_request_raw` + `try_recv_reply_raw` is the one path.
 
 ### C
 

@@ -66,7 +66,7 @@ rlib to emit one.
 
 **XRCE-DDS RMW bugs (critical):** `uxr_buffer_request_data` must be flushed with
 `uxr_run_session_time` immediately after the call — unflushed request_data in the reliable output
-stream causes intermittent timeouts when `call_raw` buffers a service request later (fixed in all
+stream causes intermittent timeouts when a later service request is buffered (pre-301 `call_raw`; fixed in all
 three `create_*` methods). Reliable streams need `STREAM_HISTORY >= 2` (we use 4); history=1 fails
 to recycle the single slot. The service client (requester) needs `uxr_buffer_request_data` to
 receive replies, same as subscribers and repliers.

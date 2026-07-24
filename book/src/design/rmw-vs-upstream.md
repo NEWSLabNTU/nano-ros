@@ -10,13 +10,24 @@ The C signatures shown for nano-ros come from
 counterparts are an alternative entry point for porters who already
 work in Rust; this page sticks to the C-vtable surface throughout.
 
+> **Phase-301 rename.** The vtable historically diverged from rmw's
+> vocabulary (`subscriber`, `service_server`, `service_client`,
+> `open`/`close`). Phase-301 (issues 0240/0241) aligned it: the entity
+> types are now `nros_rmw_subscription_t` / `nros_rmw_service_t` /
+> `nros_rmw_client_t`, the session slots are `create_session` /
+> `destroy_session`, and the deprecated blocking `call_raw` slot is
+> deleted (`send_request_raw` + `try_recv_reply_raw` is the one
+> request/reply path). Transport hints (`tx_express`,
+> `rx_buffer_hint`) moved out of `nros_rmw_qos_t` into per-create
+> options structs. This page uses the new names throughout.
+
 ## TL;DR
 
 | Concern | upstream `rmw.h` | `nros-rmw-cffi` |
 |---------|------------------|------------------|
 | Plugin loading | `dlopen("librmw_*.so")` at runtime | Single vtable registered at init |
-| Init sequence | `rmw_init_options_t` → `rmw_context_t` → entities | One `open()` call, returns the session |
-| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | Typed-with-opaque-tail: `nros_rmw_publisher_t` / `_subscriber_t` / `_service_server_t` / `_service_client_t` (visible metadata + opaque `backend_data`) |
+| Init sequence | `rmw_init_options_t` → `rmw_context_t` → entities | One `create_session()` call, returns the session |
+| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | Typed-with-opaque-tail: `nros_rmw_publisher_t` / `_subscription_t` / `_service_t` / `_client_t` (visible metadata + opaque `backend_data`) |
 | Wait | `rmw_wait(waitset, timeout)` blocks the caller | `drive_io(session, timeout_ms)` drives I/O once |
 | Serialization | typesupport-driven (rosidl) | Pre-serialized CDR bytes only |
 | Graph queries | `rmw_get_topic_names_and_types`, … | None |
@@ -75,9 +86,9 @@ options + context:
 
 ```c
 nros_rmw_session_t session = {0};
-nros_rmw_ret_t ret = vtable->open(locator, mode, domain_id, node_name, &session);
-/* ... use &session to create_publisher / create_subscriber / … */
-vtable->close(&session);
+nros_rmw_ret_t ret = vtable->create_session(locator, mode, domain_id, node_name, &session);
+/* ... use &session to create_publisher / create_subscription / … */
+vtable->destroy_session(&session);
 ```
 
 **Why.** Upstream's split is useful when an application owns multiple
@@ -120,11 +131,14 @@ nros_rmw_ret_t (*create_publisher)(
     nros_rmw_session_t * session,
     const char * topic_name, const char * type_name, const char * type_hash,
     uint32_t domain_id, const nros_rmw_qos_t * qos,
+    const nros_rmw_publisher_options_t * options,   /* transport hints; NULL = defaults */
     nros_rmw_publisher_t * out);   /* runtime-allocated; backend fills */
 ```
 
-Same shape for `nros_rmw_subscriber_t`. Service entities
-(`nros_rmw_service_server_t`, `nros_rmw_service_client_t`) and
+Same shape for `nros_rmw_subscription_t` (whose
+`nros_rmw_subscription_options_t` carries `rx_buffer_hint`, as the
+publisher's carries `tx_express`). Service entities
+(`nros_rmw_service_t`, `nros_rmw_client_t`) and
 `nros_rmw_session_t` have no `qos` and no `can_loan_messages` —
 service-level QoS doesn't generalise across non-DDS backends
 (see [QoS, Section 7](#7-qos-minimal-subset-not-full-dds-profiles))
@@ -335,7 +349,7 @@ receive *already-CDR-encoded* bytes:
 nros_rmw_ret_t (*publish_raw)(nros_rmw_publisher_t * publisher,
                               const uint8_t * data, size_t len);
 
-int32_t (*try_recv_raw)(nros_rmw_subscriber_t * subscriber,
+int32_t (*try_recv_raw)(nros_rmw_subscription_t * subscription,
                         uint8_t * buf, size_t len);
 ```
 
@@ -410,7 +424,7 @@ typedef struct nros_rmw_qos_t {
     uint32_t deadline_ms;             /* 0 = infinite */
     uint32_t lifespan_ms;             /* 0 = infinite */
     uint32_t liveliness_lease_ms;     /* 0 = infinite */
-    bool     avoid_ros_namespace_conventions;
+    uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];
 } nros_rmw_qos_t;
 ```
@@ -578,7 +592,7 @@ C side mirrors with `nros_subscription_set_*_callback` functions.
   at create time, not as runtime events. The existing
   `nros_rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS`) carry
   the diagnostic synchronously from `create_publisher` /
-  `create_subscriber`. No event needed.
+  `create_subscription`. No event needed.
 
 ### Dispatch — callback-on-entity, not waitset-take
 
@@ -605,7 +619,7 @@ are cheap.
 
 ### Backend coverage
 
-Coverage is uneven and surfaces through `Subscriber::supports_event`
+Coverage is uneven and surfaces through `Subscription::supports_event`
 (Rust) / `register_*_event` returning `NROS_RMW_RET_UNSUPPORTED`
 (C). Apps must handle "not supported" — not every backend will
 generate every event:
@@ -695,9 +709,9 @@ Two return-shape conventions, picked by call shape:
 
 | Returns | Success | Failure |
 |---------|---------|---------|
-| `nros_rmw_ret_t` + entity-struct out-param (`open`, `create_publisher`, `create_subscriber`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
-| `nros_rmw_ret_t` (`close`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
-| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `call_raw`) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
+| `nros_rmw_ret_t` + entity-struct out-param (`create_session`, `create_publisher`, `create_subscription`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
+| `nros_rmw_ret_t` (`destroy_session`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
+| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
 
 **Differences from upstream.**
 
@@ -716,6 +730,29 @@ Two return-shape conventions, picked by call shape:
 
 **Why same style.** Named constants make `switch` statements
 possible at call sites; bare negative ints don't.
+
+## Recorded carve-outs (phase-301 / issue 0242)
+
+Two upstream `rmw.h` capabilities are deliberately absent from the
+vtable, recorded here so their absence reads as a decision rather
+than an oversight:
+
+- **No publisher GID.** Upstream exposes `rmw_get_gid_for_publisher`
+  and stamps every sample with the writer's GID so subscribers can
+  attribute messages. nano-ros carries no GID: it costs ~16 bytes per
+  publisher plus per-sample wire overhead, and no embedded consumer
+  of it exists yet. The one in-tree need — bridge loop-suppression /
+  dedup — is served by the `bridge_origin` attachment instead.
+- **No message-info take slot.** Upstream's `rmw_take_with_info`
+  returns `rmw_message_info_t` (source timestamp, sender GID,
+  sequence numbers) alongside the payload. nano-ros's `try_recv_raw`
+  returns bytes only; backends that need per-sample metadata for QoS
+  emulation (lifespan, message-lost) keep it in their native
+  attachment / sample-info channel and never surface it to the app.
+
+Both can land later as NULL-able optional vtable slots — the
+established tail-append extension pattern (RFC-0035) — without an
+ABI break, if a consumer with a concrete need shows up.
 
 ## See also
 

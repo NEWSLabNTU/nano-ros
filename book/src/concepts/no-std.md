@@ -135,7 +135,7 @@ Both layers share the same session; mix per entity.
 | `Serialize`/`Deserialize` for `String`, `Vec<T>` | nros-serdes                     | Heap-allocated containers                             |
 | `TimerCallback` (`Box<dyn FnMut() + Send>`)      | nros-node/timer.rs              | Boxed closure for timer callbacks                     |
 | `Timer::new_with_box()`, `set_callback_box()`    | nros-node/timer.rs              | Construct/update boxed timer callbacks                |
-| `ServiceServerHandle::handle_request_boxed()`    | nros-node/handles.rs            | Returns `Box<Reply>` for large response types         |
+| `EmbeddedServiceServer::handle_request_boxed()`    | nros-node/handles.rs            | Returns `Box<Reply>` for large response types         |
 | `param-services` feature (all of it)             | nros-node/parameter_services.rs | Service response types (~1MB) require heap allocation |
 
 **Parameter services detail:** The `param-services` feature (which implies `alloc`)

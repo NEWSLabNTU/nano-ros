@@ -42,9 +42,9 @@ TRANSIENT_LOCAL + RELIABLE (`rcl_action_qos_profile_status_default`).
 
 ### 1. Core: thread one `QosSettings` per service through the trait
 
-`Session::create_service_server` / `create_service_client`
+`Session::create_service` / `create_client`
 (`nros-rmw/src/traits.rs:852,858`) gain a `qos: QosSettings` param — mirroring
-`create_publisher` / `create_subscriber`. **One profile per service**, applied to
+`create_publisher` / `create_subscription`. **One profile per service**, applied to
 both request + reply endpoints (matches `rmw_qos_profile_t` semantics). This is
 the breaking change; it ripples to every backend.
 
@@ -98,11 +98,11 @@ test passing a RELIABLE+KEEP_LAST(5) profile end-to-end.
   `create_service` / `create_client` default to `services_default()`. (rclrs is
   moving to options/fluent QoS — the builder is our equivalent.) `nros-node`:
   `create_service_sized` (node.rs:342) gains a qos param / a `_with_qos`
-  variant, passed to `session.create_service_server(&info, qos)`.
+  variant, passed to `session.create_service(&info, qos)`.
 - **C++ (rclcpp mirror)** — `create_service(out, name, qos = QoS::services())`
   already takes the arg; **stop discarding `_qos`**
   (`nros-cpp/src/service.rs:36,99`) and thread it to
-  `create_service_server(&svc_info, qos)`. Same for `create_action_server`.
+  `create_service(&svc_info, qos)`. Same for `create_action_server`.
 - **C (rclc mirror)** — keep `nros_service_init` defaulting to services_default;
   add `nros_service_init_with_qos(..., const nros_qos_t* qos)` (+ optional
   `_best_effort` convenience), and the client mirrors. The L1 polling init gets

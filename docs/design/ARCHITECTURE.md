@@ -93,7 +93,7 @@ cannot implement fall back in the runtime or return `RET_UNSUPPORTED` — no obl
   dispatches subscription callbacks **in-place** from the backend's receive slot via the
   `process_raw_in_place` vtable slot (eliminating the arena staging copy); backends without
   the slot keep the buffered fallback. zenoh-pico routes each subscription to a **size-class**
-  receive buffer (small/large by the `rx_buffer_hint` that flows `TopicInfo`→`NrosRmwQos`), so
+  receive buffer (small/large by the `rx_buffer_hint` that flows `TopicInfo`→`nros_rmw_subscription_options_t`, phase-301), so
   receive RAM stops scaling `MAX_SUBS × DEPTH × largest_slot`. Live on zenoh-pico + XRCE.
 
 - **Callback by default; poll is an opt-in, not an RMW requirement** → RFC-0041

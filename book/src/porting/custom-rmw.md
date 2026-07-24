@@ -18,21 +18,26 @@ Your backend provides concrete types for six traits:
 Rmw                    -- factory: opens a Session from RmwConfig
   Session              -- connection lifecycle, creates handles
     Publisher          -- send CDR-encoded messages
-    Subscriber         -- non-blocking receive (poll-based)
-    ServiceServerTrait -- receive requests, send replies
-    ServiceClientTrait -- send requests, poll for replies
+    Subscription       -- non-blocking receive (poll-based)
+    ServiceTrait       -- receive requests, send replies
+    ClientTrait        -- send requests, poll for replies
 ```
+
+(Phase-301 aligned the vocabulary with upstream rmw: `Subscriber` →
+`Subscription`, `ServiceServerTrait` → `ServiceTrait`,
+`ServiceClientTrait` → `ClientTrait`, and the create methods below
+match.)
 
 Most methods have default implementations. The required methods per trait are:
 
 | Trait | Required methods |
 |-------|-----------------|
 | `Rmw` | `open()` |
-| `Session` | `create_publisher()`, `create_subscriber()`, `create_service_server()`, `create_service_client()`, `close()` |
+| `Session` | `create_publisher()`, `create_subscription()`, `create_service()`, `create_client()`, `close()` |
 | `Publisher` | `publish_raw()`, `buffer_error()`, `serialization_error()` |
-| `Subscriber` | `try_recv_raw()`, `deserialization_error()` |
-| `ServiceServerTrait` | `try_recv_request()`, `send_reply()` |
-| `ServiceClientTrait` | `send_request_raw()`, `try_recv_reply_raw()` |
+| `Subscription` | `try_recv_raw()`, `deserialization_error()` |
+| `ServiceTrait` | `try_recv_request()`, `send_reply()` |
+| `ClientTrait` | `send_request_raw()`, `try_recv_reply_raw()` |
 
 For full trait signatures and associated types, see
 [RMW API Reference](../reference/rmw-api.md).
@@ -82,17 +87,17 @@ pub struct MyProtoSession { /* connection state */ }
 impl Session for MyProtoSession {
     type Error = TransportError;
     type PublisherHandle = MyProtoPub;
-    type SubscriberHandle = MyProtoSub;
-    type ServiceServerHandle = MyProtoServer;
-    type ServiceClientHandle = MyProtoClient;
+    type SubscriptionHandle = MyProtoSub;
+    type ServiceHandle = MyProtoServer;
+    type ClientHandle = MyProtoClient;
 
     fn create_publisher(&mut self, t: &TopicInfo, q: QosSettings)
         -> Result<MyProtoPub, TransportError> { todo!() }
-    fn create_subscriber(&mut self, t: &TopicInfo, q: QosSettings)
+    fn create_subscription(&mut self, t: &TopicInfo, q: QosSettings)
         -> Result<MyProtoSub, TransportError> { todo!() }
-    fn create_service_server(&mut self, s: &ServiceInfo)
+    fn create_service(&mut self, s: &ServiceInfo, q: QosSettings)
         -> Result<MyProtoServer, TransportError> { todo!() }
-    fn create_service_client(&mut self, s: &ServiceInfo)
+    fn create_client(&mut self, s: &ServiceInfo, q: QosSettings)
         -> Result<MyProtoClient, TransportError> { todo!() }
     fn close(&mut self) -> Result<(), TransportError> { todo!() }
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
@@ -109,7 +114,7 @@ impl Publisher for MyProtoPub {
 }
 
 pub struct MyProtoSub;
-impl Subscriber for MyProtoSub {
+impl Subscription for MyProtoSub {
     type Error = TransportError;
     fn try_recv_raw(&mut self, buf: &mut [u8])
         -> Result<Option<usize>, TransportError> { todo!() }
@@ -117,7 +122,7 @@ impl Subscriber for MyProtoSub {
 }
 
 pub struct MyProtoServer;
-impl ServiceServerTrait for MyProtoServer {
+impl ServiceTrait for MyProtoServer {
     type Error = TransportError;
     fn try_recv_request<'a>(&mut self, buf: &'a mut [u8])
         -> Result<Option<ServiceRequest<'a>>, TransportError> { todo!() }
@@ -126,7 +131,7 @@ impl ServiceServerTrait for MyProtoServer {
 }
 
 pub struct MyProtoClient;
-impl ServiceClientTrait for MyProtoClient {
+impl ClientTrait for MyProtoClient {
     type Error = TransportError;
     fn send_request_raw(&mut self, req: &[u8])
         -> Result<(), TransportError> { todo!() }
@@ -144,7 +149,7 @@ variant gives the caller actionable information instead of an opaque
 
 | Variant | When to use |
 |---------|-------------|
-| `Timeout` | Bounded wait elapsed (drive_io, blocking call_raw). |
+| `Timeout` | Bounded wait elapsed (drive_io). |
 | `WouldBlock` | Resource momentarily unavailable; caller should retry. Distinct from `NoData` — `NoData` means the queue is empty, `WouldBlock` means it's contended. |
 | `NoData` | Non-blocking receive found the queue empty. |
 | `BufferTooSmall` | Caller's `&mut [u8]` smaller than the next message. |
@@ -246,7 +251,7 @@ per-field return-value, threading, and blocking conventions.
 #include <nros/rmw_entity.h>
 
 // -- Session lifecycle --
-static nros_rmw_ret_t my_open(const char *locator, uint8_t mode,
+static nros_rmw_ret_t my_create_session(const char *locator, uint8_t mode,
                               uint32_t domain_id, const char *node_name,
                               nros_rmw_session_t *out) {
     /* Connect. On success: write out->backend_data with your session
@@ -255,7 +260,7 @@ static nros_rmw_ret_t my_open(const char *locator, uint8_t mode,
      * NROS_RMW_RET_BAD_ALLOC, NROS_RMW_RET_ERROR). out->node_name is
      * already set by the runtime — read it for diagnostics. */
 }
-static nros_rmw_ret_t my_close(nros_rmw_session_t *session) { /* ... */ }
+static nros_rmw_ret_t my_destroy_session(nros_rmw_session_t *session) { /* ... */ }
 static nros_rmw_ret_t my_drive_io(nros_rmw_session_t *session, int32_t timeout_ms) {
     /* Dispatch network I/O for up to timeout_ms; return NROS_RMW_RET_OK
      * on success, NROS_RMW_RET_TIMEOUT / NROS_RMW_RET_ERROR otherwise. */
@@ -266,6 +271,7 @@ static nros_rmw_ret_t my_create_publisher(
         nros_rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
+        const nros_rmw_publisher_options_t *options,  /* hints (tx_express); NULL = defaults */
         nros_rmw_publisher_t *out) {
     /* Runtime has already filled out->topic_name / type_name / qos.
      * Backend writes out->backend_data with its publisher handle and
@@ -276,63 +282,70 @@ static void           my_destroy_publisher(nros_rmw_publisher_t *publisher) { /*
 static nros_rmw_ret_t my_publish_raw(nros_rmw_publisher_t *publisher,
         const uint8_t *data, size_t len) { /* ... */ }
 
-// -- Subscriber --
-static nros_rmw_ret_t my_create_subscriber(
+// -- Subscription --
+static nros_rmw_ret_t my_create_subscription(
         nros_rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_subscriber_t *out) { /* ... */ }
-static void    my_destroy_subscriber(nros_rmw_subscriber_t *subscriber) { /* ... */ }
-static int32_t my_try_recv_raw(nros_rmw_subscriber_t *subscriber,
+        const nros_rmw_subscription_options_t *options,  /* hints (rx_buffer_hint); NULL = defaults */
+        nros_rmw_subscription_t *out) { /* ... */ }
+static void    my_destroy_subscription(nros_rmw_subscription_t *subscription) { /* ... */ }
+static int32_t my_try_recv_raw(nros_rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len) {
     /* >= 0 = bytes received (0 = no data),
      * negative nros_rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
 }
-static int32_t my_has_data(nros_rmw_subscriber_t *subscriber) { /* 1 = yes, 0 = no */ }
+static int32_t my_has_data(nros_rmw_subscription_t *subscription) { /* 1 = yes, 0 = no */ }
 
-// -- Service Server --
-static nros_rmw_ret_t my_create_service_server(
+// -- Service (server side) --
+static nros_rmw_ret_t my_create_service(
         nros_rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id,
-        nros_rmw_service_server_t *out) { /* ... */ }
-static void    my_destroy_service_server(nros_rmw_service_server_t *server) { /* ... */ }
-static int32_t my_try_recv_request(nros_rmw_service_server_t *server,
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
+        nros_rmw_service_t *out) { /* ... */ }
+static void    my_destroy_service(nros_rmw_service_t *server) { /* ... */ }
+static int32_t my_try_recv_request(nros_rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
-static int32_t my_has_request(nros_rmw_service_server_t *server) { /* 1 = yes, 0 = no */ }
-static nros_rmw_ret_t my_send_reply(nros_rmw_service_server_t *server,
+static int32_t my_has_request(nros_rmw_service_t *server) { /* 1 = yes, 0 = no */ }
+static nros_rmw_ret_t my_send_reply(nros_rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len) { /* ... */ }
 
-// -- Service Client --
-static nros_rmw_ret_t my_create_service_client(
+// -- Client --
+static nros_rmw_ret_t my_create_client(
         nros_rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id,
-        nros_rmw_service_client_t *out) { /* ... */ }
-static void    my_destroy_service_client(nros_rmw_service_client_t *client) { /* ... */ }
-static int32_t my_call_raw(nros_rmw_service_client_t *client,
-        const uint8_t *request, size_t req_len,
-        uint8_t *reply_buf, size_t reply_buf_len) { /* ... */ }
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
+        nros_rmw_client_t *out) { /* ... */ }
+static void    my_destroy_client(nros_rmw_client_t *client) { /* ... */ }
+static nros_rmw_ret_t my_send_request_raw(nros_rmw_client_t *client,
+        const uint8_t *request, size_t req_len) {
+    /* Send without blocking for the reply; return NROS_RMW_RET_OK. */
+}
+static int32_t my_try_recv_reply_raw(nros_rmw_client_t *client,
+        uint8_t *reply_buf, size_t reply_buf_len) {
+    /* >= 0 = reply bytes, NROS_RMW_RET_NO_DATA = no reply yet. */
+}
 
 static const nros_rmw_vtable_t MY_RMW = {
-    .open                   = my_open,
-    .close                  = my_close,
-    .drive_io               = my_drive_io,
-    .create_publisher       = my_create_publisher,
-    .destroy_publisher      = my_destroy_publisher,
-    .publish_raw            = my_publish_raw,
-    .create_subscriber      = my_create_subscriber,
-    .destroy_subscriber     = my_destroy_subscriber,
-    .try_recv_raw           = my_try_recv_raw,
-    .has_data               = my_has_data,
-    .create_service_server  = my_create_service_server,
-    .destroy_service_server = my_destroy_service_server,
-    .try_recv_request       = my_try_recv_request,
-    .has_request            = my_has_request,
-    .send_reply             = my_send_reply,
-    .create_service_client  = my_create_service_client,
-    .destroy_service_client = my_destroy_service_client,
-    .call_raw               = my_call_raw,
+    .create_session      = my_create_session,
+    .destroy_session     = my_destroy_session,
+    .drive_io            = my_drive_io,
+    .create_publisher    = my_create_publisher,
+    .destroy_publisher   = my_destroy_publisher,
+    .publish_raw         = my_publish_raw,
+    .create_subscription = my_create_subscription,
+    .destroy_subscription = my_destroy_subscription,
+    .try_recv_raw        = my_try_recv_raw,
+    .has_data            = my_has_data,
+    .create_service      = my_create_service,
+    .destroy_service     = my_destroy_service,
+    .try_recv_request    = my_try_recv_request,
+    .has_request         = my_has_request,
+    .send_reply          = my_send_reply,
+    .create_client       = my_create_client,
+    .destroy_client      = my_destroy_client,
+    .send_request_raw    = my_send_request_raw,
+    .try_recv_reply_raw  = my_try_recv_reply_raw,
 };
 ```
 
@@ -365,11 +378,12 @@ allowance. The C vtable inherits the same rules:
   application-visible locks across the wait.
 - `publish_raw`, `try_recv_raw`, and `send_reply` may run concurrently
   from different executor threads — your backend handles serialisation.
-- `try_recv_raw` and `try_recv_request` are non-blocking: return
-  `0` if no data is ready. The executor will retry after `drive_io`.
-- `call_raw` is the deprecated blocking client path. In-tree backends
-  route blocking waits through the executor instead. Implement it as
-  a polling loop only if you need to support legacy callers.
+- `try_recv_raw`, `try_recv_request`, and `try_recv_reply_raw` are
+  non-blocking: return `0` / `NROS_RMW_RET_NO_DATA` if nothing is
+  ready. The executor will retry after `drive_io`.
+- There is no blocking client slot (phase-301 deleted the deprecated
+  `call_raw`): `send_request_raw` + `try_recv_reply_raw` is the one
+  request/reply path; the executor drives the wait.
 
 All strings are null-terminated and borrowed (caller owns the
 storage). Entities are typed structs with an opaque `backend_data`
@@ -377,7 +391,7 @@ slot — the runtime fills metadata fields (`topic_name`, `qos`, …)
 before calling `create_*`; the backend writes `backend_data`. Return
 convention: `NROS_RMW_RET_OK` = success, negative = named
 `nros_rmw_ret_t` constant, positive = byte count (only on
-`try_recv_*` / `call_raw`).
+`try_recv_*`).
 
 ---
 
@@ -406,7 +420,7 @@ impl Publisher for EchoPub {
 }
 
 pub struct EchoSub;
-impl Subscriber for EchoSub {
+impl Subscription for EchoSub {
     type Error = TransportError;
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         unsafe {
@@ -450,8 +464,8 @@ discovery traffic. How you emit it depends on the backend protocol:
 If your backend is brand new (not wire-compatible with zenoh or DDS),
 you still need *some* discovery channel for `ros2 CLI` tools to find
 your endpoints. The traits currently do not cover this — discovery
-happens inside `create_publisher` / `create_subscriber` /
-`create_service_*` as a side effect.
+happens inside `create_publisher` / `create_subscription` /
+`create_service` / `create_client` as a side effect.
 
 ### 2. RMW attachments (per-message metadata)
 
@@ -492,7 +506,7 @@ on services and topics. Each action server exposes:
 A backend that implements the six core traits automatically supports
 actions — `nros-node` composes the five channels itself. The only
 backend-specific piece is the key / topic construction, which the
-`Session::create_service_server` and `create_publisher` methods already
+`Session::create_service` and `create_publisher` methods already
 handle.
 
 ### 4. Type hashes

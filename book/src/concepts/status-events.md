@@ -191,7 +191,7 @@ event kind is additive.
 
 Fires when publisher and subscriber QoS profiles can't be
 reconciled. nano-ros surfaces this synchronously at `create_publisher`
-/ `create_subscriber` time as `NROS_RMW_RET_INCOMPATIBLE_QOS`. No
+/ `create_subscription` time as `NROS_RMW_RET_INCOMPATIBLE_QOS`. No
 runtime event needed; the failure is visible at startup.
 
 ### `*_INCOMPATIBLE_TYPE`

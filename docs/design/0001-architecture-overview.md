@@ -225,9 +225,9 @@ classDiagram
     class Session {
         <<trait>>
         +create_publisher(topic, qos) Result~PublisherHandle~
-        +create_subscriber(topic, qos) Result~SubscriberHandle~
-        +create_service_server(service) Result~ServiceServerHandle~
-        +create_service_client(service) Result~ServiceClientHandle~
+        +create_subscription(topic, qos) Result~SubscriptionHandle~
+        +create_service(service, qos) Result~ServiceHandle~
+        +create_client(service, qos) Result~ClientHandle~
         +drive_io(timeout_ms)
         +close()
     }
@@ -238,7 +238,7 @@ classDiagram
         +publish~M: RosMessage~(msg, buf)
     }
 
-    class Subscriber {
+    class Subscription {
         <<trait>>
         +has_data() bool
         +try_recv_raw(buf) Option~usize~
@@ -246,13 +246,13 @@ classDiagram
         +register_waker(waker: &Waker)
     }
 
-    class ServiceServerTrait {
+    class ServiceTrait {
         <<trait>>
         +has_request() bool
         +handle_request~S: RosService~(req_buf, reply_buf)
     }
 
-    class ServiceClientTrait {
+    class ClientTrait {
         <<trait>>
         +send_request_raw(data)
         +try_recv_reply_raw(buf) Option~usize~
@@ -261,9 +261,9 @@ classDiagram
 
     Rmw --> Session : creates
     Session --> Publisher : creates
-    Session --> Subscriber : creates
-    Session --> ServiceServerTrait : creates
-    Session --> ServiceClientTrait : creates
+    Session --> Subscription : creates
+    Session --> ServiceTrait : creates
+    Session --> ClientTrait : creates
 ```
 
 ### Zenoh Backend

@@ -121,12 +121,12 @@ rmw.h's create/destroy/publish/take/wait decomposition is the right granularity.
 |-------|----------|
 | `rmw_create_publisher` | `Session::create_publisher` |
 | `rmw_publish` | `Publisher::publish_raw` |
-| `rmw_create_subscription` | `Session::create_subscriber` |
+| `rmw_create_subscription` | `Session::create_subscription` |
 | `rmw_take` | `Subscriber::try_recv_raw` |
-| `rmw_create_service` | `Session::create_service_server` |
+| `rmw_create_service` | `Session::create_service` |
 | `rmw_take_request` + `rmw_send_response` | `ServiceServer::try_recv_request` + `send_reply` |
-| `rmw_create_client` | `Session::create_service_client` |
-| `rmw_send_request` + `rmw_take_response` | `ServiceClient::call_raw` |
+| `rmw_create_client` | `Session::create_client` |
+| `rmw_send_request` + `rmw_take_response` | `ClientTrait::send_request_raw` + `try_recv_reply_raw` (phase-301: the blocking `call_raw` collapse was deleted) |
 | `rmw_wait` | `Session::spin_once` |
 
 ### Raw bytes interface

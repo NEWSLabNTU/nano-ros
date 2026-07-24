@@ -29,9 +29,9 @@ ones:
 
 ```rust
 fn create_publisher(&mut self, topic: &TopicInfo, qos: QosSettings) -> ...;     // qos ✓
-fn create_subscriber(&mut self, topic: &TopicInfo, qos: QosSettings) -> ...;    // qos ✓
-fn create_service_server(&mut self, service: &ServiceInfo) -> ...;              // NO qos
-fn create_service_client(&mut self, service: &ServiceInfo) -> ...;             // NO qos
+fn create_subscription(&mut self, topic: &TopicInfo, qos: QosSettings) -> ...;    // qos ✓
+fn create_service(&mut self, service: &ServiceInfo) -> ...;              // NO qos
+fn create_client(&mut self, service: &ServiceInfo) -> ...;             // NO qos
 ```
 
 So **service QoS is fixed at the RMW layer**, not caller-selectable:
@@ -43,13 +43,13 @@ So **service QoS is fixed at the RMW layer**, not caller-selectable:
   `publication_matched`).
 - Actions are built on services + topics; the **service halves** (goal / result
   / cancel) inherit this no-QoS path, while the feedback/status **topic** halves
-  do flow QoS through `create_publisher`/`create_subscriber`.
+  do flow QoS through `create_publisher`/`create_subscription`.
 
 ## Where it bites
 
 - **C++** `Node::create_service(qos)` / `create_action_server(qos)` accept a
   `QoS` argument but **discard it** — it never reaches the backend (the
-  `create_service_server` FFI has nowhere to put it). The API shape promises a
+  `create_service` FFI has nowhere to put it). The API shape promises a
   knob that does nothing.
 - **C** service/action init take **no QoS at all** (`nros_service_init`,
   `nros_action_server_init`, …) — consistent with the core, but a parity gap vs
@@ -62,11 +62,11 @@ So **service QoS is fixed at the RMW layer**, not caller-selectable:
 ## What a fix needs (a dedicated slice, before M3.3)
 
 1. **Thread `QosSettings` into the service create path.** Either add a `qos`
-   param to `create_service_server` / `create_service_client` (mirrors pub/sub),
+   param to `create_service` / `create_client` (mirrors pub/sub),
    or carry it on `ServiceInfo` (`ServiceInfo<'a>` already bundles the
    service-name/type metadata — a QoS field is the lower-churn option, but a
    param is the more honest mirror of the pub/sub signature).
-2. **Plumb it through every backend's `create_service_server`** — Cyclone
+2. **Plumb it through every backend's `create_service`** — Cyclone
    (`packages/dds/nros-rmw-cyclonedds`), zenoh-pico, XRCE — replacing the
    hard-coded RELIABLE+VOLATILE with the caller's profile (keeping that as the
    *default*, since it is the stock-`rmw_cyclonedds_cpp`-interop requirement).

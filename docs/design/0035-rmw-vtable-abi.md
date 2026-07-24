@@ -16,8 +16,8 @@ superseded-by: null
 `nros_rmw_vtable_t` is the C function-pointer table every RMW backend
 implements and the runtime calls. It is the project's primary cross-language,
 cross-compilation-unit ABI: three backends (zenoh-pico, XRCE-DDS, Cyclone DDS)
-populate it and `nros-rmw-cffi` consumes it. The table has grown to **34 slots**
-across Phases 104/108/110/124/130, but its layout is frozen only by convention —
+populate it and `nros-rmw-cffi` consumes it. The table has grown to **35 slots**
+across Phases 104/108/110/124/130/231/301, but its layout is frozen only by convention —
 there is no `abi_version` field and no written stability contract. This RFC
 **records the current slot table as the canonical ABI**, defines the
 append-only-to-tail evolution rule, the per-slot NULL/fallback contract, and the
@@ -59,24 +59,34 @@ Slots are grouped by entity but the **wire order is the struct field order** —
 never reorder. Required slots must be non-NULL; optional slots are
 `Option<fn>` / nullable in C.
 
+Phase-301 (issues 0240/0241) renamed the entity/slot vocabulary to upstream
+rmw's terms — `open`/`close` → `create_session`/`destroy_session`,
+`subscriber` → `subscription`, `service_server` → `service`,
+`service_client` → `client` — deleted the deprecated blocking `call_raw`
+slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
+`nros_rmw_qos_t` into NULLable trailing `nros_rmw_publisher_options_t` /
+`nros_rmw_subscription_options_t` params on `create_publisher` /
+`create_subscription`.
+
 | # | slot | kind | NULL behaviour |
 |---|------|------|----------------|
-| 1–3 | `open`, `close`, `drive_io` | session, required | — |
+| 1–3 | `create_session`, `destroy_session`, `drive_io` | session, required | — |
 | 4–6 | `create_publisher`, `destroy_publisher`, `publish_raw` | pub, required | — |
-| 7–10 | `create_subscriber`, `destroy_subscriber`, `try_recv_raw`, `has_data` | sub, required | — |
-| 11–15 | `create_service_server`, `destroy_service_server`, `try_recv_request`, `has_request`, `send_reply` | svc-server, required | — |
-| 16–18 | `create_service_client`, `destroy_service_client`, `call_raw` | svc-client, required | — |
-| 19–20 | `send_request_raw`, `try_recv_reply_raw` | non-blocking client (P130.4), optional | runtime falls back to blocking `call_raw` |
-| 21–22 | `register_subscriber_event`, `register_publisher_event` | QoS events (P108), required | backend returns `RET_UNSUPPORTED` for unsupported kinds |
-| 23 | `assert_publisher_liveliness` | liveliness (P108.B), required | — |
-| 24 | `next_deadline_ms` | deadline (P110), optional | runtime uses its own timeout math |
-| 25 | `set_wake_callback` | wake (P124.B), optional | executor uses condvar/poll fallback |
-| 26–28 | `pub_loan`, `pub_commit`, `pub_discard` | zero-copy loan (P124.A), optional | runtime stages into an arena buffer |
-| 29–30 | `sub_borrow`, `sub_release` | zero-copy borrow (P124.A), optional | runtime copies via `try_recv_raw` |
-| 31 | `service_server_available` | probe (P124.C), optional | surfaces `RET_UNSUPPORTED` |
-| 32 | `try_recv_sequence` | burst-take (P124.D), optional | runtime loops `try_recv_raw` |
-| 33 | `publish_streamed` | streamed publish (P124.E), optional | runtime stages then `publish_raw` |
-| 34 | `ping_session` | connectivity probe (P124.F), optional | surfaces `RET_UNSUPPORTED` |
+| 7–10 | `create_subscription`, `destroy_subscription`, `try_recv_raw`, `has_data` | sub, required | — |
+| 11–15 | `create_service`, `destroy_service`, `try_recv_request`, `has_request`, `send_reply` | service, required | — |
+| 16–17 | `create_client`, `destroy_client` | client, required | — |
+| 18–19 | `send_request_raw`, `try_recv_reply_raw` | async request/reply (P130.4; required since phase-301 — the blocking `call_raw` slot is deleted) | — |
+| 20–21 | `register_subscription_event`, `register_publisher_event` | QoS events (P108), required | backend returns `RET_UNSUPPORTED` for unsupported kinds |
+| 22 | `assert_publisher_liveliness` | liveliness (P108.B), required | — |
+| 23 | `next_deadline_ms` | deadline (P110), optional | runtime uses its own timeout math |
+| 24 | `set_wake_callback` | wake (P124.B), optional | executor uses condvar/poll fallback |
+| 25–27 | `pub_loan`, `pub_commit`, `pub_discard` | zero-copy loan (P124.A), optional | runtime stages into an arena buffer |
+| 28–29 | `sub_borrow`, `sub_release` | zero-copy borrow (P124.A), optional | runtime copies via `try_recv_raw` |
+| 30 | `service_server_available` | probe (P124.C), optional | surfaces `RET_UNSUPPORTED` |
+| 31 | `try_recv_sequence` | burst-take (P124.D), optional | runtime loops `try_recv_raw` |
+| 32 | `publish_streamed` | streamed publish (P124.E), optional | runtime stages then `publish_raw` |
+| 33 | `ping_session` | connectivity probe (P124.F), optional | surfaces `RET_UNSUPPORTED` |
+| 34–35 | `subscription_supports_in_place`, `process_raw_in_place` | in-place take (P231 / RFC-0038), optional | runtime uses the buffered (copying) path |
 
 **NULL-slot contract (normative):** every optional slot is in exactly one of two
 classes — **fallback** (the runtime emits a correct, possibly slower
@@ -145,6 +155,12 @@ the layout is frozen.
 
 ## Changelog
 
+- 2026-07 — phase-301 (issues 0240/0241): slot vocabulary aligned with
+  upstream rmw (`create_session`/`destroy_session`, `subscription`,
+  `service`, `client`), blocking `call_raw` slot deleted
+  (`send_request_raw` + `try_recv_reply_raw` now required for services),
+  transport hints moved to per-create options structs. Table now 35 slots
+  (incl. the P231 in-place pair).
 - 2026-06 — created (Draft). Records the 34-slot ABI as canonical; defines the
   append-only rule, NULL-slot contract, and the `abi_version` field to add.
   Grounded in `nros-rmw-abi/include/nros/rmw_vtable.h` + `rmw_ret.h`; rationale

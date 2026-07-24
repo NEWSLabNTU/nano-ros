@@ -75,9 +75,9 @@ nros-rmw is flatter -- there is no node at the RMW level:
 ```
 Rmw::open(&RmwConfig) → Session
   → session.create_publisher(&TopicInfo, QosSettings) → Self::PublisherHandle
-  → session.create_subscriber(&TopicInfo, QosSettings) → Self::SubscriberHandle
-  → session.create_service_server(&ServiceInfo) → Self::ServiceServerHandle
-  → session.create_service_client(&ServiceInfo) → Self::ServiceClientHandle
+  → session.create_subscription(&TopicInfo, QosSettings) → Self::SubscriptionHandle
+  → session.create_service(&ServiceInfo, QosSettings) → Self::ServiceHandle
+  → session.create_client(&ServiceInfo, QosSettings) → Self::ClientHandle
 ```
 
 `Node` lives one layer up in `nros-node`. It is purely a namespace and liveliness concern -- it borrows the session from the executor and creates typed communication handles. The RMW layer only knows about sessions and communication endpoints.
@@ -99,7 +99,7 @@ pub trait Publisher {
     fn publish<M: RosMessage>(&self, msg: &M, buf: &mut [u8]) -> Result<(), Self::Error>;
 }
 
-pub trait Subscriber {
+pub trait Subscription {
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
     fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error>;
 }
@@ -165,20 +165,17 @@ Standard QoS profiles (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PR
 
 **ROS 2:** Service clients are always asynchronous at the rmw level. `rmw_send_request()` sends a request and returns a sequence number. The reply is retrieved later via `rmw_take_response()`, typically driven by `rmw_wait()`.
 
-**nros-rmw:** Provides both models:
+**nros-rmw:** The same async split (phase-301 deleted the deprecated blocking `call_raw` path — like upstream, there is no blocking call at the RMW level):
 
 ```rust,ignore
-pub trait ServiceClientTrait {
-    // Blocking: send request and wait for reply
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error>;
-
+pub trait ClientTrait {
     // Async: send request, poll for reply separately
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error>;
     fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 }
 ```
 
-The blocking `call_raw()` is convenient for simple embedded applications. The async split (`send_request_raw` + `try_recv_reply_raw`) is used by the executor for non-blocking dispatch.
+Blocking waits are composed above the RMW by the executor (which keeps driving `drive_io` between polls).
 
 ## APIs Present in ROS 2 rmw but Absent in nros-rmw
 
@@ -201,11 +198,10 @@ The blocking `call_raw()` is convenient for simple embedded applications. The as
 | nros-rmw API | Purpose |
 |--------------|---------|
 | `Publisher::publish<M>(msg, buf)` | Typed publish with built-in CDR serialization |
-| `Subscriber::try_recv<M>(buf)` | Typed receive with built-in CDR deserialization |
-| `Subscriber::process_raw_in_place(f)` | Zero-copy in-place processing via closure |
-| `Subscriber::try_recv_validated()` | E2E safety validation (CRC-32 + sequence tracking) |
-| `ServiceClientTrait::call_raw()` | Blocking request/reply (ROS 2 rmw is async-only) |
-| `ServiceServerTrait::handle_request<S>()` | Typed request handling with automatic CDR roundtrip |
+| `Subscription::try_recv<M>(buf)` | Typed receive with built-in CDR deserialization |
+| `Subscription::process_raw_in_place(f)` | Zero-copy in-place processing via closure |
+| `Subscription::try_recv_validated()` | E2E safety validation (CRC-32 + sequence tracking) |
+| `ServiceTrait::handle_request<S>()` | Typed request handling with automatic CDR roundtrip |
 | `Session::drive_io(timeout_ms)` | Explicit network polling (ROS 2 rmw relies on middleware threads) |
 
 ## Summary

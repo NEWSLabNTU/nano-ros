@@ -246,8 +246,8 @@ it before downstream users do.
 
 ### R7. Reduce the API surface
 
-Every method in `Rmw`, `Session`, `Publisher`, `Subscriber`,
-`ServiceServerTrait`, `ServiceClientTrait` is a portability cost:
+Every method in `Rmw`, `Session`, `Publisher`, `Subscription`,
+`ServiceTrait`, `ClientTrait` is a portability cost:
 each must be (a) declared in cffi, (b) wrapped in nros-c, (c)
 wrapped in nros-cpp, (d) documented in the porting guide.
 

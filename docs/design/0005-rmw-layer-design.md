@@ -347,11 +347,11 @@ pub trait Session {
 
     fn create_publisher(&mut self, topic: &TopicInfo, qos: &QosSettings)
         -> Result<Self::Publisher, RmwError>;
-    fn create_subscriber(&mut self, topic: &TopicInfo, qos: &QosSettings)
+    fn create_subscription(&mut self, topic: &TopicInfo, qos: &QosSettings)
         -> Result<Self::Subscriber, RmwError>;
-    fn create_service_server(&mut self, service: &ServiceInfo, qos: &QosSettings)
+    fn create_service(&mut self, service: &ServiceInfo, qos: &QosSettings)
         -> Result<Self::ServiceServer, RmwError>;
-    fn create_service_client(&mut self, service: &ServiceInfo, qos: &QosSettings)
+    fn create_client(&mut self, service: &ServiceInfo, qos: &QosSettings)
         -> Result<Self::ServiceClient, RmwError>;
 
     fn spin_once(&self, timeout_ms: u32) -> Result<(), RmwError>;
@@ -375,7 +375,10 @@ pub trait ServiceServer {
 }
 
 pub trait ServiceClient {
-    fn call_raw(&self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, RmwError>;
+    // phase-301: the blocking `call_raw` sketch was deleted; the async
+    // pair is the one request/reply path.
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), RmwError>;
+    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, RmwError>;
 }
 ```
 
@@ -435,11 +438,11 @@ nros-qemu (user-facing, composes everything)
 | `Rmw::open(config)` | set transport callbacks + init session + create streams + create participant |
 | `Session::create_publisher` | create topic + publisher + datawriter (participant shared) |
 | `Publisher::publish_raw` | `uxr_buffer_topic(data, len)` — pre-serialized CDR, no double-serialization |
-| `Session::create_subscriber` | create datareader + `uxr_buffer_request_data(UNLIMITED)` |
+| `Session::create_subscription` | create datareader + `uxr_buffer_request_data(UNLIMITED)` |
 | `Subscriber::try_recv_raw` | Read from `uxrOnTopicFunc` callback buffer |
 | `Session::spin_once` | `uxr_run_session_time(timeout)` |
 | `ServiceServer` | Replier pattern: `uxrOnRequestFunc` callback + `uxr_buffer_reply` |
-| `ServiceClient::call_raw` | `uxr_buffer_request` + `uxr_run_session_until_data` for reply |
+| `ClientTrait::send_request_raw` / `try_recv_reply_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
 
 **Build approach:**
 - `build.rs` generates `config.h` from Cargo features (same pattern as zpico-sys)

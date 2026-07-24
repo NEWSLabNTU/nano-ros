@@ -88,4 +88,4 @@ For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/
 
 L1 polling assumes the caller has a spin loop. RTOS / embassy applications want the kernel to wake them when data lands. The `Raw*::register_waker(&Waker)` Rust API and the matching `*_set_wake_callback(state, cb, ctx)` C / C++ FFI plug a wake source into the same L1 handle. RMW backends that support waking (currently zenoh-pico for subscribers, service-clients, and service-servers) fire the callback from their rx path; other backends fall back to polling silently.
 
-For the underlying primitive (`ServiceServerTrait::register_waker` in `nros-rmw`), see the trait doc. For the C wake-callback POD shape (`nros_wake_state_t { fn_ptr, ctx }`), see the [Doxygen reference](../api/platform-cffi/index.html) — same canonical-spec rule as the platform API.
+For the underlying primitive (`ServiceTrait::register_waker` in `nros-rmw`), see the trait doc. For the C wake-callback POD shape (`nros_wake_state_t { fn_ptr, ctx }`), see the [Doxygen reference](../api/platform-cffi/index.html) — same canonical-spec rule as the platform API.
