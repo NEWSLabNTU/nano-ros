@@ -15,9 +15,9 @@ use core::{
 
 use nros_rmw::{QosSettings, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback, NrosRmwEventKind,
-    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient, NrosRmwServiceServer,
-    NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable, nros_rmw_cffi_register_named,
+    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 // Backend-owned buffer + counter state. The loan trampolines return
@@ -58,6 +58,7 @@ unsafe extern "C" fn ln_create_publisher(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
+    _: *const nros_rmw_cffi::nros_rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     unsafe {
@@ -132,15 +133,16 @@ unsafe extern "C" fn noop_csub(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwSubscriber,
+    _: *const nros_rmw_cffi::nros_rmw_subscription_options_t,
+    _: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscriber) {}
-unsafe extern "C" fn noop_recv(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
+unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn noop_recv(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscriber) -> i32 {
+unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription) -> i32 {
     0
 }
 unsafe extern "C" fn noop_csrv(
@@ -150,24 +152,24 @@ unsafe extern "C" fn noop_csrv(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwServiceServer) {}
+unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwService) {}
 unsafe extern "C" fn noop_recvreq(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
 ) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwServiceServer) -> i32 {
+unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService) -> i32 {
     0
 }
 unsafe extern "C" fn noop_reply(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
@@ -181,22 +183,13 @@ unsafe extern "C" fn noop_ccli(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceClient,
+    _: *mut NrosRmwClient,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dcli(_: *mut NrosRmwServiceClient) {}
-unsafe extern "C" fn noop_call(
-    _: *mut NrosRmwServiceClient,
-    _: *const u8,
-    _: usize,
-    _: *mut u8,
-    _: usize,
-) -> i32 {
-    -1
-}
+unsafe extern "C" fn noop_dcli(_: *mut NrosRmwClient) {}
 unsafe extern "C" fn noop_regsubev(
-    _: *mut NrosRmwSubscriber,
+    _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
@@ -218,27 +211,26 @@ unsafe extern "C" fn noop_alv(_: *mut NrosRmwPublisher) -> NrosRmwRet {
 }
 
 static VTABLE: NrosRmwVtable = NrosRmwVtable {
-    open: Some(ln_open),
-    close: Some(noop_close),
+    create_session: Some(ln_open),
+    destroy_session: Some(noop_close),
     drive_io: Some(noop_drive),
     create_publisher: Some(ln_create_publisher),
     destroy_publisher: Some(noop_destroy_pub),
     publish_raw: Some(ln_publish_raw),
-    create_subscriber: Some(noop_csub),
-    destroy_subscriber: Some(noop_dsub),
+    create_subscription: Some(noop_csub),
+    destroy_subscription: Some(noop_dsub),
     try_recv_raw: Some(noop_recv),
     has_data: Some(noop_hasd),
-    create_service_server: Some(noop_csrv),
-    destroy_service_server: Some(noop_dsrv),
+    create_service: Some(noop_csrv),
+    destroy_service: Some(noop_dsrv),
     try_recv_request: Some(noop_recvreq),
     has_request: Some(noop_hasreq),
     send_reply: Some(noop_reply),
-    create_service_client: Some(noop_ccli),
-    destroy_service_client: Some(noop_dcli),
-    call_raw: Some(noop_call),
+    create_client: Some(noop_ccli),
+    destroy_client: Some(noop_dcli),
     send_request_raw: None,
     try_recv_reply_raw: None,
-    register_subscriber_event: Some(noop_regsubev),
+    register_subscription_event: Some(noop_regsubev),
     register_publisher_event: Some(noop_regpubev),
     assert_publisher_liveliness: Some(noop_alv),
     next_deadline_ms: None,
@@ -255,7 +247,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     try_recv_sequence: None,
     publish_streamed: None,
     ping_session: None,
-    subscriber_supports_in_place: None,
+    subscription_supports_in_place: None,
     process_raw_in_place: None,
 };
 

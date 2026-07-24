@@ -2900,7 +2900,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -2908,7 +2908,7 @@ impl<'s> Executor<'s> {
         // advertises it: deserialize straight from the borrowed receive slot,
         // no arena buffer (copy #1 removed). Else the buffered path below.
         {
-            use nros_rmw::Subscriber as _;
+            use nros_rmw::Subscription as _;
             if handle.supports_process_in_place() {
                 let entry_offset = self.arena_alloc::<SubInplaceEntry<M, F>>()?;
                 unsafe {
@@ -3029,7 +3029,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
         let handle_id = self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
@@ -3093,7 +3093,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3172,7 +3172,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3248,7 +3248,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3286,7 +3286,7 @@ impl<'s> Executor<'s> {
     /// obtaining the handle by whatever route the active backend
     /// supports:
     ///
-    /// - **Generic ROS-typed flow**: call `Session::create_subscriber`
+    /// - **Generic ROS-typed flow**: call `Session::create_subscription`
     ///   on `self.session_mut()` with a [`TopicInfo`]. The
     ///   `node_mut(id).subscription(t).generic(ty, hash)` builder is the
     ///   convenience wrapper for this path.
@@ -3392,7 +3392,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3468,7 +3468,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3549,7 +3549,7 @@ impl<'s> Executor<'s> {
         }
         let handle = self
             .session
-            .create_service_server(&info, QosSettings::services_default())
+            .create_service(&info, QosSettings::services_default())
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
 
         let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
@@ -3625,7 +3625,7 @@ impl<'s> Executor<'s> {
             qos.validate_against(session.supported_qos_policies())
                 .map_err(NodeError::Transport)?;
             session
-                .create_service_server(&info, qos)
+                .create_service(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
         };
 
@@ -3862,7 +3862,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -3947,7 +3947,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -4030,7 +4030,7 @@ impl<'s> Executor<'s> {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, qos)
+                .create_subscription(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -4173,7 +4173,7 @@ impl<'s> Executor<'s> {
             qos.validate_against(session.supported_qos_policies())
                 .map_err(NodeError::Transport)?;
             session
-                .create_service_server(&info, qos)
+                .create_service(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
         };
 
@@ -4323,7 +4323,7 @@ impl<'s> Executor<'s> {
             qos.validate_against(session.supported_qos_policies())
                 .map_err(NodeError::Transport)?;
             session
-                .create_service_client(&info, qos)
+                .create_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
         };
 
@@ -4399,7 +4399,7 @@ impl<'s> Executor<'s> {
             qos.validate_against(session.supported_qos_policies())
                 .map_err(NodeError::Transport)?;
             session
-                .create_service_client(&info, qos)
+                .create_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
         };
 
@@ -5561,7 +5561,7 @@ impl<'s> Executor<'s> {
                 info = info.with_node_name(node_name);
             }
             session
-                .create_service_server(&info, QosSettings::services_default())
+                .create_service(&info, QosSettings::services_default())
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
         }
 
@@ -5765,7 +5765,7 @@ impl<'s> Executor<'s> {
                 info = info.with_node_name(node_name);
             }
             session
-                .create_service_server(&info, QosSettings::services_default())
+                .create_service(&info, QosSettings::services_default())
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
         }
 

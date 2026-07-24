@@ -2,7 +2,7 @@
 //!
 //! `RustBackendAdapter<R>` converts any `R: nros_rmw::Rmw` whose
 //! associated types implement the matching `Session` / `Publisher` /
-//! `Subscriber` / `ServiceServerTrait` / `ServiceClientTrait` traits
+//! `Subscription` / `ServiceTrait` / `ClientTrait` traits
 //! into a `static NrosRmwVtable`. Each per-backend cffi crate then
 //! collapses to ~10 LOC:
 //!
@@ -18,7 +18,7 @@
 //! - Session: `Box::into_raw(Box::new(session))` is stashed in
 //!   `NrosRmwSession::backend_data`. `close` reclaims via
 //!   `Box::from_raw` (drops the box, runs `Drop`, frees the alloc).
-//! - Publisher / Subscriber / ServiceServer / ServiceClient: same
+//! - Publisher / Subscription / Service / Client: same
 //!   pattern with their respective handle types.
 //!
 //! # 'static
@@ -42,15 +42,16 @@ use alloc::boxed::Box;
 use core::{ffi::c_void, marker::PhantomData};
 
 use nros_rmw::{
-    Publisher, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceServerTrait, Session,
-    SessionMode, Subscriber, TopicInfo, TransportError,
+    ClientTrait, Publisher, QosSettings, Rmw, RmwConfig, ServiceTrait, Session, SessionMode,
+    Subscription, TopicInfo, TransportError,
 };
 
 use crate::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
-    event_kind_from_c, ret_from_error,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
+    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    event_kind_from_c, nros_rmw_publisher_options_t, nros_rmw_subscription_options_t,
+    ret_from_error,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -144,14 +145,14 @@ pub trait RustBackend: Sized {
     type Session: Session<
             Error = TransportError,
             PublisherHandle = Self::Publisher,
-            SubscriberHandle = Self::Subscriber,
-            ServiceServerHandle = Self::ServiceServer,
-            ServiceClientHandle = Self::ServiceClient,
+            SubscriptionHandle = Self::Subscription,
+            ServiceHandle = Self::Service,
+            ClientHandle = Self::Client,
         > + 'static;
     type Publisher: Publisher<Error = TransportError> + 'static;
-    type Subscriber: Subscriber<Error = TransportError> + 'static;
-    type ServiceServer: ServiceServerTrait<Error = TransportError> + 'static;
-    type ServiceClient: ServiceClientTrait<Error = TransportError> + 'static;
+    type Subscription: Subscription<Error = TransportError> + 'static;
+    type Service: ServiceTrait<Error = TransportError> + 'static;
+    type Client: ClientTrait<Error = TransportError> + 'static;
 
     /// Construct a fresh factory instance. Called inside the `open`
     /// trampoline. Equivalent to `R::default()` for backends that
@@ -168,17 +169,15 @@ where
     R: Rmw<Error = TransportError> + Default + Sized,
     R::Session: Session<Error = TransportError> + 'static,
     <R::Session as Session>::PublisherHandle: Publisher<Error = TransportError> + 'static,
-    <R::Session as Session>::SubscriberHandle: Subscriber<Error = TransportError> + 'static,
-    <R::Session as Session>::ServiceServerHandle:
-        ServiceServerTrait<Error = TransportError> + 'static,
-    <R::Session as Session>::ServiceClientHandle:
-        ServiceClientTrait<Error = TransportError> + 'static,
+    <R::Session as Session>::SubscriptionHandle: Subscription<Error = TransportError> + 'static,
+    <R::Session as Session>::ServiceHandle: ServiceTrait<Error = TransportError> + 'static,
+    <R::Session as Session>::ClientHandle: ClientTrait<Error = TransportError> + 'static,
 {
     type Session = R::Session;
     type Publisher = <R::Session as Session>::PublisherHandle;
-    type Subscriber = <R::Session as Session>::SubscriberHandle;
-    type ServiceServer = <R::Session as Session>::ServiceServerHandle;
-    type ServiceClient = <R::Session as Session>::ServiceClientHandle;
+    type Subscription = <R::Session as Session>::SubscriptionHandle;
+    type Service = <R::Session as Session>::ServiceHandle;
+    type Client = <R::Session as Session>::ClientHandle;
 
     fn factory() -> Self {
         R::default()
@@ -218,7 +217,7 @@ unsafe fn cstr_to_str<'a>(ptr: *const core::ffi::c_char) -> &'a str {
 
 /// Convert the cffi QoS view back into a `nros_rmw::QosSettings`. The
 /// adapter trampolines call this when forwarding `create_publisher` /
-/// `create_subscriber` into the Rust trait.
+/// `create_subscription` into the Rust trait.
 fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
     use nros_rmw::{
         QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
@@ -240,7 +239,9 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
             QosHistoryPolicy::KeepAll
         },
         depth: q.depth as u32,
-        tx_express: q.tx_express != 0,
+        // phase-301 (issue 0240): the express hint left the QoS struct; the
+        // create trampolines thread it via `TopicInfo` from the options param.
+        tx_express: false,
         deadline_ms: q.deadline_ms,
         lifespan_ms: q.lifespan_ms,
         liveliness_kind: match q.liveliness_kind {
@@ -277,33 +278,28 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
     /// lifetime — safe to hand to `nros_rmw_cffi_register`.
     pub const VTABLE: NrosRmwVtable = NrosRmwVtable {
-        open: Some(open_trampoline::<R>),
-        close: Some(close_trampoline::<R>),
+        create_session: Some(create_session_trampoline::<R>),
+        destroy_session: Some(destroy_session_trampoline::<R>),
         drive_io: Some(drive_io_trampoline::<R>),
         create_publisher: Some(create_publisher_trampoline::<R>),
         destroy_publisher: Some(destroy_publisher_trampoline::<R>),
         publish_raw: Some(publish_raw_trampoline::<R>),
-        create_subscriber: Some(create_subscriber_trampoline::<R>),
-        destroy_subscriber: Some(destroy_subscriber_trampoline::<R>),
+        create_subscription: Some(create_subscription_trampoline::<R>),
+        destroy_subscription: Some(destroy_subscription_trampoline::<R>),
         try_recv_raw: Some(try_recv_raw_trampoline::<R>),
         has_data: Some(has_data_trampoline::<R>),
-        create_service_server: Some(create_service_server_trampoline::<R>),
-        destroy_service_server: Some(destroy_service_server_trampoline::<R>),
+        create_service: Some(create_service_trampoline::<R>),
+        destroy_service: Some(destroy_service_trampoline::<R>),
         try_recv_request: Some(try_recv_request_trampoline::<R>),
         has_request: Some(has_request_trampoline::<R>),
         send_reply: Some(send_reply_trampoline::<R>),
-        create_service_client: Some(create_service_client_trampoline::<R>),
-        destroy_service_client: Some(destroy_service_client_trampoline::<R>),
-        call_raw: Some(call_raw_trampoline::<R>),
-        // Phase 130.8 — wire non-blocking trampolines so Rust-backed
-        // CFFI consumers (dust-DDS, future Rust Cyclone wrapper)
-        // skip the legacy blocking call_raw fallback inside
-        // CffiServiceClient. Backends that don't override the trait
-        // defaults inherit the "store pending + map NoData to
-        // Ok(None)" base behaviour.
+        create_client: Some(create_client_trampoline::<R>),
+        destroy_client: Some(destroy_client_trampoline::<R>),
+        // Phase-301 (issue 0240) — `send_request_raw` + `try_recv_reply_raw`
+        // is the one request/reply path; the blocking `call_raw` slot is gone.
         send_request_raw: Some(send_request_raw_trampoline::<R>),
         try_recv_reply_raw: Some(try_recv_reply_raw_trampoline::<R>),
-        register_subscriber_event: Some(register_subscriber_event_trampoline::<R>),
+        register_subscription_event: Some(register_subscription_event_trampoline::<R>),
         register_publisher_event: Some(register_publisher_event_trampoline::<R>),
         assert_publisher_liveliness: Some(assert_publisher_liveliness_trampoline::<R>),
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
@@ -321,7 +317,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
         ping_session: Some(ping_session_trampoline::<R>),
-        subscriber_supports_in_place: Some(subscriber_supports_in_place_trampoline::<R>),
+        subscription_supports_in_place: Some(subscription_supports_in_place_trampoline::<R>),
         process_raw_in_place: Some(process_raw_in_place_trampoline::<R>),
     };
 
@@ -356,7 +352,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
 // Trampolines — session lifecycle
 // ============================================================================
 
-unsafe extern "C" fn open_trampoline<R: RustBackend>(
+unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
     locator: *const core::ffi::c_char,
     mode: u8,
     domain_id: u32,
@@ -391,7 +387,9 @@ unsafe extern "C" fn open_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn close_trampoline<R: RustBackend>(session: *mut NrosRmwSession) -> NrosRmwRet {
+unsafe extern "C" fn destroy_session_trampoline<R: RustBackend>(
+    session: *mut NrosRmwSession,
+) -> NrosRmwRet {
     let Some(boxed) = (unsafe { take_box::<R::Session>(session_data_mut(session)) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -428,6 +426,7 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
+    options: *const nros_rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
@@ -445,11 +444,11 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
         domain_id,
         node_name,
         namespace,
-        // Phase 231 (RFC-0038): the rx_buffer_hint does not yet traverse the
-        // CFFI create_subscriber surface; 0 = unset until that ABI plumbing lands.
+        // Publisher side — the receive-buffer hint is subscription-only.
         rx_buffer_hint: 0,
-        // phase-279 (#145) — express hint from the C ABI qos byte.
-        tx_express: unsafe { (*qos).tx_express } != 0,
+        // phase-301 (issue 0240) — express hint from the NULLable options
+        // struct (NULL = default, not express).
+        tx_express: unsafe { options.as_ref() }.is_some_and(|o| o.tx_express != 0),
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
@@ -492,14 +491,15 @@ unsafe extern "C" fn publish_raw_trampoline<R: RustBackend>(
 // Trampolines — subscriber
 // ============================================================================
 
-unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
+unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
     topic_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
-    out: *mut NrosRmwSubscriber,
+    options: *const nros_rmw_subscription_options_t,
+    out: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -516,14 +516,15 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
         domain_id,
         node_name,
         namespace,
-        // Phase 231 (RFC-0038) — recover the receive-buffer size hint the
-        // executor stashed in the qos struct, so the backend can size-class.
-        rx_buffer_hint: unsafe { (*qos).rx_buffer_hint } as usize,
+        // Phase 231 (RFC-0038) / phase-301 (issue 0240) — receive-buffer size
+        // hint from the NULLable options struct (NULL = unset), so the backend
+        // can size-class its receive storage.
+        rx_buffer_hint: unsafe { options.as_ref() }.map_or(0, |o| o.rx_buffer_hint as usize),
         // Subscription side — express is a publisher-only hint.
         tx_express: false,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
-    match Session::create_subscriber(s, &topic, qos_settings) {
+    match Session::create_subscription(s, &topic, qos_settings) {
         Ok(sub_handle) => {
             #[cfg(all(target_os = "none", not(feature = "std")))]
             {
@@ -548,27 +549,28 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn destroy_subscriber_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscription,
 ) {
-    let slot = unsafe { subscriber_data_mut(subscriber) };
+    let slot = unsafe { subscription_data_mut(subscriber) };
     #[cfg(all(target_os = "none", not(feature = "std")))]
     {
-        if unsafe { static_subscriber_storage::take::<R::Subscriber>(*slot as *mut R::Subscriber) }
-        {
+        if unsafe {
+            static_subscriber_storage::take::<R::Subscription>(*slot as *mut R::Subscription)
+        } {
             *slot = core::ptr::null_mut();
             return;
         }
     }
-    let _ = unsafe { take_box::<R::Subscriber>(slot) };
+    let _ = unsafe { take_box::<R::Subscription>(slot) };
 }
 
 unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+    subscriber: *mut NrosRmwSubscription,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if buf.is_null() && buf_len != 0 {
@@ -579,7 +581,7 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
 
     #[cfg(feature = "safety-e2e")]
     if crate::take_cffi_integrity_request(key) {
-        return match Subscriber::try_recv_validated(s, slice) {
+        return match Subscription::try_recv_validated(s, slice) {
             Ok(Some((n, status))) => {
                 crate::store_cffi_integrity_status(key, status);
                 n as i32
@@ -589,7 +591,7 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
         };
     }
 
-    match Subscriber::try_recv_raw_with_info(s, slice) {
+    match Subscription::try_recv_raw_with_info(s, slice) {
         Ok(Some((n, info))) => {
             crate::store_cffi_message_info(key, info);
             n as i32
@@ -600,23 +602,23 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn has_data_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+    subscriber: *mut NrosRmwSubscription,
 ) -> i32 {
-    let Some(s) = (unsafe { subscriber_ref::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_ref::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if Subscriber::has_data(s) { 1 } else { 0 }
+    if Subscription::has_data(s) { 1 } else { 0 }
 }
 
 // Phase 231 (RFC-0038) — in-place subscription take across the C ABI.
 
-unsafe extern "C" fn subscriber_supports_in_place_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+unsafe extern "C" fn subscription_supports_in_place_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscription,
 ) -> i32 {
-    let Some(s) = (unsafe { subscriber_ref::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_ref::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if Subscriber::supports_process_in_place(s) {
+    if Subscription::supports_process_in_place(s) {
         1
     } else {
         0
@@ -624,17 +626,17 @@ unsafe extern "C" fn subscriber_supports_in_place_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+    subscriber: *mut NrosRmwSubscription,
     ctx: *mut core::ffi::c_void,
     cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize)>,
 ) -> i32 {
-    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     let Some(cb) = cb else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    match Subscriber::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
+    match Subscription::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
         Ok(true) => 1,
         Ok(false) => NROS_RMW_RET_NO_DATA,
         Err(e) => ret_from_error(&e),
@@ -645,14 +647,14 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
 // Trampolines — service server
 // ============================================================================
 
-unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
+unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
     service_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
-    out: *mut NrosRmwServiceServer,
+    out: *mut NrosRmwService,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -671,7 +673,7 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
         namespace,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
-    match Session::create_service_server(s, &info, qos_settings) {
+    match Session::create_service(s, &info, qos_settings) {
         Ok(server) => {
             let boxed = Box::into_raw(Box::new(server));
             unsafe {
@@ -683,19 +685,17 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn destroy_service_server_trampoline<R: RustBackend>(
-    server: *mut NrosRmwServiceServer,
-) {
-    let _ = unsafe { take_box::<R::ServiceServer>(service_server_data_mut(server)) };
+unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(server: *mut NrosRmwService) {
+    let _ = unsafe { take_box::<R::Service>(service_data_mut(server)) };
 }
 
 unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
-    server: *mut NrosRmwServiceServer,
+    server: *mut NrosRmwService,
     buf: *mut u8,
     buf_len: usize,
     seq_out: *mut i64,
 ) -> i32 {
-    let Some(s) = (unsafe { service_server_mut::<R::ServiceServer>(server) }) else {
+    let Some(s) = (unsafe { service_mut::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if (buf.is_null() && buf_len != 0) || seq_out.is_null() {
@@ -703,7 +703,7 @@ unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
     }
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, buf_len) };
     let buf_start = slice.as_ptr() as usize;
-    match ServiceServerTrait::try_recv_request(s, slice) {
+    match ServiceTrait::try_recv_request(s, slice) {
         Ok(Some(req)) => {
             // The handle's `data` slice borrows from `buf`. Use its
             // offset within the caller's buffer to compute the payload
@@ -730,33 +730,27 @@ unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn has_request_trampoline<R: RustBackend>(
-    server: *mut NrosRmwServiceServer,
-) -> i32 {
-    let Some(s) = (unsafe { service_server_ref::<R::ServiceServer>(server) }) else {
+unsafe extern "C" fn has_request_trampoline<R: RustBackend>(server: *mut NrosRmwService) -> i32 {
+    let Some(s) = (unsafe { service_ref::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if ServiceServerTrait::has_request(s) {
-        1
-    } else {
-        0
-    }
+    if ServiceTrait::has_request(s) { 1 } else { 0 }
 }
 
 unsafe extern "C" fn send_reply_trampoline<R: RustBackend>(
-    server: *mut NrosRmwServiceServer,
+    server: *mut NrosRmwService,
     seq: i64,
     data: *const u8,
     len: usize,
 ) -> NrosRmwRet {
-    let Some(s) = (unsafe { service_server_mut::<R::ServiceServer>(server) }) else {
+    let Some(s) = (unsafe { service_mut::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if data.is_null() && len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let slice = unsafe { core::slice::from_raw_parts(data, len) };
-    match ServiceServerTrait::send_reply(s, seq, slice) {
+    match ServiceTrait::send_reply(s, seq, slice) {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
@@ -766,14 +760,14 @@ unsafe extern "C" fn send_reply_trampoline<R: RustBackend>(
 // Trampolines — service client
 // ============================================================================
 
-unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
+unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     session: *mut NrosRmwSession,
     service_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
-    out: *mut NrosRmwServiceClient,
+    out: *mut NrosRmwClient,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -792,7 +786,7 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
         namespace,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
-    match Session::create_service_client(s, &info, qos_settings) {
+    match Session::create_client(s, &info, qos_settings) {
         Ok(client) => {
             let boxed = Box::into_raw(Box::new(client));
             unsafe {
@@ -804,76 +798,43 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn destroy_service_client_trampoline<R: RustBackend>(
-    client: *mut NrosRmwServiceClient,
-) {
-    let _ = unsafe { take_box::<R::ServiceClient>(service_client_data_mut(client)) };
+unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(client: *mut NrosRmwClient) {
+    let _ = unsafe { take_box::<R::Client>(client_data_mut(client)) };
 }
 
-unsafe extern "C" fn call_raw_trampoline<R: RustBackend>(
-    client: *mut NrosRmwServiceClient,
-    request: *const u8,
-    req_len: usize,
-    reply_buf: *mut u8,
-    reply_buf_len: usize,
-) -> i32 {
-    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    };
-    if (request.is_null() && req_len != 0) || (reply_buf.is_null() && reply_buf_len != 0) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-    let req = unsafe { core::slice::from_raw_parts(request, req_len) };
-    let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
-    // `call_raw` is marked deprecated on the trait (the executor-driven
-    // `Client::call` → `Promise::wait` path is the supported flow), but
-    // the cffi vtable still exposes a blocking call entry point for C
-    // consumers that don't have an executor handle. The deprecation is
-    // about API ergonomics, not correctness, so the adapter forwards
-    // through unchanged.
-    #[allow(deprecated)]
-    match ServiceClientTrait::call_raw(c, req, reply) {
-        Ok(n) => n as i32,
-        Err(e) => ret_from_error(&e),
-    }
-}
-
-// Phase 130.8 — non-blocking send/recv trampolines. Forwards to the
-// backend's `ServiceClientTrait::send_request_raw` /
-// `try_recv_reply_raw` so Rust-backed cffi consumers (dust-DDS,
-// future Rust Cyclone wrapper) skip the legacy blocking call_raw
-// fallback inside `CffiServiceClient`.
+// Non-blocking send/recv trampolines — the one request/reply path
+// (phase-301: the blocking `call_raw` slot is deleted).
 unsafe extern "C" fn send_request_raw_trampoline<R: RustBackend>(
-    client: *mut NrosRmwServiceClient,
+    client: *mut NrosRmwClient,
     request: *const u8,
     req_len: usize,
 ) -> NrosRmwRet {
-    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if request.is_null() && req_len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let req = unsafe { core::slice::from_raw_parts(request, req_len) };
-    match ServiceClientTrait::send_request_raw(c, req) {
+    match ClientTrait::send_request_raw(c, req) {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
 }
 
 unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
-    client: *mut NrosRmwServiceClient,
+    client: *mut NrosRmwClient,
     reply_buf: *mut u8,
     reply_buf_len: usize,
 ) -> i32 {
-    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if reply_buf.is_null() && reply_buf_len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
-    match ServiceClientTrait::try_recv_reply_raw(c, reply) {
+    match ClientTrait::try_recv_reply_raw(c, reply) {
         Ok(Some(n)) => n as i32,
         Ok(None) => NROS_RMW_RET_NO_DATA,
         Err(e) => ret_from_error(&e),
@@ -885,7 +846,7 @@ unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
 // ============================================================================
 //
 // Events / liveliness / deadline are wired through the vtable (see the
-// `register_subscriber_event` / `register_publisher_event` /
+// `register_subscription_event` / `register_publisher_event` /
 // `assert_publisher_liveliness` / `next_deadline_ms` trampolines registered
 // above) — the stale "TODO: wire through" header was removed (Phase 192.9).
 //
@@ -934,14 +895,14 @@ const _: () = {
     );
 };
 
-unsafe extern "C" fn register_subscriber_event_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+unsafe extern "C" fn register_subscription_event_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscription,
     kind: NrosRmwEventKind,
     deadline_ms: u32,
     cb: NrosRmwEventCallback,
     user_context: *mut c_void,
 ) -> NrosRmwRet {
-    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     // Explicit conversion, not a transmute: `NrosRmwEventKind` is
@@ -958,7 +919,7 @@ unsafe extern "C" fn register_subscriber_event_trampoline<R: RustBackend>(
     // ABI-compatible with the trait's `(EventKind, *const c_void, *mut c_void)`.
     let trait_cb: nros_rmw::EventCallback = unsafe { core::mem::transmute(cb) };
     let res = unsafe {
-        Subscriber::register_event_callback(s, trait_kind, deadline_ms, trait_cb, user_context)
+        Subscription::register_event_callback(s, trait_kind, deadline_ms, trait_cb, user_context)
     };
     match res {
         Ok(()) => NROS_RMW_RET_OK,
@@ -1046,16 +1007,16 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
-    client: *mut NrosRmwServiceClient,
+    client: *mut NrosRmwClient,
 ) -> i32 {
     // Phase 124.C.1 — delegate to the Rust backend's
-    // `ServiceClientTrait::server_available` impl. Default trait
+    // `ClientTrait::server_available` impl. Default trait
     // body returns `Err(TransportError::Unsupported)`; concrete
     // backends opt in by overriding.
-    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    match ServiceClientTrait::server_available(c) {
+    match ClientTrait::server_available(c) {
         Ok(true) => 1,
         Ok(false) => 0,
         Err(e) => ret_from_error(&e),
@@ -1113,17 +1074,17 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn try_recv_sequence_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscriber,
+    subscriber: *mut NrosRmwSubscription,
     buf: *mut u8,
     per_msg_cap: usize,
     max_msgs: usize,
     out_lens: *mut usize,
 ) -> i32 {
     // Phase 124.D.1 — delegate to the Rust backend's
-    // `Subscriber::try_recv_sequence` impl. Default trait body
+    // `Subscription::try_recv_sequence` impl. Default trait body
     // loop-drives `try_recv_raw`; concrete backends opt in by
     // overriding for a native batch take.
-    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+    let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if buf.is_null() || out_lens.is_null() || per_msg_cap == 0 {
@@ -1136,7 +1097,7 @@ unsafe extern "C" fn try_recv_sequence_trampoline<R: RustBackend>(
     let buf_slice =
         unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
     let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
-    match Subscriber::try_recv_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
+    match Subscription::try_recv_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
         Ok(count) => count as i32,
         Err(e) => ret_from_error(&e),
     }
@@ -1170,17 +1131,17 @@ unsafe fn publisher_data_mut(publisher: *mut NrosRmwPublisher) -> &'static mut *
 }
 
 #[inline]
-unsafe fn subscriber_data_mut(subscriber: *mut NrosRmwSubscriber) -> &'static mut *mut c_void {
+unsafe fn subscription_data_mut(subscriber: *mut NrosRmwSubscription) -> &'static mut *mut c_void {
     unsafe { &mut (*subscriber).backend_data }
 }
 
 #[inline]
-unsafe fn service_server_data_mut(server: *mut NrosRmwServiceServer) -> &'static mut *mut c_void {
+unsafe fn service_data_mut(server: *mut NrosRmwService) -> &'static mut *mut c_void {
     unsafe { &mut (*server).backend_data }
 }
 
 #[inline]
-unsafe fn service_client_data_mut(client: *mut NrosRmwServiceClient) -> &'static mut *mut c_void {
+unsafe fn client_data_mut(client: *mut NrosRmwClient) -> &'static mut *mut c_void {
     unsafe { &mut (*client).backend_data }
 }
 
@@ -1224,7 +1185,7 @@ unsafe fn publisher_ref<'a, T>(publisher: *mut NrosRmwPublisher) -> Option<&'a T
 }
 
 #[inline]
-unsafe fn subscriber_mut<'a, T>(subscriber: *mut NrosRmwSubscriber) -> Option<&'a mut T> {
+unsafe fn subscription_mut<'a, T>(subscriber: *mut NrosRmwSubscription) -> Option<&'a mut T> {
     if subscriber.is_null() {
         return None;
     }
@@ -1237,7 +1198,7 @@ unsafe fn subscriber_mut<'a, T>(subscriber: *mut NrosRmwSubscriber) -> Option<&'
 }
 
 #[inline]
-unsafe fn subscriber_ref<'a, T>(subscriber: *mut NrosRmwSubscriber) -> Option<&'a T> {
+unsafe fn subscription_ref<'a, T>(subscriber: *mut NrosRmwSubscription) -> Option<&'a T> {
     if subscriber.is_null() {
         return None;
     }
@@ -1250,7 +1211,7 @@ unsafe fn subscriber_ref<'a, T>(subscriber: *mut NrosRmwSubscriber) -> Option<&'
 }
 
 #[inline]
-unsafe fn service_server_mut<'a, T>(server: *mut NrosRmwServiceServer) -> Option<&'a mut T> {
+unsafe fn service_mut<'a, T>(server: *mut NrosRmwService) -> Option<&'a mut T> {
     if server.is_null() {
         return None;
     }
@@ -1263,7 +1224,7 @@ unsafe fn service_server_mut<'a, T>(server: *mut NrosRmwServiceServer) -> Option
 }
 
 #[inline]
-unsafe fn service_server_ref<'a, T>(server: *mut NrosRmwServiceServer) -> Option<&'a T> {
+unsafe fn service_ref<'a, T>(server: *mut NrosRmwService) -> Option<&'a T> {
     if server.is_null() {
         return None;
     }
@@ -1276,7 +1237,7 @@ unsafe fn service_server_ref<'a, T>(server: *mut NrosRmwServiceServer) -> Option
 }
 
 #[inline]
-unsafe fn service_client_mut<'a, T>(client: *mut NrosRmwServiceClient) -> Option<&'a mut T> {
+unsafe fn client_mut<'a, T>(client: *mut NrosRmwClient) -> Option<&'a mut T> {
     if client.is_null() {
         return None;
     }

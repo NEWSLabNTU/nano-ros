@@ -522,7 +522,7 @@ pub unsafe extern "C" fn nros_service_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_service_server(&info, nros_node::QosSettings::services_default()) {
+        match session.create_service(&info, nros_node::QosSettings::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceServer::<
                     { crate::config::MESSAGE_BUFFER_SIZE },
@@ -1293,7 +1293,7 @@ pub unsafe extern "C" fn nros_client_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_service_client(&info, nros_node::QosSettings::services_default()) {
+        match session.create_client(&info, nros_node::QosSettings::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceClient::<
                     { crate::config::MESSAGE_BUFFER_SIZE },
@@ -1487,7 +1487,7 @@ pub unsafe extern "C" fn nros_client_server_available(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ServiceClientTrait;
+        use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -1558,7 +1558,7 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ServiceClientTrait;
+        use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -1662,7 +1662,7 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
     }
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ServiceClientTrait;
+        use nros_node::ClientTrait;
 
         let client_ref = &*client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -1707,7 +1707,7 @@ pub unsafe extern "C" fn nros_client_send_request_async(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ServiceClientTrait;
+        use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
@@ -1784,7 +1784,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ServiceClientTrait;
+        use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
         if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {

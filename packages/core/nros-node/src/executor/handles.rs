@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
-use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, TransportError};
+use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription, TransportError};
 
 use crate::session;
 
@@ -449,7 +449,7 @@ where
     F: FnMut(nros_rmw::CountStatus) + Send + 'static,
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
-    use nros_rmw::Subscriber as _;
+    use nros_rmw::Subscription as _;
     if regs.is_full() {
         return Err(NodeError::Transport(TransportError::Unsupported));
     }
@@ -486,7 +486,7 @@ fn register_sub_event_liveliness<F>(
 where
     F: FnMut(nros_rmw::LivelinessChangedStatus) + Send + 'static,
 {
-    use nros_rmw::Subscriber as _;
+    use nros_rmw::Subscription as _;
     if regs.is_full() {
         return Err(NodeError::Transport(TransportError::Unsupported));
     }
@@ -1135,7 +1135,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// subscriber.
     #[cfg(feature = "alloc")]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
-        use nros_rmw::Subscriber as _;
+        use nros_rmw::Subscription as _;
         self.handle.supports_event(kind)
     }
 
@@ -1369,7 +1369,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     pub fn try_recv_validated(
         &mut self,
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, NodeError> {
-        use nros_rmw::Subscriber;
+        use nros_rmw::Subscription;
         self.handle
             .try_recv_validated(&mut self.buffer)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
@@ -1393,7 +1393,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         max_msgs: usize,
         out_lens: &mut [usize],
     ) -> Result<usize, NodeError> {
-        use nros_rmw::Subscriber;
+        use nros_rmw::Subscription;
         self.handle
             .try_recv_sequence(buf, per_msg_cap, max_msgs, out_lens)
             .map_err(NodeError::Transport)
@@ -1404,7 +1404,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// service-client wake plumbing. No-op on backends that don't
     /// support waking — caller falls back to polling.
     pub fn register_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::Subscriber;
+        use nros_rmw::Subscription;
         self.handle.register_waker(waker);
     }
 
@@ -1412,7 +1412,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// event for this raw subscription.
     #[cfg(feature = "alloc")]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
-        use nros_rmw::Subscriber as _;
+        use nros_rmw::Subscription as _;
         self.handle.supports_event(kind)
     }
 
@@ -1615,7 +1615,7 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// service-client wake plumbing. No-op on backends that don't
     /// support waking — caller falls back to polling.
     pub fn register_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceServerTrait;
+        use nros_rmw::ServiceTrait;
         self.handle.register_waker(waker);
     }
 
@@ -1678,7 +1678,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
     /// reply to a previously-sent request lands.
     pub fn register_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.handle.register_waker(waker);
     }
 
@@ -1703,7 +1703,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// Phase 124.G.3 — graph-aware "is the matching server up?"
     /// probe. Mirrors [`Client::server_available`] for the raw API.
     pub fn server_available(&self) -> Result<bool, NodeError> {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.handle.server_available().map_err(NodeError::Transport)
     }
 
@@ -2158,11 +2158,11 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// [`service_is_ready`](Self::service_is_ready) — that one
     /// collapses "no" and "don't know" into the same `false`.
     ///
-    /// Used to gate the first `call_raw` so a startup-ordering race
+    /// Used to gate the first request so a startup-ordering race
     /// (client opens before server's discovery announcement lands)
     /// doesn't surface as a request-side timeout.
     pub fn server_available(&self) -> Result<bool, NodeError> {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.handle.server_available().map_err(NodeError::Transport)
     }
 }

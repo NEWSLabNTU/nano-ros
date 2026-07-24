@@ -106,7 +106,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         ctx.executor.session_mut()
     };
 
-    match session.create_subscriber(&topic_info, qos_settings) {
+    match session.create_subscription(&topic_info, qos_settings) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwSubscriber, handle);
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_sequence(
     out_lens: *mut usize,
     out_count: *mut usize,
 ) -> nros_cpp_ret_t {
-    use nros_rmw::Subscriber;
+    use nros_rmw::Subscription;
     if storage.is_null() || buf.is_null() || out_lens.is_null() || out_count.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }

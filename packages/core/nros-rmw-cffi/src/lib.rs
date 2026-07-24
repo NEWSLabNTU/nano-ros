@@ -2,7 +2,7 @@
 //!
 //! This crate provides a vtable-based bridge so that backends written in C,
 //! C++, Zig, Ada, or any language with a C-compatible ABI can implement the
-//! nros `Session` / `Publisher` / `Subscriber` / service traits without
+//! nros `Session` / `Publisher` / `Subscription` / service traits without
 //! writing Rust code.
 //!
 //! # Usage (C backend implementor)
@@ -37,8 +37,8 @@ pub mod generated;
 pub use generated::*;
 
 use nros_rmw::{
-    MessageInfo, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy,
-    QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
+    ClientTrait, MessageInfo, Publisher, QosDurabilityPolicy, QosHistoryPolicy,
+    QosReliabilityPolicy, QosSettings, ServiceInfo, ServiceRequest, ServiceTrait, Session,
     TopicInfo, TransportError,
 };
 
@@ -65,8 +65,6 @@ pub mod section;
 /// Compat alias for the generated `nros_rmw_ret_t` typedef.
 /// Zero on success; negative on error.
 pub type NrosRmwRet = nros_rmw_ret_t;
-
-/// Operation completed successfully.
 
 // Anchor every C-stub-transport symbol so they survive
 // `--gc-sections` when integration tests link against
@@ -182,18 +180,22 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 // The `nros_rmw_*_t` structs live in `generated` (from
 // `<nros/rmw_entity.h>`); the `NrosRmw*` names are compat aliases.
 
+// The trait-level infinite spelling and the header's sentinel are the
+// same value by contract; a header edit that drifts one fails here.
+const _: () = assert!(nros_rmw::DURATION_INFINITE_MS as i64 == NROS_RMW_DURATION_INFINITE_MS);
+
 /// Compat alias for the generated `nros_rmw_qos_t`.
 pub type NrosRmwQos = nros_rmw_qos_t;
 /// Compat alias for the generated `nros_rmw_session_t`.
 pub type NrosRmwSession = nros_rmw_session_t;
 /// Compat alias for the generated `nros_rmw_publisher_t`.
 pub type NrosRmwPublisher = nros_rmw_publisher_t;
-/// Compat alias for the generated `nros_rmw_subscriber_t`.
-pub type NrosRmwSubscriber = nros_rmw_subscriber_t;
-/// Compat alias for the generated `nros_rmw_service_server_t`.
-pub type NrosRmwServiceServer = nros_rmw_service_server_t;
-/// Compat alias for the generated `nros_rmw_service_client_t`.
-pub type NrosRmwServiceClient = nros_rmw_service_client_t;
+/// Compat alias for the generated `nros_rmw_subscription_t`.
+pub type NrosRmwSubscription = nros_rmw_subscription_t;
+/// Compat alias for the generated `nros_rmw_service_t`.
+pub type NrosRmwService = nros_rmw_service_t;
+/// Compat alias for the generated `nros_rmw_client_t`.
+pub type NrosRmwClient = nros_rmw_client_t;
 /// Compat alias for the generated `nros_rmw_vtable_t`.
 pub type NrosRmwVtable = nros_rmw_vtable_t;
 
@@ -206,12 +208,10 @@ impl PartialEq for nros_rmw_qos_t {
             && self.history == other.history
             && self.liveliness_kind == other.liveliness_kind
             && self.depth == other.depth
-            && self.tx_express == other.tx_express
             && self.deadline_ms == other.deadline_ms
             && self.lifespan_ms == other.lifespan_ms
             && self.liveliness_lease_ms == other.liveliness_lease_ms
             && self.avoid_ros_namespace_conventions == other.avoid_ros_namespace_conventions
-            && self.rx_buffer_hint == other.rx_buffer_hint
     }
 }
 impl Eq for nros_rmw_qos_t {}
@@ -227,14 +227,12 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
     history: 0,     // KEEP_LAST
     liveliness_kind: nros_rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 10,
-    tx_express: 0,
     _reserved0: 0,
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
-    rx_buffer_hint: 0,
 };
 
 /// Standard `rmw_qos_profile_sensor_data`-equivalent.
@@ -244,14 +242,12 @@ pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
     history: 0,     // KEEP_LAST
     liveliness_kind: nros_rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 5,
-    tx_express: 0,
     _reserved0: 0,
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
-    rx_buffer_hint: 0,
 };
 
 /// Standard `rmw_qos_profile_services_default`-equivalent.
@@ -266,9 +262,21 @@ pub const NROS_RMW_QOS_PROFILE_PARAMETERS: NrosRmwQos = NrosRmwQos {
 /// Standard `rmw_qos_profile_system_default`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
-impl From<QosSettings> for NrosRmwQos {
-    fn from(qos: QosSettings) -> Self {
-        Self {
+// Phase-301 (issue 0241) — the QoS lowering is FALLIBLE: a depth the
+// C ABI's u16 cannot represent is a create-time error, never a silent
+// saturate. The duration fields are u32 ms on both sides (0 = unset,
+// `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite) and pass
+// through unchanged; finer-grained callers lower via
+// `nros_rmw::duration_to_qos_ms` (sub-ms CEILs to 1 ms, past-u32
+// errors).
+impl TryFrom<QosSettings> for NrosRmwQos {
+    type Error = TransportError;
+
+    fn try_from(qos: QosSettings) -> Result<Self, TransportError> {
+        if qos.depth > u16::MAX as u32 {
+            return Err(TransportError::InvalidArgument);
+        }
+        Ok(Self {
             reliability: match qos.reliability {
                 QosReliabilityPolicy::BestEffort => 0,
                 QosReliabilityPolicy::Reliable => 1,
@@ -282,19 +290,14 @@ impl From<QosSettings> for NrosRmwQos {
                 QosHistoryPolicy::KeepAll => 1,
             },
             liveliness_kind: qos.liveliness_kind as u8,
-            // QosSettings::depth is u32; clamp to u16 max. Embedded
-            // ROS queue depths are typically 1–100; oversize values
-            // are saturated at 65 535 rather than wrapped.
-            depth: qos.depth.min(u16::MAX as u32) as u16,
-            tx_express: qos.tx_express as u8,
+            depth: qos.depth as u16,
             _reserved0: 0,
             deadline_ms: qos.deadline_ms,
             lifespan_ms: qos.lifespan_ms,
             liveliness_lease_ms: qos.liveliness_lease_ms,
             avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions as u8,
             _reserved1: [0; 3],
-            rx_buffer_hint: 0,
-        }
+        })
     }
 }
 
@@ -1072,7 +1075,7 @@ pub struct CffiSession {
     /// `RmwConfig` does not yet carry a namespace through the cffi
     /// path; reserved for future use.
     namespace_buf: [u8; NAME_BUF_LEN],
-    /// Backend-private state, written by `vtable.open`.
+    /// Backend-private state, written by `vtable.create_session`.
     backend_data: *mut c_void,
 }
 
@@ -1201,7 +1204,7 @@ impl CffiSession {
             backend_data: core::ptr::null_mut(),
         };
         let ret = unsafe {
-            (vtable.open.expect("rmw vtable: open"))(
+            (vtable.create_session.expect("rmw vtable: create_session"))(
                 loc_ptr,
                 mode,
                 domain_id,
@@ -1235,9 +1238,9 @@ impl CffiSession {
 impl Session for CffiSession {
     type Error = TransportError;
     type PublisherHandle = CffiPublisher;
-    type SubscriberHandle = CffiSubscriber;
-    type ServiceServerHandle = CffiServiceServer;
-    type ServiceClientHandle = CffiServiceClient;
+    type SubscriptionHandle = CffiSubscription;
+    type ServiceHandle = CffiService;
+    type ClientHandle = CffiClient;
 
     fn create_publisher(
         &mut self,
@@ -1246,12 +1249,14 @@ impl Session for CffiSession {
     ) -> Result<CffiPublisher, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
-        let mut qos_struct = NrosRmwQos::from(qos);
-        // phase-279/282 (#145) — carry the express hint across the C ABI so a
-        // batching backend can declare this publisher express (bypass batch).
-        // Either surface wins: the QoS profile field (language APIs) or the
-        // lower-level `TopicInfo::with_tx_express` (direct RMW users).
-        qos_struct.tx_express = (topic.tx_express || qos.tx_express) as u8;
+        let qos_struct = NrosRmwQos::try_from(qos)?;
+        // phase-301 (issue 0240) — the express hint travels in the options
+        // struct, not the QoS profile. Either surface wins: the QoS profile
+        // field (language APIs) or `TopicInfo::with_tx_express` (direct RMW).
+        let options = nros_rmw_publisher_options_t {
+            tx_express: (topic.tx_express || qos.tx_express) as u8,
+            _reserved: [0u8; 7],
+        };
 
         let mut pub_state = CffiPublisher {
             vtable: self.vtable,
@@ -1288,6 +1293,7 @@ impl Session for CffiSession {
                 hash_ptr,
                 topic.domain_id,
                 &qos_struct,
+                &options,
                 &mut view,
             )
         };
@@ -1302,19 +1308,24 @@ impl Session for CffiSession {
         Ok(pub_state)
     }
 
-    fn create_subscriber(
+    fn create_subscription(
         &mut self,
         topic: &TopicInfo,
         qos: QosSettings,
-    ) -> Result<CffiSubscriber, TransportError> {
+    ) -> Result<CffiSubscription, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
-        let mut qos_struct = NrosRmwQos::from(qos);
-        // Phase 231 (RFC-0038) — carry the receive-buffer size hint across the
-        // C ABI so a size-classing backend can route its receive storage.
-        qos_struct.rx_buffer_hint = topic.rx_buffer_hint.min(u32::MAX as usize) as u32;
+        let qos_struct = NrosRmwQos::try_from(qos)?;
+        // Phase 231 (RFC-0038) / phase-301 (issue 0240) — the receive-buffer
+        // size hint travels in the options struct so a size-classing backend
+        // can route its receive storage. A hint, not a policy: oversize
+        // saturates.
+        let options = nros_rmw_subscription_options_t {
+            rx_buffer_hint: topic.rx_buffer_hint.min(u32::MAX as usize) as u32,
+            _reserved: [0u8; 4],
+        };
 
-        let mut sub_state = CffiSubscriber {
+        let mut sub_state = CffiSubscription {
             vtable: self.vtable,
             topic_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
@@ -1326,7 +1337,7 @@ impl Session for CffiSession {
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
 
-        let mut view = NrosRmwSubscriber {
+        let mut view = NrosRmwSubscription {
             topic_name: topic_ptr,
             type_name: type_ptr,
             qos: qos_struct,
@@ -1342,14 +1353,15 @@ impl Session for CffiSession {
         let ret = unsafe {
             (self
                 .vtable
-                .create_subscriber
-                .expect("rmw vtable: create_subscriber"))(
+                .create_subscription
+                .expect("rmw vtable: create_subscription"))(
                 &mut session_view,
                 topic_ptr,
                 type_ptr,
                 hash_ptr,
                 topic.domain_id,
                 &qos_struct,
+                &options,
                 &mut view,
             )
         };
@@ -1362,7 +1374,7 @@ impl Session for CffiSession {
         sub_state.backend_data = view.backend_data;
         sub_state.can_loan_messages = view.can_loan_messages;
         // Phase 231 (RFC-0038) — cache the in-place capability once.
-        sub_state.supports_in_place = match sub_state.vtable.subscriber_supports_in_place {
+        sub_state.supports_in_place = match sub_state.vtable.subscription_supports_in_place {
             Some(f) => {
                 let mut v = sub_state.make_view();
                 unsafe { f(&mut v) == 1 }
@@ -1372,16 +1384,16 @@ impl Session for CffiSession {
         Ok(sub_state)
     }
 
-    fn create_service_server(
+    fn create_service(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<CffiServiceServer, TransportError> {
-        let qos_struct = NrosRmwQos::from(qos);
+    ) -> Result<CffiService, TransportError> {
+        let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
-        let mut srv_state = CffiServiceServer {
+        let mut srv_state = CffiService {
             vtable: self.vtable,
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
@@ -1390,7 +1402,7 @@ impl Session for CffiSession {
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
 
-        let mut view = NrosRmwServiceServer {
+        let mut view = NrosRmwService {
             service_name: svc_ptr,
             type_name: type_ptr,
             _reserved: [0u8; 8],
@@ -1408,8 +1420,8 @@ impl Session for CffiSession {
         let ret = unsafe {
             (self
                 .vtable
-                .create_service_server
-                .expect("rmw vtable: create_service_server"))(
+                .create_service
+                .expect("rmw vtable: create_service"))(
                 &mut session_view,
                 svc_ptr,
                 type_ptr,
@@ -1429,26 +1441,25 @@ impl Session for CffiSession {
         Ok(srv_state)
     }
 
-    fn create_service_client(
+    fn create_client(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<CffiServiceClient, TransportError> {
-        let qos_struct = NrosRmwQos::from(qos);
+    ) -> Result<CffiClient, TransportError> {
+        let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
-        let mut cli_state = CffiServiceClient {
+        let mut cli_state = CffiClient {
             vtable: self.vtable,
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
-            pending_len: 0,
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
 
-        let mut view = NrosRmwServiceClient {
+        let mut view = NrosRmwClient {
             service_name: svc_ptr,
             type_name: type_ptr,
             _reserved: [0u8; 8],
@@ -1466,8 +1477,8 @@ impl Session for CffiSession {
         let ret = unsafe {
             (self
                 .vtable
-                .create_service_client
-                .expect("rmw vtable: create_service_client"))(
+                .create_client
+                .expect("rmw vtable: create_client"))(
                 &mut session_view,
                 svc_ptr,
                 type_ptr,
@@ -1492,7 +1503,12 @@ impl Session for CffiSession {
             return Ok(());
         }
         let mut view = self.make_view();
-        let ret = unsafe { (self.vtable.close.expect("rmw vtable: close"))(&mut view) };
+        let ret = unsafe {
+            (self
+                .vtable
+                .destroy_session
+                .expect("rmw vtable: destroy_session"))(&mut view)
+        };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -1572,7 +1588,7 @@ impl Session for CffiSession {
     /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
     /// here so backends behind the cffi vtable don't get rejected by
     /// the runtime's pre-validate step before they ever see the
-    /// `create_publisher` / `create_subscriber` call. The vtable
+    /// `create_publisher` / `create_subscription` call. The vtable
     /// doesn't expose a per-backend policy mask yet; until it does,
     /// the cffi route has to assume the registered backend supports
     /// the union of every policy any nros-supported RMW honours.
@@ -1601,7 +1617,12 @@ impl Drop for CffiSession {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
-            unsafe { (self.vtable.close.expect("rmw vtable: close"))(&mut view) };
+            unsafe {
+                (self
+                    .vtable
+                    .destroy_session
+                    .expect("rmw vtable: destroy_session"))(&mut view)
+            };
         }
     }
 }
@@ -2042,25 +2063,25 @@ impl Drop for CffiPublisher {
 }
 
 // ============================================================================
-// CffiSubscriber
+// CffiSubscription
 // ============================================================================
 
-/// Subscriber backed by a C vtable.
-pub struct CffiSubscriber {
+/// Subscription backed by a C vtable.
+pub struct CffiSubscription {
     vtable: &'static NrosRmwVtable,
     topic_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     qos: NrosRmwQos,
     can_loan_messages: bool,
     backend_data: *mut c_void,
-    /// Phase 231 (RFC-0038) — cached `subscriber_supports_in_place` capability,
+    /// Phase 231 (RFC-0038) — cached `subscription_supports_in_place` capability,
     /// queried once at creation so `supports_process_in_place(&self)` is cheap.
     supports_in_place: bool,
 }
 
-impl CffiSubscriber {
-    fn make_view(&mut self) -> NrosRmwSubscriber {
-        NrosRmwSubscriber {
+impl CffiSubscription {
+    fn make_view(&mut self) -> NrosRmwSubscription {
+        NrosRmwSubscription {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             qos: self.qos,
@@ -2127,14 +2148,14 @@ impl CffiSubscriber {
 }
 
 /// Phase 124.A — read-only view returned by
-/// [`CffiSubscriber::try_borrow`]. Holds the backend's raw buffer +
+/// [`CffiSubscription::try_borrow`]. Holds the backend's raw buffer +
 /// opaque token until `Drop` fires `sub_release`.
 #[cfg(feature = "lending")]
 pub struct CffiView<'a> {
     buf: *const u8,
     len: usize,
     token: *mut c_void,
-    subscriber: Option<&'a mut CffiSubscriber>,
+    subscriber: Option<&'a mut CffiSubscription>,
 }
 
 #[cfg(feature = "lending")]
@@ -2163,7 +2184,7 @@ impl<'a> Drop for CffiView<'a> {
 }
 
 #[cfg(feature = "lending")]
-impl nros_rmw::SlotBorrowing for CffiSubscriber {
+impl nros_rmw::SlotBorrowing for CffiSubscription {
     type View<'a> = CffiView<'a>;
 
     fn try_borrow(&mut self) -> Result<Option<CffiView<'_>>, TransportError> {
@@ -2200,7 +2221,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscriber {
     }
 }
 
-impl nros_rmw::Subscriber for CffiSubscriber {
+impl nros_rmw::Subscription for CffiSubscription {
     type Error = TransportError;
 
     fn supports_process_in_place(&self) -> bool {
@@ -2311,8 +2332,8 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         // Phase 124.D.2 — `try_recv_raw` loop fallback. Inlined
         // here (rather than dispatching back through the trait
         // default body) so the recursion is structurally
-        // impossible — `Subscriber::try_recv_sequence` on
-        // `CffiSubscriber` is THIS function, and forwarding to
+        // impossible — `Subscription::try_recv_sequence` on
+        // `CffiSubscription` is THIS function, and forwarding to
         // the default body would deadlock the override.
         if per_msg_cap == 0 || max_msgs == 0 {
             return Ok(0);
@@ -2360,8 +2381,8 @@ impl nros_rmw::Subscriber for CffiSubscriber {
         let ret = unsafe {
             (self
                 .vtable
-                .register_subscriber_event
-                .expect("rmw vtable: register_subscriber_event"))(
+                .register_subscription_event
+                .expect("rmw vtable: register_subscription_event"))(
                 &mut view,
                 event_kind_to_c(kind),
                 deadline_ms,
@@ -2376,7 +2397,7 @@ impl nros_rmw::Subscriber for CffiSubscriber {
     }
 }
 
-impl Drop for CffiSubscriber {
+impl Drop for CffiSubscription {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             clear_cffi_message_info(self.backend_data as usize);
@@ -2384,28 +2405,28 @@ impl Drop for CffiSubscriber {
             unsafe {
                 (self
                     .vtable
-                    .destroy_subscriber
-                    .expect("rmw vtable: destroy_subscriber"))(&mut view)
+                    .destroy_subscription
+                    .expect("rmw vtable: destroy_subscription"))(&mut view)
             };
         }
     }
 }
 
 // ============================================================================
-// CffiServiceServer
+// CffiService
 // ============================================================================
 
 /// Service server backed by a C vtable.
-pub struct CffiServiceServer {
+pub struct CffiService {
     vtable: &'static NrosRmwVtable,
     service_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     backend_data: *mut c_void,
 }
 
-impl CffiServiceServer {
-    fn make_view(&mut self) -> NrosRmwServiceServer {
-        NrosRmwServiceServer {
+impl CffiService {
+    fn make_view(&mut self) -> NrosRmwService {
+        NrosRmwService {
             service_name: self.service_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             _reserved: [0u8; 8],
@@ -2422,7 +2443,7 @@ impl CffiServiceServer {
     }
 }
 
-impl ServiceServerTrait for CffiServiceServer {
+impl ServiceTrait for CffiService {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
@@ -2482,42 +2503,35 @@ impl ServiceServerTrait for CffiServiceServer {
     }
 }
 
-impl Drop for CffiServiceServer {
+impl Drop for CffiService {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
             unsafe {
                 (self
                     .vtable
-                    .destroy_service_server
-                    .expect("rmw vtable: destroy_service_server"))(&mut view)
+                    .destroy_service
+                    .expect("rmw vtable: destroy_service"))(&mut view)
             };
         }
     }
 }
 
 // ============================================================================
-// CffiServiceClient
+// CffiClient
 // ============================================================================
 
 /// Service client backed by a C vtable.
-pub struct CffiServiceClient {
+pub struct CffiClient {
     vtable: &'static NrosRmwVtable,
     service_name_buf: [u8; NAME_BUF_LEN],
     type_name_buf: [u8; NAME_BUF_LEN],
     backend_data: *mut c_void,
-    /// Phase 130.8 — flag (request length, or 0) tracking whether a
-    /// request is in flight via the non-blocking `send_request_raw`
-    /// / `try_recv_reply_raw` vtable slots. The legacy
-    /// blocking-call_raw fallback that previously needed a local
-    /// 4 KiB pending-request buffer has been removed; backends own
-    /// the request bytes from `send_request_raw` onward.
-    pending_len: usize,
 }
 
-impl CffiServiceClient {
-    fn make_view(&mut self) -> NrosRmwServiceClient {
-        NrosRmwServiceClient {
+impl CffiClient {
+    fn make_view(&mut self) -> NrosRmwClient {
+        NrosRmwClient {
             service_name: self.service_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             _reserved: [0u8; 8],
@@ -2534,38 +2548,15 @@ impl CffiServiceClient {
     }
 }
 
-impl ServiceClientTrait for CffiServiceClient {
+impl ClientTrait for CffiClient {
     type Error = TransportError;
 
-    #[allow(deprecated)]
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
-        let mut view = self.make_view();
-        let rc = unsafe {
-            (self.vtable.call_raw.expect("rmw vtable: call_raw"))(
-                &mut view,
-                request.as_ptr(),
-                request.len(),
-                reply_buf.as_mut_ptr(),
-                reply_buf.len(),
-            )
-        };
-        if rc < 0 {
-            return Err(error_from_ret(rc));
-        }
-        Ok(rc as usize)
-    }
-
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
-        // Phase 130.8 — every shipping backend now provides the
-        // non-blocking `send_request_raw` + `try_recv_reply_raw`
-        // vtable slots: XRCE-DDS-Client (native C),
-        // Cyclone DDS C++ wrapper (native C++), Rust adapters
-        // (dust-DDS + zenoh-pico via `rust_adapter`). The legacy
-        // blocking-call_raw fallback that starved the executor's
-        // spin loop (Phase 127.C.4 root cause) has been removed.
-        // Backends that omit the slot get `Unsupported`; the
-        // executor surfaces the error to the caller instead of
-        // silently degrading to a multi-second blocking burst.
+        // Phase-301 (issue 0240) — `send_request_raw` +
+        // `try_recv_reply_raw` is the ONE request/reply path (the
+        // blocking `call_raw` slot is gone from the vtable). Backends
+        // that omit the slot get `Unsupported`; the executor surfaces
+        // the error instead of silently degrading.
         let Some(f) = self.vtable.send_request_raw else {
             return Err(TransportError::Unsupported);
         };
@@ -2574,7 +2565,6 @@ impl ServiceClientTrait for CffiServiceClient {
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        self.pending_len = request.len().max(1);
         Ok(())
     }
 
@@ -2582,9 +2572,8 @@ impl ServiceClientTrait for CffiServiceClient {
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        // Phase 130.8 — non-blocking poll only. NULL slot = backend
-        // doesn't implement the service-client path; surface
-        // Unsupported rather than the deprecated blocking fallback.
+        // Non-blocking poll only. NULL slot = backend doesn't implement
+        // the service-client path; surface Unsupported.
         let Some(f) = self.vtable.try_recv_reply_raw else {
             return Err(TransportError::Unsupported);
         };
@@ -2594,10 +2583,8 @@ impl ServiceClientTrait for CffiServiceClient {
             return Ok(None);
         }
         if rc < 0 {
-            self.pending_len = 0;
             return Err(error_from_ret(rc));
         }
-        self.pending_len = 0;
         Ok(Some(rc as usize))
     }
 
@@ -2605,13 +2592,13 @@ impl ServiceClientTrait for CffiServiceClient {
         let Some(f) = self.vtable.service_server_available else {
             return Err(TransportError::Unsupported);
         };
-        // SAFETY: `f` accepts a `*mut NrosRmwServiceClient`. We
+        // SAFETY: `f` accepts a `*mut NrosRmwClient`. We
         // construct a transient view from this client's fields the
         // same way `make_view` does, but on `&self` (no mutation
         // required for a graph probe). The borrowed pointers all
         // alias into `&self`, so the lifetime is bounded by the
         // call.
-        let mut view = NrosRmwServiceClient {
+        let mut view = NrosRmwClient {
             service_name: self.service_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             _reserved: [0u8; 8],
@@ -2630,15 +2617,15 @@ impl ServiceClientTrait for CffiServiceClient {
     }
 }
 
-impl Drop for CffiServiceClient {
+impl Drop for CffiClient {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
             unsafe {
                 (self
                     .vtable
-                    .destroy_service_client
-                    .expect("rmw vtable: destroy_service_client"))(&mut view)
+                    .destroy_client
+                    .expect("rmw vtable: destroy_client"))(&mut view)
             };
         }
     }
@@ -2719,14 +2706,12 @@ mod tests {
         history: 0,
         liveliness_kind: 0,
         depth: 0,
-        tx_express: 0,
         _reserved0: 0,
         deadline_ms: 0,
         lifespan_ms: 0,
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
-        rx_buffer_hint: 0,
     };
 
     /// Read a null-terminated `*const u8` into the supplied byte
@@ -2745,7 +2730,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn stub_open(
+    unsafe extern "C" fn stub_create_session(
         _locator: *const core::ffi::c_char,
         _mode: u8,
         _domain_id: u32,
@@ -2759,7 +2744,7 @@ mod tests {
         NROS_RMW_RET_OK
     }
 
-    unsafe extern "C" fn stub_close(_session: *mut NrosRmwSession) -> NrosRmwRet {
+    unsafe extern "C" fn stub_destroy_session(_session: *mut NrosRmwSession) -> NrosRmwRet {
         NROS_RMW_RET_OK
     }
 
@@ -2777,6 +2762,7 @@ mod tests {
         _type_hash: *const core::ffi::c_char,
         _domain_id: u32,
         qos: *const NrosRmwQos,
+        _options: *const nros_rmw_publisher_options_t,
         out: *mut NrosRmwPublisher,
     ) -> NrosRmwRet {
         // Capture the typed-struct fields the runtime supplied.
@@ -2810,56 +2796,61 @@ mod tests {
         NROS_RMW_RET_OK
     }
 
-    unsafe extern "C" fn stub_create_subscriber(
+    unsafe extern "C" fn stub_create_subscription(
         _: *mut NrosRmwSession,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
-        out: *mut NrosRmwSubscriber,
+        _: *const nros_rmw_subscription_options_t,
+        out: *mut NrosRmwSubscription,
     ) -> NrosRmwRet {
         unsafe {
             (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_subscriber(_: *mut NrosRmwSubscriber) {}
-    unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
+    unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
+    unsafe extern "C" fn stub_try_recv_raw(
+        _: *mut NrosRmwSubscription,
+        _: *mut u8,
+        _: usize,
+    ) -> i32 {
         0
     }
-    unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
+    unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscription) -> i32 {
         0
     }
 
-    unsafe extern "C" fn stub_create_service_server(
+    unsafe extern "C" fn stub_create_service(
         _: *mut NrosRmwSession,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
-        out: *mut NrosRmwServiceServer,
+        out: *mut NrosRmwService,
     ) -> NrosRmwRet {
         unsafe {
             (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_service_server(_: *mut NrosRmwServiceServer) {}
+    unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
     unsafe extern "C" fn stub_try_recv_request(
-        _: *mut NrosRmwServiceServer,
+        _: *mut NrosRmwService,
         _: *mut u8,
         _: usize,
         _: *mut i64,
     ) -> i32 {
         NROS_RMW_RET_NO_DATA
     }
-    unsafe extern "C" fn stub_has_request(_: *mut NrosRmwServiceServer) -> i32 {
+    unsafe extern "C" fn stub_has_request(_: *mut NrosRmwService) -> i32 {
         0
     }
     unsafe extern "C" fn stub_send_reply(
-        _: *mut NrosRmwServiceServer,
+        _: *mut NrosRmwService,
         _: i64,
         _: *const u8,
         _: usize,
@@ -2867,33 +2858,23 @@ mod tests {
         NROS_RMW_RET_OK
     }
 
-    unsafe extern "C" fn stub_create_service_client(
+    unsafe extern "C" fn stub_create_client(
         _: *mut NrosRmwSession,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
-        out: *mut NrosRmwServiceClient,
+        out: *mut NrosRmwClient,
     ) -> NrosRmwRet {
         unsafe {
             (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_service_client(_: *mut NrosRmwServiceClient) {}
-    unsafe extern "C" fn stub_call_raw(
-        _: *mut NrosRmwServiceClient,
-        _: *const u8,
-        _: usize,
-        _: *mut u8,
-        _: usize,
-    ) -> i32 {
-        0
-    }
-
-    unsafe extern "C" fn stub_register_subscriber_event(
-        _: *mut NrosRmwSubscriber,
+    unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) {}
+    unsafe extern "C" fn stub_register_subscription_event(
+        _: *mut NrosRmwSubscription,
         _: NrosRmwEventKind,
         _: u32,
         _: NrosRmwEventCallback,
@@ -2915,27 +2896,26 @@ mod tests {
     }
 
     static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
-        open: Some(stub_open),
-        close: Some(stub_close),
+        create_session: Some(stub_create_session),
+        destroy_session: Some(stub_destroy_session),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),
         destroy_publisher: Some(stub_destroy_publisher),
         publish_raw: Some(stub_publish_raw),
-        create_subscriber: Some(stub_create_subscriber),
-        destroy_subscriber: Some(stub_destroy_subscriber),
+        create_subscription: Some(stub_create_subscription),
+        destroy_subscription: Some(stub_destroy_subscription),
         try_recv_raw: Some(stub_try_recv_raw),
         has_data: Some(stub_has_data),
-        create_service_server: Some(stub_create_service_server),
-        destroy_service_server: Some(stub_destroy_service_server),
+        create_service: Some(stub_create_service),
+        destroy_service: Some(stub_destroy_service),
         try_recv_request: Some(stub_try_recv_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
-        create_service_client: Some(stub_create_service_client),
-        destroy_service_client: Some(stub_destroy_service_client),
-        call_raw: Some(stub_call_raw),
+        create_client: Some(stub_create_client),
+        destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
         try_recv_reply_raw: None,
-        register_subscriber_event: Some(stub_register_subscriber_event),
+        register_subscription_event: Some(stub_register_subscription_event),
         register_publisher_event: Some(stub_register_publisher_event),
         assert_publisher_liveliness: Some(stub_assert_publisher_liveliness),
         next_deadline_ms: None,
@@ -2949,15 +2929,80 @@ mod tests {
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,
-        subscriber_supports_in_place: None,
+        subscription_supports_in_place: None,
         process_raw_in_place: None,
     };
 
+    // Phase-301 (issue 0241) — boundary semantics of the QoS lowering.
+
+    #[test]
+    fn qos_depth_at_u16_max_lowers() {
+        let qos = nros_rmw::QosSettings::default().keep_last(u16::MAX as u32);
+        let lowered = NrosRmwQos::try_from(qos).expect("depth 65535 must lower");
+        assert_eq!(lowered.depth, u16::MAX);
+    }
+
+    #[test]
+    fn qos_depth_past_u16_max_is_create_time_error() {
+        let qos = nros_rmw::QosSettings::default().keep_last(u16::MAX as u32 + 1);
+        assert_eq!(
+            NrosRmwQos::try_from(qos),
+            Err(TransportError::InvalidArgument)
+        );
+    }
+
+    #[test]
+    fn qos_infinite_sentinel_passes_through_and_reads_as_unset() {
+        use nros_rmw::{DURATION_INFINITE_MS, QosPolicyMask};
+        let mut qos = nros_rmw::QosSettings::default();
+        qos.deadline_ms = DURATION_INFINITE_MS;
+        qos.lifespan_ms = DURATION_INFINITE_MS;
+        qos.liveliness_lease_ms = DURATION_INFINITE_MS;
+        // Sentinel behaves like 0 at the check sites: no extra policy demanded.
+        let required = qos.required_policies();
+        assert!(!required.contains(QosPolicyMask::DEADLINE));
+        assert!(!required.contains(QosPolicyMask::LIFESPAN));
+        assert!(!required.contains(QosPolicyMask::LIVELINESS_LEASE));
+        // And lowers unchanged — the C side sees the explicit spelling.
+        let lowered = NrosRmwQos::try_from(qos).expect("sentinel must lower");
+        assert_eq!(lowered.deadline_ms, DURATION_INFINITE_MS);
+        assert_eq!(lowered.lifespan_ms, DURATION_INFINITE_MS);
+        assert_eq!(lowered.liveliness_lease_ms, DURATION_INFINITE_MS);
+    }
+
+    #[test]
+    fn duration_lowering_boundaries() {
+        use core::time::Duration;
+        use nros_rmw::{DURATION_INFINITE_MS, duration_to_qos_ms};
+        // 0 keeps its unset/no-check meaning.
+        assert_eq!(duration_to_qos_ms(Duration::ZERO), Ok(0));
+        // Sub-ms CEILs to 1 ms — never floors to "no deadline".
+        assert_eq!(duration_to_qos_ms(Duration::from_nanos(1)), Ok(1));
+        assert_eq!(duration_to_qos_ms(Duration::from_micros(999)), Ok(1));
+        assert_eq!(duration_to_qos_ms(Duration::from_millis(1)), Ok(1));
+        assert_eq!(duration_to_qos_ms(Duration::from_micros(1001)), Ok(2));
+        // Largest representable finite value.
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_millis(DURATION_INFINITE_MS as u64 - 1)),
+            Ok(DURATION_INFINITE_MS - 1)
+        );
+        // At / past the sentinel: create-time error, never a clamp (infinite
+        // is spelled via the sentinel or 0, not a huge finite duration).
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_millis(DURATION_INFINITE_MS as u64)),
+            Err(TransportError::InvalidArgument)
+        );
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_secs(u64::MAX / 1_000)),
+            Err(TransportError::InvalidArgument)
+        );
+    }
+
     #[test]
     fn service_server_no_data_maps_to_none() {
-        use nros_rmw::ServiceServerTrait as _;
+        use nros_rmw::ServiceTrait as _;
 
-        let mut server = CffiServiceServer {
+        let mut server = CffiService {
             vtable: &STUB_VTABLE,
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],

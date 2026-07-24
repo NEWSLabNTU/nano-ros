@@ -766,7 +766,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
         let context = subscription_ref.get_context();
 
         // Propagate node identity into the executor so the underlying
-        // create_subscriber call gets liveliness keyexpr metadata.
+        // create_subscription call gets liveliness keyexpr metadata.
         set_executor_node_identity(rust_exec, subscription_ref.node);
 
         // Phase 104.C.8.b — when the Node was created via

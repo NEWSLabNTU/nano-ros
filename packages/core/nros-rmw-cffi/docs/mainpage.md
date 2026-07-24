@@ -53,21 +53,22 @@ your backend stays in C.
 The vtable is a struct of function pointers grouped by entity (see
 @ref nros_rmw_vtable_t):
 
-- **Session** — `open`, `close`, `drive_io`. `drive_io(timeout_ms)` is
+- **Session** — `create_session`, `destroy_session`, `drive_io`.
+  `drive_io(timeout_ms)` is
   the executor's I/O drive call; it must dispatch any pending
   receive/send work and return within the given timeout.
 - **Publisher** — `create_publisher`, `destroy_publisher`,
   `publish_raw`. Raw payloads are CDR-encoded by the upper layer.
-- **Subscriber** — `create_subscriber`, `destroy_subscriber`,
+- **Subscription** — `create_subscription`, `destroy_subscription`,
   `try_recv_raw`, `has_data`. `try_recv_raw` is non-blocking; return
   `0` if no data is ready.
-- **Service Server** — `create_service_server`, `destroy_service_server`,
+- **Service** — `create_service`, `destroy_service`,
   `try_recv_request`, `has_request`, `send_reply`. The `seq_out`
   parameter on `try_recv_request` carries the request sequence number
   forwarded back to `send_reply`.
-- **Service Client** — `create_service_client`, `destroy_service_client`,
-  `call_raw`. `call_raw` is synchronous; the caller blocks on the
-  executor.
+- **Client** — `create_client`, `destroy_client`,
+  `send_request_raw`, `try_recv_reply_raw` (non-blocking pair; the
+  executor drives I/O between them — there is no blocking call slot).
 
 ## Return-value conventions
 
@@ -76,13 +77,14 @@ Zero is success; every error code is a named negative constant in
 @ref rmw_ret.h. Pointer-returning calls signal failure with `NULL`.
 
 ```
-open                     non-NULL = success, NULL = error
-close/drive_io/
+create_session           non-NULL = success, NULL = error
+destroy_session/drive_io/
   publish_raw/send_reply NROS_RMW_RET_OK = success, negative = named error code
 try_recv_raw             >= 0 = bytes received (0 = no data), negative = named error code
 try_recv_request         >= 0 = bytes received (seq_out written), negative = named error code
 has_data/has_request     1 = yes, 0 = no
-call_raw                 >= 0 = reply bytes, negative = named error code
+send_request_raw         NROS_RMW_RET_OK = queued, negative = named error code
+try_recv_reply_raw       >= 0 = reply bytes, NO_DATA = not yet, negative = error
 destroy_*                void (best-effort cleanup)
 ```
 
@@ -109,7 +111,8 @@ the failure site through the platform's `printk` equivalent.
 - `publish_raw`, `try_recv_raw`, and `send_reply` may run concurrently
   from different threads — the backend is responsible for any
   required serialisation.
-- `call_raw` blocks until the reply arrives or an error occurs.
+- `send_request_raw` / `try_recv_reply_raw` are non-blocking; the
+  executor drives I/O between them.
 
 ## See also
 

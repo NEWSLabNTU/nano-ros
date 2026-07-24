@@ -2,7 +2,7 @@
 //!
 //! Tier-1 events that backends optionally surface — liveliness
 //! changes, deadline misses, message loss. Dispatched via
-//! callback-on-entity (registration on `Subscriber` / `Publisher`),
+//! callback-on-entity (registration on `Subscription` / `Publisher`),
 //! not via upstream's waitset-take pattern.
 //!
 //! Events fire from inside [`Session::drive_io`](crate::Session::drive_io)
@@ -30,13 +30,13 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum EventKind {
-    /// Subscriber: a tracked publisher's liveliness state changed
+    /// Subscription: a tracked publisher's liveliness state changed
     /// (started / stopped asserting).
     LivelinessChanged = 0,
-    /// Subscriber: an expected sample didn't arrive within the
+    /// Subscription: an expected sample didn't arrive within the
     /// configured deadline.
     RequestedDeadlineMissed = 1,
-    /// Subscriber: the backend dropped a sample (overflow / etc.).
+    /// Subscription: the backend dropped a sample (overflow / etc.).
     MessageLost = 2,
     /// Publisher: this publisher missed its own liveliness assertion.
     LivelinessLost = 3,

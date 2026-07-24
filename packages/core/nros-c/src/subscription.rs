@@ -498,7 +498,7 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
             topic_str,
             crate::qos::QOS_OVERRIDE_ROLE_SUBSCRIPTION,
         );
-        match session.create_subscriber(&topic_info, qos_settings) {
+        match session.create_subscription(&topic_info, qos_settings) {
             Ok(handle) => {
                 let raw = nros_node::RawSubscription::<{ crate::config::MESSAGE_BUFFER_SIZE }>::new(
                     handle,

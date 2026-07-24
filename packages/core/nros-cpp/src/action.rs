@@ -1627,7 +1627,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_wake_callback(
     if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    use nros_rmw::Subscriber;
+    use nros_rmw::Subscription;
     let sub = unsafe { &*(storage as *const nros::internals::RmwSubscriber) };
     unsafe { install_waker_on(state, cb, ctx, |w| sub.register_waker(w)) }
 }
@@ -1643,7 +1643,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_set_wake_callback(
     if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    use nros_rmw::ServiceServerTrait;
+    use nros_rmw::ServiceTrait;
     let srv = unsafe { &*(storage as *const nros::internals::RmwServiceServer) };
     unsafe { install_waker_on(state, cb, ctx, |w| srv.register_waker(w)) }
 }
@@ -1659,7 +1659,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_set_wake_callback(
     if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    use nros_rmw::ServiceClientTrait;
+    use nros_rmw::ClientTrait;
     let cli = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
     unsafe { install_waker_on(state, cb, ctx, |w| cli.register_waker(w)) }
 }
@@ -1860,7 +1860,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let send_goal_server =
-        match session.create_service_server(&send_goal_info, QosSettings::services_default()) {
+        match session.create_service(&send_goal_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -1877,7 +1877,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let cancel_goal_server =
-        match session.create_service_server(&cancel_goal_info, QosSettings::services_default()) {
+        match session.create_service(&cancel_goal_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -1890,7 +1890,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let get_result_server =
-        match session.create_service_server(&get_result_info, QosSettings::services_default()) {
+        match session.create_service(&get_result_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2250,7 +2250,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let send_goal_client =
-        match session.create_service_client(&send_goal_info, QosSettings::services_default()) {
+        match session.create_client(&send_goal_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2267,7 +2267,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let cancel_goal_client =
-        match session.create_service_client(&cancel_goal_info, QosSettings::services_default()) {
+        match session.create_client(&cancel_goal_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2280,7 +2280,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let get_result_client =
-        match session.create_service_client(&get_result_info, QosSettings::services_default()) {
+        match session.create_client(&get_result_info, QosSettings::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2295,7 +2295,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         feedback_topic = feedback_topic.with_node_name(n);
     }
     let feedback_subscriber =
-        match session.create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT) {
+        match session.create_subscription(&feedback_topic, QosSettings::BEST_EFFORT) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };

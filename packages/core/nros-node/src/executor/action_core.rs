@@ -8,7 +8,7 @@
 //! and add serialization/deserialization at the boundary.
 
 use nros_core::{CdrReader, CdrWriter, GoalId, GoalInfo, GoalStatus, GoalStatusStamped, Serialize};
-use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, TransportError};
+use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription, TransportError};
 
 use super::types::NodeError;
 use crate::session;
@@ -412,21 +412,21 @@ impl<
     /// register here in place of polling `try_recv_goal_request` on
     /// a timer.
     pub fn register_goal_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceServerTrait;
+        use nros_rmw::ServiceTrait;
         self.send_goal_server.register_waker(waker);
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// cancel-goal request arrives.
     pub fn register_cancel_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceServerTrait;
+        use nros_rmw::ServiceTrait;
         self.cancel_goal_server.register_waker(waker);
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// get_result query arrives.
     pub fn register_get_result_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceServerTrait;
+        use nros_rmw::ServiceTrait;
         self.get_result_server.register_waker(waker);
     }
 
@@ -790,26 +790,26 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// service client. Used by the C action-client wrapper
     /// (`nros_action_client_wait_for_action_server`) to keep
     /// `send_goal_client` private while still exposing the discovery
-    /// surface from `ServiceClientTrait`.
+    /// surface from `ClientTrait`.
     pub fn start_server_discovery(
         &mut self,
         timeout_ms: u32,
     ) -> Result<(), nros_rmw::TransportError> {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.send_goal_client.start_server_discovery(timeout_ms)
     }
 
     /// Poll the in-flight server-discovery probe started by
     /// [`start_server_discovery`](Self::start_server_discovery).
     pub fn poll_server_discovery(&mut self) -> Result<Option<bool>, nros_rmw::TransportError> {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.send_goal_client.poll_server_discovery()
     }
 
     /// Latched "is server visible" snapshot. See
     /// `ActionClient::action_server_is_ready` for the semantic.
     pub fn is_server_ready(&self) -> bool {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.send_goal_client.is_server_ready()
     }
 
@@ -866,41 +866,6 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .map_err(|_| NodeError::ServiceRequestFailed)?;
 
         Ok(goal_id)
-    }
-
-    /// Send a goal (blocking). Returns the GoalId and whether it was accepted.
-    ///
-    /// Uses the blocking `call_raw` path (like service calls) so the send_goal
-    /// z_get is fully consumed before returning. This avoids leaving a pending
-    /// get slot that could interfere with subsequent blocking calls.
-    pub fn send_goal_blocking(&mut self, goal_cdr: &[u8]) -> Result<(GoalId, bool), NodeError> {
-        self.goal_counter += 1;
-        let mut goal_id = GoalId::default();
-        let counter_bytes = self.goal_counter.to_le_bytes();
-        goal_id.uuid[..8].copy_from_slice(&counter_bytes);
-
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        write_goal_id(&mut writer, &goal_id)?;
-
-        let pos = writer.position();
-        if pos + goal_cdr.len() > GOAL_BUF {
-            return Err(NodeError::BufferTooSmall);
-        }
-        self.goal_buffer[pos..pos + goal_cdr.len()].copy_from_slice(goal_cdr);
-        let req_len = pos + goal_cdr.len();
-
-        #[allow(deprecated)]
-        let len = self
-            .send_goal_client
-            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
-
-        // Reply CDR: header(4) + accepted(u8) + stamp(sec i32 + nanosec u32)
-        let accepted = len >= 5 && self.result_buffer[4] != 0;
-
-        Ok((goal_id, accepted))
     }
 
     /// Try to receive feedback (non-blocking, raw bytes).
@@ -965,25 +930,25 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
     /// send_goal RPC reply lands.
     pub fn register_goal_response_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.send_goal_client.register_waker(waker);
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for cancel-RPC replies.
     pub fn register_cancel_response_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.cancel_goal_client.register_waker(waker);
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for get_result replies.
     pub fn register_result_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::ServiceClientTrait;
+        use nros_rmw::ClientTrait;
         self.get_result_client.register_waker(waker);
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for feedback messages.
     pub fn register_feedback_waker(&self, waker: &core::task::Waker) {
-        use nros_rmw::Subscriber;
+        use nros_rmw::Subscription;
         self.feedback_subscriber.register_waker(waker);
     }
 
@@ -1038,29 +1003,6 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
-    }
-
-    /// Blocking get_result request — sends the request and blocks until
-    /// a reply is received (or timeout).
-    ///
-    /// Returns the total reply length. Data is stored in `result_buffer`.
-    /// This uses the blocking `call_raw` path which is more reliable on
-    /// platforms with separate I/O tasks (e.g. FreeRTOS).
-    pub fn get_result_blocking(&mut self, goal_id: &GoalId) -> Result<usize, NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        write_goal_id(&mut writer, goal_id)?;
-
-        let req_len = writer.position();
-
-        #[allow(deprecated)]
-        let len = self
-            .get_result_client
-            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
-
-        Ok(len)
     }
 
     /// Read-only access to the result buffer (after polling a reply).

@@ -1724,11 +1724,12 @@ pub trait ClientDispatch {
     /// `request_cdr`; block on the reply, write the response CDR into
     /// `response_buf`, return the response length in bytes.
     ///
-    /// The synchronous block model matches the existing
-    /// `ServiceClientTrait::call_raw` surface in nros-node — the tick
-    /// hook drives the executor between callback dispatch, so a blocked
-    /// `call_raw` does not starve other callbacks (each tick yields back
-    /// to the runtime after returning).
+    /// The synchronous block is built on the executor-driven
+    /// `send_request_raw` + `try_recv_reply_raw` pair (phase-301: the
+    /// RMW layer has no blocking call) — the tick hook drives the
+    /// executor between callback dispatch, so a blocked `call_raw`
+    /// does not starve other callbacks (each tick yields back to the
+    /// runtime after returning).
     fn call_raw(
         &mut self,
         service_entity: &str,

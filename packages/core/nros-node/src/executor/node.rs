@@ -370,7 +370,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_subscriber(&topic, qos)
+            .create_subscription(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
         // W3b.5 — attach the contracted endpoint's age cell (stamped
         // types only; needs an epoch source).
@@ -431,7 +431,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_subscriber(&topic, qos)
+            .create_subscription(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
         Ok(crate::executor::handles::RawSubscription {
             handle,
@@ -498,7 +498,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_service_server(&info, qos)
+            .create_service(&info, qos)
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
         Ok(EmbeddedServiceServer {
             handle,
@@ -560,7 +560,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_service_client(&info, qos)
+            .create_client(&info, qos)
             .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
         Ok(EmbeddedServiceClient {
             handle,
@@ -604,7 +604,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_service_server(&info, QosSettings::services_default())
+            .create_service(&info, QosSettings::services_default())
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
         Ok(crate::executor::handles::RawServiceServer::new(handle))
     }
@@ -639,7 +639,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_service_client(&info, QosSettings::services_default())
+            .create_client(&info, QosSettings::services_default())
             .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
         Ok(crate::executor::handles::RawServiceClient::new(handle))
     }
@@ -703,7 +703,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_server = self
             .session
-            .create_service_server(&send_goal_info, QosSettings::services_default())
+            .create_service(&send_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -717,7 +717,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_server = self
             .session
-            .create_service_server(&cancel_goal_info, QosSettings::services_default())
+            .create_service(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -731,7 +731,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_server = self
             .session
-            .create_service_server(&get_result_info, QosSettings::services_default())
+            .create_service(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -830,7 +830,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_client = self
             .session
-            .create_service_client(&send_goal_info, QosSettings::services_default())
+            .create_client(&send_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -844,7 +844,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_client = self
             .session
-            .create_service_client(&cancel_goal_info, QosSettings::services_default())
+            .create_client(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -858,7 +858,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_client = self
             .session
-            .create_service_client(&get_result_info, QosSettings::services_default())
+            .create_client(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -872,7 +872,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_subscriber = self
             .session
-            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(super::action_core::ActionClientCore::new(
@@ -980,7 +980,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_server = self
             .session
-            .create_service_server(&send_goal_info, QosSettings::services_default())
+            .create_service(&send_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -994,7 +994,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_server = self
             .session
-            .create_service_server(&cancel_goal_info, QosSettings::services_default())
+            .create_service(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -1008,7 +1008,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_server = self
             .session
-            .create_service_server(&get_result_info, QosSettings::services_default())
+            .create_service(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -1147,7 +1147,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_client = self
             .session
-            .create_service_client(&send_goal_info, QosSettings::services_default())
+            .create_client(&send_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -1161,7 +1161,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_client = self
             .session
-            .create_service_client(&cancel_goal_info, QosSettings::services_default())
+            .create_client(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -1175,7 +1175,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_client = self
             .session
-            .create_service_client(&get_result_info, QosSettings::services_default())
+            .create_client(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -1189,7 +1189,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_subscriber = self
             .session
-            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionClient {

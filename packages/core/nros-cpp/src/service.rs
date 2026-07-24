@@ -8,7 +8,7 @@
 
 use core::ffi::{c_char, c_void};
 
-use nros_rmw::{ServiceClientTrait, ServiceInfo, ServiceServerTrait, Session};
+use nros_rmw::{ClientTrait, ServiceInfo, ServiceTrait, Session};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
     };
 
     // Phase 193.3 — apply the caller's QoS (rclcpp `create_service(name, qos)`).
-    match session.create_service_server(&svc_info, qos.to_qos_settings()) {
+    match session.create_service(&svc_info, qos.to_qos_settings()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceServer, handle);
@@ -419,7 +419,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
     };
 
     // Phase 193.3 — apply the caller's QoS.
-    match session.create_service_client(&svc_info, qos.to_qos_settings()) {
+    match session.create_client(&svc_info, qos.to_qos_settings()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceClient, handle);
@@ -687,7 +687,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
     storage: *mut c_void,
     out: *mut i32,
 ) -> nros_cpp_ret_t {
-    use nros_node::ServiceClientTrait;
+    use nros_node::ClientTrait;
 
     if storage.is_null() || out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;

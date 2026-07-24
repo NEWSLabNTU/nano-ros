@@ -12,9 +12,9 @@ use core::{
 
 use nros_rmw::{RmwConfig, Session as _, SessionMode, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback, NrosRmwEventKind,
-    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient, NrosRmwServiceServer,
-    NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable, nros_rmw_cffi_register_named,
+    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 // ---- Backend A ----------------------------------------------------------
@@ -50,6 +50,7 @@ unsafe extern "C" fn a_create_publisher(
     _type_hash: *const core::ffi::c_char,
     _domain_id: u32,
     _qos: *const NrosRmwQos,
+    _options: *const nros_rmw_cffi::nros_rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     unsafe {
@@ -100,6 +101,7 @@ unsafe extern "C" fn b_create_publisher(
     _type_hash: *const core::ffi::c_char,
     _domain_id: u32,
     _qos: *const NrosRmwQos,
+    _options: *const nros_rmw_cffi::nros_rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     unsafe {
@@ -132,15 +134,16 @@ unsafe extern "C" fn noop_create_sub(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwSubscriber,
+    _: *const nros_rmw_cffi::nros_rmw_subscription_options_t,
+    _: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscriber) {}
-unsafe extern "C" fn noop_try_recv_raw(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
+unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn noop_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_has_data(_: *mut NrosRmwSubscriber) -> i32 {
+unsafe extern "C" fn noop_has_data(_: *mut NrosRmwSubscription) -> i32 {
     0
 }
 unsafe extern "C" fn noop_create_srv(
@@ -150,24 +153,24 @@ unsafe extern "C" fn noop_create_srv(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwServiceServer) {}
+unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwService) {}
 unsafe extern "C" fn noop_try_recv_req(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
 ) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_has_request(_: *mut NrosRmwServiceServer) -> i32 {
+unsafe extern "C" fn noop_has_request(_: *mut NrosRmwService) -> i32 {
     0
 }
 unsafe extern "C" fn noop_send_reply(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
@@ -181,22 +184,13 @@ unsafe extern "C" fn noop_create_client(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceClient,
+    _: *mut NrosRmwClient,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_client(_: *mut NrosRmwServiceClient) {}
-unsafe extern "C" fn noop_call_raw(
-    _: *mut NrosRmwServiceClient,
-    _: *const u8,
-    _: usize,
-    _: *mut u8,
-    _: usize,
-) -> i32 {
-    -1
-}
+unsafe extern "C" fn noop_destroy_client(_: *mut NrosRmwClient) {}
 unsafe extern "C" fn noop_reg_sub_event(
-    _: *mut NrosRmwSubscriber,
+    _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
@@ -218,27 +212,26 @@ unsafe extern "C" fn noop_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmw
 }
 
 static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
-    open: Some(a_open),
-    close: Some(noop_close),
+    create_session: Some(a_open),
+    destroy_session: Some(noop_close),
     drive_io: Some(a_drive_io),
     create_publisher: Some(a_create_publisher),
     destroy_publisher: Some(noop_destroy_pub),
     publish_raw: Some(a_publish_raw),
-    create_subscriber: Some(noop_create_sub),
-    destroy_subscriber: Some(noop_destroy_sub),
+    create_subscription: Some(noop_create_sub),
+    destroy_subscription: Some(noop_destroy_sub),
     try_recv_raw: Some(noop_try_recv_raw),
     has_data: Some(noop_has_data),
-    create_service_server: Some(noop_create_srv),
-    destroy_service_server: Some(noop_destroy_srv),
+    create_service: Some(noop_create_srv),
+    destroy_service: Some(noop_destroy_srv),
     try_recv_request: Some(noop_try_recv_req),
     has_request: Some(noop_has_request),
     send_reply: Some(noop_send_reply),
-    create_service_client: Some(noop_create_client),
-    destroy_service_client: Some(noop_destroy_client),
-    call_raw: Some(noop_call_raw),
+    create_client: Some(noop_create_client),
+    destroy_client: Some(noop_destroy_client),
     send_request_raw: None,
     try_recv_reply_raw: None,
-    register_subscriber_event: Some(noop_reg_sub_event),
+    register_subscription_event: Some(noop_reg_sub_event),
     register_publisher_event: Some(noop_reg_pub_event),
     assert_publisher_liveliness: Some(noop_assert_liveliness),
     next_deadline_ms: None,
@@ -252,32 +245,31 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     try_recv_sequence: None,
     publish_streamed: None,
     ping_session: None,
-    subscriber_supports_in_place: None,
+    subscription_supports_in_place: None,
     process_raw_in_place: None,
 };
 
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
-    open: Some(b_open),
-    close: Some(noop_close),
+    create_session: Some(b_open),
+    destroy_session: Some(noop_close),
     drive_io: Some(b_drive_io),
     create_publisher: Some(b_create_publisher),
     destroy_publisher: Some(noop_destroy_pub),
     publish_raw: Some(b_publish_raw),
-    create_subscriber: Some(noop_create_sub),
-    destroy_subscriber: Some(noop_destroy_sub),
+    create_subscription: Some(noop_create_sub),
+    destroy_subscription: Some(noop_destroy_sub),
     try_recv_raw: Some(noop_try_recv_raw),
     has_data: Some(noop_has_data),
-    create_service_server: Some(noop_create_srv),
-    destroy_service_server: Some(noop_destroy_srv),
+    create_service: Some(noop_create_srv),
+    destroy_service: Some(noop_destroy_srv),
     try_recv_request: Some(noop_try_recv_req),
     has_request: Some(noop_has_request),
     send_reply: Some(noop_send_reply),
-    create_service_client: Some(noop_create_client),
-    destroy_service_client: Some(noop_destroy_client),
-    call_raw: Some(noop_call_raw),
+    create_client: Some(noop_create_client),
+    destroy_client: Some(noop_destroy_client),
     send_request_raw: None,
     try_recv_reply_raw: None,
-    register_subscriber_event: Some(noop_reg_sub_event),
+    register_subscription_event: Some(noop_reg_sub_event),
     register_publisher_event: Some(noop_reg_pub_event),
     assert_publisher_liveliness: Some(noop_assert_liveliness),
     next_deadline_ms: None,
@@ -291,7 +283,7 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     try_recv_sequence: None,
     publish_streamed: None,
     ping_session: None,
-    subscriber_supports_in_place: None,
+    subscription_supports_in_place: None,
     process_raw_in_place: None,
 };
 

@@ -15,8 +15,8 @@ pub(crate) type ConcreteSession = crate::mock::MockSession;
 /// Concrete publisher handle for the active RMW backend.
 pub type RmwPublisher = <ConcreteSession as Session>::PublisherHandle;
 /// Concrete subscriber handle for the active RMW backend.
-pub type RmwSubscriber = <ConcreteSession as Session>::SubscriberHandle;
+pub type RmwSubscriber = <ConcreteSession as Session>::SubscriptionHandle;
 /// Concrete service server handle for the active RMW backend.
-pub type RmwServiceServer = <ConcreteSession as Session>::ServiceServerHandle;
+pub type RmwServiceServer = <ConcreteSession as Session>::ServiceHandle;
 /// Concrete service client handle for the active RMW backend.
-pub type RmwServiceClient = <ConcreteSession as Session>::ServiceClientHandle;
+pub type RmwServiceClient = <ConcreteSession as Session>::ClientHandle;

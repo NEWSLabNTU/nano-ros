@@ -461,10 +461,10 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
-    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosOverride,
-    QosOverrideRole, QosOverrideValue, QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw,
-    RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
-    SessionMode, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
+    ClientTrait, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy,
+    QosOverride, QosOverrideRole, QosOverrideValue, QosPolicyMask, QosReliabilityPolicy,
+    QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode,
+    Subscription, TopicInfo, Transport, TransportConfig, TransportError,
 };
 
 /// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match

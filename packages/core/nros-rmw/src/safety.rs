@@ -6,7 +6,7 @@
 //! # Overview
 //!
 //! - **Publisher**: computes CRC-32 over CDR payload bytes, appends to attachment
-//! - **Subscriber**: recomputes CRC, checks sequence continuity
+//! - **Subscription**: recomputes CRC, checks sequence continuity
 //! - **Zero cost when disabled**: entire module is `#[cfg(feature = "safety-e2e")]`
 //!
 //! # Memory budget
@@ -82,7 +82,7 @@ impl IntegrityStatus {
     }
 }
 
-/// Subscriber-side sequence tracker for E2E safety validation.
+/// Subscription-side sequence tracker for E2E safety validation.
 ///
 /// Tracks the expected sequence number and detects gaps, duplicates,
 /// and CRC mismatches.

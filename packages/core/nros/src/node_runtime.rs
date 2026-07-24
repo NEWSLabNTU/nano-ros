@@ -1251,7 +1251,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         request_cdr: &[u8],
         response_buf: &mut [u8],
     ) -> NodeResult<usize> {
-        use crate::ServiceClientTrait;
+        use crate::ClientTrait;
         let hid = self.service(service_entity)?;
         {
             let executor = unsafe { &mut *self.executor };

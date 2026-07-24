@@ -11,7 +11,7 @@
 //! Rmw              — top-level factory, creates Sessions
 //! └─ Session       — connection lifecycle, creates handles
 //!    ├─ Publisher   — publish serialised messages
-//!    ├─ Subscriber  — receive messages (polling or callback)
+//!    ├─ Subscription  — receive messages (polling or callback)
 //!    ├─ ServiceServer — request/reply (server side)
 //!    └─ ServiceClient — request/reply (client side)
 //! ```
@@ -69,15 +69,15 @@ pub use safety::{IntegrityStatus, SafetyValidator, crc32};
 
 // Re-export main types
 pub use traits::{
-    ActionInfo, LocatorProtocol, Publisher, QosDurabilityPolicy, QosHistoryPolicy,
-    QosLivelinessPolicy, QosOverride, QosOverrideRole, QosOverrideValue, QosPolicyMask,
-    QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo,
-    ServiceRequest, ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport,
-    TransportConfig, TransportError, locator_protocol, validate_locator,
+    ActionInfo, ClientTrait, DURATION_INFINITE_MS, LocatorProtocol, Publisher, QosDurabilityPolicy,
+    QosHistoryPolicy, QosLivelinessPolicy, QosOverride, QosOverrideRole, QosOverrideValue,
+    QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest,
+    ServiceTrait, Session, SessionMode, Subscription, TopicInfo, Transport, TransportConfig,
+    TransportError, duration_to_qos_ms, locator_protocol, validate_locator,
 };
 
 // Re-export `MessageInfo` from nros-core so backends implementing
-// `Subscriber::try_recv_raw_with_info` don't need their own direct
+// `Subscription::try_recv_raw_with_info` don't need their own direct
 // nros-core dep.
 pub use nros_core::MessageInfo;
 

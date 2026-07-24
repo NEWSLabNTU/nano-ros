@@ -4,8 +4,8 @@
 //! (zenoh-pico, XRCE-DDS) must satisfy. The core trait hierarchy is:
 //!
 //! - [`Session`] — connection lifecycle and handle creation
-//! - [`Publisher`] / [`Subscriber`] — pub/sub data transport
-//! - [`ServiceServerTrait`] / [`ServiceClientTrait`] — request/reply
+//! - [`Publisher`] / [`Subscription`] — pub/sub data transport
+//! - [`ServiceTrait`] / [`ClientTrait`] — request/reply
 //! - [`Rmw`] — top-level factory that creates sessions
 
 use nros_core::{Deserialize, RosMessage, RosService, Serialize};
@@ -423,6 +423,37 @@ pub struct QosOverride {
     pub value: QosOverrideValue,
 }
 
+/// Phase-301 (issue 0241) — explicit "infinite" spelling for the u32
+/// millisecond QoS duration fields (`deadline_ms`, `lifespan_ms`,
+/// `liveliness_lease_ms`). Semantically identical to `0` (unset /
+/// no-check) at every check site; exists so a caller can distinguish
+/// "default" from "deliberately infinite". Mirrors the C header's
+/// `NROS_RMW_DURATION_INFINITE_MS`.
+pub const DURATION_INFINITE_MS: u32 = u32::MAX;
+
+/// Phase-301 (issue 0241) — lower a [`core::time::Duration`] into a u32
+/// millisecond QoS field. Boundary contract:
+///
+/// - zero stays `0` (unset / no-check);
+/// - sub-millisecond remainders CEIL to the next ms (rounding down
+///   would silently turn a real deadline into "no deadline");
+/// - values at or past [`DURATION_INFINITE_MS`] ms are a create-time
+///   error, never a clamp (infinite is requested via the sentinel or
+///   `0`, not by a huge finite duration).
+pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError> {
+    if d.is_zero() {
+        return Ok(0);
+    }
+    let mut ms = d.as_millis();
+    if d.subsec_nanos() % 1_000_000 != 0 {
+        ms += 1;
+    }
+    if ms >= DURATION_INFINITE_MS as u128 {
+        return Err(TransportError::InvalidArgument);
+    }
+    Ok(ms as u32)
+}
+
 /// Full DDS-shaped QoS profile. Matches the field set of upstream
 /// `rmw_qos_profile_t`.
 ///
@@ -446,7 +477,7 @@ pub struct QosSettings {
     pub liveliness_kind: QosLivelinessPolicy,
     /// History depth (only used if history is KeepLast)
     pub depth: u32,
-    /// Subscriber max-inter-arrival / publisher offered-rate, ms.
+    /// Subscription max-inter-arrival / publisher offered-rate, ms.
     /// `0` = infinite (no deadline check).
     pub deadline_ms: u32,
     /// Sample expiry, ms. Subscribers filter samples older than this.
@@ -961,7 +992,7 @@ pub enum SessionMode {
 /// `drive_io`. **Publisher / subscriber / service handles created
 /// from the session, however, are typically used from worker
 /// threads** and must carry their own synchronisation (see the
-/// [`Publisher`] / [`Subscriber`] trait docs).
+/// [`Publisher`] / [`Subscription`] trait docs).
 ///
 /// # Calling pattern
 ///
@@ -976,12 +1007,12 @@ pub trait Session {
     type Error;
     /// Publisher handle type
     type PublisherHandle;
-    /// Subscriber handle type
-    type SubscriberHandle;
+    /// Subscription handle type
+    type SubscriptionHandle;
     /// Service server handle type
-    type ServiceServerHandle;
+    type ServiceHandle;
     /// Service client handle type
-    type ServiceClientHandle;
+    type ClientHandle;
 
     /// Create a publisher bound to this session.
     ///
@@ -999,25 +1030,25 @@ pub trait Session {
     /// Subscribers may start receiving immediately after creation if
     /// the transport supports late-joining publishers. Late messages
     /// are buffered up to the QoS depth.
-    fn create_subscriber(
+    fn create_subscription(
         &mut self,
         topic: &TopicInfo,
         qos: QosSettings,
-    ) -> Result<Self::SubscriberHandle, Self::Error>;
+    ) -> Result<Self::SubscriptionHandle, Self::Error>;
 
     /// Create a service server bound to this session. Replies are
     /// matched to requests by the sequence number returned from
-    /// [`ServiceServerTrait::try_recv_request`].
+    /// [`ServiceTrait::try_recv_request`].
     ///
     /// `qos` is applied to both the request and reply endpoints (a
     /// service is two DDS topics; rmw uses one profile for both). The
     /// default is [`QosSettings::services_default`]
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
-    fn create_service_server(
+    fn create_service(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<Self::ServiceServerHandle, Self::Error>;
+    ) -> Result<Self::ServiceHandle, Self::Error>;
 
     /// Create a service client bound to this session.
     ///
@@ -1025,11 +1056,11 @@ pub trait Session {
     /// service is two DDS topics; rmw uses one profile for both). The
     /// default is [`QosSettings::services_default`]
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
-    fn create_service_client(
+    fn create_client(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<Self::ServiceClientHandle, Self::Error>;
+    ) -> Result<Self::ClientHandle, Self::Error>;
 
     /// Close the session, releasing transport resources. All entity
     /// handles created from this session must already be dropped.
@@ -1219,10 +1250,12 @@ impl QosSettings {
                     | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL.0,
             );
         }
-        if self.deadline_ms != 0 {
+        // Phase-301 (issue 0241): DURATION_INFINITE_MS reads the same as 0
+        // (infinite = no check) at every duration check site.
+        if self.deadline_ms != 0 && self.deadline_ms != DURATION_INFINITE_MS {
             mask |= QosPolicyMask::DEADLINE;
         }
-        if self.lifespan_ms != 0 {
+        if self.lifespan_ms != 0 && self.lifespan_ms != DURATION_INFINITE_MS {
             mask |= QosPolicyMask::LIFESPAN;
         }
         match self.liveliness_kind {
@@ -1231,7 +1264,7 @@ impl QosSettings {
             QosLivelinessPolicy::ManualByTopic => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
             QosLivelinessPolicy::ManualByNode => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_NODE,
         }
-        if self.liveliness_lease_ms != 0 {
+        if self.liveliness_lease_ms != 0 && self.liveliness_lease_ms != DURATION_INFINITE_MS {
             mask |= QosPolicyMask::LIVELINESS_LEASE;
         }
         if self.avoid_ros_namespace_conventions {
@@ -1288,7 +1321,7 @@ pub trait Publisher {
     ///
     /// `attachment` rides alongside the payload at the wire layer.
     /// Receivers can read it back via
-    /// [`Subscriber::try_recv_raw_with_attachment`].
+    /// [`Subscription::try_recv_raw_with_attachment`].
     ///
     /// Primary use case: cross-RMW bridges stamp a `bridge_origin`
     /// tag (the source backend's RMW name) so a paired return
@@ -1458,7 +1491,7 @@ pub trait Publisher {
     }
 }
 
-/// Subscriber trait for receiving messages.
+/// Subscription trait for receiving messages.
 ///
 /// # Threading
 ///
@@ -1479,7 +1512,7 @@ pub trait Publisher {
 /// equivalent for backends that map empty into a zero-length read)
 /// when no message is ready. Use [`Session::drive_io`] to wait for
 /// data; never sleep inside `try_recv_raw`.
-pub trait Subscriber {
+pub trait Subscription {
     /// Error type for receive operations
     type Error;
 
@@ -1605,8 +1638,8 @@ pub trait Subscriber {
     }
 
     /// Whether this backend implements the in-place dispatch methods
-    /// ([`process_raw_in_place`](Subscriber::process_raw_in_place) /
-    /// [`process_raw_in_place_with_info`](Subscriber::process_raw_in_place_with_info))
+    /// ([`process_raw_in_place`](Subscription::process_raw_in_place) /
+    /// [`process_raw_in_place_with_info`](Subscription::process_raw_in_place_with_info))
     /// with a real zero-copy borrow.
     ///
     /// The executor consults this at subscription registration to choose the
@@ -1622,7 +1655,7 @@ pub trait Subscriber {
     /// In-place processing variant that also surfaces publisher metadata.
     ///
     /// Same borrow contract as
-    /// [`process_raw_in_place`](Subscriber::process_raw_in_place): `f` receives
+    /// [`process_raw_in_place`](Subscription::process_raw_in_place): `f` receives
     /// the raw CDR bytes plus the parsed [`MessageInfo`](nros_core::MessageInfo)
     /// — the co-located attachment (publisher GID / sequence / source timestamp),
     /// or `None` when no attachment was present — for the duration of the call;
@@ -1632,7 +1665,7 @@ pub trait Subscriber {
     /// **Default body**: returns the unsupported error (mirrors
     /// `process_raw_in_place`). Backends that advertise in-place support override
     /// this with a real zero-copy path; callers that hit the default should use
-    /// the buffered [`try_recv_raw_with_info`](Subscriber::try_recv_raw_with_info)
+    /// the buffered [`try_recv_raw_with_info`](Subscription::try_recv_raw_with_info)
     /// path instead. (RFC-0038, Phase 231 Wave 0.1.)
     fn process_raw_in_place_with_info(
         &mut self,
@@ -1655,7 +1688,7 @@ pub trait Subscriber {
     /// - `len` is the number of bytes written to the buffer
     /// - `info` is the parsed publisher metadata (if attachment was present)
     ///
-    /// Default: delegates to [`try_recv_raw`](Subscriber::try_recv_raw) with no info.
+    /// Default: delegates to [`try_recv_raw`](Subscription::try_recv_raw) with no info.
     fn try_recv_raw_with_info(
         &mut self,
         buf: &mut [u8],
@@ -1706,7 +1739,7 @@ pub trait Subscriber {
     /// this subscriber. Default returns `false`; backends override per
     /// supported event kind.
     ///
-    /// Subscriber-side event kinds:
+    /// Subscription-side event kinds:
     /// [`EventKind::LivelinessChanged`](crate::event::EventKind::LivelinessChanged),
     /// [`EventKind::RequestedDeadlineMissed`](crate::event::EventKind::RequestedDeadlineMissed),
     /// [`EventKind::MessageLost`](crate::event::EventKind::MessageLost).
@@ -1803,7 +1836,7 @@ pub trait SlotLending: Publisher {
 /// exclusive); dropping the view releases any backend lock and lets
 /// the next message advance into the buffer.
 #[cfg(feature = "lending")]
-pub trait SlotBorrowing: Subscriber {
+pub trait SlotBorrowing: Subscription {
     /// Backend-owned read-only view. Holds a `&'a [u8]` and any state
     /// needed to release the borrow on Drop.
     type View<'a>: AsRef<[u8]> + 'a
@@ -1834,7 +1867,7 @@ pub trait SlotBorrowing: Subscriber {
 /// `sequence_number` is the canonical request → reply correlation
 /// token; backends derive it from the wire-level metadata (zenoh
 /// query id, DDS sample identity).
-pub trait ServiceServerTrait {
+pub trait ServiceTrait {
     /// Error type for service operations
     type Error;
 
@@ -1849,7 +1882,7 @@ pub trait ServiceServerTrait {
 
     /// Phase 122.3.c.6.e — register a `Waker` for event-driven
     /// service servers. Mirrors the matching method on
-    /// `SubscriberTrait` / `ServiceClientTrait`. Backends that
+    /// `SubscriberTrait` / `ClientTrait`. Backends that
     /// surface incoming-request notifications wake `waker` when
     /// `has_request()` flips true. Default: no-op (backends without
     /// wake support ignore — caller falls back to polling).
@@ -1985,33 +2018,13 @@ pub trait ServiceServerTrait {
 /// 3. `try_recv_reply_raw(buf)` — non-blocking; returns
 ///    `Ok(Some(len))` when the reply is back.
 ///
-/// The deprecated [`call_raw`](Self::call_raw) blocking path is
-/// kept for backwards compatibility but should not be called.
-pub trait ServiceClientTrait {
+/// Phase-301 (issue 0240): the deprecated blocking `call_raw` path is
+/// DELETED — `send_request_raw` + `try_recv_reply_raw` is the one
+/// request/reply path, and both are required for service-capable
+/// backends.
+pub trait ClientTrait {
     /// Error type for service operations
     type Error;
-
-    /// Send a service request and wait for reply (blocking).
-    ///
-    /// **Deprecated — do not call.** The default body returns `Timeout`
-    /// immediately without polling. Use `Client::call` →
-    /// `Promise::wait(executor, timeout_ms)` which lets the executor
-    /// drive I/O while waiting instead of busy-looping on
-    /// `try_recv_reply_raw` with no sleep (which starves the transport
-    /// on FreeRTOS / Zephyr single-threaded schedulers).
-    ///
-    /// Backends that still need an internal blocking path should
-    /// override this with a real sleep-between-polls implementation,
-    /// but all in-tree backends (zenoh, XRCE) route blocking waits
-    /// through the executor.
-    #[deprecated(note = "use Client::call → Promise::wait with an executor instead")]
-    fn call_raw(&mut self, request: &[u8], _reply_buf: &mut [u8]) -> Result<usize, Self::Error>
-    where
-        Self::Error: From<TransportError>,
-    {
-        let _ = request;
-        Err(TransportError::Timeout.into())
-    }
 
     /// Send a service request without waiting for a reply (non-blocking).
     ///
@@ -2137,7 +2150,7 @@ pub trait ServiceClientTrait {
     ///
     /// User-facing surface: `Client<S>::server_available()` in Rust,
     /// `nros_client_server_available()` in C/C++. Clients use this
-    /// to gate the first `call_raw` so a startup-ordering race
+    /// to gate the first request so a startup-ordering race
     /// (client opens before server's discovery announcement lands)
     /// doesn't surface as a request-side timeout.
     ///
@@ -2149,34 +2162,6 @@ pub trait ServiceClientTrait {
         Self::Error: From<TransportError>,
     {
         Err(TransportError::Unsupported.into())
-    }
-
-    /// Call a service with typed messages (blocking).
-    ///
-    /// **Deprecated — do not call.** The default body returns `Timeout`
-    /// immediately without polling. Use `Client::call` on the executor
-    /// instead, which drives I/O while waiting. See
-    /// [`call_raw`](Self::call_raw) for the same reasoning.
-    #[deprecated(note = "use Client::call → Promise::wait with an executor instead")]
-    fn call<S: RosService>(
-        &mut self,
-        request: &S::Request,
-        req_buf: &mut [u8],
-        _reply_buf: &mut [u8],
-    ) -> Result<S::Reply, Self::Error>
-    where
-        Self::Error: From<TransportError>,
-    {
-        use nros_core::CdrWriter;
-
-        // Serialize request so the error surface matches the old impl
-        // for the "bad request" path; but skip the receive busy-loop.
-        let mut writer =
-            CdrWriter::new_with_header(req_buf).map_err(|_| TransportError::BufferTooSmall)?;
-        request
-            .serialize(&mut writer)
-            .map_err(|_| TransportError::SerializationError)?;
-        Err(TransportError::Timeout.into())
     }
 }
 

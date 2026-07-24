@@ -9,8 +9,8 @@
 use core::cell::{Cell, RefCell};
 
 use nros_rmw::{
-    Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait,
-    Session, Subscriber, TopicInfo, TransportError,
+    ClientTrait, Publisher, QosSettings, ServiceInfo, ServiceRequest, ServiceTrait, Session,
+    Subscriber, TopicInfo, TransportError,
 };
 
 /// Mock subscriber that can be loaded with canned CDR data. Holds a small
@@ -87,7 +87,7 @@ impl MockServiceServer {
     }
 }
 
-impl ServiceServerTrait for MockServiceServer {
+impl ServiceTrait for MockServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
@@ -161,13 +161,8 @@ impl MockServiceClient {
     }
 }
 
-impl ServiceClientTrait for MockServiceClient {
+impl ClientTrait for MockServiceClient {
     type Error = TransportError;
-
-    #[allow(deprecated)]
-    fn call_raw(&mut self, _req: &[u8], _reply_buf: &mut [u8]) -> Result<usize, TransportError> {
-        Err(TransportError::Timeout)
-    }
 
     fn send_request_raw(&mut self, _request: &[u8]) -> Result<(), TransportError> {
         Ok(())
@@ -200,9 +195,9 @@ impl MockSession {
 impl Session for MockSession {
     type Error = TransportError;
     type PublisherHandle = MockPublisher;
-    type SubscriberHandle = MockSubscriber;
-    type ServiceServerHandle = MockServiceServer;
-    type ServiceClientHandle = MockServiceClient;
+    type SubscriptionHandle = MockSubscriber;
+    type ServiceHandle = MockServiceServer;
+    type ClientHandle = MockServiceClient;
 
     /// The mock (test) backend supports every QoS policy, so QoS validation
     /// never rejects a test entity (the default `CORE` mask can't even admit
@@ -219,7 +214,7 @@ impl Session for MockSession {
         Ok(MockPublisher)
     }
 
-    fn create_subscriber(
+    fn create_subscription(
         &mut self,
         _topic: &TopicInfo,
         _qos: QosSettings,
@@ -227,7 +222,7 @@ impl Session for MockSession {
         Ok(MockSubscriber::new())
     }
 
-    fn create_service_server(
+    fn create_service(
         &mut self,
         _service: &ServiceInfo,
         _qos: QosSettings,
@@ -235,7 +230,7 @@ impl Session for MockSession {
         Ok(MockServiceServer::new())
     }
 
-    fn create_service_client(
+    fn create_client(
         &mut self,
         _service: &ServiceInfo,
         _qos: QosSettings,

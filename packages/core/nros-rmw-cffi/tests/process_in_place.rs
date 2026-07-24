@@ -2,9 +2,9 @@
 //!
 //! Exercises the two new in-place slots via a hand-written stub backend:
 //!
-//! - `subscriber_supports_in_place` → `CffiSubscriber::supports_process_in_place()`
+//! - `subscription_supports_in_place` → `CffiSubscription::supports_process_in_place()`
 //!   (cached at creation).
-//! - `process_raw_in_place` → `CffiSubscriber::process_raw_in_place(f)`: the stub
+//! - `process_raw_in_place` → `CffiSubscription::process_raw_in_place(f)`: the stub
 //!   hands canned CDR bytes to the marshalled Rust closure, then reports no-data.
 //! - A vtable leaving both slots `None` → `supports_*` is false and the in-place
 //!   call surfaces an `Err` (the runtime then uses the buffered path).
@@ -19,11 +19,11 @@ use core::{
 };
 use std::sync::Mutex;
 
-use nros_rmw::{QosSettings, RmwConfig, Session, SessionMode, Subscriber, TopicInfo};
+use nros_rmw::{QosSettings, RmwConfig, Session, SessionMode, Subscription, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, CffiSubscriber, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwServiceClient, NrosRmwServiceServer, NrosRmwSession, NrosRmwSubscriber, NrosRmwVtable,
+    CffiRmw, CffiSubscription, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
+    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     nros_rmw_cffi_register_named,
 };
 
@@ -62,6 +62,7 @@ unsafe extern "C" fn stub_create_publisher(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
+    _: *const nros_rmw_cffi::nros_rmw_publisher_options_t,
     _: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
@@ -74,85 +75,77 @@ unsafe extern "C" fn stub_publish_raw(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_create_subscriber(
+unsafe extern "C" fn stub_create_subscription(
     _: *mut NrosRmwSession,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    out: *mut NrosRmwSubscriber,
+    _: *const nros_rmw_cffi::nros_rmw_subscription_options_t,
+    out: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     unsafe {
         (*out).backend_data = 0x99usize as *mut c_void;
     }
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn stub_destroy_subscriber(_: *mut NrosRmwSubscriber) {}
-unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscriber, _: *mut u8, _: usize) -> i32 {
+unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
     NROS_RMW_RET_NO_DATA
 }
-unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscriber) -> i32 {
+unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscription) -> i32 {
     0
 }
-unsafe extern "C" fn stub_create_service_server(
+unsafe extern "C" fn stub_create_service(
     _: *mut NrosRmwSession,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_destroy_service_server(_: *mut NrosRmwServiceServer) {}
+unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
 unsafe extern "C" fn stub_try_recv_request(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
 ) -> i32 {
     0
 }
-unsafe extern "C" fn stub_has_request(_: *mut NrosRmwServiceServer) -> i32 {
+unsafe extern "C" fn stub_has_request(_: *mut NrosRmwService) -> i32 {
     0
 }
 unsafe extern "C" fn stub_send_reply(
-    _: *mut NrosRmwServiceServer,
+    _: *mut NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_create_service_client(
+unsafe extern "C" fn stub_create_client(
     _: *mut NrosRmwSession,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *mut NrosRmwServiceClient,
+    _: *mut NrosRmwClient,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_destroy_service_client(_: *mut NrosRmwServiceClient) {}
-unsafe extern "C" fn stub_call_raw(
-    _: *mut NrosRmwServiceClient,
-    _: *const u8,
-    _: usize,
-    _: *mut u8,
-    _: usize,
-) -> i32 {
-    -1
-}
+unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) {}
 unsafe extern "C" fn stub_reg_sub_event(
-    _: *mut NrosRmwSubscriber,
+    _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
-    _: *mut c_void,
+    _: *mut core::ffi::c_void,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
@@ -161,22 +154,21 @@ unsafe extern "C" fn stub_reg_pub_event(
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
-    _: *mut c_void,
+    _: *mut core::ffi::c_void,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-
 // ---- the slots under test ----
 
-unsafe extern "C" fn scripted_supports(_: *mut NrosRmwSubscriber) -> i32 {
+unsafe extern "C" fn scripted_supports(_: *mut NrosRmwSubscription) -> i32 {
     SUPPORTS.load(Ordering::SeqCst)
 }
 
 unsafe extern "C" fn scripted_process(
-    _: *mut NrosRmwSubscriber,
+    _: *mut NrosRmwSubscription,
     ctx: *mut c_void,
     cb: Option<unsafe extern "C" fn(ctx: *mut c_void, ptr: *const u8, len: usize)>,
 ) -> i32 {
@@ -191,27 +183,26 @@ unsafe extern "C" fn scripted_process(
 
 fn base_vtable() -> NrosRmwVtable {
     NrosRmwVtable {
-        open: Some(stub_open),
-        close: Some(stub_close),
+        create_session: Some(stub_open),
+        destroy_session: Some(stub_close),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),
         destroy_publisher: Some(stub_destroy_publisher),
         publish_raw: Some(stub_publish_raw),
-        create_subscriber: Some(stub_create_subscriber),
-        destroy_subscriber: Some(stub_destroy_subscriber),
+        create_subscription: Some(stub_create_subscription),
+        destroy_subscription: Some(stub_destroy_subscription),
         try_recv_raw: Some(stub_try_recv_raw),
         has_data: Some(stub_has_data),
-        create_service_server: Some(stub_create_service_server),
-        destroy_service_server: Some(stub_destroy_service_server),
+        create_service: Some(stub_create_service),
+        destroy_service: Some(stub_destroy_service),
         try_recv_request: Some(stub_try_recv_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
-        create_service_client: Some(stub_create_service_client),
-        destroy_service_client: Some(stub_destroy_service_client),
-        call_raw: Some(stub_call_raw),
+        create_client: Some(stub_create_client),
+        destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
         try_recv_reply_raw: None,
-        register_subscriber_event: Some(stub_reg_sub_event),
+        register_subscription_event: Some(stub_reg_sub_event),
         register_publisher_event: Some(stub_reg_pub_event),
         assert_publisher_liveliness: Some(stub_assert_liveliness),
         next_deadline_ms: None,
@@ -225,12 +216,12 @@ fn base_vtable() -> NrosRmwVtable {
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,
-        subscriber_supports_in_place: None,
+        subscription_supports_in_place: None,
         process_raw_in_place: None,
     }
 }
 
-fn open_subscriber(topic: &str) -> CffiSubscriber {
+fn open_subscriber(topic: &str) -> CffiSubscription {
     use nros_rmw::Rmw;
     let mut session = CffiRmw
         .open(&RmwConfig {
@@ -244,8 +235,8 @@ fn open_subscriber(topic: &str) -> CffiSubscriber {
         .expect("open");
     let info = TopicInfo::new(topic, "example/Stub", "RIHS01_stub");
     let sub = session
-        .create_subscriber(&info, QosSettings::default())
-        .expect("create_subscriber");
+        .create_subscription(&info, QosSettings::default())
+        .expect("create_subscription");
     // Leak the session: its `close` would drop through the stub vtable whose
     // `backend_data` is a bare sentinel, not a `Box`. The process exits after.
     core::mem::forget(session);
@@ -259,7 +250,7 @@ fn in_place_delivers_bytes_then_drains() {
     TAKE_REMAINING.store(1, Ordering::SeqCst);
 
     let mut vt = base_vtable();
-    vt.subscriber_supports_in_place = Some(scripted_supports);
+    vt.subscription_supports_in_place = Some(scripted_supports);
     vt.process_raw_in_place = Some(scripted_process);
     let vt: &'static NrosRmwVtable = Box::leak(Box::new(vt));
     let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vt) };
@@ -269,13 +260,13 @@ fn in_place_delivers_bytes_then_drains() {
 
     // Capability cached from the slot at creation.
     assert!(
-        Subscriber::supports_process_in_place(&sub),
+        Subscription::supports_process_in_place(&sub),
         "supports_process_in_place should be true when the slot reports 1"
     );
 
     // The marshalled closure receives the canned bytes in place.
     let mut captured: Vec<u8> = Vec::new();
-    let r = Subscriber::process_raw_in_place(&mut sub, |raw| captured.extend_from_slice(raw));
+    let r = Subscription::process_raw_in_place(&mut sub, |raw| captured.extend_from_slice(raw));
     assert!(r.unwrap(), "first take should process a message");
     assert_eq!(
         captured, CANNED,
@@ -283,8 +274,9 @@ fn in_place_delivers_bytes_then_drains() {
     );
 
     // Second take: slot reports no-data → Ok(false), callback not invoked.
-    let r2 =
-        Subscriber::process_raw_in_place(&mut sub, |_| panic!("callback must not fire on no-data"));
+    let r2 = Subscription::process_raw_in_place(&mut sub, |_| {
+        panic!("callback must not fire on no-data")
+    });
     assert!(!r2.unwrap(), "drained subscriber should report no message");
 }
 
@@ -297,11 +289,11 @@ fn in_place_unsupported_when_slots_null() {
 
     let mut sub = open_subscriber("/inplace_null");
     assert!(
-        !Subscriber::supports_process_in_place(&sub),
+        !Subscription::supports_process_in_place(&sub),
         "NULL capability slot → unsupported"
     );
     assert!(
-        Subscriber::process_raw_in_place(&mut sub, |_| {}).is_err(),
+        Subscription::process_raw_in_place(&mut sub, |_| {}).is_err(),
         "NULL process slot → Err (runtime falls back to buffered)"
     );
 }

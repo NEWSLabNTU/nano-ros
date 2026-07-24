@@ -6,7 +6,7 @@ use nros_core::{
     BorrowedMessage, CdrReader, DeserializeBorrowed, MessageInfo, RawMessageInfo, RosAction,
     RosMessage, RosService,
 };
-use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
+use nros_rmw::{ServiceTrait, Subscription, TransportError};
 
 use super::{
     action_core::{ActionClientCore, ActionServerCore},
@@ -1448,7 +1448,7 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     _delta_ms: u64,
 ) -> Result<bool, TransportError> {
     use core::sync::atomic::Ordering;
-    use nros_rmw::ServiceClientTrait;
+    use nros_rmw::ClientTrait;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientRawArenaEntry<REPLY_BUF>) };
 
     if !entry.pending {
@@ -1517,7 +1517,7 @@ where
     F: FnMut(&Svc::Reply),
 {
     use core::sync::atomic::Ordering;
-    use nros_rmw::ServiceClientTrait;
+    use nros_rmw::ClientTrait;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientCallbackEntry<Svc, F, REPLY_BUF>) };
 
     if !entry.hdr.pending {
