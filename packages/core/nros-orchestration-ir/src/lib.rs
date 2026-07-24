@@ -238,7 +238,7 @@ pub struct ResolvedTierTable {
     /// `run_tiers` runs first — is the semantically-HIGHEST tier only on
     /// bigger-number-wins RTOSes (posix/FreeRTOS/NuttX). On
     /// lower-number-wins RTOSes (Zephyr, ThreadX) `tiers[0]` is the
-    /// LOWEST-priority tier (issue 0246 — deliberate, comments must not
+    /// LOWEST-priority tier (issue 0251 — deliberate, comments must not
     /// claim otherwise).
     pub tiers: Vec<ResolvedTier>,
 }

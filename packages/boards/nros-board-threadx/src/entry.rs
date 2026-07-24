@@ -165,7 +165,7 @@ unsafe extern "C" {
 // One `Executor` per tier over ONE shared RMW session, mirroring the FreeRTOS
 // `run_tiers_entry`. The boot tier (`tiers[0]` — the numerically-largest =
 // LOWEST ThreadX priority; the sort does not invert per RTOS direction,
-// issue 0246) runs on the
+// issue 0251) runs on the
 // `tx_application_define` app thread; each remaining tier is spawned via the
 // W2 `nros_threadx_create_task` shim (byte-pool stack). Spawns are CHAINED —
 // a tier spawns the next only after its own `setup` returns — so no two

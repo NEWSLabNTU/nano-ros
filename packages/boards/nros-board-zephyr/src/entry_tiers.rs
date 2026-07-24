@@ -8,7 +8,7 @@
 //! tiers (issue #144) through the module's `nros_zephyr_tier_task_create`
 //! shim (`k_thread_create` on a static pool, RAW Zephyr priority — negatives
 //! = cooperative, exactly the `[tiers.<name>.zephyr].priority` value), and
-//! then runs `tiers[0]` itself. NOTE (issue 0246): `resolve_tiers` sorts
+//! then runs `tiers[0]` itself. NOTE (issue 0251): `resolve_tiers` sorts
 //! descending by RAW number without inverting per RTOS direction, and Zephyr
 //! is lower-number-wins — so `tiers[0]`, the boot tier, is the
 //! numerically-largest = LOWEST-priority tier. Each spawned tier task opens
@@ -243,7 +243,7 @@ impl ZephyrBoard {
     /// the network, registered the RMW backend, and built `config` from the
     /// west-baked locator; this opens the ONE session, spawns `tiers[1..]`
     /// as `k_thread`s at their raw Zephyr priorities, and runs `tiers[0]`
-    /// (the numerically-largest = LOWEST Zephyr priority — issue 0246, the
+    /// (the numerically-largest = LOWEST Zephyr priority — issue 0251, the
     /// sort does not invert per RTOS direction) on the caller thread —
     /// never returns on success.
     pub fn run_tiers<F>(

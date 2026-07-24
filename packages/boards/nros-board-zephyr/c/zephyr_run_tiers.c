@@ -380,7 +380,7 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
  * `session_name` — primary session / node name; NULL or empty → "node"
  * `tiers`        — tier-spec array in codegen order (descending RAW priority
  *                  number; Zephyr is lower-number-wins, so tiers[0] — the
- *                  boot tier — is the LOWEST-priority tier; issue 0246)
+ *                  boot tier — is the LOWEST-priority tier; issue 0251)
  * `n_tiers`      — number of tiers (>= 1)
  *
  * Returns: normally never returns (the boot tier spins forever). Returns a
