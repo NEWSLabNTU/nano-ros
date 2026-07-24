@@ -715,6 +715,73 @@ mod monitor_tests {
 /// R1-N3 — convert the model's transport declarations into the plan's
 /// [`PlanTransport`] shape (the type the board network bake consumes).
 /// Unknown `kind` strings are a bake-time error (fail-loud).
+/// R-code plan rework — synthesize the play_launch record shape the
+/// workspace planner consumes (`{node: [...], container: [], load_node: []}`)
+/// from a resolved SystemModel, so `nros plan` can plan from the committed
+/// model without parsing launch XML. Params/remaps/env come resolved from
+/// the model (post-46 `NodeInstance` carries them all).
+pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
+    use ros_launch_manifest_model::ParamValue;
+    let nodes: Vec<serde_json::Value> = model
+        .structure
+        .nodes
+        .iter()
+        .map(|(fqn, inst)| {
+            let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
+            let ns = {
+                let ns = &fqn[..fqn.len() - bare.len()];
+                let ns = ns.trim_end_matches('/');
+                if ns.is_empty() {
+                    "/".to_string()
+                } else {
+                    ns.to_string()
+                }
+            };
+            let params: Vec<serde_json::Value> = inst
+                .params
+                .iter()
+                .map(|(k, v)| {
+                    let s = match v {
+                        ParamValue::Bool(b) => b.to_string(),
+                        ParamValue::Int(i) => i.to_string(),
+                        ParamValue::Float(f) => f.to_string(),
+                        ParamValue::Str(s) => s.clone(),
+                        ParamValue::StrList(l) => l.join(","),
+                    };
+                    serde_json::json!([k, s])
+                })
+                .collect();
+            let remaps: Vec<serde_json::Value> = inst
+                .remaps
+                .iter()
+                .map(|r| serde_json::json!([r.from, r.to]))
+                .collect();
+            let env: Vec<serde_json::Value> = inst
+                .env
+                .iter()
+                .map(|e| serde_json::json!([e.name, e.value]))
+                .collect();
+            serde_json::json!({
+                "package": inst.pkg.clone().unwrap_or_default(),
+                "executable": inst
+                    .exec
+                    .clone()
+                    .or_else(|| inst
+                        .plugin
+                        .as_deref()
+                        .map(|p| p.rsplit("::").next().unwrap_or(p).to_string()))
+                    .unwrap_or_default(),
+                "name": bare,
+                "namespace": ns,
+                "params": params,
+                "remaps": remaps,
+                "env": env,
+            })
+        })
+        .collect();
+    serde_json::json!({ "node": nodes, "container": [], "load_node": [] })
+}
+
 pub fn plan_transports(
     model: &SystemModel,
 ) -> Result<Vec<crate::orchestration::plan::PlanTransport>> {

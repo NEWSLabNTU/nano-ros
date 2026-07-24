@@ -35,6 +35,12 @@ pub struct Args {
     #[arg(long)]
     pub record: Option<PathBuf>,
 
+    /// Plan from a resolved SystemModel (canonical). With a package-dir
+    /// input, a committed `<dir>/config/system_model.yaml` is discovered
+    /// automatically; this flag overrides with an explicit path.
+    #[arg(long, value_name = "system_model.yaml")]
+    pub model: Option<PathBuf>,
+
     /// Phase 212.L.6 — when `<launch_file>` is a directory, prefer
     /// `<dir>/launch/<file>` (or cwd-relative / absolute as fallback).
     #[arg(long = "file")]
@@ -80,9 +86,6 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
-    // phase-296 R3 — `nros plan` parses launch XML (or synthesises one) at
-    // build time; the canonical path bakes from a resolved SystemModel.
-    crate::deprecation::warn_legacy_bake("nros plan (launch-XML resolution)");
     let workspace_root = args.workspace.unwrap_or(std::env::current_dir()?);
 
     // Phase 212.L.7 — single-arg self-bringup shape. When the user
@@ -127,6 +130,48 @@ pub fn run(args: Args) -> Result<()> {
     // `<dir>/launch/` first, synthesised `<launch><node …/>` body when
     // absent. We just log when L.7 self-entry mode kicks in so users
     // see what shape the CLI picked.
+    // R-code plan rework — canonical input: a resolved SystemModel.
+    // Explicit `--model`, else convention discovery on a package-dir input
+    // (`<dir>/config/system_model.yaml`). Model mode synthesizes the record
+    // the planner consumes (no launch XML parse); the model path rides
+    // `launch_file` provenance in nros-plan.json.
+    let discovered_model: Option<PathBuf> = args.model.clone().or_else(|| {
+        let conv = launch_input_path.join("config/system_model.yaml");
+        (launch_input_path.is_dir() && conv.exists()).then_some(conv)
+    });
+    if let Some(model_path) = &discovered_model {
+        eprintln!(
+            "nros plan: planning from SystemModel {} (pass --model to override)",
+            model_path.display()
+        );
+        let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
+        let tmp = tempfile::NamedTempFile::new()?;
+        std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
+        let output = plan_system(PlanOptions {
+            system_pkg,
+            workspace_root,
+            launch_file: model_path.clone(),
+            record_file: Some(tmp.path().to_path_buf()),
+            out_root,
+            metadata_files: args.metadata,
+            manifest_files: args.manifests,
+            launch_args: args.launch_args,
+            rmw: args.rmw,
+            target: args.target,
+        })?;
+        drop(tmp);
+        eprintln!(
+            "nros plan: wrote {} and {}",
+            output.record_path.display(),
+            output.plan_path.display()
+        );
+        return Ok(());
+    }
+    // phase-296 R3 — the launch-XML resolution path is transitional; a
+    // bringup with a committed model never reaches it (discovery above).
+    crate::deprecation::warn_legacy_bake("nros plan (launch-XML resolution)");
+
     let (resolved_path, _materialised) = if launch_input_path.is_dir() {
         if is_self_entry_pkg(&launch_input_path) {
             eprintln!(
