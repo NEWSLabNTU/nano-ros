@@ -97,14 +97,14 @@ GraphState *session_graph(nros_rmw_session_t *session);
 dds_entity_t publisher_writer(const nros_rmw_publisher_t *publisher);
 /** Return the Cyclone reader handle for a subscriber, or 0 if
  *  uninitialised. */
-dds_entity_t subscriber_reader(const nros_rmw_subscriber_t *subscriber);
+dds_entity_t subscription_reader(const nros_rmw_subscription_t *subscriber);
 
 
 /* ---- session.cpp ---- */
-nros_rmw_ret_t session_open(const char *locator, uint8_t mode,
+nros_rmw_ret_t session_create(const char *locator, uint8_t mode,
                             uint32_t domain_id, const char *node_name,
                             nros_rmw_session_t *out);
-nros_rmw_ret_t session_close(nros_rmw_session_t *session);
+nros_rmw_ret_t session_destroy(nros_rmw_session_t *session);
 nros_rmw_ret_t session_drive_io(nros_rmw_session_t *session, int32_t timeout_ms);
 
 /* ---- publisher.cpp ---- */
@@ -112,59 +112,60 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
                                 const char *topic_name, const char *type_name,
                                 const char *type_hash, uint32_t domain_id,
                                 const nros_rmw_qos_t *qos,
+                                const nros_rmw_publisher_options_t *options,
                                 nros_rmw_publisher_t *out);
 void           publisher_destroy(nros_rmw_publisher_t *publisher);
 nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t *publisher,
                                      const uint8_t *data, size_t len);
 
 /* ---- subscriber.cpp ---- */
-nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
+nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
                                  const char *topic_name, const char *type_name,
                                  const char *type_hash, uint32_t domain_id,
                                  const nros_rmw_qos_t *qos,
-                                 nros_rmw_subscriber_t *out);
-void           subscriber_destroy(nros_rmw_subscriber_t *subscriber);
-int32_t        subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
+                                 const nros_rmw_subscription_options_t *options,
+                                 nros_rmw_subscription_t *out);
+void           subscription_destroy(nros_rmw_subscription_t *subscriber);
+int32_t        subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
                                        uint8_t *buf, size_t buf_len);
-int32_t        subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
+int32_t        subscription_try_recv_sequence(nros_rmw_subscription_t *subscriber,
                                             uint8_t *buf,
                                             size_t   per_msg_cap,
                                             size_t   max_msgs,
                                             size_t  *out_lens);
-int32_t        subscriber_has_data(nros_rmw_subscriber_t *subscriber);
+int32_t        subscription_has_data(nros_rmw_subscription_t *subscriber);
 
 /* ---- service.cpp ---- */
-nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
+nros_rmw_ret_t service_create(nros_rmw_session_t *session,
                                      const char *service_name,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
                                      const nros_rmw_qos_t *qos,
-                                     nros_rmw_service_server_t *out);
-void           service_server_destroy(nros_rmw_service_server_t *server);
-int32_t        service_try_recv_request(nros_rmw_service_server_t *server,
+                                     nros_rmw_service_t *out);
+void           service_destroy(nros_rmw_service_t *server);
+int32_t        service_try_recv_request(nros_rmw_service_t *server,
                                         uint8_t *buf, size_t buf_len,
                                         int64_t *seq_out);
-int32_t        service_has_request(nros_rmw_service_server_t *server);
-nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t *server, int64_t seq,
+int32_t        service_has_request(nros_rmw_service_t *server);
+nros_rmw_ret_t service_send_reply(nros_rmw_service_t *server, int64_t seq,
                                   const uint8_t *data, size_t len);
 
-nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
+nros_rmw_ret_t client_create(nros_rmw_session_t *session,
                                      const char *service_name,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
                                      const nros_rmw_qos_t *qos,
-                                     nros_rmw_service_client_t *out);
-void           service_client_destroy(nros_rmw_service_client_t *client);
-int32_t        service_call_raw(nros_rmw_service_client_t *client,
-                                const uint8_t *request, size_t req_len,
-                                uint8_t *reply_buf, size_t reply_buf_len);
-// Phase 130.8 — non-blocking send/recv split.
-nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
+                                     nros_rmw_client_t *out);
+void           client_destroy(nros_rmw_client_t *client);
+// Phase 130.8 — non-blocking send/recv split (phase-301: the deprecated
+// blocking `call_raw` slot was deleted from the vtable; this pair is the
+// one request/reply path).
+nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t *client,
                                         const uint8_t *request,
                                         size_t req_len);
-int32_t        service_try_recv_reply_raw(nros_rmw_service_client_t *client,
+int32_t        service_try_recv_reply_raw(nros_rmw_client_t *client,
                                           uint8_t *reply_buf,
                                           size_t reply_buf_len);
 

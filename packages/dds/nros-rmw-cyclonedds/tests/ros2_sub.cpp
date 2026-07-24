@@ -37,18 +37,18 @@ int main() {
     if (const char *e = std::getenv("ROS_DOMAIN_ID")) {
         domain = static_cast<uint32_t>(std::atoi(e));
     }
-    if (g_vt->open(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
     nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
-    nros_rmw_subscriber_t sub{};
+    nros_rmw_subscription_t sub{};
     sub.topic_name = "chatter";
     sub.type_name  = "std_msgs::msg::dds_::String_";
     sub.qos        = qos;
-    if (g_vt->create_subscriber(&s, sub.topic_name, sub.type_name, "",
-                                0, &qos, &sub) != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_subscriber failed\n");
+    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "",
+                                0, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
 
@@ -80,15 +80,15 @@ int main() {
                             static_cast<int>(slen - 1),
                             reinterpret_cast<const char *>(buf + 8));
                 std::fflush(stdout);
-                g_vt->destroy_subscriber(&sub);
-                (void) g_vt->close(&s);
+                g_vt->destroy_subscription(&sub);
+                (void) g_vt->destroy_session(&s);
                 return 0;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     std::fprintf(stderr, "timeout waiting for sample\n");
-    g_vt->destroy_subscriber(&sub);
-    (void) g_vt->close(&s);
+    g_vt->destroy_subscription(&sub);
+    (void) g_vt->destroy_session(&s);
     return 6;
 }

@@ -39,16 +39,16 @@ int main(void) {
         fprintf(stderr, "FAIL: nros_rmw_cffi_register received NULL vtable\n");
         return EXIT_FAILURE;
     }
-    if (g_received_vtable->open == NULL) {
-        fprintf(stderr, "FAIL: vtable->open is NULL\n");
+    if (g_received_vtable->create_session == NULL) {
+        fprintf(stderr, "FAIL: vtable->create_session is NULL\n");
         return EXIT_FAILURE;
     }
     if (g_received_vtable->create_publisher == NULL) {
         fprintf(stderr, "FAIL: vtable->create_publisher is NULL\n");
         return EXIT_FAILURE;
     }
-    if (g_received_vtable->create_subscriber == NULL) {
-        fprintf(stderr, "FAIL: vtable->create_subscriber is NULL\n");
+    if (g_received_vtable->create_subscription == NULL) {
+        fprintf(stderr, "FAIL: vtable->create_subscription is NULL\n");
         return EXIT_FAILURE;
     }
 
@@ -62,7 +62,7 @@ int main(void) {
      * Use port 1 to make the "no agent" case deterministic — it's
      * reserved + nothing is listening. */
     nros_rmw_session_t session = {0};
-    r = g_received_vtable->open("127.0.0.1:1", 0, 0, "smoke", &session);
+    r = g_received_vtable->create_session("127.0.0.1:1", 0, 0, "smoke", &session);
     if (r == NROS_RMW_RET_UNSUPPORTED) {
         fprintf(stderr,
                 "FAIL: open returned UNSUPPORTED — K.2.1 should have replaced the stub\n");
@@ -70,7 +70,7 @@ int main(void) {
     }
     if (r == NROS_RMW_RET_OK) {
         /* Surprise — agent on port 1. Close cleanly. */
-        g_received_vtable->close(&session);
+        g_received_vtable->destroy_session(&session);
     }
 
     /* Phase 115.K.2.2 — publish_raw on a NULL backend_data publisher
@@ -87,7 +87,7 @@ int main(void) {
 
     /* Phase 115.K.2.2 — try_recv_raw / has_data on a fresh subscriber
      * shell with NULL backend_data must reach the backend. */
-    nros_rmw_subscriber_t sub = {0};
+    nros_rmw_subscription_t sub = {0};
     int32_t rr = g_received_vtable->try_recv_raw(&sub, NULL, 0);
     if (rr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
@@ -102,20 +102,20 @@ int main(void) {
     }
 
     /* Phase 115.K.2.3 — service paths must reach the backend. With a
-     * NULL session, create_service_server returns INVALID_ARGUMENT
+     * NULL session, create_service returns INVALID_ARGUMENT
      * (no longer UNSUPPORTED stub). */
-    nros_rmw_service_server_t srv = {0};
-    nros_rmw_ret_t srv_r = g_received_vtable->create_service_server(
-        NULL, "/foo", "Foo_", NULL, 0, &srv);
+    nros_rmw_service_t srv = {0};
+    nros_rmw_ret_t srv_r = g_received_vtable->create_service(
+        NULL, "/foo", "Foo_", NULL, 0, NULL, &srv);
     if (srv_r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
-                "FAIL: create_service_server with NULL session returned %d, expected INVALID_ARGUMENT\n",
+                "FAIL: create_service with NULL session returned %d, expected INVALID_ARGUMENT\n",
                 (int)srv_r);
         return EXIT_FAILURE;
     }
 
-    /* try_recv_request / has_request / send_reply / call_raw on
-     * NULL backend_data also reach the backend. */
+    /* try_recv_request / has_request / send_reply / send_request_raw
+     * on NULL backend_data also reach the backend. */
     int64_t seq = 0;
     int32_t tr = g_received_vtable->try_recv_request(&srv, NULL, 0, &seq);
     if (tr != NROS_RMW_RET_INVALID_ARGUMENT) {
@@ -125,11 +125,11 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    nros_rmw_service_client_t cli = {0};
-    int32_t cr = g_received_vtable->call_raw(&cli, NULL, 0, NULL, 0);
+    nros_rmw_client_t cli = {0};
+    int32_t cr = g_received_vtable->send_request_raw(&cli, NULL, 0);
     if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
-                "FAIL: call_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                "FAIL: send_request_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)cr);
         return EXIT_FAILURE;
     }
@@ -162,7 +162,7 @@ int main(void) {
     }
 
     nros_rmw_session_t cust_session = {0};
-    nros_rmw_ret_t cret = g_received_vtable->open(
+    nros_rmw_ret_t cret = g_received_vtable->create_session(
         "custom://noop", 0, 0, "smoke-custom", &cust_session);
     if (cret != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,

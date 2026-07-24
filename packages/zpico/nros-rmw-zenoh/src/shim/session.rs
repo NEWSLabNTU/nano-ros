@@ -433,9 +433,9 @@ impl ZenohSession {
 impl Session for ZenohSession {
     type Error = TransportError;
     type PublisherHandle = ZenohPublisher;
-    type SubscriberHandle = ZenohSubscriber;
-    type ServiceServerHandle = ZenohServiceServer;
-    type ServiceClientHandle = ZenohServiceClient;
+    type SubscriptionHandle = ZenohSubscriber;
+    type ServiceHandle = ZenohServiceServer;
+    type ClientHandle = ZenohServiceClient;
 
     fn create_publisher(
         &mut self,
@@ -468,11 +468,11 @@ impl Session for ZenohSession {
         Ok(publisher)
     }
 
-    fn create_subscriber(
+    fn create_subscription(
         &mut self,
         topic: &TopicInfo,
         qos: QosSettings,
-    ) -> Result<Self::SubscriberHandle, Self::Error> {
+    ) -> Result<Self::SubscriptionHandle, Self::Error> {
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this subscriber's node.
         if let Some(node_name) = topic.node_name {
@@ -499,11 +499,11 @@ impl Session for ZenohSession {
         Ok(subscriber)
     }
 
-    fn create_service_server(
+    fn create_service(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<Self::ServiceServerHandle, Self::Error> {
+    ) -> Result<Self::ServiceHandle, Self::Error> {
         // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
         // slot (the `None` below is the liveliness token, not QoS) — the
         // requested service QoS cannot be applied to the queryable yet.
@@ -535,11 +535,11 @@ impl Session for ZenohSession {
         Ok(server)
     }
 
-    fn create_service_client(
+    fn create_client(
         &mut self,
         service: &ServiceInfo,
         qos: QosSettings,
-    ) -> Result<Self::ServiceClientHandle, Self::Error> {
+    ) -> Result<Self::ClientHandle, Self::Error> {
         // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
         // slot — the requested service QoS cannot be applied to the
         // querier yet. Thread it once zenoh-pico exposes per-endpoint QoS.

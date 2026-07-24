@@ -104,6 +104,7 @@ nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) 
 nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_name,
                                 const char* type_name, const char* /*type_hash*/,
                                 uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
+                                const nros_rmw_publisher_options_t* /*options*/,
                                 nros_rmw_publisher_t* out) {
     if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

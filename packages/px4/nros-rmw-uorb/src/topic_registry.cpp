@@ -2,7 +2,7 @@
 //
 // uORB has no built-in name-keyed metadata lookup; topics are
 // referenced by descriptor pointer (`ORB_ID(name)`). The cffi
-// vtable's `create_publisher`/`create_subscriber` only receive
+// vtable's `create_publisher`/`create_subscription` only receive
 // `(topic_name, type_name)` strings, so the host PX4 module must
 // register every topic it intends to expose by mapping the
 // ROS-style names back to the static descriptor.

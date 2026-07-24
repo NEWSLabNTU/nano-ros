@@ -6,7 +6,7 @@
  *
  * The topic callback dispatches by datareader_id to the matching
  * slot in the per-session pool. It's registered ONCE in
- * `xrce_session_open` (see session.c) — re-registering per
+ * `xrce_session_create` (see session.c) — re-registering per
  * subscriber would race with concurrent inbound messages.
  */
 
@@ -85,15 +85,17 @@ void xrce_topic_callback(uxrSession *session,
      * for diagnostics when the slot pool is full. */
 }
 
-nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,
+nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t *session,
                                       const char *topic_name,
                                       const char *type_name,
                                       const char *type_hash,
                                       uint32_t domain_id,
                                       const nros_rmw_qos_t *qos,
-                                      nros_rmw_subscriber_t *out) {
+                                      const nros_rmw_subscription_options_t *options,
+                                      nros_rmw_subscription_t *out) {
     (void)type_hash;
     (void)domain_id;
+    (void)options;
 
     if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -189,7 +191,7 @@ nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
+void xrce_subscription_destroy(nros_rmw_subscription_t *subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return;
     }
@@ -210,7 +212,7 @@ void xrce_subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
     subscriber->backend_data = NULL;
 }
 
-int32_t xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
+int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
                                      uint8_t *buf, size_t buf_len) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -244,7 +246,7 @@ int32_t xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     return ret;
 }
 
-int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
+int32_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return 0;
     }
@@ -258,13 +260,13 @@ int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
 /* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a
  * static ring entry (`entry->data`), so it can hand the bytes to the callback
  * in place instead of copying into a caller buffer (copy #1 removed). */
-int32_t xrce_subscriber_supports_in_place(nros_rmw_subscriber_t *subscriber) {
+int32_t xrce_subscription_supports_in_place(nros_rmw_subscription_t *subscriber) {
     (void)subscriber;
     return 1;
 }
 
-int32_t xrce_subscriber_process_raw_in_place(
-    nros_rmw_subscriber_t *subscriber, void *ctx,
+int32_t xrce_subscription_process_raw_in_place(
+    nros_rmw_subscription_t *subscriber, void *ctx,
     void (*cb)(void *ctx, const uint8_t *ptr, size_t len)) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

@@ -5,9 +5,7 @@ use core::marker::PhantomData;
 use atomic_waker::AtomicWaker;
 use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use nros_rmw::{
-    ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, TransportError,
-};
+use nros_rmw::{ClientTrait, ServiceInfo, ServiceRequest, ServiceTrait, TransportError};
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, RMW_ATTACHMENT_SIZE,
@@ -332,7 +330,7 @@ impl ZenohServiceServer {
     }
 }
 
-impl ServiceServerTrait for ZenohServiceServer {
+impl ServiceTrait for ZenohServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
@@ -616,53 +614,8 @@ impl ZenohServiceClient {
     }
 }
 
-impl ServiceClientTrait for ZenohServiceClient {
+impl ClientTrait for ZenohServiceClient {
     type Error = TransportError;
-
-    #[allow(deprecated)]
-    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.send_request_raw(request)?;
-
-        #[cfg(feature = "std")]
-        {
-            let deadline = std::time::Instant::now()
-                + std::time::Duration::from_millis(self.timeout_ms as u64);
-            loop {
-                if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
-                    return Ok(len);
-                }
-                if std::time::Instant::now() >= deadline {
-                    self.pending_handles.clear();
-                    return Err(TransportError::Timeout);
-                }
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-        }
-
-        #[cfg(not(feature = "std"))]
-        {
-            #[cfg(not(feature = "platform-threadx"))]
-            unsafe extern "C" {
-                fn z_sleep_ms(time: usize) -> i8;
-            }
-            let attempts = (self.timeout_ms / 5).max(1);
-            for _ in 0..attempts {
-                if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
-                    return Ok(len);
-                }
-                #[cfg(feature = "platform-threadx")]
-                unsafe {
-                    let _ = zpico_sys::zpico_spin_once(5);
-                }
-                #[cfg(not(feature = "platform-threadx"))]
-                unsafe {
-                    z_sleep_ms(5)
-                };
-            }
-            self.pending_handles.clear();
-            Err(TransportError::Timeout)
-        }
-    }
 
     fn register_waker(&self, waker: &core::task::Waker) {
         // Wake on any outstanding handle — `nros_client_call`'s resend

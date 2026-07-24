@@ -49,10 +49,13 @@ dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src) {
                                                   : DDS_HISTORY_KEEP_LAST,
         src->depth);
 
-    if (src->deadline_ms != 0) {
+    // Phase-301 (issue 0241): `NROS_RMW_DURATION_INFINITE_MS` is the
+    // explicit infinite spelling — semantically identical to 0 (no
+    // check) at every duration comparison.
+    if (src->deadline_ms != 0 && src->deadline_ms != NROS_RMW_DURATION_INFINITE_MS) {
         dds_qset_deadline(q, DDS_MSECS(src->deadline_ms));
     }
-    if (src->lifespan_ms != 0) {
+    if (src->lifespan_ms != 0 && src->lifespan_ms != NROS_RMW_DURATION_INFINITE_MS) {
         dds_qset_lifespan(q, DDS_MSECS(src->lifespan_ms));
     }
 
@@ -73,7 +76,9 @@ dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src) {
                 k = DDS_LIVELINESS_AUTOMATIC;
                 break;
         }
-        const dds_duration_t lease = src->liveliness_lease_ms != 0
+        const dds_duration_t lease =
+            (src->liveliness_lease_ms != 0 &&
+             src->liveliness_lease_ms != NROS_RMW_DURATION_INFINITE_MS)
             ? DDS_MSECS(src->liveliness_lease_ms)
             : DDS_INFINITY;
         dds_qset_liveliness(q, k, lease);

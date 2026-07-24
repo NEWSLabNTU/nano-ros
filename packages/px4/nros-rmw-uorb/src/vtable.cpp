@@ -17,48 +17,43 @@ namespace {
 
 using namespace nros_rmw_uorb;
 
-// Designated initializers (C++20) — robust to the vtable growing: every slot
-// uORB doesn't implement is value-initialized to NULL, which the runtime treats
-// as "unsupported / use the fallback." This is the only correct shape now that
-// the table carries optional tail slots (Phase 130 non-blocking client, Phase
-// 124 zero-copy/borrow/sequence, Phase 231 in-place) that uORB never fills.
-// Positional initialization through `call_raw`, in `nros_rmw_vtable_t` field
-// order with NO gaps — every slot AFTER `call_raw` (Phase 130 non-blocking
-// client, Phase 108 events, Phase 110 deadline, Phase 124 zero-copy/borrow/
-// sequence/streamed, Phase 124.F ping, Phase 231 in-place) is left to C++
-// aggregate value-initialization (NULL), which the runtime treats as
-// "unsupported." Designated initializers would be cleaner but need C++20; this
-// crate is C++14 (CMAKE_CXX_STANDARD 14), so keep the gap-free positional form —
-// the previous list skipped `send_request_raw`/`try_recv_reply_raw`, which
-// shifted every later slot and broke the build.
+// Positional initialization through `destroy_client`, in `nros_rmw_vtable_t`
+// field order with NO gaps — every slot AFTER `destroy_client` (Phase 130
+// non-blocking client, Phase 108 events, Phase 110 deadline, Phase 124
+// zero-copy/borrow/sequence/streamed, Phase 124.F ping, Phase 231 in-place) is
+// left to C++ aggregate value-initialization (NULL), which the runtime treats
+// as "unsupported." Designated initializers would be cleaner but need C++20;
+// this crate is C++14 (CMAKE_CXX_STANDARD 14), so keep the gap-free positional
+// form — a skipped slot shifts every later slot and breaks the build.
+// Phase-301: the deprecated blocking `call_raw` slot was deleted from the
+// vtable, so the positional list now ends at `destroy_client`.
 //
 // The trailing-NULL `-Wmissing-field-initializers` is the intended shape here.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
-    /*open*/ session_open,
-    /*close*/ session_close,
+    /*create_session*/ session_create,
+    /*destroy_session*/ session_destroy,
     /*drive_io*/ session_drive_io,
     /* ---- Publisher ---- */
     /*create_publisher*/ publisher_create,
     /*destroy_publisher*/ publisher_destroy,
     /*publish_raw*/ publisher_publish_raw,
-    /* ---- Subscriber ---- */
-    /*create_subscriber*/ subscriber_create,
-    /*destroy_subscriber*/ subscriber_destroy,
-    /*try_recv_raw*/ subscriber_try_recv_raw,
-    /*has_data*/ subscriber_has_data,
-    /* ---- Service Server (uORB: UNSUPPORTED stubs) ---- */
-    /*create_service_server*/ service_server_create,
-    /*destroy_service_server*/ service_server_destroy,
+    /* ---- Subscription ---- */
+    /*create_subscription*/ subscription_create,
+    /*destroy_subscription*/ subscription_destroy,
+    /*try_recv_raw*/ subscription_try_recv_raw,
+    /*has_data*/ subscription_has_data,
+    /* ---- Service (uORB: UNSUPPORTED stubs) ---- */
+    /*create_service*/ service_create,
+    /*destroy_service*/ service_destroy,
     /*try_recv_request*/ service_try_recv_request,
     /*has_request*/ service_has_request,
     /*send_reply*/ service_send_reply,
-    /* ---- Service Client (uORB: UNSUPPORTED stubs) ---- */
-    /*create_service_client*/ service_client_create,
-    /*destroy_service_client*/ service_client_destroy,
-    /*call_raw*/ service_call_raw,
+    /* ---- Client (uORB: UNSUPPORTED stubs) ---- */
+    /*create_client*/ client_create,
+    /*destroy_client*/ client_destroy,
     // Everything after this point stays NULL (see header comment).
 };
 #pragma GCC diagnostic pop

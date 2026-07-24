@@ -82,7 +82,7 @@ void graph_init(GraphState* g, dds_entity_t participant, const char* node_name,
 void graph_fini(GraphState* g) {
     if (g == nullptr) return;
     // The participant's dds_delete cascades to the writer + topic, so we only
-    // reset state here (session_close deletes the participant).
+    // reset state here (session_destroy deletes the participant).
     g->writer = 0;
     g->topic = 0;
     g->active = false;

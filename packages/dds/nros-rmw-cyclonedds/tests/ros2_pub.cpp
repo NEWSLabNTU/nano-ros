@@ -38,7 +38,7 @@ int main() {
     if (const char *e = std::getenv("ROS_DOMAIN_ID")) {
         domain = static_cast<uint32_t>(std::atoi(e));
     }
-    if (g_vt->open(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
@@ -49,7 +49,7 @@ int main() {
     pub.type_name  = "std_msgs::msg::dds_::String_";
     pub.qos        = qos;
     if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "",
-                               0, &qos, &pub) != NROS_RMW_RET_OK) {
+                               0, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 3;
     }
@@ -84,7 +84,7 @@ int main() {
     }
 
     g_vt->destroy_publisher(&pub);
-    (void) g_vt->close(&s);
+    (void) g_vt->destroy_session(&s);
     std::printf("OK\n");
     return 0;
 }

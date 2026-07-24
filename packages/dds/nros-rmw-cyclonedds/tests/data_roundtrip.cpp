@@ -60,19 +60,19 @@ int main() {
     nros_rmw_session_t s{};
     s.node_name  = "data_roundtrip";
     s.namespace_ = "/";
-    if (g_vt->open(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
     nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
-    nros_rmw_subscriber_t sub{};
+    nros_rmw_subscription_t sub{};
     sub.topic_name = "rt/data_roundtrip";
     sub.type_name  = "nros_test::msg::TestString";
     sub.qos        = qos;
-    if (g_vt->create_subscriber(&s, sub.topic_name, sub.type_name, "",
-                                99, &qos, &sub) != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_subscriber failed\n");
+    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "",
+                                99, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
 
@@ -81,7 +81,7 @@ int main() {
     pub.type_name  = "nros_test::msg::TestString";
     pub.qos        = qos;
     if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "",
-                               99, &qos, &pub) != NROS_RMW_RET_OK) {
+                               99, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 4;
     }
@@ -133,8 +133,8 @@ int main() {
     }
 
     g_vt->destroy_publisher(&pub);
-    g_vt->destroy_subscriber(&sub);
-    (void) g_vt->close(&s);
+    g_vt->destroy_subscription(&sub);
+    (void) g_vt->destroy_session(&s);
     std::printf("OK %d bytes round-tripped\n", n);
     return 0;
 }

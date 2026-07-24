@@ -29,7 +29,7 @@
  *
  * `ORB_ID(name)` expands to `&__orb_<name>`, the static topic
  * descriptor; the registry stashes that pointer so a later
- * `create_publisher` / `create_subscriber` call can resolve
+ * `create_publisher` / `create_subscription` call can resolve
  * `topic_name → meta *`.
  *
  * Capacity is bounded at compile time

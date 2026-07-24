@@ -31,16 +31,17 @@ struct SubState {
     SertypeMin* st{nullptr};
 };
 
-inline SubState* as_state(nros_rmw_subscriber_t* s) {
+inline SubState* as_state(nros_rmw_subscription_t* s) {
     return static_cast<SubState*>(s->backend_data);
 }
 
 } // namespace
 
-nros_rmw_ret_t subscriber_create(nros_rmw_session_t* session, const char* topic_name,
+nros_rmw_ret_t subscription_create(nros_rmw_session_t* session, const char* topic_name,
                                  const char* type_name, const char* /*type_hash*/,
                                  uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                 nros_rmw_subscriber_t* out) {
+                                 const nros_rmw_subscription_options_t* /*options*/,
+                                 nros_rmw_subscription_t* out) {
     if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -106,7 +107,7 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t* session, const char* topic_
     return NROS_RMW_RET_OK;
 }
 
-void subscriber_destroy(nros_rmw_subscriber_t* subscriber) {
+void subscription_destroy(nros_rmw_subscription_t* subscriber) {
     if (subscriber == nullptr) return;
     SubState* state = as_state(subscriber);
     if (state == nullptr) return;
@@ -117,7 +118,7 @@ void subscriber_destroy(nros_rmw_subscriber_t* subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t* subscriber, uint8_t* buf, size_t buf_len) {
+int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len) {
     if (subscriber == nullptr || buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -202,8 +203,8 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t* subscriber, uint8_t* buf,
 // Phase 124.D.3 — native batch take. Cyclone DDS `dds_take` accepts
 // (reader, buf, info, count, maxs) and returns N samples in one
 // call. Serialise each typed sample back to CDR with the same
-// encoding-header convention as `subscriber_try_recv_raw`.
-int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t* subscriber, uint8_t* buf,
+// encoding-header convention as `subscription_try_recv_raw`.
+int32_t subscription_try_recv_sequence(nros_rmw_subscription_t* subscriber, uint8_t* buf,
                                      size_t per_msg_cap, size_t max_msgs, size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -281,7 +282,7 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t* subscriber, uint8_t*
     return static_cast<int32_t>(produced);
 }
 
-int32_t subscriber_has_data(nros_rmw_subscriber_t* subscriber) {
+int32_t subscription_has_data(nros_rmw_subscription_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
     // Cyclone's DATA_AVAILABLE status is edge-like for our executor use:
     // querying it as a pre-filter can clear/suppress the subsequent take
@@ -291,7 +292,7 @@ int32_t subscriber_has_data(nros_rmw_subscriber_t* subscriber) {
     return 1;
 }
 
-dds_entity_t subscriber_reader(const nros_rmw_subscriber_t* subscriber) {
+dds_entity_t subscription_reader(const nros_rmw_subscription_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
     return static_cast<const SubState*>(subscriber->backend_data)->reader;
 }

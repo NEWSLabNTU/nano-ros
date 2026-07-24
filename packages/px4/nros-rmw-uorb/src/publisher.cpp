@@ -41,6 +41,7 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
                                 const char * /*type_hash*/,
                                 uint32_t /*domain_id*/,
                                 const nros_rmw_qos_t * /*qos*/,
+                                const nros_rmw_publisher_options_t * /*options*/,
                                 nros_rmw_publisher_t *out) {
     if (session == nullptr || session->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

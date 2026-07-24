@@ -25,6 +25,25 @@ const nros_rmw_vtable_t *g_vt = nullptr;
 // this test focuses on the cross-client (guid, seq) filter
 // rejecting replies meant for the other peer.
 constexpr int kCallsPerClient = 1;
+
+// Phase-301: the blocking `call_raw` vtable slot was deleted; emulate
+// the old blocking call with the non-blocking send + poll pair.
+int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
+                      size_t rep_cap) {
+    nros_rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
+    if (sr != NROS_RMW_RET_OK) {
+        return sr;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        int32_t n = g_vt->try_recv_reply_raw(cli, rep, rep_cap);
+        if (n != NROS_RMW_RET_NO_DATA) {
+            return n;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return NROS_RMW_RET_TIMEOUT;
+}
 } // namespace
 
 extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
@@ -47,16 +66,16 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
     nros_rmw_session_t my_s{};
     my_s.node_name  = node_name;
     my_s.namespace_ = "/";
-    if (g_vt->open(nullptr, 0, 99, node_name, &my_s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 99, node_name, &my_s) != NROS_RMW_RET_OK) {
         failures->fetch_add(1);
         return 1;
     }
-    nros_rmw_service_client_t cli{};
+    nros_rmw_client_t cli{};
     cli.service_name = "concurrent_test";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_client(&my_s, cli.service_name, cli.type_name,
+    if (g_vt->create_client(&my_s, cli.service_name, cli.type_name,
                                     "", 99, nullptr, &cli) != NROS_RMW_RET_OK) {
-        (void) g_vt->close(&my_s);
+        (void) g_vt->destroy_session(&my_s);
         failures->fetch_add(1);
         return 1;
     }
@@ -80,10 +99,10 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
             req[12 + k] = static_cast<uint8_t>((b >> (k * 8)) & 0xff);
         }
         uint8_t rep[64] = {};
-        int32_t n = g_vt->call_raw(&cli, req, sizeof(req), rep, sizeof(rep));
+        int32_t n = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep));
         if (n < 0) {
             std::fprintf(stderr,
-                "client %d call %d: call_raw returned %d\n",
+                "client %d call %d: call_blocking returned %d\n",
                 client_idx, i, n);
             failures->fetch_add(1);
             break;
@@ -107,8 +126,8 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
             failures->fetch_add(1);
         }
     }
-    g_vt->destroy_service_client(&cli);
-    (void) g_vt->close(&my_s);
+    g_vt->destroy_client(&cli);
+    (void) g_vt->destroy_session(&my_s);
     return 0;
 }
 
@@ -120,14 +139,14 @@ int main() {
     nros_rmw_session_t s{};
     s.node_name  = "service_concurrent";
     s.namespace_ = "/";
-    if (g_vt->open(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_service_server_t srv{};
+    nros_rmw_service_t srv{};
     srv.service_name = "concurrent_test";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
                                     99, nullptr, &srv) != NROS_RMW_RET_OK) {
         return 3;
     }
@@ -179,8 +198,8 @@ int main() {
     c1.join();
     server.join();
 
-    g_vt->destroy_service_server(&srv);
-    (void) g_vt->close(&s);
+    g_vt->destroy_service(&srv);
+    (void) g_vt->destroy_session(&s);
 
     int f = failures.load();
     if (f != 0) {

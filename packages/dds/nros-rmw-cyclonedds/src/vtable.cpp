@@ -18,8 +18,8 @@ using namespace nros_rmw_cyclonedds;
 
 // Phase 108 event hooks left NULL until a follow-up phase wires
 // Cyclone listeners through to the runtime's status-event surface.
-constexpr nros_rmw_ret_t (*kRegisterSubscriberEvent)(
-    nros_rmw_subscriber_t *, nros_rmw_event_kind_t, uint32_t,
+constexpr nros_rmw_ret_t (*kRegisterSubscriptionEvent)(
+    nros_rmw_subscription_t *, nros_rmw_event_kind_t, uint32_t,
     nros_rmw_event_callback_t, void *) = nullptr;
 constexpr nros_rmw_ret_t (*kRegisterPublisherEvent)(
     nros_rmw_publisher_t *, nros_rmw_event_kind_t, uint32_t,
@@ -29,8 +29,8 @@ constexpr nros_rmw_ret_t (*kAssertPublisherLiveliness)(
 
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
-    /*open*/                      session_open,
-    /*close*/                     session_close,
+    /*create_session*/            session_create,
+    /*destroy_session*/           session_destroy,
     /*drive_io*/                  session_drive_io,
 
     /* ---- Publisher ---- */
@@ -38,32 +38,30 @@ const nros_rmw_vtable_t kVtable = {
     /*destroy_publisher*/         publisher_destroy,
     /*publish_raw*/               publisher_publish_raw,
 
-    /* ---- Subscriber ---- */
-    /*create_subscriber*/         subscriber_create,
-    /*destroy_subscriber*/        subscriber_destroy,
-    /*try_recv_raw*/              subscriber_try_recv_raw,
-    /*has_data*/                  subscriber_has_data,
+    /* ---- Subscription ---- */
+    /*create_subscription*/       subscription_create,
+    /*destroy_subscription*/      subscription_destroy,
+    /*try_recv_raw*/              subscription_try_recv_raw,
+    /*has_data*/                  subscription_has_data,
 
-    /* ---- Service Server ---- */
-    /*create_service_server*/     service_server_create,
-    /*destroy_service_server*/    service_server_destroy,
+    /* ---- Service ---- */
+    /*create_service*/            service_create,
+    /*destroy_service*/           service_destroy,
     /*try_recv_request*/          service_try_recv_request,
     /*has_request*/               service_has_request,
     /*send_reply*/                service_send_reply,
 
-    /* ---- Service Client ---- */
-    /*create_service_client*/     service_client_create,
-    /*destroy_service_client*/    service_client_destroy,
-    /*call_raw*/                  service_call_raw,
-    /* Phase 130.8 — non-blocking send/recv split. Skips the
-     * CFFI legacy blocking-call_raw fallback so the executor's
-     * spin loop polls for replies without re-sending the
-     * request. */
+    /* ---- Client ---- */
+    /*create_client*/             client_create,
+    /*destroy_client*/            client_destroy,
+    /* Phase 130.8 — non-blocking send/recv split; phase-301 deleted
+     * the deprecated blocking call_raw slot, so this pair is the one
+     * request/reply path. */
     /*send_request_raw*/          service_send_request_raw,
     /*try_recv_reply_raw*/        service_try_recv_reply_raw,
 
     /* ---- Phase 108 event hooks (deferred) ---- */
-    /*register_subscriber_event*/ kRegisterSubscriberEvent,
+    /*register_subscription_event*/ kRegisterSubscriptionEvent,
     /*register_publisher_event*/  kRegisterPublisherEvent,
     /*assert_publisher_liveliness*/ kAssertPublisherLiveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */
@@ -93,13 +91,22 @@ const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.D.3 — native batch take. Cyclone provides
      * `dds_take(reader, buf, info, count, maxs)` as a single-call
-     * batch API; we wrap it in subscriber_try_recv_sequence with
+     * batch API; we wrap it in subscription_try_recv_sequence with
      * CDR re-serialisation per slot. */
-    /*try_recv_sequence*/         subscriber_try_recv_sequence,
+    /*try_recv_sequence*/         subscription_try_recv_sequence,
 
     /* Phase 124.E — continuous serialization. nullptr → runtime
      * staging-buffer fallback. */
     /*publish_streamed*/          nullptr,
+
+    /* Phase 124.F — connectivity probe. No participant ping on
+     * Cyclone; nullptr → runtime surfaces UNSUPPORTED. */
+    /*ping_session*/              nullptr,
+
+    /* Phase 231 (RFC-0038) — in-place take. Not wired on this
+     * backend; nullptr → runtime uses the buffered path. */
+    /*subscription_supports_in_place*/ nullptr,
+    /*process_raw_in_place*/      nullptr,
 };
 
 } // namespace

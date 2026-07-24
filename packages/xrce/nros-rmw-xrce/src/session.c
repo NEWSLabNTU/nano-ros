@@ -290,7 +290,7 @@ static const char* locator_serial_path(const char* locator) {
     return NULL;
 }
 
-nros_rmw_ret_t xrce_session_open(const char* locator, uint8_t mode, uint32_t domain_id,
+nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
                                  const char* node_name, nros_rmw_session_t* out) {
     (void)mode;
     if (out == NULL || node_name == NULL) {
@@ -433,7 +433,7 @@ nros_rmw_ret_t xrce_session_open(const char* locator, uint8_t mode, uint32_t dom
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_session_close(nros_rmw_session_t* session) {
+nros_rmw_ret_t xrce_session_destroy(nros_rmw_session_t* session) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

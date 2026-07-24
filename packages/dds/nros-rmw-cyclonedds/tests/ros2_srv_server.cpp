@@ -51,16 +51,16 @@ int main() {
     if (const char *e = std::getenv("ROS_DOMAIN_ID")) {
         domain = static_cast<uint32_t>(std::atoi(e));
     }
-    if (g_vt->open(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_service_server_t srv{};
+    nros_rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
                                     domain, nullptr, &srv) != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_service_server failed\n");
+        std::fprintf(stderr, "create_service failed\n");
         return 3;
     }
 
@@ -86,15 +86,15 @@ int main() {
                             static_cast<long long>(b),
                             static_cast<long long>(a + b));
                 std::fflush(stdout);
-                g_vt->destroy_service_server(&srv);
-                (void) g_vt->close(&s);
+                g_vt->destroy_service(&srv);
+                (void) g_vt->destroy_session(&s);
                 return 0;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     std::fprintf(stderr, "timeout waiting for request\n");
-    g_vt->destroy_service_server(&srv);
-    (void) g_vt->close(&s);
+    g_vt->destroy_service(&srv);
+    (void) g_vt->destroy_session(&s);
     return 5;
 }

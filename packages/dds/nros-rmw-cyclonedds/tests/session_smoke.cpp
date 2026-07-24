@@ -37,7 +37,7 @@ int main() {
     // Domain 42 keeps this test off the default ROS_DOMAIN_ID so a
     // running ROS 2 stack on the same host doesn't see our short-
     // lived participant.
-    nros_rmw_ret_t r = g_vt->open(nullptr, 0, 42, s.node_name, &s);
+    nros_rmw_ret_t r = g_vt->create_session(nullptr, 0, 42, s.node_name, &s);
     if (r != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d\n", static_cast<int>(r));
         return 2;
@@ -53,7 +53,7 @@ int main() {
         return 4;
     }
 
-    if (g_vt->close(&s) != NROS_RMW_RET_OK) {
+    if (g_vt->destroy_session(&s) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "close failed\n");
         return 5;
     }

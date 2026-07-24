@@ -311,9 +311,9 @@ void xrce_dds_reply_type(const char* type_name, char* out, size_t out_cap);
 uxrQoS_t xrce_map_qos(const nros_rmw_qos_t* qos);
 
 /* ---- session.c ---- */
-nros_rmw_ret_t xrce_session_open(const char* locator, uint8_t mode, uint32_t domain_id,
+nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
                                  const char* node_name, nros_rmw_session_t* out);
-nros_rmw_ret_t xrce_session_close(nros_rmw_session_t* session);
+nros_rmw_ret_t xrce_session_destroy(nros_rmw_session_t* session);
 nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeout_ms);
 /* Phase 124.F.2 — connectivity probe via `uxr_ping_agent_session`. */
 nros_rmw_ret_t xrce_session_ping(nros_rmw_session_t* session, int32_t timeout_ms);
@@ -322,6 +322,7 @@ nros_rmw_ret_t xrce_session_ping(nros_rmw_session_t* session, int32_t timeout_ms
 nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t* session, const char* topic_name,
                                      const char* type_name, const char* type_hash,
                                      uint32_t domain_id, const nros_rmw_qos_t* qos,
+                                     const nros_rmw_publisher_options_t* options,
                                      nros_rmw_publisher_t* out);
 void xrce_publisher_destroy(nros_rmw_publisher_t* publisher);
 nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint8_t* data,
@@ -333,17 +334,18 @@ nros_rmw_ret_t xrce_publisher_publish_streamed(
     void* user_ctx);
 
 /* ---- subscriber.c ---- */
-nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t* session, const char* topic_name,
+nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t* session, const char* topic_name,
                                       const char* type_name, const char* type_hash,
                                       uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                      nros_rmw_subscriber_t* out);
-void xrce_subscriber_destroy(nros_rmw_subscriber_t* subscriber);
-int32_t xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t* subscriber, uint8_t* buf,
+                                      const nros_rmw_subscription_options_t* options,
+                                      nros_rmw_subscription_t* out);
+void xrce_subscription_destroy(nros_rmw_subscription_t* subscriber);
+int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf,
                                      size_t buf_len);
-int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t* subscriber);
+int32_t xrce_subscription_has_data(nros_rmw_subscription_t* subscriber);
 /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static ring. */
-int32_t xrce_subscriber_supports_in_place(nros_rmw_subscriber_t* subscriber);
-int32_t xrce_subscriber_process_raw_in_place(nros_rmw_subscriber_t* subscriber, void* ctx,
+int32_t xrce_subscription_supports_in_place(nros_rmw_subscription_t* subscriber);
+int32_t xrce_subscription_process_raw_in_place(nros_rmw_subscription_t* subscriber, void* ctx,
                                              void (*cb)(void* ctx, const uint8_t* ptr, size_t len));
 
 /* Topic data callback — single instance per session, registered at
@@ -353,28 +355,28 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
                          uxrStreamId stream_id, struct ucdrBuffer* ub, uint16_t length, void* args);
 
 /* ---- service.c ---- */
-nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_service_server_t* out);
-void xrce_service_server_destroy(nros_rmw_service_server_t* server);
-int32_t xrce_service_try_recv_request(nros_rmw_service_server_t* server, uint8_t* buf,
+                                          nros_rmw_service_t* out);
+void xrce_service_destroy(nros_rmw_service_t* server);
+int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out);
-int32_t xrce_service_has_request(nros_rmw_service_server_t* server);
-nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t* server, int64_t seq,
+int32_t xrce_service_has_request(nros_rmw_service_t* server);
+nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
 
-nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_service_client_t* out);
-void xrce_service_client_destroy(nros_rmw_service_client_t* client);
-int32_t xrce_service_call_raw(nros_rmw_service_client_t* client, const uint8_t* request,
-                              size_t req_len, uint8_t* reply_buf, size_t reply_buf_len);
-/* Phase 130.4 — non-blocking split. */
-nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t* client,
+                                          nros_rmw_client_t* out);
+void xrce_client_destroy(nros_rmw_client_t* client);
+/* Phase 130.4 — non-blocking split (phase-301: the deprecated blocking
+ * `call_raw` slot was deleted from the vtable; this pair is the one
+ * request/reply path). */
+nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
                                              const uint8_t* request, size_t req_len);
-int32_t xrce_service_try_recv_reply_raw(nros_rmw_service_client_t* client, uint8_t* reply_buf,
+int32_t xrce_service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* reply_buf,
                                         size_t reply_buf_len);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,

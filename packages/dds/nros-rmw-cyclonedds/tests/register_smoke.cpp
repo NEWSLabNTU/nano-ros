@@ -40,24 +40,25 @@ int main() {
     }
     // Mandatory slots: session lifecycle + pub/sub + service. Phase 108
     // event hooks are allowed NULL.
-    if (g_captured->open == nullptr ||
-        g_captured->close == nullptr ||
+    if (g_captured->create_session == nullptr ||
+        g_captured->destroy_session == nullptr ||
         g_captured->drive_io == nullptr ||
         g_captured->create_publisher == nullptr ||
         g_captured->destroy_publisher == nullptr ||
         g_captured->publish_raw == nullptr ||
-        g_captured->create_subscriber == nullptr ||
-        g_captured->destroy_subscriber == nullptr ||
+        g_captured->create_subscription == nullptr ||
+        g_captured->destroy_subscription == nullptr ||
         g_captured->try_recv_raw == nullptr ||
         g_captured->has_data == nullptr ||
-        g_captured->create_service_server == nullptr ||
-        g_captured->destroy_service_server == nullptr ||
+        g_captured->create_service == nullptr ||
+        g_captured->destroy_service == nullptr ||
         g_captured->try_recv_request == nullptr ||
         g_captured->has_request == nullptr ||
         g_captured->send_reply == nullptr ||
-        g_captured->create_service_client == nullptr ||
-        g_captured->destroy_service_client == nullptr ||
-        g_captured->call_raw == nullptr) {
+        g_captured->create_client == nullptr ||
+        g_captured->destroy_client == nullptr ||
+        g_captured->send_request_raw == nullptr ||
+        g_captured->try_recv_reply_raw == nullptr) {
         std::fprintf(stderr, "vtable has NULL mandatory slot\n");
         return 3;
     }

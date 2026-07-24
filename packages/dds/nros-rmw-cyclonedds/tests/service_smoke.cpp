@@ -3,8 +3,9 @@
 // Verifies service_server_create / service_client_create succeed
 // when both `<svc>_Request` and `<svc>_Response` descriptors are
 // registered, fail cleanly with UNSUPPORTED when they aren't.
-// Data plane stubs (`try_recv_request` / `send_reply` / `call_raw`)
-// are still UNSUPPORTED until the raw-CDR follow-up lands.
+// Data plane stubs (`try_recv_request` / `send_reply` /
+// `send_request_raw`) are still UNSUPPORTED until the raw-CDR
+// follow-up lands.
 
 #include <cstdio>
 #include <cstring>
@@ -32,17 +33,17 @@ int main() {
     nros_rmw_session_t s{};
     s.node_name  = "service_smoke";
     s.namespace_ = "/";
-    if (g_vt->open(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_service_server_t srv{};
+    nros_rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
                                     99, nullptr, &srv) != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_service_server failed\n");
-        (void) g_vt->close(&s);
+        std::fprintf(stderr, "create_service failed\n");
+        (void) g_vt->destroy_session(&s);
         return 3;
     }
     if (srv.backend_data == nullptr) {
@@ -50,14 +51,14 @@ int main() {
         return 4;
     }
 
-    nros_rmw_service_client_t cli{};
+    nros_rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
+    if (g_vt->create_client(&s, cli.service_name, cli.type_name, "",
                                     99, nullptr, &cli) != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_service_client failed\n");
-        g_vt->destroy_service_server(&srv);
-        (void) g_vt->close(&s);
+        std::fprintf(stderr, "create_client failed\n");
+        g_vt->destroy_service(&srv);
+        (void) g_vt->destroy_session(&s);
         return 5;
     }
 
@@ -66,11 +67,11 @@ int main() {
         std::fprintf(stderr, "has_request should be 0 with no traffic\n");
         return 6;
     }
-    // call_raw with too-short request → invalid arg.
-    if (g_vt->call_raw(&cli,
-            reinterpret_cast<const uint8_t *>("x"), 1, nullptr, 0)
+    // send_request_raw with too-short request → invalid arg.
+    if (g_vt->send_request_raw(&cli,
+            reinterpret_cast<const uint8_t *>("x"), 1)
         != NROS_RMW_RET_INVALID_ARGUMENT) {
-        std::fprintf(stderr, "call_raw too-short should be INVALID_ARGUMENT\n");
+        std::fprintf(stderr, "send_request_raw too-short should be INVALID_ARGUMENT\n");
         return 7;
     }
 
@@ -78,17 +79,17 @@ int main() {
     // An unregistered type name must be rejected with UNSUPPORTED
     // so consumers get a clear error if they forgot to call the
     // codegen helper.
-    nros_rmw_service_server_t any{};
-    if (g_vt->create_service_server(&s, "missing", "no::such::Svc", "",
+    nros_rmw_service_t any{};
+    if (g_vt->create_service(&s, "missing", "no::such::Svc", "",
                                     99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,
             "missing type_name should report UNSUPPORTED\n");
         return 8;
     }
 
-    g_vt->destroy_service_client(&cli);
-    g_vt->destroy_service_server(&srv);
-    (void) g_vt->close(&s);
+    g_vt->destroy_client(&cli);
+    g_vt->destroy_service(&srv);
+    (void) g_vt->destroy_session(&s);
     std::printf("OK\n");
     return 0;
 }

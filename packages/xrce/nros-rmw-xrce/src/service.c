@@ -1,7 +1,7 @@
 /* Phase 115.K.2.3 — service server / client paths.
  *
  * Mirrors the Rust impl's `XrceSession::create_service_server` /
- * `XrceServiceServer::send_reply` / `XrceServiceClient::call_raw`
+ * `XrceServiceServer::send_reply` / `XrceServiceClient::send_request_raw`
  * shape. Bin profile only — no QoS XML; service requests/replies
  * use the services-default QoS (reliable / volatile / keep-last(10)).
  *
@@ -109,10 +109,10 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 
 /* ---- Service server -------------------------------------------------- */
 
-nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_service_server_t* out) {
+                                          nros_rmw_service_t* out) {
     (void)type_hash;
     (void)domain_id;
 
@@ -210,7 +210,7 @@ nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t* session, const cha
     return NROS_RMW_RET_OK;
 }
 
-void xrce_service_server_destroy(nros_rmw_service_server_t* server) {
+void xrce_service_destroy(nros_rmw_service_t* server) {
     if (server == NULL || server->backend_data == NULL) {
         return;
     }
@@ -228,7 +228,7 @@ void xrce_service_server_destroy(nros_rmw_service_server_t* server) {
     server->backend_data = NULL;
 }
 
-int32_t xrce_service_try_recv_request(nros_rmw_service_server_t* server, uint8_t* buf,
+int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -286,7 +286,7 @@ int32_t xrce_service_try_recv_request(nros_rmw_service_server_t* server, uint8_t
     return (int32_t)len;
 }
 
-int32_t xrce_service_has_request(nros_rmw_service_server_t* server) {
+int32_t xrce_service_has_request(nros_rmw_service_t* server) {
     if (server == NULL || server->backend_data == NULL) {
         return 0;
     }
@@ -297,7 +297,7 @@ int32_t xrce_service_has_request(nros_rmw_service_server_t* server) {
     return ss->slot->req_count > 0 ? 1 : 0;
 }
 
-nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t* server, int64_t seq,
+nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -342,13 +342,13 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t* server, int64_
 }
 
 /* Phase 130.4 — non-blocking send/recv split (paired vtable
- * slots). Avoids the blocking call_raw burst that conflated
+ * slots). Avoids the removed blocking-call shape that conflated
  * "send pending request" + "block for reply"; lets the
  * executor's spin loop poll for a late-arriving reply without
  * re-sending the request or sleeping in a never-signaled
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
-nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t* client,
+nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
                                              const uint8_t* request, size_t req_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -387,7 +387,7 @@ nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-int32_t xrce_service_try_recv_reply_raw(nros_rmw_service_client_t* client, uint8_t* reply_buf,
+int32_t xrce_service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* reply_buf,
                                         size_t reply_buf_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -419,10 +419,10 @@ int32_t xrce_service_try_recv_reply_raw(nros_rmw_service_client_t* client, uint8
 
 /* ---- Service client -------------------------------------------------- */
 
-nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_service_client_t* out) {
+                                          nros_rmw_client_t* out) {
     (void)type_hash;
     (void)domain_id;
 
@@ -508,7 +508,7 @@ nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t* session, const cha
     return NROS_RMW_RET_OK;
 }
 
-void xrce_service_client_destroy(nros_rmw_service_client_t* client) {
+void xrce_client_destroy(nros_rmw_client_t* client) {
     if (client == NULL || client->backend_data == NULL) {
         return;
     }
@@ -526,62 +526,3 @@ void xrce_service_client_destroy(nros_rmw_service_client_t* client) {
     client->backend_data = NULL;
 }
 
-int32_t xrce_service_call_raw(nros_rmw_service_client_t* client, const uint8_t* request,
-                              size_t req_len, uint8_t* reply_buf, size_t reply_buf_len) {
-    if (client == NULL || client->backend_data == NULL) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-    if (request == NULL && req_len > 0) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-    xrce_service_client_state* cs = (xrce_service_client_state*)client->backend_data;
-    xrce_session_state_t* st = cs->session_state;
-    xrce_service_client_slot* slot = cs->slot;
-    if (slot == NULL) {
-        return NROS_RMW_RET_ERROR;
-    }
-
-    /* Drop any stale reply. */
-    slot->has_reply = false;
-    slot->overflow = false;
-
-    /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header. */
-    const uint8_t* body = request;
-    size_t body_len = req_len;
-    if (body_len >= XRCE_CDR_HEADER_LEN) {
-        body += XRCE_CDR_HEADER_LEN;
-        body_len -= XRCE_CDR_HEADER_LEN;
-    }
-    uint16_t req = uxr_buffer_request(&st->session, st->output_reliable, cs->requester_oid,
-                                      (uint8_t*)(uintptr_t)body, body_len);
-    if (req == UXR_INVALID_REQUEST_ID) {
-        return NROS_RMW_RET_ERROR;
-    }
-
-    /* Bounded busy-wait. Mirrors the Rust impl's
-     * SERVICE_REPLY_RETRIES / SERVICE_REPLY_TIMEOUT_MS but spelled
-     * inline since there's no executor at this layer. */
-    int32_t total_ms = 0;
-    while (total_ms < XRCE_SERVICE_REPLY_TOTAL_MS) {
-        (void)uxr_run_session_time(&st->session, XRCE_SERVICE_REPLY_TIMEOUT_MS);
-        total_ms += XRCE_SERVICE_REPLY_TIMEOUT_MS;
-        if (slot->has_reply) {
-            if (slot->overflow) {
-                slot->overflow = false;
-                slot->has_reply = false;
-                return NROS_RMW_RET_MESSAGE_TOO_LARGE;
-            }
-            size_t len = slot->len;
-            if (len > reply_buf_len) {
-                slot->has_reply = false;
-                return NROS_RMW_RET_BUFFER_TOO_SMALL;
-            }
-            if (reply_buf != NULL && len > 0) {
-                memcpy(reply_buf, slot->data, len);
-            }
-            slot->has_reply = false;
-            return (int32_t)len;
-        }
-    }
-    return NROS_RMW_RET_TIMEOUT;
-}

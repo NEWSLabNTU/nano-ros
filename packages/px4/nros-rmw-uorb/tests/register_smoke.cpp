@@ -158,8 +158,8 @@ int main() {
     // optional event hooks; the lifecycle / data-plane slots must
     // resolve to real (stub-returning-UNSUPPORTED) functions.
     const auto* vt = g_stashed_vtable;
-    if (vt->open == nullptr || vt->close == nullptr || vt->create_publisher == nullptr ||
-        vt->create_subscriber == nullptr) {
+    if (vt->create_session == nullptr || vt->destroy_session == nullptr || vt->create_publisher == nullptr ||
+        vt->create_subscription == nullptr) {
         std::fprintf(stderr, "required vtable slot is NULL\n");
         return 1;
     }
@@ -167,7 +167,7 @@ int main() {
     // session mode, and domain id; the only validated state is
     // `backend_data` allocated by open and freed by close.
     nros_rmw_session_t session{};
-    rc = vt->open("/* ignored */", 0, 0, "test_module", &session);
+    rc = vt->create_session("/* ignored */", 0, 0, "test_module", &session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d, expected OK\n", rc);
         return 1;
@@ -182,7 +182,7 @@ int main() {
         std::fprintf(stderr, "drive_io returned %d, expected OK\n", rc);
         return 1;
     }
-    rc = vt->close(&session);
+    rc = vt->destroy_session(&session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "close returned %d, expected OK\n", rc);
         return 1;
@@ -196,7 +196,7 @@ int main() {
     //
     // Re-open the session for the publisher exercise (close above
     // freed the state).
-    rc = vt->open("", 0, 0, "test_module", &session);
+    rc = vt->create_session("", 0, 0, "test_module", &session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "re-open returned %d\n", rc);
         return 1;
@@ -205,7 +205,7 @@ int main() {
     // Without a registered topic, create_publisher must reject with
     // TOPIC_NAME_INVALID — distinct from UNSUPPORTED.
     nros_rmw_publisher_t pubp{};
-    rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0, nullptr, &pubp);
+    rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
@@ -230,7 +230,7 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_publisher(&session, "/test_topic", "test::Msg", "H", 0, nullptr, &pubp);
+    rc = vt->create_publisher(&session, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher returned %d, expected OK\n", rc);
         return 1;
@@ -298,25 +298,25 @@ int main() {
 
     // -- K.4.2 subscriber path --
     //
-    // Without a registered topic, create_subscriber must reject
+    // Without a registered topic, create_subscription must reject
     // with TOPIC_NAME_INVALID.
-    nros_rmw_subscriber_t subp{};
-    rc = vt->create_subscriber(&session, "/unregistered", "T", "H", 0, nullptr, &subp);
+    nros_rmw_subscription_t subp{};
+    rc = vt->create_subscription(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
-            "create_subscriber on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
+            "create_subscription on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
             rc);
         return 1;
     }
 
-    rc = vt->create_subscriber(&session, "/test_topic", "test::Msg", "H", 0, nullptr, &subp);
+    rc = vt->create_subscription(&session, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_subscriber returned %d, expected OK\n", rc);
+        std::fprintf(stderr, "create_subscription returned %d, expected OK\n", rc);
         return 1;
     }
     if (subp.backend_data == nullptr) {
-        std::fprintf(stderr, "create_subscriber did not populate backend_data\n");
+        std::fprintf(stderr, "create_subscription did not populate backend_data\n");
         return 1;
     }
     if (g_orb.subscribe_calls != 1) {
@@ -416,7 +416,7 @@ int main() {
         return 1;
     }
 
-    vt->destroy_subscriber(&subp);
+    vt->destroy_subscription(&subp);
     if (g_orb.unsubscribe_calls != 1) {
         std::fprintf(stderr, "expected 1 unsubscribe call, got %d\n", g_orb.unsubscribe_calls);
         return 1;
@@ -427,14 +427,14 @@ int main() {
         return 1;
     }
     if (subp.backend_data != nullptr) {
-        std::fprintf(stderr, "destroy_subscriber did not clear backend_data\n");
+        std::fprintf(stderr, "destroy_subscription did not clear backend_data\n");
         return 1;
     }
 
-    vt->close(&session);
+    vt->destroy_session(&session);
 
     // Null-arg rejection on open.
-    rc = vt->open(nullptr, 0, 0, nullptr, nullptr);
+    rc = vt->create_session(nullptr, 0, 0, nullptr, nullptr);
     if (rc != NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "open(null out) returned %d, expected INVALID_ARGUMENT\n", rc);
         return 1;

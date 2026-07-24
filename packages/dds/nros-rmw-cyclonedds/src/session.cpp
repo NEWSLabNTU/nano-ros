@@ -1,6 +1,6 @@
 // Cyclone DDS session lifecycle.
 //
-// `session_open` creates a Cyclone participant on the requested
+// `session_create` creates a Cyclone participant on the requested
 // domain id. The participant entity is stashed in
 // `nros_rmw_session_t::backend_data` via a small heap-allocated state
 // struct so future per-session resources (publishers, listeners)
@@ -121,16 +121,16 @@ constexpr const char* kEmbeddedCycloneConfig =
 
 } // namespace
 
-nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
+nros_rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
                             const char* node_name, nros_rmw_session_t* out) {
     if (out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    NROS_CYC_TRACE("session_open: domain=%u entering", domain_id);
+    NROS_CYC_TRACE("session_create: domain=%u entering", domain_id);
     auto* state = alloc_session_state();
     if (state == nullptr) {
-        NROS_CYC_TRACE("session_open: BAD_ALLOC for SessionState");
+        NROS_CYC_TRACE("session_create: BAD_ALLOC for SessionState");
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
@@ -155,9 +155,9 @@ nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t 
     }
 #endif
 
-    NROS_CYC_TRACE("session_open: calling dds_create_participant");
+    NROS_CYC_TRACE("session_create: calling dds_create_participant");
     dds_entity_t pp = dds_create_participant(domain_id, nullptr, nullptr);
-    NROS_CYC_TRACE("session_open: dds_create_participant returned %d", (int)pp);
+    NROS_CYC_TRACE("session_create: dds_create_participant returned %d", (int)pp);
     if (pp < 0) {
         if (state->domain > 0) {
             (void)dds_delete(state->domain);
@@ -183,7 +183,7 @@ GraphState* session_graph(nros_rmw_session_t* session) {
     return &as_state(session)->graph;
 }
 
-nros_rmw_ret_t session_close(nros_rmw_session_t* session) {
+nros_rmw_ret_t session_destroy(nros_rmw_session_t* session) {
     if (session == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

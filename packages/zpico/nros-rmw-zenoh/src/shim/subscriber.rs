@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use atomic_waker::AtomicWaker;
 use portable_atomic::{AtomicUsize, Ordering};
 
-use nros_rmw::{Subscriber, TransportError};
+use nros_rmw::{Subscription, TransportError};
 
 use super::{
     KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MAX_LARGE_SUBSCRIBERS, MessageInfo,
@@ -979,7 +979,7 @@ impl ZenohSubscriber {
     }
 }
 
-impl Subscriber for ZenohSubscriber {
+impl Subscription for ZenohSubscriber {
     type Error = TransportError;
 
     fn register_waker(&self, waker: &core::task::Waker) {

@@ -24,12 +24,12 @@
 //
 // Wire data path (per-call):
 //
-//   service_call_raw   user-CDR bytes
+//   service_send_request_raw:  user-CDR bytes
 //                       → build wire CDR `[encap][16-byte-header]
 //                          [user CDR after-encap]`
 //                       → dds_stream_read_sample into typed struct
 //                       → dds_write
-//                       → poll reply reader, filter on
+//   service_try_recv_reply_raw: poll reply reader, filter on
 //                         (writer_guid, seq) match.
 //
 //   service_try_recv_request:  dds_take typed struct
@@ -95,9 +95,8 @@ uint64_t env_u64(const char* name, uint64_t fallback) {
 }
 
 // Default Cyclone service request/reply match timing (ms). Tunable at runtime
-// via NROS_CYCLONE_MATCH_{TIMEOUT,POLL}_MS without recompiling.
+// via NROS_CYCLONE_MATCH_TIMEOUT_MS without recompiling.
 constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
-constexpr uint64_t kDefaultMatchPollMs = 5;
 
 #if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
 struct ServiceAtomicI64 {
@@ -713,15 +712,6 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t wait_for_request_match(dds_entity_t writer, uint64_t deadline_ms) {
-    const uint64_t poll_ms = env_u64("NROS_CYCLONE_MATCH_POLL_MS", kDefaultMatchPollMs);
-    while (platform_now_ms() < deadline_ms) {
-        if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
-        platform_sleep_ms(static_cast<uint32_t>(poll_ms));
-    }
-    return NROS_RMW_RET_TIMEOUT;
-}
-
 nros_rmw_ret_t maybe_flush_request(ClientState* state) {
     if (state == nullptr || state->pending_request_len == 0) {
         return NROS_RMW_RET_OK;
@@ -748,10 +738,10 @@ nros_rmw_ret_t maybe_flush_request(ClientState* state) {
 // Service server
 // =========================================================================
 
-nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
                                      uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                     nros_rmw_service_server_t* out) {
+                                     nros_rmw_service_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -829,7 +819,7 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* se
     return NROS_RMW_RET_OK;
 }
 
-void service_server_destroy(nros_rmw_service_server_t* server) {
+void service_destroy(nros_rmw_service_t* server) {
     if (server == nullptr || server->backend_data == nullptr) return;
     auto* state = static_cast<ServerState*>(server->backend_data);
     if (state->reader > 0) (void)dds_delete(state->reader);
@@ -842,7 +832,7 @@ void service_server_destroy(nros_rmw_service_server_t* server) {
     server->backend_data = nullptr;
 }
 
-int32_t service_try_recv_request(nros_rmw_service_server_t* server, uint8_t* buf, size_t buf_len,
+int32_t service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                  int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -871,7 +861,7 @@ int32_t service_try_recv_request(nros_rmw_service_server_t* server, uint8_t* buf
     return NROS_RMW_RET_WOULD_BLOCK;
 }
 
-int32_t service_has_request(nros_rmw_service_server_t* server) {
+int32_t service_has_request(nros_rmw_service_t* server) {
     if (server == nullptr || server->backend_data == nullptr) return 0;
     auto* state = static_cast<ServerState*>(server->backend_data);
     uint32_t status = 0;
@@ -879,7 +869,7 @@ int32_t service_has_request(nros_rmw_service_server_t* server) {
     return (status & DDS_DATA_AVAILABLE_STATUS) ? 1 : 0;
 }
 
-nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq,
+nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len) {
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {
@@ -937,10 +927,10 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq
 // Service client
 // =========================================================================
 
-nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* service_name,
+nros_rmw_ret_t client_create(nros_rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
                                      uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                     nros_rmw_service_client_t* out) {
+                                     nros_rmw_client_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1030,7 +1020,7 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* se
     return NROS_RMW_RET_OK;
 }
 
-void service_client_destroy(nros_rmw_service_client_t* client) {
+void client_destroy(nros_rmw_client_t* client) {
     if (client == nullptr || client->backend_data == nullptr) return;
     auto* state = static_cast<ClientState*>(client->backend_data);
     if (state->writer > 0) (void)dds_delete(state->writer);
@@ -1043,70 +1033,14 @@ void service_client_destroy(nros_rmw_service_client_t* client) {
     client->backend_data = nullptr;
 }
 
-int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* request, size_t req_len,
-                         uint8_t* reply_buf, size_t reply_buf_len) {
-    if (client == nullptr || client->backend_data == nullptr || request == nullptr ||
-        reply_buf == nullptr || req_len < 4) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-    auto* state = static_cast<ClientState*>(client->backend_data);
-
-    RequestId my_id{};
-    my_id.guid = state->my_guid;
-    my_id.seq = state->next_seq.fetch_add(1, std::memory_order_relaxed);
-
-    // 5 s total timeout covers request-reader match plus reply. Service
-    // QoS is VOLATILE, so the first write must wait until discovery has
-    // matched the client writer with the server request reader.
-    const uint64_t deadline =
-        platform_now_ms() + env_u64("NROS_CYCLONE_MATCH_TIMEOUT_MS", kDefaultMatchTimeoutMs);
-    nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
-    if (match != NROS_RMW_RET_OK) return match;
-
-    uint8_t wire_req[kWireScratch];
-    int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
-    if (wire_len < 0) return wire_len;
-    nros_rmw_ret_t pr = write_typed(state->writer, state->req_desc, state->req_st, wire_req,
-                                    static_cast<size_t>(wire_len));
-    if (pr != NROS_RMW_RET_OK) return pr;
-
-    while (platform_now_ms() < deadline) {
-        uint32_t status = 0;
-        if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK &&
-            (status & DDS_DATA_AVAILABLE_STATUS)) {
-            uint8_t wire_rep[kWireScratch];
-            int32_t wlen =
-                take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
-            if (wlen == NROS_RMW_RET_NO_DATA) {
-                platform_sleep_ms(2);
-                continue;
-            }
-            if (wlen < 0) return wlen;
-
-            RequestId got_id{};
-            int32_t user_len =
-                split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc, &got_id,
-                                  reply_buf, reply_buf_len);
-            if (user_len < 0) return user_len;
-            if (got_id.seq == my_id.seq && got_id.guid == my_id.guid) {
-                return user_len;
-            }
-            // Reply for a different in-flight call from the same
-            // client (impossible in single-shot tests, defensive
-            // here). Drop and keep polling.
-            continue;
-        }
-        platform_sleep_ms(5);
-    }
-    return NROS_RMW_RET_TIMEOUT;
-}
-
 // Phase 130.8 — non-blocking send/recv split. Mirrors
 // `xrce_service_send_request_raw` / `_try_recv_reply_raw` in the
 // XRCE backend. Lets the executor's spin loop poll for a late-
 // arriving reply without re-sending the request or blocking 5 s
-// inside `call_raw` (Phase 127.C.4 root cause class).
-nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t* client, const uint8_t* request,
+// (Phase 127.C.4 root cause class). Phase-301: the deprecated
+// blocking `call_raw` slot was deleted from the vtable; this pair
+// is the one request/reply path.
+nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t* client, const uint8_t* request,
                                         size_t req_len) {
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1140,7 +1074,7 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t* client, const
     return NROS_RMW_RET_OK;
 }
 
-int32_t service_try_recv_reply_raw(nros_rmw_service_client_t* client, uint8_t* reply_buf,
+int32_t service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* reply_buf,
                                    size_t reply_buf_len) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

@@ -127,20 +127,20 @@ int main() {
     nros_rmw_session_t s{};
     s.node_name = "feedback_roundtrip";
     s.namespace_ = "/";
-    if (g_vt->open(nullptr, 0, 88, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 88, s.node_name, &s) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "session open failed\n");
         return 2;
     }
 
     nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
-    nros_rmw_subscriber_t sub{};
+    nros_rmw_subscription_t sub{};
     sub.topic_name = "rt/feedback_roundtrip";
     sub.type_name = desc->m_typename;
     sub.qos = qos;
-    if (g_vt->create_subscriber(&s, sub.topic_name, sub.type_name, "", 88, &qos, &sub) !=
+    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "", 88, &qos, nullptr, &sub) !=
         NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_subscriber failed\n");
+        std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
 
@@ -148,7 +148,7 @@ int main() {
     pub.topic_name = "rt/feedback_roundtrip";
     pub.type_name = desc->m_typename;
     pub.qos = qos;
-    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "", 88, &qos, &pub) !=
+    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "", 88, &qos, nullptr, &pub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 4;
@@ -217,8 +217,8 @@ int main() {
            "feedback sequence values drift: [%d,%d,%d]", recv_vals[0], recv_vals[1], recv_vals[2]);
 
     g_vt->destroy_publisher(&pub);
-    g_vt->destroy_subscriber(&sub);
-    (void)g_vt->close(&s);
+    g_vt->destroy_subscription(&sub);
+    (void)g_vt->destroy_session(&s);
 
     std::printf("OK feedback_roundtrip — %d recv bytes, fixed octet[16] goal_id round-trips\n", n);
     return 0;

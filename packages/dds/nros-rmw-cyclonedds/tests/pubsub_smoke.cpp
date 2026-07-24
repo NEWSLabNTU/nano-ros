@@ -34,7 +34,7 @@ int main() {
     s.node_name = "nros_rmw_cyclonedds_pubsub_smoke";
     s.namespace_ = "/";
 
-    if (g_vt->open(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, 99, s.node_name, &s) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open failed\n");
         return 2;
     }
@@ -48,10 +48,10 @@ int main() {
     pub.topic_name = "rt/pubsub_smoke";
     pub.type_name = "nros_test::msg::TestString";
     pub.qos = qos;
-    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "", 99, &qos, &pub) !=
+    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "", 99, &qos, nullptr, &pub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
-        (void)g_vt->close(&s);
+        (void)g_vt->destroy_session(&s);
         return 3;
     }
     if (pub.backend_data == nullptr) {
@@ -59,15 +59,15 @@ int main() {
         return 4;
     }
 
-    nros_rmw_subscriber_t sub{};
+    nros_rmw_subscription_t sub{};
     sub.topic_name = "rt/pubsub_smoke";
     sub.type_name = "nros_test::msg::TestString";
     sub.qos = qos;
-    if (g_vt->create_subscriber(&s, sub.topic_name, sub.type_name, "", 99, &qos, &sub) !=
+    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "", 99, &qos, nullptr, &sub) !=
         NROS_RMW_RET_OK) {
-        std::fprintf(stderr, "create_subscriber failed\n");
+        std::fprintf(stderr, "create_subscription failed\n");
         g_vt->destroy_publisher(&pub);
-        (void)g_vt->close(&s);
+        (void)g_vt->destroy_session(&s);
         return 5;
     }
     if (sub.backend_data == nullptr) {
@@ -85,9 +85,9 @@ int main() {
     uint8_t rxbuf[64];
     if (g_vt->try_recv_raw(&sub, rxbuf, sizeof(rxbuf)) > 0) {
         std::fprintf(stderr, "try_recv_raw should yield no bytes with no published data\n");
-        g_vt->destroy_subscriber(&sub);
+        g_vt->destroy_subscription(&sub);
         g_vt->destroy_publisher(&pub);
-        (void)g_vt->close(&s);
+        (void)g_vt->destroy_session(&s);
         return 7;
     }
 
@@ -101,15 +101,15 @@ int main() {
     // Unknown type: create_publisher must report UNSUPPORTED, not
     // ERROR.
     nros_rmw_publisher_t bad{};
-    if (g_vt->create_publisher(&s, "rt/unknown", "no::such::Type", "", 99, &qos, &bad) !=
+    if (g_vt->create_publisher(&s, "rt/unknown", "no::such::Type", "", 99, &qos, nullptr, &bad) !=
         NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr, "create_publisher unknown-type should be UNSUPPORTED\n");
         return 9;
     }
 
-    g_vt->destroy_subscriber(&sub);
+    g_vt->destroy_subscription(&sub);
     g_vt->destroy_publisher(&pub);
-    if (g_vt->close(&s) != NROS_RMW_RET_OK) {
+    if (g_vt->destroy_session(&s) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "close failed\n");
         return 10;
     }

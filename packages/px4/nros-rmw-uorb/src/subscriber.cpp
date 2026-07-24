@@ -17,7 +17,7 @@
 //     pre-push-wake K.4.2 build had.
 //
 // Storage discipline:
-//   - `create_subscriber` looks up the topic in the K.4.3
+//   - `create_subscription` looks up the topic in the K.4.3
 //     registry, calls `orb_subscribe_multi(meta, 0)`, allocates a
 //     `SubscriberState` holding the subscription handle + ready
 //     flag, attempts `nros_orb_register_callback`.
@@ -26,7 +26,7 @@
 //     and DOES NOT drain (retry-safe).
 //   - `has_data` returns the flag (or runs `orb_check` on the
 //     slow path).
-//   - `destroy_subscriber` unregisters callback + unsubscribes +
+//   - `destroy_subscription` unregisters callback + unsubscribes +
 //     frees.
 
 #include "internal.hpp"
@@ -65,13 +65,14 @@ extern "C" void subscriber_ready_callback(void *arg) {
 
 } // namespace
 
-nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
+nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
                                  const char *topic_name,
                                  const char * /*type_name*/,
                                  const char * /*type_hash*/,
                                  uint32_t /*domain_id*/,
                                  const nros_rmw_qos_t * /*qos*/,
-                                 nros_rmw_subscriber_t *out) {
+                                 const nros_rmw_subscription_options_t * /*options*/,
+                                 nros_rmw_subscription_t *out) {
     if (session == nullptr || session->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -118,7 +119,7 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
+void subscription_destroy(nros_rmw_subscription_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return;
     }
@@ -132,7 +133,7 @@ void subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
+int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
                                 uint8_t *buf, size_t buf_len) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -176,7 +177,7 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     return static_cast<int32_t>(state->meta->o_size);
 }
 
-int32_t subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
+int32_t subscription_has_data(nros_rmw_subscription_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return 0;
     }

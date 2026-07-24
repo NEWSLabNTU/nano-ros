@@ -18,8 +18,8 @@
  * status-event surface. */
 static const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
-    .open                       = xrce_session_open,
-    .close                      = xrce_session_close,
+    .create_session             = xrce_session_create,
+    .destroy_session            = xrce_session_destroy,
     .drive_io                   = xrce_session_drive_io,
 
     /* ---- Publisher ---- */
@@ -27,33 +27,33 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_publisher          = xrce_publisher_destroy,
     .publish_raw                = xrce_publisher_publish_raw,
 
-    /* ---- Subscriber ---- */
-    .create_subscriber          = xrce_subscriber_create,
-    .destroy_subscriber         = xrce_subscriber_destroy,
-    .try_recv_raw               = xrce_subscriber_try_recv_raw,
-    .has_data                   = xrce_subscriber_has_data,
+    /* ---- Subscription ---- */
+    .create_subscription        = xrce_subscription_create,
+    .destroy_subscription       = xrce_subscription_destroy,
+    .try_recv_raw               = xrce_subscription_try_recv_raw,
+    .has_data                   = xrce_subscription_has_data,
 
-    /* ---- Service Server ---- */
-    .create_service_server      = xrce_service_server_create,
-    .destroy_service_server     = xrce_service_server_destroy,
+    /* ---- Service ---- */
+    .create_service             = xrce_service_create,
+    .destroy_service            = xrce_service_destroy,
     .try_recv_request           = xrce_service_try_recv_request,
     .has_request                = xrce_service_has_request,
     .send_reply                 = xrce_service_send_reply,
 
-    /* ---- Service Client ---- */
-    .create_service_client      = xrce_service_client_create,
-    .destroy_service_client     = xrce_service_client_destroy,
-    .call_raw                   = xrce_service_call_raw,
+    /* ---- Client ---- */
+    .create_client              = xrce_client_create,
+    .destroy_client             = xrce_client_destroy,
 
     /* Phase 130.4 — non-blocking send/recv split. Lets the
      * executor's spin loop poll for a late-arriving reply without
-     * re-sending the request or blocking 5 s in call_raw
-     * (Phase 127.C.4 C++ action send_goal root cause). */
+     * re-sending the request (Phase 127.C.4 C++ action send_goal
+     * root cause). Phase-301 deleted the deprecated blocking
+     * call_raw slot; this pair is the one request/reply path. */
     .send_request_raw           = xrce_service_send_request_raw,
     .try_recv_reply_raw         = xrce_service_try_recv_reply_raw,
 
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
-    .register_subscriber_event  = NULL,
+    .register_subscription_event = NULL,
     .register_publisher_event   = NULL,
     .assert_publisher_liveliness = NULL,
     .next_deadline_ms           = NULL,
@@ -95,8 +95,8 @@ static const nros_rmw_vtable_t kVtable = {
     /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static
      * ring (the staged `entry->data`), so the executor's in-place dispatch
      * borrows the bytes instead of copying into an arena buffer. */
-    .subscriber_supports_in_place = xrce_subscriber_supports_in_place,
-    .process_raw_in_place         = xrce_subscriber_process_raw_in_place,
+    .subscription_supports_in_place = xrce_subscription_supports_in_place,
+    .process_raw_in_place           = xrce_subscription_process_raw_in_place,
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {

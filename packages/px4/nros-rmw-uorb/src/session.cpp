@@ -65,7 +65,7 @@ void copy_truncated(char *buf, size_t buf_len, const char *src) {
 
 } // namespace
 
-nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
+nros_rmw_ret_t session_create(const char * /*locator*/, uint8_t /*mode*/,
                             uint32_t domain_id, const char *node_name,
                             nros_rmw_session_t *out) {
     if (out == nullptr) {
@@ -86,7 +86,7 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t session_close(nros_rmw_session_t *session) {
+nros_rmw_ret_t session_destroy(nros_rmw_session_t *session) {
     if (session == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

@@ -24,9 +24,11 @@ nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
                                      const char *type_hash,
                                      uint32_t domain_id,
                                      const nros_rmw_qos_t *qos,
+                                     const nros_rmw_publisher_options_t *options,
                                      nros_rmw_publisher_t *out) {
     (void)type_hash;
     (void)domain_id;
+    (void)options;
 
     if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
