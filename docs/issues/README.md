@@ -65,12 +65,7 @@ session/subscriber/service_server terms, transport hints (tx_express/rx_buffer_h
 struct instead of an options struct, a deprecated blocking call_raw slot. The rename/reshape
 cleanup bucket. See `0240-*`. (audit 2026-07-21)
 
-**#236** — phase-296 R4: `play_launch resolve` drops `<node machine=>`, so
-multi-host workspaces can't migrate to the model path (the machine is captured
-by `play_launch_parser` but dropped at the `launch_dump` layer + never mapped
-to `deploy.host`). Blocks the monolith's `native_entry_robot1/robot2`. Fix
-spans launch_dump + model_builder + the nano-ros host filter. See
-`0236-multihost-machine-not-in-resolved-model.md`.
+Recently resolved: **#236** — multihost `machine=` fully closed: play_launch carries `machine`→`deploy.host` (46.1) and rlm `6d64202` makes machine-only deploys UNPLACED (`Deploy.target: Option`); nano-ros slices treat unplaced as board-agnostic (host filter partitions), `zephyr_entry_robot1` migrated — `archived/0236-*`.
 
 Recently resolved: **#245** — zephyr C/C++ multi-tier heap-corruption crash: executor storage was a
 hardcoded 80 KiB while the real generated size grew to 81952 (32 bytes short) — the tier executor's

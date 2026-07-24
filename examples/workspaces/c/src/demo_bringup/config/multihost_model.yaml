@@ -8,23 +8,22 @@ meta:
     version: 0.8.2
 structure:
   scopes:
-    /: {}
+    multihost.launch.xml:
+      file: multihost.launch.xml
   nodes:
     /listener:
-      scope: /
+      scope: multihost.launch.xml
       pkg: c_listener_pkg
       exec: listener
       node_name: listener
     /talker:
-      scope: /
+      scope: multihost.launch.xml
       pkg: c_talker_pkg
       exec: talker
       node_name: talker
 execution:
   deploy:
     /listener:
-      target: linux
       host: robot2
     /talker:
-      target: linux
       host: robot1

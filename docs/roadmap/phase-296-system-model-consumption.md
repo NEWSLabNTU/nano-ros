@@ -707,8 +707,14 @@ update the template README so `nros new` users start on the model path.
 resolved)**: the "blocker" was only the ad-hoc plain-cmake validation route;
 migrated via fix option 1 (4 entries → per-variant
 `safety_{talker,listener}_model.yaml`, validated through the fixture
-builder's `-safety-*` rows, both native lanes green). Remaining:
-`zephyr_entry_robot1` (1 Rust, #236 unplaced-target — play_launch side).
+builder's `-safety-*` rows, both native lanes green). **`zephyr_entry_robot1`
+— DONE (2026-07-24, #236 fully resolved)**: rlm `6d64202` makes
+`Deploy.target` an `Option` (machine-only deploys UNPLACED, no `target:`
+key); the macro/CLI slices treat `None` as board-agnostic (host filter
+partitions; `model_unplaced_target_is_board_agnostic` +  play_launch's
+multihost golden pin it). zephyr slice bakes talker-only; native robots
+unchanged. **Every example consumer is now on the model path** — the only
+remaining `launch =` users are the M4 test fixtures + M5 book prose.
 
 **M4 — test fixtures:** `packages/testing/nros-tests/fixtures/*` workspaces
 (`n9_workspace`, `multi_pkg_workspace_{zephyr,nuttx,esp_idf,platformio}`, …)

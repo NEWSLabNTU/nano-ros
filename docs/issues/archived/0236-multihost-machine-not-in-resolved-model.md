@@ -1,7 +1,7 @@
 ---
 id: 236
 title: "play_launch resolve drops `<node machine=>` — multi-host workspaces can't migrate to the model path"
-status: open
+status: resolved
 type: enhancement
 area: build
 related: [phase-296, rfc-0050, rfc-0052]
@@ -116,3 +116,19 @@ Context — play_launch's broader design this is part of:
 all launch info; each consumer derives its own platform specifics. See the
 RFC-0050 note below — please confirm you've reviewed it and flag any field the
 model still omits for your bake.
+
+## Resolution — unplaced target landed (2026-07-24)
+
+rlm `6d64202` (play_launch `f7e5234`): `Deploy.target` is `Option<Target>`;
+a machine-only deploy stays UNPLACED (no `target:` key) instead of defaulting
+to `linux`. nano-ros consumers (macro `keep` + CLI `plan_from_model`) treat
+`None` as board-agnostic — every board's entry keeps the node, the `host`
+filter partitions (mirrored in the `model_unplaced_target_is_board_agnostic`
+test; play_launch's multihost golden asserts the missing `target` key).
+`zephyr_entry_robot1` migrated to
+`nros::main!(model = "demo_bringup:config/multihost_model.yaml", host =
+"robot1")`; validated: zephyr slice bakes talker-only, native robot slices
+unchanged (robot1→talker, robot2→listener), native_entry_robot1 builds. All
+four multihost models regenerated unplaced. The LAST launch-arm example
+consumer is gone; remaining `launch =` users are test fixtures (M4) + book
+prose (M5).

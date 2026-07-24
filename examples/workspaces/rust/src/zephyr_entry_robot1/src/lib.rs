@@ -20,6 +20,6 @@
 extern crate zephyr;
 
 nros::main!(
-    launch = "demo_bringup:multihost.launch.xml",
+    model = "demo_bringup:config/multihost_model.yaml",
     host = "robot1"
 );

@@ -601,7 +601,7 @@ mod tests {
         let mut extra = std::collections::BTreeMap::new();
         extra.insert("edf".to_string(), ExtraValue::Bool(edf));
         Deploy {
-            target: Target::default(),
+            target: Some(Target::default()),
             extra,
             ..Default::default()
         }

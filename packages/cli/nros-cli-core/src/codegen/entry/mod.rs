@@ -579,13 +579,17 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             return model.execution.deploy.is_empty();
         };
         match (&dep.target, board.as_str()) {
-            (Target::Linux, "native" | "posix") => true,
+            // Unplaced (launch-only model, e.g. a machine-derived deploy):
+            // no board named — this entry's board decides; the host filter
+            // still partitions (#236 board≠host orthogonality).
+            (None, _) => true,
+            (Some(Target::Linux), "native" | "posix") => true,
             // Exact board key, or the deploy's platform kind (the
             // integrator's `[deploy.<t>] kind = "zephyr"`, carried in
             // `extra.kind`) — the entry codegen key is the board FAMILY
             // ("zephyr") while deploys name the concrete board
             // ("fvp-aemv8r-smp"), so both spellings must slice.
-            (Target::Mcu { board: b }, key) => {
+            (Some(Target::Mcu { board: b }), key) => {
                 b == key
                     || matches!(
                         dep.extra.get("kind"),
@@ -952,6 +956,42 @@ mod tests {
         // An unknown host still gets the shared nodes (never empty for a launch
         // with shared nodes).
         assert_eq!(plan.for_host("nope").nodes.len(), 1);
+    }
+
+    /// #236 — an UNPLACED deploy (`target: None`, e.g. a machine-derived
+    /// entry from a launch-only resolve) is board-agnostic: every board's
+    /// slice keeps the node; only the host filter partitions. An explicit
+    /// `target: linux` still rejects non-native boards.
+    #[test]
+    fn model_unplaced_target_is_board_agnostic() {
+        use ros_launch_manifest_model::{Deploy, Target};
+        let unplaced = Deploy {
+            host: Some("robot1".into()),
+            ..Default::default()
+        };
+        assert_eq!(unplaced.target, None);
+        let placed_linux = Deploy {
+            target: Some(Target::Linux),
+            ..Default::default()
+        };
+
+        // Mirror the `keep` board match used by plan_from_model + the macro.
+        let board_ok = |dep: &Deploy, key: &str| -> bool {
+            match (&dep.target, key) {
+                (None, _) => true,
+                (Some(Target::Linux), "native" | "posix") => true,
+                (Some(Target::Mcu { board: b }), key) => b == key,
+                _ => false,
+            }
+        };
+        for board in ["native", "posix", "zephyr", "freertos"] {
+            assert!(board_ok(&unplaced, board), "unplaced must keep on {board}");
+        }
+        assert!(board_ok(&placed_linux, "native"));
+        assert!(
+            !board_ok(&placed_linux, "zephyr"),
+            "explicit linux placement must still reject a zephyr board"
+        );
     }
 
     /// Phase 211.H (issue #52) — `qos_overrides.<topic>.<role>.<policy>` params

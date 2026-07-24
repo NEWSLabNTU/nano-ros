@@ -519,8 +519,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 return model.execution.deploy.is_empty();
             };
             let board_ok = match (&dep.target, board_key) {
-                (Target::Linux, "native" | "posix") => true,
-                (Target::Mcu { board: b }, key) => {
+                // Unplaced (launch-only model, e.g. a machine-derived deploy):
+                // the model names no board, so THIS entry's board decides —
+                // keep on every board; the host filter still partitions
+                // (#236 board≠host orthogonality).
+                (None, _) => true,
+                (Some(Target::Linux), "native" | "posix") => true,
+                (Some(Target::Mcu { board: b }), key) => {
                     b == key
                         || matches!(
                             dep.extra.get("kind"),

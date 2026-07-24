@@ -8,31 +8,29 @@ meta:
     version: 0.8.2
 structure:
   scopes:
-    /: {}
+    multihost.launch.xml:
+      file: multihost.launch.xml
   nodes:
     /heartbeat:
-      scope: /
+      scope: multihost.launch.xml
       pkg: rust_heartbeat_pkg
       exec: heartbeat
       node_name: heartbeat
     /listener:
-      scope: /
+      scope: multihost.launch.xml
       pkg: cpp_listener_pkg
       exec: listener
       node_name: listener
     /talker:
-      scope: /
+      scope: multihost.launch.xml
       pkg: c_talker_pkg
       exec: talker
       node_name: talker
 execution:
   deploy:
     /heartbeat:
-      target: linux
       host: robot1
     /listener:
-      target: linux
       host: robot2
     /talker:
-      target: linux
       host: robot1
