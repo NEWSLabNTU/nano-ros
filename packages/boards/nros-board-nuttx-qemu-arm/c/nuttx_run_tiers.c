@@ -280,6 +280,30 @@ int nros_nuttx_apply_current_affinity(const char* name, uint32_t core_plus1) {
     return 0;
 }
 
+/* phase-302 W3 (issue 0263) — adopt the tier's declared SCHED_FIFO priority
+ * on the CALLING thread. The C arm applies priority at pthread_create time;
+ * the Rust arm spawns via std::thread (no priority attr) and self-applies
+ * through this helper at tier entry — one implementation, one marker. The
+ * printf literal MUST match `nros_tests::output::NUTTX_TIER_PRIORITY_MARKER`. */
+int nros_nuttx_apply_current_priority(const char* name, uint32_t priority);
+int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
+    if (priority == 0u) {
+        return 0; /* undeclared — keep inherited priority */
+    }
+    struct sched_param sp;
+    sp.sched_priority = (int)priority;
+    int rc = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+    if (rc == 0) {
+        printf("nros: tier priority set tier=`%s` prio=%d\n", (name != NULL) ? name : "?",
+               (int)priority);
+        return 1;
+    }
+    printf("nros: tier priority FAILED tier=`%s` prio=%d rc=%d — tier runs at inherited "
+           "priority\n",
+           (name != NULL) ? name : "?", (int)priority, rc);
+    return 0;
+}
+
 /* nuttx_tier_thread — body of each non-boot tier thread.
  *
  * Opens a borrowed executor over the shared session, gates it to the tier's

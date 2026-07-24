@@ -468,6 +468,10 @@ pub const ZEPHYR_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 /// `nuttx_run_tiers.c` — keep in lockstep.
 pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 
+/// phase-302 W3 (issue 0263) — the nuttx Rust arm's tier-priority adopt
+/// marker (`nros_nuttx_apply_current_priority`, nuttx_run_tiers.c).
+pub const NUTTX_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
+
 /// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
 /// NuttX image lacks `CONFIG_SMP` (or the kernel rejected the pin) — the tier
 /// runs unpinned, loudly. MIRRORS the `FAILED` literals in both NuttX seams —

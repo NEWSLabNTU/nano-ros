@@ -391,6 +391,38 @@ unsafe extern "C" {
     fn nros_nuttx_apply_current_affinity(name: *const core::ffi::c_char, core_plus1: u32) -> i32;
 }
 
+// phase-302 W3 (issue 0263) — the C shim that adopts the tier's declared
+// SCHED_FIFO priority on the calling thread (nuttx_run_tiers.c, shared with
+// the C arm's create-time path). std's Builder has no priority attr, so the
+// Rust arm self-applies at tier entry — without this a non-sporadic tier ran
+// at the parent's priority (invisible until contention).
+unsafe extern "C" {
+    fn nros_nuttx_apply_current_priority(name: *const core::ffi::c_char, priority: u32) -> i32;
+}
+
+/// Adopt the tier's declared priority on the current thread (no-op
+/// off-target and when the tier declares none). Name crosses the FFI as a
+/// NUL-terminated stack copy, mirroring [`apply_tier_affinity`].
+#[cfg(target_os = "nuttx")]
+fn apply_tier_priority(tier: &nros_platform::TierSpec<'_>) {
+    if tier.priority <= 0 {
+        return;
+    }
+    let mut name_buf = [0u8; 64];
+    let n = tier.name.len().min(63);
+    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    unsafe {
+        nros_nuttx_apply_current_priority(
+            name_buf.as_ptr() as *const core::ffi::c_char,
+            tier.priority as u32,
+        );
+    }
+}
+
+#[cfg(not(target_os = "nuttx"))]
+#[inline]
+fn apply_tier_priority(_tier: &nros_platform::TierSpec<'_>) {}
+
 /// Default per-tier pthread stack for spawned Rust tiers (issue #246). Mirrors
 /// the C glue's `NROS_NUTTX_TIER_STACK_BYTES` intent but sized at NuttX's own
 /// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
@@ -728,6 +760,9 @@ fn nuttx_run_one_tier<F, E>(
         tier.deadline_us,
         tier.deadline_policy,
     );
+    // phase-302 W3 (issue 0263) — adopt the declared SCHED_FIFO priority
+    // (std spawn carries no priority attr; the C arm sets it at create).
+    apply_tier_priority(tier);
     // phase-296 W5.9 — kernel sporadic server for this tier thread, when declared.
     apply_tier_sporadic(tier);
     // phase-296 W5.11 — placement dim: SMP core pin for this tier, when declared.
