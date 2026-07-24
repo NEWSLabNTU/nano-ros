@@ -115,6 +115,29 @@ target = "x86_64-unknown-linux-gnu"
 "#,
     )
     .unwrap();
+    // R-code.1 — a toml-declaring bringup must carry a committed model
+    // (convention discovery consumes it).
+    fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
+    fs::write(
+        dir.join("demo_bringup/config/system_model.yaml"),
+        r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+"#,
+    )
+    .unwrap();
     fs::write(
         dir.join("demo_bringup/launch/system.launch.xml"),
         "<launch></launch>\n",
@@ -279,8 +302,9 @@ fn codegen_system_unknown_pkg_errors() {
 
 /// 212.E spec test — passing `--target <name>` where the bringup has a
 /// matching `[deploy.<name>]` block with `launch = "..."` picks that
-/// per-target launch override (over `[system].default_launch`). The
-/// resolved launch path is recorded into `nros-plan.json::launch_file`.
+/// R-code.1 — with a committed model, provenance records the MODEL (the
+/// per-target `[deploy.<t>].launch` override is launch-bake history; the
+/// model is target-complete and the same artifact bakes every target).
 #[test]
 fn codegen_system_picks_deploy_target_overlay() {
     let dir = temp_root("deploy_target_overlay");
@@ -297,11 +321,12 @@ fn codegen_system_picks_deploy_target_overlay() {
         .as_str()
         .expect("launch_file recorded");
     assert!(
-        launch_file.ends_with("freertos.launch.xml"),
-        "expected deploy.qemu_freertos.launch override; got {launch_file}"
+        launch_file.ends_with("config/system_model.yaml"),
+        "expected the committed model as provenance; got {launch_file}"
     );
 
-    // Without --target, default_launch should still apply.
+    // Without --target the provenance is the same committed model — one
+    // artifact bakes every target (target-complete by design).
     let out2 = dir.join("build/demo_bringup_default");
     codegen_system::run(args(&dir, &out2)).expect("default target codegen");
     let plan = fs::read_to_string(out2.join("nros-system/nros-plan.json")).unwrap();
@@ -310,8 +335,8 @@ fn codegen_system_picks_deploy_target_overlay() {
         .as_str()
         .expect("launch_file recorded");
     assert!(
-        launch_file.ends_with("system.launch.xml"),
-        "expected default launch; got {launch_file}"
+        launch_file.ends_with("config/system_model.yaml"),
+        "expected the committed model as provenance; got {launch_file}"
     );
 }
 
@@ -323,29 +348,55 @@ fn codegen_system_picks_deploy_target_overlay() {
 fn codegen_system_model_mode_plan_matches_system_toml() {
     let ws = temp_root("model-eq");
     write_fixture(&ws);
-    // Author tiers + bindings in system.toml (the baseline).
+    // The component still DECLARES its callback group (group declaration is
+    // component metadata; the model's execution.bindings ASSIGNS tiers).
     let system_toml = ws.join("demo_bringup/system.toml");
-    let mut s = fs::read_to_string(&system_toml).unwrap();
-    s = s.replace(
+    let mut t = fs::read_to_string(&system_toml).unwrap();
+    t = t.replace(
         "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"",
         "[[component]]\npkg = \"talker_pkg\"\nclass = \"talker_pkg::TalkerNode\"\nname = \"talker\"\ngroup_tiers = { ctrl = \"high\" }",
     );
-    s.push_str(
-        r#"
-[tiers.high]
-spin_period_us = 1000
-[tiers.high.posix]
-priority = 80
-sched_class = "SCHED_FIFO"
-[tiers.high.freertos]
-priority = 5
-stack_bytes = 32768
-"#,
-    );
-    fs::write(&system_toml, &s).unwrap();
+    fs::write(&system_toml, &t).unwrap();
+
+    // R-code.1 — the toml-authored baseline is gone; the baseline is the
+    // CONVENTION-DISCOVERED committed model carrying the tiers. The second
+    // bake passes the same content via explicit `--model` — discovery and
+    // override must agree byte-for-byte.
+    let tiered_model = r#"meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+        sched_class: SCHED_FIFO
+      freertos:
+        priority: 5
+        stack_bytes: 32768
+  bindings:
+    /demo/talker/ctrl: high
+"#;
+    fs::write(
+        ws.join("demo_bringup/config/system_model.yaml"),
+        tiered_model,
+    )
+    .unwrap();
 
     let out_toml = temp_root("model-eq-out-toml");
-    codegen_system::run(args(&ws, &out_toml)).expect("toml-mode bake");
+    codegen_system::run(args(&ws, &out_toml)).expect("discovery-mode bake");
 
     // The equivalent model: same tiers, binding expressed the model way.
     let model_path = ws.join("system_model.yaml");
@@ -369,26 +420,27 @@ execution:
 "#,
     )
     .unwrap();
-    // Strip the authored tiers so ONLY the model supplies them (proves the
-    // model replaces, not merges).
-    let stripped = fs::read_to_string(&system_toml)
-        .unwrap()
-        .split("[tiers.high]")
-        .next()
-        .unwrap()
-        .to_string();
-    fs::write(&system_toml, stripped).unwrap();
+    fs::write(&model_path, tiered_model).unwrap();
 
     let out_model = temp_root("model-eq-out-model");
     let mut a = args(&ws, &out_model);
     a.model = Some(model_path);
     codegen_system::run(a).expect("model-mode bake");
 
-    let plan_toml = fs::read_to_string(out_toml.join("nros-system/nros-plan.json")).unwrap();
-    let plan_model = fs::read_to_string(out_model.join("nros-system/nros-plan.json")).unwrap();
+    // The two bakes name different model FILES (conventional vs override
+    // path) — provenance necessarily differs; everything else must not.
+    let strip_prov = |raw: &str| -> serde_json::Value {
+        let mut v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        v.as_object_mut().unwrap().remove("launch_file");
+        v
+    };
+    let plan_toml =
+        strip_prov(&fs::read_to_string(out_toml.join("nros-system/nros-plan.json")).unwrap());
+    let plan_model =
+        strip_prov(&fs::read_to_string(out_model.join("nros-system/nros-plan.json")).unwrap());
     assert_eq!(
         plan_toml, plan_model,
-        "model-driven plan must be byte-identical to the system.toml-authored plan"
+        "discovery-mode plan must equal the explicit --model plan (modulo provenance)"
     );
 }
 

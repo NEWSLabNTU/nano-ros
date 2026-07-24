@@ -1324,6 +1324,28 @@ launch = "launch/system.launch.xml"
             "<launch></launch>\n",
         )
         .unwrap();
+        // R-code.1 — a toml-declaring bringup must carry a committed model.
+        fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+"#,
+        )
+        .unwrap();
     }
 
     /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
@@ -1417,6 +1439,38 @@ launch = "system.launch.xml"
 "#,
         )
         .unwrap();
+        // R-code.1 — tiers now ride the committed model (discovery consumes it).
+        fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+        stack_bytes: 8192
+    low:
+      posix:
+        priority: 10
+"#,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1492,6 +1546,24 @@ domain_id = 0
 pkg = "cpp_talker_pkg"
 class = "cpp_talker_pkg::Talker"
 name = "talker"
+"#,
+        )
+        .unwrap();
+        // R-code.1 — a toml-declaring bringup must carry a committed model.
+        fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: cpp_talker_pkg
+      exec: talker
 "#,
         )
         .unwrap();
@@ -1708,7 +1780,8 @@ name = "talker"
         assert!(plan.contains("\"target\": \"x86_64-unknown-linux-gnu\""));
         assert!(plan.contains("\"lang\": \"rust\""));
         // Launch file path recorded from the deploy block.
-        assert!(plan.contains("launch/system.launch.xml"));
+        // R-code.1 — provenance records the committed model, not the launch file.
+        assert!(plan.contains("config/system_model.yaml"));
     }
 
     /// 212.E.T2 — re-running with identical inputs produces byte-identical

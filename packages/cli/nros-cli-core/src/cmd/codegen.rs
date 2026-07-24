@@ -228,7 +228,6 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         );
     }
 
-
     let mut plan = if let Some(model_path) = &args.model {
         entry_codegen::plan_from_model(model_path, args.board.clone())?
     } else if args.launch.is_some() {

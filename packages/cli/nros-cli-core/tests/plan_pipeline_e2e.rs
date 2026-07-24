@@ -69,6 +69,7 @@ fn fixture_workspace_plans_and_checks() {
         system_pkg: "e2e_system".to_string(),
         launch_file: demo_pkg.join("launch/system.launch.xml"),
         record: None,
+        model: None,
         file: None,
         exec: None,
         workspace: Some(fixture.clone()),
