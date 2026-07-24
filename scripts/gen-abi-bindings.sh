@@ -62,10 +62,19 @@ EOF
         --no-layout-tests \
         --sort-semantically \
         -- -I"$RMW_ABI/include"
-} > "$RMW_OUT"
+} > "$RMW_OUT.tmp"
 
-rustfmt +nightly "$RMW_OUT" 2>/dev/null || true
-echo "regenerated $RMW_OUT ($(wc -l < "$RMW_OUT") lines, bindgen $BINDGEN_PIN)"
+rustfmt +nightly "$RMW_OUT.tmp" 2>/dev/null || true
+# write-if-changed: an identical rewrite still bumps mtime, which re-stales
+# every fixture whose dep graph contains this file (the check lane runs this
+# script on EVERY `just check` via check-abi-bindings).
+if ! cmp -s "$RMW_OUT.tmp" "$RMW_OUT"; then
+    mv "$RMW_OUT.tmp" "$RMW_OUT"
+    echo "regenerated $RMW_OUT ($(wc -l < "$RMW_OUT") lines, bindgen $BINDGEN_PIN)"
+else
+    rm -f "$RMW_OUT.tmp"
+    echo "unchanged $RMW_OUT"
+fi
 
 # ---- Platform surface: nros-platform-api headers -> nros-platform-cffi/src/generated.rs
 # Function DECLARATIONS only (the port side defines them via the
@@ -99,10 +108,16 @@ EOF2
         --no-layout-tests \
         --sort-semantically \
         -- -I"$PLAT_API/include"
-} > "$PLAT_OUT"
+} > "$PLAT_OUT.tmp"
 
-rustfmt +nightly "$PLAT_OUT" 2>/dev/null || true
-echo "regenerated $PLAT_OUT ($(wc -l < "$PLAT_OUT") lines, bindgen $BINDGEN_PIN)"
+rustfmt +nightly "$PLAT_OUT.tmp" 2>/dev/null || true
+if ! cmp -s "$PLAT_OUT.tmp" "$PLAT_OUT"; then
+    mv "$PLAT_OUT.tmp" "$PLAT_OUT"
+    echo "regenerated $PLAT_OUT ($(wc -l < "$PLAT_OUT") lines, bindgen $BINDGEN_PIN)"
+else
+    rm -f "$PLAT_OUT.tmp"
+    echo "unchanged $PLAT_OUT"
+fi
 
 # ---- Board surface: nros-board-cffi header -> nros-board-cffi/src/generated.rs
 # Declarations only; the nros_board_export! macro (definitions, port side)
@@ -127,7 +142,13 @@ BOARD_OUT="packages/boards/nros-board-cffi/src/generated.rs"
         --no-layout-tests \
         --sort-semantically \
         -- -I"$BOARD_API/include"
-} > "$BOARD_OUT"
+} > "$BOARD_OUT.tmp"
 
-rustfmt +nightly "$BOARD_OUT" 2>/dev/null || true
-echo "regenerated $BOARD_OUT ($(wc -l < "$BOARD_OUT") lines, bindgen $BINDGEN_PIN)"
+rustfmt +nightly "$BOARD_OUT.tmp" 2>/dev/null || true
+if ! cmp -s "$BOARD_OUT.tmp" "$BOARD_OUT"; then
+    mv "$BOARD_OUT.tmp" "$BOARD_OUT"
+    echo "regenerated $BOARD_OUT ($(wc -l < "$BOARD_OUT") lines, bindgen $BINDGEN_PIN)"
+else
+    rm -f "$BOARD_OUT.tmp"
+    echo "unchanged $BOARD_OUT"
+fi

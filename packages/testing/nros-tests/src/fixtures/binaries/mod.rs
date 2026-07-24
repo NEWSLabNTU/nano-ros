@@ -500,6 +500,34 @@ fn is_regenerated_inplace_header(path: &Path) -> bool {
         .any(|suffix| path.ends_with(suffix))
 }
 
+/// Cargo `OUT_DIR` products (`…/build/<pkg>-<hash>/out/…`) are build
+/// side-effects, not edit events (phase-300 follow-on, same class as the
+/// issue-#222 in-place headers above): ANY cargo invocation in the same
+/// target dir — `just check`'s per-example clippy most of all — reruns
+/// build scripts and refreshes OUT files WITHOUT relinking the binary, so
+/// "OUT file newer than my binary" says nothing about the fixture's
+/// inputs. A semantic OUT change implies an edited tracked source (build.rs
+/// or its inputs), and those ARE in the dep graph. Without this exemption
+/// every `just ci` re-staled the native fixtures its own check phase had
+/// just probed fresh (the issue-0196 probe/gate input-mismatch class).
+fn is_cargo_out_dir_product(path: &Path) -> bool {
+    let mut saw_out = false;
+    for comp in path.components().rev() {
+        let c = comp.as_os_str().to_string_lossy();
+        if !saw_out {
+            if c == "out" {
+                saw_out = true;
+            }
+        } else {
+            // the component just above `out/` is `<pkg>-<hash>` inside `build/`
+            return path
+                .components()
+                .any(|p| p.as_os_str().to_string_lossy() == "build");
+        }
+    }
+    false
+}
+
 /// Return the first dependency listed in a make-style `.d` dep-info file whose
 /// mtime is newer than `reference`. Shared by the direct-cargo probe
 /// ([`dep_info_newer_source`], `.d` next to the binary) and the Zephyr probe
@@ -513,7 +541,7 @@ fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Opt
         };
         for dep in split_dep_info_line(deps) {
             let dep_path = PathBuf::from(&dep);
-            if is_regenerated_inplace_header(&dep_path) {
+            if is_regenerated_inplace_header(&dep_path) || is_cargo_out_dir_product(&dep_path) {
                 continue;
             }
             if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
