@@ -1792,23 +1792,21 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // with a zero timeout and drain only what is already there. Same shape
     // as the other multi-threaded platforms (see the pitfall in
     // platform-implementation-notes.md).
-    // phase-297 W5 — single-reader guard: the polled `zp_read` path
-    // (`_zp_unicast_read`, single_read=false) does NOT take the transport's
-    // `_mutex_rx` (only the background read task does), so two tier threads
-    // polling concurrently race on the shared rx zbuf (`_z_zbuf_reset` mid
-    // parse) and silently LOSE inbound frames — the multi-tier e2e saw the
-    // spawned tier's interest replies/subscriber declares vanish, leaving its
-    // write filter closed forever (zero publishes). Only one thread reads at
-    // a time; a busy loser skips the read — the reader dispatches every
-    // subscriber's data regardless of which tier thread it is.
-    static volatile int reading = 0;
+    // phase-297 W5 / issue #247 — single-reader rule: the polled `zp_read`
+    // path (`_zp_unicast_read`, single_read=false) does NOT take the
+    // transport's `_mutex_rx` (only the background read task does), so two
+    // tier threads polling concurrently race on the shared rx zbuf
+    // (`_z_zbuf_reset` mid parse) and silently LOSE inbound frames — both
+    // debugging tracks saw the spawned tier's interest replies vanish,
+    // leaving its write filter closed forever (zero publishes).
+    // Serialization is `g_threadx_read_mutex` (TRY-lock; a losing spinner
+    // skips the round — the winner drains) via `_zpico_threadx_locked_read`
+    // below; the frame-loss half of the bug is fixed in zenoh-pico itself
+    // (`87f7a84d` — the polled read drains every buffered frame).
     int fd = get_session_fd();
     int ret = ZPICO_ERR_TIMEOUT;
     if (timeout_ms > 0) {
         z_sleep_ms(timeout_ms);
-    }
-    if (__sync_lock_test_and_set(&reading, 1) != 0) {
-        return ZPICO_OK;
     }
     if (fd >= 0) {
 #if defined(__linux__)
@@ -1847,7 +1845,6 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     }
     _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
-    __sync_lock_release(&reading);
     return ret;
 
 #elif defined(ZENOH_FREERTOS_LWIP)

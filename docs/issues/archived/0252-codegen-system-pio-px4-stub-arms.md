@@ -1,5 +1,5 @@
 ---
-id: 247
+id: 252
 title: "nros codegen-system PIO/PX4 ahead-of-vendor arms emit literal TODO(E.3) stub output"
 status: resolved
 type: limitation

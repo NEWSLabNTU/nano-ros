@@ -1,7 +1,7 @@
 ---
 id: 247
 title: "realtime_tiers_e2e threadx_linux_rust: /ctrl counter 0 on a fresh image (pre-existing; baseline-verified)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: threadx
@@ -103,3 +103,29 @@ image (talker) where filters open fine.
 bash scripts/build/workspace-fixtures-build.sh threadx-linux rust
 cargo nextest run -p nros-tests -E 'test(threadx_linux_rust)'
 ```
+
+## Resolution (2026-07-24, phase-297 session) — root cause was in flight, now landed
+
+The wire-silent /ctrl was root-caused independently by the phase-297 W5
+session BEFORE this issue was filed; the fix chain was local at filing time
+and pushed 2026-07-24:
+
+1. **Frame loss in zenoh-pico's polled read (the actual killer):**
+   `_zp_unicast_read(single_read=false)` resets the rx zbuf each poll and
+   processed only the FIRST stream frame a recv pulled in — the interest-7
+   reply (DeclareSubscriber + DeclareFinal for the ctrl publisher) rode the
+   same TCP burst as interest-3's and was discarded on the next poll's
+   reset. Exactly matches this issue's session-3 trace ("the guest consumes
+   but never processes the interest-7 batch"). Fixed in the vendored fork:
+   zenoh-pico `87f7a84d` (drain every buffered frame per poll).
+2. **Reader serialization:** this issue's `g_threadx_read_mutex` TRY-lock
+   (e24fa4f1d) and the phase-297 session's atomic-flag guard landed as a
+   redundant DOUBLE guard in the same spin arm; deduplicated to the mutex
+   version (the atomic flag removed).
+3. Same-family fixes already in: ULONG pointer truncation, boot-tier
+   priority adoption, z_sleep-not-select yield (see archived phase-297 doc).
+
+Verified: `realtime_tiers_e2e::case_15_threadx_linux_rust` PASSES on the
+merged tree (fresh CLI + fixture rebuild after syncing the ros-launch-
+manifest submodule). If it reds again on another host, FIRST check the
+zenoh-pico submodule is at ≥ `87f7a84d` and the fixture was rebuilt after.
