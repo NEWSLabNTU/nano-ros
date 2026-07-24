@@ -32,7 +32,7 @@ worst of the three options.
 
 ## Resolution (2026-07-24)
 
-Landed (`7004c50fd`) — better than reject-loudly: multi-dim IDL arrays now
+Landed (`83d74cccc`) — better than reject-loudly: multi-dim IDL arrays now
 lower to NESTED fixed arrays (row-major; CDR-identical to the flat layout),
 so they are supported, not refused. Regression test
 `test_multidim_array_lowers_to_nested_arrays`.

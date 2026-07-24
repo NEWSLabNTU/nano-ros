@@ -33,7 +33,11 @@ release-safe option.
 
 ## Resolution (2026-07-24)
 
-Loud-warning option landed (`7004c50fd`): `--ahead-of-vendor` prints a
+Loud-warning option landed (`83d74cccc`): `--ahead-of-vendor` prints a
 prominent WARNING naming what the PIO/PX4 skeletons lack and the manual
 operator step. Artifacts stay the designed E.3 skeletons (spec-tested);
 H.6/H.7 remain the implementation follow-ups.
+
+Note: the fixing commit's message says "resolve issues 0247, 0249, 0250" —
+it predates the renumbering; its "0247" is THIS issue (0252), not the
+threadx-cell issue that now owns id 0247.

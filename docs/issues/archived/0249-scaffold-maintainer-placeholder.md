@@ -28,6 +28,6 @@ scaffold-time stdout note). One helper, four call sites.
 
 ## Resolution (2026-07-24)
 
-Landed (`7004c50fd`): maintainer sourced from `git config user.name`/
+Landed (`83d74cccc`): maintainer sourced from `git config user.name`/
 `user.email`, instructional `you@example.com` fallback. One helper, all four
 package.xml sites.
