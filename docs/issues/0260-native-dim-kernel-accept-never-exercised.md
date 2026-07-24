@@ -7,6 +7,24 @@ area: testing
 related: [phase-296, issue-0259]
 ---
 
+## Update (phase-296 W5.13, 2026-07-24) — placement ACCEPT arm now runtime-proven on POSIX
+
+Added a POSIX core-pin consumer (`nros-board-posix::apply_tier_affinity` via
+`sched_setaffinity`) — a Linux host is genuinely multi-core and the call is
+unprivileged, so `posix_core_pin_applied_at_runtime` (ws-realtime-rust `high`
+tier `posix.core: 0`, native cell) measures **KERNEL-ACCEPTED**. This is the
+first runtime accept-arm proof of the placement dim's consumer behavior.
+
+RESIDUAL (issue stays open, narrower): the RTOS-specific accept arms remain
+COMPILE-ONLY — each is guarded by its own `#ifdef` (`CONFIG_SCHED_CPU_MASK_
+PIN_ONLY` / `CONFIG_SMP` / `configUSE_CORE_AFFINITY` / `TX_THREAD_SMP`) that no
+uniprocessor fixture compiles. A typo INSIDE one of those RTOS arms would still
+escape until an SMP image builds; the shared consumer PATTERN is now
+runtime-exercised on posix, but the per-RTOS SMP branches are not. The sporadic
+(NuttX W5.9b) / EDF (zephyr W5.5) / preempt-threshold (threadx W5.10) accept
+arms were already kernel-accepted. So the remaining gap is purely the SMP
+core-pin branches of the four RTOS boards.
+
 ## Finding (phase-296 W5.9–W5.11 placement/budget consumer work, 2026-07-24)
 
 The RFC-0052 `Native`-dim consumers are written with a two-mode fail-loud

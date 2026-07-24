@@ -542,6 +542,17 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `threadx-realtime-rust-port` nextest group) boots the threadx-linux host image
   — measured HONEST FALLBACK (threadx-linux is non-SMP). case_15 + the preempt
   e2e (shared fixture) unchanged. Placement dim now fail-loud on ALL FOUR RTOSes.
+- W5.13 (POSIX half — runtime ACCEPT) — **POSIX core-pin consumer; first
+  kernel-accept proof of the placement dim** (2026-07-24): the RTOS SMP arms
+  only ever hit the fallback (their fixtures are uniprocessor, issue #260), so
+  the ACCEPT path was compile-only. Added `nros-board-posix::apply_tier_affinity`
+  (`sched_setaffinity`, boot + spawned; new `libc` host-only dep) — a Linux host
+  is genuinely multi-core and the call is unprivileged, so the ws-realtime-rust
+  `high` tier's `posix.core: 0` pins for real. New `posix_core_pin_applied` e2e
+  boots the native rust entry — measured **KERNEL-ACCEPTED**. No nextest group
+  needed (native uses a per-process ephemeral router, no baked port). #260
+  narrowed: the shared consumer pattern is now runtime accept-verified; only the
+  per-RTOS `#ifdef SMP` branches remain compile-only.
 - W5.15 — **derived-schedule `edf` knob sliced per target_rtos** (2026-07-24):
   `derive_execution_from_contracts` required the `edf` capability knob UNANIMOUS
   across ALL `execution.deploy` entries, so a legal mixed model (zephyr edf=true
@@ -593,9 +604,11 @@ tracked as issues because they are limitations, not just unbuilt features.
   both dims to `NotRequested`; the derived-schedule path can never assign a core
   pin or preemption threshold. Design-open (RFC-0052 contract vocabulary).
   Tracked: **issue #259**.
-- **SMP kernel-ACCEPT coverage for the core-pin dim** — every realtime fixture
-  is uniprocessor, so the SMP core-pin accept path is compile-verified only.
-  Needs one SMP fixture to flip a two-mode e2e to accept. Tracked: **issue #260**.
+- **SMP kernel-ACCEPT coverage for the RTOS core-pin arms** — POSIX now proves
+  the accept behavior at runtime (W5.13 posix half), but each RTOS's own
+  `#ifdef SMP` branch stays compile-only on its uniprocessor fixture. Needs one
+  SMP fixture (e.g. a separate zephyr native_sim SMP variant) to flip an RTOS
+  two-mode e2e to accept. Tracked: **issue #260** (narrowed).
 
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME

@@ -1701,6 +1701,7 @@ dependencies = [
 name = "nros-board-posix"
 version = "0.5.0"
 dependencies = [
+ "libc",
  "nros",
  "nros-log",
  "nros-platform",

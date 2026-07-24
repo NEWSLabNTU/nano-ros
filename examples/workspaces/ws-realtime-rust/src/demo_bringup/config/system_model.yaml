@@ -35,6 +35,12 @@ execution:
       spin_period_us: 1000
       posix:
         priority: 80
+        # phase-296 W5.13 — placement dim on POSIX: pin the HIGH tier to CPU 0
+        # via sched_setaffinity. A Linux host is genuinely multi-core and the
+        # call is unprivileged, so this is the first RUNTIME kernel-ACCEPT proof
+        # of the core-pin consumer (issue #260 — the RTOS SMP arms only ever hit
+        # the fallback on their uniprocessor fixtures).
+        core: 0
       zephyr:
         priority: 5
         deadline_us: 10000

@@ -409,6 +409,40 @@ fn apply_tier_sched(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &
     );
 }
 
+/// phase-296 W5.13 — the placement dim's POSIX `Native` realization: pin the
+/// CALLING tier thread to its declared `core` via `sched_setaffinity` (no-op
+/// when the tier declares no core). Unlike the RTOS SMP arms (zephyr/nuttx/
+/// freertos/threadx), a Linux host is genuinely multi-core and the call needs
+/// no privilege, so this is the FIRST RUNTIME ACCEPT-arm proof of the core-pin
+/// consumer (issue #260). Never silently drops: a rejected pin (bad cpu id)
+/// falls back LOUDLY and the tier runs unpinned.
+fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
+    let Some(core) = tier.core else {
+        return;
+    };
+    // SAFETY: libc FFI — a zeroed `cpu_set_t` with a single CPU bit set, applied
+    // to the calling thread (pid 0). No aliasing, no allocation.
+    let accepted = unsafe {
+        let mut set: libc::cpu_set_t = core::mem::zeroed();
+        libc::CPU_SET(core as usize, &mut set);
+        libc::sched_setaffinity(0, core::mem::size_of::<libc::cpu_set_t>(), &set) == 0
+    };
+    if accepted {
+        // Literal mirrors `nros_tests::output::POSIX_CORE_PIN_MARKER`.
+        B::println(format_args!(
+            "nros: core pin tier=`{}` cpu={}",
+            tier.name, core
+        ));
+    } else {
+        // Literal mirrors `nros_tests::output::POSIX_CORE_PIN_FALLBACK_MARKER`.
+        B::println(format_args!(
+            "nros: core pin FAILED tier=`{}` cpu={} — sched_setaffinity failed, \
+             tier runs unpinned",
+            tier.name, core
+        ));
+    }
+}
+
 /// Register + spin one tier on a freshly-opened borrowed-session
 /// executor (spawned-tier path).
 fn run_one_tier<B, F, E>(exec: ::nros::Executor<'static>, tier: &TierSpec<'_>, setup: &F)
@@ -420,6 +454,7 @@ where
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(&mut crt, tier);
+    apply_tier_affinity::<B>(tier);
     {
         let mut ctx = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
@@ -445,6 +480,7 @@ fn run_boot_tier<B, F, E>(
 {
     crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(crt, tier);
+    apply_tier_affinity::<B>(tier);
     {
         let mut ctx = RuntimeCtx::with_runtime(crt);
         if let Err(e) = setup(&mut ctx) {

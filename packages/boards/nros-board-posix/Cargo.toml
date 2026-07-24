@@ -42,3 +42,8 @@ nros = { version = "0.5.0", path = "../../core/nros", default-features = false, 
 # pkg's `nros_info!` reaches stdout/stderr without per-app `nros_log::init`
 # (board-agnostic Node pkgs can't pick the sink). Host → the platform sink.
 nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features = false, features = ["std"] }
+# phase-296 W5.13 — host `sched_setaffinity` for the placement dim's POSIX
+# `Native` realization (the first RUNTIME accept-arm proof of a core pin, issue
+# #260). Host-only; the cfg-gated dep block keeps it out of the embedded
+# feature-unification set.
+libc = "0.2"
