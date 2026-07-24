@@ -23,12 +23,19 @@ structure:
       exec: telem
 execution:
   tiers:
+    # phase-296 W5.8 follow-up — kernel-EDF exercise for the C arm (see the
+    # ws-realtime-cpp/rust siblings): `high` is real_time with a
+    # ZEPHYR-SCOPED deadline_us; the Zephyr image's boot tier fires
+    # zephyr_apply_tier_deadline (k_thread_deadline_set + marker, only when
+    # CONFIG_SCHED_DEADLINE applied it). posix/nuttx lower to Fifo unchanged.
     high:
+      class: real_time
       spin_period_us: 10000
       posix:
         priority: 80
       zephyr:
         priority: 5
+        deadline_us: 10000
       nuttx:
         priority: 110
     low:

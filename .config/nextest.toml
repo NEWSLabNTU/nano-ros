@@ -59,8 +59,9 @@ max-threads = 1
 # (`port_of(ZephyrNativeSim, Rust, RealtimeTiers)`) are shared by
 # `realtime_tiers_e2e`'s `zephyr_rust` cell and the new
 # `zephyr_edf_deadline_applied` e2e — serialize them so the two router
-# starts never collide. (The `zephyr_cpp`/`zephyr_c` cells bake their own
-# distinct ports and stay ungrouped.)
+# starts never collide. W5.8 follow-up: the EDF e2e grew cpp/c cases that
+# share the ws-realtime-{cpp,c} images + their baked ports with the
+# realtime_tiers_e2e zephyr_cpp/zephyr_c cells, so those join the group too.
 [test-groups.zephyr-realtime-rust-port]
 max-threads = 1
 
@@ -340,7 +341,7 @@ retries = 1
 # other Zephyr native_sim (NSOS) QEMU-class lanes below (cold boot + zenoh
 # discovery flakes under host load).
 [[profile.default.overrides]]
-filter = "binary(zephyr_edf_deadline_applied) or (binary(realtime_tiers_e2e) and test(zephyr_rust))"
+filter = "binary(zephyr_edf_deadline_applied) or (binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
 test-group = "zephyr-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

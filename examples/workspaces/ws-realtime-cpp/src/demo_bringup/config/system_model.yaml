@@ -22,12 +22,22 @@ structure:
       exec: telem
 execution:
   tiers:
+    # phase-296 W5.8 follow-up — mirror of the ws-realtime-rust W5.5 EDF
+    # exercise, for the C/C++ arm: `high` is real_time with a ZEPHYR-SCOPED
+    # `deadline_us`, so the Zephyr C/C++ image's boot tier fires the W5.8
+    # kernel-EDF path (`zephyr_apply_tier_deadline`: tier_class=="real_time"
+    # && deadline_us>0 ⇒ k_thread_deadline_set + the `nros: EDF deadline set
+    # tier=` marker, printed only when CONFIG_SCHED_DEADLINE applied it).
+    # The generic `class` head with NO generic deadline/budget/period lowers
+    # to None (Fifo, byte-identical) on posix/nuttx.
     high:
+      class: real_time
       spin_period_us: 10000
       posix:
         priority: 80
       zephyr:
         priority: 5
+        deadline_us: 10000
       nuttx:
         priority: 110
     low:
