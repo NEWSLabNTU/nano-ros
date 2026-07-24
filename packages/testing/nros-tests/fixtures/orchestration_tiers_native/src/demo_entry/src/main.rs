@@ -5,4 +5,4 @@
 //! `<NativeBoard>::run_tiers(TIERS, run_plan)` (RFC-0032 §5) instead of the
 //! single-tier `BoardEntry::run`.
 
-nros::main!(launch = "demo_bringup");
+nros::main!(model = "demo_bringup");

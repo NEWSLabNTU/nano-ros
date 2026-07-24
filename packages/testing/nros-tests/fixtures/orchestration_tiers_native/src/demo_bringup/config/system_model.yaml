@@ -1,0 +1,30 @@
+meta:
+  version: 1
+# R-code.1 fixture model — mirrors launch + system.toml (2 nodes, 2 posix
+# tiers; group→tier bindings ride the node pkgs' Cargo.toml callback_groups,
+# mirrored here as execution.bindings like a play_launch resolve would emit).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      posix:
+        priority: 80
+    low:
+      spin_period_us: 10000
+      posix:
+        priority: 10
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low

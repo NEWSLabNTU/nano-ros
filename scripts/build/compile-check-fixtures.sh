@@ -46,9 +46,9 @@ post_stage() {
         n9_form2)
             printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_native::NativeBoard);\n' > "$main_rs" ;;
         n9_form3)
-            printf '//! n9 form 3 (launch, default file).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
+            printf '//! n9 form 3 (model, default file — the canonical multi-node form).\n\nnros::main!(model = "demo_bringup");\n' > "$main_rs" ;;
         n9_form4)
-            printf '//! n9 form 4 (all explicit).\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    launch = "demo_bringup:sim.launch.xml",\n    args = [("use_sim", "true")],\n);\n' > "$main_rs" ;;
+            printf '//! n9 form 4 (all explicit: board + explicit model file).\n//! (args= is a launch-arm concept — a resolved model is early-bound.)\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
         orch_tiers_single)
             # Strip the `[tiers.*]` blocks from system.toml so the macro takes
             # the legacy single-tier BoardEntry::run path (RFC-0032 §5 gate G.4).

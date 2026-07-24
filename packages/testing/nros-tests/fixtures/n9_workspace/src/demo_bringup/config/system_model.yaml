@@ -1,0 +1,11 @@
+meta:
+  version: 1
+# R-code.1 fixture model — mirrors launch/system.launch.xml (1 node).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker

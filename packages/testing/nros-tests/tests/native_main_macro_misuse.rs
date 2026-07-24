@@ -169,11 +169,11 @@ fn unknown_board_emits_compile_error() {
 }
 
 #[test]
-fn rebuilds_on_launch_xml_touch() {
+fn rebuilds_on_model_touch() {
     let (_g, root) = stage_fixture();
     fs::write(
         root.join("src/demo_entry/src/main.rs"),
-        "nros::main!(launch = \"demo_bringup\");\n",
+        "nros::main!(model = \"demo_bringup\");\n",
     )
     .expect("write main.rs");
     let out = check_demo_entry(&root);
@@ -184,12 +184,13 @@ fn rebuilds_on_launch_xml_touch() {
         String::from_utf8_lossy(&out.stderr),
     );
 
-    // Touch the launch.xml — the macro's `include_bytes!` stamp should force a
-    // re-check. Sleep past cargo's fingerprint mtime resolution, then rewrite.
+    // Touch the committed model — the macro's tracked-file stamp should force
+    // a re-check. Sleep past cargo's fingerprint mtime resolution, then
+    // rewrite.
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    let launch_xml = root.join("src/demo_bringup/launch/system.launch.xml");
-    let body = fs::read_to_string(&launch_xml).expect("read launch.xml");
-    fs::write(&launch_xml, &body).expect("rewrite launch.xml");
+    let model_yaml = root.join("src/demo_bringup/config/system_model.yaml");
+    let body = fs::read_to_string(&model_yaml).expect("read system_model.yaml");
+    fs::write(&model_yaml, &body).expect("rewrite system_model.yaml");
 
     let out2 = check_demo_entry(&root);
     assert!(
@@ -201,6 +202,6 @@ fn rebuilds_on_launch_xml_touch() {
     let stderr2 = String::from_utf8_lossy(&out2.stderr);
     assert!(
         stderr2.contains("Checking demo_entry") || stderr2.contains("Compiling demo_entry"),
-        "expected demo_entry to be re-checked after launch.xml touch, stderr:\n{stderr2}",
+        "expected demo_entry to be re-checked after model touch, stderr:\n{stderr2}",
     );
 }

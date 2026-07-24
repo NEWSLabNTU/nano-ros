@@ -12,4 +12,4 @@ extern crate ctrl_pkg as _;
 extern crate telem_pkg as _;
 use panic_semihosting as _;
 
-nros::main!(launch = "demo_bringup");
+nros::main!(model = "demo_bringup");

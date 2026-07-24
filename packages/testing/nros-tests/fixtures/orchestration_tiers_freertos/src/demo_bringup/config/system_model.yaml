@@ -1,0 +1,31 @@
+meta:
+  version: 1
+# R-code.1 fixture model — freertos twin of orchestration_tiers_native
+# (64 KiB tier stacks: zenoh-pico per-tier spin needs it; see system.toml).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+execution:
+  tiers:
+    high:
+      spin_period_us: 1000
+      freertos:
+        priority: 5
+        stack_bytes: 65536
+    low:
+      spin_period_us: 10000
+      freertos:
+        priority: 2
+        stack_bytes: 65536
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low

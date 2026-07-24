@@ -1,0 +1,20 @@
+meta:
+  version: 1
+# R-code.1 fixture model — mirrors launch/system.launch.xml (3 nodes; each
+# pkg resolves through the pkg-index package.xml walk, same as the launch arm).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /node_a:
+      scope: /
+      pkg: node_a
+      exec: node_a
+    /node_b:
+      scope: /
+      pkg: node_b
+      exec: node_b
+    /node_c:
+      scope: /
+      pkg: node_c
+      exec: node_c

@@ -37,26 +37,26 @@ const COVERED: &[(&str, &str, &str)] = &[
     // (lang, platform, covering test file)
     ("rust", "native", "realtime_tiers_e2e"),
     ("rust", "freertos", "orchestration_tiers_freertos"),
-    ("rust", "zephyr", "realtime_tiers_zephyr_entry_e2e"),
-    ("c", "native", "realtime_tiers_c_e2e"),
-    ("c", "freertos", "realtime_tiers_c_freertos_e2e"),
-    ("cpp", "native", "realtime_tiers_cpp_e2e"),
-    ("cpp", "freertos", "realtime_tiers_cpp_freertos_e2e"),
-    ("cpp", "zephyr", "realtime_tiers_cpp_zephyr_e2e"),
-    ("c", "zephyr", "realtime_tiers_c_zephyr_e2e"),
-    ("cpp", "nuttx", "realtime_tiers_cpp_nuttx_e2e"),
-    ("c", "nuttx", "realtime_tiers_c_nuttx_e2e"),
+    ("rust", "zephyr", "realtime_tiers_e2e"),
+    ("c", "native", "realtime_tiers_e2e"),
+    ("c", "freertos", "realtime_tiers_e2e"),
+    ("cpp", "native", "realtime_tiers_e2e"),
+    ("cpp", "freertos", "realtime_tiers_e2e"),
+    ("cpp", "zephyr", "realtime_tiers_e2e"),
+    ("c", "zephyr", "realtime_tiers_e2e"),
+    ("cpp", "nuttx", "realtime_tiers_e2e"),
+    ("c", "nuttx", "realtime_tiers_e2e"),
     // phase-281 W3-nuttx — the LAST cell. `<QemuArmVirt>::run_tiers` (one
     // std::thread per tier over one shared session; NuttX is `std` + zenoh-pico
     // `Z_FEATURE_MULTI_THREAD = 1`) drives a Rust node too. All 12 cells proven.
-    ("rust", "nuttx", "realtime_tiers_rust_nuttx_e2e"),
+    ("rust", "nuttx", "realtime_tiers_e2e"),
     // #199 follow-ups — the rv-virt (riscv32) second-arch NuttX axis: rust
     // landed in phase-285 W5/W6; the C/C++ workspace entries + e2e landed with
     // the #199 fix chain (link_app port, run_tiers seam, #149 nightly pin,
     // per-arch ffi-glue cross config). 15 cells proven.
-    ("rust", "nuttx-riscv", "realtime_tiers_riscv_nuttx_e2e"),
-    ("c", "nuttx-riscv", "realtime_tiers_c_riscv_nuttx_e2e"),
-    ("cpp", "nuttx-riscv", "realtime_tiers_cpp_riscv_nuttx_e2e"),
+    ("rust", "nuttx-riscv", "realtime_tiers_e2e"),
+    ("c", "nuttx-riscv", "realtime_tiers_e2e"),
+    ("cpp", "nuttx-riscv", "realtime_tiers_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.

@@ -66,6 +66,16 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
 #[test]
 fn instance_identity_mismatch_is_a_compile_error() {
     let (_g, root) = stage_fixture();
+    // R-code.1 stage 1: the staged fixture entry is on the model arm now, so
+    // pin THIS test to the launch arm it exercises (the launch-XML↔system.toml
+    // identity check). Stage 2 (launch-arm removal) either ports the check to
+    // the model arm (orphaned execution.bindings should fail loud) or retires
+    // this test with the arm.
+    fs::write(
+        root.join("src/demo_entry/src/main.rs"),
+        "nros::main!(launch = \"demo_bringup\");\n",
+    )
+    .expect("write launch-arm main.rs");
     let launch = root.join("src/demo_bringup/launch/system.launch.xml");
     let body = fs::read_to_string(&launch).expect("read launch.xml");
     let bad = body.replace("name=\"control_node\"", "name=\"control_typo\"");

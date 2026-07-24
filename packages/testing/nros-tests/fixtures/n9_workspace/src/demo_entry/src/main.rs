@@ -6,7 +6,7 @@
 //! ```ignore
 //! nros::main!();                                          // Form 1
 //! nros::main!(board = ::nros_board_native::NativeBoard);  // Form 2
-//! nros::main!(launch = "demo_bringup");                   // Form 3
+//! nros::main!(model = "demo_bringup");                   // Form 3
 //! nros::main!(
 //!     board  = ::nros_board_native::NativeBoard,
 //!     launch = "demo_bringup:sim.launch.xml",
@@ -18,4 +18,4 @@
 //! richest path that exercises pkg-index walk + launch.xml parse +
 //! per-node register-call emit.
 
-nros::main!(launch = "demo_bringup");
+nros::main!(model = "demo_bringup");
