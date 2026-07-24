@@ -44,6 +44,25 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
+idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing
+subset pkg). Scope ts-generation to the used closure or fix srv IDL lowering. See `0258-*`.
+
+**#257** — `NROS_EXECUTOR_MAX_CBS` (default 4) is a hidden compile-time env; multi-node
+workspaces die at boot `ExecutorFull` with no build-time hint. The entry codegen knows the
+model's entity counts — derive or validate the knob. See `0257-*`.
+
+**#256** — generated C++ msg structs are uninitialized PODs (rosidl zero-initializes) — a
+ported Autoware node leaked stack garbage into `ResponseStatus.code` over the wire. Emit
+default member initializers. See `0256-*`.
+
+**#255** — launch `<remap>` parsed but not routed; `~/` names unsupported — every ported
+Autoware node hardcodes resolved topic names. Route remaps in entry codegen. See `0255-*`.
+
+**#254** — rclcpp_compat lacks services/params/clock/param-callbacks — real Autoware nodes
+fall back to the ComponentNode shape. Extend the compat surface. See `0254-*`.
+(#254-#258 all from the simple-autoware-safety-island port, 2026-07-24.)
+
 **#253** — C++ interface FFI crates are flat-module supersets: two interface pkgs on one link
 line duplicated every shared `nros_cpp_*` symbol (hit by the autoware-safety-island example's
 control+tier4 pair; `local-msg-package` template already broken on main via the
