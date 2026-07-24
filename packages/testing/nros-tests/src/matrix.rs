@@ -382,17 +382,23 @@ pub const CELLS: &[Cell] = &[
     // issue #233 cell 4 — threadx C++ cyclone pubsub proven (test_threadx_linux_cyclonedds_cpp_talker_to_native_listener).
     cell(ThreadxLinux, Cpp, Cyclonedds, Pubsub,  Example, Runtime),
 
-    // ThreadX riscv64 — pubsub + service runtime; action examples absent;
+    // ThreadX riscv64 — pubsub + service runtime (all three langs; rtos_e2e
+    // runs the full lang fan-out). Action examples + builders EXIST in all
+    // three langs but were deliberately dropped from the run matrix in
+    // phase-182.5 (action is the wall-clock critical path — see rtos_e2e.rs);
     // cyclone two-QEMU pubsub pairs proven (#214).
     cell(ThreadxRiscv64, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(ThreadxRiscv64, C,    Zenoh, Pubsub,  Example, Runtime),
     cell(ThreadxRiscv64, Cpp,  Zenoh, Pubsub,  Example, Runtime),
     cell(ThreadxRiscv64, Rust, Zenoh, Service, Example, Runtime),
     cell(ThreadxRiscv64, C,    Zenoh, Service, Example, Runtime),
-    cell(ThreadxRiscv64, Cpp,  Zenoh, Service, Example,
-         CarveOut("cpp service/action examples not implemented; port slots reserved (platform.rs)")),
+    cell(ThreadxRiscv64, Cpp,  Zenoh, Service, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Zenoh, Action, Example,
-         CarveOut("action examples not implemented on threadx-riscv64 (example set is pubsub+service); reserved slots in platform.rs")),
+         BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")),
+    cell(ThreadxRiscv64, C,    Zenoh, Action, Example,
+         BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")),
+    cell(ThreadxRiscv64, Cpp,  Zenoh, Action, Example,
+         BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
     // issue #235 — the cpp cyclone riscv64 fixtures existed (distinct
@@ -400,15 +406,25 @@ pub const CELLS: &[Cell] = &[
     // (test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub) now consumes them.
     cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, Runtime),
 
-    // NuttX riscv — C/C++/rust runtime lanes (phase #199 follow-up).
+    // NuttX riscv — the C talker example has a runtime lane
+    // (c_riscv_nuttx_e2e); rust/cpp have NO standalone pubsub examples —
+    // their riscv coverage is the realtime-tiers WORKSPACE lanes (rows
+    // below), so don't claim Example-Runtime here.
     cell(NuttxRiscv, C,    Zenoh, Pubsub, Example, Runtime),
-    cell(NuttxRiscv, Cpp,  Zenoh, Pubsub, Example, Runtime),
-    cell(NuttxRiscv, Rust, Zenoh, Pubsub, Example, Runtime),
+    cell(NuttxRiscv, Cpp,  Zenoh, Pubsub, Example,
+         CarveOut("no standalone cpp pubsub example on rv-virt; runtime coverage rides the realtime-tiers workspace lane")),
+    cell(NuttxRiscv, Rust, Zenoh, Pubsub, Example,
+         CarveOut("no standalone rust pubsub example on rv-virt; runtime coverage rides the realtime-tiers workspace lane")),
 
-    // ESP32 — rust runtime under the Espressif QEMU fork; C/C++ build-only.
+    // ESP32 — rust pubsub runtime under the Espressif QEMU fork (plus the
+    // workspace-entry lane in esp32_emulator.rs); service/action examples
+    // are NOT authored (example set is talker/listener only). C/C++
+    // build-only.
     cell(Esp32Qemu, Rust, Zenoh, Pubsub,  Example, Runtime),
-    cell(Esp32Qemu, Rust, Zenoh, Service, Example, Runtime),
-    cell(Esp32Qemu, Rust, Zenoh, Action,  Example, Runtime),
+    cell(Esp32Qemu, Rust, Zenoh, Service, Example,
+         CarveOut("service/action examples not authored on esp32-qemu (talker/listener set only)")),
+    cell(Esp32Qemu, Rust, Zenoh, Action,  Example,
+         CarveOut("service/action examples not authored on esp32-qemu (talker/listener set only)")),
     cell(Esp32Qemu, C,    Zenoh, Pubsub,  Example,
          BuildOnly("IDF C runtime lane pending (espressif qemu fork drives rust only today)")),
     cell(Esp32Qemu, Cpp,  Zenoh, Pubsub,  Example,
