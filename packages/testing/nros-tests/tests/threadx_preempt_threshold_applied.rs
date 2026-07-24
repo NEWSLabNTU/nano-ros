@@ -7,10 +7,11 @@
 //!
 //! Boots the SAME threadx-linux host image `realtime_tiers_e2e.rs`'s
 //! `threadx_linux_rust` cell uses (shared image + baked router port —
-//! serialized via the `threadx-realtime-rust-port` nextest group). On
-//! ThreadX `resolve_tiers` sorts descending by raw number, so `high`
-//! (threshold-carrying) is a SPAWNED tier — the marker comes from the
-//! `tx_thread_create` path.
+//! serialized via the `threadx-realtime-rust-port` nextest group). The
+//! declaring tier is `low` (telem, threshold 10); on ThreadX
+//! `resolve_tiers` sorts descending by raw number, so `low` is the BOOT
+//! tier — the marker comes from the boot-reprioritize path
+//! (`tx_thread_preemption_change`).
 //!
 //! Run with: `cargo nextest run -p nros-tests --test threadx_preempt_threshold_applied`.
 
@@ -24,7 +25,7 @@ use nros_tests::{
 use std::{process::Command, time::Duration};
 
 #[test]
-fn threadx_preempt_threshold_applied_for_high_tier() {
+fn threadx_preempt_threshold_applied_for_declaring_tier() {
     let entry = build_threadx_workspace_rust_realtime_entry()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| nros_tests::skip!("threadx-linux realtime fixture unavailable: {e}"));
@@ -59,10 +60,10 @@ fn threadx_preempt_threshold_applied_for_high_tier() {
     guest.kill();
 
     let hits = nros_tests::count_pattern(&log, THREADX_PREEMPT_MARKER);
-    // Exactly ONE tier (`high`) declares a threshold in this fixture.
+    // Exactly ONE tier (`low`) declares a threshold in this fixture.
     assert_eq!(
         hits, 1,
         "expected the kernel-accepted threshold marker for exactly the 1 \
-         declaring tier (`high`); saw {hits} in:\n{log}"
+         declaring tier (`low`); saw {hits} in:\n{log}"
     );
 }
