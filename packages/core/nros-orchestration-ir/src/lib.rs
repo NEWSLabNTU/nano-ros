@@ -232,7 +232,14 @@ pub struct ResolvedTier {
 /// The ordered tier table for one deploy target.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedTierTable {
-    /// Tiers ordered highest-priority first (by the RTOS numeric `priority`).
+    /// Tiers ordered by RAW numeric `priority`, DESCENDING. The system owner
+    /// authors numbers in the target RTOS's own direction and v1 does not
+    /// invert (see `resolve_tiers`), so `tiers[0]` — the BOOT tier every
+    /// `run_tiers` runs first — is the semantically-HIGHEST tier only on
+    /// bigger-number-wins RTOSes (posix/FreeRTOS/NuttX). On
+    /// lower-number-wins RTOSes (Zephyr, ThreadX) `tiers[0]` is the
+    /// LOWEST-priority tier (issue 0246 — deliberate, comments must not
+    /// claim otherwise).
     pub tiers: Vec<ResolvedTier>,
 }
 

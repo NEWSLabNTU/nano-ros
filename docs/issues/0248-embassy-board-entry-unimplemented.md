@@ -33,3 +33,12 @@ Ship options:
 
 Until one happens, an Embassy user gets a booting image that silently never
 executes callbacks — worse than a compile error.
+
+## Update (2026-07-24) — de-advertised; finishing remains open
+
+Option 1 landed: `book/src/user-guide/embassy-integration.md` now opens with
+a status admonition — Pattern A (hand-written main/tasks,
+`examples/stm32f4/rust/talker-embassy`) is the supported shape; the
+`EmbassyBoardEntry`/Deferred path is marked scaffold-only pending this
+issue. Remaining scope: implement the C.3 dispatch body + board entry
+methods and stand up a QEMU lane mirroring the RTIC set (phase-289 shape).

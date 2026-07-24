@@ -1,5 +1,18 @@
 # Embassy Integration
 
+> **Status (issue 0248): partially implemented — read before relying on
+> this chapter.** The hand-written **Pattern A** shape (own
+> `#[embassy_executor::main]`, own spin/publish tasks —
+> `examples/stm32f4/rust/talker-embassy`) is the working integration
+> today. The streamlined board-entry path this chapter also describes
+> (`EmbassyBoardEntry` / the 216.C.4 collapse) and the
+> `DispatchStrategy::Deferred` dispatch task are **scaffold-only**: the
+> board crate's entry methods are unimplemented (`todo!()`) and a
+> Deferred-strategy image compiles and boots but never executes
+> `on_callback`. Until issue 0248 closes, use Pattern A. (The RTIC twin
+> of this integration is complete and runtime-tested — see
+> [RTIC Integration](rtic-integration.md).)
+
 [Embassy](https://embassy.dev) is an async/await framework for embedded
 Rust, built around a cooperative executor that polls futures from a
 single context (per priority tier). nano-ros runs on top of Embassy by

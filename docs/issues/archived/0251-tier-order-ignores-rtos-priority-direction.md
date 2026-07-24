@@ -1,12 +1,28 @@
 ---
 id: 251
 title: "resolve_tiers ignores per-RTOS priority direction — the boot tier is the LOWEST-priority tier on ThreadX/Zephyr"
-status: open
+status: resolved
 type: bug
 severity: low
 area: orchestration
 related: [rfc-0053, rfc-0047]
 ---
+
+## Resolution (2026-07-24) — option (b), comment/doc truthing
+
+The descending-raw-number sort is KEPT as the deliberate v1 semantics (the
+system owner authors numbers in the target RTOS's direction; `resolve_tiers`
+does not invert — its own comment already said so). The defect was every
+comment claiming "boot tier = highest priority": fixed in
+`nros-orchestration-ir` (`ResolvedTierTable.tiers` doc now states the
+direction caveat explicitly, naming this issue), the zephyr board
+(`entry_tiers.rs` module + `run_tiers` docs, `zephyr_run_tiers.c` header)
+and the threadx board (`entry.rs` W4 block; the W5 work had already truthed
+the inner comments + phase/book docs). posix/FreeRTOS/NuttX comments were
+already true (bigger-number-wins). A direction-aware sort (option a) remains
+possible later but changes which tier BOOTS on Zephyr/ThreadX — rejected for
+now to avoid destabilizing the in-flight phase-296 EDF/realizer work whose
+fixtures embed the current order.
 
 ## Finding (2026-07-23, phase-297 W5 acceptance work)
 

@@ -60,11 +60,6 @@ phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-pre
 that looks like a real artifact; implement or fail loudly. See `0247-*`. (release-prep audit
 2026-07-24)
 
-**#251** — `resolve_tiers` sorts by raw priority number without per-RTOS direction, so on
-ThreadX/Zephyr (lower = higher) `tiers[0]`/the BOOT tier is the LOWEST-priority tier and the #144
-"highest declares first" rationale inverts. Direction-aware sort or comment/doc truthing.
-See `0251-*`. (phase-297 W5, 2026-07-23; renumbered from a 0246 id collision)
-
 **#246** — realtime_tiers_e2e nuttx_arm_rust cell TIMES OUT on a fresh image (baseline-verified
 pre-existing — NOT the W5.9 sporadic work; cpp/c siblings pass ~13 s); riscv trio
 precondition-skips (rust lane name mismatch). See `0246-*`. (2026-07-24)
