@@ -29,7 +29,16 @@ namespace nros_rmw_cyclonedds {
 
 namespace {
 
-constexpr std::size_t kMaxRegisteredTypes = 64;
+// Overridable: a workspace consuming several full interface packages (the
+// autoware-safety-island example registers ~86 types — std_msgs +
+// geometry_msgs alone are ~60) blows a small cap, and the overflow drops
+// types SILENTLY: publisher_create later fails UNSUPPORTED (-5) for
+// whichever pkg happened to be link-order last. 16 bytes/entry → 4 KiB at
+// 256, still fine for alloc-averse RTOS targets.
+#ifndef NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES
+#define NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES 256
+#endif
+constexpr std::size_t kMaxRegisteredTypes = NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES;
 
 struct Entry {
     const char *type_name;
