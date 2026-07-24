@@ -68,6 +68,13 @@ execution:
         core: 0
       nuttx:
         priority: 100
+        # phase-296 W5.11 — placement dim on NuttX: pin the LOW tier to CPU 0.
+        # The qemu-arm-virt fixture is single-core (no CONFIG_SMP) so
+        # `pthread_setaffinity_np` cannot be honored → the board seam logs the
+        # LOUD "core pin FAILED" note and the tier runs unpinned (RFC-0052
+        # fail-loud — before W5.11 the ABI carried `core_plus1` but NO consumer
+        # applied it, a silent drop). An SMP fixture flips it to kernel-accept.
+        core: 0
       threadx:
         priority: 15
         # phase-296 W5.10 — non_preempt_scope on the LOW tier: threads at

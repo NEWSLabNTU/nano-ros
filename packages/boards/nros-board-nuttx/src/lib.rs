@@ -378,6 +378,19 @@ unsafe extern "C" {
     ) -> i32;
 }
 
+/// phase-296 W5.11 — NuttX SMP core affinity (the placement dim), self-applied
+/// on the CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`)
+/// so `cpu_set_t` / `pthread_setaffinity_np` lay out per THIS kernel's config
+/// (config-gated on CONFIG_SMP — the #131 layout trap avoided; Rust never
+/// mirrors the set). Returns 1 when the kernel accepted the pin, 0 otherwise
+/// (unpinned tier / no CONFIG_SMP / rejection — the C side logs the accept
+/// marker or the loud fallback note). The ABI carried `core_plus1` since W2 but
+/// had NO consumer before this — a declared `core` was silently dropped.
+#[cfg(target_os = "nuttx")]
+unsafe extern "C" {
+    fn nros_nuttx_apply_current_affinity(name: *const core::ffi::c_char, core_plus1: u32) -> i32;
+}
+
 /// Default per-tier pthread stack for spawned Rust tiers (issue #246). Mirrors
 /// the C glue's `NROS_NUTTX_TIER_STACK_BYTES` intent but sized at NuttX's own
 /// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
@@ -415,6 +428,32 @@ fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) {
 #[cfg(not(target_os = "nuttx"))]
 #[inline]
 fn apply_tier_sporadic(_tier: &nros_platform::TierSpec<'_>) {}
+
+/// phase-296 W5.11 — self-apply the tier's SMP core pin (no-op off-target and
+/// when the tier declares no `core`). The `core + 1` encoding (0 = unpinned)
+/// matches the C emit. Name crosses the FFI as a NUL-terminated stack copy.
+/// Safe on the session-owning boot tier too: a core pin does not budget-cap the
+/// thread, so (unlike the sporadic server, #246) it never starves the shared
+/// session flush.
+#[cfg(target_os = "nuttx")]
+fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
+    let Some(core) = tier.core else {
+        return;
+    };
+    let mut name_buf = [0u8; 64];
+    let n = tier.name.len().min(63);
+    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    unsafe {
+        nros_nuttx_apply_current_affinity(
+            name_buf.as_ptr() as *const core::ffi::c_char,
+            core.saturating_add(1),
+        );
+    }
+}
+
+#[cfg(not(target_os = "nuttx"))]
+#[inline]
+fn apply_tier_affinity(_tier: &nros_platform::TierSpec<'_>) {}
 
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
@@ -633,6 +672,10 @@ where
             );
             let _ = std::io::stderr().flush();
         }
+        // phase-296 W5.11 — placement dim: the boot tier self-pins to its
+        // declared `core` (safe here — a core pin, unlike the sporadic budget
+        // above, does not cap CPU so it cannot starve the shared flush).
+        apply_tier_affinity(boot_tier);
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
     });
 
@@ -687,6 +730,8 @@ fn nuttx_run_one_tier<F, E>(
     );
     // phase-296 W5.9 — kernel sporadic server for this tier thread, when declared.
     apply_tier_sporadic(tier);
+    // phase-296 W5.11 — placement dim: SMP core pin for this tier, when declared.
+    apply_tier_affinity(tier);
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {

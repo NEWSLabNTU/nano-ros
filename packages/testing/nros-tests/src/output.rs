@@ -460,6 +460,20 @@ pub const ZEPHYR_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// literals in both Zephyr arms — keep in lockstep.
 pub const ZEPHYR_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
+/// `nros_nuttx_apply_current_affinity` — shared by the C/C++ AND Rust tier
+/// arms) when the kernel accepted a tier's SMP core pin (phase-296 W5.11, the
+/// placement dim). The board-agnostic literal is identical to the Zephyr arm's;
+/// kept board-scoped here for lockstep clarity. MIRRORS the printf literal in
+/// `nuttx_run_tiers.c` — keep in lockstep.
+pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
+
+/// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
+/// NuttX image lacks `CONFIG_SMP` (or the kernel rejected the pin) — the tier
+/// runs unpinned, loudly. MIRRORS the `FAILED` literals in both NuttX seams —
+/// keep in lockstep.
+pub const NUTTX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

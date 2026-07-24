@@ -162,6 +162,9 @@ typedef struct {
     uint64_t budget_us;
     uint64_t period_us;
     int64_t priority;
+    /* phase-296 W5.11 — placement dim: CPU pin + 1 (0 = unpinned), carried so
+     * the spawned tier thread can self-apply its core affinity. */
+    uint32_t core_plus1;
 } nros_nuttx_tier_ctx_t;
 
 /* Forward decl — nuttx_tier_thread and nuttx_spawn_next_tier are mutually
@@ -240,6 +243,43 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* tier_class, 
     return 0;
 }
 
+/* phase-296 W5.11 — NuttX SMP core affinity (the placement dim's `Native`
+ * realization, RFC-0052). Pins the CALLING thread to `core_plus1 - 1` when a
+ * tier declares a `core` (core_plus1 > 0 — the emit_c/macro `core + 1` encoding,
+ * 0 = unpinned). The marker prints ONLY when the kernel accepted the pin; a
+ * uniprocessor build (no CONFIG_SMP) or a rejection falls back LOUDLY — the
+ * placement is NEVER silently dropped (the prior behavior: the ABI carried
+ * `core_plus1` but no consumer applied it). Non-static: the Rust
+ * `nros-board-nuttx` run_tiers externs and self-applies through this same
+ * helper (one implementation, one marker). The printf literals MUST match
+ * `nros_tests::output::NUTTX_CORE_PIN_MARKER` / `_FALLBACK_MARKER`. */
+int nros_nuttx_apply_current_affinity(const char* name, uint32_t core_plus1);
+int nros_nuttx_apply_current_affinity(const char* name, uint32_t core_plus1) {
+    if (core_plus1 == 0u) {
+        return 0; /* unpinned */
+    }
+    int cpu = (int)(core_plus1 - 1u);
+#ifdef CONFIG_SMP
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(cpu, &set);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+    if (rc == 0) {
+        printf("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
+        return 1;
+    }
+    printf("nros: core pin FAILED tier=`%s` cpu=%d rc=%d — tier runs unpinned\n",
+           (name != NULL) ? name : "?", cpu, rc);
+#else
+    /* Fail-loud (RFC-0052): the tier DECLARED a `core` but this kernel was
+     * built without CONFIG_SMP — no affinity API to honor it. */
+    printf("nros: core pin FAILED tier=`%s` cpu=%d — kernel lacks CONFIG_SMP, "
+           "tier runs unpinned\n",
+           (name != NULL) ? name : "?", cpu);
+#endif
+    return 0;
+}
+
 /* nuttx_tier_thread — body of each non-boot tier thread.
  *
  * Opens a borrowed executor over the shared session, gates it to the tier's
@@ -256,6 +296,8 @@ static void* nuttx_tier_thread(void* arg) {
      * SCHED_FIFO priority set at pthread_create). */
     (void)nros_nuttx_apply_current_sporadic(ctx->name, ctx->tier_class, ctx->budget_us,
                                             ctx->period_us, ctx->priority);
+    /* phase-296 W5.11 — placement dim: pin to the declared core (fail-loud). */
+    (void)nros_nuttx_apply_current_affinity(ctx->name, ctx->core_plus1);
 
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot thread) must outlive this thread — the boot spin loop runs
@@ -363,6 +405,7 @@ static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
     ctx->budget_us = t->budget_us;
     ctx->period_us = t->period_us;
     ctx->priority = t->priority;
+    ctx->core_plus1 = t->core_plus1;
 
     /* Build the tier pthread attributes: detached (never joined — the tier
      * thread spins forever), an explicit stack size (tier.stack_bytes, else the
@@ -498,6 +541,8 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
      * when declared (overrides the FIFO adopt above). */
     (void)nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
                                             boot->period_us, boot->priority);
+    /* phase-296 W5.11 — placement dim: pin the boot tier too (fail-loud). */
+    (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin

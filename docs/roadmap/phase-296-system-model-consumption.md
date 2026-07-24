@@ -494,10 +494,29 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   C/C++ arms print the same lockstepped literal (trivial future
   parametrization). zephyr_rust EDF + realtime cells unchanged (core:0 is a
   no-op on the unpinned run).
+- W5.11 (NuttX half) — **NuttX SMP core-pin consumer + fail-loud e2e**
+  (2026-07-24): the NuttX tier ABI carried `core_plus1` since W2 but had NO
+  consumer — a declared `core` was SILENTLY dropped (worse than Zephyr's
+  pre-W5.11 loud-warn). Added `nros_nuttx_apply_current_affinity(name,
+  core_plus1)` to BOTH board seams (arm + riscv `nuttx_run_tiers.c`):
+  `pthread_setaffinity_np` under `#ifdef CONFIG_SMP`, kernel-accept marker
+  (`nros: core pin tier=` = `NUTTX_CORE_PIN_MARKER`) gated on `rc == 0`, LOUD
+  fallback (`nros: core pin FAILED tier=` = `NUTTX_CORE_PIN_FALLBACK_MARKER`)
+  on no-SMP/rejection. Called at spawned-tier entry (via the ctx, which gained
+  a `core_plus1` field + copy) AND boot (safe on the session owner — a core pin
+  doesn't cap CPU, so unlike the #246 sporadic budget it can't starve the
+  shared flush). The Rust `nros-board-nuttx` externs it + self-applies
+  (`apply_tier_affinity`, boot + spawned). ws-realtime-rust `low` tier declares
+  `nuttx.core: 0`; new `nuttx_core_pin_applied` e2e (two-mode, the
+  `nuttx_sporadic_budget_applied` shape) boots the RUST arm — measured HONEST
+  FALLBACK (qemu-arm-virt is single-core). case_10 (#246 cell) unchanged
+  (core:0 is a no-op unpinned). FreeRTOS still silently ignores `core` on its
+  uniprocessor branch (`(void)task`) — a further fail-loud follow-up.
 - Remaining (beyond W5.5–W5.11): the rest of the runtime `PlatformSched`
-  primitives (`replenish`, native reservation/preemption-threshold/affinity on
-  the other boards) so every `Native` dim is honored (today the executor's own
-  `SchedContext` backfills); the C/C++ zephyr tier image's core/deadline
+  primitives (`replenish`, native reservation/preemption-threshold on the other
+  boards) so every `Native` dim is honored (today the executor's own
+  `SchedContext` backfills); FreeRTOS `core` fail-loud (its uniprocessor branch
+  is still a silent drop); the C/C++ zephyr tier image's core/deadline
   consumers; per-board deploy slicing for the `edf` knob; an E2E fixture
   exercising the derived-schedule path on a real workspace.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
