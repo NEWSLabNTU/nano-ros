@@ -50,7 +50,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 |---------------------------|----------|-------|------|------------|------|
 | `native`                  | c        | 6+    | 6    | 6          | –    |
 | `native`                  | cpp      | 6+    | –    | 6          | –    |
-| `native`                  | rust     | 6+    | 6+   | (pending 171.C.1) | – |
+| `native`                  | rust     | 6+    | 6+   | 6          | –    |
 | `stm32f4`                 | rust     | 1+rtic×6 | –  | –          | –    |
 | `px4`                     | cpp      | –     | –    | –          | nros_register_check |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
@@ -63,15 +63,20 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `qemu-arm-nuttx`          | rust     | 6     | –    | –          | –    |
 | `qemu-esp32-baremetal`    | rust     | 2     | –    | –          | –    |
 | `qemu-riscv-nuttx`        | c        | 1     | –    | –          | –    |
-| `qemu-riscv64-threadx`    | c        | 6     | –    | –          | –    |
-| `qemu-riscv64-threadx`    | cpp      | 6     | –    | –          | –    |
-| `qemu-riscv64-threadx`    | rust     | 6     | –    | –          | –    |
-| `threadx-linux`           | c        | 6     | –    | –          | –    |
-| `threadx-linux`           | cpp      | 6     | –    | –          | –    |
-| `threadx-linux`           | rust     | 6     | –    | (pending 171.C.3) | – |
-| `zephyr`                  | c        | 6     | 6    | 2 (pub/sub; service 171.0.a) | – |
-| `zephyr`                  | cpp      | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
-| `zephyr`                  | rust     | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
+| `qemu-riscv64-threadx`    | c        | 6 ¹   | –    | –          | –    |
+| `qemu-riscv64-threadx`    | cpp      | 6 ¹   | –    | –          | –    |
+| `qemu-riscv64-threadx`    | rust     | 6 ¹   | –    | –          | –    |
+| `threadx-linux`           | c        | 6     | –    | 6          | –    |
+| `threadx-linux`           | cpp      | 6     | –    | 2 (pub/sub) | –   |
+| `threadx-linux`           | rust     | 6     | –    | – (intentionally empty, see below) | – |
+| `zephyr`                  | c        | 6     | 6    | 6          | –    |
+| `zephyr`                  | cpp      | 6     | 6    | 6+aemv8r   | –    |
+| `zephyr`                  | rust     | 6     | 6    | 6+aemv8r   | –    |
+
+¹ `qemu-riscv64-threadx` action lanes are build-only: the action
+example fixtures compile, but the action runtime lanes were
+deliberately dropped from the run matrix in 182.5 (pub/sub + service
+remain runtime-tested).
 
 `qemu-riscv-nuttx` currently ships only `c/talker`, built by the separate
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board

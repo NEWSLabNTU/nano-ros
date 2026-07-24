@@ -29,8 +29,9 @@ drivers,interfaces,testing,verification,reference,codegen,cli}/`. The stack laye
 Every build is a point in a 3-axis space, compile-time mutually exclusive within each axis,
 never cross-implied:
 
-- **RMW**: `rmw-{zenoh,xrce,cyclonedds}` (dust-dds retired).
-- **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`.
+- **RMW**: `rmw-{zenoh,xrce,cyclonedds,uorb}` (uorb is the PX4 C++-only port; dust-dds retired).
+- **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}` (plus an esp-idf
+  platform integration for ESP32 targets).
 - **ROS edition**: `ros-{humble,iron}`.
 
 `nros` default features are `["std"]` only; the user picks each axis explicitly. **RMW is a

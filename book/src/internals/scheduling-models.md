@@ -292,8 +292,15 @@ schedulability. Research shows it can reduce RAM requirements by 30–50%
 compared to pure FPP, because fewer threads need independent stacks for
 preemption frames.
 
-**nano-ros on ThreadX**: Currently sets `preempt_threshold = priority`
-(no benefit). Future work will expose this as a configurable option.
+**nano-ros on ThreadX**: multi-tier `run_tiers` is real (phase-297,
+RFC-0053) — one executor per tier over one shared session, with
+per-tier stacks allocated from the ThreadX byte pool via
+`nros_threadx_create_task`. The tier's `preempt_threshold` is passed
+natively at `tx_thread_create` (a `-1` sentinel means "use the
+priority", i.e. normal preemption). Tiers are resolved descending by
+raw priority number, so on ThreadX (lower number = higher priority)
+`tiers[0]` is the lowest-priority tier; the boot tier runs first and
+re-prioritizes itself to its declared priority.
 
 ### NuttX
 

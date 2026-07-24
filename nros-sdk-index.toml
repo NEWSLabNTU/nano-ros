@@ -434,7 +434,7 @@ platform = "freertos"
 packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 
 [board.qemu-arm-nuttx]
-arch = "cortex-m3"
+arch = "cortex-a7"
 platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
 # nuttx-libc is the one source the Rust example path-deps, so `nros setup` must
 # provision it. (Kernel/apps are pulled by the full west/make build, not here.)

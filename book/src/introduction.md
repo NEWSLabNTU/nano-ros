@@ -85,11 +85,11 @@ When a project grows beyond one node, continue with
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
 | ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
-| Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Verified      |
+| Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Ready         |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
-| QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/qemu-riscv64-threadx/`                  | Verified      |
-| Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C    | `examples/threadx-linux/`                         | Verified      |
-| QEMU Cortex-A9 / virt     | Cortex-A9     | NuttX / Zephyr  | Rust C C++ | `examples/nuttx/`, Zephyr `samples/`              | Verified      |
+| QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C C++ | `examples/qemu-riscv64-threadx/`                  | Verified      |
+| Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C C++ | `examples/threadx-linux/`                         | Verified      |
+| QEMU virt / Cortex-A9     | Cortex-A7 / A9 | NuttX / Zephyr | Rust C C++ | `examples/qemu-arm-nuttx/`, `examples/zephyr/`    | Verified      |
 | Pixhawk 4 / 6X            | STM32F7 / H7  | NuttX (PX4)     | C++       | `integrations/px4/module-template/`               | Ready ⁴       |
 | Generic Cortex-M0+/M4/M7  | ≥ 64 KB SRAM  | RTOS of choice  | Rust C C++ | Use your board's vendor BSP + integrations shells | Pattern shown |
 
@@ -113,7 +113,7 @@ PX4's uORB binding is C++-only.
 | POSIX      | Linux / *BSD | OS sockets     | x86-64, aarch64              |
 | Bare-metal | None          | smoltcp        | Cortex-M3, ESP32-C3, STM32F4 |
 | FreeRTOS   | FreeRTOS      | lwIP           | Cortex-M3 (QEMU)             |
-| NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU)             |
+| NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU), RISC-V32 (QEMU rv-virt) |
 | ThreadX    | ThreadX       | NetX Duo       | RISC-V 64 (QEMU), Linux sim  |
 | Zephyr     | Zephyr        | Zephyr sockets | Various boards               |
 

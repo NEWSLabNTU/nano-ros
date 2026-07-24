@@ -100,6 +100,23 @@ All examples are in `examples/qemu-arm-nuttx/rust/`:
 | `action-server`  | Serves `Fibonacci` action on `/fibonacci`        |
 | `action-client`  | Sends `Fibonacci` goal on `/fibonacci`           |
 
+## RISC-V (`rv-virt`, riscv32)
+
+The same NuttX path also runs on QEMU's RISC-V `rv-virt` board
+(rv32imac, `riscv32imac-unknown-nuttx-elf`), proving the provisioning
+path is arch-agnostic. Provision and build with:
+
+```bash
+nros setup qemu-riscv-nuttx --rmw zenoh
+just nuttx build-riscv-c        # C example fixtures
+just nuttx build-riscv-rust     # Rust example fixtures
+```
+
+Board crate: `nros-board-nuttx-qemu-riscv` (in `packages/boards/`).
+The C pub/sub pair is exercised end-to-end under
+`qemu-system-riscv32`, and Rust / C / C++ realtime-tiers workspace
+runtime lanes cover the multi-tier scheduling path on this board.
+
 ## Testing
 
 ```bash

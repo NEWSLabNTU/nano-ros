@@ -172,6 +172,20 @@ fresh checkout) before the first publish lands. threadx-riscv64
    `nros setup threadx-linux`.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
+## Multi-tier scheduling (phase-297)
+
+ThreadX supports the multi-tier workspace scheduling model
+(RFC-0053): declare per-tier ThreadX priorities in the workspace
+manifest with `[tiers.<name>.threadx]` priority tables, and
+`nros::main!` routes the app onto `run_tiers` — one executor per
+tier, all sharing one session, with per-tier stacks carved from the
+ThreadX byte pool. ThreadX priorities follow the native convention:
+**lower number = higher priority**. Tiers are sorted descending by
+raw priority number, so `tiers[0]` (the numerically-largest, i.e.
+lowest-priority tier) boots first and then adopts its declared
+priority. See [Scheduling Models](../internals/scheduling-models.md)
+for the mechanics.
+
 ## GitHub source
 
 - ThreadX-Linux Rust:

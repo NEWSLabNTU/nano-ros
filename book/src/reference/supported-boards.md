@@ -16,14 +16,19 @@ them.
 | STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | bare / ESP-IDF | Tested  | `examples/qemu-esp32-baremetal/rust/`, `integrations/nano-ros/` |
+| Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | Tested  | `examples/qemu-esp32-baremetal/rust/`                              |
+| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | Ready (build-only) | `integrations/nano-ros/`                                 |
+| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | ESP-IDF        | Ready (build-only) | `packages/boards/nros-board-esp32s3/`                    |
 | Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | ESP-IDF        | Untested | Same ESP-IDF path as C3                                            |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
 | RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
 | QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/qemu-riscv64-threadx/`                                  |
-| QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr / NuttX | Tested   | Zephyr `-b qemu_cortex_a9`, NuttX `qemu-armv7a`                    |
+| QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr        | Tested   | Zephyr `-b qemu_cortex_a9`                                         |
+| QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-arm-nuttx/`                                         |
+| QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup qemu-riscv-nuttx`) |
+| NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Ready (build-only, experimental) | `packages/boards/nros-board-orin-spe/`               |
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | Cortex-A SMP   | Armv8-R    | Zephyr 3.7    | Tested (build); license-gated runtime | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r{,-cyclonedds}` + `run-fvp-aemv8r{,-cyclonedds}` |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |

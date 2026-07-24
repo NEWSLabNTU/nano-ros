@@ -13,7 +13,7 @@ Per-platform behaviour comparison. The [Doxygen reference](../api/platform-cffi/
 | **ThreadX** | `tx_time_get` | `tx_byte_allocate` | ThreadX threads | NetX Duo BSD `network.c` (C) | — | `tx_time_get` fallback | Multicast gated on NetX Duo `nx_igmp_*` (untested). |
 | **Bare-metal (MPS2-AN385)** | CMSDK Timer0 | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes (smoltcp 0.12 IGMP) | monotonic fallback | Cortex-M3 QEMU. |
 | **Bare-metal (STM32F4)** | DWT cycle counter | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | Cortex-M4F. |
-| **Bare-metal (ESP32)** | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | Xtensa LX6. |
+| **Bare-metal (ESP32-S3)** | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | Xtensa LX7 (build-only board crate). |
 | **Bare-metal (ESP32-C3 QEMU)** | `esp_timer_get_time` | bump allocator | single-threaded | nros-smoltcp (Rust) | Yes | monotonic fallback | RISC-V. |
 
 > **Canonical interface contract.** What "Yes" / "—" / specific functions mean — buffer ownership, blocking allowance, valid value ranges — is in the [platform-cffi Doxygen reference](../api/platform-cffi/index.html). This page is a comparison table, not a spec.
