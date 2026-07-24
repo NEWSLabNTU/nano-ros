@@ -171,8 +171,16 @@ function(nano_ros_entry)
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
     if(_NRA_LAUNCH OR _NRA_MODEL)
-        if(_NRA_LAUNCH AND _NRA_MODEL)
-            message(FATAL_ERROR "nano_ros_entry: LAUNCH and MODEL are mutually exclusive")
+        # phase-296 R-code.1 — the launch-XML bake is REMOVED; the canonical
+        # input is a play_launch-resolved SystemModel.
+        if(_NRA_LAUNCH)
+            message(FATAL_ERROR
+                "nano_ros_add_executable/nano_ros_entry: the LAUNCH keyword was "
+                "removed (phase-296 R4) — resolve a SystemModel and pass MODEL:\n"
+                "  play_launch resolve <bringup>/launch/<file>.launch.xml "
+                "[--system <bringup>/system.toml] -o <bringup>/config/system_model.yaml\n"
+                "  nano_ros_add_executable(... MODEL "
+                "\"\${CMAKE_CURRENT_SOURCE_DIR}/../<bringup>/config/system_model.yaml\")")
         endif()
         if(NOT _NRA_LANG)
             set(_NRA_LANG cpp)
@@ -612,14 +620,18 @@ function(_nros_entry_invoke_codegen)
         --out "${_gen_path}"
         --depfile "${_depfile_path}"
         --emit-link-libs "${_NRX_NAME}=${_link_libs_path}")
-    # R1-N2 / W4.2 — MODEL (resolved SystemModel) is the canonical input;
-    # LAUNCH stays the transitional path. Exactly one must be given.
+    # R-code.1 — MODEL (resolved SystemModel) is the ONLY input; the
+    # launch-XML bake was removed (phase-296 R4).
+    if(_NRX_LAUNCH)
+        message(FATAL_ERROR
+            "nano_ros_entry: the LAUNCH keyword was removed (phase-296 R4) — "
+            "resolve a SystemModel (play_launch resolve … -o "
+            "<bringup>/config/system_model.yaml) and pass MODEL instead")
+    endif()
     if(_NRX_MODEL)
         list(APPEND _cli_args --model "${_NRX_MODEL}")
-    elseif(_NRX_LAUNCH)
-        list(APPEND _cli_args --launch "${_NRX_LAUNCH}")
     else()
-        message(FATAL_ERROR "nano_ros_entry codegen: LAUNCH or MODEL required")
+        message(FATAL_ERROR "nano_ros_entry codegen: MODEL required")
     endif()
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")

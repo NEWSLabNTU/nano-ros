@@ -217,33 +217,32 @@ fn run_entry(args: EntryArgs) -> Result<()> {
 
     let lang = entry_codegen::Lang::parse(&args.lang)?;
 
-    let arg_overrides = parse_arg_overrides(args.args.as_deref())?;
+    // R-code.1 — `--args` was a launch-arm concept (launch-time `<arg>`
+    // substitution); a resolved model is early-bound, so overrides here can
+    // only mean the user wanted a different resolve. Fail loud.
+    if args.args.is_some() {
+        bail!(
+            "codegen entry: `--args` was removed with the launch bake (phase-296 \
+             R4) — a SystemModel is early-bound; re-run `play_launch resolve` \
+             with the desired `KEY:=VALUE` bindings instead"
+        );
+    }
 
-    let workspace = if args.workspace.is_absolute() {
-        args.workspace.clone()
-    } else {
-        std::env::current_dir()
-            .context("get cwd")?
-            .join(&args.workspace)
-    };
 
     let mut plan = if let Some(model_path) = &args.model {
         entry_codegen::plan_from_model(model_path, args.board.clone())?
-    } else {
-        let Some(launch) = args.launch.as_deref() else {
-            bail!("codegen entry: pass --launch <pkg[:file]> or --model <system_model.yaml>");
-        };
-        // phase-296 R3 — the launch-XML entry bake is transitional.
-        crate::deprecation::warn_legacy_bake(
-            "nros codegen entry --launch (parsing launch XML at build time)",
+    } else if args.launch.is_some() {
+        // phase-296 R-code.1 — the launch-XML entry bake is REMOVED. The
+        // canonical input is a play_launch-resolved SystemModel.
+        bail!(
+            "codegen entry: `--launch` was removed (phase-296 R4) — resolve a \
+             SystemModel and pass `--model`:\n  play_launch resolve \
+             <bringup>/launch/<file>.launch.xml [--system <bringup>/system.toml] \
+             -o <bringup>/config/system_model.yaml\n  nros codegen entry --model \
+             <bringup>/config/system_model.yaml …"
         );
-        let input = entry_codegen::PlanInput {
-            workspace: workspace.as_path(),
-            launch_spec: launch,
-            board: args.board.clone(),
-            arg_overrides,
-        };
-        entry_codegen::plan_from_launch(input)?
+    } else {
+        bail!("codegen entry: pass --model <system_model.yaml>");
     };
 
     // Phase 211.F — partition for a single target host when `--host` is given.
@@ -251,9 +250,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         plan = plan.for_host(host);
         if plan.nodes.is_empty() {
             bail!(
-                "no nodes for host `{host}` in launch `{}` — check `<node machine=…>` \
-                 values (an unhosted node would have been kept, so the launch has \
-                 neither a node for this host nor any shared node)",
+                "no nodes for host `{host}` in model `{}` — check the model's \
+                 `execution.deploy[*].host` values (an unhosted node would have \
+                 been kept, so the model has neither a node for this host nor \
+                 any shared node)",
                 plan.launch_file.display()
             );
         }

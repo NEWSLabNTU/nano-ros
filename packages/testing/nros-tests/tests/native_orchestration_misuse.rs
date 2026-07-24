@@ -64,23 +64,17 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
 }
 
 #[test]
-fn instance_identity_mismatch_is_a_compile_error() {
+fn launch_arm_is_a_removal_error() {
+    // R-code.1 — the `launch = …` macro arm is REMOVED; using it must fail
+    // with the actionable migrate-to-model diagnostic (the launch↔system.toml
+    // identity check retired with the arm; the model form's integrity is the
+    // resolve-time checker's job).
     let (_g, root) = stage_fixture();
-    // R-code.1 stage 1: the staged fixture entry is on the model arm now, so
-    // pin THIS test to the launch arm it exercises (the launch-XML↔system.toml
-    // identity check). Stage 2 (launch-arm removal) either ports the check to
-    // the model arm (orphaned execution.bindings should fail loud) or retires
-    // this test with the arm.
     fs::write(
         root.join("src/demo_entry/src/main.rs"),
         "nros::main!(launch = \"demo_bringup\");\n",
     )
     .expect("write launch-arm main.rs");
-    let launch = root.join("src/demo_bringup/launch/system.launch.xml");
-    let body = fs::read_to_string(&launch).expect("read launch.xml");
-    let bad = body.replace("name=\"control_node\"", "name=\"control_typo\"");
-    assert_ne!(body, bad, "expected control_node in fixture launch");
-    fs::write(&launch, bad).expect("write launch.xml");
 
     let out = Command::new("cargo")
         .args(["check", "-p", "demo_entry", "--manifest-path"])
@@ -89,12 +83,12 @@ fn instance_identity_mismatch_is_a_compile_error() {
         .expect("spawn cargo check");
     assert!(
         !out.status.success(),
-        "expected a compile error for the instance-identity mismatch, but check succeeded.\nstderr:\n{}",
+        "expected the launch-arm removal error, but check succeeded.\nstderr:\n{}",
         String::from_utf8_lossy(&out.stderr),
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("not a `[[component]]`") || stderr.contains("must match a `system.toml`"),
-        "expected the instance-identity diagnostic, stderr:\n{stderr}",
+        stderr.contains("removed") && stderr.contains("play_launch resolve"),
+        "expected the removal diagnostic naming the resolve command, stderr:\n{stderr}",
     );
 }
