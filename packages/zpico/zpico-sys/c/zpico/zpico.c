@@ -329,6 +329,33 @@ static inline void _zpico_notify_spin(void) {
 #else
 // POSIX/Zephyr: mutex + condvar
 static _z_mutex_t g_spin_mutex;
+
+#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
+/* issue #247 — multi-tier serialization of the spin-driven read path. The
+ * ThreadX arm predates multi-tier (RFC-0015 Model 1): TWO tier threads each
+ * call zp_read on the SAME TCP stream, splitting message reassembly across
+ * two callers — control replies (the write-filter's DeclareSubscriber /
+ * DeclareFinal) get consumed-but-dropped, so a spawned tier's publisher
+ * filter never opens and its puts are silently discarded (router traces
+ * confirmed the reply was sent; the guest never processed it). TRY-lock:
+ * the losing spinner skips this round's read (data is drained by the
+ * winner) instead of blocking its 1 ms tier cadence. */
+static _z_mutex_t g_threadx_read_mutex;
+static bool g_threadx_read_mutex_initialized = false;
+
+static int _zpico_threadx_locked_read(void) {
+    if (g_threadx_read_mutex_initialized) {
+        if (_z_mutex_try_lock(&g_threadx_read_mutex) != 0) {
+            /* Another tier is mid-read — it drains the data. */
+            return ZPICO_ERR_TIMEOUT;
+        }
+        int r = zp_read(z_session_loan_mut(&g_session), NULL);
+        _z_mutex_unlock(&g_threadx_read_mutex);
+        return r;
+    }
+    return zp_read(z_session_loan_mut(&g_session), NULL);
+}
+#endif
 static _z_condvar_t g_spin_cv;
 static bool g_spin_cv_initialized = false;
 
@@ -1035,6 +1062,12 @@ int32_t zpico_open(void) {
         printk("zpico: tx-flush task init FAILED — batched puts flush on keepalives only\n");
     }
 #endif
+#endif
+
+#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
+    if (!g_threadx_read_mutex_initialized && _z_mutex_init(&g_threadx_read_mutex) == 0) {
+        g_threadx_read_mutex_initialized = true;
+    }
 #endif
 
     g_session_open = true;
@@ -1796,12 +1829,21 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
         int ready = nx_bsd_select(fd + 1, &read_fds, NULL, NULL, &tv);
 #endif
         if (ready > 0) {
+#if Z_FEATURE_MULTI_THREAD == 1
+            /* issue #247 — one reader at a time (g_threadx_read_mutex). */
+            ret = _zpico_threadx_locked_read();
+#else
             ret = zp_read(z_session_loan_mut(&g_session), NULL);
+#endif
         } else if (ready < 0) {
             ret = ready;
         }
     } else {
+#if Z_FEATURE_MULTI_THREAD == 1
+        ret = _zpico_threadx_locked_read();
+#else
         ret = zp_read(z_session_loan_mut(&g_session), NULL);
+#endif
     }
     _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);

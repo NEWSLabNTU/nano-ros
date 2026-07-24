@@ -66,6 +66,37 @@ replies must be processed before the spawned tier's declare completes —
 extend the #144 serialization to cover filter-open) or in zenoh-pico's
 filter/interest association under concurrent readers.
 
+## Debugging session 3 (2026-07-24) — router traces + a partial fix
+
+gdb (with `handle SIGUSR1 nostop pass` — the ThreadX-Linux port schedules
+via SIGUSR1, gdb must pass it) + `RUST_LOG=zenoh=trace` on the router:
+
+- The guest registers TWO interests (one per publisher write-filter);
+  `_z_add_interest` REGISTERS BEFORE SENDING (verified in primitives.c:579)
+  so a reply cannot beat the table insert.
+- The ROUTER receives both interests and correctly schedules the replies:
+  `DeclareFinal(3)` for telem, then `DeclareSubscriber + DeclareFinal(7)`
+  for ctrl (the matching remote subscriber!), 2.6 ms apart, on the one TCP
+  link.
+- The guest processes ONLY `Final(3)`. The interest-7 batch is consumed at
+  the transport but never reaches `_z_interest_process_declares` — the
+  ctrl filter stays unopened, puts short-circuit Ok.
+- Transport rx is otherwise alive (keepalives maintain the lease across
+  15 s runs; tx flows continuously).
+
+**Partial fix landed:** `zpico.c`'s ThreadX arm now serializes `zp_read`
+across tier threads (`g_threadx_read_mutex`, TRY-lock so a losing spinner
+skips the round) — two concurrent readers on one TCP stream split message
+reassembly and is wrong regardless. Verified compiled+linked; the cell
+STILL fails identically, so a second defect remains in the concurrent
+rx/tx handling on this arm.
+
+**Next:** instrument `_z_handle_network_message` / the unicast rx path to
+see where the interest-7 batch dies (count messages handed up vs bytes
+read; suspect partial-read state or the rx zbuf being reset between the
+Final(3) batch and the next), and compare against a single-tier threadx
+image (talker) where filters open fine.
+
 ## Repro
 
 ```
