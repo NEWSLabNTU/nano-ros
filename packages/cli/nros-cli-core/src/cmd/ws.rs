@@ -315,7 +315,6 @@ fn generate_bridge_configs(
         // (synth XML / synthesized record) live in `_guards` through
         // plan_system.
         let model_path = pkg.dir.join("config/system_model.yaml");
-        let mut _guard_synth = None;
         let mut _guard_record = None;
         let (plan_launch_file, plan_record_file) = if model_path.exists() {
             let model = crate::orchestration::model_ingest::load_model(&model_path)?;
@@ -326,14 +325,16 @@ fn generate_bridge_configs(
             _guard_record = Some(tmp);
             (model_path.clone(), Some(rec_path))
         } else {
-            let input = crate::orchestration::launch_synth::resolve_launch(&pkg.dir, None, None)
-                .wrap_err_with(|| {
-                    format!("ws sync: resolve launch for bridge bringup {}", pkg.name)
-                })?;
-            let materialised = input.materialise()?;
-            let path = materialised.path.clone();
-            _guard_synth = Some(materialised);
-            (path, None)
+            // R-code.1 — the launch-synth fallback is deleted; a bridge
+            // bringup declares system semantics, so it must resolve a model.
+            eyre::bail!(
+                "ws sync: bridge bringup `{}` has no committed SystemModel \
+                 (config/system_model.yaml) — the launch-synth fallback was \
+                 removed (phase-296 R4); resolve one with `play_launch \
+                 resolve … --system {}/system.toml`",
+                pkg.name,
+                pkg.dir.display()
+            );
         };
         let output = crate::orchestration::planner::plan_system(
             crate::orchestration::planner::PlanOptions {

@@ -327,25 +327,6 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     Ok(())
 }
 
-/// Parse the comma-separated `k=v[,k=v]…` form.
-fn parse_arg_overrides(raw: Option<&str>) -> Result<Vec<(String, String)>> {
-    let Some(raw) = raw else {
-        return Ok(Vec::new());
-    };
-    let mut out = Vec::new();
-    for part in raw.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        let (k, v) = part
-            .split_once('=')
-            .ok_or_else(|| eyre!("invalid --args entry `{part}` (expected `k=v`)"))?;
-        out.push((k.trim().to_string(), v.trim().to_string()));
-    }
-    Ok(out)
-}
-
 /// Phase 219.J — emit the `target_link_libraries` sidecar the cmake
 /// fn `include()`s after running codegen. Filters to one
 /// `<pkg>_<exec>_component` per unique entry; the cmake target name

@@ -1,0 +1,19 @@
+meta:
+  version: 1
+  args:
+    talker_name: talker
+# R-code.1 — the committed model for the plan-pipeline e2e (mirrors
+# launch/system.launch.xml at the default binding; params/remaps resolved).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: demo_pkg
+      exec: talker
+      params:
+        rate_hz: 25
+      remaps:
+      - from: chatter
+        to: /chatter

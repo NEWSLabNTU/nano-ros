@@ -6,8 +6,6 @@
 
 pub mod abi_guard;
 pub mod cmd;
-// RFC-0052 / phase-296 R3 — legacy-bake deprecation notices (removed in R4).
-pub mod deprecation;
 // Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
 // pkg-index walk + launch.xml parser also live here so the cmake-fn
 // path (`nano_ros_entry(LAUNCH …)`), the Rust proc-macro

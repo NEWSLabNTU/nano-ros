@@ -8,13 +8,12 @@ use super::{
     schema::InterfaceRef,
     workspace::{Workspace, unique_paths},
 };
-use eyre::{Context, Result, bail, eyre};
+use eyre::{Context, Result, eyre};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 #[derive(Debug, Clone)]
@@ -65,13 +64,19 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     fs::create_dir_all(&metadata_dir)?;
 
     let workspace = Workspace::discover(&options.workspace_root)?;
+    // Launch-arg overrides are a launch-parse concept; every record here is
+    // pre-resolved (committed --record, a model-synthesized record, or
+    // play_launch resolve output) — validate the shape, reject silently
+    // ignored bindings.
     let launch_args = parse_launch_args(&options.launch_args)?;
-    let record = load_or_parse_record(
-        &options.launch_file,
-        &options.workspace_root,
-        options.record_file.as_deref(),
-        launch_args,
-    )?;
+    if !launch_args.is_empty() {
+        eyre::bail!(
+            "launch-arg overrides have no effect on a pre-resolved record/model              (early binding) — re-run `play_launch resolve` with the desired              `KEY:=VALUE` bindings instead"
+        );
+    }
+    // R-code.1 — the launch-XML parse path is deleted; plan_system consumes a
+    // RECORD (committed --record, model-synthesized, or resolve output).
+    let record = load_record(options.record_file.as_deref(), &options.launch_file)?;
 
     let record_path = options.out_root.join("record.json");
     fs::write(&record_path, serde_json::to_string_pretty(&record)?)?;
@@ -474,167 +479,20 @@ fn parse_launch_args(args: &[String]) -> Result<HashMap<String, String>> {
     Ok(out)
 }
 
-fn load_or_parse_record(
-    launch_file: &Path,
-    workspace_root: &Path,
-    record_file: Option<&Path>,
-    launch_args: HashMap<String, String>,
-) -> Result<Value> {
-    if let Some(record_file) = record_file {
-        let raw = fs::read_to_string(record_file)
-            .wrap_err_with(|| format!("failed to read record {}", record_file.display()))?;
-        return serde_json::from_str(&raw)
-            .wrap_err_with(|| format!("invalid record JSON {}", record_file.display()));
-    }
-    parse_launch_file_record(launch_file, workspace_root, launch_args)
-}
-
-/// Phase 212.M-F.20 — synthesize a throwaway ament prefix from the workspace
-/// pkg-index so the launch parser's `$(find-pkg-share <pkg>)` substitution
-/// resolves in-tree workspace packages that were never `colcon install`ed.
-///
-/// `play_launch_parser` resolves `find-pkg-share` by walking `AMENT_PREFIX_PATH`
-/// for a `<prefix>/share/<pkg>` dir backed by an ament-index resource marker.
-/// An in-tree development workspace has no such install tree, so a launch file
-/// that includes `<include file="$(find-pkg-share other_pkg)/launch/x.xml"/>`
-/// fails with `Package not found` (which is why O.5 historically sidestepped
-/// with a relative include). Here we build the `package.xml` pkg-index
-/// (`build_pkg_index`, the same surface M-F.17 / N.10 drive) and lay down a
-/// minimal valid prefix in a `TempDir`:
-///
-/// ```text
-/// <tmp>/share/ament_index/resource_index/packages/<pkg>   (empty marker)
-/// <tmp>/share/<pkg>  ->  <workspace>/.../<pkg>             (symlink to source)
-/// ```
-///
-/// The caller prepends `<tmp>` to `AMENT_PREFIX_PATH` for the parser process so
-/// workspace packages win over any installed ones. Returns the live `TempDir`
-/// (its prefix path) — the directory is removed when it drops, after the parser
-/// has run. Best-effort: a missing/empty index returns `Ok(None)` (the parser
-/// falls back to the ambient `AMENT_PREFIX_PATH` exactly as before).
-fn synthesize_workspace_ament_prefix(workspace_root: &Path) -> Result<Option<tempfile::TempDir>> {
-    let index = match crate::pkg_index::build_pkg_index(workspace_root) {
-        Ok(index) => index,
-        // No discoverable workspace (no package.xml walk root) — not this
-        // helper's concern; leave AMENT_PREFIX_PATH untouched.
-        Err(_) => return Ok(None),
-    };
-    let pkgs: Vec<(String, PathBuf)> = index
-        .pkgs()
-        .map(|(name, dir)| (name.to_string(), dir.to_path_buf()))
-        .collect();
-    if pkgs.is_empty() {
-        return Ok(None);
-    }
-
-    let prefix = tempfile::Builder::new()
-        .prefix("nros-ament-prefix-")
-        .tempdir()
-        .wrap_err("failed to create temp ament prefix")?;
-    let share = prefix.path().join("share");
-    let marker_dir = share.join("ament_index/resource_index/packages");
-    fs::create_dir_all(&marker_dir).wrap_err("failed to create ament resource-index dir")?;
-
-    for (name, dir) in &pkgs {
-        // Absolute symlink target so resolution is independent of the parser's
-        // cwd. `dir` is already absolute when `workspace_root` is, but canonical
-        // is cheap insurance.
-        let target = dir.canonicalize().unwrap_or_else(|_| dir.clone());
-        let link = share.join(name);
-        // `share/<pkg>` -> pkg source dir (carries `launch/`, `config/`, …).
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&target, &link)
-            .wrap_err_with(|| format!("failed to symlink share/{name} -> {}", target.display()))?;
-        #[cfg(not(unix))]
-        {
-            // Non-unix hosts: copy the launch dir if present (best-effort).
-            let _ = (&target, &link);
-        }
-        // Empty ament-index marker so `<pkg>` is a known ament resource.
-        fs::write(marker_dir.join(name), b"")
-            .wrap_err_with(|| format!("failed to write ament marker for {name}"))?;
-    }
-
-    Ok(Some(prefix))
-}
-
-/// Resolve a launch file to a record by shelling out to the external
-/// `play_launch_parser` binary (Phase 195.A). nano-ros keeps the `nros` binary
-/// itself free of the pyo3/`libpython` embedding (the launch parser embeds
-/// CPython to execute `.launch.py`); it lives in the separate, python-bearing
-/// `play_launch_parser` tool (`pip install play-launch-parser` or its binary).
-/// The build system runs this internally to produce the record; `--record` is
-/// not a user-facing surface. Override the binary via `NROS_PLAY_LAUNCH_PARSER`.
-fn parse_launch_file_record(
-    launch_file: &Path,
-    workspace_root: &Path,
-    launch_args: HashMap<String, String>,
-) -> Result<Value> {
-    let bin = std::env::var("NROS_PLAY_LAUNCH_PARSER")
-        .unwrap_or_else(|_| "play_launch_parser".to_string());
-    let mut cmd = Command::new(&bin);
-
-    // Phase 212.M-F.20 — let `$(find-pkg-share <pkg>)` resolve in-tree
-    // workspace packages that were never installed. Synthesize a throwaway
-    // ament prefix from the `package.xml` pkg-index and prepend it to the
-    // parser's `AMENT_PREFIX_PATH` (workspace shadows any installed copy).
-    // `_ament_prefix` keeps the `TempDir` alive until after `cmd.output()`.
-    let _ament_prefix = synthesize_workspace_ament_prefix(workspace_root)?;
-    if let Some(prefix) = &_ament_prefix {
-        let mut ament = prefix.path().as_os_str().to_os_string();
-        if let Some(existing) = std::env::var_os("AMENT_PREFIX_PATH") {
-            if !existing.is_empty() {
-                ament.push(":");
-                ament.push(existing);
-            }
-        }
-        cmd.env("AMENT_PREFIX_PATH", ament);
-    }
-    // `<include>` recursion-safety knobs (Phase 211.J):
-    //
-    // * `--strict-includes` — orchestration cannot tolerate a silently-dropped
-    //   include branch (the dropped sub-tree's nodes would simply vanish from
-    //   the plan), so the planner always runs the parser in strict mode. This
-    //   flips the parser default of warn-and-skip into a hard
-    //   `ParseError::CircularInclude` that surfaces as a non-zero exit + the
-    //   include chain in stderr — what every `nros plan` caller actually wants.
-    //
-    // * `--max-include-depth` — opt-in cap. The parser default is 100
-    //   (generous enough to never false-positive on Autoware); set
-    //   `NROS_PLAY_LAUNCH_MAX_INCLUDE_DEPTH=<N>` to tighten or loosen.
-    //   16 is the 211.J-proposed default for orchestration but we keep the
-    //   parser's 100 unless the env var is explicitly set, so we don't break
-    //   any existing user's plan.
-    cmd.arg("--strict-includes");
-    if let Ok(depth) = std::env::var("NROS_PLAY_LAUNCH_MAX_INCLUDE_DEPTH") {
-        cmd.arg("--max-include-depth").arg(depth);
-    }
-    cmd.arg("file").arg(launch_file);
-    for (k, v) in &launch_args {
-        cmd.arg(format!("{k}:={v}"));
-    }
-    let output = cmd.output().map_err(|err| {
-        eyre!(
-            "failed to run `{bin}` (launch parser) for {}: {err}. Install it \
-             (`pip install play-launch-parser`, or build the play_launch_parser \
-             binary) and put it on PATH, or set NROS_PLAY_LAUNCH_PARSER=<path>.",
-            launch_file.display()
-        )
-    })?;
-    if !output.status.success() {
-        bail!(
-            "{bin} failed for {} (exit {}):\n{}",
-            launch_file.display(),
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
+fn load_record(record_file: Option<&Path>, provenance: &Path) -> Result<Value> {
+    let Some(record_file) = record_file else {
+        eyre::bail!(
+            "no record for `{}` — the launch-XML parse path was removed \
+             (phase-296 R4). Resolve a SystemModel (`play_launch resolve …`) \
+             and commit it as <bringup>/config/system_model.yaml (convention \
+             discovery plans it), or pass a pre-baked record via --record.",
+            provenance.display()
         );
-    }
-    serde_json::from_slice(&output.stdout).wrap_err_with(|| {
-        format!(
-            "invalid record JSON from {bin} for {}",
-            launch_file.display()
-        )
-    })
+    };
+    let raw = fs::read_to_string(record_file)
+        .wrap_err_with(|| format!("failed to read record {}", record_file.display()))?;
+    serde_json::from_str(&raw)
+        .wrap_err_with(|| format!("invalid record JSON {}", record_file.display()))
 }
 
 fn record_array<'a>(record: &'a Value, key: &str) -> &'a [Value] {
@@ -5587,63 +5445,6 @@ topics:
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("{name}-{}-{stamp}", std::process::id()))
-    }
-
-    // ---- Phase 212.M-F.20 — synthesized ament prefix for find-pkg-share ----
-
-    /// `synthesize_workspace_ament_prefix` must lay down a valid ament prefix
-    /// from the workspace pkg-index: an empty resource-index marker per package
-    /// plus a `share/<pkg>` symlink to the package source dir, so the launch
-    /// parser's `$(find-pkg-share <pkg>)` resolves an in-tree, never-installed
-    /// package (`<prefix>/share/<pkg>/launch/...`).
-    #[test]
-    fn ament_prefix_synthesis_maps_pkg_share_to_source() {
-        let ws = temp_workspace("mf20_ament_prefix_ws");
-        let pkg_dir = ws.join("src/secondary_node");
-        fs::create_dir_all(pkg_dir.join("launch")).unwrap();
-        // Cargo workspace marker so `build_pkg_index` accepts the root.
-        fs::write(ws.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
-        fs::write(
-            pkg_dir.join("package.xml"),
-            "<?xml version=\"1.0\"?><package format=\"3\">\
-             <name>secondary_node</name></package>",
-        )
-        .unwrap();
-        fs::write(pkg_dir.join("launch/secondary.launch.xml"), "<launch/>").unwrap();
-
-        let prefix = synthesize_workspace_ament_prefix(&ws)
-            .expect("synthesis ok")
-            .expect("a non-empty workspace yields a prefix");
-        let root = prefix.path();
-
-        // ament resource-index marker present for the discovered package.
-        assert!(
-            root.join("share/ament_index/resource_index/packages/secondary_node")
-                .is_file(),
-            "missing ament resource-index marker"
-        );
-        // `share/<pkg>` resolves to the source dir, so the launch file under it
-        // is reachable through the prefix — exactly what `find-pkg-share` reads.
-        let resolved = root.join("share/secondary_node/launch/secondary.launch.xml");
-        assert!(
-            resolved.exists(),
-            "share/<pkg> symlink does not expose the package's launch file: {}",
-            resolved.display()
-        );
-
-        let _ = fs::remove_dir_all(&ws);
-    }
-
-    /// A directory with no `package.xml` yields no prefix (the parser then keeps
-    /// the ambient `AMENT_PREFIX_PATH` untouched).
-    #[test]
-    fn ament_prefix_synthesis_is_none_for_empty_workspace() {
-        let ws = temp_workspace("mf20_empty_ws");
-        fs::create_dir_all(&ws).unwrap();
-        fs::write(ws.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
-        let prefix = synthesize_workspace_ament_prefix(&ws).expect("synthesis ok");
-        assert!(prefix.is_none(), "no packages → no synthesized prefix");
-        let _ = fs::remove_dir_all(&ws);
     }
 
     // ---- Phase 172.B — callback-chain inference ----

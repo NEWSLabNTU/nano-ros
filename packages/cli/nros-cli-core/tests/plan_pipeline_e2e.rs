@@ -44,7 +44,7 @@ use nros_cli_core::{
 };
 use serde_json::Value;
 
-/// `nros metadata` (collect) → `nros plan` (launch + manifest resolution) →
+/// `nros metadata` (collect) → `nros plan` (model + manifest resolution) →
 /// `nros check` (validation) over the in-tree fixture workspace, asserting the
 /// canonical `nros-plan.json` + `record.json` shapes the live consumers
 /// (`nros-build`, `nros explain`) read.
@@ -67,7 +67,9 @@ fn fixture_workspace_plans_and_checks() {
 
     plan::run(plan::Args {
         system_pkg: "e2e_system".to_string(),
-        launch_file: demo_pkg.join("launch/system.launch.xml"),
+        // R-code.1 — dir input: convention discovery plans the committed
+        // config/system_model.yaml (the launch parse path is deleted).
+        launch_file: demo_pkg.clone(),
         record: None,
         model: None,
         file: None,

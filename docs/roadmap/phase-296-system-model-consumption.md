@@ -967,10 +967,19 @@ model branch bypasses), `nros plan` (modelless fallback, R3-warned), and
    self-pkg dir plans through a synthesized 1-node model via the record
    plumbing — no parser round trip, no R3 warning. 475/475 cli-core tests.
 
-**All preconditions met.** Next: delete `launch_synth` (949 lines, 20
-tests), the plan/codegen-system/ws launch fallbacks, and the deprecation
-module in one test-green change. Post-deletion contract: a dir input with
-launch files but no model is a hard error carrying the resolve recipe.
+**DELETION LANDED (2026-07-24) — R-code COMPLETE.** The launch-XML parse
+path is gone end to end: planner requires a record (committed `--record`,
+model-synthesized, or resolve output; launch-arg overrides on pre-resolved
+input fail loud — early binding), `parse_launch_file_record` + the M-F.20
+ament-prefix synthesis deleted, the plan/ws/codegen-system launch fallbacks
+are hard errors carrying the resolve recipe, `launch_synth` slimmed 949 →
+~400 lines (the self-bringup discovery + model-synth kernel remains), and
+the R3 `deprecation` module (+ `NROS_ALLOW_LEGACY_BAKE`) is deleted with
+zero callers. `plan_pipeline_e2e` re-targeted to the model pipeline
+(dir-input discovery; fixture gains its committed model). The `nros` CLI
+neither parses nor synthesises launch XML anywhere; `nros-launch-parser`
+survives only for the separate `nros-build`/`generate_run_plan` build.rs
+compat surface (its own retirement track).
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored

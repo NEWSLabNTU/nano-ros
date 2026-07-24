@@ -39,7 +39,6 @@ use std::collections::BTreeMap;
 use crate::orchestration::{
     capability_resolver,
     cargo_metadata_schema::{SystemComponentEntry, SystemToml, validate_and_warn_capabilities},
-    launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
     tier_resolver::{
         ResolvedTierTable, collect_callback_groups, derive_target_rtos, resolve_system_tiers,
@@ -251,38 +250,16 @@ pub fn run(args: Args) -> Result<()> {
     // The resolved file path (real or synth temp) is recorded into
     // `nros-plan.json::launch_file` so `nros check` / `nros explain` can
     // see what was used.
-    let bringup_dir = bringup
-        .manifest_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| workspace.clone());
 
-    // 212.E.2 — when `--target <name>` is given and the bringup has a
-    // matching `[deploy.<target>]` block with `launch = "..."`, that
-    // override takes precedence over the bringup's
-    // `[system].default_launch` (per system-toml-schema-v0.1 §3.1 step 1).
-    // An explicit `--launch`/`--file` flag still beats both.
     // R-code — with a model in play the model IS the provenance; the
     // launch-file resolution survives only for the configless self-pkg
     // shape (whose synth records nothing anyway).
-    let resolved_launch: Option<String> = if let Some(m) = &discovered_model {
-        Some(m.to_string_lossy().into_owned())
-    } else {
-        let effective_file: Option<String> = args.file.clone().or_else(|| {
-            args.target
-                .as_deref()
-                .and_then(|t| bringup.system.deploy.get(t).and_then(|d| d.launch.clone()))
-        });
-        let launch_input = resolve_launch(
-            &bringup_dir,
-            effective_file.as_deref(),
-            args.exec.as_deref(),
-        )?;
-        match &launch_input {
-            LaunchInput::File(p) => Some(p.to_string_lossy().into_owned()),
-            LaunchInput::Synth(_) => None, // not persisted; record nothing
-        }
-    };
+    // R-code.1 — provenance is the discovered model (None for the
+    // configless self-pkg default bake; the launch-file resolution died
+    // with launch_synth's resolver).
+    let resolved_launch: Option<String> = discovered_model
+        .as_ref()
+        .map(|m| m.to_string_lossy().into_owned());
 
     emit_bake_tree(
         &bake_dir,
