@@ -97,6 +97,43 @@ read; suspect partial-read state or the rx zbuf being reset between the
 Final(3) batch and the next), and compare against a single-tier threadx
 image (talker) where filters open fine.
 
+## Debugging session 4 (2026-07-24) — bug localized to interest DISPATCH, not rx
+
+Corrected + sharpened (supersedes the "rx desync" theory in session 3):
+
+- **Reads SUCCEED.** On the committed mutex-only image every `zp_read`
+  returns 0 (r=0 ×4, whole-buffer `single_read=false`). NO framing error.
+- **My speculative `single_read=true` + drain-loop was WRONG** — it flips
+  the ThreadX arm to one-message-per-parse, which DESYNCS the fragment
+  stream and produces `_Z_ERR_MESSAGE_DESERIALIZATION_FAILED` (-119,
+  "Failed to decode defragmented message"). Reverted; NOT landed. (The
+  read-serialization mutex from session 3 IS correct-and-neutral and
+  stays.)
+- **Exactly ONE of the two publishers' interest-reply callbacks fires.**
+  `_z_write_filter_callback` (filtering.c:186) breakpoint hits ONCE, not
+  twice, across a full run — the boot-tier publisher (telem) gets its
+  reply, the spawned-tier publisher (ctrl) never does. Its write-filter
+  stays in the default `WRITE_FILTER_ACTIVE` state, so
+  `_z_write_filter_active()` is true and `z_put` short-circuits (returns
+  Ok, sends nothing). Router traces (session 3) prove BOTH replies were
+  sent on the wire — so the ctrl reply is read at the transport but never
+  routed to the interest handler.
+- The two publishers declare from DIFFERENT tier THREADS (telem on boot,
+  ctrl on the spawned tier). The defect is in how the concurrent
+  declare + the incoming interest-reply dispatch interleave for the
+  second (spawned-tier) declare — a genuine zenoh-pico / zpico
+  interest-association bug on the multi-tier ThreadX arm, NOT rx framing
+  and NOT the executor.
+
+**Precise next step:** breakpoint `_z_register_interest` +
+`_z_interest_process_declares` (the FEATURE-GATED copy actually compiled —
+interest.c has two at :359 and :626) and dump the interest-id table on
+BOTH tier threads; confirm whether the ctrl interest is (a) never
+registered in the session table, (b) registered but the reply's id
+doesn't match, or (c) matched but the callback is dropped. Compare against
+a single-tier ThreadX talker (both-publishers-on-one-thread) where
+filters open fine.
+
 ## Repro
 
 ```
