@@ -20,8 +20,8 @@ extern "C" {
  * nros_rmw_cffi_register() before creating any nros sessions.
  *
  * **Storage ownership.** The runtime owns the entity-struct storage
- * (`nros_rmw_session_t`, `nros_rmw_publisher_t`, `nros_rmw_subscriber_t`,
- * `nros_rmw_service_server_t`, `nros_rmw_service_client_t`). Each
+ * (`nros_rmw_session_t`, `nros_rmw_publisher_t`, `nros_rmw_subscription_t`,
+ * `nros_rmw_service_t`, `nros_rmw_client_t`). Each
  * `create_*` call receives a runtime-allocated, zero-initialised struct
  * via the `out` pointer; the backend writes its `backend_data` (and
  * `can_loan_messages` for pub/sub) into it. The runtime fills the metadata
@@ -32,10 +32,10 @@ extern "C" {
  * shell stays valid until the runtime drops its owner.
  *
  * **Return-value conventions.**
- *  - `open` / `close` / `drive_io` / `create_*` / `publish_raw` /
+ *  - `create_session` / `destroy_session` / `drive_io` / `create_*` / `publish_raw` /
  *    `send_reply`: `NROS_RMW_RET_OK` on success, negative
  *    `nros_rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).
- *  - `try_recv_raw` / `try_recv_request` / `call_raw`: non-negative =
+ *  - `try_recv_raw` / `try_recv_request` / `try_recv_reply_raw`: non-negative =
  *    bytes produced, negative = `nros_rmw_ret_t` error.
  *  - `has_data` / `has_request`: 1 = yes, 0 = no.
  *  - `destroy_*`: void (best-effort cleanup).
@@ -43,102 +43,102 @@ extern "C" {
 
 typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
-    /** Open a session. The runtime supplies a zero-initialised
-     *  `nros_rmw_session_t` via @p out with `node_name` /
-     *  `namespace_` already filled. The backend writes
+    /** Create a session (phase-301: renamed from `open` to the table's
+     *  own `create_*` convention). The runtime supplies a
+     *  zero-initialised `nros_rmw_session_t` via @p out with
+     *  `node_name` / `namespace_` already filled. The backend writes
      *  `out->backend_data`. */
-    nros_rmw_ret_t (*open)(const char *locator, uint8_t mode,
+    nros_rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
                            uint32_t domain_id, const char *node_name,
                            nros_rmw_session_t *out);
-    nros_rmw_ret_t (*close)(nros_rmw_session_t *session);
+    nros_rmw_ret_t (*destroy_session)(nros_rmw_session_t *session);
     nros_rmw_ret_t (*drive_io)(nros_rmw_session_t *session, int32_t timeout_ms);
 
     /* ---- Publisher ---- */
     /** Create a publisher. The runtime fills `out->topic_name`,
      *  `out->type_name`, `out->qos` before this call; the backend
-     *  writes `out->backend_data` and `out->can_loan_messages`. */
+     *  writes `out->backend_data` and `out->can_loan_messages`.
+     *  `options` carries transport hints (phase-301: moved out of the
+     *  QoS struct); NULL = all defaults. */
     nros_rmw_ret_t (*create_publisher)(nros_rmw_session_t *session,
         const char *topic_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
+        const nros_rmw_publisher_options_t *options,
         nros_rmw_publisher_t *out);
     void (*destroy_publisher)(nros_rmw_publisher_t *publisher);
     nros_rmw_ret_t (*publish_raw)(nros_rmw_publisher_t *publisher,
         const uint8_t *data, size_t len);
 
-    /* ---- Subscriber ---- */
-    nros_rmw_ret_t (*create_subscriber)(nros_rmw_session_t *session,
+    /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
+    /** `options` carries transport hints (phase-301: moved out of the
+     *  QoS struct); NULL = all defaults. */
+    nros_rmw_ret_t (*create_subscription)(nros_rmw_session_t *session,
         const char *topic_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_subscriber_t *out);
-    void (*destroy_subscriber)(nros_rmw_subscriber_t *subscriber);
-    int32_t (*try_recv_raw)(nros_rmw_subscriber_t *subscriber,
+        const nros_rmw_subscription_options_t *options,
+        nros_rmw_subscription_t *out);
+    void (*destroy_subscription)(nros_rmw_subscription_t *subscription);
+    int32_t (*try_recv_raw)(nros_rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len);
-    int32_t (*has_data)(nros_rmw_subscriber_t *subscriber);
+    int32_t (*has_data)(nros_rmw_subscription_t *subscription);
 
-    /* ---- Service Server ---- */
+    /* ---- Service (phase-301: rmw's term; was `service_server`) ---- */
     /* Phase 193.1b — `qos` applies to both the request + reply endpoints
-       (one profile per service, mirrors create_publisher/subscriber). */
-    nros_rmw_ret_t (*create_service_server)(nros_rmw_session_t *session,
+       (one profile per service, mirrors create_publisher/subscription). */
+    nros_rmw_ret_t (*create_service)(nros_rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_service_server_t *out);
-    void (*destroy_service_server)(nros_rmw_service_server_t *server);
-    int32_t (*try_recv_request)(nros_rmw_service_server_t *server,
+        nros_rmw_service_t *out);
+    void (*destroy_service)(nros_rmw_service_t *server);
+    int32_t (*try_recv_request)(nros_rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out);
-    int32_t (*has_request)(nros_rmw_service_server_t *server);
-    nros_rmw_ret_t (*send_reply)(nros_rmw_service_server_t *server,
+    int32_t (*has_request)(nros_rmw_service_t *server);
+    nros_rmw_ret_t (*send_reply)(nros_rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len);
 
-    /* ---- Service Client ---- */
-    nros_rmw_ret_t (*create_service_client)(nros_rmw_session_t *session,
+    /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
+    nros_rmw_ret_t (*create_client)(nros_rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_service_client_t *out);
-    void (*destroy_service_client)(nros_rmw_service_client_t *client);
-    int32_t (*call_raw)(nros_rmw_service_client_t *client,
-        const uint8_t *request, size_t req_len,
-        uint8_t *reply_buf, size_t reply_buf_len);
+        nros_rmw_client_t *out);
+    void (*destroy_client)(nros_rmw_client_t *client);
 
-    /** Phase 130.4 — non-blocking send_request_raw.
+    /** Phase 130.4 — non-blocking send_request_raw. Phase-301: the
+     *  deprecated blocking `call_raw` slot is DELETED (rmw has no
+     *  blocking call); this + `try_recv_reply_raw` is the ONE
+     *  request/reply path and both slots are now REQUIRED for a backend
+     *  that supports services.
      *
      *  Sends the request to the backend without blocking for a
-     *  reply. Returns immediately. NULL = the runtime falls back to
-     *  storing the pending request in CffiServiceClient and
-     *  invoking `call_raw` on the next `try_recv_reply_raw_slot`
-     *  call (blocking inside the executor, the Phase 127.C.4 root
-     *  cause behaviour). Backends that implement this slot must
-     *  also implement `try_recv_reply_raw_slot` so the executor's
-     *  poll loop can drain the reply non-blockingly. */
-    nros_rmw_ret_t (*send_request_raw)(nros_rmw_service_client_t *client,
+     *  reply. Returns immediately. */
+    nros_rmw_ret_t (*send_request_raw)(nros_rmw_client_t *client,
         const uint8_t *request, size_t req_len);
 
     /** Phase 130.4 — non-blocking try_recv_reply_raw.
      *
      *  Polls the backend for a reply. `>= 0` = reply bytes copied
      *  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.
-     *  Other negative = backend error. NULL = the runtime falls
-     *  back to the blocking `call_raw` path (Phase 127.C.4
-     *  behaviour). Paired with `send_request_raw` — backends
-     *  implement both or neither. */
-    int32_t (*try_recv_reply_raw)(nros_rmw_service_client_t *client,
+     *  Other negative = backend error. Paired with
+     *  `send_request_raw` — backends implement both or neither. */
+    int32_t (*try_recv_reply_raw)(nros_rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len);
 
     /* ---- Phase 108 — status events (optional) ---- */
-    /** Register a callback for a subscriber-side event. NULL function
-     *  pointer = backend doesn't generate any subscriber events.
+    /** Register a callback for a subscription-side event. NULL function
+     *  pointer = backend doesn't generate any subscription events.
      *  Specific kind unsupported on a backend that supports some
      *  events = `NROS_RMW_RET_UNSUPPORTED` return.
      *  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`
      *  only; ignored otherwise. */
-    nros_rmw_ret_t (*register_subscriber_event)(
-        nros_rmw_subscriber_t *subscriber,
+    nros_rmw_ret_t (*register_subscription_event)(
+        nros_rmw_subscription_t *subscription,
         nros_rmw_event_kind_t  kind,
         uint32_t               deadline_ms,
         nros_rmw_event_callback_t cb,
         void                  *user_context);
 
     /** Register a callback for a publisher-side event. Same NULL /
-     *  unsupported-kind conventions as `register_subscriber_event`.
+     *  unsupported-kind conventions as `register_subscription_event`.
      *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
     nros_rmw_ret_t (*register_publisher_event)(
         nros_rmw_publisher_t  *publisher,
@@ -235,21 +235,21 @@ typedef struct nros_rmw_vtable_t {
      *  NULL = paired NULL with `pub_loan`. */
     void (*pub_discard)(nros_rmw_publisher_t *publisher, void *token);
 
-    /** Phase 124.A — zero-copy subscriber borrow.
+    /** Phase 124.A — zero-copy subscription borrow.
      *
      *  Borrow a read-only view of the next available message in
      *  place, without copying into a caller buffer. Returns:
      *    * `>= 0` — message length; writes `*out_buf` / `*out_token`.
-     *    * `0` — no message ready (subscriber empty).
+     *    * `0` — no message ready (subscription empty).
      *    * `< 0` — error (see `nros_rmw_ret_t` codes negated).
      *
      *  The view is valid until the matching `sub_release` runs.
-     *  Only one borrow may be outstanding per subscriber at a time —
+     *  Only one borrow may be outstanding per subscription at a time —
      *  callers MUST release before requesting another borrow.
      *
      *  NULL function pointer = backend doesn't natively borrow; the
      *  runtime falls back to `try_recv_raw` into a staging buffer. */
-    int32_t (*sub_borrow)(nros_rmw_subscriber_t *subscriber,
+    int32_t (*sub_borrow)(nros_rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
                            void                 **out_token);
@@ -257,11 +257,11 @@ typedef struct nros_rmw_vtable_t {
     /** Phase 124.A — release a previously borrowed view.
      *
      *  `token` MUST be a value returned from a prior `sub_borrow`
-     *  on the same subscriber. Lets the next message advance into
+     *  on the same subscription. Lets the next message advance into
      *  the buffer.
      *
      *  NULL = paired NULL with `sub_borrow`. */
-    void (*sub_release)(nros_rmw_subscriber_t *subscriber, void *token);
+    void (*sub_release)(nros_rmw_subscription_t *subscription, void *token);
 
     /** Phase 124.C.1 — service-server availability probe.
      *
@@ -270,7 +270,7 @@ typedef struct nros_rmw_vtable_t {
      *  constant on backend error. The runtime exposes this to user
      *  code as `nros_client_server_available()` /
      *  `Client<S>::server_available()` — clients use it to gate the
-     *  first `call_raw` so a startup-ordering race doesn't surface as
+     *  first request so a startup-ordering race doesn't surface as
      *  a request-side timeout.
      *
      *  Implementation notes per backend:
@@ -284,13 +284,13 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend cannot answer; the runtime
      *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller. */
     int32_t (*service_server_available)(
-        nros_rmw_service_client_t *client);
+        nros_rmw_client_t *client);
 
     /** Phase 124.D.1 — burst-take.
      *
      *  Drains up to `max_msgs` queued messages into a contiguous
      *  caller buffer in a single backend call, avoiding N × vtable
-     *  dispatch when a burst-sensor subscriber catches up on a
+     *  dispatch when a burst-sensor subscription catches up on a
      *  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).
      *
      *  Storage contract:
@@ -309,7 +309,7 @@ typedef struct nros_rmw_vtable_t {
      *  `CffiSubscriber::try_recv_sequence`. The fallback gives
      *  identical observable behaviour (each call still costs N
      *  vtable hops) but lets user code commit to the batched API. */
-    int32_t (*try_recv_sequence)(nros_rmw_subscriber_t *subscriber,
+    int32_t (*try_recv_sequence)(nros_rmw_subscription_t *subscription,
                                   uint8_t              *buf,
                                   size_t                per_msg_cap,
                                   size_t                max_msgs,
@@ -382,21 +382,21 @@ typedef struct nros_rmw_vtable_t {
 
     /* ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ---- */
 
-    /** Capability query: does this subscriber support process_raw_in_place()?
+    /** Capability query: does this subscription support process_raw_in_place()?
      *  Returns 1 if yes, 0 if no. The runtime consults this at subscription
      *  registration to choose in-place dispatch over the buffered (copying)
      *  path. NULL function pointer = treated as unsupported (buffered path). */
-    int32_t (*subscriber_supports_in_place)(
-        nros_rmw_subscriber_t *subscriber);
+    int32_t (*subscription_supports_in_place)(
+        nros_rmw_subscription_t *subscription);
 
     /** Borrow one ready message in place: hand its raw CDR bytes to `cb` (with
      *  the opaque `ctx`) for the duration of the call, then release the slot —
      *  no copy into a caller buffer. Returns 1 if a message was processed (`cb`
      *  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.
-     *  `cb` MUST NOT re-enter this subscriber's receive. NULL function
+     *  `cb` MUST NOT re-enter this subscription's receive. NULL function
      *  pointer = unsupported (the runtime uses the buffered path). */
     int32_t (*process_raw_in_place)(
-        nros_rmw_subscriber_t *subscriber,
+        nros_rmw_subscription_t *subscription,
         void                  *ctx,
         void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len));
 } nros_rmw_vtable_t;

@@ -18,7 +18,7 @@ pub type nros_rmw_event_callback_t = ::core::option::Option<
 >;
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n `#[repr(C)]` mirror of the Rust-side `NrosTransportOps`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
-#[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice."]
+#[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `nros_rmw_publisher_options_t` / `nros_rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_qos_t {
@@ -31,13 +31,11 @@ pub struct nros_rmw_qos_t {
     #[doc = "< @see nros_rmw_liveliness_kind_t"]
     pub liveliness_kind: u8,
     pub depth: u16,
-    #[doc = " phase-279 (#145) — publisher-side express hint (`TopicInfo::tx_express`\n  across the C ABI): non-zero = this publisher's samples bypass transport\n  tx batching. Carved from the former `uint16_t _reserved0`\n  (layout-identical); ignored by every slot except `create_publisher`.\n  Mirror of `NrosRmwVtable`'s Rust twin — was left un-split here when the\n  Rust side split it (issue #239's live-drift instance)."]
-    pub tx_express: u8,
     #[doc = "< Reserved; must be zero."]
-    pub _reserved0: u8,
-    #[doc = " Subscriber: max acceptable inter-arrival time, ms. Publisher:\n  max acceptable inter-publish (offered rate), ms.\n  0 = infinite (no deadline)."]
+    pub _reserved0: u16,
+    #[doc = " Subscription: max acceptable inter-arrival time, ms. Publisher:\n  max acceptable inter-publish (offered rate), ms.\n  0 = infinite (no deadline)."]
     pub deadline_ms: u32,
-    #[doc = " Sample expiry, ms. Subscriber filters samples older than\n  this. 0 = infinite (no expiry)."]
+    #[doc = " Sample expiry, ms. Subscription filters samples older than\n  this. 0 = infinite (no expiry)."]
     pub lifespan_ms: u32,
     #[doc = " Liveliness lease, ms. Publisher must assert liveliness\n  within this window or be considered dead. 0 = infinite."]
     pub liveliness_lease_ms: u32,
@@ -45,10 +43,26 @@ pub struct nros_rmw_qos_t {
     pub avoid_ros_namespace_conventions: u8,
     #[doc = "< Reserved; must be zero."]
     pub _reserved1: [u8; 3usize],
-    #[doc = " Phase 231 (RFC-0038) — subscription receive-buffer size hint, bytes.\n  Carries `TopicInfo::rx_buffer_hint` to `create_subscriber` so a\n  size-classing backend (zenoh-pico) can pick a small/large receive\n  buffer. `0` = unset. Appended at the tail (ABI-append); only\n  `create_subscriber` reads it."]
-    pub rx_buffer_hint: u32,
 }
-#[doc = " Per-process RMW session — the entity returned by `vtable->open`.\n\n Carries the node identity (used for diagnostics + wire-level\n topic-key derivation in some backends) plus the opaque\n backend-private state.\n\n The 8-byte `_reserved` slot is sized for a forthcoming\n `vtable: const struct nros_rmw_vtable_t *` field that Phase 104's\n multi-instance work will land here. Backends and runtime keep\n these bytes zero."]
+#[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_rmw_publisher_options_t {
+    #[doc = " phase-279 (#145) — express hint (`TopicInfo::tx_express` across\n  the C ABI): non-zero = this publisher's samples bypass transport\n  tx batching. A transport hint, not a DDS policy — no RxO\n  matching."]
+    pub tx_express: u8,
+    #[doc = "< Reserved; must be zero."]
+    pub _reserved: [u8; 7usize],
+}
+#[doc = " Subscription creation options — the home for subscription-side\n transport hints (upstream: `rmw_subscription_options_t`). Passed as a\n NULLable trailing param to `create_subscription`; NULL = all defaults."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_rmw_subscription_options_t {
+    #[doc = " Phase 231 (RFC-0038) — receive-buffer size hint, bytes, so a\n  size-classing backend (zenoh-pico) can pick a small/large receive\n  buffer. `0` = unset. A transport hint, not a DDS policy."]
+    pub rx_buffer_hint: u32,
+    #[doc = "< Reserved; must be zero."]
+    pub _reserved: [u8; 4usize],
+}
+#[doc = " Per-process RMW session — the entity returned by `vtable->create_session`.\n\n Carries the node identity (used for diagnostics + wire-level\n topic-key derivation in some backends) plus the opaque\n backend-private state.\n\n The 8-byte `_reserved` slot is sized for a forthcoming\n `vtable: const struct nros_rmw_vtable_t *` field that Phase 104's\n multi-instance work will land here. Backends and runtime keep\n these bytes zero."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_session_t {
@@ -78,15 +92,15 @@ pub struct nros_rmw_publisher_t {
     #[doc = " Opaque backend state. NULL if creation failed."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " Subscriber entity. Same shape as the publisher; `can_loan_messages`\n means the backend exposes the receive-side loan primitive."]
+#[doc = " Subscription entity (phase-301: renamed from `subscriber` to the upstream `rmw_subscription_t` term). Same shape as the publisher; `can_loan_messages`\n means the backend exposes the receive-side loan primitive."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct nros_rmw_subscriber_t {
-    #[doc = " Topic name (borrowed; outlives the subscriber)."]
+pub struct nros_rmw_subscription_t {
+    #[doc = " Topic name (borrowed; outlives the subscription)."]
     pub topic_name: *const core::ffi::c_char,
     #[doc = " Fully-qualified type name. Borrowed."]
     pub type_name: *const core::ffi::c_char,
-    #[doc = " QoS subset honoured by this subscriber."]
+    #[doc = " QoS subset honoured by this subscription."]
     pub qos: nros_rmw_qos_t,
     #[doc = " Backend exposes loan_recv / release_recv (Phase 99)."]
     pub can_loan_messages: bool,
@@ -95,10 +109,10 @@ pub struct nros_rmw_subscriber_t {
     #[doc = " Opaque backend state. NULL if creation failed."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " Service-server entity.\n\n Service entities have no QoS in the nros subset (the upstream\n `rmw_qos_profile_services_default` distinction does not generalise\n across non-DDS backends — see book `concepts/ros2-comparison.md`).\n\n No `can_loan_messages` field — service request/reply currently\n always goes through `try_recv_request` / `send_reply` byte-buffer\n APIs. If a future backend wants service-side lending, the\n `_reserved[8]` block accommodates the bool + 7 padding bytes\n without an ABI break."]
+#[doc = " Service entity (phase-301: renamed from `service_server` to the upstream `rmw_service_t` term).\n\n Service entities have no QoS in the nros subset (the upstream\n `rmw_qos_profile_services_default` distinction does not generalise\n across non-DDS backends — see book `concepts/ros2-comparison.md`).\n\n No `can_loan_messages` field — service request/reply currently\n always goes through `try_recv_request` / `send_reply` byte-buffer\n APIs. If a future backend wants service-side lending, the\n `_reserved[8]` block accommodates the bool + 7 padding bytes\n without an ABI break."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct nros_rmw_service_server_t {
+pub struct nros_rmw_service_t {
     #[doc = " Service name (borrowed; outlives the server)."]
     pub service_name: *const core::ffi::c_char,
     #[doc = " Fully-qualified service type name (e.g.,\n  `\"example_interfaces/srv/AddTwoInts\"`). Borrowed."]
@@ -108,10 +122,10 @@ pub struct nros_rmw_service_server_t {
     #[doc = " Opaque backend state. NULL if creation failed."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " Service-client entity. Same shape as the service server."]
+#[doc = " Client entity (phase-301: renamed from `service_client` to the upstream `rmw_client_t` term). Same shape as the service."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct nros_rmw_service_client_t {
+pub struct nros_rmw_client_t {
     #[doc = " Service name (borrowed; outlives the client)."]
     pub service_name: *const core::ffi::c_char,
     #[doc = " Fully-qualified service type name. Borrowed."]
@@ -137,12 +151,12 @@ pub struct nros_rmw_count_status_t {
     pub total_count: u32,
     pub total_count_change: u32,
 }
-#[doc = " @file rmw_vtable.h\n @brief C function table for plugging third-party RMW backends into nros.\n\n Implement the functions in nros_rmw_vtable_t and call\n nros_rmw_cffi_register() before creating any nros sessions.\n\n **Storage ownership.** The runtime owns the entity-struct storage\n (`nros_rmw_session_t`, `nros_rmw_publisher_t`, `nros_rmw_subscriber_t`,\n `nros_rmw_service_server_t`, `nros_rmw_service_client_t`). Each\n `create_*` call receives a runtime-allocated, zero-initialised struct\n via the `out` pointer; the backend writes its `backend_data` (and\n `can_loan_messages` for pub/sub) into it. The runtime fills the metadata\n fields (`topic_name`, `type_name`, `qos`) before calling\n `create_*`; the backend reads them through the same struct.\n\n `destroy_*` releases the backend's `backend_data` only. The struct\n shell stays valid until the runtime drops its owner.\n\n **Return-value conventions.**\n  - `open` / `close` / `drive_io` / `create_*` / `publish_raw` /\n    `send_reply`: `NROS_RMW_RET_OK` on success, negative\n    `nros_rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).\n  - `try_recv_raw` / `try_recv_request` / `call_raw`: non-negative =\n    bytes produced, negative = `nros_rmw_ret_t` error.\n  - `has_data` / `has_request`: 1 = yes, 0 = no.\n  - `destroy_*`: void (best-effort cleanup)."]
+#[doc = " @file rmw_vtable.h\n @brief C function table for plugging third-party RMW backends into nros.\n\n Implement the functions in nros_rmw_vtable_t and call\n nros_rmw_cffi_register() before creating any nros sessions.\n\n **Storage ownership.** The runtime owns the entity-struct storage\n (`nros_rmw_session_t`, `nros_rmw_publisher_t`, `nros_rmw_subscription_t`,\n `nros_rmw_service_t`, `nros_rmw_client_t`). Each\n `create_*` call receives a runtime-allocated, zero-initialised struct\n via the `out` pointer; the backend writes its `backend_data` (and\n `can_loan_messages` for pub/sub) into it. The runtime fills the metadata\n fields (`topic_name`, `type_name`, `qos`) before calling\n `create_*`; the backend reads them through the same struct.\n\n `destroy_*` releases the backend's `backend_data` only. The struct\n shell stays valid until the runtime drops its owner.\n\n **Return-value conventions.**\n  - `create_session` / `destroy_session` / `drive_io` / `create_*` / `publish_raw` /\n    `send_reply`: `NROS_RMW_RET_OK` on success, negative\n    `nros_rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).\n  - `try_recv_raw` / `try_recv_request` / `try_recv_reply_raw`: non-negative =\n    bytes produced, negative = `nros_rmw_ret_t` error.\n  - `has_data` / `has_request`: 1 = yes, 0 = no.\n  - `destroy_*`: void (best-effort cleanup)."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
-    #[doc = " Open a session. The runtime supplies a zero-initialised\n  `nros_rmw_session_t` via @p out with `node_name` /\n  `namespace_` already filled. The backend writes\n  `out->backend_data`."]
-    pub open: ::core::option::Option<
+    #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `nros_rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`."]
+    pub create_session: ::core::option::Option<
         unsafe extern "C" fn(
             locator: *const core::ffi::c_char,
             mode: u8,
@@ -151,13 +165,13 @@ pub struct nros_rmw_vtable_t {
             out: *mut nros_rmw_session_t,
         ) -> nros_rmw_ret_t,
     >,
-    pub close: ::core::option::Option<
+    pub destroy_session: ::core::option::Option<
         unsafe extern "C" fn(session: *mut nros_rmw_session_t) -> nros_rmw_ret_t,
     >,
     pub drive_io: ::core::option::Option<
         unsafe extern "C" fn(session: *mut nros_rmw_session_t, timeout_ms: i32) -> nros_rmw_ret_t,
     >,
-    #[doc = " Create a publisher. The runtime fills `out->topic_name`,\n  `out->type_name`, `out->qos` before this call; the backend\n  writes `out->backend_data` and `out->can_loan_messages`."]
+    #[doc = " Create a publisher. The runtime fills `out->topic_name`,\n  `out->type_name`, `out->qos` before this call; the backend\n  writes `out->backend_data` and `out->can_loan_messages`.\n  `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
     pub create_publisher: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut nros_rmw_session_t,
@@ -166,6 +180,7 @@ pub struct nros_rmw_vtable_t {
             type_hash: *const core::ffi::c_char,
             domain_id: u32,
             qos: *const nros_rmw_qos_t,
+            options: *const nros_rmw_publisher_options_t,
             out: *mut nros_rmw_publisher_t,
         ) -> nros_rmw_ret_t,
     >,
@@ -178,7 +193,8 @@ pub struct nros_rmw_vtable_t {
             len: usize,
         ) -> nros_rmw_ret_t,
     >,
-    pub create_subscriber: ::core::option::Option<
+    #[doc = " `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
+    pub create_subscription: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut nros_rmw_session_t,
             topic_name: *const core::ffi::c_char,
@@ -186,21 +202,23 @@ pub struct nros_rmw_vtable_t {
             type_hash: *const core::ffi::c_char,
             domain_id: u32,
             qos: *const nros_rmw_qos_t,
-            out: *mut nros_rmw_subscriber_t,
+            options: *const nros_rmw_subscription_options_t,
+            out: *mut nros_rmw_subscription_t,
         ) -> nros_rmw_ret_t,
     >,
-    pub destroy_subscriber:
-        ::core::option::Option<unsafe extern "C" fn(subscriber: *mut nros_rmw_subscriber_t)>,
+    pub destroy_subscription:
+        ::core::option::Option<unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t)>,
     pub try_recv_raw: ::core::option::Option<
         unsafe extern "C" fn(
-            subscriber: *mut nros_rmw_subscriber_t,
+            subscription: *mut nros_rmw_subscription_t,
             buf: *mut u8,
             buf_len: usize,
         ) -> i32,
     >,
-    pub has_data:
-        ::core::option::Option<unsafe extern "C" fn(subscriber: *mut nros_rmw_subscriber_t) -> i32>,
-    pub create_service_server: ::core::option::Option<
+    pub has_data: ::core::option::Option<
+        unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t) -> i32,
+    >,
+    pub create_service: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut nros_rmw_session_t,
             service_name: *const core::ffi::c_char,
@@ -208,30 +226,30 @@ pub struct nros_rmw_vtable_t {
             type_hash: *const core::ffi::c_char,
             domain_id: u32,
             qos: *const nros_rmw_qos_t,
-            out: *mut nros_rmw_service_server_t,
+            out: *mut nros_rmw_service_t,
         ) -> nros_rmw_ret_t,
     >,
-    pub destroy_service_server:
-        ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_server_t)>,
+    pub destroy_service:
+        ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_t)>,
     pub try_recv_request: ::core::option::Option<
         unsafe extern "C" fn(
-            server: *mut nros_rmw_service_server_t,
+            server: *mut nros_rmw_service_t,
             buf: *mut u8,
             buf_len: usize,
             seq_out: *mut i64,
         ) -> i32,
     >,
     pub has_request:
-        ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_server_t) -> i32>,
+        ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_t) -> i32>,
     pub send_reply: ::core::option::Option<
         unsafe extern "C" fn(
-            server: *mut nros_rmw_service_server_t,
+            server: *mut nros_rmw_service_t,
             seq: i64,
             data: *const u8,
             len: usize,
         ) -> nros_rmw_ret_t,
     >,
-    pub create_service_client: ::core::option::Option<
+    pub create_client: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut nros_rmw_session_t,
             service_name: *const core::ffi::c_char,
@@ -239,47 +257,38 @@ pub struct nros_rmw_vtable_t {
             type_hash: *const core::ffi::c_char,
             domain_id: u32,
             qos: *const nros_rmw_qos_t,
-            out: *mut nros_rmw_service_client_t,
+            out: *mut nros_rmw_client_t,
         ) -> nros_rmw_ret_t,
     >,
-    pub destroy_service_client:
-        ::core::option::Option<unsafe extern "C" fn(client: *mut nros_rmw_service_client_t)>,
-    pub call_raw: ::core::option::Option<
-        unsafe extern "C" fn(
-            client: *mut nros_rmw_service_client_t,
-            request: *const u8,
-            req_len: usize,
-            reply_buf: *mut u8,
-            reply_buf_len: usize,
-        ) -> i32,
-    >,
-    #[doc = " Phase 130.4 — non-blocking send_request_raw.\n\n  Sends the request to the backend without blocking for a\n  reply. Returns immediately. NULL = the runtime falls back to\n  storing the pending request in CffiServiceClient and\n  invoking `call_raw` on the next `try_recv_reply_raw_slot`\n  call (blocking inside the executor, the Phase 127.C.4 root\n  cause behaviour). Backends that implement this slot must\n  also implement `try_recv_reply_raw_slot` so the executor's\n  poll loop can drain the reply non-blockingly."]
+    pub destroy_client:
+        ::core::option::Option<unsafe extern "C" fn(client: *mut nros_rmw_client_t)>,
+    #[doc = " Phase 130.4 — non-blocking send_request_raw. Phase-301: the\n  deprecated blocking `call_raw` slot is DELETED (rmw has no\n  blocking call); this + `try_recv_reply_raw` is the ONE\n  request/reply path and both slots are now REQUIRED for a backend\n  that supports services.\n\n  Sends the request to the backend without blocking for a\n  reply. Returns immediately."]
     pub send_request_raw: ::core::option::Option<
         unsafe extern "C" fn(
-            client: *mut nros_rmw_service_client_t,
+            client: *mut nros_rmw_client_t,
             request: *const u8,
             req_len: usize,
         ) -> nros_rmw_ret_t,
     >,
-    #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. NULL = the runtime falls\n  back to the blocking `call_raw` path (Phase 127.C.4\n  behaviour). Paired with `send_request_raw` — backends\n  implement both or neither."]
+    #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. Paired with\n  `send_request_raw` — backends implement both or neither."]
     pub try_recv_reply_raw: ::core::option::Option<
         unsafe extern "C" fn(
-            client: *mut nros_rmw_service_client_t,
+            client: *mut nros_rmw_client_t,
             reply_buf: *mut u8,
             reply_buf_len: usize,
         ) -> i32,
     >,
-    #[doc = " Register a callback for a subscriber-side event. NULL function\n  pointer = backend doesn't generate any subscriber events.\n  Specific kind unsupported on a backend that supports some\n  events = `NROS_RMW_RET_UNSUPPORTED` return.\n  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`\n  only; ignored otherwise."]
-    pub register_subscriber_event: ::core::option::Option<
+    #[doc = " Register a callback for a subscription-side event. NULL function\n  pointer = backend doesn't generate any subscription events.\n  Specific kind unsupported on a backend that supports some\n  events = `NROS_RMW_RET_UNSUPPORTED` return.\n  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`\n  only; ignored otherwise."]
+    pub register_subscription_event: ::core::option::Option<
         unsafe extern "C" fn(
-            subscriber: *mut nros_rmw_subscriber_t,
+            subscription: *mut nros_rmw_subscription_t,
             kind: nros_rmw_event_kind_t::Type,
             deadline_ms: u32,
             cb: nros_rmw_event_callback_t,
             user_context: *mut core::ffi::c_void,
         ) -> nros_rmw_ret_t,
     >,
-    #[doc = " Register a callback for a publisher-side event. Same NULL /\n  unsupported-kind conventions as `register_subscriber_event`.\n  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only."]
+    #[doc = " Register a callback for a publisher-side event. Same NULL /\n  unsupported-kind conventions as `register_subscription_event`.\n  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only."]
     pub register_publisher_event: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *mut nros_rmw_publisher_t,
@@ -326,26 +335,29 @@ pub struct nros_rmw_vtable_t {
     pub pub_discard: ::core::option::Option<
         unsafe extern "C" fn(publisher: *mut nros_rmw_publisher_t, token: *mut core::ffi::c_void),
     >,
-    #[doc = " Phase 124.A — zero-copy subscriber borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscriber empty).\n    * `< 0` — error (see `nros_rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscriber at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer."]
+    #[doc = " Phase 124.A — zero-copy subscription borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscription empty).\n    * `< 0` — error (see `nros_rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscription at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer."]
     pub sub_borrow: ::core::option::Option<
         unsafe extern "C" fn(
-            subscriber: *mut nros_rmw_subscriber_t,
+            subscription: *mut nros_rmw_subscription_t,
             out_buf: *mut *const u8,
             out_len: *mut usize,
             out_token: *mut *mut core::ffi::c_void,
         ) -> i32,
     >,
-    #[doc = " Phase 124.A — release a previously borrowed view.\n\n  `token` MUST be a value returned from a prior `sub_borrow`\n  on the same subscriber. Lets the next message advance into\n  the buffer.\n\n  NULL = paired NULL with `sub_borrow`."]
+    #[doc = " Phase 124.A — release a previously borrowed view.\n\n  `token` MUST be a value returned from a prior `sub_borrow`\n  on the same subscription. Lets the next message advance into\n  the buffer.\n\n  NULL = paired NULL with `sub_borrow`."]
     pub sub_release: ::core::option::Option<
-        unsafe extern "C" fn(subscriber: *mut nros_rmw_subscriber_t, token: *mut core::ffi::c_void),
+        unsafe extern "C" fn(
+            subscription: *mut nros_rmw_subscription_t,
+            token: *mut core::ffi::c_void,
+        ),
     >,
-    #[doc = " Phase 124.C.1 — service-server availability probe.\n\n  Returns `1` if ≥ 1 matching server has been discovered on the\n  RMW graph, `0` if none yet, or a negative `nros_rmw_ret_t`\n  constant on backend error. The runtime exposes this to user\n  code as `nros_client_server_available()` /\n  `Client<S>::server_available()` — clients use it to gate the\n  first `call_raw` so a startup-ordering race doesn't surface as\n  a request-side timeout.\n\n  Implementation notes per backend:\n  - **Zenoh**: `z_session` tracks matched queryables via\n    interest declarations.\n  - **Cyclone DDS / dust-DDS**: built-in topic readers expose\n    matched-pub counts.\n  - **XRCE**: agent has no participant enumeration; return\n    `NROS_RMW_RET_UNSUPPORTED`.\n\n  NULL function pointer = backend cannot answer; the runtime\n  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller."]
+    #[doc = " Phase 124.C.1 — service-server availability probe.\n\n  Returns `1` if ≥ 1 matching server has been discovered on the\n  RMW graph, `0` if none yet, or a negative `nros_rmw_ret_t`\n  constant on backend error. The runtime exposes this to user\n  code as `nros_client_server_available()` /\n  `Client<S>::server_available()` — clients use it to gate the\n  first request so a startup-ordering race doesn't surface as\n  a request-side timeout.\n\n  Implementation notes per backend:\n  - **Zenoh**: `z_session` tracks matched queryables via\n    interest declarations.\n  - **Cyclone DDS / dust-DDS**: built-in topic readers expose\n    matched-pub counts.\n  - **XRCE**: agent has no participant enumeration; return\n    `NROS_RMW_RET_UNSUPPORTED`.\n\n  NULL function pointer = backend cannot answer; the runtime\n  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller."]
     pub service_server_available:
-        ::core::option::Option<unsafe extern "C" fn(client: *mut nros_rmw_service_client_t) -> i32>,
-    #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscriber catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API."]
+        ::core::option::Option<unsafe extern "C" fn(client: *mut nros_rmw_client_t) -> i32>,
+    #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscription catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API."]
     pub try_recv_sequence: ::core::option::Option<
         unsafe extern "C" fn(
-            subscriber: *mut nros_rmw_subscriber_t,
+            subscription: *mut nros_rmw_subscription_t,
             buf: *mut u8,
             per_msg_cap: usize,
             max_msgs: usize,
@@ -374,13 +386,14 @@ pub struct nros_rmw_vtable_t {
     pub ping_session: ::core::option::Option<
         unsafe extern "C" fn(session: *mut nros_rmw_session_t, timeout_ms: i32) -> nros_rmw_ret_t,
     >,
-    #[doc = " Capability query: does this subscriber support process_raw_in_place()?\n  Returns 1 if yes, 0 if no. The runtime consults this at subscription\n  registration to choose in-place dispatch over the buffered (copying)\n  path. NULL function pointer = treated as unsupported (buffered path)."]
-    pub subscriber_supports_in_place:
-        ::core::option::Option<unsafe extern "C" fn(subscriber: *mut nros_rmw_subscriber_t) -> i32>,
-    #[doc = " Borrow one ready message in place: hand its raw CDR bytes to `cb` (with\n  the opaque `ctx`) for the duration of the call, then release the slot —\n  no copy into a caller buffer. Returns 1 if a message was processed (`cb`\n  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.\n  `cb` MUST NOT re-enter this subscriber's receive. NULL function\n  pointer = unsupported (the runtime uses the buffered path)."]
+    #[doc = " Capability query: does this subscription support process_raw_in_place()?\n  Returns 1 if yes, 0 if no. The runtime consults this at subscription\n  registration to choose in-place dispatch over the buffered (copying)\n  path. NULL function pointer = treated as unsupported (buffered path)."]
+    pub subscription_supports_in_place: ::core::option::Option<
+        unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t) -> i32,
+    >,
+    #[doc = " Borrow one ready message in place: hand its raw CDR bytes to `cb` (with\n  the opaque `ctx`) for the duration of the call, then release the slot —\n  no copy into a caller buffer. Returns 1 if a message was processed (`cb`\n  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.\n  `cb` MUST NOT re-enter this subscription's receive. NULL function\n  pointer = unsupported (the runtime uses the buffered path)."]
     pub process_raw_in_place: ::core::option::Option<
         unsafe extern "C" fn(
-            subscriber: *mut nros_rmw_subscriber_t,
+            subscription: *mut nros_rmw_subscription_t,
             ctx: *mut core::ffi::c_void,
             cb: ::core::option::Option<
                 unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
@@ -446,6 +459,7 @@ pub const NROS_RMW_DURABILITY_VOLATILE: i32 = 0;
 pub const NROS_RMW_DURABILITY_TRANSIENT_LOCAL: i32 = 1;
 pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 0;
 pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 1;
+pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]
 #[derive(Copy, Clone)]

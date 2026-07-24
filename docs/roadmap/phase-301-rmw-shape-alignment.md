@@ -35,14 +35,16 @@ gates) evaporated with phase-299.
   churns the QoS ABI.
 - **`call_raw` DELETED** — the deprecated blocking RPC slot goes; the
   async `send_request_raw` + `try_recv_reply_raw` pair is the one path.
-- **0241 boundary semantics**: `depth > 65535` is a CREATE-TIME error
-  (`NROS_RMW_RET_INVALID_ARGUMENT`), never a silent saturate. Duration
-  fields adopt an explicit sentinel: `NROS_RMW_DURATION_INFINITE`
-  (`UINT32_MAX` ms) = infinite/unset; `0` = a real zero. Sub-ms
-  truncation is documented at the header (representable range is part of
-  the contract); a duration that truncates to a DIFFERENT value than
-  requested at ms resolution is accepted (documented floor), but overflow
-  past the u32-ms range is an error, not a clamp.
+- **0241 boundary semantics (amended after header review)**: `depth >
+  65535` is a CREATE-TIME error (`NROS_RMW_RET_INVALID_ARGUMENT`), never a
+  silent saturate. Durations: `0` KEEPS its unset/no-check meaning — this
+  matches upstream (`RMW_QOS_*_DEFAULT` is the zero time), so a "real
+  0-duration" is inexpressible upstream too and the issue's ambiguity
+  reduces to rounding; `NROS_RMW_DURATION_INFINITE_MS` (`UINT32_MAX`) is
+  added as the explicit infinite spelling. Sub-ms values CEIL to 1 ms
+  (rounding down could silently turn a real deadline into "no deadline");
+  values past the u32-ms range (other than the infinite sentinel) are a
+  create-time error, not a clamp.
 - **Return-code scheme unchanged** (0240's own carve-out: the
   negative-error/byte-count dual convention is justified).
 

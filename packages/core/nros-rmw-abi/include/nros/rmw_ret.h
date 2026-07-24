@@ -18,7 +18,7 @@
  *    success, negative = one of the named error codes.
  *  - **Byte count + error.** A non-negative return is the number of
  *    bytes produced; a negative return is one of the named error
- *    codes. Used by `try_recv_raw`, `try_recv_request`, `call_raw`.
+ *    codes. Used by `try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`.
  *
  * Pointer-returning calls (`open`, `create_publisher`, …) signal
  * failure with `NULL`; if the caller needs the specific failure
@@ -59,9 +59,9 @@ typedef int32_t nros_rmw_ret_t;
  *  return this; the runtime then falls back to a default path. */
 #define NROS_RMW_RET_UNSUPPORTED             -5
 
-/** Publisher and subscriber QoS profiles do not match in a way the
+/** Publisher and subscription QoS profiles do not match in a way the
  *  backend cannot reconcile (e.g., reliable publisher vs. best-effort
- *  subscriber on a backend that requires strict matching). */
+ *  subscription on a backend that requires strict matching). */
 #define NROS_RMW_RET_INCOMPATIBLE_QOS        -6
 
 /** Topic, service, or action name failed validation (empty,
