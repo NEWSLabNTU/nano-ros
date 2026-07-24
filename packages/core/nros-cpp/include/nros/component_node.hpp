@@ -67,6 +67,23 @@
 #include <new>         // placement new for the NROS_COMPONENT factory
 #include <type_traits> // enable_if / is_std_vector split for the param facade (C++14 freestanding subset)
 
+// Zephyr's minimal libcpp ships a STUB <new> (guard
+// ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_) that declares nothrow_t but NOT placement
+// new — the NROS_COMPONENT factory's `new (storage) Class(...)` then fails
+// "no matching operator new(sizetype, void*&)" (first hit porting real
+// Autoware components to a Zephyr image; ASI's FVP build used a full-libcpp
+// toolchain and never saw it). Provide the standard non-allocating forms.
+#ifdef ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_
+inline void* operator new(std::size_t, void* ptr) noexcept {
+    return ptr;
+}
+inline void* operator new[](std::size_t, void* ptr) noexcept {
+    return ptr;
+}
+inline void operator delete(void*, void*) noexcept {}
+inline void operator delete[](void*, void*) noexcept {}
+#endif
+
 #include "nros/component.hpp" // bind_subscription / bind_timer (the no-alloc trampolines)
 #include "nros/node.hpp"
 #include "nros/parameter.hpp" // ParameterServer backing the value-returning facade (242.7)

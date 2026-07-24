@@ -109,11 +109,15 @@ endfunction()
 # =========================================================================
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
-    "SKIP_INSTALL"
+    "SKIP_INSTALL;NO_FFI_CRATE"
     "ROS_EDITION;LANGUAGE;CODEGEN_CONFIG"
     "DEPENDENCIES"
     ${ARGN}
   )
+  # NO_FFI_CRATE (issue 0253) — accepted + ignored: nros_find_interfaces
+  # passes it to suppress per-pkg FFI crates on the canonical generator; the
+  # Zephyr generator whole-archives generated code into `app`, so there are
+  # no per-pkg crates to dedupe.
   # Phase 210.E.3.c — SKIP_INSTALL accepted for parity with the canonical
   # `cmake/NanoRosGenerateInterfaces.cmake` (which the smart Find-stub
   # passes unconditionally via rosidl_generate_interfaces wrapper).
