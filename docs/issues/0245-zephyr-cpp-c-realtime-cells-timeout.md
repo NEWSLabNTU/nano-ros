@@ -39,6 +39,51 @@ the failure is specific to the C/C++ `nros_board_zephyr_run_tiers` image.
   many phases.
 - The `zephyr-qos-port`-style serialization is not the cause (solo run red).
 
+## Root cause captured (2026-07-24 debugging session)
+
+**Deterministic repro:** the guest crashes 5/5 when a REMOTE SUBSCRIBER
+exists (router + a native `int32-sink` on `/telem` connected before boot),
+and runs clean 6/6 without one. Not seed-dependent — subscriber-presence
+gated. This is why every harness run fails (the harness always spawns the
+observers first) while a bare manual boot looks healthy.
+
+**Backtrace (gdb, thread 11 = the ctrl tier k_thread):** SIGSEGV in the
+Zephyr SYSTEM-HEAP free list —
+`free_list_remove_bidx (heap.c:51)` ← `sys_heap_free` ← `k_heap_free` ←
+`_z_slice_clear` ← `_z_keyexpr_clear` ← `_z_keyexpr_declare_prefix
+(keyexpr.c:945)` ← `_z_declare_publisher` ← `z_declare_publisher` ←
+`zpico_declare_publisher_ex (zpico.c:1295, keyexpr
+"0/ctrl/std_msgs::msg::dds_::Int32_/TypeHashNotSupported")` ←
+`nros_rmw_zenoh::zpico::declare_publisher` — i.e. heap ALREADY corrupted
+when the ctrl tier's declare frees its prefix slice.
+
+**Race shape:** the boot thread's `nros_cpp_spin_once` drives the zenoh-pico
+read path, which processes the incoming REMOTE SUBSCRIBER INTEREST
+(write-filter/declare handling — allocs + frees) concurrently with the
+spawned tier thread's `z_declare_publisher` on the same session. The
+issue-#144 chained-spawn serialized declare-vs-declare, resting on the
+assumption "a spin exchanges keepalives/data, not declares" — that
+assumption is FALSE once a remote subscriber interest arrives mid-spin:
+interest processing mutates the same session/keyexpr/publisher state the
+concurrent declare mutates → system-heap corruption.
+
+Both the cpp and rust images bake `Z_FEATURE_MULTI_THREAD=1` (290 defines ≥
+253 zenoh TUs in the cpp build.ninja — no obvious 0135-class per-TU flag
+mismatch), yet the rust image survives the same topology — the C/C++ path
+(`nros-cpp` over `zpico.c`) either misses a session lock the Rust path
+takes, or the two link different zenoh-pico builds (the image carries BOTH
+the cmake-built zenoh-pico TUs and the Rust `zpico-sys` staticlib — worth
+ruling out a mixed-copy link even though the dup-symbol gate should catch
+identical names).
+
+**Next (fix wave):** (a) determine which zenoh-pico copy the crashing path
+links and whether nros-cpp's declare path holds the session mutex that the
+Rust `zpico_spin_once`/declare pairing uses; (b) if the lock exists and is
+taken, the race is inside zenoh-pico's interest handling vs declare —
+candidate upstream/fork fix; (c) interim mitigation: defer the boot spin
+until the whole spawn chain completes (extends #144's serialization to
+declare-vs-spin).
+
 ## Repro
 
 ```
