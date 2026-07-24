@@ -131,13 +131,28 @@ extern void nros_platform_dealloc(void* ptr);
 /* --- Executor storage sizing ---
  *
  * nros_cpp_init / nros_cpp_executor_open_over_session both need storage of
- * CPP_EXECUTOR_OPAQUE_U64S * 8 bytes, 8-byte aligned. The exact per-build value
- * is in the cmake-generated nros_cpp_config_generated.h; to keep this seam
- * standalone-compilable (mirroring freertos_run_tiers.c, which cannot include
- * the generated header) we use the NuttX/embedded ARM fallback (79304 bytes,
- * nros_cpp_config_generated_nuttx.h) rounded up to 80 KiB for headroom.
+ * NROS_CPP_EXECUTOR_STORAGE_SIZE bytes (cmake-generated
+ * nros_cpp_config_generated.h), 8-byte aligned. In the Zephyr module build
+ * that header IS on the include path (nros-rust/nros-cpp-generated), so use
+ * the REAL per-build value. issue #245: the old hardcoded "NuttX fallback
+ * (79304) rounded up to 80 KiB" (81920) silently became 32 bytes SHORT when
+ * the executor grew to 81952 — the tier executor's tail then overwrote the
+ * next Zephyr sys_heap chunk header, corrupting the system heap the first
+ * time subscriber-delivery state touched the tail (remote-subscriber-gated
+ * crash in z_declare_publisher's free path). Never hardcode this again; the
+ * fallback exists ONLY for builds where the generated header is absent, and
+ * carries generous headroom.
  * nros_platform_alloc on the Zephyr heap returns 8-byte aligned memory. */
-#define NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES 81920u
+#if defined(__has_include)
+#if __has_include(<nros/nros_cpp_config_generated.h>)
+#include <nros/nros_cpp_config_generated.h>
+#endif
+#endif
+#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
+#define NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
+#else
+#define NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES 98304u /* 96 KiB fallback headroom */
+#endif
 
 /* --- Local tier-spec type ---
  *

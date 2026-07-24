@@ -44,10 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#245** — realtime_tiers_e2e zephyr_cpp + zephyr_c cells TIME OUT on a fresh native_sim image
-(banner-then-silence before any nros output; zephyr_rust sibling passes). Baseline-verified
-pre-existing — NOT the W5.5/W5.7 tier-spec append. See `0245-*`. (2026-07-23)
-
 **#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
 header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
 See `0244-*`. (RMW/platform audit 2026-07-21)
@@ -75,6 +71,13 @@ by `play_launch_parser` but dropped at the `launch_dump` layer + never mapped
 to `deploy.host`). Blocks the monolith's `native_entry_robot1/robot2`. Fix
 spans launch_dump + model_builder + the nano-ros host filter. See
 `0236-multihost-machine-not-in-resolved-model.md`.
+
+Recently resolved: **#245** — zephyr C/C++ multi-tier heap-corruption crash: executor storage was a
+hardcoded 80 KiB while the real generated size grew to 81952 (32 bytes short) — the tier executor's
+tail overwrote the next sys_heap chunk, subscriber-delivery-gated; fixed by `__has_include`ing the
+generated `NROS_CPP_EXECUTOR_STORAGE_SIZE` (+ guarded-include on the freertos/nuttx mirrors —
+NuttX-arm was 856 bytes from the same cliff); all three zephyr realtime cells green —
+`archived/0245-*`.
 
 Recently resolved: **#239** — RMW ABI hand-mirror now field-parity gated
 (`check-rmw-abi-mirror`: vtable 36 slots + 8 entity structs, ordered names;

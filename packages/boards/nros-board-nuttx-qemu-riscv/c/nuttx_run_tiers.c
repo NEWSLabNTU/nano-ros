@@ -79,7 +79,21 @@ extern void nros_platform_dealloc(void* ptr);
  * which cannot include the generated header) we use the NuttX/embedded ARM
  * fallback (79304 bytes, nros_cpp_config_generated_nuttx.h) rounded up to 80 KiB
  * for headroom. nros_platform_alloc on the NuttX heap returns aligned memory. */
+/* issue #245 — prefer the REAL per-build executor size when the generated
+ * header is visible to this compile; the hardcoded fallback silently went
+ * 32 bytes short on Zephyr when the executor grew (heap-corruption crash).
+ * If this platform's executor outgrows the fallback, the same corruption
+ * follows — keep the generated-header path working. */
+#if defined(__has_include)
+#if __has_include(<nros/nros_cpp_config_generated.h>)
+#include <nros/nros_cpp_config_generated.h>
+#endif
+#endif
+#ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
+#define NROS_NUTTX_EXECUTOR_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
+#else
 #define NROS_NUTTX_EXECUTOR_STORAGE_BYTES 81920u
+#endif
 
 /* --- Per-tier pthread stack ---
  *

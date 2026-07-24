@@ -1,7 +1,7 @@
 ---
 id: 245
 title: "realtime_tiers_e2e zephyr_cpp + zephyr_c cells time out on a fresh native_sim image (pre-existing; baseline-verified)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: zephyr
@@ -96,6 +96,43 @@ taken, the race is inside zenoh-pico's interest handling vs declare —
 candidate upstream/fork fix; (c) interim mitigation: defer the boot spin
 until the whole spawn chain completes (extends #144's serialization to
 declare-vs-spin).
+
+## RESOLVED (2026-07-24) — executor storage 32 bytes short; heap overflow
+
+**Root cause:** `zephyr_run_tiers.c` allocated tier/boot executor storage
+from a HARDCODED `NROS_ZEPHYR_EXECUTOR_STORAGE_BYTES 81920` ("NuttX fallback
+79304 rounded up to 80 KiB for headroom") while this build's real
+requirement (cmake-generated `NROS_CPP_EXECUTOR_STORAGE_SIZE`) had grown to
+**81952** — 32 bytes short. The executor's TAIL state overwrote the next
+Zephyr sys_heap chunk header. Subscriber-gated because the tail bytes
+(subscriber-delivery state) are only written once a remote subscriber
+engages; the next zenoh alloc/free then walked the corrupted free list →
+the observed SIGSEGV under `z_declare_publisher`'s clear path. The Rust arm
+sizes from the real generated constant (immune); native C++ includes the
+real header (immune); FreeRTOS/NuttX real sizes still fit under 81920
+(NuttX-arm by only 856 bytes — the same time bomb).
+
+**Fix:** `zephyr_run_tiers.c` now `__has_include`s the generated
+`nros_cpp_config_generated.h` (which IS on the Zephyr module include path)
+and uses `NROS_CPP_EXECUTOR_STORAGE_SIZE` rounded up to 8; the fallback
+(only for header-less builds) is bumped to 96 KiB. The freertos + nuttx×2
+mirrors get the same guarded-include (real size when visible; their 80 KiB
+fallback retained — real sizes fit today, and blindly bumping risks their
+heap budgets).
+
+**Verified:** the deterministic repro (router + remote sink + seeded guest)
+went 5/5 crash → 5/5 clean (~795 ticks each); harness cells
+`case_06_zephyr_cpp` (0.77 s) + `case_07_zephyr_c` (0.80 s) +
+`case_05_zephyr_rust` all PASS; `zephyr_edf_deadline_applied` PASS;
+`check-c` green.
+
+**Debugging notes for the class:** gdb + ASAN + SYS_HEAP_VALIDATE all
+distorted timing enough to mask the race-looking symptom (banner-then-
+silence under heavy checkers is the checker, not the bug). The decisive
+steps were (1) subscriber-presence A/B (5/5 vs 0/6), (2) single-executor
+talker A/B (fine → multi-tier-specific), (3) reading the storage-size
+comment against the generated header. Also: valgrind sees only the
+downstream free (custom sys_heap is opaque to memcheck).
 
 ## Repro
 
