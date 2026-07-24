@@ -75,6 +75,10 @@ extern void nros_platform_dealloc(void* ptr);
 #define NROS_FREERTOS_EXECUTOR_STORAGE_BYTES 81920u
 #endif
 
+/* phase-296 W5.11 — the board's semihosting console (freertos_hooks.c), used
+ * for the loud placement-dim note below. Declared here (no shared header). */
+extern void semihosting_write0(const char* s);
+
 /* --- Local tier-spec type ---
  *
  * Mirror of nros_native_tier_spec_t (nros/main.h). Layout MUST match: same
@@ -292,16 +296,25 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
         nros_platform_dealloc(tier_exec);
         return -1;
     }
-    /* RFC-0052 W2 — core pin (core_plus1: 0 = unpinned). Only SMP builds
-     * expose the affinity API; on uniprocessor configs a configured pin is
-     * noted and ignored (RFC-0052 mapping table). */
+    /* RFC-0052 W2/W5.11 — core pin (core_plus1: 0 = unpinned) is the placement
+     * dim. Only SMP builds (configUSE_CORE_AFFINITY) expose the affinity API;
+     * a uniprocessor config CANNOT honor a declared pin. Either way the outcome
+     * is announced LOUDLY — a declared `core` is NEVER silently dropped
+     * (RFC-0052 fail-loud; before W5.11 the uniprocessor branch was a silent
+     * `(void)task`). The literals match nros_tests::output::FREERTOS_CORE_PIN_
+     * MARKER / _FALLBACK_MARKER — keep in lockstep. */
     if (t->core_plus1 > 0u) {
+        const char* tname = (t->name != NULL) ? t->name : "?";
 #if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
         vTaskCoreAffinitySet(task, (UBaseType_t)1u << (t->core_plus1 - 1u));
+        semihosting_write0("nros: core pin tier=`");
+        semihosting_write0(tname);
+        semihosting_write0("`\n");
 #else
-        /* Uniprocessor build: pin noted-and-ignored (RFC-0052 mapping table;
-         * the bake keeps `core` legal everywhere because SMP-ness is a
-         * board-config property, not a platform property). */
+        semihosting_write0("nros: core pin FAILED tier=`");
+        semihosting_write0(tname);
+        semihosting_write0("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
+                           "(uniprocessor), tier runs unpinned\n");
         (void)task;
 #endif
     }

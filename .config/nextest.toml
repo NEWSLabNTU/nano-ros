@@ -76,6 +76,18 @@ max-threads = 1
 [test-groups.threadx-realtime-rust-port]
 max-threads = 1
 
+# phase-296 W5.11 — shared nuttx-arm RUST realtime image + baked port
+# (`port_of(NuttxArm, Rust, RealtimeTiers)`): the core-pin e2e and
+# realtime_tiers_e2e's `nuttx_arm_rust` cell start a router on the same port.
+[test-groups.nuttx-realtime-rust-port]
+max-threads = 1
+
+# phase-296 W5.11 — shared freertos mps2 CPP realtime image + baked port
+# (`port_of(FreertosMps2, Cpp, RealtimeTiers)`): the core-pin e2e and
+# realtime_tiers_e2e's `freertos_cpp` cell start a router on the same port.
+[test-groups.freertos-realtime-cpp-port]
+max-threads = 1
+
 # Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
 # test). Ports are allocator-unique per (variant, lang) since phase-89.13/
 # W4, so the per-variant `qemu-freertos-{pubsub,service,action}` sub-groups
@@ -352,7 +364,7 @@ retries = 1
 # other Zephyr native_sim (NSOS) QEMU-class lanes below (cold boot + zenoh
 # discovery flakes under host load).
 [[profile.default.overrides]]
-filter = "binary(zephyr_edf_deadline_applied) or (binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
+filter = "binary(zephyr_edf_deadline_applied) or binary(zephyr_core_pin_applied) or (binary(realtime_tiers_e2e) and (test(zephyr_rust) or test(zephyr_cpp) or test(zephyr_c)))"
 test-group = "zephyr-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -369,6 +381,22 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(threadx_preempt_threshold_applied) or (binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
 test-group = "threadx-realtime-rust-port"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# phase-296 W5.11 — serialize the nuttx-arm RUST core-pin e2e with the shared
+# realtime image/port; QEMU lane timeout/retries mirror the nuttx cells.
+[[profile.default.overrides]]
+filter = "binary(nuttx_core_pin_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
+test-group = "nuttx-realtime-rust-port"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# phase-296 W5.11 — serialize the freertos CPP core-pin e2e with the shared
+# realtime image/port; same QEMU throttle as the other freertos lanes.
+[[profile.default.overrides]]
+filter = "binary(freertos_core_pin_applied) or (binary(realtime_tiers_e2e) and test(freertos_cpp))"
+test-group = "freertos-realtime-cpp-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 

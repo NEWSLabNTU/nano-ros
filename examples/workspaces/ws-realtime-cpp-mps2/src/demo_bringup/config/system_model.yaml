@@ -63,6 +63,12 @@ execution:
         priority: 10
       freertos:
         priority: 2
+        # phase-296 W5.11 — placement dim on FreeRTOS: pin the LOW (spawned)
+        # tier to core 0. The mps2-an385 target is uniprocessor (no
+        # configUSE_CORE_AFFINITY), so the board seam logs the LOUD "core pin
+        # FAILED" note and the tier runs unpinned (RFC-0052 fail-loud — before
+        # W5.11 this was a SILENT (void)task). An SMP build flips it to accept.
+        core: 0
     mid:
       spin_period_us: 50000
       posix:

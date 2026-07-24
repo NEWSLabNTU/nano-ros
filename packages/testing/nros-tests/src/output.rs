@@ -474,6 +474,19 @@ pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// keep in lockstep.
 pub const NUTTX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// Emitted by the FreeRTOS board seam (`freertos_run_tiers.c`) over the
+/// semihosting console when a tier's SMP core pin is applied
+/// (`vTaskCoreAffinitySet` on a `configUSE_CORE_AFFINITY` build) — phase-296
+/// W5.11, the placement dim. Board-agnostic literal; kept board-scoped for
+/// lockstep clarity. MIRRORS the `semihosting_write0` literal — keep in lockstep.
+pub const FREERTOS_CORE_PIN_MARKER: &str = "nros: core pin tier=";
+
+/// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
+/// FreeRTOS build is uniprocessor (no `configUSE_CORE_AFFINITY`) — the tier
+/// runs unpinned, loudly (before W5.11 this was a SILENT `(void)task`). MIRRORS
+/// the `FAILED` literal in `freertos_run_tiers.c` — keep in lockstep.
+pub const FREERTOS_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

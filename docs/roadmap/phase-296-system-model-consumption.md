@@ -510,15 +510,30 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `nuttx.core: 0`; new `nuttx_core_pin_applied` e2e (two-mode, the
   `nuttx_sporadic_budget_applied` shape) boots the RUST arm — measured HONEST
   FALLBACK (qemu-arm-virt is single-core). case_10 (#246 cell) unchanged
-  (core:0 is a no-op unpinned). FreeRTOS still silently ignores `core` on its
-  uniprocessor branch (`(void)task`) — a further fail-loud follow-up.
+  (core:0 is a no-op unpinned).
+- W5.11 (FreeRTOS half) — **FreeRTOS core-pin fail-loud + e2e; port-group fix**
+  (2026-07-24): FreeRTOS HAD a `vTaskCoreAffinitySet` consumer but its
+  uniprocessor branch was a SILENT `(void)task` (a declared `core` dropped with
+  no trace). Made both branches LOUD over the semihosting console
+  (`freertos_run_tiers.c` externs `semihosting_write0`): accept marker
+  (`nros: core pin tier=` = `FREERTOS_CORE_PIN_MARKER`) on the
+  `configUSE_CORE_AFFINITY` path, fallback (`nros: core pin FAILED tier=` =
+  `FREERTOS_CORE_PIN_FALLBACK_MARKER`) on uniprocessor. ws-realtime-cpp-mps2
+  `low` (spawned) tier declares `freertos.core: 0`; new `freertos_core_pin_
+  applied` e2e boots the mps2-an385 image (semihosting captured via
+  `-semihosting-config`) — measured HONEST FALLBACK (mps2 is uniprocessor).
+  ALSO fixed a latent full-sweep flake in the W5.11 zephyr + nuttx halves: the
+  new core-pin e2es share the realtime image's baked router port with their
+  realtime_tiers cell but were NOT in a nextest port-serialization group (they
+  passed only run-isolated). Added `nuttx-realtime-rust-port` +
+  `freertos-realtime-cpp-port` groups and joined `zephyr_core_pin_applied` to
+  the existing `zephyr-realtime-rust-port` group. The three placement-dim
+  arms (zephyr/nuttx/freertos) now all fail loud, all e2e-verified.
 - Remaining (beyond W5.5–W5.11): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold on the other
   boards) so every `Native` dim is honored (today the executor's own
-  `SchedContext` backfills); FreeRTOS `core` fail-loud (its uniprocessor branch
-  is still a silent drop); the C/C++ zephyr tier image's core/deadline
-  consumers; per-board deploy slicing for the `edf` knob; an E2E fixture
-  exercising the derived-schedule path on a real workspace.
+  `SchedContext` backfills); per-board deploy slicing for the `edf` knob; an
+  E2E fixture exercising the derived-schedule path on a real workspace.
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer
