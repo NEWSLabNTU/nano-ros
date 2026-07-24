@@ -445,7 +445,7 @@ pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError
         return Ok(0);
     }
     let mut ms = d.as_millis();
-    if d.subsec_nanos() % 1_000_000 != 0 {
+    if !d.subsec_nanos().is_multiple_of(1_000_000) {
         ms += 1;
     }
     if ms >= DURATION_INFINITE_MS as u128 {
