@@ -309,15 +309,38 @@ fn generate_bridge_configs(
             continue;
         }
 
-        let input = crate::orchestration::launch_synth::resolve_launch(&pkg.dir, None, None)
-            .wrap_err_with(|| format!("ws sync: resolve launch for bridge bringup {}", pkg.name))?;
-        let materialised = input.materialise()?;
+        // R-code — plan from the bringup's committed SystemModel when
+        // present (every in-tree bridge workspace has one); launch-synth
+        // resolution survives only for modelless bringups. Both temp guards
+        // (synth XML / synthesized record) live in `_guards` through
+        // plan_system.
+        let model_path = pkg.dir.join("config/system_model.yaml");
+        let mut _guard_synth = None;
+        let mut _guard_record = None;
+        let (plan_launch_file, plan_record_file) = if model_path.exists() {
+            let model = crate::orchestration::model_ingest::load_model(&model_path)?;
+            let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
+            let tmp = tempfile::NamedTempFile::new()?;
+            std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
+            let rec_path = tmp.path().to_path_buf();
+            _guard_record = Some(tmp);
+            (model_path.clone(), Some(rec_path))
+        } else {
+            let input = crate::orchestration::launch_synth::resolve_launch(&pkg.dir, None, None)
+                .wrap_err_with(|| {
+                    format!("ws sync: resolve launch for bridge bringup {}", pkg.name)
+                })?;
+            let materialised = input.materialise()?;
+            let path = materialised.path.clone();
+            _guard_synth = Some(materialised);
+            (path, None)
+        };
         let output = crate::orchestration::planner::plan_system(
             crate::orchestration::planner::PlanOptions {
                 system_pkg: pkg.name.clone(),
                 workspace_root: ws_root.to_path_buf(),
-                launch_file: materialised.path.clone(),
-                record_file: None,
+                launch_file: plan_launch_file,
+                record_file: plan_record_file,
                 out_root: build_root.join(&pkg.name).join("nros-bridge-plan"),
                 metadata_files: Vec::new(),
                 manifest_files: Vec::new(),
