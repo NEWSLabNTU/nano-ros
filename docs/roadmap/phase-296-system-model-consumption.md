@@ -825,6 +825,31 @@ DEPRECATED examples that R-code.1 deletes.
 - **R-code.3** Deprecation plumbing removal: the R3 `nros_cli_core::
   deprecation` warning + `NROS_ALLOW_LEGACY_BAKE` escape hatch go away with
   the arms they guard.
+
+### launch_synth endgame (validated 2026-07-24)
+
+Caller census after the model-first waves: THREE `resolve_launch` sites
+remain, all fallback-only — `codegen-system` (configless self-pkg synth;
+model branch bypasses), `nros plan` (modelless fallback, R3-warned), and
+`ws sync` bridge planning (modelless fallback). Deletion preconditions:
+
+1. **Composable record synthesis** — `plan_record_from_model` emits empty
+   `container`/`load_node`; before any composable bringup carries a model,
+   extend it to map `NodeInstance.container`/`plugin` into the record's
+   container + load_node arrays (else containers silently drop from plans).
+2. **orchestration_* fixture strategy** — the five modelless fixtures
+   (composable/conditionals/includes/set_remap_env/e2e) test launch-XML
+   semantics through the plan fallback. Post-deletion: conditionals/includes
+   collapse at resolve time (play_launch's suite owns those semantics —
+   the group-ns precedent); composable + set_remap_env re-target committed
+   models (needs #1). The tests then validate model-plan consumption or
+   retire.
+3. **Self-pkg synth → model synth** — replace the 1-node `<launch>` XML
+   synthesis with an in-memory 1-node SystemModel (same Cargo-metadata
+   inputs), so the parser dependency dies with the XML.
+
+Then delete `launch_synth` (949 lines, 20 tests), the plan/ws fallbacks,
+and the deprecation module in one test-green change.
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored
