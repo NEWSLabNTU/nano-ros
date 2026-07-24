@@ -164,12 +164,42 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         )
     })?;
 
-    // Drive the planner via the same shape `nros codegen-system` does.
+    // R-code (phase-296 R4) — the launch-XML parse path is deleted; the
+    // launch-file argument is now the bringup LOCATOR: its committed
+    // sibling model (`<bringup>/config/system_model.yaml`, where the
+    // bringup dir is the launch file's `launch/` parent) is the input.
+    let bringup_dir = opts
+        .launch_file
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| opts.workspace_root.clone());
+    let model_path = bringup_dir.join("config/system_model.yaml");
+    if !model_path.exists() {
+        eyre::bail!(
+            "nros-build: `{}` has no committed SystemModel at `{}` — the \
+             launch-XML parse path was removed (phase-296 R4). Resolve one \
+             and commit it:\n  play_launch resolve {} [--system \
+             {}/system.toml] -o {}",
+            opts.launch_file.display(),
+            model_path.display(),
+            opts.launch_file.display(),
+            bringup_dir.display(),
+            model_path.display(),
+        );
+    }
+    let model = nros_cli_core::orchestration::model_ingest::load_model(&model_path)
+        .context("nros-build: load SystemModel")?;
+    let record = nros_cli_core::orchestration::model_ingest::plan_record_from_model(&model);
+    let record_tmp = opts.out_dir.join("nros-model-record.json");
+    fs::write(&record_tmp, serde_json::to_string_pretty(&record)?)
+        .context("nros-build: write model record")?;
+
     let plan_options = PlanOptions {
         system_pkg: opts.system_pkg.clone(),
         workspace_root: opts.workspace_root.clone(),
-        launch_file: opts.launch_file.clone(),
-        record_file: None,
+        launch_file: model_path.clone(),
+        record_file: Some(record_tmp),
         out_root: plan_out_root.clone(),
         metadata_files: Vec::new(),
         manifest_files: Vec::new(),
@@ -180,10 +210,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         target: None,
     };
     let planning = plan_system(plan_options).context("nros-build: planner failed")?;
-    println!(
-        "cargo:rerun-if-changed={}",
-        opts.launch_file.to_string_lossy()
-    );
+    println!("cargo:rerun-if-changed={}", model_path.display());
     println!("cargo:rerun-if-changed={}", planning.plan_path.display());
 
     let plan_json = fs::read_to_string(&planning.plan_path).with_context(|| {

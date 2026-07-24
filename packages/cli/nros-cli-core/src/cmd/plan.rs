@@ -113,8 +113,18 @@ pub fn run(args: Args) -> Result<()> {
         .unwrap_or_else(|| workspace_root.join("build").join(&system_pkg).join("nros"));
 
     let discovered_model: Option<PathBuf> = args.model.clone().or_else(|| {
-        let conv = launch_input_path.join("config/system_model.yaml");
-        (launch_input_path.is_dir() && conv.exists()).then_some(conv)
+        // Dir input: `<dir>/config/system_model.yaml`. File input (the cmake
+        // workspace seam passes `<bringup>/launch/<f>.launch.xml`): hop to
+        // the bringup dir — the launch file's `launch/` parent's parent.
+        let conv = if launch_input_path.is_dir() {
+            launch_input_path.join("config/system_model.yaml")
+        } else {
+            launch_input_path
+                .parent()
+                .and_then(std::path::Path::parent)
+                .map(|b| b.join("config/system_model.yaml"))?
+        };
+        conv.exists().then_some(conv)
     });
     if let Some(model_path) = &discovered_model {
         eprintln!(

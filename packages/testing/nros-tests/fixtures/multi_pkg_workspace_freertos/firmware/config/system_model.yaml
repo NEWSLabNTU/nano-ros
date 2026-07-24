@@ -1,0 +1,15 @@
+meta:
+  version: 1
+# R4 fixture model — mirrors launch/system.launch.xml (talker+listener).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /listener:
+      scope: /
+      pkg: listener_pkg
+      exec: listener
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker

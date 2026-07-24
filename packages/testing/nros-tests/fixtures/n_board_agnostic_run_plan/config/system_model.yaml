@@ -1,0 +1,12 @@
+meta:
+  version: 1
+# R4 fixture model — mirrors launch/system.launch.xml (1 shared node,
+# board-agnostic run_plan emitted for both posix + freertos entries).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /shared_node:
+      scope: /
+      pkg: shared_node_pkg
+      exec: shared_node

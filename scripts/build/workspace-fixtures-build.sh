@@ -28,6 +28,39 @@ source "$repo_root/scripts/build/nuttx-libc-patch.sh"
 
 cd "$repo_root"
 
+# Lane-env guards (the 2026-07-23 "broken rust lanes" were missing-env
+# invocations, not repo breakage): the platform just recipes wrap this
+# script with required env — direct calls must fail LOUD, not deep-panic.
+case "$platform" in
+    freertos)
+        if [ -z "${NROS_PLATFORM_FREERTOS_SRC:-}" ] || [ -z "${NROS_PLATFORM_CFFI_INCLUDE:-}" ]; then
+            echo "[ERROR] the freertos lane needs the just/sdk-env.just exports" >&2
+            echo "        (NROS_PLATFORM_FREERTOS_SRC, NROS_PLATFORM_CFFI_INCLUDE, …)." >&2
+            echo "        Run via the just recipe (e.g. \`just freertos build-fixtures\`)" >&2
+            echo "        instead of invoking this script directly." >&2
+            exit 2
+        fi
+        ;;
+    nuttx|nuttx-riscv)
+        if [ "${lang_filter:-}" = "rust" ] && [ -z "${NUTTX_DIR:-}" ]; then
+            echo "[ERROR] NUTTX_DIR not set — the NuttX rust workspace entry links" >&2
+            echo "        the kernel export libs (-lboard/-lopenamp). Run via" >&2
+            echo "        \`just nuttx build-fixtures\` (exports NUTTX_DIR +" >&2
+            echo "        NUTTX_APPS_DIR) instead of invoking this script directly." >&2
+            exit 2
+        fi
+        ;;
+    zephyr)
+        if [ "${lang_filter:-}" = "rust" ]; then
+            echo "[ERROR] the Zephyr rust workspace entries are west-built staticlibs" >&2
+            echo "        (workspace-EXCLUDED from cargo; see examples/workspaces/rust/" >&2
+            echo "        Cargo.toml). Build them via \`just zephyr build-fixtures\`" >&2
+            echo "        (scripts/build/zephyr-fixture-leaves.sh), not this script." >&2
+            exit 2
+        fi
+        ;;
+esac
+
 nros_cli="$(nros_cli_bin)"
 nros_require_ws_sync "$nros_cli"
 

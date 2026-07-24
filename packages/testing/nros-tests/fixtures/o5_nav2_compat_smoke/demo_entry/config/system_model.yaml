@@ -1,0 +1,33 @@
+meta:
+  version: 1
+  args:
+    frame_id: map_frame
+    namespace: robot1
+    use_sim_time: "false"
+# R4 fixture model — the RESOLVED nav2-style launch at its default binding:
+# args substituted, the $(find-pkg-share) include flattened, the include's
+# frame_id override applied. This is what `play_launch resolve` emits; the
+# nav2 copy-paste semantics live at resolve time now.
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /robot1/primary:
+      scope: /
+      pkg: primary_node
+      exec: primary
+      params:
+        robot_namespace: robot1
+        use_sim_time: false
+      remaps:
+      - from: chatter
+        to: primary/chatter
+    /secondary:
+      scope: /
+      pkg: secondary_node
+      exec: secondary
+      params:
+        frame_id: map_frame
+      remaps:
+      - from: status
+        to: secondary/status
