@@ -464,7 +464,7 @@ pub use nros_rmw::{
     ClientTrait, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy,
     QosOverride, QosOverrideRole, QosOverrideValue, QosPolicyMask, QosReliabilityPolicy,
     QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode,
-    Subscription, TopicInfo, Transport, TransportConfig, TransportError,
+    Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig, TransportError,
 };
 
 /// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
@@ -541,11 +541,11 @@ pub mod internals {
     #[cfg(feature = "rmw-cffi")]
     pub type RmwPublisher = nros_rmw_cffi::CffiPublisher;
     #[cfg(feature = "rmw-cffi")]
-    pub type RmwSubscriber = nros_rmw_cffi::CffiSubscriber;
+    pub type RmwSubscriber = nros_rmw_cffi::CffiSubscription;
     #[cfg(feature = "rmw-cffi")]
-    pub type RmwServiceServer = nros_rmw_cffi::CffiServiceServer;
+    pub type RmwServiceServer = nros_rmw_cffi::CffiService;
     #[cfg(feature = "rmw-cffi")]
-    pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
+    pub type RmwServiceClient = nros_rmw_cffi::CffiClient;
 
     /// Phase 124.A — zero-copy publisher slot type. Lives in the
     /// `internals` module so `nros-c` can construct + transmute the
