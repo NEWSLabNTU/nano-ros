@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
-set -e
+# phase-300 W2.2 — strict mode + loud probes: previously a CRASHED
+# staleness probe (stderr discarded, no pipefail) was indistinguishable
+# from a fresh fixture. Probe stderr now lands in a capture file echoed on
+# failure; `parallel --halt now,fail=1` propagates a probe crash.
+set -euo pipefail
+
+PROBE_ERR="$(mktemp)"
+PROBE_OUT="$(mktemp)"
+trap 'rm -f "$PROBE_ERR" "$PROBE_OUT"' EXIT
+probe_crash() {
+    echo "ERROR: a staleness probe crashed (exit $1) — output is NOT trustworthy:" >&2
+    cat "$PROBE_ERR" >&2
+    exit 1
+}
 
 if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
     exit 0
@@ -12,7 +25,10 @@ cmake_records() {
 
 cmake_stale=()
 if command -v parallel >/dev/null 2>&1; then
-    mapfile -t cmake_stale < <(cmake_records | parallel --jobs "$(nproc)" bash scripts/test/cmake-fixture-stale.sh {} 2>/dev/null)
+    cmake_records | parallel --halt now,fail=1 --jobs "$(nproc)" \
+        bash scripts/test/cmake-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
+        || probe_crash $?
+    mapfile -t cmake_stale < "$PROBE_OUT"
 else
     while IFS= read -r line; do
         out="$(bash scripts/test/cmake-fixture-stale.sh "$line")"
@@ -27,8 +43,11 @@ fi
 
 rust_stale=()
 if command -v parallel >/dev/null 2>&1; then
-    mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust \
-        | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
+    python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust \
+        | parallel --halt now,fail=1 --jobs "$(nproc)" \
+        bash scripts/test/rust-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
+        || probe_crash $?
+    mapfile -t rust_stale < "$PROBE_OUT"
 else
     while IFS= read -r line; do
         out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
@@ -56,14 +75,12 @@ fi
 # `.nros-workspace-fixture.*.inputsig` stamp the stale check demands.
 # zephyr/esp32/nuttx are `skip_probe = true` own-lane artifacts (west / esp /
 # nuttx machinery, each with its own sig) and never appear here.
+source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate
 workspace_toolchain_present() {
     case "$1" in
-        workspace-rust-qemu-freertos)
-            command -v arm-none-eabi-gcc >/dev/null 2>&1 ;;
-        workspace-rust-threadx-linux)
-            [ -n "${THREADX_DIR:-}" ] || [ -d third-party/threadx/kernel ] ;;
-        *)
-            return 0 ;;
+        workspace-rust-qemu-freertos) nros_toolchain_present arm-none-eabi ;;
+        workspace-rust-threadx-linux) nros_toolchain_present threadx ;;
+        *) return 0 ;;
     esac
 }
 
@@ -81,8 +98,11 @@ workspace_stale=()
 if [ ${#workspace_records[@]} -eq 0 ]; then
     :
 elif command -v parallel >/dev/null 2>&1; then
-    mapfile -t workspace_stale < <(printf '%s\n' "${workspace_records[@]}" \
-        | parallel --jobs "$(nproc)" bash scripts/test/workspace-fixture-stale.sh {} 2>/dev/null)
+    printf '%s\n' "${workspace_records[@]}" \
+        | parallel --halt now,fail=1 --jobs "$(nproc)" \
+        bash scripts/test/workspace-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
+        || probe_crash $?
+    mapfile -t workspace_stale < "$PROBE_OUT"
 else
     for line in "${workspace_records[@]}"; do
         out="$(bash scripts/test/workspace-fixture-stale.sh "$line")"

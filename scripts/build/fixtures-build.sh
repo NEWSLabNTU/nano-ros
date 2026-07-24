@@ -255,6 +255,9 @@ else
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$pkgdir"
         NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$pkgdir" >/dev/null
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$pkgdir"
-    done < <(find "examples/$platform" -name package.xml -type f 2>/dev/null)
+    # phase-300 W1.2 — tracked package.xml only, via the git index (the
+    # unpruned find descended every build tree AND could pick up a
+    # package.xml staged inside build-*/ -> spurious nros sync).
+    done < <(git ls-files "examples/$platform/**/package.xml" "examples/$platform/package.xml")
     run nros_fixture_build_one
 fi

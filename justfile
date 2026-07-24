@@ -1111,9 +1111,10 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     # filter them OUT so they report `skipped`, not `failed` (`skip!` is a panic
     # ⇒ a nextest failure; only *filtering* yields a skip).
     env_exclude=()
-    command -v arm-none-eabi-gcc >/dev/null 2>&1 \
+    source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate (issue-0030 lockstep)
+    nros_toolchain_present arm-none-eabi \
         || env_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
-    command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 \
+    nros_toolchain_present riscv64-elf \
         || env_exclude+=("not (binary(threadx_riscv64_qemu) and test(~cyclonedds))")
     # Issue 0030 — deselect OPTIONAL-toolchain suites when their toolchain is
     # absent, the same way the embedded-Cyclone tests above are gated. These
@@ -1639,7 +1640,7 @@ format-c:
     echo "Formatting C code... ($CF)"
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
     "$CF" -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
-    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 "$CF" -i
+    git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" -i
     echo "C code formatted."
 
 # Format C++ headers (nros-cpp) with the pinned clang-format
@@ -1673,7 +1674,7 @@ check-c-fmt:
     echo "  - clang-format (zpico C)"
     "$CF" --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
-    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 "$CF" --dry-run --Werror
+    git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" --dry-run --Werror
     echo "C formatting OK."
 
 # Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
@@ -2159,14 +2160,21 @@ clean-bindings:
     #!/usr/bin/env bash
     set -e
     echo "Removing generated bindings..."
-    # Auto-discover all generated/ directories under examples/
-    for d in $(find examples \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name _deps \) -prune -o -name generated -type d -print | sort); do
+    # Auto-discover all generated/ directories under examples/ — walk is
+    # legitimate here (generated/ is an untracked product), but the prune
+    # list comes from the phase-300 shared SSoT.
+    source scripts/build/prune-dirs.sh
+    # generated/ is itself IN the prune list (we're looking for it) — build
+    # a prune group without it.
+    _prune=('(') ; for _d in "${NROS_PRUNE_DIRS[@]}"; do [ "$_d" = generated ] && continue; _prune+=(-name "$_d" -o); done
+    unset '_prune[-1]'; _prune+=(')' -prune)
+    for d in $(find examples "${_prune[@]}" -o -name generated -type d -print | sort); do
         rm -rf "$d"
         echo "  removed $d"
     done
     # Phase 131.B — relocated bench/test-fixture crates under packages/testing/
     for d in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
-                    -name generated -type d -not -path '*/target/*' 2>/dev/null | sort); do
+                    "${_prune[@]}" -o -name generated -type d -print 2>/dev/null | sort); do
         rm -rf "$d"
         echo "  removed $d"
     done

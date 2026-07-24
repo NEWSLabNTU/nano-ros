@@ -47,14 +47,9 @@ is_allowed() {
 
 has_example_payload() {
   local path="$1"
-  find "$path" -mindepth 1 -type f \
-    ! -path '*/build/*' \
-    ! -path '*/build-*/*' \
-    ! -path '*/target/*' \
-    ! -path '*/target-*/*' \
-    ! -path '*/generated/*' \
-    ! -name '.nros-*' \
-    -print -quit | grep -q .
+  # phase-300 W3.2 — tracked payload via the git index (the -not -path
+  # form still DESCENDED build trees before -quit could fire).
+  git ls-files -- "$path" | grep -qv '^$'
 }
 
 failures=()

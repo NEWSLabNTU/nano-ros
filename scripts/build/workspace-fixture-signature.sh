@@ -36,9 +36,15 @@ workspace="$repo_root/$dir"
     else
         printf 'tool:nros-absent\0'
     fi
-    find "$workspace" \
-        \( -name target -o -name 'target-*' -o -name build -o -name 'build-*' -o -name generated \) \
-        -prune -o -type f -print0 \
+    # phase-300 W2.1 — enumerate via the git index instead of walking: the
+    # find-prune list omitted _deps/install/log, so cmake byproducts were
+    # content-hashed into the signature (slow + FALSE STALENESS when a
+    # rebuilt _deps changed the hash with no source change). Tracked files
+    # plus untracked-but-unignored ones (new sources not yet committed)
+    # cover exactly the source set; gitignored build trees can never leak.
+    rel_ws="${workspace#$repo_root/}"
+    git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- "$rel_ws" \
+        | while IFS= read -r -d '' relf; do printf '%s/%s\0' "$repo_root" "$relf"; done \
         | sort -z \
         | while IFS= read -r -d '' file; do
             rel="${file#$repo_root/}"

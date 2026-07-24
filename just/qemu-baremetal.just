@@ -69,8 +69,9 @@ build:
     # emit `[PREREQ]` + exit 0 if missing.
     nros_require_ws_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
-    _qemu_tomls="$(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort)"
+    # phase-300 W1.1 — enumerate tracked crates via the git index (the
+    # F1 `-not -path` find still DESCENDED every target*/build* tree).
+    _qemu_tomls="$(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
     # Issue 0100 — single sync-then-build pass. The former two-pass split existed
     # only because the Entry+Node-pkg shape had an Entry whose `[patch]` pointed
     # at a SIBLING `../<pkg>/generated/*`, so every entry had to wait for its
@@ -443,8 +444,8 @@ help:
 [group("main")]
 clean: clean-zenoh-pico
     #!/usr/bin/env bash
-    for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort); do
+    # phase-300 W1.1 — tracked-crate enumeration (see build recipe).
+    for toml in $(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort); do
         rm -rf "$(dirname "$toml")/target"
     done
     # Phase 131.B — relocated bare-metal bench/fixture crates.
