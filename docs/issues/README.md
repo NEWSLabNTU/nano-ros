@@ -44,6 +44,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#260** — the RFC-0052 Native sched dims are e2e-verified only on the FALLBACK arm: every realtime
+fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /
+`pthread_setaffinity_np` / `vTaskCoreAffinitySet`, `#ifdef CONFIG_SMP`) is compile-verified only.
+Needs ONE SMP fixture (a separate zephyr native_sim SMP variant, not the shared image) to flip a
+two-mode core-pin e2e to accept. See `0260-*`. (phase-296 W5.11 2026-07-24)
+
+**#259** — the RTOS realizer never derives `placement` / `non_preempt_scope` from the model (both
+hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can't assign a core pin
+or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
+vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
+
 **#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
 idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing
 subset pkg). Scope ts-generation to the used closure or fix srv IDL lowering. See `0258-*`.

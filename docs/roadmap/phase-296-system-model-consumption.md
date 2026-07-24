@@ -529,11 +529,45 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `freertos-realtime-cpp-port` groups and joined `zephyr_core_pin_applied` to
   the existing `zephyr-realtime-rust-port` group. The three placement-dim
   arms (zephyr/nuttx/freertos) now all fail loud, all e2e-verified.
-- Remaining (beyond W5.5–W5.11): the rest of the runtime `PlatformSched`
-  primitives (`replenish`, native reservation/preemption-threshold on the other
-  boards) so every `Native` dim is honored (today the executor's own
-  `SchedContext` backfills); per-board deploy slicing for the `edf` knob; an
-  E2E fixture exercising the derived-schedule path on a real workspace.
+### Remaining work items (beyond W5.5–W5.11)
+
+Explicit, individually actionable; each ends with an acceptance check. Two are
+tracked as issues because they are limitations, not just unbuilt features.
+
+- **W5.12 — derived-schedule E2E fixture (the capstone).** No test exercises
+  `derive_execution_from_contracts` end-to-end (bake → boot); W5.6 is
+  unit-tested only. Author a workspace whose model declares node
+  `contracts.node_paths` (latency/rate facts) + callback groups but NO
+  `execution.tiers`, so the bake DERIVES `derived-<node>` tiers, then boot it
+  (posix native = cheapest, no QEMU). *Accept:* two nodes with distinct DAG
+  facts get distinct derived priorities and both run, proven at runtime; the
+  degradation notes print. This is the precursor to "Done when".
+- **W5.13 — ThreadX placement (`SMP core exclude`).** The `SchedCaps` table
+  marks ThreadX `affinity: true` but there is no ThreadX `core` consumer
+  (the zephyr/nuttx/freertos placement arms landed in W5.7/W5.11). *Accept:*
+  a ThreadX board seam applies the core knob (or the RTOS's core-exclude
+  primitive) with the W5.11 kernel-accept/fallback marker discipline + a
+  two-mode e2e.
+- **W5.14 — other-board `replenish` / native reservation.** The budget dim's
+  replenishment + reservation primitives on the boards that lack them (today
+  the executor's cooperative `SchedContext` backfills). *Accept:* each board
+  either applies the native primitive (marker-gated) or records a loud
+  `Backfill`/`Degrade`, never a silent drop.
+- **W5.15 — per-board deploy slicing for the `edf` knob.** `derive_execution_
+  from_contracts` currently requires the `edf` deploy knob UNANIMOUS across ALL
+  deploy entries (bails on disagreement) — even entries for OTHER boards, though
+  derive runs once per `target_rtos`. *Accept:* the unanimity check is scoped to
+  the deploy entries whose target maps to the current `target_rtos`, so a
+  mixed-platform model (zephyr edf=true + freertos edf=false) bakes each image
+  correctly instead of bailing.
+- **Placement / non_preempt derivation from the model** — the realizer hardcodes
+  both dims to `NotRequested`; the derived-schedule path can never assign a core
+  pin or preemption threshold. Design-open (RFC-0052 contract vocabulary).
+  Tracked: **issue #259**.
+- **SMP kernel-ACCEPT coverage for the core-pin dim** — every realtime fixture
+  is uniprocessor, so the SMP core-pin accept path is compile-verified only.
+  Needs one SMP fixture to flip a two-mode e2e to accept. Tracked: **issue #260**.
+
 - **Done when:** a two-boundary chain crossing two platforms bakes distinct
   realizations (e.g. Zephyr EDF vs FreeRTOS executor-EDF) from the SAME
   self-derived DAG, with the guarantee difference recorded; and the realizer
