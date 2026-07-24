@@ -89,6 +89,9 @@ static void zephyr_apply_core_pin(const char* name, uint32_t core_plus1) {
     int cpu = (int)(core_plus1 - 1u);
     int rc = nros_zephyr_thread_cpu_pin(cpu);
     if (rc == 0) {
+        /* phase-296 W5.11 — kernel-accept marker (placement dim). Literal
+         * prefix MIRRORS nros_tests::output::ZEPHYR_CORE_PIN_MARKER and the Rust
+         * arm's apply_tier_core_pin ::log::info! — keep all three in lockstep. */
         printk("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
     } else {
         printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "

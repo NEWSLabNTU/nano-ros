@@ -473,7 +473,28 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   realtime cell (`threadx-realtime-rust-port` group). #247 filed: the
   threadx_linux_rust realtime cell's spawned-high-tier-publishes-zero is
   PRE-EXISTING (baseline-verified) — coordinate with phase-297.
-- Remaining (beyond W5.5–W5.10): the rest of the runtime `PlatformSched`
+- W5.11 — **Zephyr CPU-pin exercised (placement dim) — fail-loud e2e**
+  (2026-07-24): the W5.7 (Rust) + W5.8 (C/C++) `k_thread_cpu_pin` consumers
+  already applied the `core` knob but were UNTESTED — the one Native dim
+  without a marker+e2e. Single-sourced both literals into
+  `nros_tests::output` (`ZEPHYR_CORE_PIN_MARKER` = `nros: core pin tier=` and
+  `ZEPHYR_CORE_PIN_FALLBACK_MARKER` = `nros: core pin FAILED tier=`; the
+  accept/fallback share no prefix, so the e2e waits the `nros: core pin` stem
+  then classifies) with lockstep comments in BOTH arms (entry_tiers.rs
+  `::log::info!` + zephyr_run_tiers.c `printk`). ws-realtime-rust `low` tier
+  declares `zephyr.core: 0`; new `zephyr_core_pin_applied` e2e asserts the
+  placement dim is NEVER silently dropped — kernel-accept marker OR the honest
+  fallback note (RFC-0052 fail-loud), the two-mode shape of
+  `nuttx_sporadic_budget_applied`. The current single-CPU native_sim fixture
+  has no `CONFIG_SCHED_CPU_MASK_PIN_ONLY`/SMP, so `k_thread_cpu_pin` returns
+  `-ENOSYS` → the FALLBACK arm fires (loud, unpinned); an SMP fixture would
+  flip it to ACCEPT and the same test upgrades automatically. Deliberately NOT
+  enabling SMP on native_sim (it shares the image with the EDF/delivery cells
+  — global scheduler change = regression risk for no proof gain here). The
+  C/C++ arms print the same lockstepped literal (trivial future
+  parametrization). zephyr_rust EDF + realtime cells unchanged (core:0 is a
+  no-op on the unpinned run).
+- Remaining (beyond W5.5–W5.11): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
   `SchedContext` backfills); the C/C++ zephyr tier image's core/deadline

@@ -59,6 +59,13 @@ execution:
         priority: 10
       zephyr:
         priority: 10
+        # phase-296 W5.11 — placement dim: pin the LOW tier to CPU 0. On the
+        # non-SMP native_sim fixture `k_thread_cpu_pin` returns -ENOSYS
+        # (CONFIG_SCHED_CPU_MASK_PIN_ONLY absent) → the board logs the LOUD
+        # "core pin FAILED" note and the tier runs unpinned (RFC-0052 fail-loud
+        # — never a silent drop). An SMP fixture would flip it to kernel-accept;
+        # the e2e asserts EITHER, so the placement dim is proven never-silent.
+        core: 0
       nuttx:
         priority: 100
       threadx:

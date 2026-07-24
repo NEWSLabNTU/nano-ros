@@ -446,6 +446,20 @@ pub const NUTTX_SPORADIC_FALLBACK_MARKER: &str = "nros: sporadic budget declared
 /// MIRRORS the `B::println` literal there — keep in lockstep.
 pub const THREADX_PREEMPT_MARKER: &str = "nros: preempt threshold set tier=";
 
+/// Emitted by the Zephyr board when the kernel ACCEPTED a tier's CPU pin
+/// (phase-296 W5.11, the `placement` dim). MIRRORS the `::log::info!` prefix
+/// in `nros-board-zephyr/src/entry_tiers.rs` (`apply_tier_core_pin`) AND the
+/// `printk` literal in the C/C++ arm's `zephyr_apply_core_pin`
+/// (`nros-board-zephyr/c/zephyr_run_tiers.c`) — keep all three in lockstep
+/// (the no_std board crate cannot depend on this crate).
+pub const ZEPHYR_CORE_PIN_MARKER: &str = "nros: core pin tier=";
+
+/// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
+/// running image cannot honor the pin (`CONFIG_SCHED_CPU_MASK_PIN_ONLY` off /
+/// no SMP / bad cpu) — the tier runs unpinned, loudly. MIRRORS the `FAILED`
+/// literals in both Zephyr arms — keep in lockstep.
+pub const ZEPHYR_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

@@ -92,6 +92,9 @@ fn apply_tier_core_pin(tier: &TierSpec<'_>) {
     if let Some(cpu) = tier.core {
         let rc = unsafe { nros_zephyr_thread_cpu_pin(cpu.min(i32::MAX as u32) as i32) };
         if rc == 0 {
+            // phase-296 W5.11 — kernel-accept marker (placement dim). The literal
+            // prefix MIRRORS `nros_tests::output::ZEPHYR_CORE_PIN_MARKER` and the C
+            // arm's `zephyr_apply_core_pin` printk — keep all three in lockstep.
             ::log::info!("nros: core pin tier=`{}` cpu={}", tier.name, cpu);
         } else {
             ::log::warn!(
