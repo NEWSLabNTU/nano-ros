@@ -128,6 +128,22 @@ pub fn apply_model_execution(
     Ok(())
 }
 
+/// phase-296 W5.15 — is this deploy entry relevant to the RTOS currently being
+/// baked? `derive_execution_from_contracts` runs once per `target_rtos`, so the
+/// `edf` (and future per-board) capability knobs must be sliced to the entries
+/// that land on THIS image's kernel. An unplaced deploy (`target: None`) is
+/// board-agnostic — the consuming entry's own board decides — so it counts for
+/// every bake. `Target::Linux` is the `posix` RTOS; an MCU target maps via the
+/// canonical [`board_to_rtos`](crate::codegen::entry::board_to_rtos).
+fn deploy_targets_rtos(d: &ros_launch_manifest_model::Deploy, target_rtos: &str) -> bool {
+    use ros_launch_manifest_model::Target;
+    match &d.target {
+        None => true,
+        Some(Target::Linux) => target_rtos == "posix",
+        Some(Target::Mcu { board }) => crate::codegen::entry::board_to_rtos(board) == target_rtos,
+    }
+}
+
 /// phase-296 W5.5 follow-up — the RFC-0052 realizer as the DERIVED-schedule
 /// path: when the model declares NO `execution.tiers`, derive per-node tiers
 /// from the contract layer (`node_paths` + criticality) via the shared
@@ -164,10 +180,18 @@ pub fn derive_execution_from_contracts(
     }
 
     // Per-deploy `edf` capability knob: unanimous-or-error across the entries
-    // that carry it. (Per-board deploy slicing is a follow-up; a split-brain
-    // knob on one image's bake is the domain-0 class of bug — reject it.)
+    // RELEVANT to THIS bake's `target_rtos` (phase-296 W5.15 — per-board deploy
+    // slicing). derive runs once per target_rtos, and one image has one kernel,
+    // so a split-brain knob on the SAME image's bake is still the domain-0 class
+    // of bug and is rejected. But entries whose `target` maps to a DIFFERENT
+    // RTOS are another image's kernel — they must NOT force this bake to agree
+    // (a mixed model — zephyr edf=true + freertos edf=false — is legal). An
+    // unplaced deploy (`target: None`) is board-agnostic and counts everywhere.
     let mut edf_deploy: Option<(&String, &ros_launch_manifest_model::Deploy)> = None;
     for (node, d) in &model.execution.deploy {
+        if !deploy_targets_rtos(d, target_rtos) {
+            continue;
+        }
         if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
             if let Some((prev_node, prev)) = edf_deploy {
                 let prev_b = matches!(
@@ -468,6 +492,48 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("disagree on the `edf`"), "got: {err}");
+    }
+
+    /// phase-296 W5.15 — edf knobs on entries for DIFFERENT boards must NOT
+    /// force a bake to agree: derive runs once per target_rtos, and each image
+    /// has its own kernel. A zephyr entry (edf=true) + a freertos entry
+    /// (edf=false) is a legal mixed model — each bake slices to its own board.
+    #[test]
+    fn edf_knobs_sliced_per_target_rtos() {
+        use ros_launch_manifest_model::{Deploy, ExtraValue, Target};
+        let make = |target_rtos: &str| {
+            let mut system: SystemToml =
+                toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
+            let mut model = contract_model();
+            for (node, board, edf) in [
+                ("/ctrl", "zephyr-native-sim", true),
+                ("/telem", "mps2-an385-freertos", false),
+            ] {
+                let mut extra = BTreeMap::new();
+                extra.insert("edf".to_string(), ExtraValue::Bool(edf));
+                model.execution.deploy.insert(
+                    node.to_string(),
+                    Deploy {
+                        target: Some(Target::Mcu {
+                            board: board.to_string(),
+                        }),
+                        extra,
+                        ..Default::default()
+                    },
+                );
+            }
+            derive_execution_from_contracts(&mut system, &model, target_rtos, &ctrl_groups())
+        };
+        // Before W5.15 both bakes bailed on the cross-board disagreement.
+        assert!(
+            make("zephyr").is_ok(),
+            "zephyr bake must slice to the zephyr entry's edf=true, not bail on the \
+             freertos entry"
+        );
+        assert!(
+            make("freertos").is_ok(),
+            "freertos bake must slice to the freertos entry's edf=false"
+        );
     }
 }
 
