@@ -69,20 +69,19 @@ session/subscriber/service_server terms, transport hints (tx_express/rx_buffer_h
 struct instead of an options struct, a deprecated blocking call_raw slot. The rename/reshape
 cleanup bucket. See `0240-*`. (audit 2026-07-21)
 
-**#239** — no FFI-mirror drift gate for the RMW vtable/entity ABI nor an exhaustive one for the
-76-symbol platform ABI (check-ffi-struct-mirrors covers only the cpp qos/integrity pair) — the
-#131/#160 stale-mirror class is open on both; this is what let #238 sit undetected. See `0239-*`.
-(audit 2026-07-21) — PARTIAL: #238 added compile-time layout assertions on both sides of the RMW
-mirror (Rust `abi_layout` const block + C `abi_layout_check.c` in the `check-c` lane); the width
-class is now gated. Still open: the platform 76-symbol side, per-field (not just size) parity, and
-the cbindgen-codegen SSoT.
-
 **#236** — phase-296 R4: `play_launch resolve` drops `<node machine=>`, so
 multi-host workspaces can't migrate to the model path (the machine is captured
 by `play_launch_parser` but dropped at the `launch_dump` layer + never mapped
 to `deploy.host`). Blocks the monolith's `native_entry_robot1/robot2`. Fix
 spans launch_dump + model_builder + the nano-ros host filter. See
 `0236-multihost-machine-not-in-resolved-model.md`.
+
+Recently resolved: **#239** — RMW ABI hand-mirror now field-parity gated
+(`check-rmw-abi-mirror`: vtable 36 slots + 8 entity structs, ordered names;
+fired on a LIVE Rust-only QoS `tx_express` split — C side couldn't request
+express — header + profile macros fixed); the platform 3-way mirror was
+already exhaustively gated by `check-platform-abi-mirror.sh` (the audit
+judged only `c_stub_platform.rs` and missed it). See `archived/0239-*`.
 
 Recently resolved: **#237** — `ws-safety-{c,cpp}` migrated to `MODEL` (4
 entries + per-variant models) and validated through the fixture builder's

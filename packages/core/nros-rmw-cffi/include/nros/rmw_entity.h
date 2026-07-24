@@ -92,7 +92,14 @@ typedef struct nros_rmw_qos_t {
     uint8_t  history;         /**< @see NROS_RMW_HISTORY_*        */
     uint8_t  liveliness_kind; /**< @see nros_rmw_liveliness_kind_t */
     uint16_t depth;
-    uint16_t _reserved0;      /**< Reserved; must be zero. */
+    /** phase-279 (#145) — publisher-side express hint (`TopicInfo::tx_express`
+     *  across the C ABI): non-zero = this publisher's samples bypass transport
+     *  tx batching. Carved from the former `uint16_t _reserved0`
+     *  (layout-identical); ignored by every slot except `create_publisher`.
+     *  Mirror of `NrosRmwVtable`'s Rust twin — was left un-split here when the
+     *  Rust side split it (issue #239's live-drift instance). */
+    uint8_t  tx_express;
+    uint8_t  _reserved0;      /**< Reserved; must be zero. */
 
     /* ---- 16-byte extension (Phase 109) ---- */
     /** Subscriber: max acceptable inter-arrival time, ms. Publisher:
@@ -139,6 +146,7 @@ typedef struct nros_rmw_qos_t {
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
         .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
         .depth       = 10,                                               \
+        .tx_express  = 0,                                                \
         ._reserved0  = 0,                                                \
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \
@@ -156,6 +164,7 @@ typedef struct nros_rmw_qos_t {
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
         .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
         .depth       = 5,                                                \
+        .tx_express  = 0,                                                \
         ._reserved0  = 0,                                                \
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \
@@ -177,6 +186,7 @@ typedef struct nros_rmw_qos_t {
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
         .liveliness_kind = NROS_RMW_LIVELINESS_AUTOMATIC,                \
         .depth       = 1000,                                             \
+        .tx_express  = 0,                                                \
         ._reserved0  = 0,                                                \
         .deadline_ms = 0,                                                \
         .lifespan_ms = 0,                                                \

@@ -1,7 +1,7 @@
 ---
 id: 239
 title: "No FFI-mirror drift gate for the RMW vtable/entity ABI nor an exhaustive one for the platform ABI — the #131/#160 stale-mirror class is open on both"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: testing
@@ -46,3 +46,36 @@ Extend `check-ffi-struct-mirrors.sh` (or add a sibling) to cover:
 
 The absence of #1 is what let issue #238's event-kind width mismatch sit
 undetected.
+
+## Resolution (2026-07-24)
+
+1. **RMW mirror — gated.** New `scripts/check-rmw-abi-mirror.sh` (hooked as
+   `check-rmw-abi-mirror` in `just check`'s fast lane, beside the platform
+   gate): compares the ORDERED member-name lists of `nros_rmw_vtable_t` ↔
+   `NrosRmwVtable` (36 slots, paren-depth-aware so nested `(*cb)` params
+   don't count) and all 8 `nros_rmw_*_t` entity structs ↔ their `NrosRmw*`
+   twins. Proven to fire on an injected rename. Plus a COMPILER-DERIVED
+   offset/size gate: `tests/c_stubs/abi_offsets.c` exports
+   `offsetof`/`sizeof` for all 79 members + 9 struct sizes (computed by
+   the C compiler from the headers) and `tests/abi_offsets.rs` compares
+   each against `core::mem::offset_of!` on the Rust mirror — both sides
+   machine-derived, no shared literal table (regenerate via
+   `scripts/gen-rmw-abi-offsets.py`). Proven to fire on a same-size field
+   swap that name/size checks cannot see; run by the gate script via
+   `cargo nextest -p nros-rmw-cffi --features c-stub-test`. Widths within a same-named
+   member stay pinned by the #238 asserts.
+   The gate immediately surfaced a LIVE drift: the phase-279 QoS
+   `tx_express` split (`u16 _reserved0` → `u8 tx_express + u8 _reserved0`)
+   was Rust-only — same total size, so the #238 size gate was blind, and C
+   consumers could not request express (a C write to `_reserved0` aliased
+   it). Header + the 3 QOS_PROFILE macros fixed.
+2. **Platform mirror — was ALREADY gated.** `scripts/check-platform-abi-mirror.sh`
+   (phase 121.4.b, in `just check`) extracts EVERY `nros_platform_*` decl
+   from all three headers and requires both the extern-"C"-block decl and an
+   `nros_platform_export_*!` emission — the finding judged only
+   `c_stub_platform.rs` (~7 symbols) and missed this script. No new gate
+   needed; name+presence parity across the 3-way mirror is exhaustive.
+
+Accepted residual: per-slot SIGNATURE parity is not text-compared on either
+surface; it is covered by the #238 width pins + every in-tree C consumer
+compiling against the headers.

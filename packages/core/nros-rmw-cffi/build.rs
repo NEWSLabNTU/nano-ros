@@ -69,4 +69,14 @@ fn maybe_build_c_stub() {
         .warnings(true)
         .extra_warnings(true)
         .compile("nros_abi_layout_check");
+
+    // Issue #239 — compiler-derived offset/size export for the hand-mirrored
+    // RMW structs; consumed by tests/abi_offsets.rs (offset_of! comparison).
+    println!("cargo:rerun-if-changed=tests/c_stubs/abi_offsets.c");
+    cc::Build::new()
+        .file("tests/c_stubs/abi_offsets.c")
+        .include("include")
+        .warnings(true)
+        .extra_warnings(true)
+        .compile("nros_abi_offsets");
 }
