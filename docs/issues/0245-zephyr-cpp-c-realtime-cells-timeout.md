@@ -76,6 +76,19 @@ the cmake-built zenoh-pico TUs and the Rust `zpico-sys` staticlib — worth
 ruling out a mixed-copy link even though the dup-symbol gate should catch
 identical names).
 
+**Locking survey (2026-07-24b):** the crash stack routes through
+`nros_rmw_zenoh::zpico::declare_publisher` → `zpico_declare_publisher_ex`
+(`zpico.c:1257`) → `z_declare_publisher` with NO shim-level lock; the shim's
+`g_spin_mutex` guards the spin/condvar path only. With
+`Z_FEATURE_MULTI_THREAD=1` the background read task starts (`zpico.c:987`)
+and processes interests on its own thread — zenoh-pico's internal session
+mutex is supposed to make declare-vs-read safe, so either that lock is
+bypassed on the interest/write-filter path (fork bug candidate) or the
+zephyr `_z_mutex_t` mapping is unsound in this image. NOTE: the crashing
+stack is the SAME nros-rmw-zenoh→zpico route the PASSING Rust image uses —
+the images differ in spin drive (C boot loop `nros_cpp_spin_once` blocking
+read vs the Rust tier loop), not in the declare path.
+
 **Next (fix wave):** (a) determine which zenoh-pico copy the crashing path
 links and whether nros-cpp's declare path holds the session mutex that the
 Rust `zpico_spin_once`/declare pairing uses; (b) if the lock exists and is
