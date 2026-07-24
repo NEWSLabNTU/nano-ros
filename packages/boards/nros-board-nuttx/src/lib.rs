@@ -358,6 +358,56 @@ where
 /// `active_groups` filter + the spin loop. Blocks forever (the boot tier's spin
 /// never returns); returns only if the boot tier's `setup` fails before spin.
 #[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
+/// phase-296 W5.9 — NuttX kernel sporadic server, self-applied on the
+/// CALLING thread. Defined in the board seam C file (`nuttx_run_tiers.c`,
+/// compiled by the board crate's build.rs) so `struct sched_param`'s
+/// config-gated sporadic fields are laid out per THIS kernel's config (the
+/// #131 layout-mirror trap avoided). Returns 1 when the kernel accepted
+/// SCHED_SPORADIC, 0 otherwise (no CONFIG_SCHED_SPORADIC / no policy
+/// declared / kernel rejection — the C side logs the marker or the loud
+/// fallback; the executor's cooperative Sporadic SchedContext remains the
+/// enforcement either way).
+#[cfg(target_os = "nuttx")]
+unsafe extern "C" {
+    fn nros_nuttx_apply_current_sporadic(
+        name: *const core::ffi::c_char,
+        tier_class: *const core::ffi::c_char,
+        budget_us: u64,
+        period_us: u64,
+        priority: i64,
+    ) -> i32;
+}
+
+/// Self-apply the tier's kernel sporadic policy (no-op off-target and when
+/// the tier declares no budget/period). Name/class cross the FFI as
+/// NUL-terminated stack copies (TierSpec strings are `&str`, not C strings).
+#[cfg(target_os = "nuttx")]
+fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) {
+    let (Some(class), Some(budget), Some(period)) = (tier.class, tier.budget_us, tier.period_us)
+    else {
+        return;
+    };
+    let mut name_buf = [0u8; 64];
+    let n = tier.name.len().min(63);
+    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let mut class_buf = [0u8; 32];
+    let c = class.len().min(31);
+    class_buf[..c].copy_from_slice(&class.as_bytes()[..c]);
+    unsafe {
+        nros_nuttx_apply_current_sporadic(
+            name_buf.as_ptr() as *const core::ffi::c_char,
+            class_buf.as_ptr() as *const core::ffi::c_char,
+            budget,
+            period,
+            tier.priority,
+        );
+    }
+}
+
+#[cfg(not(target_os = "nuttx"))]
+#[inline]
+fn apply_tier_sporadic(_tier: &nros_platform::TierSpec<'_>) {}
+
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     tiers: &[nros_platform::TierSpec<'_>],
@@ -446,6 +496,8 @@ where
         boot_tier.deadline_us,
         boot_tier.deadline_policy,
     );
+    // phase-296 W5.9 — kernel sporadic server for the boot tier, when declared.
+    apply_tier_sporadic(boot_tier);
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut boot_crt);
         if let Err(e) = setup(&mut ctx) {
@@ -529,6 +581,8 @@ fn nuttx_run_one_tier<F, E>(
         tier.deadline_us,
         tier.deadline_policy,
     );
+    // phase-296 W5.9 — kernel sporadic server for this tier thread, when declared.
+    apply_tier_sporadic(tier);
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut ctx) {
@@ -566,8 +620,7 @@ fn nuttx_spin_tier_forever(
 /// `set_logger`, and the `Once` guard avoids the racey double-set path.
 #[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
 fn install_stdout_logger() {
-    use std::io::Write as _;
-    use std::sync::Once;
+    use std::{io::Write as _, sync::Once};
 
     struct StdoutLogger;
     impl log::Log for StdoutLogger {

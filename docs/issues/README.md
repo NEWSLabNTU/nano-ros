@@ -44,6 +44,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#246** — realtime_tiers_e2e nuttx_arm_rust cell TIMES OUT on a fresh image (baseline-verified
+pre-existing — NOT the W5.9 sporadic work; cpp/c siblings pass ~13 s); riscv trio
+precondition-skips (rust lane name mismatch). See `0246-*`. (2026-07-24)
+
 **#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
 header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
 See `0244-*`. (RMW/platform audit 2026-07-21)

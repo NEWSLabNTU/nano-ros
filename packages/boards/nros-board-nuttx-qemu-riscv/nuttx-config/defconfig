@@ -146,3 +146,8 @@ CONFIG_CRYPTO_RANDOM_POOL=y
 # Rust libc fork (time_t = i64); the 32-bit default makes std's clock_gettime
 # read garbage (panic "invalid timestamp") on the rust entry.
 CONFIG_SYSTEM_TIME64=y
+
+# phase-296 W5.9 - POSIX sporadic server: the budget dim's kernel-native
+# realization (nros_nuttx_apply_current_sporadic; RFC-0052).
+CONFIG_SCHED_SPORADIC=y
+CONFIG_SCHED_SPORADIC_MAXREPL=3

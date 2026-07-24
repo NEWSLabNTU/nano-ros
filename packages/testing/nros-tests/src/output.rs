@@ -428,6 +428,12 @@ pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 /// (the no_std board crate cannot depend on this crate).
 pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
 
+/// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
+/// `nros_nuttx_apply_current_sporadic` — shared by the C/C++ AND Rust tier
+/// arms) when the kernel actually accepted SCHED_SPORADIC for a tier
+/// (phase-296 W5.9). MIRRORS the printf literal there — keep in lockstep.
+pub const NUTTX_SPORADIC_MARKER: &str = "nros: sporadic budget set tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

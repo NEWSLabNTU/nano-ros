@@ -36,6 +36,7 @@
 #include <sched.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -154,6 +155,13 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* phase-296 W5.9 — tier identity + sporadic policy, carried so the tier
+     * thread can self-apply SCHED_SPORADIC (mirrors the zephyr ctx append). */
+    const char* name;
+    const char* tier_class;
+    uint64_t budget_us;
+    uint64_t period_us;
+    int64_t priority;
 } nros_nuttx_tier_ctx_t;
 
 /* Forward decl — nuttx_tier_thread and nuttx_spawn_next_tier are mutually
@@ -179,6 +187,59 @@ static int nuttx_clamp_priority(int64_t p) {
     return (int)p;
 }
 
+/* phase-296 W5.9 — NuttX kernel-native SPORADIC SERVER (the budget dim's
+ * first `Native` realization, RFC-0052). Applies SCHED_SPORADIC on the
+ * CALLING thread when the tier is real-time with BOTH a budget and a
+ * replenishment period: runs at the tier priority while `budget_us` of CPU
+ * remains in each `period_us` window, dropping to the low background
+ * priority when exhausted (POSIX sporadic server; NuttX implements it when
+ * CONFIG_SCHED_SPORADIC=y). The marker prints ONLY when the kernel actually
+ * accepted the policy — an image without the config (or a kernel rejection)
+ * falls back to the already-applied SCHED_FIFO, loudly, and the executor's
+ * cooperative Sporadic SchedContext (W3a) remains the enforcement.
+ * Non-static: the Rust `nros-board-nuttx` run_tiers externs and self-applies
+ * through this same helper (one implementation, one marker). The printf
+ * literal MUST match `nros_tests::output::NUTTX_SPORADIC_MARKER`. */
+int nros_nuttx_apply_current_sporadic(const char* name, const char* tier_class, uint64_t budget_us,
+                                      uint64_t period_us, int64_t priority);
+int nros_nuttx_apply_current_sporadic(const char* name, const char* tier_class, uint64_t budget_us,
+                                      uint64_t period_us, int64_t priority) {
+    if (tier_class == NULL || strcmp(tier_class, "real_time") != 0 || budget_us == 0u ||
+        period_us == 0u) {
+        return 0;
+    }
+#ifdef CONFIG_SCHED_SPORADIC
+    struct sched_param sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sched_priority = nuttx_clamp_priority(priority);
+    sp.sched_ss_low_priority = sched_get_priority_min(SCHED_FIFO);
+    sp.sched_ss_max_repl = 1;
+    sp.sched_ss_repl_period.tv_sec = (time_t)(period_us / 1000000u);
+    sp.sched_ss_repl_period.tv_nsec = (long)(period_us % 1000000u) * 1000L;
+    sp.sched_ss_init_budget.tv_sec = (time_t)(budget_us / 1000000u);
+    sp.sched_ss_init_budget.tv_nsec = (long)(budget_us % 1000000u) * 1000L;
+    int rc = pthread_setschedparam(pthread_self(), SCHED_SPORADIC, &sp);
+    if (rc == 0) {
+        printf("nros: sporadic budget set tier=`%s` %lluus/%lluus\n", (name != NULL) ? name : "?",
+               (unsigned long long)budget_us, (unsigned long long)period_us);
+        return 1;
+    }
+    printf("nros: sporadic budget FAILED tier=`%s` rc=%d — tier stays SCHED_FIFO "
+           "(executor Sporadic SchedContext is the enforcement)\n",
+           (name != NULL) ? name : "?", rc);
+#else
+    /* Fail-loud (RFC-0052): the tier DECLARED a sporadic budget but this
+     * kernel was built without CONFIG_SCHED_SPORADIC — the declared policy
+     * cannot be honored natively. The executor's cooperative Sporadic
+     * SchedContext (W3a) is the enforcement; say so once per tier. */
+    printf("nros: sporadic budget declared for tier=`%s` but kernel lacks "
+           "CONFIG_SCHED_SPORADIC — executor SchedContext only\n",
+           (name != NULL) ? name : "?");
+    (void)priority;
+#endif
+    return 0;
+}
+
 /* nuttx_tier_thread — body of each non-boot tier thread.
  *
  * Opens a borrowed executor over the shared session, gates it to the tier's
@@ -189,6 +250,12 @@ static int nuttx_clamp_priority(int64_t p) {
  * pthread_create's entry type. */
 static void* nuttx_tier_thread(void* arg) {
     nros_nuttx_tier_ctx_t* ctx = (nros_nuttx_tier_ctx_t*)arg;
+
+    /* phase-296 W5.9 — upgrade this tier thread to the kernel sporadic
+     * server when its policy declares budget+period (else it keeps the
+     * SCHED_FIFO priority set at pthread_create). */
+    (void)nros_nuttx_apply_current_sporadic(ctx->name, ctx->tier_class, ctx->budget_us,
+                                            ctx->period_us, ctx->priority);
 
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot thread) must outlive this thread — the boot spin loop runs
@@ -291,6 +358,11 @@ static int nuttx_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this thread will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->name = t->name;
+    ctx->tier_class = t->tier_class;
+    ctx->budget_us = t->budget_us;
+    ctx->period_us = t->period_us;
+    ctx->priority = t->priority;
 
     /* Build the tier pthread attributes: detached (never joined — the tier
      * thread spins forever), an explicit stack size (tier.stack_bytes, else the
@@ -422,6 +494,10 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
         bsp.sched_priority = nuttx_clamp_priority(boot->priority);
         (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &bsp);
     }
+    /* phase-296 W5.9 — boot tier upgrades to the kernel sporadic server too,
+     * when declared (overrides the FIFO adopt above). */
+    (void)nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
+                                            boot->period_us, boot->priority);
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin

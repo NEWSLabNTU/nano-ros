@@ -412,7 +412,33 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   the cpp/c realtime cells). #245 itself (the cells' timeout) was RESOLVED —
   executor storage 32 bytes short of the generated size, heap corruption;
   see `archived/0245-*`.
-- Remaining (beyond W5.5–W5.7): the rest of the runtime `PlatformSched`
+- W5.9 — **NuttX kernel sporadic server (budget dim Native) — consumers
+  LANDED** (2026-07-24): `nros_nuttx_apply_current_sporadic(name, class,
+  budget_us, period_us, priority)` in BOTH `nuttx_run_tiers.c` seams
+  (self-apply on the calling thread: `pthread_setschedparam(SCHED_SPORADIC)`
+  with `sched_ss_{low_priority,repl_period,init_budget,max_repl}`), called at
+  tier-thread entry + boot on the C/C++ arm AND externed by the Rust
+  `nros-board-nuttx::run_tiers` (both its sites) — one implementation, one
+  marker (`nros: sporadic budget set tier=` = `NUTTX_SPORADIC_MARKER`,
+  printed only when the kernel ACCEPTED the policy). Config-honest: a tier
+  that declares budget+period on a kernel without `CONFIG_SCHED_SPORADIC`
+  logs a loud "executor SchedContext only" note (the W3a cooperative
+  Sporadic SC stays the enforcement). The helper lives in the board seam C
+  so `struct sched_param`'s config-gated sporadic fields lay out per THIS
+  kernel's config (the #131 layout-mirror trap avoided; Rust never mirrors
+  the struct). `CONFIG_SCHED_SPORADIC=y` + `MAXREPL=3` added to both boards'
+  `nuttx-config/defconfig` — takes effect at the NEXT kernel provision; the
+  current prebuilt export lacks it, so the #else arm is what compiles today
+  (the #ifdef arm is compile-verified only against the header fields, which
+  match the export's `sched.h` exactly). All 3 nuttx lanes rebuild green;
+  arm cpp/c realtime cells PASS (~13 s). **Not yet exercised end-to-end**
+  (needs: a kernel re-provision with the config + a nuttx-scoped
+  budget/period — `TierPlatformSpec` has no per-platform budget/period
+  fields yet, and a GENERIC head budget would flip every platform's
+  executor to Sporadic gating; the rlm schema addition is maintainer-gated
+  — submodule push). #246 filed: the nuttx_arm_rust realtime cell times out
+  PRE-EXISTING (baseline-verified); riscv trio precondition-skips.
+- Remaining (beyond W5.5–W5.9): the rest of the runtime `PlatformSched`
   primitives (`replenish`, native reservation/preemption-threshold/affinity on
   the other boards) so every `Native` dim is honored (today the executor's own
   `SchedContext` backfills); the C/C++ zephyr tier image's core/deadline
