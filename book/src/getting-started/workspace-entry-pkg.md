@@ -49,7 +49,7 @@ src/native_entry/
 ├── package.xml
 ├── Cargo.toml           # [[bin]] + deps on node pkgs + board crate
 │                        # + [package.metadata.nros.entry]
-└── src/main.rs          # nros::main!(launch = "demo_bringup");
+└── src/main.rs          # nros::main!(model = "demo_bringup");
 ```
 
 No library code lives here. The Entry pkg links the Node pkg rlibs and hands
@@ -94,22 +94,23 @@ nros::main!();
 // 2. Single-node, explicit board type.
 nros::main!(board = NativeBoard);
 
-// 3. Multi-node: reference a Bringup pkg; boot its default launch file
-//    (the one listed under [system] in system.toml).
-nros::main!(launch = "demo_bringup");
-
-// 4. Multi-node, explicit launch file.
-nros::main!(launch = "demo_bringup:sim.launch.xml");
-
-// 5. Full form: board + launch file + runtime arg overrides.
-nros::main!(board = NativeBoard, launch = "demo_bringup:sim.launch.xml", args = [("use_sim","true")]);
-
-// 6. Model form (canonical): bake from a play_launch-resolved SystemModel
+// 3. Multi-node (CANONICAL): bake from a play_launch-resolved SystemModel
 //    committed in the Bringup pkg. Reads
 //    `<bringup>/config/system_model.yaml` by default; pass an explicit
 //    relative path after `:`.
 nros::main!(model = "demo_bringup");
 nros::main!(model = "demo_bringup:config/variant-b.yaml");
+
+// 4. Multi-host slice: keep only this host's (+ unhosted) nodes from a
+//    multihost model (`<node machine="…">` → the model's deploy.host).
+nros::main!(model = "demo_bringup:config/multihost_model.yaml", host = "robot1");
+
+// 5. DEPRECATED (retiring): direct launch-file forms. These re-parse the
+//    launch XML at build time instead of consuming the reviewed model;
+//    they warn at bake time and will be removed once the ecosystem is
+//    fully migrated (phase-296 R4).
+nros::main!(launch = "demo_bringup");
+nros::main!(launch = "demo_bringup:sim.launch.xml");
 ```
 
 `launch` and `model` are mutually exclusive. `model` is the **canonical**
@@ -218,12 +219,12 @@ so the board is chosen at `west build -b` time rather than baked into the
 package (see [One Entry pkg per board](#one-entry-pkg-per-board)).
 
 The Entry source is identical to the native, FreeRTOS, and ThreadX Entries —
-the same one-line launch macro, with the launch file as the single source of
-truth for the node set:
+the same one-line macro, with the committed SystemModel as the single source
+of truth for the node set:
 
 ```rust
 // examples/workspaces/rust/src/zephyr_entry/src/lib.rs
-nros::main!(launch = "demo_bringup:system.launch.xml");
+nros::main!(model = "demo_bringup:config/system_model.yaml");
 ```
 
 ## One Entry pkg per board

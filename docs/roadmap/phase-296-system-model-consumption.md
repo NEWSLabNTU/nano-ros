@@ -765,16 +765,22 @@ multihost golden pin it). zephyr slice bakes talker-only; native robots
 unchanged. **Every example consumer is now on the model path** — the only
 remaining `launch =` users are the M4 test fixtures + M5 book prose.
 
-**M4 — test fixtures:** `packages/testing/nros-tests/fixtures/*` workspaces
-(`n9_workspace`, `multi_pkg_workspace_{zephyr,nuttx,esp_idf,platformio}`, …)
-still author `launch =` entries + system.toml; migrate when their consuming
-tests move (they gate CLI/workspace planning behavior, so they flip together
-with R-code below).
+**M4 — test fixtures: CLASSIFIED, flips atomically with R-code.1
+(2026-07-24).** Every remaining `launch =`/system.toml fixture TESTS the
+legacy path itself — `n9_workspace` → `native_main_macro_forms/misuse` (the
+launch-arm macro forms), `o4_pkg_index_workspace` → `pkg_index` (resolution
+through the launch arm), `orchestration_tiers_*` → `exec_model_matrix` +
+orchestration misuse (the launch+system.toml tier bake), and
+`multi_pkg_workspace_{zephyr,nuttx,esp_idf,platformio}` → `cli_bringup_*`
+(the system.toml CLI bake). Migrating them now would gut the tests they
+serve; the R-code.1 commit rewrites/deletes these tests+fixtures together
+(launch-form tests become model-form or misuse-error tests).
 
-**M5 — book + docs:** `book/src/getting-started/workspace-*.md` +
-`user-guide/component-and-entry-pkg.md` teach the `LAUNCH`/`launch =` form;
-rewrite to the model workflow (resolve → commit model → `MODEL`/`model =`)
-once M1–M2 land, before the code removal ships.
+**M5 — book + docs — DONE (2026-07-24).** All five pages now teach the
+model workflow as canonical (`model =`/`MODEL` primary, the resolve command
+was already documented, layout comments + the zephyr/C++/mixed snippets
+synced, host-slice form added); the launch forms remain only as explicitly
+DEPRECATED examples that R-code.1 deletes.
 
 **Retirement (code) — after M1–M5, R3 warning fires nowhere:**
 

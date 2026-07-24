@@ -103,7 +103,7 @@ nano_ros_entry(
     NAME    native_entry
     SOURCES src/main.cpp
     BOARD   native
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     DEPLOY  native)
 ```
 
@@ -130,7 +130,7 @@ nano_ros_entry(
     NAME    native_entry
     SOURCES src/main.c
     BOARD   native
-    LAUNCH  "demo_bringup:system.launch.xml"
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     LANG    c
     DEPLOY  native)
 ```

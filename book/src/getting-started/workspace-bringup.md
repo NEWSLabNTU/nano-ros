@@ -249,16 +249,16 @@ documents the exact CLI commands that are verified green today.
 ## When you don't need a Bringup pkg
 
 If you have a single Entry pkg and don't plan to share the topology across
-multiple boards, fold `launch/` and `system.toml` directly into the Entry pkg.
-The `nros::main!` macro accepts a `launch =` argument that names the bringup
-package:
+multiple boards, fold `launch/` + `config/` directly into the Entry pkg.
+The `nros::main!` macro's `model =` argument names the bringup package:
 
 ```rust
-// Multi-node: reads launch/system.launch.xml from demo_bringup
-nros::main!(launch = "demo_bringup");
+// Multi-node: bakes config/system_model.yaml from demo_bringup
+// (the SystemModel `play_launch resolve` emits from the launch file)
+nros::main!(model = "demo_bringup");
 
-// Explicit file within a bringup pkg
-nros::main!(launch = "demo_bringup:sim.launch.xml");
+// Explicit model file within a bringup pkg
+nros::main!(model = "demo_bringup:config/sim.yaml");
 ```
 
 If the launch files live inside the Entry pkg itself, point at it by name. The

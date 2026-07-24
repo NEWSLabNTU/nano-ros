@@ -18,7 +18,7 @@ changes language-side is the cmake-fn / macro surface.
 |---|---|---|
 | **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_node_register(NAME … CLASS … SOURCES …)` |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
-| **Entry pkg** | `src/main.rs` with `nros::main!(launch = "demo_bringup:system.launch.xml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … LAUNCH "demo_bringup:system.launch.xml" DEPLOY native)` |
+| **Entry pkg** | `src/main.rs` with `nros::main!(model = "demo_bringup:config/system_model.yaml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … MODEL "…/demo_bringup/config/system_model.yaml" DEPLOY native)` |
 | **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
 | **Build** | `nros sync` + `cargo build -p native_entry` | `nros sync` + `cmake -S . -B build` + `cmake --build build` |
 | **Boot** | `cargo run -p native_entry` | `./build/.../native_entry` |
@@ -50,7 +50,7 @@ my_ws/
     │   └── launch/system.launch.xml
     └── native_entry/             # Entry pkg (C++)
         ├── package.xml
-        ├── CMakeLists.txt        # nano_ros_entry(LAUNCH …)
+        ├── CMakeLists.txt        # nano_ros_entry(MODEL …)
         └── src/main.cpp          # NROS_MAIN(…) one-liner
 ```
 
@@ -195,7 +195,8 @@ turtlebot3 pastes in modulo unsupported tags.
 ## Entry pkg
 
 The C++ Entry pkg's `CMakeLists.txt` calls
-`nano_ros_entry(LAUNCH …)` — Phase 219.D added the `LAUNCH` keyword:
+`nano_ros_entry(MODEL …)` — the canonical input is the resolved SystemModel
+(the deprecated `LAUNCH` keyword still works while the migration completes):
 
 ```cmake
 # src/native_entry/CMakeLists.txt
@@ -206,7 +207,7 @@ nano_ros_workspace_pkg_guard()
 nano_ros_entry(
     NAME    native_entry
     SOURCES src/main.cpp                              # user-authored
-    LAUNCH  "demo_bringup:system.launch.xml"          # Phase 219.D
+    MODEL   "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup/config/system_model.yaml"
     DEPLOY  native)
 ```
 
