@@ -77,6 +77,11 @@ hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can'
 or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
 vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
 
+**#267** — nano-ros-published `Control` deserializes as garbage AFTER a ros2 domain_bridge
+serialized-passthrough rebroadcast (direct typed echo clean; MrmState crosses fine) — nested
+Time/bool padding divergence suspected; live impact: the demo sim consumed a 2.6e9 accel.
+See `0267-*`.
+
 **#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
 idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing
 subset pkg). Scope ts-generation to the used closure or fix srv IDL lowering. See `0258-*`.
