@@ -210,14 +210,28 @@ pub fn run(args: Args) -> Result<()> {
         bringup_owned = owned;
         &bringup_owned
     } else {
-        // RFC-0052 / phase-296 R3 — deprecation: baking straight from
-        // `system.toml` (no resolved SystemModel) is the transitional path.
-        // The canonical path is `--model <system_model.yaml>` (produced by
-        // `play_launch resolve`). Silence with `NROS_ALLOW_LEGACY_BAKE=1`
-        // once you have acknowledged it; the legacy path is removed in R4.
-        crate::deprecation::warn_legacy_bake(
-            "nros codegen-system without --model (baking from system.toml directly)",
-        );
+        // R-code.1 — a bringup that DECLARES system semantics (system.toml
+        // present) must resolve them into a SystemModel; the direct
+        // system.toml bake is removed. A config-less bringup (M-F.3
+        // self-pkg, or a bare pkg with neither file) still takes the
+        // default bake — there is nothing legacy about baking defaults.
+        let toml_path = bringup
+            .manifest_path
+            .parent()
+            .map(|d| d.join("system.toml"))
+            .filter(|p| p.exists());
+        if let Some(toml) = toml_path {
+            eyre::bail!(
+                "codegen-system: `{}` declares system semantics but the bringup \
+                 has no committed SystemModel — the direct system.toml bake was \
+                 removed (phase-296 R4). Resolve one and commit it:\n  \
+                 play_launch resolve <bringup>/launch/<file>.launch.xml \
+                 --system {} -o <bringup>/config/system_model.yaml\n\
+                 (convention discovery picks it up; `--model <path>` overrides)",
+                toml.display(),
+                toml.display(),
+            );
+        }
         bringup
     };
     let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)
