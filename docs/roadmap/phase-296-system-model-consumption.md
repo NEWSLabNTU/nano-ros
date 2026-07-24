@@ -575,22 +575,31 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   plan carries the derived tiers, boot behavior is IDENTICAL to the
   authored-tier path every realtime cell already boots (same
   resolve→run_tiers), so the derivation correctness is the new-covered surface.
-  FINDING: the pure-cargo `nros::main!(model=…)` proc-macro does NOT engage the
-  derive path — it only converts EXPLICIT `execution.tiers` (main_macro.rs
-  `if !model.execution.tiers.is_empty()`); a tier-less model bakes tier-less.
-  So derived schedules are a `codegen-system` (C/C++/CMake) capability only —
-  wiring derivation into the proc-macro is a separate follow-up (see below).
+  FINDING (since RESOLVED — see the next entry): the pure-cargo
+  `nros::main!(model=…)` proc-macro originally only converted EXPLICIT
+  `execution.tiers`; a tier-less model baked tier-less. Now wired to derive.
+- **Shared derive core + `nros::main!` derivation** (2026-07-24): relocated the
+  RTOS realizer + its model→MapperInput adapter from `nros-cli-core` into
+  `nros-orchestration-ir` (the crate both the CLI codegen AND the proc-macro
+  depend on), and extracted the derive logic into a side-effect-free core
+  `nros_orchestration_ir::derive::derive_tiers_from_contracts` (returns the
+  degradations + groupless notes instead of `eprintln`, so each caller surfaces
+  them — the CLI to stderr, the macro to build stderr). The CLI's
+  `derive_execution_from_contracts` is now a thin wrapper (behavior-identical:
+  403 cli-core tests green). `nros::main!` gained the ELSE branch: a tier-less
+  model DERIVES via the same core → `resolve_tiers`, so a pure-cargo Rust entry
+  gets an identical `derived-<node>` table. Verified: `derive_then_resolve_
+  matches_the_macro_path` (orchestration-ir) proves the exact macro sequence —
+  the derived tiers resolve AND the overrides rebind the authored group tiers
+  ("high"/"low", absent from the derived table) onto `derived-<node>`, control
+  ranked above telem. Existing entries unaffected (the `if !tiers.is_empty()`
+  branch is unchanged; the else engages only on a tier-less contract model).
 
 ### Remaining work items (beyond W5.5–W5.13, W5.15, W5.12)
 
 Explicit, individually actionable; each ends with an acceptance check. Two are
 tracked as issues because they are limitations, not just unbuilt features.
 
-- **Derived schedule in the pure-cargo `nros::main!` path.** The proc-macro
-  converts explicit `execution.tiers` only; a contract-only model bakes
-  tier-less on the Rust pure-cargo path (W5.12 finding). *Accept:* the macro
-  derives tiers from contracts (reusing `nros-orchestration-ir`'s shared derive)
-  when the model declares none, matching the `codegen-system` verb.
 - **W5.12 runtime-boot of a derived image (optional).** The bake E2E proves the
   plan; a booted derived image would be behaviorally identical to authored-tier
   boot (shared resolve→run_tiers). Low marginal value; a native C/C++ derived

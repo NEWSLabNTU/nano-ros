@@ -128,22 +128,6 @@ pub fn apply_model_execution(
     Ok(())
 }
 
-/// phase-296 W5.15 — is this deploy entry relevant to the RTOS currently being
-/// baked? `derive_execution_from_contracts` runs once per `target_rtos`, so the
-/// `edf` (and future per-board) capability knobs must be sliced to the entries
-/// that land on THIS image's kernel. An unplaced deploy (`target: None`) is
-/// board-agnostic — the consuming entry's own board decides — so it counts for
-/// every bake. `Target::Linux` is the `posix` RTOS; an MCU target maps via the
-/// canonical [`board_to_rtos`](crate::codegen::entry::board_to_rtos).
-fn deploy_targets_rtos(d: &ros_launch_manifest_model::Deploy, target_rtos: &str) -> bool {
-    use ros_launch_manifest_model::Target;
-    match &d.target {
-        None => true,
-        Some(Target::Linux) => target_rtos == "posix",
-        Some(Target::Mcu { board }) => crate::codegen::entry::board_to_rtos(board) == target_rtos,
-    }
-}
-
 /// phase-296 W5.5 follow-up — the RFC-0052 realizer as the DERIVED-schedule
 /// path: when the model declares NO `execution.tiers`, derive per-node tiers
 /// from the contract layer (`node_paths` + criticality) via the shared
@@ -166,124 +150,33 @@ pub fn derive_execution_from_contracts(
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
 ) -> Result<usize> {
-    use crate::orchestration::{
-        mapper_input::mapper_input_from_model,
-        rtos_realizer::{realize_rtos, sched_caps_from_deploy},
-    };
-    use nros_orchestration_ir::{TierDef, TierRtosSpec};
-    use ros_launch_manifest_sched::chain_aware_rank;
-
-    let input = mapper_input_from_model(model);
-    let ranked = chain_aware_rank(&input);
-    if ranked.items.is_empty() {
-        return Ok(0);
-    }
-
-    // Per-deploy `edf` capability knob: unanimous-or-error across the entries
-    // RELEVANT to THIS bake's `target_rtos` (phase-296 W5.15 — per-board deploy
-    // slicing). derive runs once per target_rtos, and one image has one kernel,
-    // so a split-brain knob on the SAME image's bake is still the domain-0 class
-    // of bug and is rejected. But entries whose `target` maps to a DIFFERENT
-    // RTOS are another image's kernel — they must NOT force this bake to agree
-    // (a mixed model — zephyr edf=true + freertos edf=false — is legal). An
-    // unplaced deploy (`target: None`) is board-agnostic and counts everywhere.
-    let mut edf_deploy: Option<(&String, &ros_launch_manifest_model::Deploy)> = None;
-    for (node, d) in &model.execution.deploy {
-        if !deploy_targets_rtos(d, target_rtos) {
-            continue;
-        }
-        if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
-            if let Some((prev_node, prev)) = edf_deploy {
-                let prev_b = matches!(
-                    prev.extra.get("edf"),
-                    Some(ros_launch_manifest_model::ExtraValue::Bool(true))
-                );
-                if prev_b != *b {
-                    bail!(
-                        "SystemModel deploy entries disagree on the `edf` capability \
-                         knob ('{prev_node}' vs '{node}') — one image has one kernel; \
-                         make the knob unanimous"
-                    );
-                }
-            }
-            edf_deploy = Some((node, d));
-        }
-    }
-    let caps = sched_caps_from_deploy(target_rtos, edf_deploy.map(|(_, d)| d));
-
-    let plan = realize_rtos(&ranked, &input, &caps);
-    for d in &plan.degradations {
+    // The derive CORE lives in `nros-orchestration-ir` (shared with the
+    // `nros::main!` proc-macro so pure-cargo Rust entries derive identically).
+    // This wrapper surfaces the recorded degradations + groupless notes on
+    // stderr and mutates the bringup `SystemToml` — behavior-identical to the
+    // pre-relocation inline version.
+    let derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
+        model,
+        target_rtos,
+        callback_groups,
+    )
+    .map_err(|e| eyre::eyre!("{e}"))?;
+    for d in &derived.degradations {
         eprintln!(
             "codegen-system: derived-schedule degradation — {} [{}]: {}",
             d.node, d.dim, d.reason
         );
     }
-
-    let mut tiers: BTreeMap<String, TierDef> = BTreeMap::new();
-    let mut overrides: Vec<NodeOverride> = Vec::new();
-    for n in &plan.nodes {
-        let node = bare(&n.name).to_string();
-        // A ranked node with no declared callback groups has nothing for the
-        // gating executor to bind — it stays on the default tier. Loud note,
-        // not an error: the schedule is advisory-derived, not authored.
-        let Some(groups) = callback_groups.get(&node).filter(|g| !g.is_empty()) else {
-            eprintln!(
-                "codegen-system: derived-schedule note — node '{}' declares no \
-                 callback groups; it stays on the default tier",
-                n.name
-            );
-            continue;
-        };
-        let tier_name = format!("derived{}", n.name.replace('/', "-"));
-        let spec = TierRtosSpec {
-            priority: n.priority,
-            stack_bytes: None,
-            preempt_threshold: n.preempt_threshold,
-            // sched_class deliberately unset: the runtime consumes the
-            // GENERIC policy (class/period/budget/deadline → SchedContext,
-            // and on Zephyr class+deadline → kernel EDF); the realizer's
-            // internal vocab ("edf"/"sporadic") is not the sub-table's
-            // POSIX-class vocab.
-            sched_class: None,
-        };
-        let mut def = TierDef {
-            class: Some(
-                if n.deadline_us.is_some() || n.budget_us.is_some() {
-                    "real_time"
-                } else {
-                    "best_effort"
-                }
-                .to_string(),
-            ),
-            period_us: n.period_us,
-            budget_us: n.budget_us,
-            deadline_us: n.deadline_us,
-            core: n.core,
-            ..Default::default()
-        };
-        match target_rtos {
-            t if t.contains("zephyr") => def.zephyr = Some(spec),
-            t if t.contains("freertos") => def.freertos = Some(spec),
-            t if t.contains("threadx") => def.threadx = Some(spec),
-            t if t.contains("nuttx") => def.nuttx = Some(spec),
-            _ => def.posix = Some(spec),
-        }
-        tiers.insert(tier_name.clone(), def);
-        overrides.push(NodeOverride {
-            name: node,
-            callback_groups: groups
-                .iter()
-                .map(|g| CallbackGroupOverride {
-                    id: g.id.clone(),
-                    tier: tier_name.clone(),
-                })
-                .collect(),
-        });
+    for name in &derived.groupless_notes {
+        eprintln!(
+            "codegen-system: derived-schedule note — node '{}' declares no \
+             callback groups; it stays on the default tier",
+            name
+        );
     }
-
-    let n = tiers.len();
-    system.tiers = tiers;
-    system.node_overrides = overrides;
+    let n = derived.tiers.len();
+    system.tiers = derived.tiers;
+    system.node_overrides = derived.overrides;
     Ok(n)
 }
 

@@ -184,10 +184,10 @@ pub fn sched_caps_from_deploy(
     deploy: Option<&ros_launch_manifest_model::Deploy>,
 ) -> SchedCaps {
     let mut caps = sched_caps_for(target);
-    if let Some(d) = deploy {
-        if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
-            caps.edf = *b;
-        }
+    if let Some(d) = deploy
+        && let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf")
+    {
+        caps.edf = *b;
     }
     caps
 }
@@ -219,11 +219,11 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
             if let Some(b) = p.exec_ms {
                 budget_ms = Some(budget_ms.map_or(b, |cur: f64| cur.max(b)));
             }
-            if let EffectiveTrigger::Timer { rate_hz } = &p.effective_trigger {
-                if *rate_hz > 0.0 {
-                    let per = 1000.0 / rate_hz;
-                    period_ms = Some(period_ms.map_or(per, |cur: f64| cur.min(per)));
-                }
+            if let EffectiveTrigger::Timer { rate_hz } = &p.effective_trigger
+                && *rate_hz > 0.0
+            {
+                let per = 1000.0 / rate_hz;
+                period_ms = Some(period_ms.map_or(per, |cur: f64| cur.min(per)));
             }
         }
         out.insert(

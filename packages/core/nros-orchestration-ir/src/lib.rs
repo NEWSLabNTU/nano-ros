@@ -30,6 +30,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// phase-296 W5.13 follow-up — the RTOS realizer + its model→MapperInput adapter
+// moved here from `nros-cli-core` so BOTH consumers (the CLI's codegen-system
+// AND the `nros::main!` proc-macro) can DERIVE a schedule from the contract
+// layer, not just resolve authored tiers. No behavior change vs the old
+// `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
+pub mod derive;
+pub mod mapper_input;
+pub mod rtos_realizer;
+
 // =============================================================================
 // Board key → board ZST path mapping
 // =============================================================================

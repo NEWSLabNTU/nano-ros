@@ -17,6 +17,9 @@ thiserror = { workspace = true }
 # a path dep groups by lockfile, not visibility (same rationale as nros-macros
 # depping nros-pkg-index / nros-launch-parser).
 ros-launch-manifest-sched = { path = "../../cli/third-party/ros-launch-manifest/sched" }
+# W5.13 follow-up — `mapper_input` adapts a resolved `SystemModel` into the
+# `MapperInput` the realizer ranks; the model types live in the sibling crate.
+ros-launch-manifest-model = { path = "../../cli/third-party/ros-launch-manifest/model" }
 
 [lints]
 workspace = true

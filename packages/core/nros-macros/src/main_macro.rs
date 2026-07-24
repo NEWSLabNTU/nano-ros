@@ -691,6 +691,53 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
             resolved_tiers = Some(table);
+        } else {
+            // phase-296 W5.13 follow-up — NO authored tiers: DERIVE the schedule
+            // from the contract layer via the SAME shared core the CLI's
+            // codegen-system uses (`nros-orchestration-ir::derive`), so a
+            // pure-cargo Rust entry gets an identical `derived-<node>` table.
+            // A tier-less, contract-less model derives nothing and stays
+            // tier-less (byte-identical to before).
+            let derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
+                &model,
+                &rtos,
+                &node_groups,
+            )
+            .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            if !derived.tiers.is_empty() {
+                // Fail-loud: surface every recorded weakening at expansion time
+                // (build stderr) — the macro has no runtime channel for these.
+                for d in &derived.degradations {
+                    eprintln!(
+                        "nros::main!: derived-schedule degradation — {} [{}]: {}",
+                        d.node, d.dim, d.reason
+                    );
+                }
+                for name in &derived.groupless_notes {
+                    eprintln!(
+                        "nros::main!: derived-schedule note — node '{name}' declares no \
+                         callback groups; it stays on the default tier"
+                    );
+                }
+                let component_names: BTreeSet<&str> =
+                    node_instances.iter().map(String::as_str).collect();
+                let table = resolve_tiers(
+                    &derived.tiers,
+                    &derived.overrides,
+                    &component_names,
+                    &node_groups,
+                    &rtos,
+                )
+                .map_err(|e| {
+                    syn::Error::new(
+                        model_lit.span(),
+                        format!("nros::main!: derived tier resolution: {e}"),
+                    )
+                })?;
+                nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+                    .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+                resolved_tiers = Some(table);
+            }
         }
 
         // Lifecycle autostart + param-services capability from the model.
