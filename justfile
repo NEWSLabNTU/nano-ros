@@ -339,7 +339,7 @@ check: check-fast check-build
 # is the per-push CI gate (`check.yml`).
 [group("main")]
 check-fast: \
-    check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
+    check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
@@ -476,6 +476,27 @@ check-dep-chain:
 [private]
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
+
+# RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
+# regeneration from the C-header SSoT packages. Loud skip when bindgen-cli
+# (pinned; maintainer/CI-only dep) is absent — embedded consumers never
+# need it.
+check-abi-bindings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v bindgen >/dev/null 2>&1; then
+        echo "check-abi-bindings SKIP: bindgen-cli not installed (cargo install bindgen-cli --locked --version 0.72.1)"
+        exit 0
+    fi
+    bash scripts/gen-abi-bindings.sh >/dev/null
+    if ! git diff --exit-code --quiet -- \
+        packages/core/nros-rmw-cffi/src/generated.rs \
+        packages/core/nros-platform-cffi/src/generated.rs; then
+        git --no-pager diff --stat -- packages/core/*/src/generated.rs
+        echo "ERROR: committed ABI bindings are stale — headers changed without rerunning scripts/gen-abi-bindings.sh; commit the regenerated files."
+        exit 1
+    fi
+    echo "ABI bindings match the C-header SSoT."
 
 
 # Phase 176.4 — verify <nros/board.h> matches the Rust extern block

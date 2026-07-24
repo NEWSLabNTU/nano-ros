@@ -171,6 +171,12 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Never clang-format `cmake/templates/*`** — reflow splits `@VAR@` configure_file tokens
   (`@SYM @_create`) → generated TU fails "stray '@'". `.clang-format-ignore` guards; format
   recipes already exclude them. → issue 0159 (archived).
+- **RMW + platform C ABI: the C headers ARE the SSoT (RFC-0054)** — Rust consumes
+  COMMITTED bindgen output (`packages/core/{nros-rmw-cffi,nros-platform-cffi}/src/generated.rs`).
+  Header edit ⇒ run `scripts/gen-abi-bindings.sh` (pinned bindgen-cli 0.72.1) + commit both;
+  `check-abi-bindings` gates staleness. Never hand-edit `generated.rs`; vtable slots are
+  `Option<fn>` (C nullability); no layout tests in generated code (host-64-bit literals
+  break 32-bit targets).
 - **Hand-mirrored FFI structs drift on append** (QoS `tx_express`, `callback_group` — 3×):
   mirror-only TU passes a SHORTER struct by value → tail field garbage. Gated:
   `check-ffi-struct-mirrors` (push lane) + cross-include TU in `check-c`. Include order is

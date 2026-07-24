@@ -54,102 +54,12 @@ pub extern "C" fn _nros_force_link_cffi() {}
 // first, then here.
 // ============================================================================
 
-unsafe extern "C" {
-    // -- Clock --
-    pub fn nros_platform_clock_ms() -> u64;
-    pub fn nros_platform_clock_us() -> u64;
-
-    // -- Alloc --
-    pub fn nros_platform_alloc(size: usize) -> *mut c_void;
-    pub fn nros_platform_realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
-    pub fn nros_platform_dealloc(ptr: *mut c_void);
-    pub fn nros_platform_heap_used_bytes() -> usize;
-    pub fn nros_platform_heap_total_bytes() -> usize;
-
-    // -- Sleep --
-    pub fn nros_platform_sleep_us(us: usize);
-    pub fn nros_platform_sleep_ms(ms: usize);
-    pub fn nros_platform_sleep_s(s: usize);
-
-    // -- Yield --
-    pub fn nros_platform_yield_now();
-
-    // -- Random --
-    pub fn nros_platform_random_u8() -> u8;
-    pub fn nros_platform_random_u16() -> u16;
-    pub fn nros_platform_random_u32() -> u32;
-    pub fn nros_platform_random_u64() -> u64;
-    pub fn nros_platform_random_fill(buf: *mut c_void, len: usize);
-
-    // -- Time (wall clock) --
-    pub fn nros_platform_time_now_ms() -> u64;
-    pub fn nros_platform_time_since_epoch_secs() -> u32;
-    pub fn nros_platform_time_since_epoch_nanos() -> u32;
-
-    // -- Tasks --
-    pub fn nros_platform_task_init(
-        task: *mut c_void,
-        attr: *mut c_void,
-        entry: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
-        arg: *mut c_void,
-    ) -> i8;
-    pub fn nros_platform_task_join(task: *mut c_void) -> i8;
-    pub fn nros_platform_task_detach(task: *mut c_void) -> i8;
-    pub fn nros_platform_task_cancel(task: *mut c_void) -> i8;
-    pub fn nros_platform_task_exit();
-    pub fn nros_platform_task_free(task: *mut *mut c_void);
-
-    // -- Mutex (non-recursive) --
-    pub fn nros_platform_mutex_init(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_drop(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_lock(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_try_lock(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_unlock(m: *mut c_void) -> i8;
-
-    // -- Mutex (recursive) --
-    pub fn nros_platform_mutex_rec_init(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_rec_drop(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_rec_lock(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_rec_try_lock(m: *mut c_void) -> i8;
-    pub fn nros_platform_mutex_rec_unlock(m: *mut c_void) -> i8;
-
-    // -- Condvar --
-    pub fn nros_platform_condvar_init(cv: *mut c_void) -> i8;
-    pub fn nros_platform_condvar_drop(cv: *mut c_void) -> i8;
-    pub fn nros_platform_condvar_signal(cv: *mut c_void) -> i8;
-    pub fn nros_platform_condvar_signal_all(cv: *mut c_void) -> i8;
-    /// Phase 124.B.7.a — ISR-safe variant of `signal`. See
-    /// `<nros/platform.h>` for per-platform contract.
-    pub fn nros_platform_condvar_signal_from_isr(cv: *mut c_void) -> i8;
-    pub fn nros_platform_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
-    pub fn nros_platform_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
-
-    // -- Wake primitive (Phase 130) --
-    // Binary-semaphore-shaped primitive for the executor's wake_flag /
-    // spin_once cv-wait pair. See `<nros/platform.h>` for per-platform
-    // contract and ISR-safety rules.
-    pub fn nros_platform_wake_init(w: *mut c_void) -> i8;
-    pub fn nros_platform_wake_drop(w: *mut c_void) -> i8;
-    pub fn nros_platform_wake_wait_ms(w: *mut c_void, timeout_ms: u32) -> i8;
-    pub fn nros_platform_wake_signal(w: *mut c_void) -> i8;
-    pub fn nros_platform_wake_signal_from_isr(w: *mut c_void) -> i8;
-    pub fn nros_platform_wake_storage_size() -> usize;
-    pub fn nros_platform_wake_storage_align() -> usize;
-
-    // -- Critical section (Phase 121.9) --
-    pub fn nros_platform_critical_section_acquire() -> u32;
-    pub fn nros_platform_critical_section_release(token: u32);
-
-    // -- Logging (Phase 88) --
-    pub fn nros_platform_log_write(
-        severity: u8,
-        name_ptr: *const u8,
-        name_len: usize,
-        msg_ptr: *const u8,
-        msg_len: usize,
-    );
-    pub fn nros_platform_log_flush();
-}
+// RFC-0054 (phase-299 W2): the extern declarations are GENERATED from the
+// platform headers (src/generated.rs, scripts/gen-abi-bindings.sh) — the
+// C headers are the SSoT. The nros_platform_export_*! macros below stay
+// hand-written: they EMIT the definitions (the port side).
+pub mod generated;
+pub use generated::*;
 
 /// Board-supplied writer fn type. ONLY meaningful on platforms whose
 /// `nros_platform_log_write` impl is itself a thin dispatcher to a
@@ -169,16 +79,6 @@ pub type NrosPlatformLogWriterFn = unsafe extern "C" fn(
 /// synchronous.
 pub type NrosPlatformLogFlushFn = unsafe extern "C" fn();
 
-unsafe extern "C" {
-    /// Register a board writer + optional flusher (Phase 88.9).
-    /// Available only when the linked platform impl is one of the
-    /// no-native-logger backends (FreeRTOS / ThreadX / bare-metal).
-    pub fn nros_platform_register_log_writer(
-        writer: Option<NrosPlatformLogWriterFn>,
-        flusher: Option<NrosPlatformLogFlushFn>,
-    );
-}
-
 // ============================================================================
 // Phase 121.6.rust-mirror — extended canonical ABI
 // ----------------------------------------------------------------------------
@@ -189,119 +89,6 @@ unsafe extern "C" {
 // trait impls (those land in a follow-up commit) gets dead-code-stripped
 // extern refs at link time — no symbol resolution required.
 // ============================================================================
-
-unsafe extern "C" {
-    // -- Timer (platform_timer.h) --
-    pub fn nros_platform_timer_create_periodic(
-        period_us: u32,
-        callback: unsafe extern "C" fn(*mut c_void),
-        user_data: *mut c_void,
-    ) -> *mut c_void;
-    pub fn nros_platform_timer_create_oneshot(
-        timeout_us: u32,
-        callback: unsafe extern "C" fn(*mut c_void),
-        user_data: *mut c_void,
-    ) -> *mut c_void;
-    pub fn nros_platform_timer_destroy(handle: *mut c_void);
-    pub fn nros_platform_timer_cancel(handle: *mut c_void) -> i8;
-
-    // -- TCP (platform_net.h) --
-    pub fn nros_platform_tcp_create_endpoint(
-        ep: *mut c_void,
-        address: *const u8,
-        port: *const u8,
-    ) -> i8;
-    pub fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
-    pub fn nros_platform_tcp_open(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-    ) -> i8;
-    pub fn nros_platform_tcp_listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
-    pub fn nros_platform_tcp_close(sock: *mut c_void);
-    pub fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    pub fn nros_platform_tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    pub fn nros_platform_tcp_send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
-
-    // -- UDP unicast --
-    pub fn nros_platform_udp_create_endpoint(
-        ep: *mut c_void,
-        address: *const u8,
-        port: *const u8,
-    ) -> i8;
-    pub fn nros_platform_udp_free_endpoint(ep: *mut c_void);
-    pub fn nros_platform_udp_open(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-    ) -> i8;
-    pub fn nros_platform_udp_listen(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-    ) -> i8;
-    pub fn nros_platform_udp_close(sock: *mut c_void);
-    pub fn nros_platform_udp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    pub fn nros_platform_udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    pub fn nros_platform_udp_send(
-        sock: *const c_void,
-        buf: *const u8,
-        len: usize,
-        endpoint: *const c_void,
-    ) -> usize;
-    pub fn nros_platform_udp_set_recv_timeout(sock: *const c_void, timeout_ms: u32);
-
-    // -- UDP multicast --
-    pub fn nros_platform_udp_mcast_open(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        lep: *mut c_void,
-        timeout_ms: u32,
-        iface: *const u8,
-    ) -> i8;
-    pub fn nros_platform_udp_mcast_listen(
-        sock: *mut c_void,
-        endpoint: *const c_void,
-        timeout_ms: u32,
-        iface: *const u8,
-        join: *const u8,
-    ) -> i8;
-    pub fn nros_platform_udp_mcast_close(
-        sockrecv: *mut c_void,
-        socksend: *mut c_void,
-        rep: *const c_void,
-        lep: *const c_void,
-    );
-    pub fn nros_platform_udp_mcast_read(
-        sock: *const c_void,
-        buf: *mut u8,
-        len: usize,
-        lep: *const c_void,
-        addr: *mut c_void,
-    ) -> usize;
-    pub fn nros_platform_udp_mcast_read_exact(
-        sock: *const c_void,
-        buf: *mut u8,
-        len: usize,
-        lep: *const c_void,
-        addr: *mut c_void,
-    ) -> usize;
-    pub fn nros_platform_udp_mcast_send(
-        sock: *const c_void,
-        buf: *const u8,
-        len: usize,
-        endpoint: *const c_void,
-    ) -> usize;
-
-    // -- Socket helpers --
-    pub fn nros_platform_socket_set_non_blocking(sock: *const c_void) -> i8;
-    pub fn nros_platform_socket_accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8;
-    pub fn nros_platform_socket_close(sock: *mut c_void);
-    pub fn nros_platform_socket_wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8;
-
-    // -- Network poll --
-    pub fn nros_platform_network_poll();
-}
 
 // ============================================================================
 // Return codes (mirrors header)
@@ -433,7 +220,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         // fn` — both have the same ABI; Rust just demands the unsafe
         // version at the C call site.
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw = unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_periodic(period_us, Some(cb), user_data) };
         if raw.is_null() {
             // The C layer returns NULL for both "unsupported on this
             // platform" (default stub) and "syscall failed" (POSIX
@@ -453,7 +240,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         user_data: *mut c_void,
     ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw = unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_oneshot(timeout_us, Some(cb), user_data) };
         if raw.is_null() {
             return Err(nros_platform_api::TimerError::KernelError);
         }

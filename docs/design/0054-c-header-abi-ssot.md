@@ -1,7 +1,7 @@
 ---
 rfc: 0054
 title: "C headers as the ABI SSoT — pure header packages + committed-bindgen Rust bindings"
-status: Draft
+status: Stable
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-299]

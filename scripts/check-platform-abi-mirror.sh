@@ -19,14 +19,16 @@
 set -euo pipefail
 
 RUST="packages/core/nros-platform-cffi/src/lib.rs"
+GENERATED="packages/core/nros-platform-cffi/src/generated.rs"
 INCLUDE_DIR="packages/core/nros-platform-api/include/nros"
 
-# Each header lists the symbols whose Rust mirror must include both:
-#   (a) a `pub fn <name>(` declaration inside an `unsafe extern "C" {}` block
-#   (b) a `pub extern "C" fn <name>(` emission from one of the
-#       `nros_platform_export_*!` macros — only required for the core ABI
-#       symbols today; the extended ABI (`platform_net.h` /
-#       `platform_timer.h`) ships macros in 121.6.macros.
+# RFC-0054 (phase-299 W2): the extern-"C" DECLARATION half is now
+# GENERATED from the headers (src/generated.rs, gen-abi-bindings.sh), so
+# per-symbol parity there is by construction. The (a) check survives as an
+# ALLOWLIST-COMPLETENESS guard against generated.rs (a header symbol the
+# bindgen allowlist misses would silently vanish); the (b) macro-emission
+# half is unchanged — the `nros_platform_export_*!` macros are hand-written
+# (they EMIT definitions, the port side).
 #
 # We track per-header expectations via a small table so future ABI surfaces
 # (e.g. interrupt / DMA) drop in by adding a row.
@@ -75,7 +77,7 @@ check_header() {
     local missing_extern=()
     local missing_macro=()
     for sym in "${SYMBOLS[@]}"; do
-        if ! grep -qE "pub fn ${sym}\s*\(" "$RUST"; then
+        if ! grep -qE "pub fn ${sym}\s*\(" "$GENERATED"; then
             missing_extern+=("$sym")
         fi
         if [[ "$require_macro" == "1" ]]; then

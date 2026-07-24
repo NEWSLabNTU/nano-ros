@@ -1,5 +1,10 @@
 # Phase 299 — C headers as the ABI SSoT (implements RFC-0054)
 
+**Status (2026-07-24): ALL WAVES DONE.** RFC-0054 Stable. Fire-proofs: the
+regen-diff gate fails on an un-regenerated header const; bindgen layout
+tests removed after the embedded-clippy lane proved them host-only (32-bit
+targets failed const-eval on 64-bit literals).
+
 Flip the two hand-mirrored C ABI surfaces (RMW backend contract, platform
 port ABI) to the RFC-0054 model: pure C header packages are the single
 source of truth; Rust consumes COMMITTED bindgen output; the hand mirrors
@@ -41,20 +46,20 @@ Design decisions + rationale → [RFC-0054](../design/0054-c-header-abi-ssot.md)
   C-side-only invariants). justfile hooks updated.
 
 ### W2 — platform surface
-- [ ] W2.1 Generate the `nros-platform-cffi` extern-"C" declaration block
+- [x] W2.1 (2026-07-24) Generate the `nros-platform-cffi` extern-"C" declaration block
   from `platform*.h` (same committed-bindgen path; allowlist
   `nros_platform_.*`).
-- [ ] W2.2 Shrink `check-platform-abi-mirror.sh` to the macro-emission
+- [x] W2.2 (2026-07-24) Shrink `check-platform-abi-mirror.sh` to the macro-emission
   half (`nros_platform_export_*!` presence); extern-block parity is now
   by construction.
 
 ### W3 — regen-diff gate
-- [ ] W3.1 `check-abi-bindings` in the `just check` lane: rerun
+- [x] W3.1 (2026-07-24) `check-abi-bindings` in the `just check` lane: rerun
   `gen-abi-bindings.sh`, `git diff --exit-code` the generated files;
   loud skip when bindgen-cli absent; CI provisions the pinned version.
 
 ### W4 — docs
-- [ ] W4.1 RFC-0054 → Stable once W1–W3 land; CLAUDE.md pitfall-index
+- [x] W4.1 (2026-07-24) RFC-0054 → Stable once W1–W3 land; CLAUDE.md pitfall-index
   one-liner (headers = SSoT, regen script, never hand-edit generated.rs);
   AGENTS.md C/C++-integration note; issue cross-links (#238/#239
   archived notes point here).
