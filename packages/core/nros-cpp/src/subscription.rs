@@ -7,7 +7,7 @@
 
 use core::ffi::{c_char, c_void};
 
-use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo, TransportError};
+use nros_rmw::{Session, Subscription as SubscriberTrait, TopicInfo, TransportError};
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,

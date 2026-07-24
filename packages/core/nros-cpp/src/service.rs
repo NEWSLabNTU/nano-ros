@@ -451,17 +451,39 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
-    // Deprecated blocking call via zpico_get. Prefer send_request +
-    // try_recv_reply on platforms without threads.
-    #[allow(deprecated)]
-    match client.call_raw(req_slice, resp_slice) {
-        Ok(len) => {
-            unsafe {
-                *resp_len = len;
+    // Blocking C API kept for source compat; phase-301 deleted the RMW
+    // call_raw slot, so this now composes the async pair — send, then poll
+    // try_recv_reply_raw with the same 5 s budget the old slot used. The
+    // session's drive_io runs on the executor; between polls we only yield.
+    use nros_rmw::ClientTrait as _;
+    unsafe extern "C" {
+        // Portable platform sleep (nros-platform-api platform.h) — linked
+        // into every image via the active platform impl.
+        fn nros_platform_sleep_ms(ms: usize);
+    }
+    if client.send_request_raw(req_slice).is_err() {
+        return NROS_CPP_RET_TIMEOUT;
+    }
+    const BUDGET_MS: u32 = 5_000;
+    const STEP_MS: u32 = 5;
+    let mut waited_ms: u32 = 0;
+    loop {
+        match client.try_recv_reply_raw(resp_slice) {
+            Ok(Some(len)) => {
+                unsafe {
+                    *resp_len = len;
+                }
+                return NROS_CPP_RET_OK;
             }
-            NROS_CPP_RET_OK
+            Ok(None) => {
+                if waited_ms >= BUDGET_MS {
+                    return NROS_CPP_RET_TIMEOUT;
+                }
+                unsafe { nros_platform_sleep_ms(STEP_MS as usize) };
+                waited_ms += STEP_MS;
+            }
+            Err(_) => return NROS_CPP_RET_TIMEOUT,
         }
-        Err(_) => NROS_CPP_RET_TIMEOUT,
     }
 }
 

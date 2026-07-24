@@ -34,8 +34,8 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
     assert!(vt.drive_io.is_some());
     assert!(vt.create_publisher.is_some());
     assert!(vt.create_subscription.is_some());
-    assert!(vt.create_service_server.is_some());
-    assert!(vt.create_service_client.is_some());
+    assert!(vt.create_service.is_some());
+    assert!(vt.create_client.is_some());
     assert_eq!(NROS_RMW_RET_OK, 0);
 }
 
