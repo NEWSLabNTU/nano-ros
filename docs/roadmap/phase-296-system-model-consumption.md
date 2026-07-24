@@ -529,7 +529,30 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   `freertos-realtime-cpp-port` groups and joined `zephyr_core_pin_applied` to
   the existing `zephyr-realtime-rust-port` group. The three placement-dim
   arms (zephyr/nuttx/freertos) now all fail loud, all e2e-verified.
-### Remaining work items (beyond W5.5–W5.11)
+- W5.13 — **ThreadX placement (`SMP core exclude`) consumer + fail-loud e2e**
+  (2026-07-24): the 4th (last) RTOS placement arm. `nros_threadx_apply_current_
+  core_exclude(core_plus1)` in the shared `threadx_hooks.c` shim self-pins the
+  CALLING thread by EXCLUDING every other core via `tx_thread_smp_core_exclude`
+  under `#ifdef TX_THREAD_SMP` (returns 1 on accept, 0 on no-SMP/rejection). The
+  Rust `nros-board-threadx` externs it + self-applies (`apply_tier_core_exclude`,
+  boot + spawned) and prints the accept marker (`nros: core pin tier=` =
+  `THREADX_CORE_PIN_MARKER`) or the loud fallback (`… FAILED …` =
+  `THREADX_CORE_PIN_FALLBACK_MARKER`). ws-realtime-rust `low` tier declares
+  `threadx.core: 0`; new `threadx_core_pin_applied` e2e (two-mode, joined to the
+  `threadx-realtime-rust-port` nextest group) boots the threadx-linux host image
+  — measured HONEST FALLBACK (threadx-linux is non-SMP). case_15 + the preempt
+  e2e (shared fixture) unchanged. Placement dim now fail-loud on ALL FOUR RTOSes.
+- W5.15 — **derived-schedule `edf` knob sliced per target_rtos** (2026-07-24):
+  `derive_execution_from_contracts` required the `edf` capability knob UNANIMOUS
+  across ALL `execution.deploy` entries, so a legal mixed model (zephyr edf=true
+  + freertos edf=false) bailed even though the two knobs describe two different
+  images' kernels. `deploy_targets_rtos(deploy, target_rtos)` now gates the knob
+  loop to entries relevant to THIS bake (MCU target → `board_to_rtos`, Linux →
+  posix, unplaced → board-agnostic so the same-image split-brain rejection is
+  preserved). Unit-tested (`edf_knobs_sliced_per_target_rtos`; the conflict test
+  is preserved).
+
+### Remaining work items (beyond W5.5–W5.13, W5.15)
 
 Explicit, individually actionable; each ends with an acceptance check. Two are
 tracked as issues because they are limitations, not just unbuilt features.
@@ -542,24 +565,11 @@ tracked as issues because they are limitations, not just unbuilt features.
   (posix native = cheapest, no QEMU). *Accept:* two nodes with distinct DAG
   facts get distinct derived priorities and both run, proven at runtime; the
   degradation notes print. This is the precursor to "Done when".
-- **W5.13 — ThreadX placement (`SMP core exclude`).** The `SchedCaps` table
-  marks ThreadX `affinity: true` but there is no ThreadX `core` consumer
-  (the zephyr/nuttx/freertos placement arms landed in W5.7/W5.11). *Accept:*
-  a ThreadX board seam applies the core knob (or the RTOS's core-exclude
-  primitive) with the W5.11 kernel-accept/fallback marker discipline + a
-  two-mode e2e.
 - **W5.14 — other-board `replenish` / native reservation.** The budget dim's
   replenishment + reservation primitives on the boards that lack them (today
   the executor's cooperative `SchedContext` backfills). *Accept:* each board
   either applies the native primitive (marker-gated) or records a loud
   `Backfill`/`Degrade`, never a silent drop.
-- **W5.15 — per-board deploy slicing for the `edf` knob.** `derive_execution_
-  from_contracts` currently requires the `edf` deploy knob UNANIMOUS across ALL
-  deploy entries (bails on disagreement) — even entries for OTHER boards, though
-  derive runs once per `target_rtos`. *Accept:* the unanimity check is scoped to
-  the deploy entries whose target maps to the current `target_rtos`, so a
-  mixed-platform model (zephyr edf=true + freertos edf=false) bakes each image
-  correctly instead of bailing.
 - **Placement / non_preempt derivation from the model** — the realizer hardcodes
   both dims to `NotRequested`; the derived-schedule path can never assign a core
   pin or preemption threshold. Design-open (RFC-0052 contract vocabulary).

@@ -84,6 +84,12 @@ execution:
         # ThreadX `low` is the BOOT tier, so the marker comes from the boot
         # reprioritize (tx_thread_preemption_change), kernel-accept-gated.
         preempt_threshold: 10
+        # phase-296 W5.13 — placement dim on ThreadX (SMP core exclude): pin the
+        # LOW/boot tier to core 0 via tx_thread_smp_core_exclude. The
+        # threadx-linux port is non-SMP (no TX_THREAD_SMP), so the board seam
+        # returns 0 → the LOUD "core pin FAILED" note fires and the tier runs
+        # unpinned (RFC-0052 fail-loud). An SMP build flips it to kernel-accept.
+        core: 0
   bindings:
     /control_node/ctrl: high
     /telem_node/telem: low

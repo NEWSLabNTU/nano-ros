@@ -379,7 +379,7 @@ retries = 2
 
 # phase-296 W5.10 — see [test-groups.threadx-realtime-rust-port].
 [[profile.default.overrides]]
-filter = "binary(threadx_preempt_threshold_applied) or (binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
+filter = "binary(threadx_preempt_threshold_applied) or binary(threadx_core_pin_applied) or (binary(realtime_tiers_e2e) and test(threadx_linux_rust))"
 test-group = "threadx-realtime-rust-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

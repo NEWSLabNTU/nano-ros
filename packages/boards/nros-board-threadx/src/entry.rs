@@ -145,6 +145,13 @@ unsafe extern "C" {
         preempt_threshold: core::ffi::c_int,
     ) -> core::ffi::c_int;
 
+    /// phase-296 W5.13 — self-apply the CALLING thread's SMP core pin (the
+    /// placement dim) via `tx_thread_smp_core_exclude`. `core_plus1` is the
+    /// `core + 1` encoding (0 = unpinned). Returns 1 when the kernel accepted
+    /// the pin, 0 otherwise (no `core` / no TX_THREAD_SMP / rejection — the
+    /// Rust caller prints the accept marker or the loud fallback).
+    fn nros_threadx_apply_current_core_exclude(core_plus1: core::ffi::c_uint) -> core::ffi::c_int;
+
     /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-tier heap
     /// context). Mirrors the FreeRTOS `nros_platform_alloc`. NULL on failure.
     fn nros_threadx_alloc(bytes: core::ffi::c_ulong) -> *mut c_void;
@@ -205,6 +212,34 @@ fn apply_tier(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSp
         tier.deadline_us,
         tier.deadline_policy,
     );
+}
+
+/// phase-296 W5.13 — the placement dim: self-pin the CALLING tier thread to its
+/// declared `core` via `tx_thread_smp_core_exclude` (no-op when the tier
+/// declares no core). Never silently drops: on a non-SMP ThreadX build the
+/// shim returns 0 and the loud fallback note fires. Called from BOTH the boot
+/// and every spawned tier so the placement lowering never diverges.
+fn apply_tier_core_exclude<B: BoardPrint>(tier: &TierSpec<'static>) {
+    let Some(core) = tier.core else {
+        return;
+    };
+    let core_plus1 = core.saturating_add(1) as core::ffi::c_uint;
+    // SAFETY: FFI to the board-common ThreadX shim; no aliasing, no allocation.
+    let accepted = unsafe { nros_threadx_apply_current_core_exclude(core_plus1) };
+    if accepted == 1 {
+        // Literal mirrors `nros_tests::output::THREADX_CORE_PIN_MARKER`.
+        B::println(format_args!(
+            "nros: core pin tier=`{}` cpu={}",
+            tier.name, core
+        ));
+    } else {
+        // Literal mirrors `nros_tests::output::THREADX_CORE_PIN_FALLBACK_MARKER`.
+        B::println(format_args!(
+            "nros: core pin FAILED tier=`{}` cpu={} — ThreadX build lacks TX_THREAD_SMP, \
+             tier runs unpinned",
+            tier.name, core
+        ));
+    }
 }
 
 /// issue #144 — chained tier spawn. Spawns exactly ONE ThreadX thread for
@@ -304,6 +339,7 @@ where
     let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     apply_tier(&mut crt, &ctx.tier);
+    apply_tier_core_exclude::<B>(&ctx.tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
@@ -439,6 +475,7 @@ where
         ));
     }
     apply_tier(&mut crt, boot_tier);
+    apply_tier_core_exclude::<B>(boot_tier);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut runtime) {

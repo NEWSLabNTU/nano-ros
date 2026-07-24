@@ -487,6 +487,19 @@ pub const FREERTOS_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// the `FAILED` literal in `freertos_run_tiers.c` — keep in lockstep.
 pub const FREERTOS_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// Emitted by the ThreadX board (`nros-board-threadx/src/entry.rs`,
+/// `apply_tier_core_exclude`, boot + spawned) when the kernel accepted a tier's
+/// SMP core pin (`tx_thread_smp_core_exclude` — the placement dim's ThreadX
+/// realization, RFC-0052's "SMP core exclude"), phase-296 W5.13. Board-agnostic
+/// literal; MIRRORS the `B::println` literal there — keep in lockstep.
+pub const THREADX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
+
+/// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
+/// ThreadX build lacks `TX_THREAD_SMP` (no core-affinity API) — the tier runs
+/// unpinned, loudly. MIRRORS the `FAILED` literal in `entry.rs` — keep in
+/// lockstep.
+pub const THREADX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

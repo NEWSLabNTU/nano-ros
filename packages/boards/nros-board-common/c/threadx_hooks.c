@@ -304,6 +304,43 @@ int nros_threadx_set_current_priority(unsigned int priority, int preempt_thresho
     return 0;
 }
 
+/* phase-296 W5.11/W5.13 — the placement dim's ThreadX `Native` realization
+ * (RFC-0052: "SMP core exclude"). Pins the CALLING thread to `core_plus1 - 1`
+ * by EXCLUDING it from every other core (`tx_thread_smp_core_exclude`), when
+ * the kernel is built with TX_THREAD_SMP. Returns 1 when the kernel accepted
+ * the exclusion, 0 otherwise (unpinned tier / no TX_THREAD_SMP / rejection) —
+ * the Rust caller prints the accept marker or the loud fallback note so a
+ * declared `core` is NEVER silently dropped. `core_plus1` is the emit/macro
+ * `core + 1` encoding (0 = unpinned). */
+int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
+{
+    if (core_plus1 == 0u) {
+        return 0; /* unpinned */
+    }
+#ifdef TX_THREAD_SMP
+    TX_THREAD *self = tx_thread_identify();
+    if (self == TX_NULL) {
+        return 0;
+    }
+    UINT core = core_plus1 - 1u;
+    /* Pin to `core` = exclude every OTHER core. Mask to the cores that exist
+     * so we never set exclusion bits above the SMP core count. */
+    ULONG exclude_map = ~(1UL << core);
+#ifdef TX_THREAD_SMP_MAX_CORES
+    exclude_map &= ((1UL << TX_THREAD_SMP_MAX_CORES) - 1UL);
+#endif
+    if (tx_thread_smp_core_exclude(self, exclude_map) != TX_SUCCESS) {
+        return 0;
+    }
+    return 1;
+#else
+    /* Fail-loud (RFC-0052): the tier DECLARED a `core` but this kernel was
+     * built without TX_THREAD_SMP — no core-affinity API to honor it. */
+    (void)core_plus1;
+    return 0;
+#endif
+}
+
 int nros_threadx_create_task(
     const char *name,
     void (*entry)(void *),
