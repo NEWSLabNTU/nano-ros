@@ -35,6 +35,9 @@ impl Deserialize for Header {
 impl RosMessage for Header {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Header_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // RFC-0052 W3a — Header/Time-leading type: `stamp.sec` at CDR byte
+    // 4 (raw-buffer peek for on-target max_age monitors).
+    const STAMP_OFFSET: Option<usize> = Some(4);
 }
 
 // ── nros_serdes::Message — runtime field schema ─────────────────────────────

@@ -229,6 +229,7 @@ dependencies = [
  "builtin_interfaces",
  "heapless",
  "nros-core",
+ "nros-rmw",
  "nros-serdes",
  "unique_identifier_msgs",
 ]
