@@ -378,6 +378,14 @@ unsafe extern "C" {
     ) -> i32;
 }
 
+/// Default per-tier pthread stack for spawned Rust tiers (issue #246). Mirrors
+/// the C glue's `NROS_NUTTX_TIER_STACK_BYTES` intent but sized at NuttX's own
+/// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
+/// heap (`nros_platform_alloc`), so this only carries the zenoh-pico/executor
+/// call frames. `TierSpec::stack_bytes` (when non-zero) overrides it.
+#[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
+const NUTTX_TIER_STACK_DEFAULT_BYTES: usize = 65536;
+
 /// Self-apply the tier's kernel sporadic policy (no-op off-target and when
 /// the tier declares no budget/period). Name/class cross the FFI as
 /// NUL-terminated stack copies (TierSpec strings are `&str`, not C strings).
@@ -488,16 +496,42 @@ where
     // issue #144 — boot-tier declares FIRST, before spawning any other tier.
     let boot_tier = &tiers[0];
     boot_crt.executor_mut().set_active_groups(boot_tier.groups);
-    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
+    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
+    // boot tier is the SESSION OWNER: `apply_tier_sched_policy` installs the
+    // lowered context as the executor's *default* SchedContext, which gates
+    // EVERY dispatch on this executor — including the spin loop that flushes
+    // the one shared zenoh-pico session for all tiers. A budget/sporadic policy
+    // there caps the session flush and starves delivery (issue #246: the
+    // high/ctrl publisher delivered exactly ONE sample). Unlike the Rust
+    // default-SC model, the C++ path binds the lowered context per HANDLE, so
+    // its boot-tier flush stays Fifo — which is exactly why the C/C++ siblings
+    // pass with the same model. Mirror that: the session-owning boot tier keeps
+    // the default Fifo SchedContext (drop its budget/period), so only the EDF
+    // deadline dim — which does not gate throughput — can still lower here.
+    let boot_is_budgeted = boot_tier.class == Some("real_time")
+        && boot_tier.budget_us.is_some()
+        && boot_tier.period_us.is_some();
     boot_crt.apply_tier_sched_policy(
         boot_tier.class,
-        boot_tier.period_us,
-        boot_tier.budget_us,
+        if boot_is_budgeted {
+            None
+        } else {
+            boot_tier.period_us
+        },
+        if boot_is_budgeted {
+            None
+        } else {
+            boot_tier.budget_us
+        },
         boot_tier.deadline_us,
         boot_tier.deadline_policy,
     );
-    // phase-296 W5.9 — kernel sporadic server for the boot tier, when declared.
-    apply_tier_sporadic(boot_tier);
+    // phase-296 W5.9 / issue #246 — likewise DON'T self-apply the kernel
+    // SCHED_SPORADIC server to the boot tier here (nor below): it would drop
+    // this session-owning thread to `sched_ss_low_priority` when its budget is
+    // spent, stalling the shared flush. Spawn every tier at the boot tier's
+    // normal FIFO priority; spawned NON-owner tiers self-apply the budget dim's
+    // kernel + cooperative realization in `nuttx_run_one_tier`.
     {
         let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut boot_crt);
         if let Err(e) = setup(&mut ctx) {
@@ -514,21 +548,91 @@ where
         // `&setup`. The boot declares are already done, so these only overlap the
         // boot tier's spin.
         for tier in &tiers[1..] {
-            let builder = std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
-            let spawn = builder.spawn_scoped(scope, move || {
-                // Re-bind the whole wrapper so the closure captures the `Send`
-                // `NuttxSharedSession`, not the bare `*mut` field.
-                let shared = shared;
-                // SAFETY: `shared.0` aliases the boot executor's session, kept
-                // alive for this scope by `thread::scope`.
-                let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
-                nuttx_run_one_tier::<F, E>(exec, tier, setup);
-            });
-            if let Err(e) = spawn {
-                eprintln!("nros: failed to spawn tier `{}`: {}", tier.name, e);
+            // issue #246 — a Rust `std::thread` spawned with no explicit stack
+            // requests the std default (2 MiB), which `pthread_create` cannot
+            // satisfy from NuttX's small kernel heap → ENOMEM ("failed to spawn
+            // tier"). The C/C++ sibling glue always passes an explicit
+            // `pthread_attr_setstacksize` (16 KiB default / `stack_bytes`
+            // override) precisely because the executor arena lives on the heap
+            // (`nros_platform_alloc`), so a tier stack only carries call frames.
+            // Mirror that: honour `stack_bytes`, else a 64 KiB default
+            // (== NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT`, generous for the
+            // zenoh-pico/executor call depth the Rust closures reach).
+            let stack_bytes = if tier.stack_bytes > 0 {
+                tier.stack_bytes
+            } else {
+                NUTTX_TIER_STACK_DEFAULT_BYTES
+            };
+            // issue #246 — NuttX `pthread_create` from Rust std can fail
+            // TRANSIENTLY under host/QEMU load (observed: an `io::Error` with no
+            // OS errno, distinct from the deterministic 2-MiB-stack ENOMEM the
+            // explicit `stack_size` above fixes). A single failure drops the
+            // whole tier for the run → the low tier never delivers → the cell
+            // times out (the historical #246 flake). Retry a few times with a
+            // yield between attempts; the closure captures only Copy/ref state
+            // (`shared`, `tier`, `setup`), so it is cheap to rebuild per attempt.
+            const SPAWN_ATTEMPTS: u32 = 5;
+            let mut spawned = false;
+            for attempt in 1..=SPAWN_ATTEMPTS {
+                let builder = std::thread::Builder::new()
+                    .name(format!("nros-tier-{}", tier.name))
+                    .stack_size(stack_bytes);
+                match builder.spawn_scoped(scope, move || {
+                    // Re-bind the whole wrapper so the closure captures the
+                    // `Send` `NuttxSharedSession`, not the bare `*mut` field.
+                    let shared = shared;
+                    // SAFETY: `shared.0` aliases the boot executor's session,
+                    // kept alive for this scope by `thread::scope`.
+                    let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
+                    nuttx_run_one_tier::<F, E>(exec, tier, setup);
+                }) {
+                    Ok(_) => {
+                        spawned = true;
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, \
+                             kind {:?}, os error {:?}): {e}",
+                            tier.name,
+                            attempt,
+                            SPAWN_ATTEMPTS,
+                            stack_bytes,
+                            e.kind(),
+                            e.raw_os_error()
+                        );
+                        let _ = std::io::stderr().flush();
+                        std::thread::yield_now();
+                    }
+                }
+            }
+            if !spawned {
+                eprintln!(
+                    "nros: FAILED to spawn tier `{}` after {} attempts — tier will not run",
+                    tier.name, SPAWN_ATTEMPTS
+                );
+                let _ = std::io::stderr().flush();
             }
         }
-        // Boot tier runs on this task, reusing the owning executor — never returns.
+        // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER:
+        // its spin drives the one shared zenoh-pico session's TX flush for
+        // EVERY tier (all spawned tiers borrow this session). A kernel
+        // SCHED_SPORADIC server would drop this thread to `sched_ss_low_priority`
+        // (== `SCHED_FIFO` min, prio 1) the moment its budget is spent, stalling
+        // the whole session's flush and starving delivery on all tiers (observed:
+        // the high/ctrl publisher delivered exactly ONE sample, then the flush
+        // stalled). So the session-owning boot tier stays SCHED_FIFO — it is
+        // NEVER budget-capped. The budget dim's kernel-Native realization applies
+        // to NON-owner tiers, which self-apply it in `nuttx_run_one_tier`.
+        if boot_is_budgeted {
+            eprintln!(
+                "nros: tier `{}` declares a sporadic budget but is the session-owning \
+                 boot tier — kept SCHED_FIFO (a kernel/cooperative budget cap would \
+                 stall the shared session flush; non-owner tiers realize the budget)",
+                boot_tier.name
+            );
+            let _ = std::io::stderr().flush();
+        }
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
     });
 

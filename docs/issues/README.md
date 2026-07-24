@@ -48,10 +48,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
 phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
 
-**#246** — realtime_tiers_e2e nuttx_arm_rust cell TIMES OUT on a fresh image (baseline-verified
-pre-existing — NOT the W5.9 sporadic work; cpp/c siblings pass ~13 s); riscv trio
-precondition-skips (rust lane name mismatch). See `0246-*`. (2026-07-24)
-
 **#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
 header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
 See `0244-*`. (RMW/platform audit 2026-07-21)
@@ -72,6 +68,16 @@ no-silent-downgrade philosophy). See `0241-*`. (audit 2026-07-21)
 session/subscriber/service_server terms, transport hints (tx_express/rx_buffer_hint) inside the QoS
 struct instead of an options struct, a deprecated blocking call_raw slot. The rename/reshape
 cleanup bucket. See `0240-*`. (audit 2026-07-21)
+
+Recently resolved: **#246** — realtime_tiers_e2e nuttx_arm_rust cell timed out on a fresh image:
+TWO Rust-arm defects behind one timeout — (1) spawned tiers used the libstd default 2 MiB stack
+(NuttX `pthread_create` ENOMEM → "failed to spawn tier"; fixed with explicit `.stack_size()` =
+`stack_bytes`/64 KiB + a bounded retry for the transient under-load spawn flake), and (2) the
+session-owning boot tier (`high`, prio 110) was budget-capped — `apply_tier_sched_policy` installs
+the tier SchedContext as the executor DEFAULT, gating the shared-session flush (measured `ctrl=1`);
+now the boot tier stays Fifo + skips kernel sporadic (non-owner tiers still realize the budget,
+matching the C++ per-handle-bind behaviour). Cell green solo 6/6 — `archived/0246-*`. (riscv trio
+lane-name mismatch left as a separate test-plumbing note in the archived issue.)
 
 Recently resolved: **#236** — multihost `machine=` fully closed: play_launch carries `machine`→`deploy.host` (46.1) and rlm `6d64202` makes machine-only deploys UNPLACED (`Deploy.target: Option`); nano-ros slices treat unplaced as board-agnostic (host filter partitions), `zephyr_entry_robot1` migrated — `archived/0236-*`.
 
