@@ -29,6 +29,43 @@ Notes:
   SPAWNED high tier's publish path is dead (#246/#245 family: check
   executor-storage sizing + the chain-spawn path before assuming a race).
 
+## Debugging session 2 (2026-07-24) — substantially narrowed
+
+Instrumented the ctrl component (temp `log::info` on tick) + manual boots
+with router + sinks:
+
+- **The ctrl timer FIRES at full rate** (~100 Hz, counter monotonic) on the
+  spawned `high` tier, and `publish_to_topic` returns **Ok** every tick —
+  yet the host sink on `/ctrl` receives ZERO. `/telem` (boot tier, same
+  session) delivers at exactly its rate simultaneously.
+- So the failure is WIRE-SIDE, silent: puts accepted, nothing leaves (or
+  nothing routable leaves) for that publisher.
+- `Z_FEATURE_MULTI_THREAD` is **1 and effective in the library** (the
+  platform manifest `defines_kv` reaches the unified builder; `_z_mutex_*`
+  symbols linked in the image) — the earlier "single-threaded zenoh raced
+  by two tiers" theory is DEAD. (The generated header's `#ifndef` fallback
+  0 is cosmetic; the -D wins.)
+- Prime suspect: the **per-publisher interest-based write filter never
+  opens** for publishers declared on the SPAWNED tier — zenoh-pico
+  short-circuits puts (returns OK) when its filter says no matching
+  subscriber. The boot tier's publisher (telem) opens fine; the spawned
+  tier declares later and its filter state may never see the router's
+  subscriber-interest reply (reply consumed/mis-associated when BOTH tier
+  threads drive `zp_read` via the ThreadX select arm?). The #144 comment
+  documents exactly this failure shape ("the losing publisher's write
+  filter stays closed and every put is silently dropped").
+- ZENOH_DEBUG=3 via the platform manifest produced no extra output —
+  tracing needs a different hook (zenoh-pico log sink on threadx).
+
+**Next:** trace `_z_write_filter` ctx state for the ctrl publisher
+(gdb-from-start with a breakpoint on `_z_write_filter_callback` /
+`_z_trigger_interest`, or a temp printf in filtering.c), and compare the
+interest IDs in the router's debug log against the two publishers. If
+confirmed, the fix likely belongs in the zpico threadx spin arm (interest
+replies must be processed before the spawned tier's declare completes —
+extend the #144 serialization to cover filter-open) or in zenoh-pico's
+filter/interest association under concurrent readers.
+
 ## Repro
 
 ```

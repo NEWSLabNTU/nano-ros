@@ -35,6 +35,14 @@ fix the row's platform key). The riscv cpp/c rows built fine with the
 `nuttx-riscv` arg but their cells still skipped-red in the same sweep —
 re-verify after the rust lane question is settled.
 
+## Note (2026-07-24b)
+
+Likely the SAME family as #247 (both are the RUST multi-tier arm over the
+zpico shim; the cpp/c siblings ride nros-cpp's zenoh and pass). #247's
+debugging established: timer+publish healthy, wire-silent, MULTI_THREAD=1
+effective — per-publisher write-filter suspect. Triage #247 first; re-test
+this cell after any filter/interest fix.
+
 ## Repro
 
 ```
