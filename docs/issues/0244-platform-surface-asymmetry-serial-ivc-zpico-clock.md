@@ -38,3 +38,14 @@ Both are "decide + document or normalize", not urgent. Grouped because
 they are the same class — the platform surface should be uniformly shaped
 (C ABI + Rust trait) or its exceptions explicitly recorded, the way the
 RMW audit expects for its vtable.
+
+## Post-phase-299 note (2026-07-24) — fix direction inverts
+
+Phase-299 (RFC-0054) made C headers the platform-ABI SSoT (Rust consumes
+committed bindgen output). That inverts item 1's framing: the fix is NOT
+"write C mirrors of the Rust traits" — hand mirrors are the retired model.
+If/when Serial/IVC join the portable ABI, they get AUTHORED as SSoT headers
+and the Rust traits wrap the generated bindings; until a C consumer exists,
+record them as a deliberate Rust-only carve-out. Item 2 (second clock
+surface) becomes "unify onto the SSoT platform clock header" and is a
+natural phase-230 work item.

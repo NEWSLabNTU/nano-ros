@@ -63,3 +63,22 @@ to the `rmw_` derivable form, moving the transport hints into options
 structs, and dropping the deprecated `call_raw` slot. Additions
 (ping/loan/streamed/wake/etc.) stay — they are documented RTOS
 enhancements, not drift.
+
+## Post-phase-299 note (2026-07-24) — the mechanics changed in our favor
+
+Phase-299 (RFC-0054) made the C headers the ABI SSoT with committed bindgen
+output and a regen-diff gate; the hand mirrors and their drift gates are
+gone. Two consequences for this cleanup:
+
+1. **The batched break is now much cheaper and safer.** Every rename /
+   options-struct reshape is a single header edit + regen + call-site fix —
+   no hand-mirror drift class, no per-mirror gates to update. The old cost
+   argument against doing the full batch (verbs + terms + options structs +
+   call_raw removal in one pass) has largely evaporated.
+2. **Timing pressure is sharper.** The headers are now literally the
+   published contract external consumers will pin. Do this break BEFORE the
+   first release tags those headers; afterwards each rename is a
+   compatibility event.
+
+Amendment target is now RFC-0054's header set (plus the RFC-0035 shape
+notes), not a mirror-by-mirror plan.
