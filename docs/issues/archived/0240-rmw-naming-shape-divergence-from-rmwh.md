@@ -1,7 +1,7 @@
 ---
 id: 240
 title: "RMW vtable naming/shape diverges from rmw.h without RTOS justification: open/close verbs, session/subscriber/service_server terms, transport hints inside the QoS struct, a deprecated blocking call slot"
-status: open
+status: resolved
 type: enhancement
 area: rmw
 related: [rfc-0035, issue-0238]
@@ -82,3 +82,19 @@ gone. Two consequences for this cleanup:
 
 Amendment target is now RFC-0054's header set (plus the RFC-0035 shape
 notes), not a mirror-by-mirror plan.
+
+
+## Resolution (2026-07-24) — phase-301 landed the batched break
+
+All accepted items shipped on the RFC-0054 header-SSoT model: open/close
+-> create_session/destroy_session; subscriber -> subscription;
+service_server -> service; service_client -> client (types + slots);
+transport hints moved to nros_rmw_publisher_options_t /
+_subscription_options_t (QoS is a pure 24-byte policy mirror); the
+deprecated blocking call_raw slot deleted (send_request_raw +
+try_recv_reply_raw is the one path; nros-cpp's public blocking C API now
+composes the pair). REJECTED with rationale: session -> node (post-297
+multi-tier runs multiple node-executors over ONE session; the struct
+names the connection scope) and the return-code scheme (the issue's own
+carve-out). service_server_available kept — upstream's own term. RFC-0035
++ book rewritten. See docs/roadmap/phase-301-rmw-shape-alignment.md.

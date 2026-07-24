@@ -1,6 +1,14 @@
 # Phase 301 — pre-release RMW shape alignment (resolves 0240 + 0241)
 
-**Status (2026-07-24): Draft — waves W1–W5 below.** Implements the batched
+**Status (2026-07-24): ALL WAVES DONE — 0240 + 0241 resolved.** W1 header
+break + regen; W2 Rust core + boundary validation (55+86 tests); W3
+backends (zenoh 68/68, cyclonedds 15/15 ctest, uorb + xrce smoke); W4
+docs (RFC-0035 rewrite, 0242 carve-outs, 0243 board guidance); W5
+check-build + native/threadx fixture rebuilds + 5 runtime lanes green.
+Feature-fan-out fallout rounds (nros-node/nros Subscription collisions,
+nros-cpp blocking C API recomposed on the async pair) documented in the
+fix commits. Embedded fixture families (zephyr/nuttx/freertos) staled by
+the nros-rmw change — rebuild via their lanes before the next test-all. Implements the batched
 API+ABI cleanup issues 0240 (naming/shape drift from `rmw.h`) and 0241
 (silent-lossy QoS boundary conversions) as ONE deliberate break, on the
 phase-299 (RFC-0054) header-SSoT model: every change is authored in

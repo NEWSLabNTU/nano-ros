@@ -60,14 +60,10 @@ nros-board-common::board_init, both live) with no recorded convergence end-state
 message-info out-param (rmw_message_info_t) at the take slot; decide add-vs-carveout. See `0242-*`.
 (audit 2026-07-21)
 
-**#241** — RMW QoS boundary conversions silently lose the user's value: depth u32→u16 saturates,
-rmw_time_t durations clamp to u32 ms with 0 overloaded as infinite (should error under the
-no-silent-downgrade philosophy). See `0241-*`. (audit 2026-07-21)
-
-**#240** — RMW vtable naming/shape diverges from rmw.h without RTOS reason: open/close verbs,
-session/subscriber/service_server terms, transport hints (tx_express/rx_buffer_hint) inside the QoS
-struct instead of an options struct, a deprecated blocking call_raw slot. The rename/reshape
-cleanup bucket. See `0240-*`. (audit 2026-07-21)
+Recently resolved: **#240 + #241** — phase-301 landed the batched RMW shape alignment on the
+RFC-0054 header SSoT (create_session/subscription/service/client terms, hints in options structs,
+call_raw deleted, fallible QoS boundary lowering with the ceil/reject semantics) — `archived/0240-*`,
+`archived/0241-*`. (2026-07-24)
 
 Recently resolved: **#246** — realtime_tiers_e2e nuttx_arm_rust cell timed out on a fresh image:
 TWO Rust-arm defects behind one timeout — (1) spawned tiers used the libstd default 2 MiB stack
@@ -79,6 +75,8 @@ now the boot tier stays Fifo + skips kernel sporadic (non-owner tiers still real
 matching the C++ per-handle-bind behaviour). Cell green solo 6/6 — `archived/0246-*`. (riscv trio
 lane-name mismatch left as a separate test-plumbing note in the archived issue.)
 
+=======
+>>>>>>> 40591bec3 (docs(301): phase complete — resolve + archive 0240/0241)
 Recently resolved: **#236** — multihost `machine=` fully closed: play_launch carries `machine`→`deploy.host` (46.1) and rlm `6d64202` makes machine-only deploys UNPLACED (`Deploy.target: Option`); nano-ros slices treat unplaced as board-agnostic (host filter partitions), `zephyr_entry_robot1` migrated — `archived/0236-*`.
 
 Recently resolved: **#245** — zephyr C/C++ multi-tier heap-corruption crash: executor storage was a

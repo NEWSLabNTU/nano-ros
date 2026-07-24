@@ -1,7 +1,7 @@
 ---
 id: 241
 title: "RMW QoS boundary conversions silently lose the user's value: depth u32→u16 saturates, rmw_time_t durations clamp to u32 ms with 0 overloaded as infinite"
-status: open
+status: resolved
 type: bug
 severity: low
 area: rmw
@@ -34,3 +34,16 @@ unsupported POLICIES loudly but the numeric width/precision clamps slip
 through under it. Either reject the out-of-range value or document the
 representable range at the API and clamp explicitly-with-a-warning. Fold
 the `0`-vs-infinite ambiguity fix in (a dedicated "unset" sentinel).
+
+
+## Resolution (2026-07-24) — phase-301
+
+QoS lowering is fallible (TryFrom): depth > 65535 is a create-time
+InvalidArgument, never a saturate. nros_rmw::duration_to_qos_ms: 0 stays
+unset/no-check (matches upstream RMW_QOS_*_DEFAULT — a real 0-duration is
+inexpressible upstream too, which resolves the issue's 0-vs-infinite
+ambiguity by alignment), sub-ms CEILS to 1 ms (never silently becomes
+"no deadline"), >= u32-ms range rejected; NROS_RMW_DURATION_INFINITE_MS
+(UINT32_MAX) added as the explicit infinite spelling, treated like 0 at
+every backend check site. Boundary unit tests in nros-rmw-cffi; semantics
+documented at the SSoT header.
