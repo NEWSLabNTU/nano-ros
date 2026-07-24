@@ -264,6 +264,59 @@ pub fn derive_execution_from_contracts(
 }
 
 #[cfg(test)]
+mod plan_record_tests {
+    use ros_launch_manifest_model::{NodeInstance, SystemModel};
+
+    /// Precondition #1 of the launch_synth deletion — a model with a
+    /// container + composable child + plain node classifies into the
+    /// record's three arrays, and the child links to its container via
+    /// `target_container_name` (the shape the planner resolves).
+    #[test]
+    fn model_record_classifies_container_composable_and_plain() {
+        let mut m = SystemModel::default();
+        m.structure.nodes.insert(
+            "/perc/pipeline_container".into(),
+            NodeInstance {
+                pkg: Some("rclcpp_components".into()),
+                exec: Some("component_container".into()),
+                is_container: true,
+                ..Default::default()
+            },
+        );
+        m.structure.nodes.insert(
+            "/perc/detector".into(),
+            NodeInstance {
+                pkg: Some("detector_pkg".into()),
+                plugin: Some("detector_pkg::Detector".into()),
+                container: Some("/perc/pipeline_container".into()),
+                ..Default::default()
+            },
+        );
+        m.structure.nodes.insert(
+            "/talker".into(),
+            NodeInstance {
+                pkg: Some("talker_pkg".into()),
+                exec: Some("talker".into()),
+                ..Default::default()
+            },
+        );
+
+        let rec = super::plan_record_from_model(&m);
+        let arr = |k: &str| rec.get(k).unwrap().as_array().unwrap().clone();
+        assert_eq!(arr("node").len(), 1, "one plain node: {rec}");
+        assert_eq!(arr("container").len(), 1, "one container: {rec}");
+        assert_eq!(arr("load_node").len(), 1, "one composable child: {rec}");
+        let c = &arr("container")[0];
+        assert_eq!(c["name"], "pipeline_container");
+        assert_eq!(c["namespace"], "/perc");
+        let l = &arr("load_node")[0];
+        assert_eq!(l["plugin"], "detector_pkg::Detector");
+        assert_eq!(l["target_container_name"], "/perc/pipeline_container");
+        assert_eq!(arr("node")[0]["executable"], "talker");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -722,64 +775,91 @@ mod monitor_tests {
 /// the model (post-46 `NodeInstance` carries them all).
 pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
     use ros_launch_manifest_model::ParamValue;
-    let nodes: Vec<serde_json::Value> = model
-        .structure
-        .nodes
-        .iter()
-        .map(|(fqn, inst)| {
-            let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
-            let ns = {
-                let ns = &fqn[..fqn.len() - bare.len()];
-                let ns = ns.trim_end_matches('/');
-                if ns.is_empty() {
-                    "/".to_string()
-                } else {
-                    ns.to_string()
-                }
-            };
-            let params: Vec<serde_json::Value> = inst
-                .params
-                .iter()
-                .map(|(k, v)| {
-                    let s = match v {
-                        ParamValue::Bool(b) => b.to_string(),
-                        ParamValue::Int(i) => i.to_string(),
-                        ParamValue::Float(f) => f.to_string(),
-                        ParamValue::Str(s) => s.clone(),
-                        ParamValue::StrList(l) => l.join(","),
-                    };
-                    serde_json::json!([k, s])
-                })
-                .collect();
-            let remaps: Vec<serde_json::Value> = inst
-                .remaps
-                .iter()
-                .map(|r| serde_json::json!([r.from, r.to]))
-                .collect();
-            let env: Vec<serde_json::Value> = inst
-                .env
-                .iter()
-                .map(|e| serde_json::json!([e.name, e.value]))
-                .collect();
-            serde_json::json!({
+    let mut nodes: Vec<serde_json::Value> = Vec::new();
+    let mut containers: Vec<serde_json::Value> = Vec::new();
+    let mut load_nodes: Vec<serde_json::Value> = Vec::new();
+    for (fqn, inst) in &model.structure.nodes {
+        let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
+        let ns = {
+            let ns = &fqn[..fqn.len() - bare.len()];
+            let ns = ns.trim_end_matches('/');
+            if ns.is_empty() {
+                "/".to_string()
+            } else {
+                ns.to_string()
+            }
+        };
+        let params: Vec<serde_json::Value> = inst
+            .params
+            .iter()
+            .map(|(k, v)| {
+                let s = match v {
+                    ParamValue::Bool(b) => b.to_string(),
+                    ParamValue::Int(i) => i.to_string(),
+                    ParamValue::Float(f) => f.to_string(),
+                    ParamValue::Str(s) => s.clone(),
+                    ParamValue::StrList(l) => l.join(","),
+                };
+                serde_json::json!([k, s])
+            })
+            .collect();
+        let remaps: Vec<serde_json::Value> = inst
+            .remaps
+            .iter()
+            .map(|r| serde_json::json!([r.from, r.to]))
+            .collect();
+        let env: Vec<serde_json::Value> = inst
+            .env
+            .iter()
+            .map(|e| serde_json::json!([e.name, e.value]))
+            .collect();
+        // Three-way classification (launch_synth-deletion precondition #1):
+        // a container node feeds the record's `container` array, a composable
+        // child (plugin + hosting container FQN) feeds `load_node` (linked by
+        // `target_container_name`, the parser's shape the planner already
+        // resolves), everything else is a plain `node`.
+        if inst.is_container {
+            containers.push(serde_json::json!({
+                "package": inst.pkg.clone().unwrap_or_default(),
+                "executable": inst.exec.clone().unwrap_or_default(),
+                "name": bare,
+                "namespace": ns,
+                "params": params,
+                "remaps": remaps,
+                "env": env,
+            }));
+        } else if let (Some(plugin), Some(target)) = (&inst.plugin, &inst.container) {
+            load_nodes.push(serde_json::json!({
+                "package": inst.pkg.clone().unwrap_or_default(),
+                "plugin": plugin,
+                "target_container_name": target,
+                "node_name": bare,
+                "namespace": ns,
+                "params": params,
+                "remaps": remaps,
+                "env": env,
+            }));
+        } else {
+            nodes.push(serde_json::json!({
                 "package": inst.pkg.clone().unwrap_or_default(),
                 "executable": inst
                     .exec
                     .clone()
-                    .or_else(|| inst
-                        .plugin
-                        .as_deref()
-                        .map(|p| p.rsplit("::").next().unwrap_or(p).to_string()))
+                    .or_else(|| {
+                        inst.plugin
+                            .as_deref()
+                            .map(|p| p.rsplit("::").next().unwrap_or(p).to_string())
+                    })
                     .unwrap_or_default(),
                 "name": bare,
                 "namespace": ns,
                 "params": params,
                 "remaps": remaps,
                 "env": env,
-            })
-        })
-        .collect();
-    serde_json::json!({ "node": nodes, "container": [], "load_node": [] })
+            }));
+        }
+    }
+    serde_json::json!({ "node": nodes, "container": containers, "load_node": load_nodes })
 }
 
 pub fn plan_transports(

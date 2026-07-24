@@ -1,0 +1,32 @@
+meta:
+  version: 1
+# launch_synth-deletion precondition #1 fixture model — mirrors
+# launch/system.launch.xml: one container hosting two composable children
+# (params + remaps resolved).
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /composable_container:
+      scope: /
+      pkg: demo_container
+      exec: container
+      is_container: true
+    /listener:
+      scope: /
+      pkg: demo_container
+      plugin: demo_container::Listener
+      container: /composable_container
+      remaps:
+      - from: chatter
+        to: /chatter_a
+    /talker:
+      scope: /
+      pkg: demo_container
+      plugin: demo_container::Talker
+      container: /composable_container
+      params:
+        rate_hz: 20
+      remaps:
+      - from: chatter
+        to: /chatter_a
