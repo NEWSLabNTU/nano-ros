@@ -168,6 +168,54 @@ pub fn run(args: Args) -> Result<()> {
         );
         return Ok(());
     }
+    // R-code precondition #3 — the L.7 self-bringup dev loop (`nros plan
+    // <pkg-dir>` with no launch files) synthesizes a 1-node MODEL instead of
+    // 1-node launch XML: same discovered (pkg, exec) inputs, planned through
+    // the same record plumbing model mode uses — no parser round trip.
+    if args.record.is_none()
+        && launch_input_path.is_dir()
+        && args.file.is_none()
+        && crate::orchestration::launch_synth::is_self_bringup_eligible(&launch_input_path)
+        && crate::orchestration::launch_synth::enumerate_launch_files(&launch_input_path).is_empty()
+    {
+        let pkg_name = crate::orchestration::launch_synth::discover_pkg_name(&launch_input_path)?;
+        let exec_name = match args.exec.as_deref() {
+            Some(e) => e.to_string(),
+            None => crate::orchestration::launch_synth::discover_exec_target(
+                &launch_input_path,
+                &pkg_name,
+            )?,
+        };
+        eprintln!(
+            "nros plan: {} is a self-bringup pkg with no launch files; \
+             planning a synthesized 1-node model ({pkg_name}/{exec_name})",
+            launch_input_path.display()
+        );
+        let model =
+            crate::orchestration::launch_synth::synthesise_self_model(&pkg_name, &exec_name);
+        let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
+        let tmp = tempfile::NamedTempFile::new()?;
+        std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
+        let output = plan_system(PlanOptions {
+            system_pkg,
+            workspace_root,
+            launch_file: launch_input_path.clone(),
+            record_file: Some(tmp.path().to_path_buf()),
+            out_root,
+            metadata_files: args.metadata,
+            manifest_files: args.manifests,
+            launch_args: args.launch_args,
+            rmw: args.rmw,
+            target: args.target,
+        })?;
+        drop(tmp);
+        eprintln!(
+            "nros plan: wrote {} and {}",
+            output.record_path.display(),
+            output.plan_path.display()
+        );
+        return Ok(());
+    }
     // phase-296 R3 — the launch-XML resolution path is transitional; a
     // bringup with a committed model never reaches it (discovery above).
     crate::deprecation::warn_legacy_bake("nros plan (launch-XML resolution)");

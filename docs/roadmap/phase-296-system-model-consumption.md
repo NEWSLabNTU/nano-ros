@@ -892,19 +892,22 @@ model branch bypasses), `nros plan` (modelless fallback, R3-warned), and
    `container`/`load_node`; before any composable bringup carries a model,
    extend it to map `NodeInstance.container`/`plugin` into the record's
    container + load_node arrays (else containers silently drop from plans).
-2. **orchestration_* fixture strategy** — the five modelless fixtures
-   (composable/conditionals/includes/set_remap_env/e2e) test launch-XML
-   semantics through the plan fallback. Post-deletion: conditionals/includes
-   collapse at resolve time (play_launch's suite owns those semantics —
-   the group-ns precedent); composable + set_remap_env re-target committed
-   models (needs #1). The tests then validate model-plan consumption or
-   retire.
-3. **Self-pkg synth → model synth** — replace the 1-node `<launch>` XML
-   synthesis with an in-memory 1-node SystemModel (same Cargo-metadata
-   inputs), so the parser dependency dies with the XML.
+2. **orchestration_* fixture strategy — DISSOLVED (2026-07-24).** All four
+   remaining tests (conditionals/includes/set_remap_env/e2e) drive committed
+   pre-baked `--record` files — they never touch the parser or launch_synth
+   at run time and survive the deletion untouched (they exercise
+   planner-consumes-record, exactly the plumbing model mode reuses).
+   orchestration_composable flipped to a committed model with #1.
+3. **Self-pkg synth → model synth — DONE (2026-07-24).**
+   `synthesise_self_model` (the model twin of synthesise_xml, same
+   discovered pkg/exec inputs) + a plan.rs self-bringup branch: a launchless
+   self-pkg dir plans through a synthesized 1-node model via the record
+   plumbing — no parser round trip, no R3 warning. 475/475 cli-core tests.
 
-Then delete `launch_synth` (949 lines, 20 tests), the plan/ws fallbacks,
-and the deprecation module in one test-green change.
+**All preconditions met.** Next: delete `launch_synth` (949 lines, 20
+tests), the plan/codegen-system/ws launch fallbacks, and the deprecation
+module in one test-green change. Post-deletion contract: a dir input with
+launch files but no model is a hard error carrying the resolve recipe.
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored

@@ -238,7 +238,7 @@ pub fn resolve_launch(
 /// synthesis: has a `Cargo.toml` or `CMakeLists.txt`. Path A bringup
 /// pkgs (no Cargo.toml + no CMakeLists.txt + has system.toml) are
 /// disqualified.
-fn is_self_bringup_eligible(pkg_dir: &Path) -> bool {
+pub fn is_self_bringup_eligible(pkg_dir: &Path) -> bool {
     let has_cargo = pkg_dir.join("Cargo.toml").is_file();
     let has_cmake = pkg_dir.join("CMakeLists.txt").is_file();
     has_cargo || has_cmake
@@ -504,6 +504,28 @@ fn read_cmake_add_executables(cmake: &Path) -> Result<Vec<String>> {
 }
 
 /// Render the synth XML body for a single-node bringup.
+/// R-code precondition #3 — the model twin of [`synthesise_xml`]: a
+/// 1-node in-memory SystemModel for the self-bringup shape (same
+/// `discover_pkg_name`/`discover_exec_target` inputs). The planner consumes
+/// it via `plan_record_from_model`, so the XML synth (and its parser round
+/// trip) dies with this module.
+pub fn synthesise_self_model(
+    pkg_name: &str,
+    exec_name: &str,
+) -> ros_launch_manifest_model::SystemModel {
+    let mut m = ros_launch_manifest_model::SystemModel::default();
+    m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
+    m.structure.nodes.insert(
+        format!("/{exec_name}"),
+        ros_launch_manifest_model::NodeInstance {
+            pkg: Some(pkg_name.to_string()),
+            exec: Some(exec_name.to_string()),
+            ..Default::default()
+        },
+    );
+    m
+}
+
 pub fn synthesise_xml(pkg_name: &str, exec_name: &str) -> String {
     format!(
         "<?xml version=\"1.0\"?>\n\
