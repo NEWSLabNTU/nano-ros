@@ -147,7 +147,28 @@ pub fn run(args: Args) -> Result<()> {
     let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
     let mut model_ages: Vec<crate::orchestration::model_ingest::AgeRow> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
-    let bringup = if let Some(model_path) = &args.model {
+    // R-code.2 — convention discovery: with no explicit `--model`, a committed
+    // `<bringup>/config/system_model.yaml` IS the model. Users (and every
+    // vendor seam that shells this verb — the zephyr module, the pio
+    // extra_script, the fixture builder) never spell the flag; explicit
+    // `--model` stays as the override for out-of-tree/variant models.
+    let discovered_model: Option<PathBuf> = args.model.clone().or_else(|| {
+        let conv = bringup
+            .manifest_path
+            .parent()
+            .map(|d| d.join("config/system_model.yaml"))?;
+        if conv.exists() {
+            eprintln!(
+                "codegen-system: using committed SystemModel {} (convention \
+                 discovery; pass --model to override)",
+                conv.display()
+            );
+            Some(conv)
+        } else {
+            None
+        }
+    });
+    let bringup = if let Some(model_path) = &discovered_model {
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
