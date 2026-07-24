@@ -82,6 +82,11 @@ class QoS {
           liveliness_(LivelinessAutomatic), depth_(10), deadline_ms_(0), lifespan_ms_(0),
           liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0), tx_express_(0) {}
 
+    /// rclcpp-shape depth ctor: `QoS(1)` == default profile with
+    /// keep-last(1). Lets ported rclcpp code (`rclcpp::QoS{1}.transient_local()`)
+    /// keep its spelling on the native surface.
+    explicit constexpr QoS(int depth) : QoS() { depth_ = depth; }
+
     // -- Chainable setters (match rclcpp fluent API) --
 
     /// Set reliability to `RELIABLE` (acked transport, retransmits on loss).
