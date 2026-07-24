@@ -1503,6 +1503,129 @@ execution:
         assert!(hi < lo, "high tier must precede low (priority order)");
     }
 
+    /// phase-296 W5.12 — a workspace whose committed model declares NO
+    /// `execution.tiers`, only the CONTRACT layer (`node_paths` deadlines +
+    /// pub rates). Same two pkgs (callback groups declared) as
+    /// `write_tiered_workspace`.
+    fn write_derived_workspace(dir: &Path) {
+        write_tiered_workspace(dir);
+        // Drop the authored `[tiers.*]` from system.toml — the model derives them.
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "system.launch.xml"
+"#,
+        )
+        .unwrap();
+        // Contracts, no tiers: control is a tight 5 ms / 100 Hz loop, telem a
+        // slack 100 ms / 10 Hz loop — the DAG ranking must place control above.
+        fs::write(
+            dir.join("demo_bringup/config/system_model.yaml"),
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /control_node:
+      scope: /
+      pkg: ctrl_pkg
+      exec: control_node
+      criticality: high
+    /telem_node:
+      scope: /
+      pkg: telem_pkg
+      exec: telem_node
+      criticality: low
+  topics:
+    /cmd:
+      type: std_msgs/Int32
+      pub: [/control_node/cmd]
+    /status:
+      type: std_msgs/Int32
+      pub: [/telem_node/status]
+contracts:
+  node_paths:
+    /control_node/loop:
+      output: [/control_node/cmd]
+      max_latency_ms: 5.0
+    /telem_node/loop:
+      output: [/telem_node/status]
+      max_latency_ms: 100.0
+  pub_endpoints:
+    /control_node/cmd:
+      min_rate_hz: 100.0
+    /telem_node/status:
+      min_rate_hz: 10.0
+"#,
+        )
+        .unwrap();
+    }
+
+    /// phase-296 W5.12 — end-to-end DERIVED-schedule bake: the full
+    /// `codegen-system` verb turns a tier-less, contract-only model into
+    /// resolved `derived-<node>` tiers with distinct priorities (control's
+    /// tighter deadline ranks it above telem), through the SAME
+    /// resolve→plan pipeline an authored tier table uses. Proves the RFC-0052
+    /// realizer path from the verb, not just the `derive_execution_from_contracts`
+    /// unit (W5.6).
+    #[test]
+    fn codegen_system_derives_tiers_from_contract_model() {
+        let dir = scratch_dir("derives_from_contracts");
+        write_derived_workspace(&dir);
+        let out = dir.join("build/demo_bringup");
+        run(Args {
+            workspace: Some(dir.clone()),
+            bringup: None,
+            target: Some("native".into()),
+            out: Some(out.clone()),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+            rmw: None,
+            model: None,
+        })
+        .expect("codegen runs on a contract-only model");
+
+        let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
+        // Both nodes derived a tier (their declared callback groups bound to it).
+        assert!(
+            plan.contains("derived-control_node"),
+            "control derived a tier: {plan}"
+        );
+        assert!(
+            plan.contains("derived-telem_node"),
+            "telem derived a tier: {plan}"
+        );
+        // Priority order: control's 5 ms deadline outranks telem's 100 ms, so
+        // its derived tier is emitted first (highest-priority-first).
+        let ctrl = plan.find("derived-control_node").unwrap();
+        let telem = plan.find("derived-telem_node").unwrap();
+        assert!(
+            ctrl < telem,
+            "the tighter-deadline control tier must precede telem (priority order): {plan}"
+        );
+    }
+
     /// Workspace whose components live in non-Rust (C/C++) packages — i.e.
     /// the bringup names `pkg = "..."` entries that aren't registered in the
     /// cargo workspace's `component_packages`.

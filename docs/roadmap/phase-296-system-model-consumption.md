@@ -551,20 +551,39 @@ Prereq: the two cross-repo rework items (RFC-0050 §rework) — revert
   posix, unplaced → board-agnostic so the same-image split-brain rejection is
   preserved). Unit-tested (`edf_knobs_sliced_per_target_rtos`; the conflict test
   is preserved).
+- W5.12 — **derived-schedule bake E2E through the full `codegen-system` verb**
+  (2026-07-24): the capstone's bake half. `codegen_system_derives_tiers_from_
+  contract_model` sets up a workspace whose committed model declares NO
+  `execution.tiers`, only the CONTRACT layer (`node_paths` deadlines +
+  `structure.topics`/`pub_endpoints` rates) plus the two pkgs' callback groups,
+  runs the FULL `nros codegen-system --target native` verb, and asserts the
+  emitted `nros-plan.json` carries resolved `derived-control_node` +
+  `derived-telem_node` tiers with control (5 ms/100 Hz) ranked ABOVE telem
+  (100 ms/10 Hz). This exercises derive → apply → resolve → plan through the
+  verb, not just the `derive_execution_from_contracts` unit (W5.6). Once the
+  plan carries the derived tiers, boot behavior is IDENTICAL to the
+  authored-tier path every realtime cell already boots (same
+  resolve→run_tiers), so the derivation correctness is the new-covered surface.
+  FINDING: the pure-cargo `nros::main!(model=…)` proc-macro does NOT engage the
+  derive path — it only converts EXPLICIT `execution.tiers` (main_macro.rs
+  `if !model.execution.tiers.is_empty()`); a tier-less model bakes tier-less.
+  So derived schedules are a `codegen-system` (C/C++/CMake) capability only —
+  wiring derivation into the proc-macro is a separate follow-up (see below).
 
-### Remaining work items (beyond W5.5–W5.13, W5.15)
+### Remaining work items (beyond W5.5–W5.13, W5.15, W5.12)
 
 Explicit, individually actionable; each ends with an acceptance check. Two are
 tracked as issues because they are limitations, not just unbuilt features.
 
-- **W5.12 — derived-schedule E2E fixture (the capstone).** No test exercises
-  `derive_execution_from_contracts` end-to-end (bake → boot); W5.6 is
-  unit-tested only. Author a workspace whose model declares node
-  `contracts.node_paths` (latency/rate facts) + callback groups but NO
-  `execution.tiers`, so the bake DERIVES `derived-<node>` tiers, then boot it
-  (posix native = cheapest, no QEMU). *Accept:* two nodes with distinct DAG
-  facts get distinct derived priorities and both run, proven at runtime; the
-  degradation notes print. This is the precursor to "Done when".
+- **Derived schedule in the pure-cargo `nros::main!` path.** The proc-macro
+  converts explicit `execution.tiers` only; a contract-only model bakes
+  tier-less on the Rust pure-cargo path (W5.12 finding). *Accept:* the macro
+  derives tiers from contracts (reusing `nros-orchestration-ir`'s shared derive)
+  when the model declares none, matching the `codegen-system` verb.
+- **W5.12 runtime-boot of a derived image (optional).** The bake E2E proves the
+  plan; a booted derived image would be behaviorally identical to authored-tier
+  boot (shared resolve→run_tiers). Low marginal value; a native C/C++ derived
+  fixture would close it if desired.
 - **W5.14 — other-board `replenish` / native reservation.** The budget dim's
   replenishment + reservation primitives on the boards that lack them (today
   the executor's cooperative `SchedContext` backfills). *Accept:* each board
