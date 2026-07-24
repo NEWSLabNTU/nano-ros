@@ -44,9 +44,34 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#250** — rosidl-codegen silently flattens multi-dimensional IDL arrays to the first dimension
+(wire-incompatible layout, no error; `.idl`-sourced packages only). Reject loudly until supported.
+See `0250-*`. (release-prep audit 2026-07-24)
+
+**#249** — cargo-nano-ros scaffold bakes `TODO@todo.com` maintainer placeholders into every
+generated package.xml; take from git config with an instructional fallback. See `0249-*`.
+(release-prep audit 2026-07-24)
+
+**#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
+dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
+phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
+
+**#247** — `nros codegen-system` PIO/PX4 ahead-of-vendor arms emit literal `TODO(E.3)` stub output
+that looks like a real artifact; implement or fail loudly. See `0247-*`. (release-prep audit
+2026-07-24)
+
+**#251** — `resolve_tiers` sorts by raw priority number without per-RTOS direction, so on
+ThreadX/Zephyr (lower = higher) `tiers[0]`/the BOOT tier is the LOWEST-priority tier and the #144
+"highest declares first" rationale inverts. Direction-aware sort or comment/doc truthing.
+See `0251-*`. (phase-297 W5, 2026-07-23; renumbered from a 0246 id collision)
+
 **#246** — realtime_tiers_e2e nuttx_arm_rust cell TIMES OUT on a fresh image (baseline-verified
 pre-existing — NOT the W5.9 sporadic work; cpp/c siblings pass ~13 s); riscv trio
 precondition-skips (rust lane name mismatch). See `0246-*`. (2026-07-24)
+
+**#245** — realtime_tiers_e2e zephyr_cpp + zephyr_c cells TIME OUT on a fresh native_sim image
+(banner-then-silence before any nros output; zephyr_rust sibling passes). Baseline-verified
+pre-existing — NOT the W5.5/W5.7 tier-spec append. See `0245-*`. (2026-07-23)
 
 **#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
 header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
