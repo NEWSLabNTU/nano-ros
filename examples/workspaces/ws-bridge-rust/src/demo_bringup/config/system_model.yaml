@@ -10,10 +10,11 @@ meta:
     version: 0.8.2
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /talker:
-      scope: /
+      scope: system.launch.xml
       pkg: talker_pkg
       exec: talker
       node_name: talker

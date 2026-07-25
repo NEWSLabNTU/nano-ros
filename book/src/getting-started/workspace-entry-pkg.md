@@ -120,12 +120,19 @@ runtimes. `launch` is the transitional path (parses launch XML + `system.toml`
 at build time). Produce the model once with:
 
 ```console
+$ nros sync    # resolves/refreshes demo_bringup/config/system_model.yaml
+```
+
+`nros sync` (the pre-build step every workflow already runs) materializes
+the model whenever a bringup's launch XML or `system.toml` is newer than
+it, using `play_launch` from PATH. Commit the result. The underlying
+command — for CI pipelines or explicit `KEY:=VALUE` bindings — is:
+
+```console
 $ play_launch resolve demo_bringup/launch/system.launch.xml \
       --system demo_bringup/system.toml \
       -o demo_bringup/config/system_model.yaml
-```
-
-then commit it. The macro reads `[package.metadata.nros.entry]` at compile
+``` The macro reads `[package.metadata.nros.entry]` at compile
 time to select the right board and executor backend; the same model resolves
 its tier table for whichever RTOS that board targets. On Embassy / RTIC targets it emits the
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body so your

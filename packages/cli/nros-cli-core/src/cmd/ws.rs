@@ -286,6 +286,154 @@ impl WsPkg {
 /// metadata — pre-build, no sidecar), then renders the runtime bridge config the
 /// entry's `nros_bridge::run_from_config` consumes. No bridge ⇒ no file written
 /// (and a stale one is removed). Non-bridge workspaces never plan here.
+/// R-code UX — materialize each bringup's SystemModel as part of `nros
+/// sync`, so the user's canonical flow (sync → west/cargo/cmake) never
+/// hand-runs `play_launch resolve`. For every pkg with a `launch/` dir:
+/// resolve `config/system_model.yaml` when it is missing or older than any
+/// input (launch XMLs, system.toml). Requires `play_launch` on PATH; when
+/// absent, models that already exist are used as-is and missing ones warn
+/// with the manual recipe (the bake later fail-louds the same way).
+/// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
+/// siblings that were previously committed (variant models stay opt-in:
+/// only refreshed, never created, for non-default launches).
+fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
+    // PATH probe without a which dep: try `play_launch --version`.
+    let play_launch: Option<std::path::PathBuf> = std::process::Command::new("play_launch")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|_| std::path::PathBuf::from("play_launch"));
+    for pkg in scan {
+        let launch_dir = pkg.dir.join("launch");
+        if !launch_dir.is_dir() {
+            continue;
+        }
+        let cfg_dir = pkg.dir.join("config");
+        let system_toml = pkg.dir.join("system.toml");
+        // Input mtime horizon: launch XMLs + system.toml.
+        let mut newest_input: Option<std::time::SystemTime> = None;
+        let mut launches: Vec<std::path::PathBuf> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&launch_dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("xml") {
+                    if let Ok(md) = p.metadata()
+                        && let Ok(mt) = md.modified()
+                    {
+                        newest_input = Some(newest_input.map_or(mt, |c| c.max(mt)));
+                    }
+                    launches.push(p);
+                }
+            }
+        }
+        if launches.is_empty() {
+            continue;
+        }
+        if let Ok(md) = system_toml.metadata()
+            && let Ok(mt) = md.modified()
+        {
+            newest_input = Some(newest_input.map_or(mt, |c| c.max(mt)));
+        }
+        let stale = |model: &std::path::Path| -> bool {
+            match (model.metadata().and_then(|m| m.modified()), newest_input) {
+                (Ok(mm), Some(ni)) => mm < ni,
+                (Err(_), _) => true,
+                _ => false,
+            }
+        };
+        // Targets: the default model always; committed variant models refresh.
+        let mut targets: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+        let default_launch = {
+            // `[system] default_launch` else system.launch.xml else the single file.
+            let named = std::fs::read_to_string(&system_toml)
+                .ok()
+                .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
+                .and_then(|v| {
+                    v.get("system")?
+                        .get("default_launch")?
+                        .as_str()
+                        .map(|s| launch_dir.join(s))
+                });
+            named
+                .filter(|p| p.is_file())
+                .or_else(|| {
+                    let sys = launch_dir.join("system.launch.xml");
+                    sys.is_file().then_some(sys)
+                })
+                .or_else(|| (launches.len() == 1).then(|| launches[0].clone()))
+        };
+        if let Some(dl) = &default_launch {
+            targets.push((dl.clone(), cfg_dir.join("system_model.yaml")));
+        }
+        for lf in &launches {
+            if Some(lf) == default_launch.as_ref() {
+                continue;
+            }
+            let stem = lf
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.trim_end_matches(".launch.xml").to_string())
+                .unwrap_or_default();
+            let variant = cfg_dir.join(format!("{stem}_model.yaml"));
+            if variant.exists() {
+                targets.push((lf.clone(), variant));
+            }
+        }
+        for (launch, model) in targets {
+            if !stale(&model) {
+                continue;
+            }
+            let Some(pl) = &play_launch else {
+                if !model.exists() {
+                    eprintln!(
+                        "ws sync: warning — `{}` has no committed SystemModel and \
+                         `play_launch` is not on PATH; the bake will refuse. Resolve \
+                         manually: play_launch resolve {} [--system {}] -o {}",
+                        pkg.name,
+                        launch.display(),
+                        system_toml.display(),
+                        model.display(),
+                    );
+                }
+                continue;
+            };
+            std::fs::create_dir_all(&cfg_dir)
+                .wrap_err_with(|| format!("ws sync: create {}", cfg_dir.display()))?;
+            let mut cmd = std::process::Command::new(pl);
+            cmd.arg("resolve").arg(&launch);
+            if system_toml.is_file() {
+                cmd.arg("--system").arg(&system_toml);
+            }
+            cmd.arg("-o").arg(&model);
+            let out = cmd
+                .output()
+                .wrap_err_with(|| format!("ws sync: spawn play_launch resolve for {}", pkg.name))?;
+            if !out.status.success() {
+                eyre::bail!(
+                    "ws sync: play_launch resolve failed for `{}` ({}):\n{}",
+                    pkg.name,
+                    launch.display(),
+                    String::from_utf8_lossy(&out.stderr),
+                );
+            }
+            if verbose {
+                println!("ws sync: resolved {}", model.display());
+            } else {
+                println!(
+                    "ws sync: resolved {} → {}",
+                    launch
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("launch"),
+                    model.strip_prefix(&pkg.dir).unwrap_or(&model).display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn generate_bridge_configs(
     ws_root: &std::path::Path,
     scan: &[WsPkg],
@@ -504,6 +652,9 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // (topic names→types resolve from the node pkgs' synthetic `publishes`
     // metadata, no build) and write `<bringup>/nros-bridge.toml` — the file the
     // entry's `nros_bridge::run_from_config` consumes at runtime.
+    // R-code UX — resolve/refresh each bringup's committed SystemModel first
+    // (the canonical input; bridge planning below consumes it).
+    resolve_system_models(&scan, args.verbose)?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
 
     if rust_consumers.is_empty() {
