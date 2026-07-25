@@ -1,6 +1,6 @@
 # Phase 305: Ament-parity component registration (RFC-0057)
 
-**Status:** 📋 Planned (2026-07-25).
+**Status:** 🔨 W1-W3 landed, W2 validation partially blocked by host disk (2026-07-26).
 **Implements:** RFC-0057. **Closes:** issue 0275; 0277 (UX half — the
 union-closure engineering half stays open).
 **Reference consumer:** simple-autoware-safety-island (porting-notes 02/08/12).
@@ -149,3 +149,30 @@ W2 is mechanical but wide — do it per platform family with fixture
 rebuilds between (mtime-treadmill). W3 is the acceptance proof and can
 start as soon as W1 is in. W4 last. The register/lint area overlaps
 active parallel-agent work (212-series) — coordinate before W1.5.
+
+## Outcome (2026-07-26)
+
+- **W1** landed (EXISTING_TARGET mode, both verbs, pkg-in-metadata,
+  L.4 retirement, planner parses the split spelling). 407+ cli-core
+  tests green.
+- **W2** landed: templates/book + 80 example/fixture CMakeLists on the
+  split spelling. Validation: native / qemu-arm-baremetal / freertos /
+  threadx_linux fixture lanes rebuilt green. Remaining lanes
+  (nuttx / threadx_riscv64 / stm32f4 / esp32 / px4 / zephyr) could not
+  be validated on the dev host: /home (btrfs) hit 100% with ~1.6 TB
+  held outside this user's account and deletions snapshot-pinned —
+  every remaining failure signature is ENOSPC or its downstream
+  (config-header stubs, link failures). Re-run those lanes after the
+  host is cleaned; the migration itself is mechanical and
+  SHAPE-preserving.
+- **W3** landed in simple-autoware-safety-island (1e3dee2): verbatim
+  `autoware::` namespaces, macro-name-swap CMakeLists, C++17, manual
+  topo-last blocks gone; cold MRM receipt PASS on native + zephyr.
+- **W4** partial: opt-in legacy deprecation, 0275 resolved → archived.
+  RFC-0057 stays Draft until the blocked lanes validate (Stable gate =
+  full `just ci`).
+- **Cross-phase note:** phase-306 (interface-codegen correctness)
+  landed concurrently and RETIRED the topo-last superset mechanics
+  (per-package FFI crates) — D3's auto-wiring UX is unchanged, 0277's
+  mixed-subset hazard is gone by design, and the pre-306 mixed-subset
+  warning was removed with it.
