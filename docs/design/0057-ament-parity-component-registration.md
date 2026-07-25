@@ -4,7 +4,7 @@ title: "Ament-parity component registration — split library/registration macro
 status: Draft
 since: 2026-07
 last-reviewed: 2026-07
-implements-tracked-by: []
+implements-tracked-by: [phase-305]
 supersedes: []
 superseded-by: null
 ---

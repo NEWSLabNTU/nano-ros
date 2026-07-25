@@ -4,7 +4,7 @@ title: "nros_find_interfaces topo-last superset requires ONE closure per workspa
 status: open
 type: friction
 area: cmake
-related: [0253, rfc-0057]
+related: [0253, rfc-0057, phase-305]
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 12)
