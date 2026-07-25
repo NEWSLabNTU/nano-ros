@@ -607,7 +607,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         let s = match v {
                             ParamValue::Bool(b) => b.to_string(),
                             ParamValue::Int(i) => i.to_string(),
-                            ParamValue::Float(f) => f.to_string(),
+                            // issue-0269-adjacent: `1.0f64.to_string()` is "1",
+                            // which the runtime's infer_param_value re-types as
+                            // INTEGER — Debug formatting keeps the ".0" so a
+                            // launch double stays a double end-to-end.
+                            ParamValue::Float(f) => format!("{f:?}"),
                             ParamValue::Str(s) => s.clone(),
                             ParamValue::StrList(l) => l.join(","),
                         };
