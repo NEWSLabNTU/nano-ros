@@ -108,7 +108,7 @@ endfunction()
 # back-compat but bypasses the ROS-convention surface.
 # =========================================================================
 function(nros_generate_interfaces target)
-  # NO_FFI_CRATE — DEPRECATED no-op (phase-305 W1, issue 0253): the split
+  # NO_FFI_CRATE — DEPRECATED no-op (phase-306 W1, issue 0253): the split
   # types/exports codegen makes every package's FFI crate export only its own
   # `nros_cpp_*` symbols, so the superset-archive suppression this flag drove
   # is gone. The keyword stays accepted so existing callers don't break.
@@ -122,7 +122,7 @@ function(nros_generate_interfaces target)
     message(STATUS
       "nros_generate_interfaces(${target}): NO_FFI_CRATE is deprecated and "
       "ignored (per-package FFI crates export only their own symbols since "
-      "phase-305).")
+      "phase-306).")
   endif()
 
   # phase-304 W2b (RFC-0056) — an explicit ROS_EDITION wins; otherwise inherit
@@ -389,7 +389,7 @@ function(nros_generate_interfaces target)
     # The generated .rs files provide extern "C" publish/serialize/deserialize
     # functions. We compile them into a static library via cargo.
     #
-    # phase-305 W1 (issue 0253): every package builds its OWN crate. The crate
+    # phase-306 W1 (issue 0253): every package builds its OWN crate. The crate
     # includes dependency `*_types.rs` (crate-mangled, duplicate-safe) but only
     # its OWN `*_exports.rs` (`_nros_collect_rs_closure` filters dep exports),
     # so each archive defines each `nros_cpp_*` symbol exactly once and any
@@ -700,7 +700,7 @@ function(nros_generate_interfaces target)
       # one example shares it.
       set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
       set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
-      # phase-305 W2 (issue 0258) — cross-package includes are FILE-level:
+      # phase-306 W2 (issue 0258) — cross-package includes are FILE-level:
       # a package's lowered IDL `#include`s dep-package IDLs (`Odometry.idl`
       # → `std_msgs/msg/Header.idl`), which idlc reads at generate time.
       # Target-level `add_dependencies` below orders SIBLING ts libs, but a
@@ -742,7 +742,7 @@ function(nros_generate_interfaces target)
         list(REMOVE_DUPLICATES _cyc_stash)
       endif()
       set(_NROS_PKG_${target}_CYC_IDL_FILES "${_cyc_stash}" CACHE INTERNAL
-        "phase-305 W2: ${target}'s generated cyclone .idl closure")
+        "phase-306 W2: ${target}'s generated cyclone .idl closure")
       if(_cyc_sources)
         add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
         # idlc lays the descriptor `.c`/`.h` out as

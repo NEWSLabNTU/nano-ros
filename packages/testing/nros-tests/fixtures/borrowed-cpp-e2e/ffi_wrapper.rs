@@ -14,6 +14,6 @@ unsafe extern "C" {
     fn nros_cpp_publish_raw(handle: *mut core::ffi::c_void, data: *const u8, len: usize) -> i32;
 }
 
-// phase-305 W1 — codegen splits the glue into a types + exports pair.
+// phase-306 W1 — codegen splits the glue into a types + exports pair.
 include!("e2e_msgs_msg_borrowed_types.rs");
 include!("e2e_msgs_msg_borrowed_exports.rs");

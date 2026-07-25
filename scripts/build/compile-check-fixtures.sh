@@ -155,7 +155,7 @@ CMAKE_FIXTURES=(
     # shadow (carrying Marker.msg) over the AMENT one; the test `nm`s the
     # consumer to prove which won. Needs an AMENT std_msgs in the build env.
     "shadowing:examples/templates/workspace-shadowing"
-    # phase-305 W1 (issue 0253) — two-interface-pkg C++ consumer via
+    # phase-306 W1 (issue 0253) — two-interface-pkg C++ consumer via
     # nros_workspace_interfaces (extra_msgs depends on local_msgs; the consumer
     # links both). Gates the per-package FFI-crate split: the pre-305 superset
     # crates made this link fail with hundreds of duplicate `nros_cpp_*`

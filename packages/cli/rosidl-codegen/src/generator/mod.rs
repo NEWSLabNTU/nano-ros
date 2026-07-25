@@ -1341,7 +1341,7 @@ mod tests {
         assert!(pkg.header.contains("ffi_publish"));
         assert!(pkg.header.contains("ffi_deserialize"));
 
-        // Check split FFI Rust (phase-305 W1): crate-mangled items in the
+        // Check split FFI Rust (phase-306 W1): crate-mangled items in the
         // TYPES half; #[no_mangle] exports ONLY in the EXPORTS half.
         assert!(pkg.ffi.types_rs.contains("#[repr(C)]"));
         assert!(pkg.ffi.types_rs.contains("std_msgs_msg_int32_t"));

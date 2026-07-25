@@ -153,7 +153,7 @@ pub enum Workload {
     RealtimeTiers,
     Multihost,
     /// Launch/model `<remap>` + `~` private names reach the WIRE remapped
-    /// (phase-305 W4, issue 0255).
+    /// (phase-306 W4, issue 0255).
     Remap,
 }
 
@@ -541,7 +541,7 @@ pub const CELLS: &[Cell] = &[
     cell(Native, C,     Zenoh, Safety,    Workspace, Runtime),
     cell(Native, Cpp,   Zenoh, Safety,    Workspace, Runtime),
     cell(Native, Rust,  Zenoh, Safety,    Workspace, Runtime),
-    // phase-305 W4 (issue 0255) — launch/model remap + `~` private name hits
+    // phase-306 W4 (issue 0255) — launch/model remap + `~` private name hits
     // the wire remapped. Rust only: the C/C++ `nros_cpp_declare_remap` path is
     // emitter-unit-tested (W3); a runtime C/C++ cell is residual.
     cell(Native, Rust,  Zenoh, Remap,     Workspace, Runtime),

@@ -5,7 +5,7 @@ status: open
 type: friction
 severity: low
 area: nros-cpp
-related: [rfc-0057, phase-305]
+related: [rfc-0057, phase-306]
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 02)

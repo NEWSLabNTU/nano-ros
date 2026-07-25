@@ -192,7 +192,7 @@ pub struct RuntimeCtx<'a> {
     pub params: &'a [(&'a str, &'a str)],
 
     /// Topic / service / action remaps: `(from, to)`, set per component by
-    /// `nros::main!` from the model's launch `<remap>` rules (phase-305 W3,
+    /// `nros::main!` from the model's launch `<remap>` rules (phase-306 W3,
     /// issue 0255). `nros::node!`'s `register` forwards them into
     /// `install_node_typed_with_launch`, where entity creation expands
     /// `~`/relative names and substitutes matching rules (exact-FQN match,

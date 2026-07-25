@@ -32,7 +32,7 @@ echo "borrowed_cpp_e2e: emitting generated code…"
 ( cd packages/cli && cargo test -p rosidl-codegen emit_cpp_borrowed_e2e -- --ignored >/dev/null 2>&1 )
 BUILD="$ROOT/tmp/borrowed_cpp_e2e"
 test -f "$BUILD/e2e_msgs_msg_borrowed.hpp" || { echo "FAIL: generated hpp missing"; exit 1; }
-# phase-305 W1 — the FFI glue is a split types + exports pair.
+# phase-306 W1 — the FFI glue is a split types + exports pair.
 test -f "$BUILD/e2e_msgs_msg_borrowed_types.rs" || { echo "FAIL: generated types.rs missing"; exit 1; }
 test -f "$BUILD/e2e_msgs_msg_borrowed_exports.rs" || { echo "FAIL: generated exports.rs missing"; exit 1; }
 

@@ -278,7 +278,7 @@ pub struct ComponentMetadata {
     /// `super::schema`) to avoid creating a duplicate type.
     ///
     /// TODO(issue 0255): component-default remaps are parsed but not yet
-    /// routed into entry codegen — phase-305 W3 wired the launch/model remap
+    /// routed into entry codegen — phase-306 W3 wired the launch/model remap
     /// inputs (`NodeSpec.remaps` / `NodeInstance.remaps`) into
     /// `PlanNode.remaps`; threading THIS metadata source through the planner
     /// into the same field (launch rules win over component defaults) is the

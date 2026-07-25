@@ -679,7 +679,7 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub ffi_deserialize_borrowed_fn: String,
 }
 
-/// TYPES half of the split C++ FFI glue (phase-305 W1, issue 0253): the
+/// TYPES half of the split C++ FFI glue (phase-306 W1, issue 0253): the
 /// crate-mangled items — repr(C) structs, sequence helpers, plain
 /// `serialize_/deserialize_/teardown_*_fields` fns — safe to duplicate across
 /// per-package FFI crates.
@@ -712,7 +712,7 @@ pub struct MessageCppTypesTemplate<'a> {
     pub deserialize_borrowed_fn: String,
 }
 
-/// EXPORTS half of the split C++ FFI glue (phase-305 W1, issue 0253): ONLY the
+/// EXPORTS half of the split C++ FFI glue (phase-306 W1, issue 0253): ONLY the
 /// `#[unsafe(no_mangle)]` `nros_cpp_{publish,serialize,deserialize}_*` C-ABI
 /// wrappers. Included solely by the OWNING package's crate so each symbol is
 /// defined exactly once across any combination of interface archives.

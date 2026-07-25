@@ -63,7 +63,7 @@ calls `nros_generate_interfaces` per pkg directly and is NOT covered by the
 `nros_find_interfaces` dedupe; it needs the same last-superset treatment (or
 the proper per-pkg-symbols fix).
 
-## Resolution (2026-07-26, phase-305 W1)
+## Resolution (2026-07-26, phase-306 W1)
 
 The residual gap is closed by construction: generated _ffi.rs split into
 <stem>_types.rs (crate-mangled, duplicate-safe) + <stem>_exports.rs (the

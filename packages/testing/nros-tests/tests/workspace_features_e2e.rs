@@ -36,7 +36,7 @@
 //!   talker attaches a CRC per `/chatter` publish, the listener's
 //!   validated subscription republishes the CRC-valid count on `/safe_ok`,
 //!   an external `int32-sink` sees the count climb.
-//! - **Remap** (phase-305 W4 / issue 0255): the model namespaces the node
+//! - **Remap** (phase-306 W4 / issue 0255): the model namespaces the node
 //!   under `/island` and remaps its PRIVATE `~/out` to `/remapped_out`; a
 //!   sink on the remapped topic receives, one on the `~` expansion stays
 //!   silent — the launch/model remap reaches the WIRE.
@@ -111,7 +111,7 @@ enum Proof {
     /// preserved from the rust (16 s/22 s) vs C-family (20 s/25 s) files.
     SafetyCrcCount { spin_ms: u32, wait_secs: u64 },
     /// Single entry publishing on a PRIVATE `~/out` name the model remaps
-    /// (phase-305 W4, issue 0255): a sink on the REMAPPED absolute topic
+    /// (phase-306 W4, issue 0255): a sink on the REMAPPED absolute topic
     /// must see ≥3 messages, and a sink on the unremapped `~` expansion
     /// must stay silent — the remap reached the WIRE.
     RemapWireName,
@@ -383,7 +383,7 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     note: "phase-269 W3 C++: node.create_subscription_with_safety<M>() delivers \
            (const M&, const nros_cpp_integrity_status_t&) with crc_valid == 1",
 })]
-// Remap — phase-305 W4 (issue 0255): the model namespaces the node under
+// Remap — phase-306 W4 (issue 0255): the model namespaces the node under
 // /island and remaps its PRIVATE `~/out` to /remapped_out; the wire topic
 // must be the REMAPPED one. Rust only — the C/C++ `nros_cpp_declare_remap`
 // emitter path is unit-tested (W3); runtime C/C++ cells are residual.
@@ -392,7 +392,7 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     entry: || build_native_workspace_rust_remap_entry().map(|p| p.to_path_buf()),
     peer: None,
     proof: Proof::RemapWireName,
-    note: "phase-305 W3/W4: nros::main!(model = …) bakes the model's <remap> rules into \
+    note: "phase-306 W3/W4: nros::main!(model = …) bakes the model's <remap> rules into \
            runtime.remaps; entity creation expands ~/out against /island/remap_talker \
            and resolves it to /remapped_out before it reaches the RMW",
 })]

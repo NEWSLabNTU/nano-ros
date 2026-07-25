@@ -44,7 +44,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved: **#253 + #255 + #258** — phase-305 interface-codegen correctness: per-package
+Recently resolved: **#253 + #255 + #258** — phase-306 interface-codegen correctness: per-package
 FFI crates (superset archives retired, any combination links), launch/model remaps routed to the
 wire with ROS 2 ~/relative expansion (runtime-proven, ws-remap-rust), and big-pkg cyclone deps
 compile (derived-srv filter + IDL_DEPENDS + reserved-word escapes) — `archived/0253-*`,

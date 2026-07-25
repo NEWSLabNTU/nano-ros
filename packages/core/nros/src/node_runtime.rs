@@ -660,7 +660,7 @@ struct ExecutorSink<'a> {
     cell: Arc<ComponentCell>,
     /// Per-registration node mapping: stable id → executor `NodeId` plus the
     /// EFFECTIVE `(name, namespace)` the node was created with (launch identity
-    /// or the `NodeOptions` default) — phase-305 W3 needs it to expand
+    /// or the `NodeOptions` default) — phase-306 W3 needs it to expand
     /// `~`/relative entity names per node.
     nodes: Vec<SinkNode>,
     /// Phase 268 W1 — launch-injected node identity `(name, namespace)` baked by

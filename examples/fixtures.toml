@@ -241,7 +241,7 @@ bringup = "src/demo_bringup"
 entry = "native_safety_listener_entry"
 target_dir = "target-fixtures"
 
-# phase-305 W4 (issue 0255) — the remap/private-name workspace, pure-cargo
+# phase-306 W4 (issue 0255) — the remap/private-name workspace, pure-cargo
 # `nros::main!(model = …)` path (no codegen_out). The node publishes on the
 # PRIVATE `~/out`; the model namespaces it under /island and remaps `~/out` to
 # /remapped_out. Consumed by tests/workspace_features_e2e.rs (native_rust_remap

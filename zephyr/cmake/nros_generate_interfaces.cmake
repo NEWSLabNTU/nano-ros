@@ -114,7 +114,7 @@ function(nros_generate_interfaces target)
     "DEPENDENCIES"
     ${ARGN}
   )
-  # NO_FFI_CRATE (issue 0253) — DEPRECATED no-op everywhere since phase-305 W1:
+  # NO_FFI_CRATE (issue 0253) — DEPRECATED no-op everywhere since phase-306 W1:
   # the split types/exports codegen makes every per-pkg crate export only its
   # own `nros_cpp_*` symbols, so nothing needs suppressing. Accepted so
   # existing callers don't break.
@@ -281,7 +281,7 @@ function(nros_generate_interfaces target)
   if(_ARG_LANGUAGE STREQUAL "CPP")
     # -- C++ path: header-only .hpp + Rust FFI staticlib --
 
-    # phase-305 W1 — drop pre-split `*_ffi.rs` leftovers from an old build
+    # phase-306 W1 — drop pre-split `*_ffi.rs` leftovers from an old build
     # dir BEFORE globbing: codegen now emits `*_types.rs` + `*_exports.rs`
     # and never rewrites/removes the legacy files, so a stale one would be
     # include!()d alongside the split pair → duplicate items (E0428).
@@ -563,7 +563,7 @@ targets = [\"${NROS_RUST_TARGET}\"]
       get_filename_component(_cyc_pkgdir "${_cyc_ifdir}" DIRECTORY)
       set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
       set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
-      # phase-305 W2 (issue 0258) — file-level cross-package IDL ordering;
+      # phase-306 W2 (issue 0258) — file-level cross-package IDL ordering;
       # twin of the canonical generator's cyclone stage (keep in sync).
       # Deps' generated .idl closures come from the CACHE stash written by
       # whichever call generated them; every pass-2 idlc command then
@@ -594,7 +594,7 @@ targets = [\"${NROS_RUST_TARGET}\"]
         list(REMOVE_DUPLICATES _cyc_stash)
       endif()
       set(_NROS_PKG_${target}_CYC_IDL_FILES "${_cyc_stash}" CACHE INTERNAL
-        "phase-305 W2: ${target}'s generated cyclone .idl closure")
+        "phase-306 W2: ${target}'s generated cyclone .idl closure")
       if(_cyc_sources)
         add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
         target_include_directories(${target}__cyclonedds_ts PRIVATE

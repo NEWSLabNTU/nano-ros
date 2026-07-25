@@ -1201,7 +1201,7 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
         .map(|p| p.as_path())
 }
 
-/// phase-305 W4 (issue 0255) — the remap/private-name native Rust workspace
+/// phase-306 W4 (issue 0255) — the remap/private-name native Rust workspace
 /// Entry pkg fixture (`ws-remap-rust`, cached; pure-cargo
 /// `nros::main!(model = …)`). The model namespaces the node under `/island`
 /// and remaps its PRIVATE `~/out` to `/remapped_out` — the wire-name proof

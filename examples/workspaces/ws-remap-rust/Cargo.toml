@@ -1,10 +1,10 @@
-# phase-305 W4 (issue 0255) — launch/model remap + `~` private-name showcase.
+# phase-306 W4 (issue 0255) — launch/model remap + `~` private-name showcase.
 #
 # The Node pkg publishes on the PRIVATE name `~/out` (source-level; never an
 # absolute path in code). The resolved system model namespaces the node under
 # `/island` and carries a `<remap>` from `~/out` to `/remapped_out`;
 # `nros::main!(model = …)` bakes the rules into `runtime.remaps` and entity
-# creation resolves the wire name through them (RFC-0046 / phase-305 W3) — so
+# creation resolves the wire name through them (RFC-0046 / phase-306 W3) — so
 # the topic that hits the wire is `/remapped_out`, not the `~` expansion
 # `/island/remap_talker/out`.
 

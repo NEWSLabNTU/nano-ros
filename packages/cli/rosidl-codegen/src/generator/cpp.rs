@@ -14,7 +14,7 @@ use crate::{
 use askama::Template;
 use rosidl_parser::{Action, FieldType, Message, Service};
 
-/// One message-like part's split Rust FFI glue (phase-305 W1, issue 0253):
+/// One message-like part's split Rust FFI glue (phase-306 W1, issue 0253):
 /// the TYPES half (crate-mangled structs + plain field serializers — safe to
 /// duplicate across per-package crates) and the EXPORTS half (only the
 /// `#[unsafe(no_mangle)]` C-ABI wrappers — included solely by the owning
@@ -239,7 +239,7 @@ struct FfiRenderSpec<'a> {
 }
 
 /// Generate the split Rust FFI glue pair for a message-like struct
-/// (phase-305 W1, issue 0253): TYPES half + EXPORTS half.
+/// (phase-306 W1, issue 0253): TYPES half + EXPORTS half.
 fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorError> {
     let has_fields = !spec.ffi_fields.is_empty();
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);

@@ -183,7 +183,7 @@ fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
     );
 }
 
-/// phase-305 W2 (issue 0258) — `nros codegen resolve-deps` must not collect
+/// phase-306 W2 (issue 0258) — `nros codegen resolve-deps` must not collect
 /// rosidl-DERIVED `srv/<Srv>_{Request,Response,Event}.msg` siblings (installed
 /// AMENT packages ship them next to each `.srv`; Humble's nav_msgs is the
 /// canonical shape). Collected, they double-lower each service and hand the

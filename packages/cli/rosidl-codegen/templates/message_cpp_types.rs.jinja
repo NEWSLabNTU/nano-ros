@@ -5,7 +5,7 @@
 //
 // no_std, no alloc — stack-only buffers
 //
-// phase-305 W1 (issue 0253): this file carries ONLY crate-mangled items
+// phase-306 W1 (issue 0253): this file carries ONLY crate-mangled items
 // (structs + plain serialize_/deserialize_/teardown_*_fields fns) that are
 // safe to duplicate across per-package FFI crates. The no_mangle C-ABI
 // exports live in the sibling `*_exports.rs`, which ONLY the owning

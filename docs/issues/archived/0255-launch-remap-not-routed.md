@@ -20,7 +20,7 @@ every node). Routing = project remaps into entity creation at entry codegen
 time (the model already carries per-node structure), plus `~` expansion
 against the node name.
 
-## Resolution (2026-07-26, phase-305 W3+W4)
+## Resolution (2026-07-26, phase-306 W3+W4)
 
 One resolution seam (nros-node names.rs: ROS 2 ~/relative expansion +
 exact-FQN first-match) applied at ExecutorSink::create_entity and at the

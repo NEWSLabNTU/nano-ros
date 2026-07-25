@@ -1,4 +1,4 @@
-# ws-remap-rust — launch/model remap + `~` private names (phase-305 W4)
+# ws-remap-rust — launch/model remap + `~` private names (phase-306 W4)
 
 A minimal product-shaped nano-ros workspace proving the **remap seam** end to
 end: the Node pkg publishes on the PRIVATE name `~/out`, the system model
@@ -19,7 +19,7 @@ the topic that reaches the wire is the **remapped** one.
   ```
 
 - `nros::main!(model = "demo_bringup")` bakes the rules into
-  `runtime.remaps` before the node's `register` call (phase-305 W3, issue
+  `runtime.remaps` before the node's `register` call (phase-306 W3, issue
   0255); entity creation expands `~/out` against the node identity
   (`/island/remap_talker/out`) and resolves it through the rules — the wire
   name is `/remapped_out`. Without the remap the wire name would be the `~`

@@ -1215,7 +1215,7 @@ pub struct ResolvedPackage {
 /// Collect a package's SOURCE interface files from its share dir
 /// (`msg/`, `srv/`, `action/` — `.msg`/`.srv`/`.action` extensions).
 ///
-/// phase-305 W2 (issue 0258): installed AMENT packages ship rosidl-DERIVED
+/// phase-306 W2 (issue 0258): installed AMENT packages ship rosidl-DERIVED
 /// `srv/<Srv>_{Request,Response,Event}.msg` siblings next to each `.srv`
 /// (Humble emits Request/Response; later editions add Event). They are
 /// generator OUTPUT, not source interfaces — collecting them double-lowers
@@ -1492,7 +1492,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     format!("Failed to generate C++ code for message: {}", file_name)
                 })?;
 
-                // Write header and split FFI Rust glue (phase-305 W1: types +
+                // Write header and split FFI Rust glue (phase-306 W1: types +
                 // exports pair per stem)
                 write_if_changed(msg_dir.join(&generated.header_name), &generated.header)?;
                 write_if_changed(
@@ -1919,7 +1919,7 @@ mod tests {
     use super::collect_interface_files;
     use std::fs;
 
-    /// phase-305 W2 (issue 0258): the resolve-deps file collector must skip
+    /// phase-306 W2 (issue 0258): the resolve-deps file collector must skip
     /// rosidl-derived `srv/<Srv>_{Request,Response,Event}.msg` siblings (as
     /// shipped by installed AMENT packages, e.g. Humble's nav_msgs) while
     /// keeping every genuine source interface.

@@ -1,4 +1,4 @@
-# Phase 305 — interface-codegen correctness (resolves 0253, 0255, 0258)
+# Phase 306 — interface-codegen correctness (renumbered from 305 — id collision with the parallel session's ament-parity phase) (resolves 0253, 0255, 0258)
 
 **Status (2026-07-26): ALL WAVES DONE — 0253/0255/0258 resolved.** W1
 per-pkg FFI crates (local-msg-package links, nm-proven symbol ownership,

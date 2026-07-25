@@ -1,4 +1,4 @@
-//! ROS 2 name expansion + launch remap resolution (issue 0255 / phase-305 W3).
+//! ROS 2 name expansion + launch remap resolution (issue 0255 / phase-306 W3).
 //!
 //! The ONE resolution seam both entry-codegen twins funnel through: the Rust
 //! `ExecutorSink` (nros `node_runtime`) and the C-ABI registration paths

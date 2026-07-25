@@ -1,4 +1,4 @@
-# phase-305 W4 (issue 0255) — remap/private-name showcase bringup.
+# phase-306 W4 (issue 0255) — remap/private-name showcase bringup.
 #
 # The topology detail lives in the launch file / resolved model: the node is
 # namespaced under /island and its PRIVATE `~/out` publisher is remapped to

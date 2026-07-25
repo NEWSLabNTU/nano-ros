@@ -30,7 +30,7 @@ from the consumer's used set (the resolver knows the closure), or fix the
 srv→IDL lowering (missing include-path emit for cross-pkg includes inside
 srv-derived IDL) so full packages compile.
 
-## Resolution (2026-07-26, phase-305 W2)
+## Resolution (2026-07-26, phase-306 W2)
 
 Include-side fix (scoping rejected: no type-level closure exists, and
 dep-pkg services must stay servable). Three stacked defects fixed:

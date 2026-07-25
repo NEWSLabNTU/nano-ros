@@ -1,7 +1,7 @@
 //! Remap-talker Node pkg — publishes `std_msgs/Int32` on the PRIVATE name
 //! `~/out` at 4 Hz.
 //!
-//! phase-305 W3/W4 (issue 0255) — the code never names an absolute topic: it
+//! phase-306 W3/W4 (issue 0255) — the code never names an absolute topic: it
 //! declares (and publishes through) the source-level private name `~/out`.
 //! The system model namespaces this node under `/island` and remaps `~/out`
 //! to `/remapped_out`; `nros::main!(model = …)` bakes the rules into

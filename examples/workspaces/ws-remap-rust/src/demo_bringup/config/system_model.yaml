@@ -1,6 +1,6 @@
 meta:
   version: 1
-# phase-305 W4 (issue 0255) — resolved model for the remap demo. The node is
+# phase-306 W4 (issue 0255) — resolved model for the remap demo. The node is
 # namespaced under /island (identity from the FQN key) and carries a remap
 # from its PRIVATE `~/out` to /remapped_out. `nros::main!(model = …)` bakes
 # the rules verbatim into `runtime.remaps`; the runtime seam does the `~`

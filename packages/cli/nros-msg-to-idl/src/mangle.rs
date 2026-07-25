@@ -36,7 +36,7 @@ const IDL_RESERVED: &[&str] = &[
     "default",
     "unsigned",
     // IDL 4.x additions Cyclone 0.10.5's idlc also treats as keywords
-    // (phase-305 W2: nav_msgs' {Get,Set,Load}Map srvs carry a `map` field).
+    // (phase-306 W2: nav_msgs' {Get,Set,Load}Map srvs carry a `map` field).
     "map",
     "bitmask",
     "bitset",
@@ -82,7 +82,7 @@ pub fn mangle_idl(src: &str, inject_service_header: bool) -> String {
         // and wrapper braces carry no `::msg::` triples). The python
         // applies this to every line; we mirror that.
         let line = mangle_scoped_refs(raw);
-        // phase-305 W2 (issue 0258): escape reserved member names in the
+        // phase-306 W2 (issue 0258): escape reserved member names in the
         // msg/srv path (python does the same in `mangle_idl`) — installed
         // packages hit them (nav_msgs {Get,Set,Load}Map's `map` member).
         // Idempotent: an already-escaped `_map` is not in the reserved set.

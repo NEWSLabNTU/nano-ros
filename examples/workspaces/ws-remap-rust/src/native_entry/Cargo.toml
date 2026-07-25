@@ -13,7 +13,7 @@ path = "src/main.rs"
 deploy = "native"
 
 [dependencies]
-# phase-305 W4 — `nros::main!(model = …)` bakes the model's per-node `<remap>`
+# phase-306 W4 — `nros::main!(model = …)` bakes the model's per-node `<remap>`
 # rules into `runtime.remaps` before the register call; no extra feature is
 # needed (the remap seam is part of the core entity-creation path).
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [

@@ -28,7 +28,7 @@ include_guard(GLOBAL)
 # (Rust E0428, issue 0052) and a doubled closure export. Returns the list in
 # <out_var> (in the CALLER's scope).
 #
-# phase-305 W1 (issue 0253): codegen splits each stem into `<stem>_types.rs`
+# phase-306 W1 (issue 0253): codegen splits each stem into `<stem>_types.rs`
 # (crate-mangled structs + plain field serializers — safe to duplicate across
 # per-package crates) and `<stem>_exports.rs` (the `#[no_mangle]` C-ABI
 # wrappers). Dependencies contribute their TYPES files ONLY — their exports
@@ -169,7 +169,7 @@ endfunction()
 # Predict the files `nros codegen` will emit for the given interfaces, returning
 # three lists (headers / C sources / Rust FFI `.rs`) in the caller's scope.
 # CPP: `<pkg>_<kind>_<name>.hpp` + a split `_types.rs`+`_exports.rs` pair per
-# part (phase-305 W1: msg→1 pair, srv→request+response, action→goal+result+
+# part (phase-306 W1: msg→1 pair, srv→request+response, action→goal+result+
 # feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C:
 # `<pkg>_<kind>_<name>.{h,c}` + the `<pkg>.h` umbrella. Names are CamelCase→snake,
 # package `-`→`_`. The canonical generator feeds these to add_custom_command
@@ -499,7 +499,7 @@ function(nros_find_interfaces)
     # links; later find_interfaces calls with new pkgs just build more
     # per-pkg crates. The NROS_FIND_INTERFACES_RESOLVED property and its
     # warning are retired with the superset machinery.
-    #    phase-305 W1 (issue 0253): every package builds its OWN FFI crate. The
+    #    phase-306 W1 (issue 0253): every package builds its OWN FFI crate. The
     #    split types/exports closure (`_nros_collect_rs_closure`) guarantees a
     #    crate exports only its own `nros_cpp_*` symbols — dependency TYPES are
     #    included, dependency EXPORTS are not — so any combination of interface

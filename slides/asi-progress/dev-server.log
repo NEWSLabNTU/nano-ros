@@ -1,0 +1,15 @@
+
+
+  ●■▲
+  Slidev  v0.49.29 
+
+  theme       @slidev/theme-seriph
+  css engine  unocss
+  entry       /home/aeon/repos/nano-ros/slides/asi-progress/slides.md
+
+  public slide show   > http://localhost:3030/
+  presenter mode      > http://localhost:3030/presenter/
+  slides overview     > http://localhost:3030/overview/
+  remote control      > http://10.4.42.139:3030/entry/
+
+  shortcuts           > restart | open | edit | quit | qrcode
