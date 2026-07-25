@@ -1,7 +1,7 @@
 ---
 id: 258
 title: "Full-pkg interface closure drags srv files whose generated IDL the embedded cyclone idlc rejects (nav_msgs GetMap et al)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: codegen
@@ -29,3 +29,16 @@ Either scope the cyclone-ts generation to the msg types actually reachable
 from the consumer's used set (the resolver knows the closure), or fix the
 srv→IDL lowering (missing include-path emit for cross-pkg includes inside
 srv-derived IDL) so full packages compile.
+
+## Resolution (2026-07-26, phase-305 W2)
+
+Include-side fix (scoping rejected: no type-level closure exists, and
+dep-pkg services must stay servable). Three stacked defects fixed:
+resolve-deps filters rosidl-DERIVED share/srv/<Srv>_{Request,Response,
+Event}.msg siblings; dep IDL closures thread into idlc via IDL_DEPENDS
+(CACHE-INTERNAL stashes, missing dep root = clear ninja error); the
+msg/srv mangle path escapes idlc-reserved member names (nav_msgs 'map' —
+previously action-only, reserved set extended per real-idlc probes,
+python + Rust parity twins identical). Proof: <depend>nav_msgs</depend>
+using one msg builds nav_msgs__cyclonedds_ts end-to-end. The
+workspace-shadowing workaround is no longer needed.

@@ -1,7 +1,7 @@
 ---
 id: 253
 title: "C++ interface FFI crates are flat-module supersets — two interface pkgs on one link line duplicated every shared nros_cpp_* symbol"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: codegen-cmake
@@ -62,3 +62,14 @@ fixture-gated, so the rot was silent. The `nros_workspace_interfaces` route
 calls `nros_generate_interfaces` per pkg directly and is NOT covered by the
 `nros_find_interfaces` dedupe; it needs the same last-superset treatment (or
 the proper per-pkg-symbols fix).
+
+## Resolution (2026-07-26, phase-305 W1)
+
+The residual gap is closed by construction: generated _ffi.rs split into
+<stem>_types.rs (crate-mangled, duplicate-safe) + <stem>_exports.rs (the
+no_mangle wrappers); dep pkgs contribute types-only to a consumer's
+include closure, so ANY archive combination links. NO_FFI_CRATE +
+topo-last routing deleted (keyword = deprecated no-op). Proof: the
+local-msg-package repro (387 dupes) — six per-pkg archives with zero
+cross-package exports (nm-verified), all-six link + full consumer build;
+template now gated in compile-check-fixtures.

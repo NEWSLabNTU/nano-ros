@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#253 + #255 + #258** — phase-305 interface-codegen correctness: per-package
+FFI crates (superset archives retired, any combination links), launch/model remaps routed to the
+wire with ROS 2 ~/relative expansion (runtime-proven, ws-remap-rust), and big-pkg cyclone deps
+compile (derived-srv filter + IDL_DEPENDS + reserved-word escapes) — `archived/0253-*`,
+`archived/0255-*`, `archived/0258-*`. (2026-07-26)
+
 Recently resolved: **#261–#265** — phase-302 tier-knob honesty: posix caps truthed
 (edf/reservation false, affinity true via the 296-W5.13 consumer), zephyr stack + posix
 stack/advisory fail-loud, nuttx Rust tier priority adopted (marker e2e), sched_class
@@ -74,16 +80,9 @@ path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DH
 bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
 explicit extensibility + representation negotiation). See `0267-*`.
 
-**#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
-idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing
-subset pkg). Scope ts-generation to the used closure or fix srv IDL lowering. See `0258-*`.
-
 **#257** — `NROS_EXECUTOR_MAX_CBS` (default 4) is a hidden compile-time env; multi-node
 workspaces die at boot `ExecutorFull` with no build-time hint. The entry codegen knows the
 model's entity counts — derive or validate the knob. See `0257-*`.
-
-**#255** — launch `<remap>` parsed but not routed; `~/` names unsupported — every ported
-Autoware node hardcodes resolved topic names. Route remaps in entry codegen. See `0255-*`.
 
 **#254** — rclcpp_compat lacks services/params/clock/param-callbacks — real Autoware nodes
 fall back to the ComponentNode shape. Extend the compat surface. See `0254-*`.
@@ -108,12 +107,6 @@ See `0275-*`.
 (#275-#278 + archived #279-#281 from the simple-autoware-safety-island port
 friction log, filed 2026-07-25 from docs/porting-notes.md 02/06/12/14 + the
 same-day-fixed 10/16/18.)
-
-**#253** — C++ interface FFI crates are flat-module supersets: two interface pkgs on one link
-line duplicated every shared `nros_cpp_*` symbol (hit by the autoware-safety-island example's
-control+tier4 pair; `local-msg-package` template already broken on main via the
-`nros_workspace_interfaces` route). Mitigated for the `nros_find_interfaces` route
-(topo-last-only crate + shared archive); proper fix = per-pkg-symbol crates. See `0253-*`.
 
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,

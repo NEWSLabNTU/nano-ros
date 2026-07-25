@@ -1,7 +1,13 @@
 # Phase 305 — interface-codegen correctness (resolves 0253, 0255, 0258)
 
-**Status (2026-07-25): Draft — survey in progress; waves below firm up when
-the machinery maps land.** The three issues are one cluster: the generated
+**Status (2026-07-26): ALL WAVES DONE — 0253/0255/0258 resolved.** W1
+per-pkg FFI crates (local-msg-package links, nm-proven symbol ownership,
+fixture-gated). W2 cyclone closure (nav_msgs end-to-end; three stacked
+defects incl. idlc-reserved member escapes). W3 remap routing + ~
+expansion (both twins, one seam, 700+ tests). W4 ws-remap-rust wire-level
+e2e PASS (two-sided proof) + coverage gates. Residuals recorded in the
+archived issues: C/C++ runtime remap cell, ComponentMeta.remaps
+threading, embedded remap lanes. The three issues are one cluster: the generated
 interface layer (C++ FFI crates, cyclone typesupport closure, launch remap
 routing) drops or duplicates things the SSoT-plus-generated architecture
 says must be derived exactly once. All fixes land in the GENERATORS
