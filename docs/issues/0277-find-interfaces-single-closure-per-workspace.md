@@ -4,7 +4,7 @@ title: "nros_find_interfaces topo-last superset requires ONE closure per workspa
 status: open
 type: friction
 area: cmake
-related: [0253]
+related: [0253, rfc-0057]
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 12)
@@ -31,3 +31,8 @@ union-shim recipe. Subset calls (the `island_interfaces` pattern) stay
 silent; verified against the autoware-safety-island workspace configure.
 Remaining work: compute the union closure workspace-wide so the shim
 package becomes unnecessary.
+
+RFC-0057 D3 covers the UX half: `nano_ros_auto_add_library` auto-wires
+the generated interface deps so consumers never hand-pick the topo-last
+archive. The workspace-wide union closure stays this issue's engineering
+half.

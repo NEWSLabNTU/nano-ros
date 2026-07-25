@@ -5,6 +5,7 @@ status: open
 type: friction
 severity: low
 area: nros-cpp
+related: [rfc-0057]
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 02)
@@ -24,3 +25,12 @@ Let `NROS_COMPONENT` (or `nros_generate_interfaces` registration) accept an
 explicit plugin-name argument decoupled from the enclosing namespace, the
 way rclcpp_components' `RCLCPP_COMPONENTS_REGISTER_NODE` takes the
 fully-qualified class regardless of package naming.
+
+## Design (2026-07-25)
+
+RFC-0057 retires L.4: cmake writes `pkg: ${PROJECT_NAME}` into
+nros-metadata.json (the only mechanical consumer of the prefix rule),
+lints accept nested class names, and the new
+`nros_components_register_node(target PLUGIN … EXECUTABLE …)` surface is
+keyword-parity with rclcpp_components. No explicit PKG argument — the
+register site already knows `${PROJECT_NAME}`.
