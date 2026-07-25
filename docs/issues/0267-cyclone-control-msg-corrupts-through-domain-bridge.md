@@ -210,6 +210,18 @@ action templates need the same wrap (C++ inherits), plus the live-peer wire
 confirmation. The Cyclone path is fixed by W1c; the Rust path + C/C++ message path
 carry the full XCDR2 fix.
 
+## Update (W4 C/C++ service + action LANDED, 2026-07-26) — XCDR2 fix COMPLETE bar the live demo
+
+The C service + action templates now wrap every struct in the DHEADER FFI (C++
+inherits via `ffi_serialize` → C `_serialize`). All three generated-C families
+`-fsyntax-only`-check. Both the Rust path and the full C/C++ path (message +
+service + action) carry the edition-gated XCDR2 fix; humble is byte-identical.
+The ONLY remaining item on #0267 is the end-to-end wire confirmation on the live
+Jazzy `domain_bridge`/peer (the demo clearing). Fix directions realized:
+- Cyclone RMW (the demo's corrupting path): W1c (appendable descriptor).
+- nros-serdes RMW paths (zenoh-pico/XRCE/native, Rust + C/C++): W2/W3/W4 (XCDR2 +
+  DHEADER, edition-gated).
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

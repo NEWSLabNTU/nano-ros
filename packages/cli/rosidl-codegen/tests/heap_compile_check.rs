@@ -217,3 +217,131 @@ fn generated_c_with_dheader_wrap_syntax_checks() {
         pkg.source
     );
 }
+
+/// phase-303 W4 — the generated C SERVICE (DHEADER-wrapped) syntax-checks.
+#[test]
+#[ignore = "spawns cc -fsyntax-only against generated C"]
+fn generated_c_service_with_dheader_wrap_syntax_checks() {
+    use rosidl_codegen::generate_c_service_package;
+
+    let srv = parse_service("int64 a\nint64 b\nstring note\n---\nint64 sum\nbool ok\n").unwrap();
+    let pkg = generate_c_service_package(
+        "my_srvs",
+        "AddTwoInts",
+        &srv,
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .expect("generate C service");
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    let inc = repo_root.join("packages/core/nros-c/include");
+    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let gen_dir = repo_root.join("target/nros-c-generated");
+    let tmp = tempfile::tempdir().unwrap();
+    let hdr = tmp.path().join(&pkg.header_name);
+    fs::create_dir_all(hdr.parent().unwrap()).ok();
+    fs::write(&hdr, &pkg.header).unwrap();
+    let src = tmp.path().join("srv.c");
+    let source = pkg.source.replacen(
+        "#include \"",
+        &format!("#include \"{}\"\n// ", hdr.display()),
+        1,
+    );
+    fs::write(&src, source).unwrap();
+
+    let out = match Command::new("cc")
+        .args([
+            "-fsyntax-only",
+            "-I",
+            gen_dir.to_str().unwrap(),
+            "-I",
+            inc.to_str().unwrap(),
+            "-I",
+            plat.to_str().unwrap(),
+            src.to_str().unwrap(),
+        ])
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => {
+            eprintln!("SKIP: cc not found");
+            return;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "generated C service failed -fsyntax-only:\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.source
+    );
+}
+
+/// phase-303 W4 — the generated C ACTION (DHEADER-wrapped) syntax-checks.
+#[test]
+#[ignore = "spawns cc -fsyntax-only against generated C"]
+fn generated_c_action_with_dheader_wrap_syntax_checks() {
+    use rosidl_codegen::generate_c_action_package;
+    use rosidl_parser::parse_action;
+
+    let action =
+        parse_action("int32 order\n---\nint32[] sequence\n---\nint32[] partial\n").unwrap();
+    let pkg = generate_c_action_package(
+        "my_acts",
+        "Fibonacci",
+        &action,
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .expect("generate C action");
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    let inc = repo_root.join("packages/core/nros-c/include");
+    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let gen_dir = repo_root.join("target/nros-c-generated");
+    let tmp = tempfile::tempdir().unwrap();
+    let hdr = tmp.path().join(&pkg.header_name);
+    fs::create_dir_all(hdr.parent().unwrap()).ok();
+    fs::write(&hdr, &pkg.header).unwrap();
+    let src = tmp.path().join("act.c");
+    let source = pkg.source.replacen(
+        "#include \"",
+        &format!("#include \"{}\"\n// ", hdr.display()),
+        1,
+    );
+    fs::write(&src, source).unwrap();
+
+    let out = match Command::new("cc")
+        .args([
+            "-fsyntax-only",
+            "-I",
+            gen_dir.to_str().unwrap(),
+            "-I",
+            inc.to_str().unwrap(),
+            "-I",
+            plat.to_str().unwrap(),
+            src.to_str().unwrap(),
+        ])
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => {
+            eprintln!("SKIP: cc not found");
+            return;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "generated C action failed -fsyntax-only:\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.source
+    );
+}

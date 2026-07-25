@@ -214,12 +214,18 @@ delegates to the C `_serialize`. serdes gained `new_at_xcdr2` + `DHeaderMark`/
 `DHeaderScope` raw FFI accessors. Verified: nros-c builds both editions;
 generated C `-fsyntax-only`-checks (`heap_compile_check::generated_c_*`).
 
-**W4 REMAINING:** the C **service + action** templates (`service_c.c.jinja`,
-`action_c.c.jinja`) need the same wrap (their serialize writes the header inline
-— a slightly different shape than `message_c`); C++ srv/action inherit once C is
-wrapped. And the actual wire round-trip vs a real Jazzy `domain_bridge`/peer (the
-#0267 demo clearing) is the final confirmation. The Rust path (all) + the C/C++
-message path are complete + edition-gated.
+**W4 — C/C++ service + action LANDED (2026-07-26).** `service_c.c.jinja` (Request
++ Response) and `action_c.c.jinja` (Goal/Result/Feedback) now wrap each struct's
+serialize/deserialize in the DHEADER FFI + emit the edition header, same as
+`message_c`. C++ srv/action inherit (their `ffi_serialize` delegates to the C
+`_serialize`). All three generated-C families `-fsyntax-only`-check
+(`heap_compile_check::generated_c_{,_service,_action}_*`).
+
+**⇒ W4 COMPLETE except the live-peer wire confirmation.** The Rust path (all) AND
+the C/C++ path (message + service + action) carry the full XCDR2 fix,
+edition-gated (`ros-<edition>`). Humble is byte-identical throughout. The only
+open item is the end-to-end wire round-trip vs a real Jazzy `domain_bridge`/peer
+(the #0267 demo clearing) — externally gated, yours to run.
 
 - *Accept:* nano-ros ↔ a default humble peer negotiates XCDR2 and interoperates;
   nano-ros ↔ a legacy XCDR1-only peer falls back to XCDR1; the **#0267 demo

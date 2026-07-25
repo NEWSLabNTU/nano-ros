@@ -33,13 +33,11 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
     uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
-    // Write CDR header (little-endian, version 1)
-    if (ptr + 4 > end) return -1;
-    *ptr++ = 0x00;
-    *ptr++ = 0x01;
-    *ptr++ = 0x00;
-    *ptr++ = 0x00;
+    // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
+    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
 {%- if has_goal_fields %}
 {%- for field in goal_fields %}
@@ -74,6 +72,7 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -86,9 +85,12 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
     const uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
+    // phase-303 W4 (#0267) — skip the encapsulation header + read the DHEADER.
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
     {{ goal_struct_name }}_init(msg);
 
@@ -130,6 +132,7 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -148,12 +151,11 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
     uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
-    if (ptr + 4 > end) return -1;
-    *ptr++ = 0x00;
-    *ptr++ = 0x01;
-    *ptr++ = 0x00;
-    *ptr++ = 0x00;
+    // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
+    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
 {%- if has_result_fields %}
 {%- for field in result_fields %}
@@ -188,6 +190,7 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -200,9 +203,12 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
     const uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
+    // phase-303 W4 (#0267) — skip the encapsulation header + read the DHEADER.
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
     {{ result_struct_name }}_init(msg);
 
@@ -244,6 +250,7 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -262,12 +269,11 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
     uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
-    if (ptr + 4 > end) return -1;
-    *ptr++ = 0x00;
-    *ptr++ = 0x01;
-    *ptr++ = 0x00;
-    *ptr++ = 0x00;
+    // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
+    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
 {%- if has_feedback_fields %}
 {%- for field in feedback_fields %}
@@ -302,6 +308,7 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -314,9 +321,12 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
     const uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
+    // phase-303 W4 (#0267) — skip the encapsulation header + read the DHEADER.
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    if (__dh < -1) return -1;
 
     {{ feedback_struct_name }}_init(msg);
 
@@ -358,5 +368,6 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
 {%- endfor %}
 {%- endif %}
 
+    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
