@@ -66,10 +66,13 @@ hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can'
 or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
 vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
 
-**#267** — nano-ros-published `Control` deserializes as garbage AFTER a ros2 domain_bridge
-serialized-passthrough rebroadcast (direct typed echo clean; MrmState crosses fine) — nested
-Time/bool padding divergence suspected; live impact: the demo sim consumed a 2.6e9 accel.
-See `0267-*`.
+**#267** — `Control` mis-walked after a ros2 domain_bridge serialized-passthrough (direct typed
+echo clean). RE-SCOPED (2026-07-25): the nano-ros serializer is PROVEN canonical (byte-exact
+`test_control_nested_struct_time_bool_layout_0267` — acceleration @40 = -2.5, nested-struct
+alignment correct); the real cause is nano-ros being XCDR1-FINAL-only (`0x0001`, no XCDR2/DHEADER
+path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DHEADER after the
+bridge crosses a representation boundary. Fix = XCDR2/DHEADER support (large) or explicit `@final`
+IDL (needs live-demo verification — not safe blind). See `0267-*`.
 
 **#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
 idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing

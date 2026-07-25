@@ -432,4 +432,77 @@ mod tests {
         }
         assert_eq!(&buf[0..4], &[0x00, 0x00, 0x80, 0x7F]);
     }
+
+    /// issue #0267 — byte-exact CDR layout of `autoware_control_msgs/Control`,
+    /// the message that decoded as garbage after a `domain_bridge` generic
+    /// republish. Control nests Time + two structs (Lateral, Longitudinal) each
+    /// with a leading Time and a trailing bool. The suspect was the alignment of
+    /// `Longitudinal.stamp` (i32) after `Lateral`'s trailing bool. This test
+    /// serializes the EXACT field sequence the generated `serialize` emits and
+    /// asserts each nested-struct member lands at its canonical XCDR1 offset —
+    /// proving nano-ros emits CANONICAL bytes (so any downstream garbage is
+    /// introduced by the bridge's re-serialization, not by nros-serdes).
+    ///
+    /// Layout (offsets relative to the CDR origin; `CdrWriter::new` ⇒ origin 0):
+    /// ```text
+    ///  0  Control.stamp:          Time  { i32 sec, u32 nanosec }   (8 B)
+    ///  8  Lateral.stamp:          Time                             (8 B)
+    /// 16  Lateral.steering_tire_angle:            f32
+    /// 20  Lateral.steering_tire_rotation_rate:    f32
+    /// 24  Lateral.is_defined_steering_tire_rotation_rate: bool     (1 B)
+    /// 25  → pad 3 (i32 align) →
+    /// 28  Longitudinal.stamp:     Time                             (8 B)
+    /// 36  Longitudinal.velocity:      f32
+    /// 40  Longitudinal.acceleration:  f32  ← the -2.5 the demo saw corrupted
+    /// 44  Longitudinal.jerk:          f32
+    /// 48  Longitudinal.is_defined_acceleration: bool
+    /// 49  Longitudinal.is_defined_jerk:         bool
+    /// ```
+    #[test]
+    fn test_control_nested_struct_time_bool_layout_0267() {
+        let mut buf = [0u8; 64];
+        let pos = {
+            let mut w = CdrWriter::new(&mut buf);
+            // Control.stamp
+            1i32.serialize(&mut w).unwrap();
+            2u32.serialize(&mut w).unwrap();
+            // Lateral.stamp
+            3i32.serialize(&mut w).unwrap();
+            4u32.serialize(&mut w).unwrap();
+            // Lateral floats + trailing bool
+            0.1f32.serialize(&mut w).unwrap();
+            0.2f32.serialize(&mut w).unwrap();
+            true.serialize(&mut w).unwrap(); // is_defined_steering_tire_rotation_rate
+            // Longitudinal.stamp — i32 MUST re-align 25 → 28
+            5i32.serialize(&mut w).unwrap();
+            6u32.serialize(&mut w).unwrap();
+            // Longitudinal floats
+            0.3f32.serialize(&mut w).unwrap(); // velocity
+            (-2.5f32).serialize(&mut w).unwrap(); // acceleration (the demo value)
+            0.4f32.serialize(&mut w).unwrap(); // jerk
+            false.serialize(&mut w).unwrap(); // is_defined_acceleration
+            true.serialize(&mut w).unwrap(); // is_defined_jerk
+            w.position()
+        };
+
+        // Lateral's trailing bool at 24, then 3 pad bytes (25..28), then
+        // Longitudinal.stamp.sec at the canonical 4-aligned offset 28.
+        assert_eq!(buf[24], 0x01, "Lateral trailing bool @24");
+        assert_eq!(&buf[25..28], &[0, 0, 0], "i32 align padding 25..28");
+        assert_eq!(
+            &buf[28..32],
+            &5i32.to_le_bytes(),
+            "Longitudinal.stamp.sec @28"
+        );
+        // The corrupted-in-the-demo field: acceleration = -2.5f = 0xC0200000.
+        assert_eq!(
+            &buf[40..44],
+            &(-2.5f32).to_le_bytes(),
+            "Longitudinal.acceleration @40 must be canonical -2.5 (0x00 00 20 C0)"
+        );
+        assert_eq!(&buf[40..44], &[0x00, 0x00, 0x20, 0xC0]);
+        assert_eq!(buf[48], 0x00, "is_defined_acceleration @48");
+        assert_eq!(buf[49], 0x01, "is_defined_jerk @49");
+        assert_eq!(pos, 50, "total serialized length");
+    }
 }

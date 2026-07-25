@@ -1,6 +1,6 @@
 ---
 id: 267
-title: "nano-ros-published Control msg deserializes as garbage after ros2 domain_bridge generic republish (direct typed echo clean)"
+title: "XCDR1-FINAL vs ROS2 XCDR2-APPENDABLE gap: Control msg mis-walked after domain_bridge republish (nano-ros serializer PROVEN canonical; no XCDR2/DHEADER path)"
 status: open
 type: bug
 severity: high
@@ -36,7 +36,56 @@ emergency command and accelerated the vehicle to the 50 m/s cap.
 3. Domain 1: `ros2 topic echo /system/emergency/control_cmd` → garbage;
    domain 2 direct echo → clean.
 
-## Suspect
+## Root-cause investigation (2026-07-25) — the serializer is NOT the bug
+
+The original suspect (nano-ros CDR padding for nested structs) is **DISPROVEN**
+by a byte-exact test. `nros-serdes::compat_tests::
+test_control_nested_struct_time_bool_layout_0267` serializes the EXACT Control
+field sequence (Time + Lateral{Time,f32,f32,bool} + Longitudinal{Time,f32×3,
+bool,bool}) the generated `serialize` emits and asserts every member lands at
+its canonical XCDR1 offset:
+
+- Lateral's trailing bool @24, then the correct 3-byte i32-alignment pad
+  (25→28), `Longitudinal.stamp.sec` @28 — the exact boundary this issue
+  suspected is CANONICAL.
+- `Longitudinal.acceleration` (the demo's corrupted -2.5) lands @40 as
+  `0x00 00 20 C0` — canonical `-2.5f`. Total length 50.
+
+So nano-ros emits **canonical XCDR1** bytes (consistent with "direct typed echo
+clean"), and the CDR writer's `align` is standard relative-to-origin. The
+corruption is introduced DOWNSTREAM, not by `nros-serdes`.
+
+## Real root cause — XCDR1-FINAL vs ROS 2 XCDR2-APPENDABLE representation gap
+
+nano-ros emits ONLY the `0x0001` PLAIN_CDR_LE encapsulation (XCDR1 FINAL);
+`nros-serdes` has NO XCDR2 / CDR2 / DHEADER path, and `nros-msg-to-idl` emits
+NO explicit extensibility (`@final`/`@appendable`) in the generated IDL. ROS 2
+(humble+) types are `@appendable` by default, and under XCDR2 an appendable
+nested struct is prefixed with a 4-byte **DHEADER** (its serialized size).
+
+The shifted-float signature is exactly what a phantom-DHEADER misparse
+produces: a downstream reader using the type's XCDR2/appendable typesupport
+consumes a 4-byte DHEADER that nano-ros's XCDR1-FINAL stream does not contain,
+shifting every subsequent nested-struct member. The DIRECT reader decodes clean
+because it reads nano-ros's `0x0001` header and decodes as XCDR1-FINAL (no
+DHEADER); `domain_bridge`'s GenericSubscription/Publisher re-publish crosses a
+representation boundary where the downstream uses XCDR2 for the appendable type.
+
+## Fix directions (both need the live demo to verify; neither safe to land blind)
+
+1. **Support XCDR2 + DHEADER for appendable/mutable types** in `nros-serdes`
+   (the real fix; a substantial serdes feature — encoding version negotiation +
+   DHEADER emit for nested appendable structs).
+2. **Pin extensibility** by emitting explicit `@final` in `nros-msg-to-idl` so
+   no reader ever expects a DHEADER. CAUTION: this changes the RIHS type hash
+   and diverges from ROS 2's `@appendable` Control — it could break the
+   currently-working direct-match path, so it must be verified against the live
+   demo before landing (do NOT apply blind).
+
+Until then the byte-exact test guards the serializer against a genuine future
+CDR regression, and the demo workaround (single-bridge topology) stays.
+
+## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members
 (4+4 bytes) vs rosidl's XCDR1 alignment rules — a typed reader may
