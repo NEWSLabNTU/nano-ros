@@ -151,6 +151,36 @@ set is known (a per-endpoint override).
   rejected: standard ROS 2 messages are `@final`/`@appendable` only, so
   `@mutable` support buys no interop today at large cost.
 
+## Finding (phase-303 W1, 2026-07-25) — extensibility is NOT a blind blanket `@appendable`
+
+A first W1 attempt emitted `@appendable` on every generated struct in
+`nros-msg-to-idl`. It was **reverted**: the `nros-msg-to-idl` emitter is bound
+by a **byte-for-byte parity contract** with ROS 2's own `rosidl_adapter`
+(`tests/parity.rs`, reference `.idl`s captured from **rosidl_adapter Humble**),
+and those references carry **NO extensibility annotation** — plain
+`struct Time_ {`. So a blanket `@appendable` diverges from what ROS 2 Humble
+actually produces and breaks parity.
+
+Consequences for the design:
+
+- nano-ros ALREADY produces the same `.idl` as ROS 2 Humble (byte-parity). Fed
+  to the same idlc, it yields the same descriptor → the same wire extensibility
+  as a native Humble cyclone node. So on a **pure-Humble** graph there is no
+  extensibility mismatch to fix at the `.idl` layer.
+- The real variables are (a) the **idlc default extensibility**, which is
+  version-dependent (older idlc = implicit FINAL; newer idlc warns and can
+  default APPENDABLE) — nano-ros's *vendored* idlc default must match the
+  target's; and (b) the **downstream ROS distro** — Humble is effectively
+  XCDR1/FINAL on the cyclone wire, while Iron/Jazzy+ moved toward
+  APPENDABLE/XCDR2. Extensibility is therefore **distro/peer-matched or
+  negotiated, never blanket-emitted**.
+- This re-opens the #0267 diagnosis: if the nano-ros cyclone `.idl` matches
+  Humble exactly, the corruption implies the downstream is NOT pure-Humble
+  (a newer-distro reader decoding Humble XCDR1 data as XCDR2/appendable), OR
+  nano-ros's vendored idlc default diverges from the target's. **The demo's
+  downstream distro + its negotiated `data_representation` must be captured
+  before any extensibility change lands** (see open Q5).
+
 ## Open questions
 
 1. **DHEADER length strategy** — backpatch (reserve-then-fill, one pass, needs a
@@ -168,6 +198,13 @@ set is known (a per-endpoint override).
    default to XCDR1 (fewer bytes, known peer set) with XCDR2 opt-in, or XCDR2
    everywhere for uniform interop? Per-endpoint `data_representation` override
    is the mechanism either way.
+5. **Target-distro extensibility (blocks the #0267 fix)** — capture, from the
+   live demo: the downstream ROS distro, the `data_representation` it
+   negotiated, and the actual extensibility of BOTH descriptors (nano-ros's
+   vendored-idlc output vs the peer's). Only then decide whether nano-ros must
+   emit XCDR2/DHEADER (W2/W3) or align its idlc default — and gate any
+   `.idl` annotation on the target distro so the Humble parity contract stays
+   intact (per the W1 finding above).
 
 ## Changelog
 

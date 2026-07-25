@@ -11,9 +11,28 @@ regardless of the data representation the peer negotiates — specifically,
 
 ## Status (2026-07-25)
 
-Not started. RFC-0055 `Draft`. The #0267 investigation landed the byte-exact
-`nros-serdes` regression test proving the serializer canonical, so this phase
+W1 STARTED — and produced a **blocking finding** (below): the naive
+"emit `@appendable`" is wrong for ROS 2 Humble and was reverted. The remaining
+waves (W2–W6) are gated on capturing the demo's downstream distro + negotiated
+representation first (RFC-0055 open-Q5). The #0267 investigation's byte-exact
+`nros-serdes` regression test proves the serializer canonical, so this phase
 builds ON a known-good XCDR1 baseline — every wave keeps the XCDR1 tests green.
+
+## W1 finding (2026-07-25) — blanket `@appendable` diverges from ROS 2 Humble
+
+First W1 attempt added `@appendable` to every generated struct in
+`nros-msg-to-idl`. **Reverted.** The emitter has a byte-for-byte **parity
+contract** with ROS 2's own `rosidl_adapter` (`nros-msg-to-idl/tests/parity.rs`,
+references captured from **rosidl_adapter Humble**), and those `.idl`s carry
+**no extensibility annotation** — so a blanket `@appendable` breaks parity and
+diverges from what Humble actually emits. nano-ros already produces the SAME
+`.idl` as Humble → same idlc → same descriptor → same wire extensibility as a
+native Humble cyclone node. Blanket `@appendable` is only correct against an
+Iron/Jazzy+ (appendable/XCDR2) peer, and must be **distro-gated**, not applied
+unconditionally. See RFC-0055 §"Finding (phase-303 W1)".
+
+The parity guard doing its job here is the point: the change was proven wrong
+before it shipped, no incorrect `.idl` landed.
 
 ## Background — two paths, one gap
 
@@ -28,20 +47,28 @@ IDL; the substantial half (W2–W4) teaches `nros-serdes` XCDR2.
 
 ## Work items
 
-### W1 — explicit extensibility in generated code (the honesty half)
+### W1 — capture the target-distro extensibility (the gate; see finding above)
 
-`nros-msg-to-idl` emits `@appendable` (default, matching rosidl) / `@final`
-(only where the `.msg`/IDL says so) on every generated struct;
-`rosidl-codegen` emits the matching `EXTENSIBILITY` const on the Rust type.
+The blanket-`@appendable` approach is DISPROVEN (finding above). W1 is now the
+diagnostic gate that unblocks the rest:
 
-- *Delivers:* the **Cyclone path** becomes XCDR2/DHEADER-correct immediately
-  (the idlc descriptor now carries the real extensibility; `dds_stream`
-  honors it). The Rust type learns its extensibility for W2.
-- *Accept:* generated IDL for a nested-struct type (e.g. a `Header`-bearing
-  message) carries `@appendable`; a Cyclone round-trip of that type through a
-  representation boundary decodes clean; the implicit-extensibility idlc
-  warning is gone. Verify against a **live ROS 2 peer** (or the #0267 demo) —
-  do NOT flip extensibility blind (RIHS hash changes; RFC-0055 alternatives).
+1. From the live #0267 setup, capture: the **downstream ROS distro**, the
+   `data_representation` QoS it negotiated with the bridge's GenericPublisher,
+   and the actual **extensibility** of both descriptors — nano-ros's
+   vendored-idlc output vs the peer's rmw_cyclonedds descriptor for the same
+   `autoware_control_msgs/Control`.
+2. Confirm nano-ros's vendored cyclone **idlc default extensibility** (does it
+   implicit-FINAL, or warn/APPENDABLE?) and whether it matches the target's.
+
+- *Delivers:* the concrete answer to RFC-0055 open-Q5 — whether the fix is
+  "emit XCDR2/DHEADER" (W2/W3), "align nano-ros's idlc default", or "gate a
+  `@appendable` annotation on an Iron/Jazzy+ target". Only THEN does an
+  extensibility change land — and any `.idl` annotation must be distro-gated so
+  the Humble parity contract (`nros-msg-to-idl/tests/parity.rs`) stays green.
+- *Accept:* the demo's downstream distro + negotiated representation +
+  both-descriptor extensibility are documented in #0267; the fix direction
+  (W2/W3 vs idlc-default vs distro-gated annotation) is chosen with evidence,
+  not inference.
 
 ### W2 — `nros-serdes` XCDR2 writer
 

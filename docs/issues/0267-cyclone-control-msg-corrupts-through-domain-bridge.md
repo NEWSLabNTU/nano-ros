@@ -93,6 +93,21 @@ representation boundary where the downstream uses XCDR2 for the appendable type.
 Until then the byte-exact test guards the serializer against a genuine future
 CDR regression, and the demo workaround (single-bridge topology) stays.
 
+## Update (phase-303 W1, 2026-07-25) — nano-ros's cyclone IDL MATCHES ROS 2 Humble
+
+A first fix attempt (emit `@appendable` in the generated IDL) was reverted:
+`nros-msg-to-idl` is byte-parity-locked to ROS 2's own `rosidl_adapter`, and the
+Humble reference `.idl`s carry NO extensibility annotation. So nano-ros already
+produces the SAME `.idl` as Humble → the same cyclone descriptor → the same wire
+extensibility as a native Humble node. This SHARPENS the diagnosis: on a
+pure-Humble graph there is no `.idl`-layer mismatch, so the corruption implies
+the downstream is NOT pure-Humble (a newer-distro reader decoding Humble XCDR1
+data as XCDR2/appendable), OR nano-ros's *vendored* idlc default extensibility
+diverges from the target's. **Next actionable step (phase-303 W1): capture the
+demo's downstream ROS distro, its negotiated `data_representation`, and both
+descriptors' extensibility** before any code fix. See RFC-0055 §"Finding
+(phase-303 W1)".
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members
