@@ -27,7 +27,7 @@ fn generated_heap_message_compiles() {
         &msg,
         &HashSet::new(),
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &resolver,
     )
     .expect("generate");

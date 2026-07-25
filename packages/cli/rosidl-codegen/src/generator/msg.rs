@@ -11,7 +11,7 @@ use crate::{
         MessageRmwTemplate, NrosField, RmwField,
     },
     types::{
-        NrosCodegenMode, RosEdition, c_type_for_constant, constant_value_to_rust, escape_keyword,
+        NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
         nros_type_for_constant, rust_type_for_constant, rust_type_for_field, to_c_package_name,
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
@@ -161,7 +161,7 @@ pub fn generate_nros_message_package(
     message: &Message,
     all_dependencies: &HashSet<String>,
     package_version: &str,
-    edition: RosEdition,
+    type_hash: &str,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosPackage, GeneratorError> {
     // Extract dependencies from this specific message
@@ -208,7 +208,6 @@ pub fn generate_nros_message_package(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
     let stamp_offset = stamp_offset_for(message);
 
     let has_fields = !fields.is_empty();
@@ -248,7 +247,7 @@ pub fn generate_nros_inline_message(
     package_name: &str,
     message_name: &str,
     message: &Message,
-    edition: RosEdition,
+    type_hash: &str,
     resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
@@ -268,8 +267,6 @@ pub fn generate_nros_inline_message(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
-    let stamp_offset = stamp_offset_for(message);
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
     let has_borrowed = fields.iter().any(|f| f.is_borrowed);

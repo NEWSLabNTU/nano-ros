@@ -73,6 +73,7 @@ nros-msg-to-idl = { workspace = true }
 pathdiff = "0.2"
 rosidl-bindgen = { path = "../rosidl-bindgen" }
 rosidl-codegen = { path = "../rosidl-codegen" }
+rosidl-parser = { path = "../rosidl-parser" }
 
 # Phase 219.A — workspace pkg-index walk + launch.xml parser (moved
 # in from `nros-build`; see `src/pkg_index.rs` + `src/launch_parser.rs`).

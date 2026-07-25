@@ -13,8 +13,10 @@ use eyre::{Result, WrapErr};
 use rosidl_codegen::{
     CapacityResolver, RosEdition, generate_nros_action_package, generate_nros_message_package,
     generate_nros_service_package,
+    rihs::{build_type_description, rihs01},
     utils::{extract_dependencies, to_snake_case},
 };
+use rosidl_parser::Message;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -52,15 +54,58 @@ pub struct GeneratedRustPackage {
     pub action_count: usize,
 }
 
+/// Resolve a `pkg/msg/Name` fully-qualified type name to its parsed [`Message`].
+///
+/// The RIHS01 type hash (REP-2011) is computed over the *closed* type
+/// description DAG — every nested type must be loadable. `generate_package`
+/// resolves same-package nested types itself (it owns the package's
+/// `share_dir`); this callback covers cross-package references (typically
+/// `std_msgs` / `builtin_interfaces` from the ament index).
+pub type MsgResolver<'a> = dyn Fn(&str) -> Option<Message> + 'a;
+
+/// A [`MsgResolver`] that resolves no cross-package types — for self-contained
+/// packages (every nested type is same-package, handled internally) or Humble
+/// (placeholder hash, resolver never consulted).
+pub fn no_cross_pkg_resolver(_fqn: &str) -> Option<Message> {
+    None
+}
+
+/// Compute the `TYPE_HASH` string emitted on a generated message.
+///
+/// Humble predates REP-2011 → the `TypeHashNotSupported` placeholder.
+/// Iron+ compute the real `RIHS01_<hash>` over the canonical type
+/// description. A nested type that cannot be resolved is a HARD error — we
+/// never emit a plausible-but-wrong hash (a wrong hash silently breaks
+/// discovery on the wire).
+fn compute_msg_type_hash(
+    edition: RosEdition,
+    fqn: &str,
+    message: &Message,
+    resolve: &MsgResolver<'_>,
+) -> Result<String> {
+    if !edition.uses_type_hash() {
+        return Ok(edition.type_hash().to_string());
+    }
+    let desc = build_type_description(fqn, message, |f| resolve(f)).map_err(|e| {
+        eyre::eyre!("RIHS01 type-hash computation failed for {fqn} ({edition:?}): {e}")
+    })?;
+    Ok(rihs01(&desc))
+}
+
 /// Generate nros Rust bindings for a ROS 2 package
 ///
 /// This generates pure Rust, no_std compatible bindings using heapless types.
 /// Unlike the rclrs backend, this does NOT require ROS 2 C libraries.
+///
+/// `msg_resolve` loads cross-package nested `.msg` types for the REP-2011 type
+/// hash (Iron+); same-package nested types are resolved internally from
+/// `package.share_dir`. Humble ignores it (placeholder hash).
 pub fn generate_package(
     package: &Package,
     output_dir: &Path,
     edition: RosEdition,
     resolver: &CapacityResolver,
+    msg_resolve: &MsgResolver<'_>,
 ) -> Result<GeneratedRustPackage> {
     let package_output = output_dir.join(&package.name);
     std::fs::create_dir_all(&package_output).wrap_err_with(|| {
@@ -79,6 +124,21 @@ pub fn generate_package(
     let msg_dir = src_dir.join("msg");
     std::fs::create_dir_all(&msg_dir)?;
 
+    // Compose the type-hash resolver: same-package nested types come from this
+    // package's own `share_dir` (loaded + parsed on demand); everything else
+    // delegates to the caller-supplied cross-package resolver.
+    let self_resolve = |fqn: &str| -> Option<Message> {
+        let mut parts = fqn.split('/');
+        let pkg = parts.next()?;
+        let name = parts.next_back()?;
+        if pkg == package.name {
+            let content = std::fs::read_to_string(package.get_message_path(name)).ok()?;
+            rosidl_parser::parse_message(&content).ok()
+        } else {
+            msg_resolve(fqn)
+        }
+    };
+
     // Generate messages
     for msg_name in &package.interfaces.messages {
         let msg_path = package.get_message_path(msg_name);
@@ -92,13 +152,16 @@ pub fn generate_package(
         let msg_deps = extract_dependencies(&parsed_msg);
         all_dependencies.extend(msg_deps);
 
+        let fqn = format!("{}/msg/{}", package.name, msg_name);
+        let type_hash = compute_msg_type_hash(edition, &fqn, &parsed_msg, &self_resolve)?;
+
         let generated = generate_nros_message_package(
             &package.name,
             msg_name,
             &parsed_msg,
             &all_dependencies,
             &package.version,
-            edition,
+            &type_hash,
             resolver,
         )
         .wrap_err_with(|| format!("Failed to generate nros message: {}", msg_name))?;
@@ -470,7 +533,15 @@ pub fn generate_px4_msgs(
         },
     };
 
-    let result = generate_package(&package, output_dir, edition, resolver);
+    // px4_msgs is self-contained (all nested types are same-package), so the
+    // internal same-package resolver covers the full DAG.
+    let result = generate_package(
+        &package,
+        output_dir,
+        edition,
+        resolver,
+        &no_cross_pkg_resolver,
+    );
     let _ = std::fs::remove_dir_all(&stage);
     result
 }
@@ -513,6 +584,7 @@ mod tests {
             &output_dir,
             RosEdition::Humble,
             &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
         );
         assert!(result.is_ok());
 
@@ -538,6 +610,129 @@ mod tests {
 
         // Check there's no build.rs (no C library linking)
         assert!(!pkg_dir.join("build.rs").exists());
+    }
+
+    // REP-2011 TYPE_HASH wiring (phase-304 W1b c). Reference values captured
+    // live from Jazzy → packages/testing/nros-tests/fixtures/ros-editions/jazzy/.
+    const JAZZY_INT32_HASH: &str =
+        "RIHS01_b6578ded3c58c626cfe8d1a6fb6e04f706f97e9f03d2727c9ff4e74b1cef0deb";
+    const JAZZY_HEADER_HASH: &str =
+        "RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01";
+
+    fn gen_one_msg(edition: RosEdition, resolve: &MsgResolver<'_>) -> String {
+        let temp = tempfile::tempdir().unwrap();
+        let share = temp.path().join("std_msgs");
+        let msg_dir = share.join("msg");
+        fs::create_dir_all(&msg_dir).unwrap();
+        write_if_changed(msg_dir.join("Int32.msg"), "int32 data\n").unwrap();
+        let package = Package::from_share_dir(share).unwrap();
+        let out = temp.path().join("out");
+        generate_package(&package, &out, edition, &CapacityResolver::empty(), resolve).unwrap();
+        fs::read_to_string(
+            out.join("std_msgs")
+                .join("src")
+                .join("msg")
+                .join("int32.rs"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn humble_emits_placeholder_type_hash() {
+        let rs = gen_one_msg(RosEdition::Humble, &no_cross_pkg_resolver);
+        assert!(
+            rs.contains("const TYPE_HASH: &'static str = \"TypeHashNotSupported\""),
+            "Humble predates REP-2011 — expected the placeholder, got:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn jazzy_emits_real_rihs01_hash_for_flat_message() {
+        // Int32 is self-contained → the internal same-package resolver closes
+        // the DAG; no cross-package resolver needed.
+        let rs = gen_one_msg(RosEdition::Jazzy, &no_cross_pkg_resolver);
+        assert!(
+            rs.contains(&format!(
+                "const TYPE_HASH: &'static str = \"{JAZZY_INT32_HASH}\""
+            )),
+            "Jazzy Int32 must carry the real captured RIHS01 hash, got:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn jazzy_emits_real_rihs01_hash_for_nested_message() {
+        // std_msgs/Header references builtin_interfaces/msg/Time — a
+        // CROSS-package nested type the caller-supplied resolver must provide.
+        let resolve = |fqn: &str| -> Option<Message> {
+            match fqn {
+                "builtin_interfaces/msg/Time" => {
+                    rosidl_parser::parse_message("int32 sec\nuint32 nanosec\n").ok()
+                }
+                _ => None,
+            }
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let share = temp.path().join("std_msgs");
+        let msg_dir = share.join("msg");
+        fs::create_dir_all(&msg_dir).unwrap();
+        write_if_changed(
+            msg_dir.join("Header.msg"),
+            "builtin_interfaces/Time stamp\nstring frame_id\n",
+        )
+        .unwrap();
+        let package = Package::from_share_dir(share).unwrap();
+        let out = temp.path().join("out");
+        generate_package(
+            &package,
+            &out,
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &resolve,
+        )
+        .unwrap();
+        let rs = fs::read_to_string(
+            out.join("std_msgs")
+                .join("src")
+                .join("msg")
+                .join("header.rs"),
+        )
+        .unwrap();
+        assert!(
+            rs.contains(&format!(
+                "const TYPE_HASH: &'static str = \"{JAZZY_HEADER_HASH}\""
+            )),
+            "Jazzy Header (nested Time) must carry the real captured RIHS01 hash, got:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn jazzy_unresolvable_nested_type_fails_loud() {
+        // Header needs builtin_interfaces/msg/Time; with no resolver the hash
+        // cannot be computed — must ERROR, never emit a wrong/placeholder hash.
+        let temp = tempfile::tempdir().unwrap();
+        let share = temp.path().join("std_msgs");
+        let msg_dir = share.join("msg");
+        fs::create_dir_all(&msg_dir).unwrap();
+        write_if_changed(
+            msg_dir.join("Header.msg"),
+            "builtin_interfaces/Time stamp\nstring frame_id\n",
+        )
+        .unwrap();
+        let package = Package::from_share_dir(share).unwrap();
+        let out = temp.path().join("out");
+        let err = generate_package(
+            &package,
+            &out,
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
+        )
+        .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("RIHS01") && msg.contains("builtin_interfaces/msg/Time"),
+            "expected a loud unresolved-nested-type error, got: {msg}"
+        );
     }
 
     #[test]
@@ -568,6 +763,7 @@ mod tests {
             &output_dir,
             RosEdition::Humble,
             &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
         );
         assert!(result.is_ok());
 
@@ -604,6 +800,7 @@ mod tests {
             &output_dir,
             RosEdition::Humble,
             &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
         )
         .unwrap();
 
@@ -633,6 +830,7 @@ mod tests {
             &output_dir,
             RosEdition::Humble,
             &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
         );
         assert!(result.is_ok());
 

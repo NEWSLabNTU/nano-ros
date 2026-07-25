@@ -172,7 +172,7 @@ mod tests {
             &msg,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            RosEdition::Humble.type_hash(),
             &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
@@ -210,7 +210,7 @@ mod tests {
             &msg,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            RosEdition::Humble.type_hash(),
             &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
@@ -948,7 +948,7 @@ mod tests {
             &msg,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            RosEdition::Humble.type_hash(),
             &resolver,
         )
         .unwrap();
@@ -1014,7 +1014,7 @@ mod tests {
             &msg,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            RosEdition::Humble.type_hash(),
             &resolver,
         )
         .unwrap();
@@ -1048,7 +1048,7 @@ mod tests {
             &msg,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            RosEdition::Humble.type_hash(),
             &resolver,
         ) {
             Ok(_) => panic!("expected unsupported borrowed-element error"),

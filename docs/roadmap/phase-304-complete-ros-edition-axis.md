@@ -118,14 +118,34 @@ committed in `fixtures/ros-editions/jazzy/hashes.txt`; the research doc §4 is
 corrected. The capture script now reads the `.json` type descriptions (there is
 no `ros2 interface hash` subcommand — the doc's claim was also wrong).
 
-**W1b REMAINING:** (c) wire `build_type_description` + `rihs01` into codegen with
-a package-loader `resolve` so `RosEdition::type_hash()` / the per-type generated
-`TYPE_HASH` carry the real hash on iron/jazzy instead of the placeholder (service
-`_Event` synthesis + the per-type fixture assertions land here).
+**W1b (c) LANDED (2026-07-25) — codegen wiring:** `generate_package`
+(`rosidl-bindgen`) now computes the per-message `TYPE_HASH` via
+`compute_msg_type_hash` — Humble keeps the `TypeHashNotSupported` placeholder
+(`edition.uses_type_hash()` gate); Iron/Jazzy/Rolling build the REP-2011
+`TypeDescription` DAG and emit the real `RIHS01_<hash>`. The emission fns
+(`generate_nros_message_package` / `generate_nros_inline_message`) now take a
+`type_hash: &str` (hash decided by the caller) instead of an `edition`.
+Nested-type closure: `generate_package` resolves **same-package** nested types
+itself from `package.share_dir`; **cross-package** types come from a
+caller-supplied `MsgResolver` (`ws sync` + `cargo-nano-ros` build one over the
+ament interface index; self-contained/Humble paths pass `no_cross_pkg_resolver`).
+An unresolvable nested type is a **HARD error** — never a wrong or placeholder
+hash on the wire. Codegen-level assertions in `generator.rs` pin the real Jazzy
+Int32 (`b6578ded…`, flat) and Header (`f49fb3ae…`, nested Time via resolver)
+hashes byte-for-byte, plus the Humble-placeholder and fail-loud paths.
 
-- *Accept (W1b):* the engine reproduces the Tier-A captured reference hashes for
-  the fixture set byte-for-byte; the keyexpr + liveliness token carry the real
-  hash on an `iron`/`jazzy` build; `humble` unchanged.
+- *Accept (W1b):* ✅ the engine reproduces the Tier-A captured reference hashes
+  for the fixture set byte-for-byte (rihs unit tests + the codegen-level
+  `generator.rs` tests); `humble` unchanged (placeholder).
+
+**W1b (c) REMAINING:** service/action `TYPE_HASH` still emit the placeholder on
+Iron+ (the `_Event` synthesis — a service's top-level description has three
+`NESTED_TYPE` members `<Srv>_{Request,Response,Event}`, where `_Event` is the
+`service_msgs/ServiceEventInfo`-plus-bounded-sequences shape rosidl generates —
+is a distinct REP-2011 sub-problem, not yet built). And the runtime keyexpr +
+liveliness token still read `RosEdition::type_hash()` (the compile-time
+placeholder) rather than the codegen-baked per-type `TYPE_HASH`; wiring the
+generated constant through to the wire is W2b's baking step.
 
 ### W2 — unify edition selection (`[system].ros_edition`, RFC-0056 open-Q1)
 

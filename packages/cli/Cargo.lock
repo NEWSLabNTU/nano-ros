@@ -875,6 +875,7 @@ dependencies = [
  "ros-launch-manifest-types",
  "rosidl-bindgen",
  "rosidl-codegen",
+ "rosidl-parser",
  "serde",
  "serde_json",
  "tempfile",

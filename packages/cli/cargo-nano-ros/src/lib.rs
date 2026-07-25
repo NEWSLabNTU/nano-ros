@@ -268,11 +268,22 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
             }
         }
 
+        // Cross-package `.msg` resolver for the REP-2011 type hash (Iron+);
+        // same-package nested types resolve inside generate_package.
+        let msg_resolve = |fqn: &str| -> Option<rosidl_parser::Message> {
+            let mut parts = fqn.split('/');
+            let pkg = parts.next()?;
+            let name = parts.next_back()?;
+            let content =
+                std::fs::read_to_string(index.packages().get(pkg)?.get_message_path(name)).ok()?;
+            rosidl_parser::parse_message(&content).ok()
+        };
         let result = rosidl_bindgen::generator::generate_package(
             package,
             &config.output_dir,
             edition,
             &resolver,
+            &msg_resolve,
         )?;
 
         println!(
@@ -771,8 +782,13 @@ pub fn generate_bindings(config: BindgenConfig) -> Result<()> {
     // (`generate_from_package_xml`) discovers from the manifest directory.
     let resolver =
         rosidl_codegen::CapacityResolver::discover(&config.output_dir, None).unwrap_or_default();
-    let result =
-        generator::generate_package(&package, &config.output_dir, RosEdition::Humble, &resolver)?;
+    let result = generator::generate_package(
+        &package,
+        &config.output_dir,
+        RosEdition::Humble,
+        &resolver,
+        &generator::no_cross_pkg_resolver,
+    )?;
 
     if config.verbose {
         eprintln!(

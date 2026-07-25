@@ -594,6 +594,34 @@ fn parse_edition(s: &str) -> Result<RosEdition> {
     })
 }
 
+// The interface index (ament, when a ROS 2 env is sourced, merged over the
+// bundled share dirs at packages/cli/interfaces/) — loaded once per process.
+// Used both to codegen AMENT dep pkgs and, on Iron+, to resolve cross-package
+// nested `.msg` types for the REP-2011 type hash.
+fn interface_index() -> Option<&'static rosidl_bindgen::ament::AmentIndex> {
+    static AMENT_INDEX: std::sync::OnceLock<Option<rosidl_bindgen::ament::AmentIndex>> =
+        std::sync::OnceLock::new();
+    AMENT_INDEX
+        .get_or_init(|| cargo_nano_ros::load_index_with_fallback(false).ok())
+        .as_ref()
+}
+
+// A cross-package `.msg` resolver over the interface index (RIHS01 type-hash
+// DAG closure). `generate_package` resolves same-package nested types itself;
+// this covers `std_msgs` / `builtin_interfaces` / etc. Consulted only on Iron+
+// (Humble emits a placeholder hash and never calls it).
+fn ament_msg_resolver() -> impl Fn(&str) -> Option<rosidl_parser::Message> {
+    move |fqn: &str| {
+        let idx = interface_index()?;
+        let mut parts = fqn.split('/');
+        let pkg = parts.next()?;
+        let name = parts.next_back()?;
+        let package = idx.packages().get(pkg)?;
+        let content = std::fs::read_to_string(package.get_message_path(name)).ok()?;
+        rosidl_parser::parse_message(&content).ok()
+    }
+}
+
 // Generate the workspace pkg directly (using its dir as a synthetic share_dir
 // — `Package::from_share_dir` reads `package.xml` + scans msg/srv/action).
 fn codegen_workspace_pkg(
@@ -618,8 +646,15 @@ fn codegen_workspace_pkg(
         .wrap_err_with(|| format!("ws sync: read pkg {}", pkg.dir.display()))?;
     // Per-field capacity config (RFC-0033), discovered from the pkg source dir.
     let resolver = rosidl_codegen::CapacityResolver::discover(&pkg.dir, None)?;
-    rosidl_bindgen::generator::generate_package(&package, &out_dir, edition, &resolver)
-        .wrap_err_with(|| format!("ws sync: generate_package failed for {}", pkg.name))?;
+    let msg_resolve = ament_msg_resolver();
+    rosidl_bindgen::generator::generate_package(
+        &package,
+        &out_dir,
+        edition,
+        &resolver,
+        &msg_resolve,
+    )
+    .wrap_err_with(|| format!("ws sync: generate_package failed for {}", pkg.name))?;
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
     // nesting) so the relative paths between generated crates resolve
@@ -645,10 +680,9 @@ fn codegen_ament_deps_for(
     // packages/cli/interfaces/ — so a host WITHOUT ROS 2 still resolves
     // std_msgs/builtin_interfaces instead of letting cargo fall through to
     // crates.io's yanked ROS crates (#204 probe finding).
-    static AMENT_INDEX: std::sync::OnceLock<Option<rosidl_bindgen::ament::AmentIndex>> =
-        std::sync::OnceLock::new();
-    let idx = AMENT_INDEX.get_or_init(|| cargo_nano_ros::load_index_with_fallback(false).ok());
-    let Some(idx) = idx else { return Ok(()) };
+    let Some(idx) = interface_index() else {
+        return Ok(());
+    };
 
     let in_workspace: HashSet<&str> = scan.iter().map(|p| p.name.as_str()).collect();
     let mut to_resolve: Vec<String> = deps
@@ -678,8 +712,15 @@ fn codegen_ament_deps_for(
             println!("ws sync: codegen {}", amented.name);
         }
         let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
-        rosidl_bindgen::generator::generate_package(&amented, &out_dir, edition, &resolver)
-            .wrap_err_with(|| format!("ws sync: generate_package failed for {}", amented.name))?;
+        let msg_resolve = ament_msg_resolver();
+        rosidl_bindgen::generator::generate_package(
+            &amented,
+            &out_dir,
+            edition,
+            &resolver,
+            &msg_resolve,
+        )
+        .wrap_err_with(|| format!("ws sync: generate_package failed for {}", amented.name))?;
         emitted.insert(amented.name.clone());
         // Queue this pkg's own deps (parse its package.xml).
         let pxml = amented.share_dir.join("package.xml");

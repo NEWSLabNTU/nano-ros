@@ -18,7 +18,7 @@ fn test_generate_std_msgs_int32() {
         &msg,
         &deps,
         "5.3.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -57,7 +57,7 @@ fn test_generate_std_msgs_string() {
         &msg,
         &deps,
         "5.3.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -84,7 +84,7 @@ fn test_generate_std_msgs_header() {
         &msg,
         &deps,
         "5.3.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -110,7 +110,7 @@ fn test_generate_geometry_msgs_point() {
         &msg,
         &deps,
         "3.2.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -135,7 +135,7 @@ fn test_generate_sensor_msgs_range() {
         &msg,
         &deps,
         "4.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -230,7 +230,7 @@ fn test_generate_message_with_sequence() {
         &msg,
         &deps,
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -264,7 +264,7 @@ fn test_generate_message_with_bounded_sequence() {
         &msg,
         &deps,
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -287,7 +287,7 @@ fn test_generate_message_with_array() {
         &msg,
         &deps,
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -311,7 +311,7 @@ fn gen_frame(resolver: &CapacityResolver) -> Result<String, String> {
         &msg,
         &HashSet::new(),
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         resolver,
     )
     .map(|p| p.message_rs)
@@ -378,7 +378,7 @@ fn bounded_field_ignores_config() {
         &msg,
         &HashSet::new(),
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
         &resolver,
     )
     .expect("generate");
