@@ -93,6 +93,26 @@ Autoware node hardcodes resolved topic names. Route remaps in entry codegen. See
 fall back to the ComponentNode shape. Extend the compat surface. See `0254-*`.
 (#254-#258 all from the simple-autoware-safety-island port, 2026-07-24.)
 
+**#278** — no polling subscriber / blocking service futures: mrm_handler-class ports weaken to
+cache-latest subs + send-and-poll service calls (semantic weakening of the safety path,
+documented in-source). take()-style sub + bounded-wait call wanted. See `0278-*`.
+
+**#277** — `nros_find_interfaces` topo-last superset is per-CALL: mixed msg-dep subsets across a
+workspace miss/duplicate symbols; the example repo needs an `island_interfaces` union-closure
+shim pkg. Compute the union workspace-wide or FATAL_ERROR with the recipe. See `0277-*`.
+
+**#276** — launch `*.param.yaml` values not projected into node params: upstream no-default
+declares can't port verbatim; yaml values copied into in-code defaults (drift hazard). Lower
+resolved param values into the generated entry. See `0276-*`.
+
+**#275** — NROS_COMPONENT identity rule forces namespace flattening (class prefix == pkg name);
+upstream nested `autoware::x` namespaces need a rename. Accept an explicit plugin-name arg.
+See `0275-*`.
+
+(#275-#278 + archived #279-#281 from the simple-autoware-safety-island port
+friction log, filed 2026-07-25 from docs/porting-notes.md 02/06/12/14 + the
+same-day-fixed 10/16/18.)
+
 **#253** — C++ interface FFI crates are flat-module supersets: two interface pkgs on one link
 line duplicated every shared `nros_cpp_*` symbol (hit by the autoware-safety-island example's
 control+tier4 pair; `local-msg-package` template already broken on main via the
