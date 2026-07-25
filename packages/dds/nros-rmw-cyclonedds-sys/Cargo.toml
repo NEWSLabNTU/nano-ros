@@ -48,6 +48,12 @@ test = false
 # libraries. Existing CMake / Zephyr consumers that supply the same
 # symbols externally must opt out via `default-features = false`.
 default = ["vendored"]
+# phase-303 W1c (RFC-0056) — forward the ROS-edition wire-extensibility profile
+# to the descriptor builder in `nros-rmw-cyclonedds`. Marker-only here.
+ros-humble = ["nros-rmw-cyclonedds/ros-humble"]
+ros-iron = ["nros-rmw-cyclonedds/ros-iron"]
+ros-jazzy = ["nros-rmw-cyclonedds/ros-jazzy"]
+ros-rolling = ["nros-rmw-cyclonedds/ros-rolling"]
 # Phase 144.3 — toggled on when emitting this crate as a top-level
 # `staticlib` (hosted POSIX builds). Embedded consumers keep the
 # default no_std build.

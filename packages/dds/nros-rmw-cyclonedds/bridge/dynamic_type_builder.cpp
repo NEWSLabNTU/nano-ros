@@ -408,6 +408,9 @@ struct BuildContext {
     size_t queue_head = 0;
     size_t queue_len = 0;
     int err = 0;
+    // phase-303 W1c — when true, each aggregate op stream is prefixed with
+    // DDS_OP_DLC (APPENDABLE); Cyclone emits a per-nested-struct DHEADER.
+    bool appendable = false;
 
     bool enqueue(uint32_t kind_idx) {
         if (queue_len >= kMaxNestedBlocks) {
@@ -518,8 +521,16 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
         ctx.err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
         return false;
     }
-    // Mark this kind as emitted at the current op offset.
+    // Mark this kind as emitted at the current op offset. When appendable,
+    // that first word is the block's DDS_OP_DLC — the JSR that reaches this
+    // body lands on the DLC, so Cyclone reads the nested type as APPENDABLE
+    // (a DHEADER wraps it under XCDR2). Recording `ops.len` BEFORE pushing the
+    // DLC keeps the JSR target pointing at the DLC word.
     if (!ctx.nested.push(kind_idx, ctx.ops.len)) {
+        ctx.err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
+        return false;
+    }
+    if (ctx.appendable && !ctx.ops.push(DDS_OP_DLC)) {
         ctx.err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
         return false;
     }
@@ -951,7 +962,8 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
                                                          const NrosFieldDescriptor* fields,
                                                          uint32_t field_count,
                                                          const NrosFieldKindDescriptor* kinds,
-                                                         uint32_t kind_count, int* out_err) {
+                                                         uint32_t kind_count,
+                                                         uint32_t extensibility, int* out_err) {
     // Defensive input checks. The Rust shim already validates these,
     // but the bridge is a C ABI boundary — assume nothing.
     if (type_name == nullptr || fields == nullptr || kinds == nullptr) {
@@ -965,6 +977,20 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
 
     BuildContext ctx;
     t_ctx = &ctx;
+    // phase-303 W1c (#0267) — the ROS-edition wire-extensibility profile.
+    // `extensibility != 0` (appendable, set for iron/jazzy+) prepends a
+    // `DDS_OP_DLC` to every aggregate's op stream, which makes Cyclone treat
+    // the type as APPENDABLE — it wraps each nested struct in a 4-byte DHEADER
+    // under XCDR2, matching a modern ROS 2 peer. `0` (FINAL, humble default)
+    // emits the historical op stream byte-identically. Cyclone derives the
+    // extensibility from the leading op (`dds_stream_extensibility`), so the
+    // DLC is the whole mechanism; `m_flagset` is unchanged.
+    ctx.appendable = (extensibility != 0u);
+    if (ctx.appendable && !ctx.ops.push(DDS_OP_DLC)) {
+        if (out_err != nullptr) *out_err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
+        t_ctx = nullptr;
+        return nullptr;
+    }
 
     // 1. Emit the top-level field ops.
     for (uint32_t i = 0; i < field_count; ++i) {
@@ -1019,8 +1045,8 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
             return nullptr;
         }
         int32_t delta = static_cast<int32_t>(target_word) - static_cast<int32_t>(pat.opcode_word);
-        uint32_t encoded = (static_cast<uint32_t>(pat.next_insn) << 16) |
-                           (static_cast<uint32_t>(delta) & 0xffffu);
+        uint32_t encoded =
+            (static_cast<uint32_t>(pat.next_insn) << 16) | (static_cast<uint32_t>(delta) & 0xffffu);
         ctx.ops.buf[pat.link_word] = encoded;
     }
 

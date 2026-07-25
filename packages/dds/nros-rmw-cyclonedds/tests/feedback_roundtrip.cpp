@@ -43,7 +43,8 @@ struct NrosFieldKindDescriptor {
 
 extern "C" const void* nros_cyclonedds_build_descriptor_from_schema(
     const char* type_name, const NrosFieldDescriptor* fields, uint32_t field_count,
-    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, int* out_err);
+    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, uint32_t extensibility,
+    int* out_err);
 
 extern "C" void nros_rmw_cyclonedds_register_descriptor(const char* type_name,
                                                         const dds_topic_descriptor_t* descriptor);
@@ -113,7 +114,7 @@ int main() {
 
     int err = 0;
     const void* raw = nros_cyclonedds_build_descriptor_from_schema(
-        "example_interfaces/action/Fibonacci_FeedbackMessage", fields, 2, kinds, 5, &err);
+        "example_interfaces/action/Fibonacci_FeedbackMessage", fields, 2, kinds, 5, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
     EXPECT(desc->m_typename != nullptr, "NULL typename");

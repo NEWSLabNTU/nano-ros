@@ -32,7 +32,8 @@ struct NrosFieldKindDescriptor {
 
 extern "C" const void* nros_cyclonedds_build_descriptor_from_schema(
     const char* type_name, const NrosFieldDescriptor* fields, uint32_t field_count,
-    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, int* out_err);
+    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, uint32_t extensibility,
+    int* out_err);
 
 namespace {
 
@@ -79,9 +80,8 @@ int test_sequence_of_nested() {
     };
 
     int err = 0;
-    const void* raw =
-        nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/CancelGoalLike", fields, 2,
-                                                     kinds, 5, &err);
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/CancelGoalLike",
+                                                                   fields, 2, kinds, 5, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
 
@@ -98,8 +98,7 @@ int test_sequence_of_nested() {
     EXPECT(ops[1] == 0u, "ops[1] expected 0 got %u", ops[1]);
 
     // Word 2: ADR | SEQ | SUBTYPE_STU.
-    uint32_t expected_seq_stu =
-        DDS_OP_ADR | DDS_OP_TYPE_SEQ | (uint32_t(DDS_OP_VAL_STU) << 8);
+    uint32_t expected_seq_stu = DDS_OP_ADR | DDS_OP_TYPE_SEQ | (uint32_t(DDS_OP_VAL_STU) << 8);
     EXPECT(ops[2] == expected_seq_stu, "ops[2] expected 0x%08x got 0x%08x", expected_seq_stu,
            ops[2]);
     // Word 3: offset 8.
@@ -127,14 +126,13 @@ int test_sequence_of_nested() {
     // (offset is synth-inside the nested body; both u32 children sit
     // consecutively).
     uint32_t expected_u32 = DDS_OP_ADR | (uint32_t(DDS_OP_VAL_4BY) << 16);
-    EXPECT(ops[nested_start] == expected_u32,
-           "nested[0] expected 0x%08x (ADR|4BY) got 0x%08x", expected_u32, ops[nested_start]);
+    EXPECT(ops[nested_start] == expected_u32, "nested[0] expected 0x%08x (ADR|4BY) got 0x%08x",
+           expected_u32, ops[nested_start]);
 
     // Hand it to Cyclone — recursive countops MUST NOT abort.
     dds_entity_t pp = dds_create_participant(99, nullptr, nullptr);
     EXPECT(pp >= 0, "dds_create_participant failed: %d", int(pp));
-    dds_entity_t topic =
-        dds_create_topic(pp, desc, "rt/seq_of_nested_audit", nullptr, nullptr);
+    dds_entity_t topic = dds_create_topic(pp, desc, "rt/seq_of_nested_audit", nullptr, nullptr);
     EXPECT(topic >= 0, "dds_create_topic failed: %d", int(topic));
     (void)dds_delete(pp);
 
@@ -164,16 +162,15 @@ int test_array_of_nested() {
     };
 
     int err = 0;
-    const void* raw = nros_cyclonedds_build_descriptor_from_schema(
-        "test_msgs/msg/ArrayOfNested", fields, 1, kinds, 4, &err);
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/ArrayOfNested",
+                                                                   fields, 1, kinds, 4, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
 
     const uint32_t* ops = desc->m_ops;
 
     // Word 0: ADR | ARR | SUBTYPE_STU.
-    uint32_t expected_arr_stu =
-        DDS_OP_ADR | DDS_OP_TYPE_ARR | (uint32_t(DDS_OP_VAL_STU) << 8);
+    uint32_t expected_arr_stu = DDS_OP_ADR | DDS_OP_TYPE_ARR | (uint32_t(DDS_OP_VAL_STU) << 8);
     EXPECT(ops[0] == expected_arr_stu, "ops[0] expected 0x%08x got 0x%08x", expected_arr_stu,
            ops[0]);
     EXPECT(ops[1] == 0u, "offset expected 0 got %u", ops[1]);
@@ -221,15 +218,14 @@ int test_bsq_of_nested() {
     };
 
     int err = 0;
-    const void* raw = nros_cyclonedds_build_descriptor_from_schema(
-        "test_msgs/msg/BsqOfNested", fields, 1, kinds, 4, &err);
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/BsqOfNested",
+                                                                   fields, 1, kinds, 4, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
 
     const uint32_t* ops = desc->m_ops;
 
-    uint32_t expected_bsq_stu =
-        DDS_OP_ADR | DDS_OP_TYPE_BSQ | (uint32_t(DDS_OP_VAL_STU) << 8);
+    uint32_t expected_bsq_stu = DDS_OP_ADR | DDS_OP_TYPE_BSQ | (uint32_t(DDS_OP_VAL_STU) << 8);
     EXPECT(ops[0] == expected_bsq_stu, "ops[0] expected 0x%08x got 0x%08x", expected_bsq_stu,
            ops[0]);
     EXPECT(ops[1] == 0u, "offset expected 0 got %u", ops[1]);
@@ -280,8 +276,8 @@ int test_ext_three_word_emission() {
     };
 
     int err = 0;
-    const void* raw = nros_cyclonedds_build_descriptor_from_schema(
-        "test_msgs/msg/ExtTrail", fields, 2, kinds, 3, &err);
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/ExtTrail", fields,
+                                                                   2, kinds, 3, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
 

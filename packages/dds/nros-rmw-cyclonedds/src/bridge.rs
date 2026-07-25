@@ -168,6 +168,10 @@ unsafe extern "C" {
         field_count: u32,
         kinds: *const NrosFieldKindDescriptor,
         kind_count: u32,
+        // phase-303 W1c (#0267) — ROS-edition wire extensibility: 0 = FINAL
+        // (humble, byte-identical), non-zero = APPENDABLE (iron/jazzy+; a
+        // DDS_OP_DLC → per-nested DHEADER under XCDR2).
+        extensibility: u32,
         out_err: *mut c_int,
     ) -> *const core::ffi::c_void;
 
@@ -243,6 +247,7 @@ pub mod test_stub {
         field_count: u32,
         _kinds: *const NrosFieldKindDescriptor,
         _kind_count: u32,
+        _extensibility: u32,
         out_err: *mut c_int,
     ) -> *const c_void {
         let forced = FORCED_ERROR.swap(0, Ordering::SeqCst);

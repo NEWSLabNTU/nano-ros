@@ -39,6 +39,17 @@ use crate::bridge::{
     nros_cyclonedds_build_descriptor_from_schema,
 };
 
+/// The ROS-edition wire extensibility for generated cyclone descriptors
+/// (phase-303 W1c / RFC-0056 / #0267). Humble → `0` (FINAL, byte-identical to
+/// pre-W1c); iron/jazzy/rolling → `1` (APPENDABLE — the builder prepends a
+/// `DDS_OP_DLC`, so Cyclone wraps each nested struct in a DHEADER under XCDR2,
+/// matching a modern ROS 2 peer). Keyed on the same `ros-<edition>` features the
+/// rest of the axis uses; forwarded from `nros-node`.
+#[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+pub const TYPE_EXTENSIBILITY: u32 = 1;
+#[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+pub const TYPE_EXTENSIBILITY: u32 = 0;
+
 /// Maximum number of top-level fields per message. Compile-time
 /// knob: `NROS_CYCLONEDDS_MAX_FIELDS=<N>`. Default 64.
 pub const MAX_FIELDS: usize = parse_env_usize(option_env!("NROS_CYCLONEDDS_MAX_FIELDS"), 64);
@@ -320,6 +331,7 @@ impl DescriptorBuilder {
                 total_fields as u32,
                 walker.kinds.as_ptr(),
                 walker.kind_count as u32,
+                TYPE_EXTENSIBILITY,
                 &mut err_code,
             )
         };
@@ -678,6 +690,18 @@ fn copy_to_buf(s: &str, buf: &mut [u8]) -> Result<(), BuildError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-303 W1c — the edition-gated wire extensibility. Humble (default,
+    /// no `ros-iron`/`ros-jazzy`/`ros-rolling`) → FINAL (0); the modern editions
+    /// → APPENDABLE (1). The C++ builder turns non-zero into a leading
+    /// `DDS_OP_DLC` (verified by `tests/appendable_extensibility.cpp`).
+    #[test]
+    fn type_extensibility_matches_edition() {
+        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+        assert_eq!(TYPE_EXTENSIBILITY, 1, "iron/jazzy/rolling → APPENDABLE");
+        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+        assert_eq!(TYPE_EXTENSIBILITY, 0, "humble → FINAL (byte-identical)");
+    }
 
     // Ensure const knobs compile + have sane defaults.
     #[test]

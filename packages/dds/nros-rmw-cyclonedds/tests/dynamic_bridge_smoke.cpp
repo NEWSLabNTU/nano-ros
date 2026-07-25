@@ -30,7 +30,8 @@ struct NrosFieldKindDescriptor {
 
 extern "C" const void* nros_cyclonedds_build_descriptor_from_schema(
     const char* type_name, const NrosFieldDescriptor* fields, uint32_t field_count,
-    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, int* out_err);
+    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, uint32_t extensibility,
+    int* out_err);
 
 namespace {
 
@@ -58,7 +59,7 @@ int main() {
 
     int err = 0;
     const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/PrimMix", fields,
-                                                                   3, kinds, 3, &err);
+                                                                   3, kinds, 3, 0u, &err);
     if (raw == nullptr) {
         std::fprintf(stderr, "bridge returned NULL, err=%d\n", err);
         return 1;

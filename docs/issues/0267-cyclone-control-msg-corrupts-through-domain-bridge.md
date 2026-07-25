@@ -162,6 +162,19 @@ negotiated `data_representation` + the runtime rmw sertype extensibility for
 not an exploration. Do not land the descriptor/serdes change before it (per the
 no-blind-land rule), but the DIRECTION and the CODE are now fixed.
 
+## Update (W1c LANDED, 2026-07-26) — cyclone descriptor emits APPENDABLE on iron/jazzy+
+
+The cyclone-path half of the fix shipped (phase-303 W1c).
+`dynamic_type_builder.cpp` now takes an `extensibility` argument: iron/jazzy+
+(edition-gated via `dynamic_type::TYPE_EXTENSIBILITY`) prefixes each aggregate's
+op stream with `DDS_OP_DLC`, so Cyclone tags the type APPENDABLE and writes a
+per-nested-struct DHEADER under XCDR2 — matching a modern peer. Humble stays
+FINAL, byte-identical. Verified against the real `libddsc.a`
+(`tests/appendable_extensibility.cpp`): FINAL = 0 DLCs; APPENDABLE = 1 per
+aggregate (nested type → 2). No `.idl`/parity impact. The `nros-serdes` XCDR2
+half (zenoh/XRCE/native paths) is still W2/W3. End-to-end wire delivery (the
+domain_bridge demo clearing) is the remaining live-demo confirmation.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

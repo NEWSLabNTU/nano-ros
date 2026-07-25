@@ -227,6 +227,22 @@ add_test(
 set_tests_properties(nros_rmw_cyclonedds_dynamic_bridge_smoke
     PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
 
+# phase-303 W1c (#0267) — ROS-edition wire extensibility (FINAL vs APPENDABLE /
+# DDS_OP_DLC) of generated descriptors.
+add_executable(nros_rmw_cyclonedds_appendable_extensibility
+    appendable_extensibility.cpp
+)
+target_link_libraries(nros_rmw_cyclonedds_appendable_extensibility
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+add_test(
+    NAME nros_rmw_cyclonedds_appendable_extensibility
+    COMMAND nros_rmw_cyclonedds_appendable_extensibility
+)
+set_tests_properties(nros_rmw_cyclonedds_appendable_extensibility
+    PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
+
 # Phase 212.K.7.4.c — op-word audit for sequence/array/bsq of nested
 # structs plus the EXT 3-word emission fix. Asserts exact `m_ops`
 # values then hands the descriptor to live Cyclone for

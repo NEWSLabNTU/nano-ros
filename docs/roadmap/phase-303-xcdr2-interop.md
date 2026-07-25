@@ -58,17 +58,39 @@ resolves the diagnostic gate without the live demo, and REFINES the fix:
   is chosen, not inferred.
 
 **Refined fix split (both edition-gated):**
-- **W1c (NEW — cyclone descriptor extensibility):** `dynamic_type_builder.cpp`
-  emits an appendable descriptor (appendable `m_flagset` + `DDS_OP_DLC` delimiter
-  ops → Cyclone writes the DHEADER natively) on iron/jazzy+; Humble stays FINAL
-  (byte-identical). NO `.idl`/parity impact. This is the cyclone-path half,
-  distinct from the `nros-serdes` XCDR2 work (W2/W3).
+- **W1c — cyclone descriptor extensibility — LANDED (2026-07-26).**
 - **W2/W3 (unchanged):** `nros-serdes` XCDR2 writer/reader + DHEADER for the
   zenoh-pico / XRCE / native-Rust paths.
 
-Still gated on ONE live capture (a confirmation, not exploration): the demo's
-downstream negotiated `data_representation` + its runtime sertype extensibility
-for `autoware_control_msgs/Control`. No descriptor/serdes change lands before it.
+### W1c — cyclone descriptor extensibility — LANDED (2026-07-26)
+
+`nros_cyclonedds_build_descriptor_from_schema` gained an `extensibility`
+argument. `0` (FINAL, humble) is byte-identical to pre-W1c; non-zero
+(APPENDABLE, iron/jazzy+) prefixes EACH aggregate's op stream (top-level + every
+nested struct body) with `DDS_OP_DLC`. Cyclone derives extensibility from the
+leading op (`dds_stream_extensibility`) and writes a per-nested-struct DHEADER
+under XCDR2 — matching a modern ROS 2 peer, so the domain_bridge republish no
+longer mis-walks. `m_flagset` is unchanged; the DLC in the ops is the whole
+mechanism. NO `.idl`/`nros-msg-to-idl` parity impact.
+
+Edition gate: `dynamic_type::TYPE_EXTENSIBILITY` (`0` humble / `1` iron+jazzy+
+rolling), keyed on `ros-<edition>` features on `nros-rmw-cyclonedds`, forwarded
+by `nros-rmw-cyclonedds-sys` — mirroring `nros-rmw-zenoh[-staticlib]`'s keyexpr
+edition wiring. A cyclone app/board enables `nros-rmw-cyclonedds-sys/ros-<edition>`
+the same way it already enables `nros-rmw-zenoh/ros-<edition>` (per-crate, the
+established pattern).
+
+**Verified against the REAL Cyclone library** (`tests/appendable_extensibility.cpp`,
+compiled + run vs `libddsc.a`): FINAL descriptor has 0 DLCs (byte-identical);
+APPENDABLE has exactly one DLC per aggregate — a flat type → op0 = `DDS_OP_DLC`,
+`nops`+1; a nested type → 2 DLCs (top + nested body). Rust `TYPE_EXTENSIBILITY`
+const test covers the edition gate. This is NOT a blind land — the descriptor
+shape is proven; only the end-to-end WIRE delivery (the domain_bridge demo
+clearing) remains for the live-demo confirmation.
+
+Still to confirm on the live demo (not blocking W1c): the downstream's negotiated
+`data_representation` + its runtime sertype extensibility for
+`autoware_control_msgs/Control` — the final wire-level closure.
 
 ## Background — two paths, one gap
 

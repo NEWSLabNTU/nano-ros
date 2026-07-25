@@ -16,6 +16,14 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+# phase-303 W1c (RFC-0056) — the ROS-edition wire-extensibility profile. Marker
+# features (forwarded from nros-node); humble → FINAL descriptors (default),
+# iron/jazzy/rolling → APPENDABLE (DDS_OP_DLC → DHEADER under XCDR2). See
+# `dynamic_type::TYPE_EXTENSIBILITY`.
+ros-humble = []
+ros-iron = []
+ros-jazzy = []
+ros-rolling = []
 # Hosted-build escape hatch. Off by default to honour the K.7
 # `no_std`-only contract. Test code never enables `std`; the
 # `#[cfg(test)]` tree compiles under `no_std + alloc-free`.
