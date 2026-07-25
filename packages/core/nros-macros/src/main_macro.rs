@@ -72,6 +72,10 @@ struct MainArgs {
     /// `args = [("k", "v"), ...]`. Forwarded to the launch parser as
     /// argument overrides.
     args: Vec<(String, String)>,
+    /// issue 0274 — `spin = "forever"`: hosted deploys spin unbounded
+    /// instead of the `NROS_ENTRY_SPIN_MS`-gated bounded spin (whose
+    /// unset default is register-and-exit, a production-entry trap).
+    spin_forever: bool,
     /// Phase 211.F — `host = "<id>"`: multi-host partition. When set, keep only
     /// launch nodes whose `<node machine="…">` equals `<id>` plus all unhosted
     /// (shared) nodes — mirrors `nros codegen entry --host` / `Plan::for_host`.
@@ -172,6 +176,28 @@ impl Parse for MainArgs {
                     };
                     out.args = list;
                 }
+                "spin" => {
+                    // issue 0274 — only the literal "forever" is accepted;
+                    // bounded spins stay on the NROS_ENTRY_SPIN_MS env so
+                    // test fixtures keep their per-run control.
+                    let lit = match value {
+                        KvValue::Str(s) => s,
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`spin = ` takes a string literal (`spin = \"forever\"`)",
+                            ));
+                        }
+                    };
+                    if lit.value() != "forever" {
+                        return Err(syn::Error::new(
+                            lit.span(),
+                            "`spin = ` accepts only \"forever\" — bounded spins \
+                             ride the NROS_ENTRY_SPIN_MS env",
+                        ));
+                    }
+                    out.spin_forever = true;
+                }
                 "custom_tasks" => {
                     // Phase 216.B.4 — `custom_tasks = [ident, ident,
                     // ...]`. Stored even when empty so the framework-
@@ -194,7 +220,7 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, model, host, args, custom_tasks)"
+                             (expected one of: board, launch, model, host, args, custom_tasks, spin)"
                         ),
                     ));
                 }
@@ -407,6 +433,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Phase 264 W4b — `[param_services]` declared in `system.toml` (launch arm only) →
     // register the ROS 2 param services + seed the volatile store from the baked params.
     let mut param_services_enabled = false;
+    // issue 0274 — `[param_services] node = "<name>"`: executor identity for
+    // the parameter services on multi-node entries (model arm).
+    let mut param_services_node: Option<String> = None;
     // phase-267 W1c/C4 — when `system.toml` declares a `[[bridge]]` AND `nros sync`
     // has generated `<bringup>/nros-bridge.toml`, the entry is a cross-RMW bridge:
     // the macro emits a `run_from_config_str(include_str!(<that file>))` main
@@ -765,6 +794,27 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .features
             .iter()
             .any(|f| f == "param_services");
+        // issue 0274 (walls 2+3) — `play_launch resolve` does not populate
+        // `execution.features` yet, so ALSO read `[param_services]` straight
+        // from the bringup's system.toml. The optional `node = "<name>"`
+        // row names the executor identity the six ROS 2 parameter services
+        // hang off (FQN + the liveliness token rmw_zenoh discovery needs) —
+        // without it a multi-node entry leaves the executor node_name empty
+        // and the services are invisible to `ros2 param`.
+        let system_toml_path = bringup_dir.join("system.toml");
+        if system_toml_path.exists() {
+            tracked.push(system_toml_path.clone());
+            if let Ok(raw) = std::fs::read_to_string(&system_toml_path)
+                && let Ok(doc) = raw.parse::<toml::Table>()
+                && let Some(ps) = doc.get("param_services")
+            {
+                param_services_enabled = true;
+                param_services_node = ps
+                    .get("node")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+            }
+        }
 
         idents
     } else {
@@ -898,6 +948,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // calls. No-op token stream when absent. `apply_param_services` is a no-op unless the
     // Entry enabled `nros/param-services`, so this is inert without the feature. The seed
     // values are the raw launch strings; the runtime infers each `ParameterValue` type.
+    // issue 0274 — `spin = "forever"` swaps the env-gated bounded spin for an
+    // unbounded loop (production hosted entries opt in at source).
+    let hosted_spin_call: proc_macro2::TokenStream = if args.spin_forever {
+        quote! { __nros_hosted_spin_forever(runtime)?; }
+    } else {
+        quote! { __nros_hosted_spin_if_requested(runtime)?; }
+    };
+
     let param_services_call: proc_macro2::TokenStream = if param_services_enabled {
         let seed_lits = node_param_bakes.iter().flatten().map(|(name, value)| {
             let n = LitStr::new(name, Span::call_site());
@@ -934,6 +992,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // overlay name unset and the board keeps `"node"`.
     if let [only] = node_instances.as_slice() {
         deploy_overlay_lit.node_name = Some(only.clone());
+    }
+    // issue 0274 — explicit `[param_services] node = "..."` names the primary
+    // session / executor identity (multi-node entries otherwise leave it
+    // empty and the parameter services get no liveliness attribution).
+    if let Some(n) = &param_services_node {
+        deploy_overlay_lit.node_name = Some(n.clone());
     }
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
@@ -1110,7 +1174,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #( #register_calls )*
                     #lifecycle_call
                     #[cfg(not(target_os = "none"))]
-                    __nros_hosted_spin_if_requested(runtime)?;
+                    #hosted_spin_call
                     ::core::result::Result::Ok(())
                 }
             };
@@ -1349,6 +1413,25 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     .unwrap_or(default)
             }
 
+            // issue 0274 — unbounded hosted spin (`spin = "forever"` macro
+            // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin
+            // error; the process lifetime is the supervisor's problem.
+            #[cfg(not(target_os = "none"))]
+            #[allow(dead_code)]
+            fn __nros_hosted_spin_forever(
+                runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+            ) -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                loop {
+                    runtime
+                        .runtime
+                        .spin_once(10)
+                        .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+                }
+            }
+
             #[cfg(not(target_os = "none"))]
             #[allow(dead_code)]
             fn __nros_hosted_spin_if_requested(
@@ -1357,6 +1440,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
+                // issue 0274 — `NROS_ENTRY_SPIN_MS=forever` joins the numeric
+                // values as an env-side unbounded opt-in.
+                if ::std::env::var("NROS_ENTRY_SPIN_MS").as_deref() == Ok("forever") {
+                    return __nros_hosted_spin_forever(runtime);
+                }
                 let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
                 if total_ms == 0 {
                     return ::core::result::Result::Ok(());

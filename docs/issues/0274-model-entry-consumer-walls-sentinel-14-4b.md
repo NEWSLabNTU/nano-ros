@@ -1,11 +1,30 @@
 ---
 id: 274
 title: "Model-arm entry consumer walls from the sentinel 14.4b port: bounded hosted spin, param-services node identity, resolver gaps"
-status: open
+status: resolved
 type: enhancement
 area: codegen
 related: [issue-0269, issue-0272]
 ---
+
+## Resolution (2026-07-25, same day)
+
+All four walls closed in the follow-up commit:
+
+1. `spin = "forever"` macro arg (hosted arms emit an unbounded spin) +
+   `NROS_ENTRY_SPIN_MS=forever` env spelling. The bounded-default stays
+   for the e2e fixtures that rely on register-and-exit.
+2. `[param_services] node = "<name>"` in the bringup's system.toml names
+   the executor identity (primary-session node_name → param-service FQN
+   + liveliness). Explicit value wins over the single-node auto-name.
+3. The model arm now reads `[param_services]` straight from
+   `<bringup>/system.toml` (tracked file), so the resolver's missing
+   `execution.features` no longer gates the feature.
+4. Float lowering (fixed in the previous commit).
+
+Verified by the reporting consumer: autoware_sentinel's 12-node entry
+runs `spin = "forever"` with `/sentinel/{list,get}_parameters` fully
+discoverable and typed, no env workarounds, 15/15 integration tests.
 
 ## Findings (autoware_sentinel phase-14.4b — first external 12-node model-arm consumer, 2026-07-25)
 
