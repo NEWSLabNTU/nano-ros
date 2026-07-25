@@ -45,6 +45,22 @@ pub struct Config {
     pub poll_interval_ms: u32,
 }
 
+/// Const decimal parser for the `NROS_FREERTOS_APP_STACK_KB` build env.
+const fn parse_kb(s: &str) -> u32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut acc: u32 = 0;
+    while i < bytes.len() {
+        let d = bytes[i];
+        if !d.is_ascii_digit() {
+            panic!("NROS_FREERTOS_APP_STACK_KB must be a decimal integer");
+        }
+        acc = acc * 10 + (d - b'0') as u32;
+        i += 1;
+    }
+    acc
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -66,7 +82,12 @@ impl Default for Config {
             // stack is drawn from the FreeRTOS heap (heap_4), sized to match in
             // `nros-board-freertos/build.rs`. Keep headroom so stack-overflow
             // checks fail cleanly instead of corrupting the TCB.
-            app_stack_bytes: 393216,
+            // issue-0274 follow-up (sentinel 14.5): overridable at build
+            // time — a 10-node macro entry's register pass overflows 384 KiB.
+            app_stack_bytes: match option_env!("NROS_FREERTOS_APP_STACK_KB") {
+                Some(kb) => parse_kb(kb) * 1024,
+                None => 393216,
+            },
             zenoh_read_priority: 16,
             zenoh_read_stack_bytes: 5120,
             zenoh_lease_priority: 16,

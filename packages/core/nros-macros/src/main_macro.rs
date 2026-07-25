@@ -801,7 +801,19 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // hang off (FQN + the liveliness token rmw_zenoh discovery needs) —
         // without it a multi-node entry leaves the executor node_name empty
         // and the services are invisible to `ros2 param`.
-        let system_toml_path = bringup_dir.join("system.toml");
+        // 0274 follow-up (sentinel 14.5): prefer the system.toml the model
+        // was RESOLVED against (recorded in meta.inputs) — per-target models
+        // ride per-target system tomls, and reading the fixed
+        // `<bringup>/system.toml` leaked the native profile's
+        // [param_services] into every MCU entry. Fallback: the fixed name.
+        let system_toml_path = model
+            .meta
+            .inputs
+            .iter()
+            .map(|i| std::path::PathBuf::from(&i.path))
+            .find(|p| p.extension().is_some_and(|e| e == "toml"))
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| bringup_dir.join("system.toml"));
         if system_toml_path.exists() {
             tracked.push(system_toml_path.clone());
             if let Ok(raw) = std::fs::read_to_string(&system_toml_path)
