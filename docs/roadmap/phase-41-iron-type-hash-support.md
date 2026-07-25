@@ -9,7 +9,9 @@
 > encoding / extensibility field is [RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)
 > / [phase-303](phase-303-xcdr2-interop.md). Both feed the same axis — extending
 > to a new distro (jazzy/rolling) needs BOTH the type hash (here) and the
-> encoding profile (there).
+> encoding profile (there). Coordinated by
+> [phase-304](phase-304-complete-ros-edition-axis.md) (axis completion + the
+> multi-distro test method); phase-304 W1 drives this phase's RIHS01 work.
 
 ## Goal
 

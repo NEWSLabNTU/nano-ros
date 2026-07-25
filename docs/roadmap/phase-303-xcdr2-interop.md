@@ -3,7 +3,9 @@
 Implements **RFC-0055** (wire encoding); the encoding default + extensibility it
 turns on are **fields of the ROS-edition profile** (**RFC-0056**) — `humble`
 keeps XCDR1, `jazzy`+ turns on XCDR2. Sibling phase **phase-41** owns the other
-edition-profile field (RIHS01 type hash for Iron+). Roots: issue **#0267** (Control
+edition-profile field (RIHS01 type hash for Iron+); **phase-304** coordinates the
+whole axis + the multi-distro test method (this phase's W1b = phase-304 W5's
+encoding field). Roots: issue **#0267** (Control
 mis-walked after a `domain_bridge` republish — nano-ros CDR proven canonical,
 the gap is the missing DHEADER + implicit type extensibility) and the adjacent
 serialization gaps (big-endian read, type-hash/RIHS).
