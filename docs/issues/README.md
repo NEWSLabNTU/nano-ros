@@ -44,6 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#268** — freertos C lanes RED (pubsub/service/action deliver nothing):
+`nros_executor_register_subscription -> -1` then `z_declare_subscriber
+(ring) failed: -128`; C+freertos only (rust freertos + native C green).
+Fresh-fixture solo repro; candidate windows = 294 C-serialize, 296-W5.x
+freertos, zenoh-pico 87f7a84d bump, executor-storage mirror class. See
+`0268-freertos-c-lanes-red-register-and-ring-declare.md`.
+
 **#266** — time-slicing exists in every kernel, no nano-ros knob (ThreadX shim hardwires
 TX_NO_TIME_SLICE). Demand-driven enhancement; recorded decision. See `0266-*`. (audit 2026-07-25)
 
