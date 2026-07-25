@@ -8,7 +8,8 @@
 #         STATIC `<pkg>_<name>_component` lib linked to the C or C++
 #         nano-ros target. Rust packages import `Cargo.toml` through
 #         Corrosion and expose the same component target name for entry
-#         link glue. Enforces L.4: CLASS must start with `${PROJECT_NAME}::`.
+#         link glue. CLASS is any namespace-qualified name (RFC-0057; the
+#         L.4 prefix rule is retired — pkg is explicit metadata).
 #
 #   * `nano_ros_entry(NAME <name> SOURCES <files...> [BOARD <board>]
 #       DEPLOY <target1> [<target2> ...])`
@@ -126,7 +127,24 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    # RFC-0057 (phase-305 W1.1) — EXISTING_TARGET mode: the component library
+    # was created separately (`nano_ros_auto_add_library`); attach
+    # registration (class define, metadata row, carrier glue) to it instead
+    # of creating one. SOURCES is recovered from the target for the carrier
+    # branches + metadata.
+    if(_NRC_EXISTING_TARGET)
+        if(NOT TARGET ${_NRC_EXISTING_TARGET})
+            message(FATAL_ERROR
+                "nano_ros_node_register: EXISTING_TARGET '${_NRC_EXISTING_TARGET}' is not a target")
+        endif()
+        if(NOT _NRC_SOURCES)
+            get_target_property(_nrc_tgt_srcs ${_NRC_EXISTING_TARGET} SOURCES)
+            if(_nrc_tgt_srcs)
+                set(_NRC_SOURCES ${_nrc_tgt_srcs})
+            endif()
+        endif()
+    endif()
     # Phase 248 C6b (#60 T5) — DEPLOY is OPTIONAL on a Node pkg. A reusable Node
     # pkg must NOT name a deploy target; the Entry pkg (`nano_ros_entry(... DEPLOY
     # …)`) + the bringup `system.toml` select RMW/platform/deploy. Embedded Node
@@ -134,7 +152,11 @@ function(nano_ros_node_register)
     # still pass `DEPLOY <rtos>` — those branches gate on `<rtos> IN_LIST
     # _NRC_DEPLOY`, so absence is a no-op (the metadata `deploy` array is empty
     # and the Entry/system.toml is the selection point).
-    foreach(_req NAME CLASS SOURCES)
+    set(_nrc_required NAME CLASS SOURCES)
+    if(_NRC_EXISTING_TARGET)
+        set(_nrc_required NAME CLASS) # sources live on the existing target
+    endif()
+    foreach(_req ${_nrc_required})
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
                 "nano_ros_node_register: ${_req} required")
@@ -187,13 +209,16 @@ function(nano_ros_node_register)
             "expected C, CPP, or RUST")
     endif()
     string(TOLOWER "${_nrc_lang}" _nrc_lang_lc)
-    # L.4 enforcement: CLASS must start with `${PROJECT_NAME}::`.
-    string(FIND "${_NRC_CLASS}" "${PROJECT_NAME}::" _idx)
-    if(NOT _idx EQUAL 0)
+    # RFC-0057 D2 — the Phase 212.L.4 class-prefix rule is RETIRED: the pkg
+    # is written explicitly into the metadata row below (`"pkg":
+    # "${PROJECT_NAME}"`), so CLASS may carry any qualified C++ name
+    # (verbatim upstream namespaces, e.g. `autoware::x::Node`). CLASS must
+    # still be namespace-qualified — the entry codegen needs a real type name.
+    string(FIND "${_NRC_CLASS}" "::" _idx)
+    if(_idx EQUAL -1)
         message(FATAL_ERROR
-            "nano_ros_node_register: CLASS '${_NRC_CLASS}' must "
-            "start with '${PROJECT_NAME}::' (Phase 212.L.4 rule — the "
-            "pkg directory name IS the pkg name).")
+            "nano_ros_node_register: CLASS '${_NRC_CLASS}' must be a "
+            "namespace-qualified C++ name (`ns::Class`).")
     endif()
 
     # Phase 240.2b (RFC-0043) — the typed Entry emitter `#include`s the
@@ -230,6 +255,21 @@ function(nano_ros_node_register)
     endif()
 
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
+    if(_NRC_EXISTING_TARGET)
+        # RFC-0057: the register decorations the fused path applies inside
+        # the add_library block were already applied by
+        # nano_ros_auto_add_library; here we add the per-register class
+        # define and keep the conventional `<pkg>_<exec>_component` name
+        # alive as an INTERFACE wrapper (the CLI-emitted entry sidecar
+        # links that name).
+        target_compile_definitions(${_NRC_EXISTING_TARGET} PRIVATE
+            "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
+        if(NOT _lib STREQUAL "${_NRC_EXISTING_TARGET}" AND NOT TARGET ${_lib})
+            add_library(${_lib} INTERFACE)
+            target_link_libraries(${_lib} INTERFACE ${_NRC_EXISTING_TARGET})
+        endif()
+        set(_lib "${_NRC_EXISTING_TARGET}")
+    endif()
     if(NOT TARGET ${_lib})
         # Phase 212.M.5.a.1 — package symbol used by C/C++ macros and
         # mirrored by Rust `nros::node!()`.
@@ -761,9 +801,8 @@ function(nano_ros_node_register)
     # lib's PUBLIC include dirs (the class header + generated interface libs)
     # propagate to `app`, so the entry TU's `#include "<class_header>"` resolves.
     #
-    # The L.4 rule (CLASS starts with `${PROJECT_NAME}::`) means each Node pkg is
-    # its own `project(<pkg>)` subdirectory (e.g. ASI `add_subdirectory(controller_pkg)`
-    # with `project(controller_pkg)` → CLASS `controller_pkg::Controller`); the
+    # Each Node pkg is its own `project(<pkg>)` subdirectory (e.g. ASI
+    # `add_subdirectory(controller_pkg)` with `project(controller_pkg)`); the
     # Zephyr `app` target is global, so `target_sources(app …)` from that subdir
     # composes into the outer app. SINGLE-NODE per app: one Node pkg deploys to
     # zephyr per `app` (it owns the one `int main`). Multi-node Zephyr uses the
@@ -819,7 +858,7 @@ function(nano_ros_node_register)
         set(_sep "")
     endif()
     set(_entry
-"${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"class\": \"${_NRC_CLASS}\", \
+"${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"pkg\": \"${PROJECT_NAME}\", \"class\": \"${_NRC_CLASS}\", \
 \"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
 \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\", \

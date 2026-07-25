@@ -7,11 +7,11 @@
 //! `(pkg, exec)`, and stamps `class_name` / `class_header` onto the matching
 //! [`PlanNode`]s so [`super::emit_cpp::emit_typed`] can construct the components.
 //!
-//! Key derivation: the metadata component has `{name, class, class_header}` and
-//! NO explicit `pkg`, but `nano_ros_node_register` enforces `class` starts with
-//! `${PROJECT_NAME}::` (L.4), so `pkg = class.split("::").next()` and `exec =
-//! name`. That `(pkg, exec)` is exactly the launch-XML `(pkg, exec)` (the cmake
-//! `NAME` arg IS the launch `exec`; `PROJECT_NAME` IS the launch `pkg`).
+//! Key derivation: RFC-0057 metadata carries an explicit `pkg`
+//! (`${PROJECT_NAME}` at the register site) and `exec = name` — that
+//! `(pkg, exec)` is exactly the launch-XML `(pkg, exec)`. Pre-0057 metadata
+//! has no `pkg` field; those files still key via the retired L.4 convention
+//! (`pkg = class.split("::").next()`), kept as a back-compat fallback only.
 
 use std::{collections::HashMap, path::Path};
 
@@ -25,6 +25,10 @@ use super::Plan;
 #[derive(Debug, Deserialize)]
 struct ComponentMeta {
     name: String,
+    /// RFC-0057 (phase-305): explicit pkg written by cmake
+    /// (`${PROJECT_NAME}`). Absent in pre-0057 metadata — fallback below.
+    #[serde(default)]
+    pkg: Option<String>,
     class: String,
     #[serde(default)]
     class_header: Option<String>,
@@ -77,17 +81,24 @@ impl ComponentIndex {
         let doc: MetadataDoc = serde_json::from_str(raw).context("parse metadata JSON")?;
         let mut by_key = HashMap::new();
         for c in doc.components {
-            // pkg = class prefix before the first `::` (L.4 enforced by cmake).
-            let Some((pkg, _)) = c.class.split_once("::") else {
-                bail!(
-                    "metadata component `{}` has class `{}` without a `::` namespace — \
-                     cannot derive its pkg (nano_ros_node_register enforces `pkg::Class`)",
-                    c.name,
-                    c.class
-                );
+            // RFC-0057: explicit pkg preferred; pre-0057 metadata falls back
+            // to the retired L.4 class-prefix convention.
+            let pkg = match &c.pkg {
+                Some(p) if !p.is_empty() => p.clone(),
+                _ => {
+                    let Some((prefix, _)) = c.class.split_once("::") else {
+                        bail!(
+                            "metadata component `{}` has neither a `pkg` field nor a \
+                             `::`-qualified class `{}` — cannot derive its pkg",
+                            c.name,
+                            c.class
+                        );
+                    };
+                    prefix.to_string()
+                }
             };
             by_key.insert(
-                (pkg.to_string(), c.name.clone()),
+                (pkg, c.name.clone()),
                 ComponentFacts {
                     class: c.class.clone(),
                     class_header: c.class_header.clone(),
@@ -211,6 +222,42 @@ mod tests {
     }
 
     #[test]
+    fn explicit_pkg_field_wins_over_class_prefix() {
+        // RFC-0057: nested upstream namespaces — pkg comes from the explicit
+        // metadata field, not the class prefix.
+        let meta = r#"{
+          "components": [
+            {"name": "mrm_emergency_stop_operator",
+             "pkg": "autoware_mrm_emergency_stop_operator",
+             "class": "autoware::mrm_emergency_stop_operator::MrmEmergencyStopOperator",
+             "class_header": "autoware/mrm_emergency_stop_operator/mrm_emergency_stop_operator_core.hpp",
+             "sources": [], "deploy": [], "pkg_dir": "/ws", "lang": "cpp",
+             "shape": "rclcpp"}
+          ],
+          "applications": []
+        }"#;
+        let index = ComponentIndex::parse(meta).unwrap();
+        let mut p = plan(&[(
+            "autoware_mrm_emergency_stop_operator",
+            "mrm_emergency_stop_operator",
+        )]);
+        enrich_plan(&mut p, &index).unwrap();
+        assert_eq!(
+            p.nodes[0].class_name.as_deref(),
+            Some("autoware::mrm_emergency_stop_operator::MrmEmergencyStopOperator")
+        );
+    }
+
+    #[test]
+    fn pre_0057_metadata_falls_back_to_class_prefix() {
+        // META above has no `pkg` fields — keyed via the retired L.4 split.
+        let index = ComponentIndex::parse(META).unwrap();
+        let mut p = plan(&[("talker_pkg", "talker")]);
+        enrich_plan(&mut p, &index).unwrap();
+        assert_eq!(p.nodes[0].class_name.as_deref(), Some("talker_pkg::Talker"));
+    }
+
+    #[test]
     fn enrich_stamps_class_and_header() {
         let index = ComponentIndex::parse(META).unwrap();
         let mut p = plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
@@ -249,7 +296,7 @@ mod tests {
     fn class_without_namespace_is_rejected() {
         let bad = r#"{"components":[{"name":"x","class":"NoNamespace","class_header":"x.hpp"}]}"#;
         let err = ComponentIndex::parse(bad).unwrap_err().to_string();
-        assert!(err.contains("without a `::`"), "{err}");
+        assert!(err.contains("neither a `pkg` field"), "{err}");
     }
 
     #[test]

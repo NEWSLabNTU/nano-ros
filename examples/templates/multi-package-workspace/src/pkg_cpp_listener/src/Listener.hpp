@@ -12,6 +12,8 @@
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 
+#include "std_msgs.hpp" // generated C++ bindings — the on_msg signature names Int32
+
 namespace pkg_cpp_listener {
 
 class Listener {

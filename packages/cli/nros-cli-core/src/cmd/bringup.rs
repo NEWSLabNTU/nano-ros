@@ -70,7 +70,8 @@ pub fn lint_bringup(bringup_dir: &Path) -> Result<()> {
     //    `nros emit package-xml` auto-regeneration path (Phase 212.G).
     check_exec_depend_drift(bringup_dir, pkg_name)?;
 
-    // 4. Phase 212.L.4 — `[[component]].class` must be `<pkg>::<Type>`.
+    // 4. Phase 212.L.4 as amended by RFC-0057 — `[[component]].class` must
+    //    be a namespace-qualified C++ name (prefix rule retired).
     crate::cmd::check_workspace::lint_class_pkg_prefix(bringup_dir, pkg_name)?;
 
     Ok(())

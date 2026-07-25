@@ -221,6 +221,120 @@ function(nano_ros_add_node name)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# nano_ros_auto_add_library(<name> [STATIC] <sources…>)      (RFC-0057 D1/D3)
+#
+# The `ament_auto_add_library` analog: creates the component library AND
+# wires everything a nano-ros component TU needs — the declared interface
+# closure (from package.xml), the generated interface libs (routing the ONE
+# topo-last superset FFI archive; consumers never hand-pick it), the nros
+# runtime lib, the per-build config-header ordering, and the Zephyr compile
+# context. Registration is a separate step (`nros_components_register_node`),
+# exactly like ament: sources belong to the library, identity to the register.
+# ---------------------------------------------------------------------------
+function(nano_ros_auto_add_library name)
+    set(_srcs ${ARGN})
+    list(REMOVE_ITEM _srcs STATIC SHARED) # STATIC accepted for ament parity; SHARED tolerated, built STATIC
+    if(NOT _srcs)
+        message(FATAL_ERROR "nano_ros_auto_add_library(${name}): no sources given.")
+    endif()
+    _nros_infer_lang(_lang ${_srcs})
+    _nros_generate_declared_interfaces(${_lang})
+
+    add_library(${name} STATIC ${_srcs})
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+    if(_lang STREQUAL "C")
+        set_target_properties(${name} PROPERTIES LINKER_LANGUAGE C)
+    endif()
+    # Zephyr compile context (see the fused register path for rationale).
+    if(TARGET zephyr_interface)
+        target_link_libraries(${name} PRIVATE zephyr_interface)
+    endif()
+    _nros_node_register_config_header_deps(${name})
+    # Runtime lib: C++ always links the umbrella; a C component's choice
+    # depends on TYPED (declarative C keeps NanoRos), which is a
+    # register-time fact — nros_components_register_node adds it.
+    if(NOT _lang STREQUAL "C" AND TARGET NanoRos::NanoRosCpp)
+        target_link_libraries(${name} PUBLIC NanoRos::NanoRosCpp)
+    endif()
+    target_include_directories(${name} PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_definitions(${name} PRIVATE NROS_PKG_NAME=${_pkg_sym})
+    set_target_properties(${name} PROPERTIES
+        NROS_COMPONENT_PKG_SYM "${_pkg_sym}"
+        NROS_COMPONENT_LANG "${_lang}")
+    # Generated interface libs (220.G.2 mechanics; zephyr gets headers via
+    # the app include mirror instead — non-target lib names there).
+    if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${name} PUBLIC ${_nros_iface_libs})
+        endif()
+    endif()
+    if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
+        target_include_directories(${name} PRIVATE
+            $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
+        set_source_files_properties(${_srcs} PROPERTIES OBJECT_DEPENDS
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
+    endif()
+endfunction()
+
+# ---------------------------------------------------------------------------
+# nros_components_register_node(<target>                     (RFC-0057 D1)
+#     PLUGIN <ns::Class> EXECUTABLE <node_name>
+#     [HEADER <hdr>] [SHAPE rclcpp|configure] [TYPED]
+#     [DEPLOY <t>…] [CALLBACK_GROUPS <g>…])
+#
+# Keyword-parity analog of `rclcpp_components_register_node`: PLUGIN is the
+# component class (any qualified name — L.4 retired per RFC-0057), EXECUTABLE
+# the node/exec identity. Operates on an EXISTING library target (created by
+# `nano_ros_auto_add_library` or plain `add_library`). SHAPE defaults to
+# `rclcpp` — the construct-with-handle IS-A-node shape upstream components
+# have; the legacy `configure(Node&)` shape is the explicit opt-in.
+# ---------------------------------------------------------------------------
+function(nros_components_register_node target)
+    cmake_parse_arguments(_NCR "TYPED" "PLUGIN;EXECUTABLE;HEADER;SHAPE" "DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    foreach(_req PLUGIN EXECUTABLE)
+        if(NOT _NCR_${_req})
+            message(FATAL_ERROR
+                "nros_components_register_node(${target}): ${_req} required")
+        endif()
+    endforeach()
+    if(NOT _NCR_SHAPE)
+        set(_NCR_SHAPE rclcpp)
+    endif()
+    # A C component links its runtime by TYPED-ness (see auto_add_library).
+    get_target_property(_ncr_lang ${target} NROS_COMPONENT_LANG)
+    if(_ncr_lang STREQUAL "C")
+        if(_NCR_TYPED AND TARGET NanoRos::NanoRosCpp)
+            target_link_libraries(${target} PUBLIC NanoRos::NanoRosCpp)
+        elseif(NOT _NCR_TYPED AND TARGET NanoRos::NanoRos)
+            target_link_libraries(${target} PUBLIC NanoRos::NanoRos)
+        endif()
+    endif()
+    set(_extra "")
+    if(_NCR_HEADER)
+        list(APPEND _extra HEADER ${_NCR_HEADER})
+    endif()
+    if(_NCR_TYPED)
+        list(APPEND _extra TYPED)
+    endif()
+    if(_NCR_DEPLOY)
+        list(APPEND _extra DEPLOY ${_NCR_DEPLOY})
+    endif()
+    if(_NCR_CALLBACK_GROUPS)
+        list(APPEND _extra CALLBACK_GROUPS ${_NCR_CALLBACK_GROUPS})
+    endif()
+    nano_ros_node_register(
+        NAME ${_NCR_EXECUTABLE}
+        CLASS ${_NCR_PLUGIN}
+        SHAPE ${_NCR_SHAPE}
+        EXISTING_TARGET ${target}
+        ${_extra})
+endfunction()
+
+# ---------------------------------------------------------------------------
 # nano_ros_generate_interfaces(<name> <files…> [DEPENDENCIES <pkgs…>])
 #
 # For a package that DEFINES its own .msg/.srv/.action — the `rosidl_generate_

@@ -2,10 +2,11 @@
 //!
 //! Lints land here:
 //!
-//! * **L.4 — `<pkg>::<Class>` enforcement.** Every `[[component]]` row in a
-//!   bringup `system.toml` carries `pkg = "<dir>"` + `class = "<dir>::<Type>"`.
-//!   The `class` MUST be prefixed by `<pkg>::` so the codegen path and a human
-//!   reader land at the same crate.
+//! * **L.4 (amended by RFC-0057) — qualified-class enforcement.** Every
+//!   `[[component]]` row carries an explicit `pkg` (the authority) and a
+//!   `class` that must be a namespace-qualified C++ name. The pre-0057
+//!   `<pkg>::` prefix requirement is retired — upstream namespaces port
+//!   verbatim.
 //!
 //! * **L.8 — `system.toml` outside bringup is forbidden.** `system.toml` is a
 //!   bringup-pkg-only file. A component pkg (carries `Cargo.toml` or
@@ -206,22 +207,25 @@ pub fn lint_class_pkg_prefix(bringup_dir: &Path, bringup_pkg_name: &str) -> Resu
         .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let parsed: SystemToml =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", system_toml.display()))?;
+    // RFC-0057 (phase-305): the L.4 prefix rule is retired — `pkg` on the
+    // `[[component]]` row is the authority, and `class` may be any
+    // namespace-qualified C++ name (verbatim upstream namespaces). The lint
+    // now only rejects an UNQUALIFIED class, which cannot name a real type
+    // for the entry codegen.
     let mut bad: Vec<String> = Vec::new();
     for c in &parsed.components {
-        let prefix = format!("{}::", c.pkg);
-        if !c.class.starts_with(&prefix) {
+        if !c.class.contains("::") {
             bad.push(format!(
                 "[[component]] name=\"{}\" pkg=\"{}\" class=\"{}\" — class \
-                 must start with \"{}\"",
-                c.name, c.pkg, c.class, prefix
+                 must be a namespace-qualified C++ name (`ns::Type`)",
+                c.name, c.pkg, c.class
             ));
         }
     }
     if !bad.is_empty() {
         bail!(
             "bringup pkg {bringup_pkg_name}: system.toml component class \
-             mismatch — {}. The `class` field in a `[[component]]` row MUST \
-             be `<pkg>::<Type>` so codegen and humans land at the same crate.",
+             invalid — {}.",
             bad.join("; ")
         );
     }
@@ -693,26 +697,33 @@ mod tests {
     }
 
     #[test]
-    fn nros_check_rejects_class_pkg_mismatch() {
-        let root = temp_root("class_mismatch");
+    fn nros_check_rejects_unqualified_class() {
+        // RFC-0057: the prefix rule is retired; what remains fatal is a class
+        // that names no namespace at all (the entry codegen can't construct it).
+        let root = temp_root("class_unqualified");
         let bringup = root.join("demo_bringup");
-        write_bringup_with_components(&bringup, &[("talker_pkg", "wrong::Talker", "talker")]);
+        write_bringup_with_components(&bringup, &[("talker_pkg", "Talker", "talker")]);
         let err = check_workspace(&root).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("class mismatch"), "diag: {msg}");
-        assert!(msg.contains("talker_pkg::"), "diag: {msg}");
-        assert!(msg.contains("wrong::Talker"), "diag: {msg}");
+        assert!(msg.contains("class invalid"), "diag: {msg}");
+        assert!(msg.contains("namespace-qualified"), "diag: {msg}");
     }
 
     #[test]
-    fn nros_check_accepts_correct_class_pkg_prefix() {
+    fn nros_check_accepts_nested_upstream_namespaces() {
+        // RFC-0057 acceptance: verbatim upstream namespaces (`autoware::x::Y`)
+        // pass — pkg on the row is the authority, not the class prefix.
         let root = temp_root("class_ok");
         let bringup = root.join("demo_bringup");
         write_bringup_with_components(
             &bringup,
             &[
                 ("talker_pkg", "talker_pkg::Talker", "talker"),
-                ("listener_pkg", "listener_pkg::Listener", "listener"),
+                (
+                    "autoware_mrm_emergency_stop_operator",
+                    "autoware::mrm_emergency_stop_operator::MrmEmergencyStopOperator",
+                    "mrm_emergency_stop_operator",
+                ),
             ],
         );
         let report = check_workspace(&root).expect("clean workspace passes");
