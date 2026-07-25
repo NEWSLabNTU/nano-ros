@@ -97,3 +97,4 @@ examples/workspaces/**/config/*.record.json
 # git-stash conflict artifacts (editor/stash-pop debris — a parallel-session
 # stash once committed 36 of these; never track them)
 *~Stashed changes*
+/slides/
