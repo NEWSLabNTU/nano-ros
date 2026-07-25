@@ -892,6 +892,7 @@ dependencies = [
  "eyre",
  "nros-pkg-index",
  "quick-xml",
+ "tempfile",
 ]
 
 [[package]]

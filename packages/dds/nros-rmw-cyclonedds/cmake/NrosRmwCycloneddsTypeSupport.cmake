@@ -416,10 +416,16 @@ endfunction()
 #       PKG_DIR     <path/to/pkg-with-package.xml>
 #       INTERFACES  <Foo.msg> <Bar.srv> ...
 #       [OUTPUT_DIR <build/dir>]
+#       [IDL_DEPENDS <dep-pkg .idl paths...>]
+#       [IDL_FILES_VAR <out-var>]
 #   )
 #
 # Sets <output_var> to the list of generated `.c` (descriptor +
-# self-registration) source files.
+# self-registration) source files. IDL_DEPENDS adds dependency
+# packages' generated `.idl` files to every pass-2 idlc command's
+# DEPENDS (file-level cross-package include ordering, phase-305 W2);
+# IDL_FILES_VAR returns this package's generated `.idl` paths so the
+# caller can feed the NEXT package's IDL_DEPENDS.
 #
 # For each `.msg` Foo:
 #     descriptor name: <PKG>::msg::dds_::Foo_
@@ -431,7 +437,7 @@ endfunction()
 #
 function(nros_rmw_cyclonedds_generate_from_msg output_var)
     set(_options "")
-    set(_one    PKG_NAME PKG_DIR OUTPUT_DIR INCLUDE_ROOT GEN_ROOT)
+    set(_one    PKG_NAME PKG_DIR OUTPUT_DIR INCLUDE_ROOT GEN_ROOT IDL_FILES_VAR)
     set(_multi  INTERFACES IDL_DEPENDS)
     cmake_parse_arguments(_arg "${_options}" "${_one}" "${_multi}" ${ARGN})
 
@@ -588,4 +594,12 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
     endforeach()
 
     set(${output_var} "${_all_outputs}" PARENT_SCOPE)
+    # phase-305 W2 (issue 0258): hand the caller this package's generated
+    # .idl paths so it can thread them into DEPENDENT packages' IDL_DEPENDS
+    # — cross-package includes then carry FILE-level custom-command deps
+    # (an unpopulated dep root fails at generate time with a clear "no rule
+    # to make <dep>.idl" instead of an idlc preprocessor error).
+    if(_arg_IDL_FILES_VAR)
+        set(${_arg_IDL_FILES_VAR} "${_pkg_idl_paths}" PARENT_SCOPE)
+    endif()
 endfunction()

@@ -700,13 +700,49 @@ function(nros_generate_interfaces target)
       # one example shares it.
       set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
       set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
+      # phase-305 W2 (issue 0258) — cross-package includes are FILE-level:
+      # a package's lowered IDL `#include`s dep-package IDLs (`Odometry.idl`
+      # → `std_msgs/msg/Header.idl`), which idlc reads at generate time.
+      # Target-level `add_dependencies` below orders SIBLING ts libs, but a
+      # dep whose ts lib never materializes (or a scope where the target is
+      # not visible) left the include unresolved → cryptic idlc preprocessor
+      # error. Thread each dep's generated .idl list (stashed in the CACHE,
+      # same multi-scope pattern as `_NROS_PKG_<pkg>_GENERATED_RS_FILES` in
+      # NanoRosCodegenCore.cmake) into IDL_DEPENDS: every idlc command then
+      # carries file-level deps on the dep IDLs, and a missing dep root
+      # fails the build with a clear "no rule to make <dep>.idl". The stash
+      # holds each pkg's CLOSURE (deps' stashes + own files), so transitive
+      # includes are covered without re-walking the graph here.
+      set(_cyc_dep_idls "")
+      foreach(_dep ${_ARG_DEPENDENCIES})
+        if(DEFINED CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES})
+          list(APPEND _cyc_dep_idls "$CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES}")
+        endif()
+      endforeach()
+      if(_cyc_dep_idls)
+        list(REMOVE_DUPLICATES _cyc_dep_idls)
+      endif()
       nros_rmw_cyclonedds_generate_from_msg(_cyc_sources
         PKG_NAME   "${target}"
         PKG_DIR    "${_cyc_pkgdir}"
         INTERFACES ${_cyc_ifaces}
         INCLUDE_ROOT "${_cyc_idl_root}"
         GEN_ROOT     "${_cyc_gen_root}"
-        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}")
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}"
+        IDL_DEPENDS ${_cyc_dep_idls}
+        IDL_FILES_VAR _cyc_own_idls)
+      # Stash this package's IDL closure for consumers generated later —
+      # possibly in a DIFFERENT directory scope (the phase-219 idempotency
+      # guard early-returns there, but the CACHE stash written on the first,
+      # generating call persists globally, so guard-skipped packages still
+      # contribute their files to dependents' IDL_DEPENDS).
+      set(_cyc_stash "${_cyc_dep_idls}")
+      list(APPEND _cyc_stash ${_cyc_own_idls})
+      if(_cyc_stash)
+        list(REMOVE_DUPLICATES _cyc_stash)
+      endif()
+      set(_NROS_PKG_${target}_CYC_IDL_FILES "${_cyc_stash}" CACHE INTERNAL
+        "phase-305 W2: ${target}'s generated cyclone .idl closure")
       if(_cyc_sources)
         add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
         # idlc lays the descriptor `.c`/`.h` out as

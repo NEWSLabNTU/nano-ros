@@ -182,3 +182,91 @@ fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
         "register.c missing whole-archive-friendly constructor hook: {reg_c}"
     );
 }
+
+/// phase-305 W2 (issue 0258) — `nros codegen resolve-deps` must not collect
+/// rosidl-DERIVED `srv/<Srv>_{Request,Response,Event}.msg` siblings (installed
+/// AMENT packages ship them next to each `.srv`; Humble's nav_msgs is the
+/// canonical shape). Collected, they double-lower each service and hand the
+/// cyclone typesupport stage msg-shaped IDLs whose cross-package includes
+/// idlc rejects. Stages a nav_msgs-shaped workspace pkg (real msg + real srv
+/// + derived siblings) behind `NROS_INTERFACE_SEARCH_PATH` and asserts the
+/// emitted cmake file list keeps the sources and drops the derived pair.
+#[test]
+fn resolve_deps_skips_derived_srv_sibling_msgs() {
+    if !nros_tests::require_nros_cli() {
+        nros_tests::skip!("nros CLI not available");
+    }
+    let nros = nros_tests::nros_cli_bin_path().expect("nros CLI resolved");
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+
+    // Workspace interface pkg mimicking an installed nav_msgs share dir.
+    let pkg = root.join("ws/nav_like_msgs");
+    fs::create_dir_all(pkg.join("msg")).expect("mkdir msg");
+    fs::create_dir_all(pkg.join("srv")).expect("mkdir srv");
+    fs::write(
+        pkg.join("package.xml"),
+        r#"<?xml version="1.0"?>
+<package format="3">
+  <name>nav_like_msgs</name>
+  <version>0.1.0</version>
+  <description>staged</description>
+  <maintainer email="dev@example.com">Dev</maintainer>
+  <license>Apache-2.0</license>
+</package>
+"#,
+    )
+    .expect("write pkg xml");
+    fs::write(pkg.join("msg/Odometry.msg"), "int32 x\n").expect("write msg");
+    fs::write(pkg.join("srv/GetMap.srv"), "---\nint32 y\n").expect("write srv");
+    // The rosidl-derived siblings an installed pkg ships alongside the .srv.
+    fs::write(pkg.join("srv/GetMap_Request.msg"), "\n").expect("write derived");
+    fs::write(pkg.join("srv/GetMap_Response.msg"), "int32 y\n").expect("write derived");
+
+    // Consumer depending on the staged pkg.
+    let consumer = root.join("consumer");
+    fs::create_dir_all(&consumer).expect("mkdir consumer");
+    fs::write(
+        consumer.join("package.xml"),
+        r#"<?xml version="1.0"?>
+<package format="3">
+  <name>consumer</name>
+  <version>0.1.0</version>
+  <description>staged</description>
+  <maintainer email="dev@example.com">Dev</maintainer>
+  <license>Apache-2.0</license>
+  <depend>nav_like_msgs</depend>
+</package>
+"#,
+    )
+    .expect("write consumer xml");
+
+    let out_cmake = root.join("resolved.cmake");
+    let status = Command::new(&nros)
+        .args(["codegen", "resolve-deps"])
+        .arg("--package-xml")
+        .arg(consumer.join("package.xml"))
+        .arg("--output-cmake")
+        .arg(&out_cmake)
+        .env("NROS_INTERFACE_SEARCH_PATH", root.join("ws"))
+        // Isolate from any sourced ROS env: the staged ws pkg is the SSoT.
+        .env_remove("AMENT_PREFIX_PATH")
+        .status()
+        .expect("spawn nros resolve-deps");
+    assert!(status.success(), "resolve-deps failed: {status}");
+
+    let body = fs::read_to_string(&out_cmake).expect("read resolved.cmake");
+    assert!(
+        body.contains("Odometry.msg"),
+        "source msg missing from resolved file list:\n{body}"
+    );
+    assert!(
+        body.contains("GetMap.srv"),
+        "source srv missing from resolved file list:\n{body}"
+    );
+    assert!(
+        !body.contains("GetMap_Request.msg") && !body.contains("GetMap_Response.msg"),
+        "derived srv sibling msgs must be filtered (issue 0258):\n{body}"
+    );
+}

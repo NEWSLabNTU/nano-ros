@@ -563,13 +563,38 @@ targets = [\"${NROS_RUST_TARGET}\"]
       get_filename_component(_cyc_pkgdir "${_cyc_ifdir}" DIRECTORY)
       set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
       set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
+      # phase-305 W2 (issue 0258) — file-level cross-package IDL ordering;
+      # twin of the canonical generator's cyclone stage (keep in sync).
+      # Deps' generated .idl closures come from the CACHE stash written by
+      # whichever call generated them; every pass-2 idlc command then
+      # depends on the dep IDL FILES, not just the sibling ts target.
+      set(_cyc_dep_idls "")
+      foreach(_dep ${_ARG_DEPENDENCIES})
+        if(DEFINED CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES})
+          list(APPEND _cyc_dep_idls "$CACHE{_NROS_PKG_${_dep}_CYC_IDL_FILES}")
+        endif()
+      endforeach()
+      if(_cyc_dep_idls)
+        list(REMOVE_DUPLICATES _cyc_dep_idls)
+      endif()
       nros_rmw_cyclonedds_generate_from_msg(_cyc_sources
         PKG_NAME   "${target}"
         PKG_DIR    "${_cyc_pkgdir}"
         INTERFACES ${_cyc_ifaces}
         INCLUDE_ROOT "${_cyc_idl_root}"
         GEN_ROOT     "${_cyc_gen_root}"
-        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}")
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}"
+        IDL_DEPENDS ${_cyc_dep_idls}
+        IDL_FILES_VAR _cyc_own_idls)
+      # Stash this package's IDL closure for later-generated dependents
+      # (persists across directory scopes / guard-skipped calls).
+      set(_cyc_stash "${_cyc_dep_idls}")
+      list(APPEND _cyc_stash ${_cyc_own_idls})
+      if(_cyc_stash)
+        list(REMOVE_DUPLICATES _cyc_stash)
+      endif()
+      set(_NROS_PKG_${target}_CYC_IDL_FILES "${_cyc_stash}" CACHE INTERNAL
+        "phase-305 W2: ${target}'s generated cyclone .idl closure")
       if(_cyc_sources)
         add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
         target_include_directories(${target}__cyclonedds_ts PRIVATE

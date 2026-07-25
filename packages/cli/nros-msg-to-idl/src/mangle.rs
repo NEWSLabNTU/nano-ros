@@ -5,7 +5,6 @@
 /// IDL reserved words that legally appear as ROS field names but
 /// collide with the grammar. Mirrored verbatim from the python's
 /// `_IDL_RESERVED` set so member-escape behaviour is bit-identical.
-#[allow(dead_code)]
 const IDL_RESERVED: &[&str] = &[
     "sequence",
     "string",
@@ -36,6 +35,20 @@ const IDL_RESERVED: &[&str] = &[
     "case",
     "default",
     "unsigned",
+    // IDL 4.x additions Cyclone 0.10.5's idlc also treats as keywords
+    // (phase-305 W2: nav_msgs' {Get,Set,Load}Map srvs carry a `map` field).
+    "map",
+    "bitmask",
+    "bitset",
+    "bitfield",
+    "int8",
+    "uint8",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
 ];
 
 /// Mirror of `SERVICE_HEADER_FIELDS` — Phase 117.X.3 / 117.12.B request
@@ -69,6 +82,11 @@ pub fn mangle_idl(src: &str, inject_service_header: bool) -> String {
         // and wrapper braces carry no `::msg::` triples). The python
         // applies this to every line; we mirror that.
         let line = mangle_scoped_refs(raw);
+        // phase-305 W2 (issue 0258): escape reserved member names in the
+        // msg/srv path (python does the same in `mangle_idl`) — installed
+        // packages hit them (nav_msgs {Get,Set,Load}Map's `map` member).
+        // Idempotent: an already-escaped `_map` is not in the reserved set.
+        let line = escape_member(&line);
 
         if let Some((indent_owned, name, rest)) = match_struct(&line) {
             let new_indent = format!("{indent_owned}  ");
@@ -105,6 +123,54 @@ pub fn mangle_idl(src: &str, inject_service_header: bool) -> String {
     let mut joined = out_lines.join("\n");
     joined.push('\n');
     joined
+}
+
+/// Mirror of the python `_FIELD_DECL_RE` gate + `_escape_member`:
+/// a member-declaration line (`<ws><type> <name>;`) whose `<name>` is
+/// an `IDL_RESERVED` word gets the IDL escaped-identifier `_` prefix.
+/// Any line that is not a field declaration in the python regex's
+/// charset (`^\s*[A-Za-z_][\w:<>, ]*\s+[A-Za-z_]\w*;\s*$`) is returned
+/// unchanged, keeping the two lowerings bit-identical.
+fn escape_member(line: &str) -> String {
+    let trimmed_end = line.trim_end();
+    let Some(body) = trimmed_end.strip_suffix(';') else {
+        return line.to_string();
+    };
+    // Whole-line charset gate (python `_FIELD_DECL_RE`): leading ws, then
+    // an identifier start, then only word/`:<>, `/ws chars up to the `;`.
+    let after_ws = body.trim_start();
+    let Some(first) = after_ws.chars().next() else {
+        return line.to_string();
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return line.to_string();
+    }
+    if !after_ws
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '<' | '>' | ',' | ' ' | '\t'))
+    {
+        return line.to_string();
+    }
+    // Split `<type> <name>` on the LAST whitespace run (python's greedy
+    // `(?P<type>.*\s)(?P<name>[A-Za-z_]\w*)`).
+    let Some(name_start) = body.rfind([' ', '\t']).map(|i| i + 1) else {
+        return line.to_string();
+    };
+    let name = &body[name_start..];
+    if name.is_empty()
+        || !name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return line.to_string();
+    }
+    if !IDL_RESERVED.contains(&name) {
+        return line.to_string();
+    }
+    // python: f"{type}_{name};" — the trailing `\s*` after `;` is dropped.
+    format!("{}_{name};", &trimmed_end[..name_start])
 }
 
 /// Detect a `<indent>struct <Name> {` line. Returns

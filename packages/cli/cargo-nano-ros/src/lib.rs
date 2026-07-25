@@ -1212,6 +1212,64 @@ pub struct ResolvedPackage {
     pub deps: Vec<String>,
 }
 
+/// Collect a package's SOURCE interface files from its share dir
+/// (`msg/`, `srv/`, `action/` — `.msg`/`.srv`/`.action` extensions).
+///
+/// phase-305 W2 (issue 0258): installed AMENT packages ship rosidl-DERIVED
+/// `srv/<Srv>_{Request,Response,Event}.msg` siblings next to each `.srv`
+/// (Humble emits Request/Response; later editions add Event). They are
+/// generator OUTPUT, not source interfaces — collecting them double-lowers
+/// each service and hands the cyclone typesupport stage msg-shaped IDLs
+/// (`GetMap_Response.idl` et al) whose cross-package includes idlc then
+/// trips over. Filter out any `.msg` whose stem is `<stem>_<suffix>` for a
+/// same-package `.srv` stem. Hand-written msgs cannot collide: rosidl
+/// rejects `_` in interface names, so `Foo_Request.msg` is only ever the
+/// derived artifact.
+pub fn collect_interface_files(share_dir: &Path) -> Result<Vec<PathBuf>> {
+    const DERIVED_SUFFIXES: [&str; 3] = ["_Request", "_Response", "_Event"];
+
+    let mut files = Vec::new();
+    for subdir in &["msg", "srv", "action"] {
+        let dir = share_dir.join(subdir);
+        if dir.exists() {
+            let mut entries: Vec<_> = std::fs::read_dir(&dir)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| e == "msg" || e == "srv" || e == "action")
+                })
+                .collect();
+            entries.sort();
+            files.extend(entries);
+        }
+    }
+
+    let srv_stems: HashSet<String> = files
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "srv"))
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()))
+        .map(str::to_string)
+        .collect();
+
+    files.retain(|p| {
+        if p.extension().is_none_or(|e| e != "msg") {
+            return true;
+        }
+        let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else {
+            return true;
+        };
+        let derived = DERIVED_SUFFIXES.iter().any(|suffix| {
+            stem.strip_suffix(suffix)
+                .is_some_and(|base| srv_stems.contains(base))
+        });
+        !derived
+    });
+
+    Ok(files)
+}
+
 /// Resolve interface dependencies from package.xml and output a CMake script.
 ///
 /// Parses `package.xml`, resolves transitive deps via ament index (with bundled
@@ -1253,23 +1311,7 @@ pub fn resolve_deps_from_package_xml(config: ResolveDepsConfig) -> Result<()> {
     let mut pkg_map: HashMap<&str, ResolvedPackage> = HashMap::new();
     for (pkg_name, package) in &interface_packages {
         // Collect interface files
-        let mut files = Vec::new();
-        for subdir in &["msg", "srv", "action"] {
-            let dir = package.share_dir.join(subdir);
-            if dir.exists() {
-                let mut entries: Vec<_> = std::fs::read_dir(&dir)?
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        p.extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(|e| e == "msg" || e == "srv" || e == "action")
-                    })
-                    .collect();
-                entries.sort();
-                files.extend(entries);
-            }
-        }
+        let files = collect_interface_files(&package.share_dir)?;
 
         // Get direct deps that are also interface packages
         let pkg_xml_path = package.share_dir.join("package.xml");
@@ -1870,4 +1912,43 @@ pub fn install_to_ament(config: InstallConfig) -> Result<()> {
     env::set_current_dir(original_dir)?;
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_interface_files;
+    use std::fs;
+
+    /// phase-305 W2 (issue 0258): the resolve-deps file collector must skip
+    /// rosidl-derived `srv/<Srv>_{Request,Response,Event}.msg` siblings (as
+    /// shipped by installed AMENT packages, e.g. Humble's nav_msgs) while
+    /// keeping every genuine source interface.
+    #[test]
+    fn collect_interface_files_filters_derived_srv_siblings() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let share = dir.path();
+        fs::create_dir_all(share.join("msg")).unwrap();
+        fs::create_dir_all(share.join("srv")).unwrap();
+
+        // Genuine source interfaces.
+        fs::write(share.join("msg/Odometry.msg"), "int32 x\n").unwrap();
+        fs::write(share.join("srv/GetMap.srv"), "---\nint32 y\n").unwrap();
+        // rosidl-derived siblings of GetMap.srv (Humble ships
+        // Request/Response; later editions add Event).
+        fs::write(share.join("srv/GetMap_Request.msg"), "\n").unwrap();
+        fs::write(share.join("srv/GetMap_Response.msg"), "int32 y\n").unwrap();
+        fs::write(share.join("srv/GetMap_Event.msg"), "\n").unwrap();
+        // Suffix-shaped stem WITHOUT a matching .srv — must be kept.
+        fs::write(share.join("msg/Lone_Request.msg"), "int32 z\n").unwrap();
+        // Non-interface noise the extension filter already drops.
+        fs::write(share.join("srv/GetMap.idl"), "\n").unwrap();
+
+        let files = collect_interface_files(share).expect("collect");
+        let names: Vec<&str> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap())
+            .collect();
+
+        assert_eq!(names, ["Lone_Request.msg", "Odometry.msg", "GetMap.srv"]);
+    }
 }

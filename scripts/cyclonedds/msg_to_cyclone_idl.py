@@ -208,6 +208,13 @@ def mangle_idl(src: str, inject_service_header: bool = False) -> str:
         # The struct-open / wrapper / `};` lines carry no scoped refs,
         # so this only rewrites member-field declarations.
         line = _mangle_scoped_refs(line)
+        # phase-305 W2 (issue 0258): escape reserved member names in the
+        # msg/srv path too, not just the action synthesizer — installed
+        # packages hit them (nav_msgs {Get,Set,Load}Map's `map` member;
+        # Cyclone 0.10.5's idlc knows the IDL 4.x `map` type). Idempotent:
+        # an already-escaped `_map` is not in the reserved set.
+        if _FIELD_DECL_RE.match(line):
+            line = _escape_member(line)
         m = _STRUCT_RE.match(line)
         if m:
             indent = m.group("indent")
@@ -287,6 +294,10 @@ _IDL_RESERVED = {
     "char", "wchar", "boolean", "octet", "struct", "union", "enum",
     "module", "interface", "typedef", "const", "fixed", "native", "any",
     "void", "in", "out", "inout", "switch", "case", "default", "unsigned",
+    # IDL 4.x additions Cyclone 0.10.5's idlc also treats as keywords
+    # (phase-305 W2: nav_msgs' {Get,Set,Load}Map srvs carry a `map` field).
+    "map", "bitmask", "bitset", "bitfield",
+    "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64",
 }
 
 
