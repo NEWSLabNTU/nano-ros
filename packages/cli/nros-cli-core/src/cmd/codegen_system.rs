@@ -1764,8 +1764,14 @@ structure:
         )
         .unwrap();
         let out = render_system_config_h(&jazzy, None, None);
-        assert!(out.contains("#define NROS_SYSTEM_ROS_EDITION \"jazzy\"\n"), "{out}");
-        assert!(out.contains("#define NROS_SYSTEM_ROS_EDITION_JAZZY\n"), "{out}");
+        assert!(
+            out.contains("#define NROS_SYSTEM_ROS_EDITION \"jazzy\"\n"),
+            "{out}"
+        );
+        assert!(
+            out.contains("#define NROS_SYSTEM_ROS_EDITION_JAZZY\n"),
+            "{out}"
+        );
 
         // Explicit humble is byte-identical to absent.
         let explicit_humble: SystemToml = toml::from_str(

@@ -225,13 +225,16 @@ mod tests {
         let srv = parse_service("int64 a\nint64 b\n---\nint64 sum\n").unwrap();
         let deps = HashSet::new();
 
+        let ph = RosEdition::Humble.type_hash();
         let result = generate_nros_service_package(
             "test_srvs",
             "AddTwoInts",
             &srv,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            ph,
+            ph,
+            ph,
             &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
@@ -281,13 +284,25 @@ mod tests {
                 .unwrap();
         let deps = HashSet::new();
 
+        let ph = RosEdition::Humble.type_hash().to_string();
+        let hashes = crate::rihs::ActionTypeHashes {
+            goal: ph.clone(),
+            result: ph.clone(),
+            feedback: ph.clone(),
+            send_goal_request: ph.clone(),
+            send_goal_response: ph.clone(),
+            get_result_request: ph.clone(),
+            get_result_response: ph.clone(),
+            feedback_message: ph.clone(),
+            action: ph,
+        };
         let result = generate_nros_action_package(
             "example_interfaces",
             "Fibonacci",
             &action,
             &deps,
             "0.1.0",
-            RosEdition::Humble,
+            &hashes,
             &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());

@@ -92,6 +92,84 @@ fn compute_msg_type_hash(
     Ok(rihs01(&desc))
 }
 
+/// Compute the three REP-2011 hashes a service emits (`_Request`, `_Response`,
+/// and the SERVICE itself). Humble → the placeholder for all three. Iron+ build
+/// the synthesized `_Event` DAG (§3a). A nested type that cannot be resolved is
+/// a HARD error — never a wrong hash.
+fn compute_service_type_hashes(
+    edition: RosEdition,
+    package: &str,
+    srv_name: &str,
+    service: &rosidl_parser::Service,
+    resolve: &MsgResolver<'_>,
+) -> Result<(String, String, String)> {
+    if !edition.uses_type_hash() {
+        let p = edition.type_hash().to_string();
+        return Ok((p.clone(), p.clone(), p));
+    }
+    let r = |f: &str| resolve(f);
+    let req = rosidl_codegen::rihs::service_member_type_description(
+        package,
+        srv_name,
+        "_Request",
+        &service.request,
+        r,
+    )
+    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name}_Request ({edition:?}): {e}"))?;
+    let resp = rosidl_codegen::rihs::service_member_type_description(
+        package,
+        srv_name,
+        "_Response",
+        &service.response,
+        r,
+    )
+    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name}_Response ({edition:?}): {e}"))?;
+    let svc = rosidl_codegen::rihs::build_service_type_description(
+        package,
+        srv_name,
+        &service.request,
+        &service.response,
+        r,
+    )
+    .map_err(|e| eyre::eyre!("RIHS01 {package}/srv/{srv_name} ({edition:?}): {e}"))?;
+    Ok((rihs01(&req), rihs01(&resp), rihs01(&svc)))
+}
+
+/// Compute the nine REP-2011 hashes an action emits. Humble → the placeholder
+/// for all nine; Iron+ synthesize the full action DAG (§3b). Unresolvable nested
+/// user type → HARD error.
+fn compute_action_type_hashes(
+    edition: RosEdition,
+    package: &str,
+    action_name: &str,
+    action: &rosidl_parser::Action,
+    resolve: &MsgResolver<'_>,
+) -> Result<rosidl_codegen::rihs::ActionTypeHashes> {
+    if !edition.uses_type_hash() {
+        let p = edition.type_hash().to_string();
+        return Ok(rosidl_codegen::rihs::ActionTypeHashes {
+            goal: p.clone(),
+            result: p.clone(),
+            feedback: p.clone(),
+            send_goal_request: p.clone(),
+            send_goal_response: p.clone(),
+            get_result_request: p.clone(),
+            get_result_response: p.clone(),
+            feedback_message: p.clone(),
+            action: p,
+        });
+    }
+    rosidl_codegen::rihs::action_type_hashes(
+        package,
+        action_name,
+        &action.spec.goal,
+        &action.spec.result,
+        &action.spec.feedback,
+        |f| resolve(f),
+    )
+    .map_err(|e| eyre::eyre!("RIHS01 {package}/action/{action_name} ({edition:?}): {e}"))
+}
+
 /// Generate nros Rust bindings for a ROS 2 package
 ///
 /// This generates pure Rust, no_std compatible bindings using heapless types.
@@ -192,13 +270,24 @@ pub fn generate_package(
             all_dependencies.extend(req_deps);
             all_dependencies.extend(resp_deps);
 
+            let (request_type_hash, response_type_hash, service_hash) =
+                compute_service_type_hashes(
+                    edition,
+                    &package.name,
+                    srv_name,
+                    &parsed_srv,
+                    &self_resolve,
+                )?;
+
             let generated = generate_nros_service_package(
                 &package.name,
                 srv_name,
                 &parsed_srv,
                 &all_dependencies,
                 &package.version,
-                edition,
+                &request_type_hash,
+                &response_type_hash,
+                &service_hash,
                 resolver,
             )
             .wrap_err_with(|| format!("Failed to generate nros service: {}", srv_name))?;
@@ -254,13 +343,21 @@ pub fn generate_package(
             all_dependencies.extend(result_deps);
             all_dependencies.extend(feedback_deps);
 
+            let action_hashes = compute_action_type_hashes(
+                edition,
+                &package.name,
+                action_name,
+                &parsed_action,
+                &self_resolve,
+            )?;
+
             let generated = generate_nros_action_package(
                 &package.name,
                 action_name,
                 &parsed_action,
                 &all_dependencies,
                 &package.version,
-                edition,
+                &action_hashes,
                 resolver,
             )
             .wrap_err_with(|| format!("Failed to generate nros action: {}", action_name))?;
@@ -702,6 +799,111 @@ mod tests {
                 "const TYPE_HASH: &'static str = \"{JAZZY_HEADER_HASH}\""
             )),
             "Jazzy Header (nested Time) must carry the real captured RIHS01 hash, got:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn jazzy_service_emits_real_rihs01_hashes() {
+        // std_srvs/srv/SetBool — Request=bool, Response=bool+string. The emitted
+        // Request/Response TYPE_HASH + the SERVICE_HASH must be the three distinct
+        // live-Jazzy values (the _Event DAG is synthesized internally).
+        let temp = tempfile::tempdir().unwrap();
+        let share = temp.path().join("std_srvs");
+        let srv_dir = share.join("srv");
+        fs::create_dir_all(&srv_dir).unwrap();
+        write_if_changed(
+            srv_dir.join("SetBool.srv"),
+            "bool data\n---\nbool success\nstring message\n",
+        )
+        .unwrap();
+        let package = Package::from_share_dir(share).unwrap();
+        let out = temp.path().join("out");
+        generate_package(
+            &package,
+            &out,
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
+        )
+        .unwrap();
+        let rs = fs::read_to_string(
+            out.join("std_srvs")
+                .join("src")
+                .join("srv")
+                .join("set_bool.rs"),
+        )
+        .unwrap();
+        // Request TYPE_HASH, Response TYPE_HASH, SERVICE_HASH — all three present.
+        for h in [
+            "RIHS01_c62fbb99d94e1b25e8ef9e109f9581956bb1b3361a45a4e5810c36a90d29932e", // _Request
+            "RIHS01_d0814e7f7b4880ab77e9c57426c7aa1562ab69f11eef8e2e968812f9cbd0b059", // _Response
+            "RIHS01_abe9e4bb6b41b40e6789712c00ec8871923e089af3f667a79992a428cff2da0a", // service
+        ] {
+            assert!(
+                rs.contains(h),
+                "generated SetBool must carry {h}, got:\n{rs}"
+            );
+        }
+    }
+
+    #[test]
+    fn jazzy_action_emits_nine_real_rihs01_hashes() {
+        // Fibonacci is self-contained (goal/result/feedback are primitives) so
+        // every nested type is an embedded built-in — no cross-pkg resolver.
+        let src = "int32 order\n---\nint32[] sequence\n---\nint32[] partial_sequence\n";
+        let temp = tempfile::tempdir().unwrap();
+        let share = temp.path().join("example_interfaces");
+        let action_dir = share.join("action");
+        fs::create_dir_all(&action_dir).unwrap();
+        write_if_changed(action_dir.join("Fibonacci.action"), src).unwrap();
+        let package = Package::from_share_dir(share).unwrap();
+        let out = temp.path().join("out");
+        generate_package(
+            &package,
+            &out,
+            RosEdition::Jazzy,
+            &CapacityResolver::empty(),
+            &no_cross_pkg_resolver,
+        )
+        .unwrap();
+        let rs = fs::read_to_string(
+            out.join("example_interfaces")
+                .join("src")
+                .join("action")
+                .join("fibonacci.rs"),
+        )
+        .unwrap();
+
+        // Expected hashes straight from the engine (ties codegen wiring to it).
+        let parsed = rosidl_parser::parse_action(src).unwrap();
+        let h = rosidl_codegen::rihs::action_type_hashes(
+            "example_interfaces",
+            "Fibonacci",
+            &parsed.spec.goal,
+            &parsed.spec.result,
+            &parsed.spec.feedback,
+            |_| None,
+        )
+        .unwrap();
+        for (label, hash) in [
+            ("goal", &h.goal),
+            ("result", &h.result),
+            ("feedback", &h.feedback),
+            ("send_goal_request", &h.send_goal_request),
+            ("send_goal_response", &h.send_goal_response),
+            ("get_result_request", &h.get_result_request),
+            ("get_result_response", &h.get_result_response),
+            ("feedback_message", &h.feedback_message),
+            ("action", &h.action),
+        ] {
+            assert!(
+                rs.contains(hash.as_str()),
+                "{label} hash {hash} missing:\n{rs}"
+            );
+        }
+        assert!(
+            !rs.contains("TypeHashNotSupported"),
+            "Jazzy action must not emit the Humble placeholder:\n{rs}"
         );
     }
 

@@ -11,7 +11,7 @@ use crate::{
         NrosField, RmwField,
     },
     types::{
-        NrosCodegenMode, RosEdition, c_type_for_constant, constant_value_to_rust, escape_keyword,
+        NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
         nros_type_for_constant, rust_type_for_constant, rust_type_for_field, to_c_package_name,
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
@@ -165,7 +165,7 @@ pub fn generate_nros_action_package(
     action: &Action,
     all_dependencies: &HashSet<String>,
     package_version: &str,
-    edition: RosEdition,
+    hashes: &crate::rihs::ActionTypeHashes,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosActionPackage, GeneratorError> {
     // Extract dependencies from goal, result, and feedback
@@ -285,8 +285,6 @@ pub fn generate_nros_action_package(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
-
     let has_goal_fields = !goal_fields.is_empty();
     let has_result_fields = !result_fields.is_empty();
     let has_feedback_fields = !feedback_fields.is_empty();
@@ -324,7 +322,15 @@ pub fn generate_nros_action_package(
     let action_template = ActionNrosTemplate {
         package_name,
         action_name,
-        type_hash,
+        goal_type_hash: &hashes.goal,
+        result_type_hash: &hashes.result,
+        feedback_type_hash: &hashes.feedback,
+        send_goal_request_type_hash: &hashes.send_goal_request,
+        send_goal_response_type_hash: &hashes.send_goal_response,
+        get_result_request_type_hash: &hashes.get_result_request,
+        get_result_response_type_hash: &hashes.get_result_response,
+        feedback_message_type_hash: &hashes.feedback_message,
+        action_hash: &hashes.action,
         goal_fields,
         goal_constants,
         result_fields,
@@ -377,7 +383,7 @@ pub fn generate_nros_inline_action(
     package_name: &str,
     action_name: &str,
     action: &Action,
-    edition: RosEdition,
+    hashes: &crate::rihs::ActionTypeHashes,
     resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
@@ -445,7 +451,6 @@ pub fn generate_nros_inline_action(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
     let has_goal_fields = !goal_fields.is_empty();
     let has_result_fields = !result_fields.is_empty();
     let has_feedback_fields = !feedback_fields.is_empty();
@@ -483,7 +488,15 @@ pub fn generate_nros_inline_action(
     let template = ActionNrosTemplate {
         package_name,
         action_name,
-        type_hash,
+        goal_type_hash: &hashes.goal,
+        result_type_hash: &hashes.result,
+        feedback_type_hash: &hashes.feedback,
+        send_goal_request_type_hash: &hashes.send_goal_request,
+        send_goal_response_type_hash: &hashes.send_goal_response,
+        get_result_request_type_hash: &hashes.get_result_request,
+        get_result_response_type_hash: &hashes.get_result_response,
+        feedback_message_type_hash: &hashes.feedback_message,
+        action_hash: &hashes.action,
         goal_fields,
         goal_constants,
         result_fields,

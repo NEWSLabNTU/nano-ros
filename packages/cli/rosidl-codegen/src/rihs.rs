@@ -324,16 +324,28 @@ pub fn field_type_desc(ft: &AstFieldType, same_pkg: &str) -> FieldTypeDesc {
 /// type description — only fields, in source order).
 pub fn message_to_individual(type_name: &str, msg: &Message) -> IndividualTypeDescription {
     let same_pkg = type_name.split('/').next().unwrap_or("");
+    let fields: Vec<FieldDesc> = msg
+        .fields
+        .iter()
+        .map(|f| FieldDesc {
+            name: f.name.clone(),
+            ty: field_type_desc(&f.field_type, same_pkg),
+        })
+        .collect();
+    // rosidl adds `uint8 structure_needs_at_least_one_member` to any message with
+    // no fields (e.g. an empty action feedback), and the hash sees it. Only
+    // triggers for genuinely-empty types — non-empty types are unaffected.
+    let fields = if fields.is_empty() {
+        vec![FieldDesc {
+            name: "structure_needs_at_least_one_member".to_string(),
+            ty: FieldTypeDesc::scalar(type_id::UINT8),
+        }]
+    } else {
+        fields
+    };
     IndividualTypeDescription {
         type_name: type_name.to_string(),
-        fields: msg
-            .fields
-            .iter()
-            .map(|f| FieldDesc {
-                name: f.name.clone(),
-                ty: field_type_desc(&f.field_type, same_pkg),
-            })
-            .collect(),
+        fields,
     }
 }
 
@@ -385,6 +397,366 @@ pub fn build_type_description(
         type_description: top,
         referenced_type_descriptions: referenced,
     })
+}
+
+// =============================================================================
+// Service / action `_Event` synthesis (W1c). rcl hashes the WHOLE service/action
+// type-description DAG, which includes rosidl-synthesized members
+// (`_Request`/`_Response`/`_Event`, and for actions two nested services). The
+// exact shapes are captured byte-for-byte from live Jazzy — see
+// `docs/research/rep-2011-type-hash.md` §3a/§3b. The fixed built-ins
+// (`service_msgs/ServiceEventInfo`, `builtin_interfaces/Time`,
+// `unique_identifier_msgs/UUID`) are EMBEDDED as constants so the hash needs no
+// ament dependency.
+// =============================================================================
+
+use rosidl_parser::ast::Field;
+
+fn mk_field(name: &str, ft: AstFieldType) -> Field {
+    Field {
+        field_type: ft,
+        name: name.to_string(),
+        default_value: None,
+    }
+}
+
+/// A NESTED_TYPE field whose target is a fully-qualified name (contains `/`, so
+/// [`namespaced_fqn`] passes it through verbatim — lets us name `pkg/srv/…`).
+fn nested_field(name: &str, fqn: &str) -> Field {
+    mk_field(
+        name,
+        AstFieldType::NamespacedType {
+            package: None,
+            name: fqn.to_string(),
+        },
+    )
+}
+
+/// A `<Nested>[<=1]` field (bounded sequence of a nested type, capacity 1 — the
+/// `_Event` request/response shape, REP-2011 type_id 97).
+fn bounded1_nested_field(name: &str, fqn: &str) -> Field {
+    mk_field(
+        name,
+        AstFieldType::BoundedSequence {
+            element_type: Box::new(AstFieldType::NamespacedType {
+                package: None,
+                name: fqn.to_string(),
+            }),
+            max_size: 1,
+        },
+    )
+}
+
+fn synth_msg(fields: Vec<Field>) -> Message {
+    Message {
+        fields,
+        constants: vec![],
+    }
+}
+
+/// Canonical `builtin_interfaces/msg/Time` (`int32 sec`, `uint32 nanosec`).
+fn builtin_time_msg() -> Message {
+    synth_msg(vec![
+        mk_field("sec", AstFieldType::Primitive(PrimitiveType::Int32)),
+        mk_field("nanosec", AstFieldType::Primitive(PrimitiveType::UInt32)),
+    ])
+}
+
+/// Canonical `service_msgs/msg/ServiceEventInfo` — the fixed rosidl service-event
+/// header. `char[16] client_gid` maps to `uint8[16]` (rosidl `char`→uint8, id
+/// 51). Constants (REQUEST_SENT…) are NOT part of the type description.
+fn service_event_info_msg() -> Message {
+    synth_msg(vec![
+        mk_field("event_type", AstFieldType::Primitive(PrimitiveType::UInt8)),
+        nested_field("stamp", "builtin_interfaces/msg/Time"),
+        mk_field(
+            "client_gid",
+            AstFieldType::Array {
+                element_type: Box::new(AstFieldType::Primitive(PrimitiveType::UInt8)),
+                size: 16,
+            },
+        ),
+        mk_field(
+            "sequence_number",
+            AstFieldType::Primitive(PrimitiveType::Int64),
+        ),
+    ])
+}
+
+/// Canonical `unique_identifier_msgs/msg/UUID` (`uint8[16] uuid`).
+fn uuid_msg() -> Message {
+    synth_msg(vec![mk_field(
+        "uuid",
+        AstFieldType::Array {
+            element_type: Box::new(AstFieldType::Primitive(PrimitiveType::UInt8)),
+            size: 16,
+        },
+    )])
+}
+
+/// A `resolve` that first serves the embedded service-event built-ins
+/// (ServiceEventInfo, Time, UUID), then falls back to the caller's resolver for
+/// everything nested inside the user request/response/goal/... messages.
+fn with_builtins<'a>(
+    resolve: &'a (impl Fn(&str) -> Option<Message> + 'a),
+) -> impl Fn(&str) -> Option<Message> + 'a {
+    move |fqn: &str| match fqn {
+        "service_msgs/msg/ServiceEventInfo" => Some(service_event_info_msg()),
+        "builtin_interfaces/msg/Time" => Some(builtin_time_msg()),
+        "unique_identifier_msgs/msg/UUID" => Some(uuid_msg()),
+        other => resolve(other),
+    }
+}
+
+/// The synthesized `<pkg>/srv/<Srv>_Event` message (REP-2011 §3a):
+/// `{ info: ServiceEventInfo, request: <Srv>_Request[<=1], response: <Srv>_Response[<=1] }`.
+fn service_event_msg(req_fqn: &str, resp_fqn: &str) -> Message {
+    synth_msg(vec![
+        nested_field("info", "service_msgs/msg/ServiceEventInfo"),
+        bounded1_nested_field("request", req_fqn),
+        bounded1_nested_field("response", resp_fqn),
+    ])
+}
+
+/// Build the DAG-closed [`TypeDescription`] for a SERVICE `<pkg>/srv/<Srv>` from
+/// its parsed request/response messages. The top-level has three `NESTED_TYPE`
+/// members (`request_message`/`response_message`/`event_message`); the `_Event`
+/// closes over the embedded `ServiceEventInfo`/`Time`. `resolve` covers types
+/// nested INSIDE the user request/response (cross-package). Reproduces Jazzy's
+/// service hash byte-for-byte (see the SetBool fixtures).
+pub fn build_service_type_description(
+    package: &str,
+    srv_name: &str,
+    request: &Message,
+    response: &Message,
+    resolve: impl Fn(&str) -> Option<Message>,
+) -> Result<TypeDescription, String> {
+    let base = format!("{package}/srv/{srv_name}");
+    let req_fqn = format!("{base}_Request");
+    let resp_fqn = format!("{base}_Response");
+    let event_fqn = format!("{base}_Event");
+
+    let top = synth_msg(vec![
+        nested_field("request_message", &req_fqn),
+        nested_field("response_message", &resp_fqn),
+        nested_field("event_message", &event_fqn),
+    ]);
+    let event = service_event_msg(&req_fqn, &resp_fqn);
+    let request = request.clone();
+    let response = response.clone();
+    let builtins = with_builtins(&resolve);
+    let combined = |fqn: &str| -> Option<Message> {
+        if fqn == req_fqn {
+            Some(request.clone())
+        } else if fqn == resp_fqn {
+            Some(response.clone())
+        } else if fqn == event_fqn {
+            Some(event.clone())
+        } else {
+            builtins(fqn)
+        }
+    };
+    build_type_description(&base, &top, combined)
+}
+
+/// The `RIHS01_…` for a service's `<Srv>_Request` / `<Srv>_Response` standalone
+/// type (each is a top-level type_name with its own hash on the wire). `suffix`
+/// is `"_Request"` / `"_Response"`; `msg` the parsed request/response.
+pub fn service_member_type_description(
+    package: &str,
+    srv_name: &str,
+    suffix: &str,
+    msg: &Message,
+    resolve: impl Fn(&str) -> Option<Message>,
+) -> Result<TypeDescription, String> {
+    let fqn = format!("{package}/srv/{srv_name}{suffix}");
+    build_type_description(&fqn, msg, with_builtins(&resolve))
+}
+
+/// The synthesized member messages of an action `<pkg>/action/<A>` (REP-2011
+/// §3b). Assembled from the parsed goal/result/feedback + the rosidl action
+/// conventions (goal_id/accepted/status wrappers + the two nested services).
+/// Returns `(top, [(fqn, message)…])` — the top-level action description and
+/// every synthesized member the resolver must serve.
+fn action_members(
+    package: &str,
+    action_name: &str,
+    goal: &Message,
+    result: &Message,
+    feedback: &Message,
+) -> (Message, Vec<(String, Message)>) {
+    let base = format!("{package}/action/{action_name}");
+    let goal_fqn = format!("{base}_Goal");
+    let result_fqn = format!("{base}_Result");
+    let feedback_fqn = format!("{base}_Feedback");
+    let send_goal_fqn = format!("{base}_SendGoal");
+    let get_result_fqn = format!("{base}_GetResult");
+    let feedback_msg_fqn = format!("{base}_FeedbackMessage");
+    let send_goal_req_fqn = format!("{send_goal_fqn}_Request");
+    let send_goal_resp_fqn = format!("{send_goal_fqn}_Response");
+    let get_result_req_fqn = format!("{get_result_fqn}_Request");
+    let get_result_resp_fqn = format!("{get_result_fqn}_Response");
+
+    // _SendGoal service: Request = UUID goal_id + <A>_Goal goal; Response =
+    // bool accepted + Time stamp.
+    let send_goal_req = synth_msg(vec![
+        nested_field("goal_id", "unique_identifier_msgs/msg/UUID"),
+        nested_field("goal", &goal_fqn),
+    ]);
+    let send_goal_resp = synth_msg(vec![
+        mk_field("accepted", AstFieldType::Primitive(PrimitiveType::Bool)),
+        nested_field("stamp", "builtin_interfaces/msg/Time"),
+    ]);
+    // _GetResult service: Request = UUID goal_id; Response = int8 status +
+    // <A>_Result result.
+    let get_result_req = synth_msg(vec![nested_field(
+        "goal_id",
+        "unique_identifier_msgs/msg/UUID",
+    )]);
+    let get_result_resp = synth_msg(vec![
+        mk_field("status", AstFieldType::Primitive(PrimitiveType::Int8)),
+        nested_field("result", &result_fqn),
+    ]);
+    // _FeedbackMessage = UUID goal_id + <A>_Feedback feedback.
+    let feedback_message = synth_msg(vec![
+        nested_field("goal_id", "unique_identifier_msgs/msg/UUID"),
+        nested_field("feedback", &feedback_fqn),
+    ]);
+    // The two nested SERVICES' top-level 3-member descriptions.
+    let svc_top = |req: &str, resp: &str, event: &str| {
+        synth_msg(vec![
+            nested_field("request_message", req),
+            nested_field("response_message", resp),
+            nested_field("event_message", event),
+        ])
+    };
+    let send_goal_service = svc_top(
+        &send_goal_req_fqn,
+        &send_goal_resp_fqn,
+        &format!("{send_goal_fqn}_Event"),
+    );
+    let get_result_service = svc_top(
+        &get_result_req_fqn,
+        &get_result_resp_fqn,
+        &format!("{get_result_fqn}_Event"),
+    );
+
+    let top = synth_msg(vec![
+        nested_field("goal", &goal_fqn),
+        nested_field("result", &result_fqn),
+        nested_field("feedback", &feedback_fqn),
+        nested_field("send_goal_service", &send_goal_fqn),
+        nested_field("get_result_service", &get_result_fqn),
+        nested_field("feedback_message", &feedback_msg_fqn),
+    ]);
+
+    let members = vec![
+        (goal_fqn, goal.clone()),
+        (result_fqn, result.clone()),
+        (feedback_fqn, feedback.clone()),
+        (send_goal_fqn.clone(), send_goal_service),
+        (get_result_fqn.clone(), get_result_service),
+        (feedback_msg_fqn, feedback_message),
+        (
+            format!("{send_goal_fqn}_Event"),
+            service_event_msg(&send_goal_req_fqn, &send_goal_resp_fqn),
+        ),
+        (send_goal_req_fqn, send_goal_req),
+        (send_goal_resp_fqn, send_goal_resp),
+        (
+            format!("{get_result_fqn}_Event"),
+            service_event_msg(&get_result_req_fqn, &get_result_resp_fqn),
+        ),
+        (get_result_req_fqn, get_result_req),
+        (get_result_resp_fqn, get_result_resp),
+    ];
+    (top, members)
+}
+
+/// The nine REP-2011 hashes an action emits — one per generated struct plus the
+/// action itself. Each is the standalone hash of that top-level type_name.
+#[derive(Debug, Clone)]
+pub struct ActionTypeHashes {
+    pub goal: String,
+    pub result: String,
+    pub feedback: String,
+    pub send_goal_request: String,
+    pub send_goal_response: String,
+    pub get_result_request: String,
+    pub get_result_response: String,
+    pub feedback_message: String,
+    pub action: String,
+}
+
+/// Compute all nine action hashes (§3b) from the parsed goal/result/feedback.
+/// `resolve` covers user types nested inside goal/result/feedback.
+// `&combined` is reused across every `hash_member` call — clippy's
+// move-it suggestion would break the loop.
+#[allow(clippy::needless_borrows_for_generic_args)]
+pub fn action_type_hashes(
+    package: &str,
+    action_name: &str,
+    goal: &Message,
+    result: &Message,
+    feedback: &Message,
+    resolve: impl Fn(&str) -> Option<Message>,
+) -> Result<ActionTypeHashes, String> {
+    let base = format!("{package}/action/{action_name}");
+    let (top, members) = action_members(package, action_name, goal, result, feedback);
+    let builtins = with_builtins(&resolve);
+    let combined = |fqn: &str| -> Option<Message> {
+        members
+            .iter()
+            .find(|(k, _)| k == fqn)
+            .map(|(_, m)| m.clone())
+            .or_else(|| builtins(fqn))
+    };
+    let hash_member = |suffix: &str| -> Result<String, String> {
+        let fqn = format!("{base}{suffix}");
+        let msg = members
+            .iter()
+            .find(|(k, _)| *k == fqn)
+            .map(|(_, m)| m.clone())
+            .ok_or_else(|| format!("RIHS: action member '{fqn}' not synthesized"))?;
+        Ok(rihs01(&build_type_description(&fqn, &msg, &combined)?))
+    };
+    Ok(ActionTypeHashes {
+        goal: hash_member("_Goal")?,
+        result: hash_member("_Result")?,
+        feedback: hash_member("_Feedback")?,
+        send_goal_request: hash_member("_SendGoal_Request")?,
+        send_goal_response: hash_member("_SendGoal_Response")?,
+        get_result_request: hash_member("_GetResult_Request")?,
+        get_result_response: hash_member("_GetResult_Response")?,
+        feedback_message: hash_member("_FeedbackMessage")?,
+        action: rihs01(&build_type_description(&base, &top, &combined)?),
+    })
+}
+
+/// Build the DAG-closed [`TypeDescription`] for an ACTION `<pkg>/action/<A>` from
+/// its parsed goal/result/feedback messages (REP-2011 §3b — six top-level
+/// members, two nested service triads). Reproduces Jazzy's action hash
+/// byte-for-byte (see the LookupTransform fixtures). `resolve` covers user types
+/// nested inside goal/result/feedback (e.g. `geometry_msgs`, `builtin_interfaces/Duration`).
+pub fn build_action_type_description(
+    package: &str,
+    action_name: &str,
+    goal: &Message,
+    result: &Message,
+    feedback: &Message,
+    resolve: impl Fn(&str) -> Option<Message>,
+) -> Result<TypeDescription, String> {
+    let base = format!("{package}/action/{action_name}");
+    let (top, members) = action_members(package, action_name, goal, result, feedback);
+    let builtins = with_builtins(&resolve);
+    let combined = |fqn: &str| -> Option<Message> {
+        members
+            .iter()
+            .find(|(k, _)| k == fqn)
+            .map(|(_, m)| m.clone())
+            .or_else(|| builtins(fqn))
+    };
+    build_type_description(&base, &top, combined)
 }
 
 /// Compute the `RIHS01_<64 hex>` type hash of a canonical [`TypeDescription`].
@@ -657,6 +1029,254 @@ mod tests {
         assert_eq!(
             rihs01(&header_desc),
             "RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01"
+        );
+    }
+
+    // --- W1c: service `_Event` synthesis (SetBool golden, live Jazzy) ---
+
+    /// `std_srvs/srv/SetBool`: Request = `bool data`; Response = `bool success` +
+    /// `string message`. All five DAG hashes (service, Request, Response, Event,
+    /// ServiceEventInfo) must match the captured Jazzy values byte-for-byte.
+    #[test]
+    fn setbool_service_reproduces_live_jazzy_hashes() {
+        let request = Message {
+            fields: vec![field("data", Ast::Primitive(PrimitiveType::Bool))],
+            constants: vec![],
+        };
+        let response = Message {
+            fields: vec![
+                field("success", Ast::Primitive(PrimitiveType::Bool)),
+                field("message", Ast::String),
+            ],
+            constants: vec![],
+        };
+        let no_extra = |_: &str| None;
+
+        // The service itself (3 NESTED members + the whole _Event DAG).
+        let svc =
+            build_service_type_description("std_srvs", "SetBool", &request, &response, no_extra)
+                .unwrap();
+        assert_eq!(
+            rihs01(&svc),
+            "RIHS01_abe9e4bb6b41b40e6789712c00ec8871923e089af3f667a79992a428cff2da0a"
+        );
+
+        // Request / Response standalone.
+        let req =
+            service_member_type_description("std_srvs", "SetBool", "_Request", &request, no_extra)
+                .unwrap();
+        assert_eq!(
+            rihs01(&req),
+            "RIHS01_c62fbb99d94e1b25e8ef9e109f9581956bb1b3361a45a4e5810c36a90d29932e"
+        );
+        let resp = service_member_type_description(
+            "std_srvs",
+            "SetBool",
+            "_Response",
+            &response,
+            no_extra,
+        )
+        .unwrap();
+        assert_eq!(
+            rihs01(&resp),
+            "RIHS01_d0814e7f7b4880ab77e9c57426c7aa1562ab69f11eef8e2e968812f9cbd0b059"
+        );
+
+        // The synthesized _Event (its own top-level hash).
+        let event_msg = service_event_msg(
+            "std_srvs/srv/SetBool_Request",
+            "std_srvs/srv/SetBool_Response",
+        );
+        let event = build_type_description(
+            "std_srvs/srv/SetBool_Event",
+            &event_msg,
+            with_builtins(&|fqn: &str| match fqn {
+                "std_srvs/srv/SetBool_Request" => Some(request.clone()),
+                "std_srvs/srv/SetBool_Response" => Some(response.clone()),
+                _ => None,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            rihs01(&event),
+            "RIHS01_3c4c20015afb4303eafd347b1d6a786f171a89c814726961a9593ef10df878cf"
+        );
+    }
+
+    /// The embedded `service_msgs/msg/ServiceEventInfo` constant must itself hash
+    /// to the live Jazzy value (proves the char[16]→uint8[16] mapping + field
+    /// order). A drift here breaks every service hash.
+    #[test]
+    fn embedded_service_event_info_matches_live_jazzy() {
+        let sei = build_type_description(
+            "service_msgs/msg/ServiceEventInfo",
+            &service_event_info_msg(),
+            |fqn: &str| (fqn == "builtin_interfaces/msg/Time").then(builtin_time_msg),
+        )
+        .unwrap();
+        assert_eq!(
+            rihs01(&sei),
+            "RIHS01_41bcbbe07a75c9b52bc96bfd5c24d7f0fc0a08c0cb7921b3373c5732345a6f45"
+        );
+    }
+
+    // --- W1c: action synthesis (LookupTransform golden, live Jazzy) ---
+
+    /// An empty message hashes WITH the `structure_needs_at_least_one_member`
+    /// placeholder — `tf2_msgs/action/LookupTransform_Feedback` is empty.
+    #[test]
+    fn empty_message_placeholder_matches_live_jazzy_feedback() {
+        let empty = Message {
+            fields: vec![],
+            constants: vec![],
+        };
+        let desc =
+            build_type_description("tf2_msgs/action/LookupTransform_Feedback", &empty, |_| None)
+                .unwrap();
+        assert_eq!(
+            rihs01(&desc),
+            "RIHS01_2da0b02f990f04404ab8c98a2a68cf5bbc773ae747f96911f2d55499cfb51542"
+        );
+    }
+
+    /// The full `tf2_msgs/action/LookupTransform` DAG (six members + two nested
+    /// service triads + the geometry/tf2 user closure) must hash to the live
+    /// Jazzy value byte-for-byte.
+    #[test]
+    fn lookup_transform_action_reproduces_live_jazzy_hash() {
+        let prim = |p| Ast::Primitive(p);
+        let nested = |pkg: &str, name: &str| Ast::NamespacedType {
+            package: Some(pkg.to_string()),
+            name: name.to_string(),
+        };
+        let m = |fields: Vec<Field>| Message {
+            fields,
+            constants: vec![],
+        };
+
+        // User goal/result/feedback (from the .action file).
+        let goal = m(vec![
+            field("target_frame", Ast::String),
+            field("source_frame", Ast::String),
+            field("source_time", nested("builtin_interfaces", "Time")),
+            field("timeout", nested("builtin_interfaces", "Duration")),
+            field("target_time", nested("builtin_interfaces", "Time")),
+            field("fixed_frame", Ast::String),
+            field("advanced", prim(PrimitiveType::Bool)),
+        ]);
+        let result = m(vec![
+            field("transform", nested("geometry_msgs", "TransformStamped")),
+            field("error", nested("tf2_msgs", "TF2Error")),
+        ]);
+        let feedback = m(vec![]); // empty
+
+        // The user type closure the resolver must serve (Time/UUID/ServiceEventInfo
+        // are embedded by the engine).
+        let duration = m(vec![
+            field("sec", prim(PrimitiveType::Int32)),
+            field("nanosec", prim(PrimitiveType::UInt32)),
+        ]);
+        let vector3 = m(vec![
+            field("x", prim(PrimitiveType::Float64)),
+            field("y", prim(PrimitiveType::Float64)),
+            field("z", prim(PrimitiveType::Float64)),
+        ]);
+        let quat = m(vec![
+            field("x", prim(PrimitiveType::Float64)),
+            field("y", prim(PrimitiveType::Float64)),
+            field("z", prim(PrimitiveType::Float64)),
+            field("w", prim(PrimitiveType::Float64)),
+        ]);
+        let transform = m(vec![
+            field("translation", nested("geometry_msgs", "Vector3")),
+            field("rotation", nested("geometry_msgs", "Quaternion")),
+        ]);
+        let header = m(vec![
+            field("stamp", nested("builtin_interfaces", "Time")),
+            field("frame_id", Ast::String),
+        ]);
+        let transform_stamped = m(vec![
+            field("header", nested("std_msgs", "Header")),
+            field("child_frame_id", Ast::String),
+            field("transform", nested("geometry_msgs", "Transform")),
+        ]);
+        let tf2error = m(vec![
+            field("error", prim(PrimitiveType::UInt8)),
+            field("error_string", Ast::String),
+        ]);
+        let resolve = move |fqn: &str| -> Option<Message> {
+            Some(match fqn {
+                "builtin_interfaces/msg/Duration" => duration.clone(),
+                "geometry_msgs/msg/Vector3" => vector3.clone(),
+                "geometry_msgs/msg/Quaternion" => quat.clone(),
+                "geometry_msgs/msg/Transform" => transform.clone(),
+                "geometry_msgs/msg/TransformStamped" => transform_stamped.clone(),
+                "std_msgs/msg/Header" => header.clone(),
+                "tf2_msgs/msg/TF2Error" => tf2error.clone(),
+                _ => return None,
+            })
+        };
+
+        // The action itself.
+        let desc = build_action_type_description(
+            "tf2_msgs",
+            "LookupTransform",
+            &goal,
+            &result,
+            &feedback,
+            &resolve,
+        )
+        .unwrap();
+        assert_eq!(
+            rihs01(&desc),
+            "RIHS01_0b8adf6bc0b5958879e3265b41a457e03558fe523890a81252c70eba97a82c5d"
+        );
+
+        // All nine emitted hashes match live Jazzy byte-for-byte.
+        let h = action_type_hashes(
+            "tf2_msgs",
+            "LookupTransform",
+            &goal,
+            &result,
+            &feedback,
+            &resolve,
+        )
+        .unwrap();
+        assert_eq!(
+            h.goal,
+            "RIHS01_815efc294ad17c813c6043cdde781ff55810d49da02ed07f9237dcd20e88d498"
+        );
+        assert_eq!(
+            h.result,
+            "RIHS01_061d4423af5352ff5314c8effef8faab133991a78f1b2bcd1fecabad80871225"
+        );
+        assert_eq!(
+            h.feedback,
+            "RIHS01_2da0b02f990f04404ab8c98a2a68cf5bbc773ae747f96911f2d55499cfb51542"
+        );
+        assert_eq!(
+            h.send_goal_request,
+            "RIHS01_eb1312eb7aab35e35c71bb87c2ba3a94747c5a6544ea32bb2b32b0f75775b8ca"
+        );
+        assert_eq!(
+            h.send_goal_response,
+            "RIHS01_c1ada93304793c08813657255e7bde2e40e2114aa634b702c3f8d4b72ae098bc"
+        );
+        assert_eq!(
+            h.get_result_request,
+            "RIHS01_148f9bdc01f98922d6fb2072cb64468b89c57c7825d9d83b932c183deaa4697d"
+        );
+        assert_eq!(
+            h.get_result_response,
+            "RIHS01_954de3efc36b164c4d21116abdbdcc52746e454fd9c169b55d9cfd89e83d299d"
+        );
+        assert_eq!(
+            h.feedback_message,
+            "RIHS01_10cb89922dcb103e95c185d43e8a5efa3d38db996f733151a2f3e2ac133f4839"
+        );
+        assert_eq!(
+            h.action,
+            "RIHS01_0b8adf6bc0b5958879e3265b41a457e03558fe523890a81252c70eba97a82c5d"
         );
     }
 

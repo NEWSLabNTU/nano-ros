@@ -144,16 +144,36 @@ reads `M::TYPE_HASH` (the codegen constant, `node.rs:266/297` →
 the real per-type hash the moment codegen runs with an Iron+ edition. The
 remaining gap is service/action — see **W1c**.
 
-### W1c — service / action `_Event` synthesis (REP-2011) — **DESIGNED (2026-07-25)**
+### W1c — service / action `_Event` synthesis (REP-2011) — **LANDED (2026-07-25)**
 
-Service + action `TYPE_HASH` still emit the placeholder on Iron+: rcl hashes the
-WHOLE service/action type-description DAG, which includes synthesized
-`_Request` / `_Response` / `_Event` members that nano-ros does not yet build. The
-complete recipe — captured byte-for-byte from live Jazzy (`std_srvs/srv/SetBool`,
-`tf2_msgs/action/LookupTransform`) — is documented in
-[`docs/research/rep-2011-type-hash.md`](../research/rep-2011-type-hash.md) §3a
-(service) / §3b (action), with golden hashes committed at
-`packages/testing/nros-tests/fixtures/ros-editions/jazzy/srv-hashes.txt`.
+Service + action `TYPE_HASH`/`SERVICE_HASH`/`ACTION_HASH` now carry the REAL
+RIHS01 on Iron+ (placeholder on Humble). rcl hashes the WHOLE service/action
+type-description DAG, including synthesized `_Request`/`_Response`/`_Event`
+members — the `rosidl_codegen::rihs` engine now synthesizes them.
+
+**Engine:** `build_service_type_description` (3-member top + `_Event`),
+`service_member_type_description` (standalone `_Request`/`_Response`),
+`build_action_type_description` + `action_type_hashes` (six-member top + two
+nested service triads → nine distinct hashes). Fixed built-ins
+(`service_msgs/ServiceEventInfo`, `builtin_interfaces/Time`,
+`unique_identifier_msgs/UUID`) are EMBEDDED constants — no ament dependency. An
+empty message gets the rosidl `structure_needs_at_least_one_member` placeholder
+(handled in `message_to_individual`).
+
+**Codegen wiring:** the service template split its single hash into
+`request_type_hash`/`response_type_hash`/`service_hash`; the action template into
+nine named slots. `generate_package` computes them via
+`compute_service_type_hashes` / `compute_action_type_hashes` (Humble → placeholder;
+unresolvable nested user type → HARD error).
+
+**Verified byte-for-byte vs live Jazzy:** all 5 `std_srvs/srv/SetBool` hashes +
+`ServiceEventInfo`; all 9 `tf2_msgs/action/LookupTransform` hashes (rihs unit
+tests) + the empty-`_Feedback` placeholder; plus codegen-level tests
+(`jazzy_service_emits_real_rihs01_hashes`, `jazzy_action_emits_nine_real_rihs01_hashes`).
+Recipe + golden values: [`docs/research/rep-2011-type-hash.md`](../research/rep-2011-type-hash.md)
+§3a/§3b + `fixtures/ros-editions/jazzy/srv-hashes.txt`.
+
+Original design notes (retained):
 
 Key facts the engine must encode:
 - **Service top-level** = 3 `NESTED_TYPE` fields (`request_message`,

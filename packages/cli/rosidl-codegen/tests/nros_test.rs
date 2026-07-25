@@ -163,7 +163,9 @@ fn test_generate_example_interfaces_add_two_ints() {
         &srv,
         &deps,
         "0.10.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
         &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
@@ -202,7 +204,9 @@ fn service_request_field_honors_capacity_config() {
         &srv,
         &HashSet::new(),
         "0.1.0",
-        RosEdition::Humble,
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
         &resolver,
     )
     .expect("generate");

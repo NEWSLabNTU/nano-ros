@@ -165,7 +165,7 @@ impl Deserialize for {{ service_name }}Request {
 
 impl RosMessage for {{ service_name }}Request {
     const TYPE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_Request_";
-    const TYPE_HASH: &'static str = "{{ type_hash }}";
+    const TYPE_HASH: &'static str = "{{ request_type_hash }}";
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -335,7 +335,7 @@ impl Deserialize for {{ service_name }}Response {
 
 impl RosMessage for {{ service_name }}Response {
     const TYPE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_Response_";
-    const TYPE_HASH: &'static str = "{{ type_hash }}";
+    const TYPE_HASH: &'static str = "{{ response_type_hash }}";
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────
@@ -357,5 +357,5 @@ impl RosService for {{ service_name }} {
     type Reply = {{ service_name }}Response;
 
     const SERVICE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_";
-    const SERVICE_HASH: &'static str = "{{ type_hash }}";
+    const SERVICE_HASH: &'static str = "{{ service_hash }}";
 }

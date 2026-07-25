@@ -239,7 +239,12 @@ pub struct MessageNrosTemplate<'a> {
 pub struct ServiceNrosTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
-    pub type_hash: &'a str,
+    /// REP-2011 RIHS01 of `<pkg>/srv/<Srv>_Request` (distinct per member).
+    pub request_type_hash: &'a str,
+    /// REP-2011 RIHS01 of `<pkg>/srv/<Srv>_Response`.
+    pub response_type_hash: &'a str,
+    /// REP-2011 RIHS01 of the SERVICE `<pkg>/srv/<Srv>` (the 3-member DAG).
+    pub service_hash: &'a str,
     pub request_fields: Vec<NrosField>,
     pub request_constants: Vec<MessageConstant>,
     pub response_fields: Vec<NrosField>,
@@ -298,7 +303,18 @@ pub struct LibNrosRsTemplate {
 pub struct ActionNrosTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
-    pub type_hash: &'a str,
+    /// The nine distinct REP-2011 RIHS01 hashes an action emits (one per
+    /// generated struct + the action itself). Iron+ compute them; Humble passes
+    /// the placeholder for all nine.
+    pub goal_type_hash: &'a str,
+    pub result_type_hash: &'a str,
+    pub feedback_type_hash: &'a str,
+    pub send_goal_request_type_hash: &'a str,
+    pub send_goal_response_type_hash: &'a str,
+    pub get_result_request_type_hash: &'a str,
+    pub get_result_response_type_hash: &'a str,
+    pub feedback_message_type_hash: &'a str,
+    pub action_hash: &'a str,
     pub goal_fields: Vec<NrosField>,
     pub goal_constants: Vec<MessageConstant>,
     pub result_fields: Vec<NrosField>,

@@ -11,7 +11,7 @@ use crate::{
         ServiceNrosTemplate, ServiceRmwTemplate,
     },
     types::{
-        NrosCodegenMode, RosEdition, c_type_for_constant, constant_value_to_rust, escape_keyword,
+        NrosCodegenMode, c_type_for_constant, constant_value_to_rust, escape_keyword,
         nros_type_for_constant, rust_type_for_constant, rust_type_for_field, to_c_package_name,
     },
     utils::{extract_dependencies, needs_big_array, to_snake_case},
@@ -152,13 +152,16 @@ pub struct GeneratedNrosServicePackage {
 }
 
 /// Generate a nros service package
+#[allow(clippy::too_many_arguments)] // 3 distinct REP-2011 hashes (Req/Resp/Service)
 pub fn generate_nros_service_package(
     package_name: &str,
     service_name: &str,
     service: &Service,
     all_dependencies: &HashSet<String>,
     package_version: &str,
-    edition: RosEdition,
+    request_type_hash: &str,
+    response_type_hash: &str,
+    service_hash: &str,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosServicePackage, GeneratorError> {
     // Extract dependencies from request and response
@@ -230,8 +233,6 @@ pub fn generate_nros_service_package(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
-
     let has_request_fields = !request_fields.is_empty();
     let has_response_fields = !response_fields.is_empty();
     let has_request_large_array = request_fields.iter().any(|f| f.is_large_array);
@@ -256,7 +257,9 @@ pub fn generate_nros_service_package(
     let service_template = ServiceNrosTemplate {
         package_name,
         service_name,
-        type_hash,
+        request_type_hash,
+        response_type_hash,
+        service_hash,
         request_fields,
         request_constants,
         response_fields,
@@ -287,7 +290,9 @@ pub fn generate_nros_inline_service(
     package_name: &str,
     service_name: &str,
     service: &Service,
-    edition: RosEdition,
+    request_type_hash: &str,
+    response_type_hash: &str,
+    service_hash: &str,
     resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
@@ -330,7 +335,6 @@ pub fn generate_nros_inline_service(
         })
         .collect();
 
-    let type_hash = edition.type_hash();
     let has_request_fields = !request_fields.is_empty();
     let has_response_fields = !response_fields.is_empty();
     let has_request_large_array = request_fields.iter().any(|f| f.is_large_array);
@@ -356,7 +360,9 @@ pub fn generate_nros_inline_service(
     let template = ServiceNrosTemplate {
         package_name,
         service_name,
-        type_hash,
+        request_type_hash,
+        response_type_hash,
+        service_hash,
         request_fields,
         request_constants,
         response_fields,
