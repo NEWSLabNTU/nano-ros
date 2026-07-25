@@ -39,7 +39,7 @@ struct {{ action_name }} {
     /// Goal structure
     struct Goal {
 {%- for field in goal_fields %}
-        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }};
+        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
 {%- endfor %}
 {%- if !has_goal_fields %}
         uint8_t _dummy;
@@ -70,7 +70,7 @@ struct {{ action_name }} {
     /// Result structure
     struct Result {
 {%- for field in result_fields %}
-        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }};
+        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
 {%- endfor %}
 {%- if !has_result_fields %}
         uint8_t _dummy;
@@ -101,7 +101,7 @@ struct {{ action_name }} {
     /// Feedback structure
     struct Feedback {
 {%- for field in feedback_fields %}
-        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }};
+        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
 {%- endfor %}
 {%- if !has_feedback_fields %}
         uint8_t _dummy;

@@ -36,7 +36,7 @@ struct {{ service_name }} {
     /// Request structure
     struct Request {
 {%- for field in request_fields %}
-        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }};
+        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
 {%- endfor %}
 {%- if !has_request_fields %}
         uint8_t _dummy;
@@ -67,7 +67,7 @@ struct {{ service_name }} {
     /// Response structure
     struct Response {
 {%- for field in response_fields %}
-        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }};
+        {{ field.cpp_type }} {{ field.name }}{{ field.array_suffix }} = {};
 {%- endfor %}
 {%- if !has_response_fields %}
         uint8_t _dummy;

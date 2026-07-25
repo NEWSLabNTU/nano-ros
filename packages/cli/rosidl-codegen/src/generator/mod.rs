@@ -623,7 +623,8 @@ mod tests {
             h.contains("nros_borrowed_bytes_t data;"),
             "borrowed byte view missing:\n{h}"
         );
-        // Copied field stays owned in the view.
+        // Copied field stays owned in the view. (C headers stay plain —
+        // the 0256 value-init applies to the C++ templates only.)
         assert!(
             h.contains("uint32_t width;"),
             "owned scalar missing from view:\n{h}"
@@ -729,7 +730,9 @@ mod tests {
             "LE span missing:\n{h}"
         );
         assert!(
-            h.contains("uint32_t width;"),
+            // issue 0256 — generated fields carry value-init (`= {}`) so
+            // default-constructed messages never leak stack garbage.
+            h.contains("uint32_t width = {};"),
             "owned scalar missing from view:\n{h}"
         );
         assert!(
