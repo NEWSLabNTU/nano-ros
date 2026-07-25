@@ -78,7 +78,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/stm32f4/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-arm-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/stm32f4/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
