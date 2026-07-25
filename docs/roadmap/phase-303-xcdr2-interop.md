@@ -39,6 +39,37 @@ unconditionally. See RFC-0055 §"Finding (phase-303 W1)".
 The parity guard doing its job here is the point: the change was proven wrong
 before it shipped, no incorrect `.idl` landed.
 
+## W1 continued (2026-07-26) — the gate is substantially resolved OFFLINE
+
+Deep offline investigation (recorded in #0267, "phase-303 W1 continued")
+resolves the diagnostic gate without the live demo, and REFINES the fix:
+
+- **The `.idl` annotation layer is retired.** Humble AND Jazzy ship identical,
+  UNANNOTATED `.idl` for nested-`Time` types — so neither `@final` nor
+  `@appendable` in `nros-msg-to-idl` is correct; it would break parity with both.
+  The extensibility control is NOT in the `.idl` text.
+- **nano-ros's cyclone descriptor is FINAL by construction — located.** The
+  runtime builder `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`
+  sets only `DDS_TOPIC_FIXED_SIZE` in `m_flagset` and emits no `DDS_OP_DLC`
+  DHEADER op. That is the cyclone-path control point.
+- **The blocker's premise is dissolved by RFC-0056.** The gate was "we don't know
+  the downstream distro." The ROS-edition axis (phase-304, now landed) makes it a
+  DECLARED value (`[system].ros_edition`), so the encoding/extensibility profile
+  is chosen, not inferred.
+
+**Refined fix split (both edition-gated):**
+- **W1c (NEW — cyclone descriptor extensibility):** `dynamic_type_builder.cpp`
+  emits an appendable descriptor (appendable `m_flagset` + `DDS_OP_DLC` delimiter
+  ops → Cyclone writes the DHEADER natively) on iron/jazzy+; Humble stays FINAL
+  (byte-identical). NO `.idl`/parity impact. This is the cyclone-path half,
+  distinct from the `nros-serdes` XCDR2 work (W2/W3).
+- **W2/W3 (unchanged):** `nros-serdes` XCDR2 writer/reader + DHEADER for the
+  zenoh-pico / XRCE / native-Rust paths.
+
+Still gated on ONE live capture (a confirmation, not exploration): the demo's
+downstream negotiated `data_representation` + its runtime sertype extensibility
+for `autoware_control_msgs/Control`. No descriptor/serdes change lands before it.
+
 ## Background — two paths, one gap
 
 - **`nros-serdes`** (Rust, `no_std`): XCDR1-only, LE-only, no encoding-version

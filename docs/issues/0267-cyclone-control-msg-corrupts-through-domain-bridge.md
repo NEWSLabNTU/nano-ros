@@ -108,6 +108,60 @@ demo's downstream ROS distro, its negotiated `data_representation`, and both
 descriptors' extensibility** before any code fix. See RFC-0055 §"Finding
 (phase-303 W1)".
 
+## Update (phase-303 W1 continued, 2026-07-26) — offline diagnosis resolves the LAYER + locates BOTH control points
+
+Gathered decisive OFFLINE evidence (no live demo), which retires one fix
+direction and pinpoints the code:
+
+1. **The `.idl` annotation is the WRONG layer — direction #2 is RETIRED.**
+   Humble (host `/opt/ros/humble`) AND Jazzy (`ros:jazzy-ros-base` container)
+   ship the SAME unannotated `.idl` for nested-`Time` types (`std_msgs/Header`,
+   `geometry_msgs/PoseStamped`): plain `struct Header {` with only `@verbatim`
+   comment annotations, NO `@final`/`@appendable`. So emitting `@final` (or
+   `@appendable`) in `nros-msg-to-idl` would diverge from BOTH distros and break
+   the `rosidl_adapter` parity contract — it fixes nothing and regresses parity.
+
+2. **nano-ros's cyclone descriptor is FINAL by construction — located.** The
+   cyclone path does NOT compile the `.idl` via `idlc` at build time; it builds
+   the `dds_topic_descriptor_t` at RUNTIME in
+   `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`. There,
+   `m_flagset` (≈ line 1068) is set to ONLY `DDS_TOPIC_FIXED_SIZE` (or `0`) —
+   never an appendable/XCDR2 flag — and the emitted ops array carries no
+   `DDS_OP_DLC` (delimited/DHEADER) op. **⇒ nano-ros publishes a FINAL,
+   no-DHEADER, XCDR1-shaped descriptor by construction.** (Aside: neither ROS
+   distro sets `IDLC_DEFAULT_EXTENSIBILITY` in its `idlc` CMake path, and the
+   vendored idlc's own default is `UNDEFINED → IDL_FINAL` — but that route is
+   irrelevant to nano-ros, which uses the runtime builder above; the ROS peer's
+   wire extensibility comes from its `rosidl_typesupport`/rmw sertype, a
+   separate mechanism.)
+
+3. **Mechanism confirmed as extensibility+representation, not `.idl`.** The
+   corruption's phantom-4-byte-DHEADER float shift means the DOWNSTREAM reads
+   `Control` as APPENDABLE under XCDR2 (expects a DHEADER nano-ros's FINAL/XCDR1
+   stream never wrote). Direct same-domain echo is clean because it honors the
+   `0x0001` (XCDR1) encapsulation; the `domain_bridge` GenericPublisher crosses
+   into an XCDR2/appendable decode.
+
+**⇒ Evidence-based fix plan (both edition-gated by RFC-0056's
+`[system].ros_edition` — the axis the earlier "unknown downstream distro"
+blocker is now resolved by, since the user DECLARES the target edition):**
+
+- **Cyclone path:** teach `dynamic_type_builder.cpp` to emit an APPENDABLE
+  descriptor — set the appendable extensibility in `m_flagset` AND emit
+  `DDS_OP_DLC` delimiter ops so Cyclone writes a DHEADER per nested appendable
+  struct (Cyclone does XCDR2/DHEADER natively once the descriptor declares it).
+  Humble edition stays FINAL (byte-identical). This is a DESCRIPTOR-BUILDER
+  change — NO `nros-msg-to-idl`/`.idl` parity impact.
+- **`nros-serdes` path** (zenoh-pico / XRCE / native-Rust): the XCDR2 writer +
+  reader + DHEADER of phase-303 W2–W3.
+
+**Remaining live-demo capture (now the ONLY open item, narrowed):** confirm the
+demo's downstream reads `Control` as appendable-under-XCDR2 — i.e. dump its
+negotiated `data_representation` + the runtime rmw sertype extensibility for
+`autoware_control_msgs/Control`. The offline evidence makes this a confirmation,
+not an exploration. Do not land the descriptor/serdes change before it (per the
+no-blind-land rule), but the DIRECTION and the CODE are now fixed.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

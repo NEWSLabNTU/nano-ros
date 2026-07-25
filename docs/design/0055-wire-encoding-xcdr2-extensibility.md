@@ -204,13 +204,24 @@ Consequences for the design:
    default to XCDR1 (fewer bytes, known peer set) with XCDR2 opt-in, or XCDR2
    everywhere for uniform interop? Per-endpoint `data_representation` override
    is the mechanism either way.
-5. **Target-distro extensibility (blocks the #0267 fix)** — capture, from the
+5. **Target-distro extensibility (blocks the #0267 fix)** — ~~capture, from the
    live demo: the downstream ROS distro, the `data_representation` it
-   negotiated, and the actual extensibility of BOTH descriptors (nano-ros's
-   vendored-idlc output vs the peer's). Only then decide whether nano-ros must
-   emit XCDR2/DHEADER (W2/W3) or align its idlc default — and gate any
-   `.idl` annotation on the target distro so the Humble parity contract stays
-   intact (per the W1 finding above).
+   negotiated, and the actual extensibility of BOTH descriptors.~~ **Largely
+   RESOLVED offline (2026-07-26) — see #0267 "phase-303 W1 continued".** Key
+   evidence: (a) Humble AND Jazzy ship IDENTICAL, UNANNOTATED `.idl` for
+   nested-`Time` types → an `.idl` `@final`/`@appendable` annotation is the wrong
+   layer and breaks parity with BOTH (the "align the `.idl`" option is
+   RETIRED); (b) nano-ros's cyclone descriptor is FINAL by construction — the
+   runtime builder `dynamic_type_builder.cpp` sets no appendable flag in
+   `m_flagset` and emits no `DDS_OP_DLC` DHEADER op (NOT the idlc `.idl` route).
+   **⇒ Decision:** the fix is at the DESCRIPTOR / SERIALIZER layer, edition-gated
+   (RFC-0056): the cyclone path emits an appendable descriptor (flagset +
+   `DDS_OP_DLC`) on iron/jazzy+, and `nros-serdes` gains XCDR2/DHEADER (W2/W3);
+   Humble stays FINAL/XCDR1 byte-identical. The `.idl` layer is untouched, so the
+   `rosidl_adapter` parity contract holds trivially. The ONE remaining live
+   capture is a CONFIRMATION (the demo's downstream negotiated representation +
+   its runtime sertype extensibility for `Control`), not an exploration — and no
+   descriptor/serdes change lands before it.
 
 ## Changelog
 
