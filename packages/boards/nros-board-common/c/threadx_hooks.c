@@ -341,13 +341,53 @@ int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
 #endif
 }
 
+/* phase-296 #0266 — convert a `time_slice_us` request to ThreadX timer ticks
+ * (`tx_thread_create` / `tx_thread_time_slice_change` take TICKS, not µs). 0 µs
+ * → TX_NO_TIME_SLICE (round-robin disabled — the tier runs FIFO-until-block,
+ * ThreadX's default). A nonzero request rounds UP to at least 1 tick so a
+ * sub-tick slice still yields. The tick constant lives here in the C shim where
+ * the ThreadX config is visible (the Rust arm never mirrors it). */
+static ULONG nros_tx_time_slice_ticks(unsigned long time_slice_us)
+{
+    if (time_slice_us == 0ul) {
+        return TX_NO_TIME_SLICE;
+    }
+    unsigned long long ticks =
+        ((unsigned long long)time_slice_us * (unsigned long long)TX_TIMER_TICKS_PER_SECOND
+         + 999999ull)
+        / 1000000ull;
+    return (ticks == 0ull) ? 1ul : (ULONG)ticks;
+}
+
+/* phase-296 #0266 — apply a time slice to the CALLING (boot) thread. Round-robin
+ * among same-priority tiers is the placement dim's sibling: mirrors the W5.13
+ * boot-reprioritize path. Returns 1 when a slice was set, 0 when unrequested
+ * (0 µs) or the kernel rejected it. */
+int nros_threadx_apply_current_time_slice(unsigned long time_slice_us)
+{
+    if (time_slice_us == 0ul) {
+        return 0;
+    }
+    TX_THREAD *self = tx_thread_identify();
+    ULONG old_slice;
+    if (self == TX_NULL) {
+        return 0;
+    }
+    if (tx_thread_time_slice_change(self, nros_tx_time_slice_ticks(time_slice_us), &old_slice)
+        != TX_SUCCESS) {
+        return 0;
+    }
+    return 1;
+}
+
 int nros_threadx_create_task(
     const char *name,
     void (*entry)(void *),
     void *arg,
     unsigned long stack_bytes,
     unsigned int priority,
-    int preempt_threshold)
+    int preempt_threshold,
+    unsigned long time_slice_us)
 {
     UINT status;
     UINT pt;
@@ -378,11 +418,12 @@ int nros_threadx_create_task(
     /* -1 sentinel → threshold == priority (ThreadX's "no threshold" state). */
     pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
 
+    /* #0266 — round-robin time slice (TX_NO_TIME_SLICE when 0 µs = FIFO). */
     status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_tier"),
                                nros_tx_task_trampoline, (ULONG)nros_tx_task_count,
                                stack, stack_size,
                                priority, pt,
-                               TX_NO_TIME_SLICE, TX_AUTO_START);
+                               nros_tx_time_slice_ticks(time_slice_us), TX_AUTO_START);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: nros_threadx_create_task: tx_thread_create failed\n");
         return -1;

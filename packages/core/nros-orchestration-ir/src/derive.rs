@@ -142,6 +142,9 @@ pub fn derive_tiers_from_contracts(
             priority: n.priority,
             stack_bytes: None,
             preempt_threshold: n.preempt_threshold,
+            // Time-slicing is not a derived dim (no contract fact implies
+            // round-robin); an authored `time_slice_us` is the only source.
+            time_slice_us: None,
             // sched_class deliberately unset: the runtime consumes the GENERIC
             // policy (class/period/budget/deadline → SchedContext; on Zephyr
             // class+deadline → kernel EDF). The realizer's internal vocab

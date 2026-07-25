@@ -2390,6 +2390,7 @@ fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
         };
         let core = opt_u32(t.core);
         let preempt_threshold = opt_i64(t.preempt_threshold);
+        let time_slice_us = opt_u64(t.time_slice_us);
         let class = opt_str(t.class.as_deref());
         let period_us = opt_u64(t.period_us);
         let budget_us = opt_u64(t.budget_us);
@@ -2404,6 +2405,7 @@ fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
                 spin_period_us: #spin_period_us,
                 core: #core,
                 preempt_threshold: #preempt_threshold,
+                time_slice_us: #time_slice_us,
                 class: #class,
                 period_us: #period_us,
                 budget_us: #budget_us,

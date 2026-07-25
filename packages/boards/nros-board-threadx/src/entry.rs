@@ -125,6 +125,9 @@ unsafe extern "C" {
     /// pool (same as the boot app thread). `preempt_threshold < 0` ⇒
     /// `= priority` (no threshold); `>= 0` is the native `non_preempt_scope`
     /// value. Returns 0 on success, -1 on failure.
+    /// `time_slice_us` (#0266): 0 ⇒ `TX_NO_TIME_SLICE` (FIFO-until-block, the
+    /// ThreadX default); nonzero requests round-robin among same-priority tiers
+    /// (converted µs→ticks in the C shim where the tick constant lives).
     fn nros_threadx_create_task(
         name: *const u8,
         entry: unsafe extern "C" fn(*mut c_void),
@@ -132,6 +135,7 @@ unsafe extern "C" {
         stack_bytes: core::ffi::c_ulong,
         priority: core::ffi::c_uint,
         preempt_threshold: core::ffi::c_int,
+        time_slice_us: core::ffi::c_ulong,
     ) -> core::ffi::c_int;
 
     /// Re-prioritize the CALLING thread to a tier's sched values (W5). The
@@ -151,6 +155,11 @@ unsafe extern "C" {
     /// the pin, 0 otherwise (no `core` / no TX_THREAD_SMP / rejection — the
     /// Rust caller prints the accept marker or the loud fallback).
     fn nros_threadx_apply_current_core_exclude(core_plus1: core::ffi::c_uint) -> core::ffi::c_int;
+
+    /// phase-296 #0266 — self-apply the CALLING (boot) thread's round-robin time
+    /// slice via `tx_thread_time_slice_change`. `time_slice_us` 0 ⇒ no slice.
+    /// Returns 1 when a slice was set, 0 otherwise (unrequested / rejection).
+    fn nros_threadx_apply_current_time_slice(time_slice_us: core::ffi::c_ulong) -> core::ffi::c_int;
 
     /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-tier heap
     /// context). Mirrors the FreeRTOS `nros_platform_alloc`. NULL on failure.
@@ -284,6 +293,8 @@ where
         None => -1,
     };
     let stack_bytes = tier.stack_bytes as core::ffi::c_ulong;
+    // #0266 — round-robin time slice (0 ⇒ TX_NO_TIME_SLICE = FIFO).
+    let time_slice_us = tier.time_slice_us.unwrap_or(0) as core::ffi::c_ulong;
     let rc = unsafe {
         nros_threadx_create_task(
             b"nros_tier\0".as_ptr(),
@@ -292,6 +303,7 @@ where
             stack_bytes,
             prio,
             pt,
+            time_slice_us,
         )
     };
     if rc != 0 {
@@ -307,6 +319,13 @@ where
             "nros: preempt threshold set tier=`{}` {}",
             tier.name, pt
         ));
+    }
+    if let Some(ts) = tier.time_slice_us {
+        // phase-296 #0266 — time-slice trace marker: tx_thread_create applied
+        // the round-robin slice at creation (rc == 0; ThreadX honors a
+        // per-thread slice unconditionally). Literal mirrors
+        // `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
+        B::println(format_args!("nros: time slice set tier=`{}` {}us", tier.name, ts));
     }
     Ok(())
 }
@@ -476,6 +495,17 @@ where
     }
     apply_tier(&mut crt, boot_tier);
     apply_tier_core_exclude::<B>(boot_tier);
+    // phase-296 #0266 — the boot tier self-applies its round-robin time slice
+    // (the boot thread was created with TX_NO_TIME_SLICE; change it in place).
+    if let Some(ts) = boot_tier.time_slice_us {
+        if unsafe { nros_threadx_apply_current_time_slice(ts as core::ffi::c_ulong) } == 1 {
+            // Literal mirrors `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
+            B::println(format_args!(
+                "nros: time slice set tier=`{}` {}us",
+                boot_tier.name, ts
+            ));
+        }
+    }
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = setup(&mut runtime) {

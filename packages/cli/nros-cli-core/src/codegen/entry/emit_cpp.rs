@@ -561,6 +561,17 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 
         // Emit the NativeTierSpec array (highest-priority-first; resolver produces this order).
         let n_tiers = tiers.tiers.len();
+        // #0266 — time_slice_us has a per-thread consumer only on the Rust
+        // ThreadX arm today; the C++ tier ABI carries no field. Fail loud
+        // rather than silently drop a declared value on a C++ bake.
+        if let Some(t) = tiers.tiers.iter().find(|t| t.time_slice_us.is_some()) {
+            return Err(format!(
+                "tier '{}': time_slice_us is not yet supported on the C/C++ codegen \
+                 path (#0266) — declare it only on a Rust `nros::main!` ThreadX entry, \
+                 or file the C consumer",
+                t.name
+            ));
+        }
         let _ = writeln!(
             out,
             "static const ::nros::board::NativeTierSpec __nros_tiers[{n_tiers}] = {{"
@@ -1480,6 +1491,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(10_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1495,6 +1507,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(100_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1545,6 +1558,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(10_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1560,6 +1574,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(100_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1675,6 +1690,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(10_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1690,6 +1706,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(100_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,
@@ -1774,6 +1791,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(5_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: Some("real_time".into()),
             period_us: Some(20_000),
@@ -1996,6 +2014,7 @@ mod tests {
             stack_bytes: None,
             spin_period_us: Some(10_000),
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,

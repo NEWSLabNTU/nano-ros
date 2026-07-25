@@ -1277,6 +1277,7 @@ autostart = "active"
                 priority: 80,
                 stack_bytes: None,
                 preempt_threshold: None,
+                time_slice_us: None,
                 sched_class: None,
             }),
             ..Default::default()
@@ -1287,6 +1288,7 @@ autostart = "active"
                 priority: 10,
                 stack_bytes: None,
                 preempt_threshold: None,
+                time_slice_us: None,
                 sched_class: None,
             }),
             ..Default::default()
@@ -1402,6 +1404,7 @@ autostart = "active"
                     priority: 80,
                     stack_bytes: None,
                     preempt_threshold: None,
+                    time_slice_us: None,
                     sched_class: None,
                 }),
                 ..Default::default()
@@ -1415,6 +1418,7 @@ autostart = "active"
                     priority: 10,
                     stack_bytes: None,
                     preempt_threshold: None,
+                    time_slice_us: None,
                     sched_class: None,
                 }),
                 ..Default::default()

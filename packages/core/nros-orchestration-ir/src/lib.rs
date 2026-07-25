@@ -159,6 +159,10 @@ pub struct TierRtosSpec {
     /// ThreadX preemption threshold (ignored on other RTOSes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preempt_threshold: Option<i64>,
+    /// Round-robin time slice in µs (#0266): time-slicing among same-priority
+    /// tiers. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_slice_us: Option<u64>,
     /// POSIX scheduler class (e.g. `"SCHED_FIFO"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sched_class: Option<String>,
@@ -224,6 +228,8 @@ pub struct ResolvedTier {
     pub stack_bytes: Option<u32>,
     pub spin_period_us: Option<u64>,
     pub preempt_threshold: Option<i64>,
+    /// Round-robin time slice in µs (#0266); ThreadX-only (bake-validated).
+    pub time_slice_us: Option<u64>,
     pub sched_class: Option<String>,
     // Phase 256 W4 — the RTOS-agnostic real-time policy (from `TierDef`), carried
     // through so the planner can lower a tier to a `PlanSchedContext` (the home the
@@ -397,6 +403,7 @@ pub fn resolve_tiers(
             stack_bytes: spec.stack_bytes,
             spin_period_us: def.spin_period_us,
             preempt_threshold: spec.preempt_threshold,
+            time_slice_us: spec.time_slice_us,
             sched_class: spec.sched_class.clone(),
             class: def.class.clone(),
             period_us: def.period_us,
@@ -421,6 +428,7 @@ fn default_tier(members: Vec<(String, String)>) -> ResolvedTier {
         stack_bytes: None,
         spin_period_us: None,
         preempt_threshold: None,
+        time_slice_us: None,
         sched_class: None,
         class: None,
         period_us: None,
@@ -457,6 +465,19 @@ pub fn validate_tier_platform_applicability(
                 "tier '{}': preempt_threshold is ThreadX-only, but the selected \
                  target is '{target_rtos}' — remove it from [tiers.{}.{target_rtos}] \
                  (other platforms' sub-tables may keep theirs)",
+                t.name, t.name
+            ));
+        }
+        // #0266 — time_slice_us has a per-thread consumer only on ThreadX
+        // (`tx_thread_create` slice param); the other RTOSes' time-slicing is a
+        // GLOBAL kernel config, not a per-tier knob, so a per-tier value there
+        // would be a silent drop. Reject until a per-platform consumer lands.
+        if t.time_slice_us.is_some() && target_rtos != "threadx" {
+            return Err(format!(
+                "tier '{}': time_slice_us is ThreadX-only today (per-thread \
+                 round-robin), but the selected target is '{target_rtos}' — remove \
+                 it from [tiers.{}.{target_rtos}] (other RTOSes' time-slicing is a \
+                 global kernel config, not a per-tier knob; issue #0266)",
                 t.name, t.name
             ));
         }
@@ -511,6 +532,7 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         priority: spec.priority,
         stack_bytes: spec.stack_bytes,
         preempt_threshold: spec.preempt_threshold,
+        time_slice_us: spec.time_slice_us,
         sched_class: spec.sched_class.clone(),
     }
 }
@@ -572,6 +594,7 @@ mod tests {
                 deadline_us: Some(1500), // per-platform tighten
                 budget_us: Some(400),    // per-platform sporadic override
                 period_us: Some(900),
+                time_slice_us: None,
             }),
             freertos: Some(TierPlatformSpec {
                 priority: 5,
@@ -582,6 +605,7 @@ mod tests {
                 deadline_us: None,
                 budget_us: None,
                 period_us: None,
+                time_slice_us: None,
             }),
             zephyr: None,
             threadx: Some(TierPlatformSpec {
@@ -593,6 +617,7 @@ mod tests {
                 deadline_us: None,
                 budget_us: None,
                 period_us: None,
+                time_slice_us: Some(2000),
             }),
             nuttx: None,
         };
@@ -619,6 +644,7 @@ mod tests {
         let tx = ir.threadx.as_ref().unwrap();
         assert_eq!(tx.priority, 4);
         assert_eq!(tx.preempt_threshold, Some(4));
+        assert_eq!(tx.time_slice_us, Some(2000));
         assert_eq!(ir.freertos.as_ref().unwrap().stack_bytes, Some(32768));
         assert!(ir.zephyr.is_none() && ir.nuttx.is_none());
 
@@ -647,6 +673,7 @@ mod tests {
                 priority,
                 stack_bytes: stack,
                 preempt_threshold: None,
+                time_slice_us: None,
                 sched_class: None,
             }),
             ..Default::default()
@@ -670,6 +697,7 @@ mod tests {
                 priority: 80,
                 stack_bytes: Some(8192),
                 preempt_threshold: None,
+                time_slice_us: None,
                 sched_class: None,
             }),
             ..Default::default()
@@ -833,6 +861,7 @@ mod tests {
                     priority: 5,
                     stack_bytes: None,
                     preempt_threshold: None,
+                    time_slice_us: None,
                     sched_class: None,
                 }),
                 ..Default::default()
@@ -949,6 +978,7 @@ mod applicability_tests {
             stack_bytes: None,
             spin_period_us: None,
             preempt_threshold: None,
+            time_slice_us: None,
             sched_class: None,
             class: None,
             period_us: None,

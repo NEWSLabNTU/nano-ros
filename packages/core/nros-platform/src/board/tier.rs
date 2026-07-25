@@ -53,6 +53,9 @@ pub struct TierSpec<'a> {
     pub core: Option<u32>,
     /// ThreadX preemption threshold (ThreadX targets only; bake-validated).
     pub preempt_threshold: Option<i64>,
+    /// Round-robin time slice in µs (#0266): `Some` requests time-slicing among
+    /// same-priority tiers. ThreadX-only today (bake-validated); `None` = FIFO.
+    pub time_slice_us: Option<u64>,
     /// Scheduling class: `"best_effort"` | `"real_time"` |
     /// `"time_triggered"` (bake rejects `"interrupt"`); `None` = plain
     /// priority tier.
@@ -81,6 +84,7 @@ impl<'a> TierSpec<'a> {
             spin_period_us: 1_000,
             core: None,
             preempt_threshold: None,
+            time_slice_us: None,
             class: None,
             period_us: None,
             budget_us: None,

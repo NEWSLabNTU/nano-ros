@@ -96,6 +96,12 @@ execution:
         # returns 0 → the LOUD "core pin FAILED" note fires and the tier runs
         # unpinned (RFC-0052 fail-loud). An SMP build flips it to kernel-accept.
         core: 0
+        # phase-296 #0266 — time-slicing knob on ThreadX: request round-robin on
+        # the LOW/boot tier (5 ms slice). ThreadX honors a per-thread slice
+        # unconditionally (tx_thread_time_slice_change on the boot thread), so
+        # the "time slice set" marker fires. Other RTOSes reject it at bake
+        # (their time-slicing is a global kernel config, not a per-tier knob).
+        time_slice_us: 5000
   bindings:
     /control_node/ctrl: high
     /telem_node/telem: low

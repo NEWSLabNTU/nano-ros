@@ -504,6 +504,14 @@ pub const THREADX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// lockstep.
 pub const THREADX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// Emitted by the ThreadX board (`nros-board-threadx/src/entry.rs`, boot +
+/// spawned) when a tier's round-robin time slice was applied
+/// (`tx_thread_create` slice param / `tx_thread_time_slice_change`), phase-296
+/// issue #0266. ThreadX honors a per-thread slice unconditionally, so this is
+/// accept-only (no fallback). MIRRORS the `B::println` literal there — keep in
+/// lockstep.
+pub const THREADX_TIME_SLICE_MARKER: &str = "nros: time slice set tier=";
+
 /// Emitted by the POSIX board (`nros-board-posix/src/lib.rs`,
 /// `apply_tier_affinity`, boot + spawned) when `sched_setaffinity` pinned a
 /// tier thread to its declared `core` (phase-296 W5.13, the placement dim). A

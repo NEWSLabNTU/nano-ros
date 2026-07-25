@@ -56,8 +56,11 @@ Recently resolved: **#261–#265** — phase-302 tier-knob honesty: posix caps t
 stack/advisory fail-loud, nuttx Rust tier priority adopted (marker e2e), sched_class
 bake-rejected, tierless-target multi-tier diagnostic — `archived/0261-*`…`0265-*`. (2026-07-25)
 
-**#266** — time-slicing exists in every kernel, no nano-ros knob (ThreadX shim hardwires
-TX_NO_TIME_SLICE). Demand-driven enhancement; recorded decision. See `0266-*`. (audit 2026-07-25)
+Recently resolved: **#266** — time-slicing knob: added `time_slice_us` per-platform sub-table field
++ the ThreadX consumer (`nros_threadx_create_task` was hardwiring `TX_NO_TIME_SLICE`; now takes a
+µs→ticks slice + boot `tx_thread_time_slice_change`, marker + e2e). Bake-validated ThreadX-only
+(other RTOSes' time-slicing is a global config, rejected loudly). See `archived/0266-*`.
+(2026-07-25)
 
 **#260** — the RFC-0052 Native sched dims are e2e-verified only on the FALLBACK arm: every realtime
 fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /
