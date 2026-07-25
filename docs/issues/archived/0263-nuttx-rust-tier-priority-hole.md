@@ -1,7 +1,7 @@
 ---
 id: 263
 title: "NuttX Rust arm: spawned tiers get their stack but not their priority off the sporadic path"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: boards
@@ -27,3 +27,9 @@ Call `pthread_setschedparam(pthread_self(), SCHED_FIFO, ..)` (via the
 existing extern shims) at tier-thread entry before setup — same adopt
 pattern the boot tier and the C arm use. Marker + e2e assert like the
 W5.x consumers. Phase-302 W3.
+
+## Resolution (2026-07-25, phase-302 W3)
+
+nros_nuttx_apply_current_priority shim (both qemu twins) + Rust
+apply_tier_priority at tier entry; NUTTX_TIER_PRIORITY_MARKER;
+nuttx_tier_priority_applied e2e PASSES on qemu (marker observed).

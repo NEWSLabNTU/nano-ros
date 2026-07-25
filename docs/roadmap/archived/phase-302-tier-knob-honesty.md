@@ -1,6 +1,12 @@
 # Phase 302 — tier-knob honesty: caps truthing + fail-loud drops
 
-**Status (2026-07-25): Draft.** Fixes the implementation-completeness
+**Status (2026-07-25): ALL WAVES DONE — 0261–0265 resolved.** W1 caps
+truthed (edf/reservation false on posix; affinity kept true — 296-W5.13
+landed the posix+threadx core consumers mid-wave, overtaking the planned
+rejects). W2 zephyr stack loud + posix stack/advisory. W3 nuttx Rust
+priority adopt (marker e2e PASS). W4 sched_class reject + tierless
+diagnostic. W5 verification green + the setup-cli mtime fix. 0266 stays
+demand-driven. Fixes the implementation-completeness
 audit findings (issues 0261–0265; 0266 recorded, not scheduled): every
 declared tier knob either reaches the kernel, backfills loudly, or is
 rejected at bake — and every L1 "Native" record is true. Companion to the

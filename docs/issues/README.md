@@ -51,27 +51,13 @@ Fresh-fixture solo repro; candidate windows = 294 C-serialize, 296-W5.x
 freertos, zenoh-pico 87f7a84d bump, executor-storage mirror class. See
 `0268-freertos-c-lanes-red-register-and-ring-declare.md`.
 
+Recently resolved: **#261–#265** — phase-302 tier-knob honesty: posix caps truthed
+(edf/reservation false, affinity true via the 296-W5.13 consumer), zephyr stack + posix
+stack/advisory fail-loud, nuttx Rust tier priority adopted (marker e2e), sched_class
+bake-rejected, tierless-target multi-tier diagnostic — `archived/0261-*`…`0265-*`. (2026-07-25)
+
 **#266** — time-slicing exists in every kernel, no nano-ros knob (ThreadX shim hardwires
 TX_NO_TIME_SLICE). Demand-driven enhancement; recorded decision. See `0266-*`. (audit 2026-07-25)
-
-**#265** — multi-tier config on tierless targets (esp32/RTIC/embassy) dies with a misleading
-MissingRtosSpec("posix") / missing-method error instead of a clean "tiers unsupported" diagnostic.
-See `0265-*`. (audit 2026-07-25, phase-302)
-
-**#264** — posix-family `sched_class` is a dead knob: accepted, carried, consumed by nothing
-(nuttx hardcodes SCHED_FIFO). Implement or reject. See `0264-*`. (audit 2026-07-25, phase-302)
-
-**#263** — NuttX Rust arm: spawned tiers get their stack but NOT their declared priority off the
-sporadic path (C arm correct; invisible until contention). See `0263-*`. (audit 2026-07-25,
-phase-302)
-
-**#262** — declared tier knobs silently dropped: threadx `core`, zephyr `stack_bytes`, posix
-priority/stack/core, freertos uniproc pin — the RFC-0052 fail-loud rule violated four ways.
-See `0262-*`. (audit 2026-07-25, phase-302)
-
-**#261** — posix SchedCaps overclaim: realizer records Native edf/reservation/affinity while the
-posix board applies nothing natively (backfill is the sole enforcement). See `0261-*`.
-(audit 2026-07-25, phase-302)
 
 **#260** — the RFC-0052 Native sched dims are e2e-verified only on the FALLBACK arm: every realtime
 fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /

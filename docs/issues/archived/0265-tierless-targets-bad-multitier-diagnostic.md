@@ -1,7 +1,7 @@
 ---
 id: 265
 title: "Multi-tier config on tierless targets (esp32/RTIC/embassy/bare-metal/orin-spe) fails with a missing-method compile error, not a clean diagnostic"
-status: open
+status: resolved
 type: polish
 severity: low
 area: orchestration
@@ -22,3 +22,8 @@ esp32 deploy!) or a raw missing-method compile error
 The macro + CLI bake should reject early: "target <deploy> does not
 support multi-tier execution (no run_tiers); collapse to a single tier
 or pick a tiered board." Phase-302 W4.
+
+## Resolution (2026-07-25, phase-302 W4)
+
+nros::main! rejects multi-tier systems on tierless deploys early:
+"target <deploy> does not support multi-tier execution (no run_tiers)".

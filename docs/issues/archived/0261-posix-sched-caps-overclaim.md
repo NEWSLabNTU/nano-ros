@@ -1,7 +1,7 @@
 ---
 id: 261
 title: "posix SchedCaps overclaim: realizer records Native edf/reservation/affinity while the posix board applies nothing natively"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: orchestration
@@ -22,6 +22,12 @@ advisory). The executor SchedContext backfill is the sole enforcement.
 A "Native" record that is really a backfill is exactly the mislabeled
 honesty gap phase-296 W5.5 fixed for Zephyr EDF — same class, posix arm.
 
+## Update (2026-07-25, during phase-302 W1)
+
+296-W5.13 landed the posix `sched_setaffinity` tier consumer (runtime
+kernel-accept proven), so `affinity: true` is now TRUE and stays. The
+remaining overclaim is `edf`/`reservation` only.
+
 ## Fix direction
 
 Either (a) truth the caps: posix caps become `edf/reservation/affinity:
@@ -30,3 +36,10 @@ accurate), or (b) build the consumers (`sched_setattr` SCHED_DEADLINE /
 SCHED_FIFO + affinity on the tier threads — root/CAP_SYS_NICE gated,
 fail-loud fallback like the W5.7 pattern). (a) is the honest quick fix;
 (b) is phase-162 territory. Phase-302 W1 takes (a).
+
+## Resolution (2026-07-25, phase-302 W1)
+
+Option (a): posix caps truthed — edf/reservation false (records say
+Backfill/Degrade); affinity stays true (296-W5.13's sched_setaffinity
+consumer is runtime kernel-accept proven). Flip edf/reservation back when
+phase-162 lands sched_setattr consumers.

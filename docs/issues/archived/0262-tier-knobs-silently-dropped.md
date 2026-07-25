@@ -1,7 +1,7 @@
 ---
 id: 262
 title: "Declared tier knobs silently dropped: threadx core, zephyr stack_bytes, posix priority/stack/core, freertos uniproc pin"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: boards
@@ -26,6 +26,15 @@ violation. Four live silent drops:
    declared pin silently (already acknowledged in phase-296 as a
    fail-loud follow-up; folded here).
 
+## Update (2026-07-25, during phase-302 W2)
+
+Items 1 (threadx core) and 4 (freertos uniproc pin) were fixed by
+296-W5.11/W5.13 while this wave was in flight (tx_thread_smp_core_exclude
+consumer + loud uniproc fallback); posix `core` likewise gained the
+sched_setaffinity consumer. Remaining from this issue: zephyr
+`stack_bytes` (now loud via the shim's slot-overflow print) and the posix
+priority/stack pair (stack now consumed; priority advisory note at boot).
+
 ## Fix direction
 
 Per knob: bake-time reject where the platform can never honor it
@@ -34,3 +43,11 @@ gets a bake-time NOTE), loud boot-time warning where it is
 config-dependent (freertos uniproc pin), or implement the consumer
 (zephyr per-tier stack: size the pool slots or take a stack param).
 Phase-302 W2.
+
+## Resolution (2026-07-25, phase-302 W2)
+
+Items 1+4 were fixed by 296-W5.11/W5.13 in flight (threadx core-exclude +
+freertos loud uniproc fallback; posix core gained sched_setaffinity).
+This phase closed the rest: zephyr tier shim takes stack_bytes and prints
+LOUD past the fixed slot; posix consumes stack_bytes and prints a
+one-shot advisory note for priority/core declarations.

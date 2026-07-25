@@ -1,7 +1,7 @@
 ---
 id: 264
 title: "posix-family sched_class is a dead knob: accepted, carried, consumed by nothing (nuttx hardcodes SCHED_FIFO)"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: orchestration
@@ -21,3 +21,9 @@ Decide: (a) implement — thread it into `TierSpec` and let nuttx/posix
 select FIFO/RR/SPORADIC explicitly, or (b) reject the knob at bake until
 implemented (kill the silent dead end). Phase-302 W4 takes (b) unless a
 consumer lands first.
+
+## Resolution (2026-07-25, phase-302 W4)
+
+Option (b): bake-time reject until a consumer lands (zero in-tree users;
+the one CLI test fixture using it was cleaned). Revisit as implement with
+phase-162.
