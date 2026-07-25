@@ -118,3 +118,11 @@ router logs in test-logs/fixtures/ (guest handshake visibility);
 `strings <fixture> | grep tcp/` reads the baked locator; a mid-bisect
 partial fixture build poisons every later run's port pairing — rebuild
 fixtures at the FINAL checkout before trusting any verdict.
+
+### Coda: the riscv-nuttx sweep red
+
+`c_riscv_nuttx_talker_delivers_cross_process` (also red in the sweep) was
+plain fixture staleness on BOTH halves — the native listener (stale rlm
+rlib artifacts in the per-example target dirs) and the riscv C talker
+(family not rebuilt since the executor growth). `just nuttx build-riscv-c`
++ native fixture rebuild → PASS in 3.4 s. No third bug.
