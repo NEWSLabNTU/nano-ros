@@ -5,7 +5,15 @@ status: open
 type: bug
 severity: high
 area: rmw
+related: [rfc-0055, phase-303]
 ---
+
+> **Fix tracked by [RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)
+> + [phase-303](../roadmap/phase-303-xcdr2-interop.md)** — the XCDR2 + explicit
+> extensibility workstream. This issue is the root-cause record + the byte-exact
+> serializer guard; the code fix (DHEADER + declared extensibility + negotiation)
+> lands there. Closes when the phase-303 "done when" (the domain_bridge republish
+> survives) is met.
 
 ## Symptom (simple-autoware-safety-island demo, 2026-07-24)
 

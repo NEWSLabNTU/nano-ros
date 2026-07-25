@@ -1,0 +1,177 @@
+---
+rfc: 0055
+title: "Wire encoding: XCDR2 + explicit type extensibility for modern ROS 2 interop"
+status: Draft
+since: 2026-07
+last-reviewed: 2026-07
+implements-tracked-by: [phase-303]
+supersedes: []
+superseded-by: null
+---
+
+# RFC-0055 — Wire encoding: XCDR2 + explicit type extensibility
+
+## Summary
+
+nano-ros serializes ROS 2 messages as **XCDR1** (PLAIN_CDR, encapsulation
+`0x0001`), little-endian only, with **no declared type extensibility**. Modern
+ROS 2 (Humble+) defaults message types to **`@appendable`** and offers
+**XCDR2** as a data representation, under which an appendable struct carries a
+4-byte **DHEADER** (a delimiter length). Across a representation boundary — the
+concrete trigger was a `ros2 domain_bridge` generic re-publish (issue #0267) — a
+downstream reader using the type's XCDR2/appendable typesupport expects a
+DHEADER that nano-ros's XCDR1-FINAL byte stream does not contain, consumes 4
+payload bytes as a phantom length, and mis-walks every following member.
+
+This RFC extends the nano-ros serialization stack to speak **XCDR2 with
+DHEADERs for appendable types** and to **declare extensibility explicitly** in
+generated code, so nano-ros is byte-compatible with a default ROS 2 humble+
+peer regardless of the representation the peer negotiates. It also records the
+adjacent interop gaps (big-endian read, type-hash/RIHS, mutable/optional) and
+where each lands.
+
+## Motivation / problem
+
+Two serialization paths exist in the stack; the gap is shared:
+
+1. **`nros-serdes`** (pure-Rust, `no_std`) — the CDR writer/reader used by the
+   zenoh-pico / XRCE / native Rust RMW paths and the embedded images. Today it
+   is **XCDR1-only** (`CDR_LE_HEADER = [0x00,0x01,0x00,0x00]`), **little-endian
+   only** (the reader rejects the big-endian `0x0000` header — "we only support
+   little-endian for now", `cdr.rs`), and the `Serialize`/`Deserialize` traits
+   take no encoding-version parameter (XCDR1 is hard-wired).
+2. **The CycloneDDS C++ path** (`nros-rmw-cyclonedds`) — the data path uses
+   Cyclone's `dds_stream_write_sample` / typed `dds_take` with an
+   **idlc-compiled descriptor** (`m_ops`). Cyclone itself can emit XCDR1 or
+   XCDR2 with DHEADERs, **driven by the descriptor's extensibility** — but
+   `nros-msg-to-idl` emits struct definitions with **no `@final`/`@appendable`
+   annotation**, so the descriptor's extensibility is implicit (a compiler
+   default + warning), not the `@appendable` the canonical rosidl type declares.
+
+Consequences, in interop-impact order:
+
+- **#0267 (high):** appendable nested structs (e.g. `autoware_control_msgs/
+  Control` → `Lateral`/`Longitudinal`, each a nested `Time` + a trailing `bool`)
+  are mis-walked when a peer decodes them as XCDR2-appendable. nano-ros's XCDR1
+  bytes are **provably canonical** (`nros-serdes` byte-exact test
+  `test_control_nested_struct_time_bool_layout_0267`) — the fault is the missing
+  DHEADER + the implicit extensibility, not the field packing.
+- **No representation negotiation:** nano-ros advertises only XCDR1, so it
+  cannot honor a peer that requires XCDR2 (or agree on it when the peer prefers
+  it).
+- **Big-endian read gap:** the `nros-serdes` reader hard-rejects a big-endian
+  CDR stream. Rare on LE hosts, but a spec-conformant BE publisher fails silently.
+- **Type-hash / RIHS ignored:** the Cyclone subscriber discards the incoming
+  `type_hash`, so a same-named-but-different type decodes as garbage instead of
+  failing at match time.
+
+## Design
+
+### 1. Encoding model
+
+CDR encapsulation ids nano-ros must understand and (per negotiation) emit:
+
+| Id | Scheme | Extensibility it serves |
+| --- | --- | --- |
+| `0x0000/0x0001` | PLAIN_CDR (XCDR1) BE/LE | `@final`, `@appendable` (no DHEADER in v1) |
+| `0x0002/0x0003` | PL_CDR (XCDR1) BE/LE | `@mutable` (member headers) |
+| `0x0006/0x0007` | PLAIN_CDR2 (XCDR2) BE/LE | `@final` |
+| `0x0008/0x0009` | DELIMITED_CDR2 (XCDR2) BE/LE | `@appendable` (**DHEADER** on the type) |
+| `0x000a/0x000b` | PL_CDR2 (XCDR2) BE/LE | `@mutable` (**EMHEADER** per member) |
+
+The **DHEADER** is a `uint32` (aligned to 4) prefixing an appendable
+aggregated type, giving the serialized byte length of that type's members — a
+reader that doesn't recognize a trailing added member skips to
+`start + DHEADER`. The **EMHEADER** is a per-member header for `@mutable`.
+XCDR2 also aligns 8-byte primitives to **4** (not 8).
+
+**Scope of this RFC:** XCDR1 (`0x0001`, keep) + XCDR2 DELIMITED/PLAIN
+(`0x0008/0x0009`, `0x0006/0x0007`) — i.e. `@final` and `@appendable`, the two
+extensibilities every standard ROS 2 message uses. `@mutable` (PL_CDR2 /
+EMHEADER) is **out of scope** (deferred; standard ROS 2 msgs do not use it).
+
+### 2. Type extensibility is a generated property
+
+Every message type gains a compile-time **extensibility** value
+(`Final | Appendable`), derived from its `.msg`/`.idl` the same way rosidl
+derives it (default `Appendable` unless the IDL/annotation says `@final`).
+Codegen carries it two ways:
+
+- **Rust (`rosidl-codegen`):** a `const EXTENSIBILITY: Extensibility` on the
+  generated type (or an associated const on a new `CdrType` trait). The
+  `nros-serdes` writer consults it to decide whether the type emits a DHEADER
+  under XCDR2.
+- **IDL (`nros-msg-to-idl`):** emit the explicit `@final` / `@appendable`
+  annotation on every generated struct so the Cyclone descriptor is
+  unambiguous. This alone makes the **Cyclone path** XCDR2/DHEADER-correct (the
+  C++ `dds_stream` honors the descriptor) — the cheap half of the fix.
+
+### 3. `nros-serdes` gains encoding-version awareness
+
+- The `CdrWriter`/`CdrReader` carry the **encoding version** (XCDR1 vs XCDR2)
+  and endianness, set from (writer) the negotiated representation and (reader)
+  the received encapsulation id.
+- A nested **`@appendable`** type serialized under **XCDR2** is wrapped in a
+  DHEADER. Because the length is only known after serializing the members, the
+  writer either (a) reserves 4 bytes, serializes the members, backpatches the
+  length, or (b) size-precomputes via a `cdr_size(version)` the codegen emits.
+  (Open question 1.)
+- The reader dispatches on the encapsulation id: XCDR1 → today's path; XCDR2
+  appendable → read + validate the DHEADER, then bound the member walk by it
+  (skip unknown trailing bytes for forward-compat).
+- 8-byte alignment becomes version-dependent (8 under XCDR1, 4 under XCDR2).
+
+### 4. Representation negotiation
+
+nano-ros advertises `data_representation` QoS `[XCDR2, XCDR1]` (XCDR2 preferred,
+XCDR1 offered for legacy peers). The **writer** emits whichever the match
+selected; the **reader** already dispatches on the on-wire encapsulation id, so
+it accepts either from any peer. Default kept **XCDR1-compatible** on the
+constrained embedded paths where the extra DHEADER bytes matter and the peer
+set is known (a per-endpoint override).
+
+### 5. Adjacent gaps (recorded; sequenced in phase-303)
+
+- **Big-endian read:** honor the encapsulation endianness bit in the reader.
+- **Type-hash / RIHS:** compute + advertise the RIHS type hash; check it at
+  subscription match so a type mismatch fails loud instead of decoding garbage.
+
+## Alternatives considered
+
+- **Pin every generated type `@final`.** Makes nano-ros's XCDR1 bytes valid
+  under any version (no DHEADER ever expected). REJECTED as the general answer:
+  it changes the RIHS type hash and **diverges from the canonical ROS 2
+  `@appendable` type**, so a peer holding the real `@appendable` type may not
+  match, and cross-vendor evolvability is lost. `@final` is correct only for the
+  rare type whose `.msg` truly declares it.
+- **Stay XCDR1-only, document the `domain_bridge` caveat.** REJECTED: blocks
+  interop with any peer that negotiates XCDR2 — the humble+ default — and leaves
+  #0267 permanently worked-around instead of fixed.
+- **Full XCDR2 incl. `@mutable`/optional (PL_CDR2/EMHEADER).** Deferred, not
+  rejected: standard ROS 2 messages are `@final`/`@appendable` only, so
+  `@mutable` support buys no interop today at large cost.
+
+## Open questions
+
+1. **DHEADER length strategy** — backpatch (reserve-then-fill, one pass, needs a
+   seekable writer position) vs a codegen-emitted `cdr_size(version)`
+   precompute (two representations of the layout to keep in sync). The
+   `no_std` embedded writer already has a random-access `buf` + `pos`, so
+   backpatch is likely cheaper; confirm against the streaming XRCE path.
+2. **How the Rust trait carries extensibility** — a `const` on the type, an
+   associated const on a `CdrType` trait, or a parameter threaded through
+   `serialize`. Must not regress the `no_std` / zero-alloc contract.
+3. **RIHS scope** — compute the full RIHS01 hash (needs the complete type
+   graph) vs a cheaper structural check. Interacts with the descriptor the
+   Cyclone path already builds.
+4. **Embedded default** — do the constrained zenoh-pico / XRCE embedded images
+   default to XCDR1 (fewer bytes, known peer set) with XCDR2 opt-in, or XCDR2
+   everywhere for uniform interop? Per-endpoint `data_representation` override
+   is the mechanism either way.
+
+## Changelog
+
+- 2026-07 — created. Extends the wire encoding beyond XCDR1 to XCDR2 +
+  explicit extensibility; roots the #0267 root-cause finding (nano-ros CDR
+  proven canonical; the gap is DHEADER + implicit extensibility). Work
+  breakdown in [phase-303](../roadmap/phase-303-xcdr2-interop.md).

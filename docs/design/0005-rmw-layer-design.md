@@ -132,7 +132,7 @@ nros-board-mps2-an385 (user-facing, composes everything)
 | **Core (middleware-agnostic)**               |                                 |                     |                                                           |
 | `nros`                                   | `nros`                          | —                   | Unified re-export crate                                   |
 | `nros-core`                              | `nros-core`                     | —                   | Core types, traits                                        |
-| `nros-serdes`                            | `nros-serdes`                   | —                   | CDR serialization                                         |
+| `nros-serdes`                            | `nros-serdes`                   | —                   | CDR serialization (wire encoding → **RFC-0055**: XCDR2 + extensibility)  |
 | `nros-macros`                            | `nros-macros`                   | —                   | `#[derive(RosMessage)]` proc macros                       |
 | `nros-params`                            | `nros-params`                   | —                   | Parameter server                                          |
 | `nano-ros-transport`                         | **`nros-rmw`**                  | —                   | RMW abstraction traits                                    |

@@ -71,8 +71,8 @@ echo clean). RE-SCOPED (2026-07-25): the nano-ros serializer is PROVEN canonical
 `test_control_nested_struct_time_bool_layout_0267` — acceleration @40 = -2.5, nested-struct
 alignment correct); the real cause is nano-ros being XCDR1-FINAL-only (`0x0001`, no XCDR2/DHEADER
 path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DHEADER after the
-bridge crosses a representation boundary. Fix = XCDR2/DHEADER support (large) or explicit `@final`
-IDL (needs live-demo verification — not safe blind). See `0267-*`.
+bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
+explicit extensibility + representation negotiation). See `0267-*`.
 
 **#258** — full-pkg interface closure drags srv files whose generated IDL the embedded cyclone
 idlc rejects (`nav_msgs` GetMap et al — porting `Odometry` alone needed a workspace-shadowing
