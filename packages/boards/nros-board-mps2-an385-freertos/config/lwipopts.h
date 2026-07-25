@@ -83,7 +83,12 @@
 
 /* ---- TCP tuning ---- */
 #define TCP_MSS                         1460
-#define TCP_SND_BUF                     (4 * TCP_MSS)
+/* nano-ros issue 0269: 4*MSS starved many-entity DECLARE bursts —
+ * TCP_SND_QUEUELEN (derived below) capped in-flight small segments at
+ * ~16 and forced the send path into its retry loop during session
+ * open. 8*MSS doubles both byte- and segment-headroom; MEM_SIZE (32 KB)
+ * comfortably covers the extra unacked segments. */
+#define TCP_SND_BUF                     (8 * TCP_MSS)
 #define TCP_SND_QUEUELEN                ((4 * TCP_SND_BUF) / TCP_MSS)
 #define TCP_WND                         (4 * TCP_MSS)
 #define LWIP_TCP_KEEPALIVE              1

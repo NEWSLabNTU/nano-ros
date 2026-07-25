@@ -371,7 +371,7 @@ impl<'a> NodeHandle<'a> {
         let handle = self
             .session
             .create_subscription(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+            .map_err(NodeError::Transport)?;
         // W3b.5 — attach the contracted endpoint's age cell (stamped
         // types only; needs an epoch source).
         let age_mon = match (<M as RosMessage>::STAMP_OFFSET, self.epoch_us_fn) {
@@ -432,7 +432,7 @@ impl<'a> NodeHandle<'a> {
         let handle = self
             .session
             .create_subscription(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+            .map_err(NodeError::Transport)?;
         Ok(crate::executor::handles::RawSubscription {
             handle,
             buffer: [0u8; RX_BUF],

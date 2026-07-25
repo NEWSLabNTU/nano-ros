@@ -381,15 +381,21 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
 pub const MAX_BACKENDS: usize = parse_max_backends(env!("NROS_RMW_MAX_BACKENDS"));
 
 const fn parse_max_backends(s: &str) -> usize {
+    parse_env_usize(s, "NROS_RMW_MAX_BACKENDS must be a decimal integer")
+}
+
+/// Const decimal parser for build.rs-emitted envs (`MAX_BACKENDS`,
+/// `NROS_RMW_SUBSCRIBER_SLOTS`).
+pub(crate) const fn parse_env_usize(s: &str, msg: &str) -> usize {
     let bytes = s.as_bytes();
     let mut i = 0usize;
     let mut acc: usize = 0;
     while i < bytes.len() {
         let d = bytes[i];
-        assert!(
-            d.is_ascii_digit(),
-            "NROS_RMW_MAX_BACKENDS must be a decimal integer"
-        );
+        if !d.is_ascii_digit() {
+            let _ = msg;
+            panic!("nros-rmw-cffi: build-time env must be a decimal integer");
+        }
         acc = acc * 10 + (d - b'0') as usize;
         i += 1;
     }
