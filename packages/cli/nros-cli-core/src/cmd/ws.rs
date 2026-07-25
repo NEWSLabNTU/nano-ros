@@ -99,7 +99,7 @@ pub struct SyncArgs {
     #[arg(long, default_value = "generated")]
     pub build_dir: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron`).
+    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`).
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 
@@ -589,11 +589,9 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 }
 
 fn parse_edition(s: &str) -> Result<RosEdition> {
-    match s.to_lowercase().as_str() {
-        "humble" => Ok(RosEdition::Humble),
-        "iron" => Ok(RosEdition::Iron),
-        other => bail!("ws sync: unknown ROS edition '{other}' (humble | iron)"),
-    }
+    RosEdition::parse(s).ok_or_else(|| {
+        eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy | rolling)")
+    })
 }
 
 // Generate the workspace pkg directly (using its dir as a synthetic share_dir

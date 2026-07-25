@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use eyre::{Result, bail, eyre};
+use eyre::{Result, eyre};
 use rosidl_codegen::{CapacityResolver, RosEdition};
 
 #[derive(Debug, ClapArgs)]
@@ -22,7 +22,7 @@ pub struct Args {
     #[arg(long, short)]
     pub output: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron`).
+    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`).
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 
@@ -43,11 +43,12 @@ pub fn run(args: Args) -> Result<()> {
             eyre!("generate-px4-msgs: --px4 <DIR> required (or set PX4_AUTOPILOT_DIR)")
         })?;
 
-    let edition = match args.ros_edition.to_lowercase().as_str() {
-        "humble" => RosEdition::Humble,
-        "iron" => RosEdition::Iron,
-        other => bail!("unknown ROS edition '{other}' (humble | iron)"),
-    };
+    let edition = RosEdition::parse(&args.ros_edition).ok_or_else(|| {
+        eyre!(
+            "unknown ROS edition '{}' (humble | iron | jazzy | rolling)",
+            args.ros_edition
+        )
+    })?;
 
     let resolver = match &args.codegen_config {
         Some(p) => CapacityResolver::from_file(p)

@@ -123,6 +123,14 @@ ros-iron = [
     "nros/ros-iron",
     "nros-c/ros-iron",
 ]
+ros-jazzy = [
+    "nros/ros-jazzy",
+    "nros-c/ros-jazzy",
+]
+ros-rolling = [
+    "nros/ros-rolling",
+    "nros-c/ros-rolling",
+]
 
 # Bare-metal panic handler (enables building staticlib without std)
 # Phase 241.D3-rev (W12) — forward to nros-c too. nros-c is now a dependency of the

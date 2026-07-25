@@ -36,7 +36,7 @@ pub struct Args {
     #[arg(long, short = 'o', default_value = "generated")]
     pub output: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron`)
+    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`)
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 
@@ -96,7 +96,7 @@ pub struct RustArgs {
     #[arg(long, short = 'o', default_value = "generated")]
     pub output: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron`)
+    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`)
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 

@@ -152,6 +152,8 @@ platform-threadx = [
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]
 ros-iron = ["nros/ros-iron"]
+ros-jazzy = ["nros/ros-jazzy"]
+ros-rolling = ["nros/ros-rolling"]
 
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]

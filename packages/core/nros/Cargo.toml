@@ -133,6 +133,8 @@ lifecycle-services = ["nros-node/lifecycle-services"]
 # ROS edition feature flags.
 ros-humble = ["nros-node/ros-humble"]
 ros-iron = ["nros-node/ros-iron"]
+ros-jazzy = ["nros-node/ros-jazzy"]
+ros-rolling = ["nros-node/ros-rolling"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support).

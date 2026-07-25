@@ -68,6 +68,8 @@ link-tls = ["nros-rmw-zenoh/link-tls"]
 link-custom = ["nros-rmw-zenoh/link-custom"]
 ros-humble = ["nros-rmw-zenoh/ros-humble"]
 ros-iron = ["nros-rmw-zenoh/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh/ros-jazzy"]
+ros-rolling = ["nros-rmw-zenoh/ros-rolling"]
 
 [dependencies]
 nros-rmw-zenoh = { workspace = true, default-features = false }

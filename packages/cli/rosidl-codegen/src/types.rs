@@ -10,18 +10,58 @@ pub enum RosEdition {
     /// ROS 2 Humble: type hash = "TypeHashNotSupported"
     #[default]
     Humble,
-    /// ROS 2 Iron+: type hash = "RIHS01_<sha256>" (placeholder until computed)
+    /// ROS 2 Iron: type hash = "RIHS01_<sha256>" (placeholder until phase-304 W1
+    /// computes the real REP-2011 hash).
     Iron,
+    /// ROS 2 Jazzy (24.04 LTS): RIHS01 type hash; XCDR2/appendable wire encoding
+    /// is a separate profile field (RFC-0055 / phase-303 W1b).
+    Jazzy,
+    /// ROS 2 Rolling: tracks the latest; RIHS01 type hash.
+    Rolling,
 }
 
 impl RosEdition {
+    /// Parse an edition name (case-insensitive). The single place the four
+    /// editions are recognized — every CLI/`[system].ros_edition` parse routes
+    /// here so a new distro is one arm (RFC-0056).
+    pub fn parse(s: &str) -> Option<RosEdition> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "humble" => Some(RosEdition::Humble),
+            "iron" => Some(RosEdition::Iron),
+            "jazzy" => Some(RosEdition::Jazzy),
+            "rolling" => Some(RosEdition::Rolling),
+            _ => None,
+        }
+    }
+
+    /// Lowercase edition name (the inverse of [`parse`]; matches the
+    /// `generated/<edition>/` interface dir + the `ros-<edition>` cargo feature).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RosEdition::Humble => "humble",
+            RosEdition::Iron => "iron",
+            RosEdition::Jazzy => "jazzy",
+            RosEdition::Rolling => "rolling",
+        }
+    }
+
+    /// Does this edition use REP-2011 RIHS01 type hashes? Humble uses the
+    /// `TypeHashNotSupported` placeholder; Iron+ (iron/jazzy/rolling) compute a
+    /// real hash. Drives the keyexpr/liveliness format (RFC-0056 profile).
+    pub fn uses_type_hash(&self) -> bool {
+        !matches!(self, RosEdition::Humble)
+    }
+
     /// Get the type hash string for this edition.
+    ///
+    /// Humble → the `TypeHashNotSupported` sentinel. Iron+ → the RIHS01 form;
+    /// the value is a placeholder (all-zero sha256) until phase-304 W1 computes
+    /// the real REP-2011 hash — the FORMAT is correct now, the DIGEST is not.
     pub fn type_hash(&self) -> &'static str {
         match self {
             RosEdition::Humble => "TypeHashNotSupported",
-            RosEdition::Iron => {
-                "RIHS01_0000000000000000000000000000000000000000000000000000000000000000"
-            }
+            // iron / jazzy / rolling: RIHS01 placeholder (phase-304 W1).
+            _ => "RIHS01_0000000000000000000000000000000000000000000000000000000000000000",
         }
     }
 }
@@ -1486,5 +1526,43 @@ fn primitive_cdr_size(write_method: &str) -> usize {
         "write_u32" | "write_i32" | "write_f32" => 4,
         "write_u64" | "write_i64" | "write_f64" => 8,
         _ => 4,
+    }
+}
+
+#[cfg(test)]
+mod ros_edition_tests {
+    use super::RosEdition;
+
+    #[test]
+    fn parse_all_four_editions_case_insensitive() {
+        assert_eq!(RosEdition::parse("humble"), Some(RosEdition::Humble));
+        assert_eq!(RosEdition::parse("IRON"), Some(RosEdition::Iron));
+        assert_eq!(RosEdition::parse(" Jazzy "), Some(RosEdition::Jazzy));
+        assert_eq!(RosEdition::parse("rolling"), Some(RosEdition::Rolling));
+        assert_eq!(RosEdition::parse("foxy"), None);
+    }
+
+    #[test]
+    fn as_str_round_trips_parse() {
+        for e in [
+            RosEdition::Humble,
+            RosEdition::Iron,
+            RosEdition::Jazzy,
+            RosEdition::Rolling,
+        ] {
+            assert_eq!(RosEdition::parse(e.as_str()), Some(e));
+        }
+    }
+
+    #[test]
+    fn only_humble_uses_the_placeholder_sentinel() {
+        assert_eq!(RosEdition::Humble.type_hash(), "TypeHashNotSupported");
+        assert!(!RosEdition::Humble.uses_type_hash());
+        // Iron+ all use the RIHS01 form (placeholder digest until phase-304 W1).
+        for e in [RosEdition::Iron, RosEdition::Jazzy, RosEdition::Rolling] {
+            assert!(e.uses_type_hash());
+            assert!(e.type_hash().starts_with("RIHS01_"));
+            assert_eq!(e.type_hash().len(), 71); // RIHS01_ + 64 hex
+        }
     }
 }

@@ -13,7 +13,8 @@ matrix axis).
 
 ## Status (2026-07-25)
 
-Not started. The axis is **partially built**: `RosEdition {Humble, Iron}` +
+**W3 LANDED** (extend the enum). The rest not started. The axis is **partially
+built**: `RosEdition {Humble, Iron}` +
 `--ros-edition` CLI arg + `ros-humble`/`ros-iron` cargo features + a runtime
 keyexpr branch exist, but (a) `RosEdition::type_hash()` returns a **placeholder**
 for Iron (`RIHS01_<64×0>`, not computed), (b) codegen selection (the CLI arg)
@@ -97,14 +98,25 @@ disconnect (baked type_hash must match the runtime keyexpr tail).
   feature; a mismatch is impossible by construction. A missing/`humble` value is
   byte-identical to today.
 
-### W3 — extend the enum: `jazzy` / `rolling`
+### W3 — extend the enum: `jazzy` / `rolling` — **LANDED (2026-07-25)**
 
-`RosEdition` gains `Jazzy`/`Rolling` variants + the CLI parse + `ros-jazzy`/
-`ros-rolling` cargo features + the RFC-0056 profile rows (type_hash = RIHS01 like
-iron; interface dir; encoding field defers to W5).
+`RosEdition` gained `Jazzy`/`Rolling` + a single `RosEdition::parse` /
+`as_str` / `uses_type_hash` API (every CLI parse site — `ws sync`,
+`generate`, `generate-px4` — routes through it, so a new distro is one arm).
+`ros-jazzy`/`ros-rolling` cargo features added across the 6 forwarding
+Cargo.tomls (nros-rmw-zenoh → staticlib → nros-node → nros → nros-c → nros-cpp);
+`nros-rmw-zenoh::keyexpr`'s "modern edition" branch (was `ros-iron`) now keys on
+`any(ros-iron, ros-jazzy, ros-rolling)` so jazzy/rolling append the RIHS01
+type-hash tail like iron; the `nros` umbrella mutual-exclusion `compile_error!`
+covers all four. type_hash for iron/jazzy/rolling is the RIHS01 form with a
+PLACEHOLDER digest (W1 computes the real one — the FORMAT is right, the digest
+is not).
 
-- *Accept:* a `ros-jazzy` build selects the jazzy profile; the enum/CLI/feature
-  set is complete for the four editions; humble default unchanged.
+- *Verified:* `RosEdition` unit tests (parse/as_str/round-trip/type_hash for all
+  four); `nros-rmw-zenoh --features ros-jazzy` compiles + keyexpr resolves;
+  `nros --features ros-humble,ros-jazzy` fails with the mutual-exclusion error;
+  rosidl-codegen (403) + nros-msg-to-idl parity (93) suites green; humble default
+  byte-identical.
 
 ### W4 — multi-distro test infrastructure
 

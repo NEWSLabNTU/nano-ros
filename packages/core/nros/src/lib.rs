@@ -67,9 +67,11 @@
 //! `zephyr_component_main!` entry macro is gated only on `rmw-cffi` (it's
 //! framework entry codegen, like `nros::main!`), not a platform feature.
 //!
-//! **ROS version** (select one):
-//! - `ros-humble` - ROS 2 Humble
-//! - `ros-iron` - ROS 2 Iron
+//! **ROS edition** (select one; RFC-0056 — the per-distro interop profile):
+//! - `ros-humble` - ROS 2 Humble (default; `TypeHashNotSupported`, XCDR1)
+//! - `ros-iron` - ROS 2 Iron (RIHS01 type hash)
+//! - `ros-jazzy` - ROS 2 Jazzy (RIHS01; XCDR2/appendable is phase-303)
+//! - `ros-rolling` - ROS 2 Rolling
 //!
 //! **Other**:
 //! - `std` (default) - Enable standard library support
@@ -98,9 +100,21 @@
 // Only `rmw-cffi` is exposed at this layer; the cffi shim selects the
 // concrete backend at the C ABI level via the `RMW_INIT_ENTRIES` walker.
 
-// At most one ROS edition.
-#[cfg(all(feature = "ros-humble", feature = "ros-iron"))]
-compile_error!("`ros-humble` and `ros-iron` are mutually exclusive — select one ROS edition.");
+// At most one ROS edition (RFC-0056 — the axis is compile-time exclusive).
+#[cfg(any(
+    all(
+        feature = "ros-humble",
+        any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")
+    ),
+    all(
+        feature = "ros-iron",
+        any(feature = "ros-jazzy", feature = "ros-rolling")
+    ),
+    all(feature = "ros-jazzy", feature = "ros-rolling"),
+))]
+compile_error!(
+    "`ros-{humble,iron,jazzy,rolling}` are mutually exclusive — select one ROS edition."
+);
 
 #[cfg(feature = "std")]
 extern crate std;
