@@ -197,14 +197,14 @@ Key facts the engine must encode:
 
 Declare the edition ONCE in `system.toml [system].ros_edition` (default
 `humble`) and lower it — like RMW (RFC-0031) — to (a) the codegen
-`--ros-edition`, (b) the `ros-<edition>` cargo feature on the board/umbrella,
-and (c) the `generated/<edition>/` interface dir. Kills the codegen↔runtime
-disconnect (baked type_hash must match the runtime keyexpr tail).
+`--ros-edition`, and (b) the `ros-<edition>` cargo feature on the board/umbrella.
+(Leg (c) `generated/<edition>/` was found UNNECESSARY — see the W2b note below.)
+Kills the codegen↔runtime disconnect (baked type_hash must match the runtime
+keyexpr tail).
 
 - *Accept:* a `[system].ros_edition = "iron"` workspace bakes the Iron type_hash
-  AND builds with `ros-iron` AND resolves `generated/iron/` — no hand-set
-  feature; a mismatch is impossible by construction. A missing/`humble` value is
-  byte-identical to today.
+  AND builds with `ros-iron` — no hand-set feature; a mismatch is impossible by
+  construction. A missing/`humble` value is byte-identical to today.
 
 **W2 core LANDED (2026-07-25):** `SystemHeader.ros_edition: Option<String>` +
 `SystemHeader::ros_edition() -> Result<RosEdition>` (absent ⇒ humble; unknown ⇒
@@ -236,14 +236,34 @@ Verified: `cargo_feature` SSoT test; `system_config_h_emits_ros_edition_only_whe
 (humble byte-identical); all 4 edited CMake files parse; codegen-system (20) +
 scaffold + rosidl-codegen suites green.
 
-**W2b DEFERRED — leg (c) `generated/<edition>/` interface dir.** Purely
-organizational (lets multiple editions' generated crates coexist); NOT a
-correctness requirement — a single-edition build is coherent edition-flat, and
-the codegen↔runtime coherence is already guaranteed by (a)+(b) sharing one
-edition value. Deferred because the `<edition>` path segment ripples through
-every `generated/<pkg>` patch-table computation in `ws.rs` (`write_patch_block`,
-`emitted_msg_dep_closure`, the CMake `OUTPUT_DIR`); worth doing only when a
-multi-edition workspace is an actual need.
+**W2b leg (c) `generated/<edition>/` interface dir — UNNECESSARY (dropped,
+2026-07-25).** Re-analysis: a per-edition subdir in the WORKSPACE codegen output
+is not needed. As in standard ROS (one sourced distro → one `install/`, never
+mixed), a nano-ros workspace declares exactly ONE `[system].ros_edition`; every
+generated crate targets it. Switching edition regenerates IN PLACE, correctly,
+because:
+- the edition is baked into generated *content* (`TYPE_HASH`), and
+  `write_if_changed` is content-based → a changed edition → different hash →
+  rewrite;
+- the CMake codegen args file embeds `"ros_edition"` and the codegen
+  `add_custom_command` has `DEPENDS … "${_args_file}"` → an edition change
+  re-triggers codegen.
+
+So the flat `generated/<pkg>` layout is already coherent, and (a)+(b) guarantee
+the codegen↔runtime match. A per-edition subdir would only matter if two editions
+had to coexist in ONE workspace — which never happens, exactly as upstream ROS
+bindings are single-edition.
+
+NOTE (separate, pre-existing): `packages/interfaces/*/generated/{humble,iron}/`
+are committed per-edition dirs from an earlier "edition-aware binding" attempt.
+They are ORPHANED — the parent crates carry no path dep on them, the bundled
+interface resolver returns the parent dir (not a per-edition subdir), and the
+lone `iron/` copy holds STALE `RIHS01_0000…` placeholder hashes (pre-W1). That is
+the vendored-prebuilt-bindings idea, distinct from W2b; tracked as cleanup
+(regenerate via the W1c engine or drop to humble-only + regenerate-on-demand).
+
+**⇒ W2b is COMPLETE** — legs (a)+(b)+bake are the whole lowering; (c) was never
+required.
 
 ### W3 — extend the enum: `jazzy` / `rolling` — **LANDED (2026-07-25)**
 
