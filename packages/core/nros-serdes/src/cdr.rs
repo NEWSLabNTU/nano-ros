@@ -1,7 +1,7 @@
 //! CDR encoder/decoder with alignment handling
 
 use crate::{
-    CDR_LE_HEADER,
+    CDR_LE_HEADER, CDR2_DELIMITED_LE_HEADER,
     error::{DeserError, SerError},
 };
 
@@ -11,12 +11,40 @@ use crate::{
 /// Alignment is computed relative to `origin` — when a 4-byte CDR
 /// header is present, `origin = 4` so that fields align correctly
 /// within the payload portion of the buffer.
+/// CDR encoding version. XCDR1 is the historical default (PLAIN_CDR, no
+/// DHEADER, 8-byte primitives align to 8). XCDR2 (phase-303 W2 / RFC-0055 /
+/// #0267) is DELIMITED_CDR for APPENDABLE types: every struct is wrapped in a
+/// 4-byte DHEADER and 8-byte primitives align to 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EncodingVersion {
+    /// PLAIN_CDR (encapsulation `0x0001`). The default; byte-identical to every
+    /// pre-W2 stream.
+    #[default]
+    Xcdr1,
+    /// DELIMITED_CDR2 (encapsulation `0x0009`) — appendable + DHEADER.
+    Xcdr2,
+}
+
+/// Opaque marker returned by [`CdrWriter::begin_dheader`], passed back to
+/// [`CdrWriter::end_dheader`]. Under XCDR1 it carries nothing (the DHEADER calls
+/// are no-ops); under XCDR2 it holds the reserved DHEADER position.
+#[derive(Debug, Clone, Copy)]
+pub struct DHeaderMark(Option<usize>);
+
+/// Opaque scope returned by [`CdrReader::begin_dheader`], passed back to
+/// [`CdrReader::end_dheader`]. Under XCDR1 it carries nothing (no-op); under
+/// XCDR2 it holds the absolute buffer offset of the delimited struct's end.
+#[derive(Debug, Clone, Copy)]
+pub struct DHeaderScope(Option<usize>);
+
 pub struct CdrWriter<'a> {
     buf: &'a mut [u8],
     pos: usize,
     /// Byte offset where payload data begins (0 for raw, 4 after CDR header).
     /// Alignment padding is calculated as `(pos - origin) % alignment`.
     origin: usize,
+    /// CDR encoding version — drives DHEADER emission + the alignment cap.
+    version: EncodingVersion,
 }
 
 impl<'a> CdrWriter<'a> {
@@ -26,6 +54,7 @@ impl<'a> CdrWriter<'a> {
             buf,
             pos: 0,
             origin: 0,
+            version: EncodingVersion::Xcdr1,
         }
     }
 
@@ -42,6 +71,7 @@ impl<'a> CdrWriter<'a> {
             buf,
             pos,
             origin: 0,
+            version: EncodingVersion::Xcdr1,
         })
     }
 
@@ -60,7 +90,65 @@ impl<'a> CdrWriter<'a> {
             buf,
             pos: 4,
             origin: 4,
+            version: EncodingVersion::Xcdr1,
         })
+    }
+
+    /// Create an XCDR2 (DELIMITED_CDR2) writer with the `0x0009` encapsulation
+    /// header (phase-303 W2 / #0267). Each struct — top-level and nested — must
+    /// be wrapped in [`begin_dheader`](Self::begin_dheader) /
+    /// [`end_dheader`](Self::end_dheader); 8-byte primitives align to 4.
+    pub fn new_with_header_xcdr2(buf: &'a mut [u8]) -> Result<Self, SerError> {
+        if buf.len() < 4 {
+            return Err(SerError::BufferTooSmall);
+        }
+        buf[0..4].copy_from_slice(&CDR2_DELIMITED_LE_HEADER);
+        Ok(Self {
+            buf,
+            pos: 4,
+            origin: 4,
+            version: EncodingVersion::Xcdr2,
+        })
+    }
+
+    /// The CDR encoding version this writer emits.
+    #[inline]
+    pub fn version(&self) -> EncodingVersion {
+        self.version
+    }
+
+    /// Begin a DHEADER-delimited struct. Under XCDR2, aligns to 4, reserves a
+    /// 4-byte size slot (backpatched by [`end_dheader`](Self::end_dheader)), and
+    /// returns its position. Under XCDR1 this is a NO-OP (returns an empty mark),
+    /// so generated `serialize` bodies can wrap every struct unconditionally
+    /// while XCDR1 output stays byte-identical.
+    #[inline]
+    pub fn begin_dheader(&mut self) -> Result<DHeaderMark, SerError> {
+        match self.version {
+            EncodingVersion::Xcdr1 => Ok(DHeaderMark(None)),
+            EncodingVersion::Xcdr2 => {
+                self.align(4)?;
+                if self.remaining() < 4 {
+                    return Err(SerError::BufferTooSmall);
+                }
+                let at = self.pos;
+                self.buf[at..at + 4].copy_from_slice(&[0, 0, 0, 0]);
+                self.pos += 4;
+                Ok(DHeaderMark(Some(at)))
+            }
+        }
+    }
+
+    /// Finish a DHEADER-delimited struct: backpatch the reserved slot with the
+    /// serialized size of the member block written since
+    /// [`begin_dheader`](Self::begin_dheader). No-op under XCDR1.
+    #[inline]
+    pub fn end_dheader(&mut self, mark: DHeaderMark) -> Result<(), SerError> {
+        if let Some(at) = mark.0 {
+            let size = (self.pos - (at + 4)) as u32;
+            self.buf[at..at + 4].copy_from_slice(&size.to_le_bytes());
+        }
+        Ok(())
     }
 
     /// Get current position in buffer
@@ -80,9 +168,15 @@ impl<'a> CdrWriter<'a> {
         &self.buf[..self.pos]
     }
 
-    /// Align to the given boundary (relative to origin)
+    /// Align to the given boundary (relative to origin). Under XCDR2 the
+    /// alignment is capped at 4 — 8-byte primitives align to 4, not 8 (the one
+    /// primitive-layout difference from XCDR1).
     #[inline]
     pub fn align(&mut self, alignment: usize) -> Result<(), SerError> {
+        let alignment = match self.version {
+            EncodingVersion::Xcdr2 => alignment.min(4),
+            EncodingVersion::Xcdr1 => alignment,
+        };
         let offset = self.pos - self.origin;
         let padding = (alignment - (offset % alignment)) % alignment;
         if self.remaining() < padding {
@@ -225,6 +319,9 @@ pub struct CdrReader<'a> {
     buf: &'a [u8],
     pos: usize,
     origin: usize,
+    /// CDR encoding version — parsed from the encapsulation header; drives
+    /// DHEADER handling + the alignment cap.
+    version: EncodingVersion,
 }
 
 impl<'a> CdrReader<'a> {
@@ -234,6 +331,7 @@ impl<'a> CdrReader<'a> {
             buf,
             pos: 0,
             origin: 0,
+            version: EncodingVersion::Xcdr1,
         }
     }
 
@@ -250,6 +348,7 @@ impl<'a> CdrReader<'a> {
             buf,
             pos,
             origin: 0,
+            version: EncodingVersion::Xcdr1,
         })
     }
 
@@ -260,14 +359,22 @@ impl<'a> CdrReader<'a> {
         if buf.len() < 4 {
             return Err(DeserError::UnexpectedEof);
         }
-        // Check for valid CDR header (we only support little-endian for now)
-        if buf[0] != 0x00 || (buf[1] != 0x00 && buf[1] != 0x01) {
+        // Parse the encapsulation id. XCDR1 PLAIN_CDR (0x0000 BE / 0x0001 LE)
+        // and XCDR2 DELIMITED_CDR2 (0x0008 BE / 0x0009 LE — appendable, the
+        // form nano-ros emits/expects). We decode little-endian regardless.
+        if buf[0] != 0x00 {
             return Err(DeserError::InvalidHeader);
         }
+        let version = match buf[1] {
+            0x00 | 0x01 => EncodingVersion::Xcdr1,
+            0x08 | 0x09 => EncodingVersion::Xcdr2,
+            _ => return Err(DeserError::InvalidHeader),
+        };
         Ok(Self {
             buf,
             pos: 4,
             origin: 4,
+            version,
         })
     }
 
@@ -289,15 +396,64 @@ impl<'a> CdrReader<'a> {
         self.remaining() == 0
     }
 
-    /// Align to the given boundary (relative to origin)
+    /// Align to the given boundary (relative to origin). Under XCDR2 the
+    /// alignment is capped at 4 (mirrors [`CdrWriter::align`]).
     #[inline]
     pub fn align(&mut self, alignment: usize) -> Result<(), DeserError> {
+        let alignment = match self.version {
+            EncodingVersion::Xcdr2 => alignment.min(4),
+            EncodingVersion::Xcdr1 => alignment,
+        };
         let offset = self.pos - self.origin;
         let padding = (alignment - (offset % alignment)) % alignment;
         if self.remaining() < padding {
             return Err(DeserError::UnexpectedEof);
         }
         self.pos += padding;
+        Ok(())
+    }
+
+    /// The CDR encoding version parsed from the header.
+    #[inline]
+    pub fn version(&self) -> EncodingVersion {
+        self.version
+    }
+
+    /// Begin reading a DHEADER-delimited struct. Under XCDR2, aligns to 4, reads
+    /// the 4-byte DHEADER size, and returns the absolute buffer position of the
+    /// struct's END (so trailing unknown members can be skipped for forward
+    /// compat). Under XCDR1 this is a NO-OP (returns `None`) — generated
+    /// `deserialize` bodies wrap every struct unconditionally.
+    #[inline]
+    pub fn begin_dheader(&mut self) -> Result<DHeaderScope, DeserError> {
+        match self.version {
+            EncodingVersion::Xcdr1 => Ok(DHeaderScope(None)),
+            EncodingVersion::Xcdr2 => {
+                let size = self.read_u32()? as usize;
+                let end = self
+                    .pos
+                    .checked_add(size)
+                    .ok_or(DeserError::UnexpectedEof)?;
+                if end > self.buf.len() {
+                    return Err(DeserError::UnexpectedEof);
+                }
+                Ok(DHeaderScope(Some(end)))
+            }
+        }
+    }
+
+    /// Finish a DHEADER-delimited struct: skip any trailing bytes the writer
+    /// included beyond the members we read (unknown appended members — XCDR2
+    /// forward compatibility). No-op under XCDR1. Errors if we OVER-read past the
+    /// declared end (a corrupt/mismatched stream).
+    #[inline]
+    pub fn end_dheader(&mut self, scope: DHeaderScope) -> Result<(), DeserError> {
+        if let Some(end) = scope.0 {
+            if self.pos > end {
+                return Err(DeserError::DHeaderOverrun);
+            }
+            self.pos = end;
+        }
         Ok(())
     }
 
@@ -615,6 +771,100 @@ impl<'a, T: LeDecode> LeSliceView<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── phase-303 W2/W3 — XCDR2 (DELIMITED_CDR2 + DHEADER) ──────────────────
+
+    /// A nested-struct serialize (Header-like: `{ Time{i32 sec, u32 nanosec};
+    /// string frame_id }`) wrapped in DHEADERs under XCDR2 lays out the
+    /// encapsulation, the top DHEADER, the nested-Time DHEADER, and the members
+    /// at the canonical offsets — and round-trips through the reader.
+    #[test]
+    fn xcdr2_nested_dheader_layout_and_roundtrip() {
+        let mut buf = [0u8; 64];
+        {
+            let mut w = CdrWriter::new_with_header_xcdr2(&mut buf).unwrap();
+            let top = w.begin_dheader().unwrap();
+            // nested Time { i32 sec; u32 nanosec }
+            let time = w.begin_dheader().unwrap();
+            w.write_i32(7).unwrap();
+            w.write_u32(9).unwrap();
+            w.end_dheader(time).unwrap();
+            // string frame_id
+            w.write_string("ab").unwrap();
+            w.end_dheader(top).unwrap();
+        }
+        // Header (encaps): 0x00 0x09 0x00 0x00.
+        assert_eq!(&buf[0..4], &[0x00, 0x09, 0x00, 0x00]);
+        // pos 4: top DHEADER (u32 LE = size of everything after it).
+        // pos 8: nested Time DHEADER = 8 (two u32).
+        assert_eq!(u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]), 8);
+        // sec @12, nanosec @16.
+        assert_eq!(u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]), 7);
+        assert_eq!(u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]), 9);
+
+        // Round-trip.
+        let mut r = CdrReader::new_with_header(&buf).unwrap();
+        assert_eq!(r.version(), EncodingVersion::Xcdr2);
+        let top = r.begin_dheader().unwrap();
+        let time = r.begin_dheader().unwrap();
+        assert_eq!(r.read_i32().unwrap(), 7);
+        assert_eq!(r.read_u32().unwrap(), 9);
+        r.end_dheader(time).unwrap();
+        assert_eq!(r.read_string().unwrap(), "ab");
+        r.end_dheader(top).unwrap();
+    }
+
+    /// The DHEADER calls are pure NO-OPs under XCDR1 → a struct wrapped in
+    /// begin/end_dheader emits byte-identical output to one that isn't. This is
+    /// what lets generated code wrap unconditionally with zero Humble impact.
+    #[test]
+    fn xcdr1_dheader_calls_are_byte_identical_noops() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        let na = {
+            let mut w = CdrWriter::new_with_header(&mut a).unwrap();
+            let d = w.begin_dheader().unwrap();
+            w.write_i32(-2).unwrap();
+            w.write_u32(3).unwrap();
+            w.end_dheader(d).unwrap();
+            w.position()
+        };
+        let nb = {
+            let mut w = CdrWriter::new_with_header(&mut b).unwrap();
+            w.write_i32(-2).unwrap();
+            w.write_u32(3).unwrap();
+            w.position()
+        };
+        assert_eq!(na, nb);
+        assert_eq!(a[..na], b[..nb]);
+    }
+
+    /// XCDR2 forward-compat: a reader whose type has FEWER members than the
+    /// writer sent skips the trailing (unknown) bytes via the DHEADER size.
+    #[test]
+    fn xcdr2_reader_skips_unknown_trailing_members() {
+        let mut buf = [0u8; 32];
+        {
+            let mut w = CdrWriter::new_with_header_xcdr2(&mut buf).unwrap();
+            let d = w.begin_dheader().unwrap();
+            w.write_i32(11).unwrap();
+            // A future writer appended an extra u32 the reader doesn't know.
+            w.write_u32(22).unwrap();
+            w.end_dheader(d).unwrap();
+        }
+        let mut r = CdrReader::new_with_header(&buf).unwrap();
+        let d = r.begin_dheader().unwrap();
+        assert_eq!(r.read_i32().unwrap(), 11);
+        // The reader read only its known member (i32 @ pos 12); the extra u32 is
+        // unknown. end_dheader skips it → pos advances to the struct end (16).
+        assert_eq!(r.position(), 12);
+        r.end_dheader(d).unwrap();
+        assert_eq!(
+            r.position(),
+            16,
+            "end_dheader must skip the unknown trailing member"
+        );
+    }
 
     #[test]
     fn test_write_read_u8() {

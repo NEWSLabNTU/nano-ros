@@ -42,7 +42,9 @@ pub mod traits;
 #[cfg(test)]
 mod compat_tests;
 
-pub use cdr::{CdrReader, CdrWriter, LeDecode, LeSliceView};
+pub use cdr::{
+    CdrReader, CdrWriter, DHeaderMark, DHeaderScope, EncodingVersion, LeDecode, LeSliceView,
+};
 pub use error::{DeserError, SerError};
 pub use schema::{Field, FieldType, Message, NestedType};
 pub use traits::{Deserialize, DeserializeBorrowed, Serialize};
@@ -55,6 +57,12 @@ pub const CDR_LE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x01, 0x00, 0x00];
 
 /// CDR encapsulation header for big-endian encoding
 pub const CDR_BE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x00, 0x00, 0x00];
+
+/// XCDR2 DELIMITED-CDR little-endian encapsulation header (`D_CDR2_LE`, repr id
+/// `0x0009`). The representation for APPENDABLE types under XCDR2 (phase-303 W2 /
+/// RFC-0055 / #0267): every appendable struct — top-level and each nested one —
+/// is preceded by a 4-byte DHEADER carrying its member-block size.
+pub const CDR2_DELIMITED_LE_HEADER: [u8; CDR_HEADER_LEN] = [0x00, 0x09, 0x00, 0x00];
 
 /// Write the little-endian CDR header into the first `CDR_HEADER_LEN` bytes of `dst`.
 ///

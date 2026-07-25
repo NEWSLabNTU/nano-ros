@@ -39,6 +39,9 @@ pub enum DeserError {
     CapacityExceeded,
     /// The 4-byte CDR encapsulation header is missing or invalid.
     InvalidHeader,
+    /// An XCDR2 struct read past the size declared by its DHEADER (a corrupt or
+    /// representation-mismatched stream).
+    DHeaderOverrun,
 }
 
 impl fmt::Display for DeserError {
@@ -48,6 +51,7 @@ impl fmt::Display for DeserError {
             DeserError::InvalidData => write!(f, "invalid data"),
             DeserError::InvalidUtf8 => write!(f, "invalid UTF-8"),
             DeserError::CapacityExceeded => write!(f, "capacity exceeded"),
+            DeserError::DHeaderOverrun => write!(f, "XCDR2 struct exceeded its DHEADER size"),
             DeserError::InvalidHeader => write!(f, "invalid encapsulation header"),
         }
     }

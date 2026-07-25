@@ -175,6 +175,20 @@ aggregate (nested type → 2). No `.idl`/parity impact. The `nros-serdes` XCDR2
 half (zenoh/XRCE/native paths) is still W2/W3. End-to-end wire delivery (the
 domain_bridge demo clearing) is the remaining live-demo confirmation.
 
+## Update (W2/W3 serdes core LANDED, 2026-07-26) — nros-serdes XCDR2 machinery
+
+The `nros-serdes` half of the fix (for the zenoh-pico / XRCE / native-Rust paths,
+which don't go through Cyclone) got its core: `CdrWriter`/`CdrReader` now support
+XCDR2 (DELIMITED_CDR2, `0x0009`) with `begin/end_dheader` — the writer
+reserves+backpatches a 4-byte DHEADER per struct; the reader reads+bounds by it
+and skips unknown trailing members (forward compat); 8-byte primitives align to 4.
+Under XCDR1 the DHEADER calls are NO-OPs, so it's byte-identical to today.
+Byte-exact + round-trip tests green. Remaining (phase-303 W4): wrap the generated
+serialize/deserialize in the DHEADER calls + have the RMW select the XCDR2 writer
+by edition/negotiation — landed together so the path is wire-verifiable against a
+live Jazzy peer at once. The Cyclone path (the demo's actual corruption) is
+already fixed by W1c.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

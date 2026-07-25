@@ -162,11 +162,37 @@ bytes — forward compat).
   a `rmw_cyclonedds_cpp`-produced XCDR2 buffer with a trailing added member and
   skip it cleanly; XCDR1 buffers still decode via the existing path.
 
-### W4 — representation negotiation
+**W2 + W3 CORE LANDED (2026-07-26) — the `nros-serdes` XCDR2 machinery.**
+`CdrWriter`/`CdrReader` gained an `EncodingVersion` (Xcdr1 default / Xcdr2):
+- `new_with_header_xcdr2` writes the `0x0009` DELIMITED_CDR2 header; the reader
+  parses `0x0008`/`0x0009` → Xcdr2, `0x0000`/`0x0001` → Xcdr1.
+- `begin_dheader`/`end_dheader` on BOTH sides: the writer reserves + backpatches
+  a 4-byte DHEADER (RFC-0055 open-Q1 → backpatch chosen — the writer has random
+  access); the reader reads + bounds by it and SKIPS unknown trailing members
+  (forward compat). Under XCDR1 both are pure NO-OPs → generated code can wrap
+  every struct unconditionally with ZERO Humble impact.
+- `align` caps at 4 under XCDR2 (8-byte primitives align to 4).
+- Byte-exact + round-trip tests (`cdr::tests::xcdr2_*`): nested-struct DHEADER
+  layout, XCDR1-identity of the no-op wrap, and trailing-member skip. `DeserError`
+  gained `DHeaderOverrun`.
 
-Advertise `data_representation` QoS `[XCDR2, XCDR1]`; the writer emits the
-selected representation; per-endpoint override for the constrained embedded
-default (RFC-0055 open-Q4).
+**W2/W3 REMAINING (the integration — folded into W4 below, needs a live peer to
+verify end-to-end):** (a) codegen wraps each generated `serialize`/`deserialize`
+body in `begin/end_dheader` (safe — no-op under XCDR1; regenerates all message
+crates); (b) the RMW constructs an XCDR2 writer when the edition/negotiation
+selects it. These are inert until (b) flips, so they land WITH the negotiation so
+the whole path is wire-verifiable at once (a real Jazzy peer), not as inert code.
+
+### W4 — codegen DHEADER wrap + representation negotiation
+
+Wire the W2/W3 machinery into the generated messages + the RMW:
+- codegen `serialize`/`deserialize` templates wrap the field block in
+  `begin/end_dheader` (no-op XCDR1);
+- the RMW picks `new_with_header_xcdr2` vs `new_with_header` by the resolved
+  edition (RFC-0056) + the negotiated representation;
+- advertise `data_representation` QoS `[XCDR2, XCDR1]`; the writer emits the
+  selected representation; per-endpoint override for the constrained embedded
+  default (RFC-0055 open-Q4).
 
 - *Accept:* nano-ros ↔ a default humble peer negotiates XCDR2 and interoperates;
   nano-ros ↔ a legacy XCDR1-only peer falls back to XCDR1; the **#0267 demo
