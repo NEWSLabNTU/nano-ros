@@ -114,10 +114,10 @@ function(nros_generate_interfaces target)
     "DEPENDENCIES"
     ${ARGN}
   )
-  # NO_FFI_CRATE (issue 0253) — accepted + ignored: nros_find_interfaces
-  # passes it to suppress per-pkg FFI crates on the canonical generator; the
-  # Zephyr generator whole-archives generated code into `app`, so there are
-  # no per-pkg crates to dedupe.
+  # NO_FFI_CRATE (issue 0253) — DEPRECATED no-op everywhere since phase-305 W1:
+  # the split types/exports codegen makes every per-pkg crate export only its
+  # own `nros_cpp_*` symbols, so nothing needs suppressing. Accepted so
+  # existing callers don't break.
   # Phase 210.E.3.c — SKIP_INSTALL accepted for parity with the canonical
   # `cmake/NanoRosGenerateInterfaces.cmake` (which the smart Find-stub
   # passes unconditionally via rosidl_generate_interfaces wrapper).
@@ -280,6 +280,15 @@ function(nros_generate_interfaces target)
   # ---- Language-specific post-processing ----
   if(_ARG_LANGUAGE STREQUAL "CPP")
     # -- C++ path: header-only .hpp + Rust FFI staticlib --
+
+    # phase-305 W1 — drop pre-split `*_ffi.rs` leftovers from an old build
+    # dir BEFORE globbing: codegen now emits `*_types.rs` + `*_exports.rs`
+    # and never rewrites/removes the legacy files, so a stale one would be
+    # include!()d alongside the split pair → duplicate items (E0428).
+    file(GLOB_RECURSE _legacy_ffi_rs "${_output_dir}/*_ffi.rs")
+    if(_legacy_ffi_rs)
+        file(REMOVE ${_legacy_ffi_rs})
+    endif()
 
     # Collect generated files
     file(GLOB_RECURSE _generated_headers "${_output_dir}/*.hpp")

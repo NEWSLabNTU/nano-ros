@@ -1450,9 +1450,17 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     format!("Failed to generate C++ code for message: {}", file_name)
                 })?;
 
-                // Write header and FFI Rust glue
+                // Write header and split FFI Rust glue (phase-305 W1: types +
+                // exports pair per stem)
                 write_if_changed(msg_dir.join(&generated.header_name), &generated.header)?;
-                write_if_changed(msg_dir.join(&generated.ffi_rs_name), &generated.ffi_rs)?;
+                write_if_changed(
+                    msg_dir.join(&generated.ffi.types_rs_name),
+                    &generated.ffi.types_rs,
+                )?;
+                write_if_changed(
+                    msg_dir.join(&generated.ffi.exports_rs_name),
+                    &generated.ffi.exports_rs,
+                )?;
 
                 // Phase 123.B.8 — emit ROS-style alias header
                 // `msg/<snake_name>.hpp` that #includes the canonical
@@ -1465,7 +1473,8 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 )?;
 
                 msg_headers.push(generated.header_name);
-                ffi_rs_files.push(format!("msg/{}", generated.ffi_rs_name));
+                ffi_rs_files.push(format!("msg/{}", generated.ffi.types_rs_name));
+                ffi_rs_files.push(format!("msg/{}", generated.ffi.exports_rs_name));
 
                 if config.verbose {
                     println!("  Generated message: {}", file_name);
@@ -1486,16 +1495,12 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     format!("Failed to generate C++ code for service: {}", file_name)
                 })?;
 
-                // Write header and FFI Rust glue
+                // Write header and split FFI Rust glue (types + exports pairs)
                 write_if_changed(srv_dir.join(&generated.header_name), &generated.header)?;
-                write_if_changed(
-                    srv_dir.join(&generated.request_ffi_rs_name),
-                    &generated.request_ffi_rs,
-                )?;
-                write_if_changed(
-                    srv_dir.join(&generated.response_ffi_rs_name),
-                    &generated.response_ffi_rs,
-                )?;
+                for part in [&generated.request_ffi, &generated.response_ffi] {
+                    write_if_changed(srv_dir.join(&part.types_rs_name), &part.types_rs)?;
+                    write_if_changed(srv_dir.join(&part.exports_rs_name), &part.exports_rs)?;
+                }
 
                 // Phase 123.B.8 — ROS-style alias header.
                 write_b8_alias_header(
@@ -1504,8 +1509,10 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 )?;
 
                 srv_headers.push(generated.header_name);
-                ffi_rs_files.push(format!("srv/{}", generated.request_ffi_rs_name));
-                ffi_rs_files.push(format!("srv/{}", generated.response_ffi_rs_name));
+                for part in [&generated.request_ffi, &generated.response_ffi] {
+                    ffi_rs_files.push(format!("srv/{}", part.types_rs_name));
+                    ffi_rs_files.push(format!("srv/{}", part.exports_rs_name));
+                }
 
                 if config.verbose {
                     println!("  Generated service: {}", file_name);
@@ -1526,20 +1533,16 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     format!("Failed to generate C++ code for action: {}", file_name)
                 })?;
 
-                // Write header and FFI Rust glue
+                // Write header and split FFI Rust glue (types + exports pairs)
                 write_if_changed(action_dir.join(&generated.header_name), &generated.header)?;
-                write_if_changed(
-                    action_dir.join(&generated.goal_ffi_rs_name),
-                    &generated.goal_ffi_rs,
-                )?;
-                write_if_changed(
-                    action_dir.join(&generated.result_ffi_rs_name),
-                    &generated.result_ffi_rs,
-                )?;
-                write_if_changed(
-                    action_dir.join(&generated.feedback_ffi_rs_name),
-                    &generated.feedback_ffi_rs,
-                )?;
+                for part in [
+                    &generated.goal_ffi,
+                    &generated.result_ffi,
+                    &generated.feedback_ffi,
+                ] {
+                    write_if_changed(action_dir.join(&part.types_rs_name), &part.types_rs)?;
+                    write_if_changed(action_dir.join(&part.exports_rs_name), &part.exports_rs)?;
+                }
 
                 // Phase 123.B.8 — ROS-style alias header.
                 write_b8_alias_header(
@@ -1548,9 +1551,14 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 )?;
 
                 action_headers.push(generated.header_name);
-                ffi_rs_files.push(format!("action/{}", generated.goal_ffi_rs_name));
-                ffi_rs_files.push(format!("action/{}", generated.result_ffi_rs_name));
-                ffi_rs_files.push(format!("action/{}", generated.feedback_ffi_rs_name));
+                for part in [
+                    &generated.goal_ffi,
+                    &generated.result_ffi,
+                    &generated.feedback_ffi,
+                ] {
+                    ffi_rs_files.push(format!("action/{}", part.types_rs_name));
+                    ffi_rs_files.push(format!("action/{}", part.exports_rs_name));
+                }
 
                 if config.verbose {
                     println!("  Generated action: {}", file_name);
@@ -1685,7 +1693,7 @@ fn generate_ffi_mod_rs(ffi_files: &[String]) -> String {
     content.push_str("// Includes all C++ FFI glue modules\n\n");
 
     for file in ffi_files {
-        // Convert "msg/std_msgs_msg_string_ffi.rs" → include path
+        // Convert "msg/std_msgs_msg_string_types.rs" → include path
         content.push_str(&format!("#[path = \"{}\"]\n", file));
         // Module name: strip path and .rs extension
         let mod_name = file

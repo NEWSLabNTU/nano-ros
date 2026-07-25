@@ -33,6 +33,16 @@ ament_target_dependencies(consumer
     sensor_msgs
 )
 
+# nano-ros backend registration: an rclcpp-compat executable has no
+# generated entry TU, so nros_cpp_init's strong nros_app_register_backends
+# must come from the link_rmw stub (no-op under stock ROS — the compat
+# module defines it away). Without this the final link dies with
+# `undefined reference to nros_app_register_backends`.
+if(COMMAND nano_ros_link_rmw)
+    enable_language(C) # the link_rmw registration stub is a C TU
+    nano_ros_link_rmw(consumer)
+endif()
+
 # Stock-ROS install (so colcon merge-install layout puts the binary at
 # install/lib/consumer/consumer). The nano-ros build path doesn't need
 # this — the umbrella keeps the binary under build/. ament_cmake

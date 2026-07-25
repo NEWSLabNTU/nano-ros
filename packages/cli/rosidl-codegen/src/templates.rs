@@ -679,15 +679,16 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub ffi_deserialize_borrowed_fn: String,
 }
 
+/// TYPES half of the split C++ FFI glue (phase-305 W1, issue 0253): the
+/// crate-mangled items — repr(C) structs, sequence helpers, plain
+/// `serialize_/deserialize_/teardown_*_fields` fns — safe to duplicate across
+/// per-package FFI crates.
 #[derive(Template)]
-#[template(path = "message_cpp_ffi.rs.jinja", escape = "none")]
-pub struct MessageCppFfiTemplate<'a> {
+#[template(path = "message_cpp_types.rs.jinja", escape = "none")]
+pub struct MessageCppTypesTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
     pub repr_c_struct_name: String,
-    pub ffi_publish_fn: String,
-    pub ffi_serialize_fn: String,
-    pub ffi_deserialize_fn: String,
     pub serialize_fn: String,
     pub deserialize_fn: String,
     /// issue #201 — recursive heap-teardown fn name (the `_fini` analog),
@@ -696,15 +697,44 @@ pub struct MessageCppFfiTemplate<'a> {
     pub fields: Vec<CppFfiField>,
     pub sequence_structs: Vec<SequenceStructDef>,
     pub has_fields: bool,
-    pub serialized_size_max: usize,
     /// RFC-0033: at least one heap (`mode = "heap"`) field — gates the
-    /// `nros_platform_malloc`/`free` extern decls and the heap publish-buffer path.
+    /// `nros_platform_malloc`/`free` extern decls.
     pub has_heap: bool,
     /// RFC-0033: at least one heap **string** field — gates the shared
     /// `nros_cpp_heap_str_t` repr struct.
     pub has_heap_string: bool,
-    /// RFC-0033 borrowed (Phase 235): emit `nros_cpp_borrow_t`, `{Msg}ViewRepr`,
-    /// the borrowed deserializer, and the `{Msg}_ffi_deserialize_borrowed` export.
+    /// RFC-0033 borrowed (Phase 235): emit `nros_cpp_borrow_t`, `{Msg}ViewRepr`
+    /// and the plain borrowed deserializer.
+    pub has_borrowed: bool,
+    /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
+    pub view_repr_struct_name: String,
+    /// Internal borrowed deserialize fn name.
+    pub deserialize_borrowed_fn: String,
+}
+
+/// EXPORTS half of the split C++ FFI glue (phase-305 W1, issue 0253): ONLY the
+/// `#[unsafe(no_mangle)]` `nros_cpp_{publish,serialize,deserialize}_*` C-ABI
+/// wrappers. Included solely by the OWNING package's crate so each symbol is
+/// defined exactly once across any combination of interface archives.
+#[derive(Template)]
+#[template(path = "message_cpp_exports.rs.jinja", escape = "none")]
+pub struct MessageCppExportsTemplate<'a> {
+    pub package_name: &'a str,
+    pub message_name: &'a str,
+    pub repr_c_struct_name: String,
+    pub ffi_publish_fn: String,
+    pub ffi_serialize_fn: String,
+    pub ffi_deserialize_fn: String,
+    pub serialize_fn: String,
+    pub deserialize_fn: String,
+    /// Heap publish-path sizing reads the heap fields' runtime lengths.
+    pub fields: Vec<CppFfiField>,
+    pub has_fields: bool,
+    pub serialized_size_max: usize,
+    /// RFC-0033: gates the heap publish-buffer path.
+    pub has_heap: bool,
+    /// RFC-0033 borrowed (Phase 235): emit the `{Msg}_ffi_deserialize_borrowed`
+    /// export.
     pub has_borrowed: bool,
     /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
     pub view_repr_struct_name: String,

@@ -12,7 +12,7 @@ pub use config::{
 };
 pub use generator::{
     GeneratedActionPackage, GeneratedCActionPackage, GeneratedCPackage, GeneratedCServicePackage,
-    GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage,
+    GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage, GeneratedFfiRs,
     GeneratedNrosActionPackage, GeneratedNrosPackage, GeneratedNrosServicePackage,
     GeneratedPackage, GeneratedServicePackage, GeneratorError, generate_action_package,
     generate_c_action_package, generate_c_message_package, generate_c_service_package,

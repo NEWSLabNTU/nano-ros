@@ -155,6 +155,12 @@ CMAKE_FIXTURES=(
     # shadow (carrying Marker.msg) over the AMENT one; the test `nm`s the
     # consumer to prove which won. Needs an AMENT std_msgs in the build env.
     "shadowing:examples/templates/workspace-shadowing"
+    # phase-305 W1 (issue 0253) — two-interface-pkg C++ consumer via
+    # nros_workspace_interfaces (extra_msgs depends on local_msgs; the consumer
+    # links both). Gates the per-package FFI-crate split: the pre-305 superset
+    # crates made this link fail with hundreds of duplicate `nros_cpp_*`
+    # definitions, silently (the template wasn't fixture-gated).
+    "local_msg_pkg:examples/templates/local-msg-package"
     # add_subdirectory(nano-ros) link smoke (a user project linking
     # NanoRos::NanoRos via add_subdirectory).
     "cmake_add_subdir:packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"

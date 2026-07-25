@@ -1,6 +1,7 @@
 //! Manual end-to-end compile check for `mode = "heap"` generated C++ (RFC-0033 /
 //! Phase 229.5, C++ path). Two halves:
-//!   * the FFI Rust glue (`*_ffi.rs`) — the unsafe raw-pointer + shared-allocator
+//!   * the FFI Rust glue (the split `*_types.rs` + `*_exports.rs` pair,
+//!     concatenated) — the unsafe raw-pointer + shared-allocator
 //!     code — is `cargo check`'d against the real nros-serdes;
 //!   * the `.hpp` header (using `nros::HeapSequence`) is `g++ -fsyntax-only`'d.
 //! Ignored by default; run with:
@@ -57,7 +58,7 @@ nros-serdes = {{ path = "{}/packages/core/nros-serdes" }}
         ),
     )
     .unwrap();
-    fs::write(tmp.path().join("src/ffi_gen.rs"), &pkg.ffi_rs).unwrap();
+    fs::write(tmp.path().join("src/ffi_gen.rs"), pkg.ffi.combined()).unwrap();
     fs::write(
         tmp.path().join("src/lib.rs"),
         r#"#![allow(non_camel_case_types, dead_code)]
@@ -86,7 +87,7 @@ include!("ffi_gen.rs");
         out.status.success(),
         "generated heap FFI .rs failed to compile:\n{}\n--- ffi.rs ---\n{}",
         String::from_utf8_lossy(&out.stderr),
-        pkg.ffi_rs,
+        pkg.ffi.combined(),
     );
 
     // ---- 2. .hpp header: g++ -fsyntax-only ----
@@ -155,14 +156,14 @@ fn generated_fixed_string_serialize_truncates_at_nul_garbage() {
     // Regression guard: the template must route through the shared fixed_str()
     // helper, not re-introduce the old whole-buffer from_utf8+trim pattern.
     assert!(
-        pkg.ffi_rs.contains("fixed_str(&msg.data)"),
+        pkg.ffi.types_rs.contains("fixed_str(&msg.data)"),
         "expected fixed_str(&msg.data) in generated serialize fn:\n{}",
-        pkg.ffi_rs
+        pkg.ffi.types_rs
     );
     assert!(
-        !pkg.ffi_rs.contains("trim_end_matches"),
+        !pkg.ffi.combined().contains("trim_end_matches"),
         "old buggy whole-buffer from_utf8 + trim_end_matches pattern reappeared:\n{}",
-        pkg.ffi_rs
+        pkg.ffi.combined()
     );
 
     let root = repo_root();
@@ -185,7 +186,7 @@ nros-serdes = {{ path = "{}/packages/core/nros-serdes" }}
         ),
     )
     .unwrap();
-    fs::write(tmp.path().join("src/ffi_gen.rs"), &pkg.ffi_rs).unwrap();
+    fs::write(tmp.path().join("src/ffi_gen.rs"), pkg.ffi.combined()).unwrap();
     fs::write(
         tmp.path().join("src/main.rs"),
         r#"#![allow(non_camel_case_types, dead_code)]

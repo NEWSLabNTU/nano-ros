@@ -108,12 +108,22 @@ endfunction()
 # back-compat but bypasses the ROS-convention surface.
 # =========================================================================
 function(nros_generate_interfaces target)
+  # NO_FFI_CRATE — DEPRECATED no-op (phase-305 W1, issue 0253): the split
+  # types/exports codegen makes every package's FFI crate export only its own
+  # `nros_cpp_*` symbols, so the superset-archive suppression this flag drove
+  # is gone. The keyword stays accepted so existing callers don't break.
   cmake_parse_arguments(_ARG
     "SKIP_INSTALL;NO_FFI_CRATE"
     "ROS_EDITION;LANGUAGE;CODEGEN_CONFIG"
     "DEPENDENCIES"
     ${ARGN}
   )
+  if(_ARG_NO_FFI_CRATE)
+    message(STATUS
+      "nros_generate_interfaces(${target}): NO_FFI_CRATE is deprecated and "
+      "ignored (per-package FFI crates export only their own symbols since "
+      "phase-305).")
+  endif()
 
   # phase-304 W2b (RFC-0056) — an explicit ROS_EDITION wins; otherwise inherit
   # the workspace edition baked by `nano_ros_workspace(EDITION …)`
@@ -379,13 +389,12 @@ function(nros_generate_interfaces target)
     # The generated .rs files provide extern "C" publish/serialize/deserialize
     # functions. We compile them into a static library via cargo.
     #
-    # NO_FFI_CRATE (issue: multi-interface-pkg consumers): each pkg's FFI crate
-    # include!()s the rs closure of EVERY preceding pkg (flat module), so two
-    # sibling crates on one link line = duplicate `nros_cpp_*` definitions.
-    # `nros_find_interfaces` therefore builds ONLY the topo-last pkg's crate
-    # (the superset) and attaches its archive to every pkg's INTERFACE target;
-    # the flag suppresses the per-pkg crate for the non-terminal pkgs.
-    if(_generated_rs_files AND NOT _ARG_NO_FFI_CRATE)
+    # phase-305 W1 (issue 0253): every package builds its OWN crate. The crate
+    # includes dependency `*_types.rs` (crate-mangled, duplicate-safe) but only
+    # its OWN `*_exports.rs` (`_nros_collect_rs_closure` filters dep exports),
+    # so each archive defines each `nros_cpp_*` symbol exactly once and any
+    # combination of interface archives links.
+    if(_generated_rs_files)
       # Phase 123.A.7 — share the FFI crate build dir across packages
       # when NANO_ROS_GEN_CACHE_DIR is set.
       if(_gen_cache_root)

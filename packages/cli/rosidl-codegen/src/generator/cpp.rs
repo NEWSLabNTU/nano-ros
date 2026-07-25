@@ -2,8 +2,9 @@ use super::common::{GeneratorError, build_cpp_ffi_field, build_cpp_field, resolv
 use crate::{
     config::CapacityResolver,
     templates::{
-        ActionCppHeaderTemplate, CConstant, CppFfiField, CppField, MessageCppFfiTemplate,
-        MessageCppHeaderTemplate, SequenceStructDef, ServiceCppHeaderTemplate,
+        ActionCppHeaderTemplate, CConstant, CppFfiField, CppField, MessageCppExportsTemplate,
+        MessageCppHeaderTemplate, MessageCppTypesTemplate, SequenceStructDef,
+        ServiceCppHeaderTemplate,
     },
     types::{
         c_type_for_constant, compute_serialized_size_max, constant_value_to_rust, to_c_package_name,
@@ -13,52 +14,64 @@ use crate::{
 use askama::Template;
 use rosidl_parser::{Action, FieldType, Message, Service};
 
-/// Generated C++ message package (header + FFI Rust glue)
+/// One message-like part's split Rust FFI glue (phase-305 W1, issue 0253):
+/// the TYPES half (crate-mangled structs + plain field serializers — safe to
+/// duplicate across per-package crates) and the EXPORTS half (only the
+/// `#[unsafe(no_mangle)]` C-ABI wrappers — included solely by the owning
+/// package's crate).
+pub struct GeneratedFfiRs {
+    /// TYPES half content (`<stem>_types.rs`)
+    pub types_rs: String,
+    /// EXPORTS half content (`<stem>_exports.rs`)
+    pub exports_rs: String,
+    /// TYPES half filename
+    pub types_rs_name: String,
+    /// EXPORTS half filename
+    pub exports_rs_name: String,
+}
+
+impl GeneratedFfiRs {
+    /// The pre-split single-file view (types + exports concatenated) — for
+    /// tests / one-off harnesses that compile the glue as one module.
+    pub fn combined(&self) -> String {
+        format!("{}\n{}", self.types_rs, self.exports_rs)
+    }
+}
+
+/// Generated C++ message package (header + split FFI Rust glue)
 pub struct GeneratedCppPackage {
     /// C++ header content (.hpp)
     pub header: String,
-    /// Rust FFI glue content (.rs)
-    pub ffi_rs: String,
+    /// Split Rust FFI glue
+    pub ffi: GeneratedFfiRs,
     /// Header filename
     pub header_name: String,
-    /// FFI Rust filename
-    pub ffi_rs_name: String,
 }
 
-/// Generated C++ service package (header only — services use message FFI)
+/// Generated C++ service package (header + per-part split FFI glue)
 pub struct GeneratedCppServicePackage {
     /// C++ header content (.hpp)
     pub header: String,
     /// Header filename
     pub header_name: String,
-    /// Rust FFI glue for request (.rs)
-    pub request_ffi_rs: String,
-    /// Rust FFI glue for response (.rs)
-    pub response_ffi_rs: String,
-    /// Request FFI filename
-    pub request_ffi_rs_name: String,
-    /// Response FFI filename
-    pub response_ffi_rs_name: String,
+    /// Split Rust FFI glue for request
+    pub request_ffi: GeneratedFfiRs,
+    /// Split Rust FFI glue for response
+    pub response_ffi: GeneratedFfiRs,
 }
 
-/// Generated C++ action package (header only — actions use message FFI)
+/// Generated C++ action package (header + per-part split FFI glue)
 pub struct GeneratedCppActionPackage {
     /// C++ header content (.hpp)
     pub header: String,
     /// Header filename
     pub header_name: String,
-    /// Rust FFI glue for goal (.rs)
-    pub goal_ffi_rs: String,
-    /// Rust FFI glue for result (.rs)
-    pub result_ffi_rs: String,
-    /// Rust FFI glue for feedback (.rs)
-    pub feedback_ffi_rs: String,
-    /// Goal FFI filename
-    pub goal_ffi_rs_name: String,
-    /// Result FFI filename
-    pub result_ffi_rs_name: String,
-    /// Feedback FFI filename
-    pub feedback_ffi_rs_name: String,
+    /// Split Rust FFI glue for goal
+    pub goal_ffi: GeneratedFfiRs,
+    /// Split Rust FFI glue for result
+    pub result_ffi: GeneratedFfiRs,
+    /// Split Rust FFI glue for feedback
+    pub feedback_ffi: GeneratedFfiRs,
 }
 
 /// Helper: build CppField list and CppFfiField list + sequence structs from message fields.
@@ -207,11 +220,14 @@ fn collect_field_type_intra_pkg_includes(
     }
 }
 
-/// Inputs for [`render_ffi_rs`]: the names of the generated FFI
-/// functions plus the message's fields and sequence-struct defs.
+/// Inputs for [`render_ffi_rs`]: the generated-file stem, the names of the
+/// generated FFI functions, plus the message's fields and sequence-struct defs.
 struct FfiRenderSpec<'a> {
     package_name: &'a str,
     message_name: &'a str,
+    /// Filename stem (e.g. `std_msgs_msg_int32`) — the split pair is written
+    /// as `<stem>_types.rs` + `<stem>_exports.rs`.
+    file_stem: &'a str,
     struct_name: &'a str,
     ffi_publish_fn: &'a str,
     ffi_serialize_fn: &'a str,
@@ -222,21 +238,21 @@ struct FfiRenderSpec<'a> {
     seq_structs: &'a [SequenceStructDef],
 }
 
-/// Generate a Rust FFI glue module for a message-like struct
-fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
+/// Generate the split Rust FFI glue pair for a message-like struct
+/// (phase-305 W1, issue 0253): TYPES half + EXPORTS half.
+fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorError> {
     let has_fields = !spec.ffi_fields.is_empty();
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
     let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
     let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_borrowed);
+    let view_repr_struct_name = format!("{}_view", spec.struct_name);
+    let deserialize_borrowed_fn = format!("{}_borrowed", spec.deserialize_fn);
 
-    let template = MessageCppFfiTemplate {
+    let types_template = MessageCppTypesTemplate {
         package_name: spec.package_name,
         message_name: spec.message_name,
         repr_c_struct_name: spec.struct_name.to_string(),
-        ffi_publish_fn: spec.ffi_publish_fn.to_string(),
-        ffi_serialize_fn: spec.ffi_serialize_fn.to_string(),
-        ffi_deserialize_fn: spec.ffi_deserialize_fn.to_string(),
         serialize_fn: spec.serialize_fn.to_string(),
         deserialize_fn: spec.deserialize_fn.to_string(),
         // issue #201 — same stem as the field-deserializer (`deserialize_…`
@@ -246,15 +262,38 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
         fields: spec.ffi_fields.to_vec(),
         sequence_structs: spec.seq_structs.to_vec(),
         has_fields,
-        serialized_size_max,
         has_heap,
         has_heap_string,
         has_borrowed,
-        view_repr_struct_name: format!("{}_view", spec.struct_name),
-        deserialize_borrowed_fn: format!("{}_borrowed", spec.deserialize_fn),
+        view_repr_struct_name: view_repr_struct_name.clone(),
+        deserialize_borrowed_fn: deserialize_borrowed_fn.clone(),
+    };
+
+    let exports_template = MessageCppExportsTemplate {
+        package_name: spec.package_name,
+        message_name: spec.message_name,
+        repr_c_struct_name: spec.struct_name.to_string(),
+        ffi_publish_fn: spec.ffi_publish_fn.to_string(),
+        ffi_serialize_fn: spec.ffi_serialize_fn.to_string(),
+        ffi_deserialize_fn: spec.ffi_deserialize_fn.to_string(),
+        serialize_fn: spec.serialize_fn.to_string(),
+        deserialize_fn: spec.deserialize_fn.to_string(),
+        fields: spec.ffi_fields.to_vec(),
+        has_fields,
+        serialized_size_max,
+        has_heap,
+        has_borrowed,
+        view_repr_struct_name,
+        deserialize_borrowed_fn,
         ffi_deserialize_borrowed_fn: format!("{}_borrowed", spec.ffi_deserialize_fn),
     };
-    Ok(template.render()?)
+
+    Ok(GeneratedFfiRs {
+        types_rs: types_template.render()?,
+        exports_rs: exports_template.render()?,
+        types_rs_name: format!("{}_types.rs", spec.file_stem),
+        exports_rs_name: format!("{}_exports.rs", spec.file_stem),
+    })
 }
 
 /// Generate C++ code for a message type
@@ -281,7 +320,7 @@ pub fn generate_cpp_message_package(
     let deserialize_fn = format!("deserialize_{}_msg_{}_fields", c_pkg_name, msg_snake);
 
     let header_name = format!("{}_msg_{}.hpp", c_pkg_name, msg_snake);
-    let ffi_rs_name = format!("{}_msg_{}_ffi.rs", c_pkg_name, msg_snake);
+    let file_stem = format!("{}_msg_{}", c_pkg_name, msg_snake);
 
     let (cpp_fields, ffi_fields, seq_structs) = build_fields(
         &message.fields,
@@ -318,10 +357,11 @@ pub fn generate_cpp_message_package(
     };
     let header = header_template.render()?;
 
-    // Render Rust FFI glue
-    let ffi_rs = render_ffi_rs(FfiRenderSpec {
+    // Render split Rust FFI glue (types + exports)
+    let ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name,
+        file_stem: &file_stem,
         struct_name: &struct_name,
         ffi_publish_fn: &ffi_publish_fn,
         ffi_serialize_fn: &ffi_serialize_fn,
@@ -334,9 +374,8 @@ pub fn generate_cpp_message_package(
 
     Ok(GeneratedCppPackage {
         header,
-        ffi_rs,
+        ffi,
         header_name,
-        ffi_rs_name,
     })
 }
 
@@ -459,10 +498,11 @@ pub fn generate_cpp_service_package(
     };
     let header = header_template.render()?;
 
-    // Render FFI glue for request and response
-    let request_ffi_rs = render_ffi_rs(FfiRenderSpec {
+    // Render split FFI glue for request and response
+    let request_ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name: &format!("{}Request", service_name),
+        file_stem: &format!("{}_srv_{}_request", c_pkg_name, srv_snake),
         struct_name: &req_struct,
         ffi_publish_fn: &req_publish_fn,
         ffi_serialize_fn: &req_serialize_fn,
@@ -473,9 +513,10 @@ pub fn generate_cpp_service_package(
         seq_structs: &req_seq_structs,
     })?;
 
-    let response_ffi_rs = render_ffi_rs(FfiRenderSpec {
+    let response_ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name: &format!("{}Response", service_name),
+        file_stem: &format!("{}_srv_{}_response", c_pkg_name, srv_snake),
         struct_name: &resp_struct,
         ffi_publish_fn: &resp_publish_fn,
         ffi_serialize_fn: &resp_serialize_fn,
@@ -489,10 +530,8 @@ pub fn generate_cpp_service_package(
     Ok(GeneratedCppServicePackage {
         header,
         header_name,
-        request_ffi_rs,
-        response_ffi_rs,
-        request_ffi_rs_name: format!("{}_srv_{}_request_ffi.rs", c_pkg_name, srv_snake),
-        response_ffi_rs_name: format!("{}_srv_{}_response_ffi.rs", c_pkg_name, srv_snake),
+        request_ffi,
+        response_ffi,
     })
 }
 
@@ -638,10 +677,11 @@ pub fn generate_cpp_action_package(
     };
     let header = header_template.render()?;
 
-    // Render FFI glue for each part
-    let goal_ffi_rs = render_ffi_rs(FfiRenderSpec {
+    // Render split FFI glue for each part
+    let goal_ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name: &format!("{}Goal", action_name),
+        file_stem: &format!("{}_action_{}_goal", c_pkg_name, act_snake),
         struct_name: &goal.struct_name,
         ffi_publish_fn: &goal.publish_fn,
         ffi_serialize_fn: &goal.serialize_fn,
@@ -652,9 +692,10 @@ pub fn generate_cpp_action_package(
         seq_structs: &goal.seq_structs,
     })?;
 
-    let result_ffi_rs = render_ffi_rs(FfiRenderSpec {
+    let result_ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name: &format!("{}Result", action_name),
+        file_stem: &format!("{}_action_{}_result", c_pkg_name, act_snake),
         struct_name: &result.struct_name,
         ffi_publish_fn: &result.publish_fn,
         ffi_serialize_fn: &result.serialize_fn,
@@ -665,9 +706,10 @@ pub fn generate_cpp_action_package(
         seq_structs: &result.seq_structs,
     })?;
 
-    let feedback_ffi_rs = render_ffi_rs(FfiRenderSpec {
+    let feedback_ffi = render_ffi_rs(FfiRenderSpec {
         package_name,
         message_name: &format!("{}Feedback", action_name),
+        file_stem: &format!("{}_action_{}_feedback", c_pkg_name, act_snake),
         struct_name: &feedback.struct_name,
         ffi_publish_fn: &feedback.publish_fn,
         ffi_serialize_fn: &feedback.serialize_fn,
@@ -681,11 +723,8 @@ pub fn generate_cpp_action_package(
     Ok(GeneratedCppActionPackage {
         header,
         header_name,
-        goal_ffi_rs,
-        result_ffi_rs,
-        feedback_ffi_rs,
-        goal_ffi_rs_name: format!("{}_action_{}_goal_ffi.rs", c_pkg_name, act_snake),
-        result_ffi_rs_name: format!("{}_action_{}_result_ffi.rs", c_pkg_name, act_snake),
-        feedback_ffi_rs_name: format!("{}_action_{}_feedback_ffi.rs", c_pkg_name, act_snake),
+        goal_ffi,
+        result_ffi,
+        feedback_ffi,
     })
 }

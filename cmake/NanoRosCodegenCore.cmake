@@ -20,22 +20,37 @@ include_guard(GLOBAL)
 
 # _nros_collect_rs_closure(<out_var> DEPS <pkgs...> OWN <rs-files...>)
 #
-# Compute the de-duplicated transitive closure of generated `_ffi.rs` files:
+# Compute the de-duplicated transitive closure of generated FFI `.rs` files:
 # each dependency's `<dep>_GENERATED_RS_FILES` (or the `_NROS_PKG_<dep>_*` CACHE
 # stash, for multi-level scope chains where PARENT_SCOPE didn't reach) PLUS the
 # package's own files. De-dup is REQUIRED: a diamond dependency would otherwise
-# carry the same leaf `_ffi.rs` twice → both the lib.rs `include!()` of it twice
+# carry the same leaf file twice → both the lib.rs `include!()` of it twice
 # (Rust E0428, issue 0052) and a doubled closure export. Returns the list in
 # <out_var> (in the CALLER's scope).
+#
+# phase-305 W1 (issue 0253): codegen splits each stem into `<stem>_types.rs`
+# (crate-mangled structs + plain field serializers — safe to duplicate across
+# per-package crates) and `<stem>_exports.rs` (the `#[no_mangle]` C-ABI
+# wrappers). Dependencies contribute their TYPES files ONLY — their exports
+# live in their OWN crate/archive — so every package builds its own FFI crate
+# and any combination of interface archives links without duplicate
+# `nros_cpp_*` definitions. OWN files keep both halves.
 function(_nros_collect_rs_closure _out_var)
     cmake_parse_arguments(_C "" "" "DEPS;OWN" ${ARGN})
     set(_all "")
     foreach(_dep ${_C_DEPS})
+        set(_dep_files "")
         if(DEFINED ${_dep}_GENERATED_RS_FILES)
-            list(APPEND _all ${${_dep}_GENERATED_RS_FILES})
+            set(_dep_files "${${_dep}_GENERATED_RS_FILES}")
         elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-            list(APPEND _all $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+            set(_dep_files "$CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES}")
         endif()
+        # Types-only dep contribution (see above). The dep's exported closure
+        # carries its own exports (plus transitively-filtered dep types);
+        # strip every `_exports.rs` here so only the owning package's crate
+        # ever includes them.
+        list(FILTER _dep_files EXCLUDE REGEX "_exports\\.rs$")
+        list(APPEND _all ${_dep_files})
     endforeach()
     list(APPEND _all ${_C_OWN})
     if(_all)
@@ -61,7 +76,7 @@ endfunction()
 #                        PATH_MODE relative|absolute)
 #
 # Assemble the FFI crate's `src/lib.rs` from the shared `ffi_lib_rs.in` template:
-# one `include!()` per unique generated `_ffi.rs` (skipping `mod.rs`), so all
+# one `include!()` per unique generated FFI `.rs` file (skipping `mod.rs`), so all
 # cross-package types share one flat module scope. PATH_MODE selects how the
 # include path is spelled:
 #   relative — emit `file(RELATIVE_PATH …)` from <CRATE_SRC>; portable across
@@ -152,9 +167,10 @@ endfunction()
 #     LANGUAGE C|CPP PACKAGE <name> OUTPUT_DIR <dir> INTERFACE_FILES <files...>)
 #
 # Predict the files `nros codegen` will emit for the given interfaces, returning
-# three lists (headers / C sources / Rust `_ffi.rs`) in the caller's scope.
-# CPP: `<pkg>_<kind>_<name>.hpp` + per-kind `_ffi.rs` (msg→1, srv→request+response,
-# action→goal+result+feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C:
+# three lists (headers / C sources / Rust FFI `.rs`) in the caller's scope.
+# CPP: `<pkg>_<kind>_<name>.hpp` + a split `_types.rs`+`_exports.rs` pair per
+# part (phase-305 W1: msg→1 pair, srv→request+response, action→goal+result+
+# feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C:
 # `<pkg>_<kind>_<name>.{h,c}` + the `<pkg>.h` umbrella. Names are CamelCase→snake,
 # package `-`→`_`. The canonical generator feeds these to add_custom_command
 # OUTPUT (must match codegen exactly); the Zephyr generator concatenates them for
@@ -183,12 +199,15 @@ function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
         if(_P_LANGUAGE STREQUAL "CPP")
             list(APPEND _headers "${_base}.hpp")
             if(_kind STREQUAL "msg")
-                list(APPEND _rs "${_base}_ffi.rs")
+                set(_parts "${_base}")
             elseif(_kind STREQUAL "srv")
-                list(APPEND _rs "${_base}_request_ffi.rs" "${_base}_response_ffi.rs")
+                set(_parts "${_base}_request" "${_base}_response")
             elseif(_kind STREQUAL "action")
-                list(APPEND _rs "${_base}_goal_ffi.rs" "${_base}_result_ffi.rs" "${_base}_feedback_ffi.rs")
+                set(_parts "${_base}_goal" "${_base}_result" "${_base}_feedback")
             endif()
+            foreach(_part ${_parts})
+                list(APPEND _rs "${_part}_types.rs" "${_part}_exports.rs")
+            endforeach()
         else()
             list(APPEND _headers "${_base}.h")
             list(APPEND _sources "${_base}.c")
@@ -474,64 +493,30 @@ function(nros_find_interfaces)
     #    C++ FFI include!() chain sees every cross-package type; the C path
     #    ignores the surplus.
     #
-    #    C++ FFI dedupe: each pkg's FFI crate is a flat-module superset of every
-    #    preceding pkg, so only the topo-LAST pkg builds one (NO_FFI_CRATE on
-    #    the others) and its archive is attached to every pkg's INTERFACE
-    #    target below — two sibling superset archives on one link line would
-    #    duplicate every shared `nros_cpp_*` symbol (multi-interface-pkg
-    #    consumers, e.g. autoware_control_msgs + tier4_system_msgs).
-    list(GET _NROS_RESOLVED_PACKAGES -1 _nros_last_pkg)
-    string(TOUPPER "${_ARG_LANGUAGE}" _nros_lang_upper) # verbs pass lowercase "cpp"
-
-    # Issue 0277 — mixed msg-dep subsets across multiple nros_find_interfaces
-    # calls: the superset FFI crate is per-CALL, so a later call that
-    # introduces NEW interface pkgs builds a SECOND superset archive; if both
-    # reach one link line, every shared `nros_cpp_*` symbol duplicates (and a
-    # consumer of only the first archive misses the new pkgs' symbols). A
-    # later call whose set is a SUBSET of what's already resolved is fine
-    # (generation no-ops; the routed union archive covers it) — that is the
-    # `island_interfaces` shim pattern. Diagnose the bad shape loudly here
-    # instead of at link time.
-    get_property(_nros_prev_resolved GLOBAL PROPERTY NROS_FIND_INTERFACES_RESOLVED)
-    if(_nros_lang_upper STREQUAL "CPP" AND _nros_prev_resolved)
-        set(_nros_new_pkgs "")
-        foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
-            if(NOT _pkg IN_LIST _nros_prev_resolved)
-                list(APPEND _nros_new_pkgs "${_pkg}")
-            endif()
-        endforeach()
-        if(_nros_new_pkgs)
-            message(WARNING
-                "nros_find_interfaces (issue 0277): this call resolves interface "
-                "package(s) [${_nros_new_pkgs}] NOT covered by an earlier "
-                "nros_find_interfaces call in this workspace. Each call builds its "
-                "own topo-last superset FFI crate — two superset archives on one "
-                "link line duplicate every shared nros_cpp_* symbol. Fix: resolve "
-                "the UNION once, first — either a first-SUBDIR interfaces shim "
-                "package whose package.xml depends on every msg pkg the workspace "
-                "uses (island_interfaces pattern), or a single nros_find_interfaces "
-                "call with the union package.xml; later subset calls then no-op.")
-        endif()
-    endif()
-    set_property(GLOBAL APPEND PROPERTY NROS_FIND_INTERFACES_RESOLVED ${_NROS_RESOLVED_PACKAGES})
-
+    # Issue 0277 note: the mixed-subset diagnosis that lived here (two
+    # superset archives on one link line) is obsolete by construction under
+    # the per-package-crate design — any combination of interface archives
+    # links; later find_interfaces calls with new pkgs just build more
+    # per-pkg crates. The NROS_FIND_INTERFACES_RESOLVED property and its
+    # warning are retired with the superset machinery.
+    #    phase-305 W1 (issue 0253): every package builds its OWN FFI crate. The
+    #    split types/exports closure (`_nros_collect_rs_closure`) guarantees a
+    #    crate exports only its own `nros_cpp_*` symbols — dependency TYPES are
+    #    included, dependency EXPORTS are not — so any combination of interface
+    #    archives on one link line resolves cleanly. The former topo-last
+    #    superset-archive routing (NO_FFI_CRATE) is retired.
     set(_all_preceding_pkgs "")
     foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
         set(_skip "")
         if(_ARG_SKIP_INSTALL)
             set(_skip "SKIP_INSTALL")
         endif()
-        set(_no_ffi "")
-        if(_nros_lang_upper STREQUAL "CPP" AND NOT _pkg STREQUAL _nros_last_pkg)
-            set(_no_ffi "NO_FFI_CRATE")
-        endif()
         nros_generate_interfaces(${_pkg}
             ${_NROS_RESOLVED_${_pkg}_FILES}
             DEPENDENCIES ${_all_preceding_pkgs}
             LANGUAGE ${_ARG_LANGUAGE}
             ROS_EDITION ${_ARG_ROS_EDITION}
-            ${_skip}
-            ${_no_ffi})
+            ${_skip})
         # Re-export per-package vars to the caller (canonical sets all of these;
         # the zephyr generator only sets GENERATED_RS_FILES — the rest re-export
         # empty, harmless).
@@ -542,17 +527,4 @@ function(nros_find_interfaces)
         set(${_pkg}_GENERATED_RS_FILES "${${_pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
         list(APPEND _all_preceding_pkgs "${_pkg}")
     endforeach()
-
-    # 3. C++ FFI dedupe (see above): route the topo-last pkg's superset archive
-    #    through every earlier pkg's INTERFACE target, so a consumer linking any
-    #    subset still resolves all `nros_cpp_*` symbols from ONE archive (the
-    #    same imported target twice on a link line is de-duped by CMake).
-    if(_nros_lang_upper STREQUAL "CPP" AND TARGET ${_nros_last_pkg}__nano_ros_cpp_ffi_lib)
-        foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
-            if(NOT _pkg STREQUAL _nros_last_pkg AND TARGET ${_pkg}__nano_ros_cpp)
-                target_link_libraries(${_pkg}__nano_ros_cpp
-                    INTERFACE ${_nros_last_pkg}__nano_ros_cpp_ffi_lib)
-            endif()
-        endforeach()
-    endif()
 endfunction()

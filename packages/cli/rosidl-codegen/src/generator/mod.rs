@@ -11,7 +11,7 @@ pub use action::{
 };
 pub use common::GeneratorError;
 pub use cpp::{
-    GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage,
+    GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage, GeneratedFfiRs,
     generate_cpp_action_package, generate_cpp_message_package, generate_cpp_service_package,
 };
 pub use msg::{
@@ -579,11 +579,13 @@ mod tests {
             .join("tmp/borrowed_cpp_e2e");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(&pkg.header_name), &pkg.header).unwrap();
-        std::fs::write(dir.join(&pkg.ffi_rs_name), &pkg.ffi_rs).unwrap();
+        std::fs::write(dir.join(&pkg.ffi.types_rs_name), &pkg.ffi.types_rs).unwrap();
+        std::fs::write(dir.join(&pkg.ffi.exports_rs_name), &pkg.ffi.exports_rs).unwrap();
         eprintln!(
-            "emitted {} + {} to {}",
+            "emitted {} + {} + {} to {}",
             pkg.header_name,
-            pkg.ffi_rs_name,
+            pkg.ffi.types_rs_name,
+            pkg.ffi.exports_rs_name,
             dir.display()
         );
     }
@@ -710,7 +712,7 @@ mod tests {
         .unwrap();
         let pkg = generate_cpp_message_package("test_msgs", "Image", &msg, "h", &resolver).unwrap();
         let h = &pkg.header;
-        let rs = &pkg.ffi_rs;
+        let rs = &pkg.ffi.combined();
 
         // Header: span include, view struct, view field types, wrapper + extern.
         assert!(
@@ -778,9 +780,9 @@ mod tests {
             pkg.header
         );
         assert!(
-            pkg.ffi_rs.contains("reader.read_string()?"),
+            pkg.ffi.types_rs.contains("reader.read_string()?"),
             "{}",
-            pkg.ffi_rs
+            pkg.ffi.types_rs
         );
     }
 
@@ -821,7 +823,7 @@ mod tests {
             "unexpected span include"
         );
         assert!(
-            !pkg.ffi_rs.contains("nros_cpp_borrow_t"),
+            !pkg.ffi.combined().contains("nros_cpp_borrow_t"),
             "unexpected borrow_t"
         );
     }
@@ -1339,19 +1341,28 @@ mod tests {
         assert!(pkg.header.contains("ffi_publish"));
         assert!(pkg.header.contains("ffi_deserialize"));
 
-        // Check FFI Rust
-        assert!(pkg.ffi_rs.contains("#[repr(C)]"));
-        assert!(pkg.ffi_rs.contains("std_msgs_msg_int32_t"));
-        assert!(pkg.ffi_rs.contains("write_i32"));
-        assert!(pkg.ffi_rs.contains("nros_cpp_publish_std_msgs_msg_int32"));
+        // Check split FFI Rust (phase-305 W1): crate-mangled items in the
+        // TYPES half; #[no_mangle] exports ONLY in the EXPORTS half.
+        assert!(pkg.ffi.types_rs.contains("#[repr(C)]"));
+        assert!(pkg.ffi.types_rs.contains("std_msgs_msg_int32_t"));
+        assert!(pkg.ffi.types_rs.contains("write_i32"));
+        assert!(!pkg.ffi.types_rs.contains("#[unsafe(no_mangle)]"));
         assert!(
-            pkg.ffi_rs
+            pkg.ffi
+                .exports_rs
+                .contains("nros_cpp_publish_std_msgs_msg_int32")
+        );
+        assert!(
+            pkg.ffi
+                .exports_rs
                 .contains("nros_cpp_deserialize_std_msgs_msg_int32")
         );
+        assert!(pkg.ffi.exports_rs.contains("#[unsafe(no_mangle)]"));
 
         // Check filenames
         assert_eq!(pkg.header_name, "std_msgs_msg_int32.hpp");
-        assert_eq!(pkg.ffi_rs_name, "std_msgs_msg_int32_ffi.rs");
+        assert_eq!(pkg.ffi.types_rs_name, "std_msgs_msg_int32_types.rs");
+        assert_eq!(pkg.ffi.exports_rs_name, "std_msgs_msg_int32_exports.rs");
     }
 
     #[test]
@@ -1375,8 +1386,8 @@ mod tests {
         assert!(pkg.header.contains("fixed_string.hpp"));
 
         // Rust FFI should use [u8; 256] and write_string
-        assert!(pkg.ffi_rs.contains("[u8; 256]"));
-        assert!(pkg.ffi_rs.contains("write_string"));
+        assert!(pkg.ffi.combined().contains("[u8; 256]"));
+        assert!(pkg.ffi.combined().contains("write_string"));
     }
 
     #[test]
@@ -1400,8 +1411,8 @@ mod tests {
         assert!(pkg.header.contains("[3]"));
 
         // Rust FFI: [i32; 3] and loop with write_i32
-        assert!(pkg.ffi_rs.contains("[i32; 3]"));
-        assert!(pkg.ffi_rs.contains("for i in 0..3"));
+        assert!(pkg.ffi.combined().contains("[i32; 3]"));
+        assert!(pkg.ffi.combined().contains("for i in 0..3"));
     }
 
     #[test]
@@ -1424,9 +1435,9 @@ mod tests {
         assert!(pkg.header.contains("nros::FixedSequence<int32_t, 64>"));
 
         // Rust FFI: sequence struct with size + data
-        assert!(pkg.ffi_rs.contains("_seq_t"));
-        assert!(pkg.ffi_rs.contains("pub size: u32"));
-        assert!(pkg.ffi_rs.contains("write_u32"));
+        assert!(pkg.ffi.combined().contains("_seq_t"));
+        assert!(pkg.ffi.combined().contains("pub size: u32"));
+        assert!(pkg.ffi.combined().contains("write_u32"));
     }
 
     #[test]
@@ -1456,17 +1467,17 @@ mod tests {
         );
         // FFI repr must agree: [u8; 16] string + sequence struct capacity 921600.
         assert!(
-            pkg.ffi_rs.contains("[u8; 16]"),
+            pkg.ffi.combined().contains("[u8; 16]"),
             "ffi string repr:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         assert!(
-            pkg.ffi_rs.contains("921600"),
+            pkg.ffi.combined().contains("921600"),
             "ffi seq cap:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         assert!(!pkg.header.contains(", 64>"));
-        assert!(!pkg.ffi_rs.contains("[u8; 256]"));
+        assert!(!pkg.ffi.combined().contains("[u8; 256]"));
     }
 
     #[test]
@@ -1491,16 +1502,16 @@ mod tests {
             "heap string include missing"
         );
         assert!(
-            pkg.ffi_rs.contains("nros_cpp_heap_str_t"),
+            pkg.ffi.combined().contains("nros_cpp_heap_str_t"),
             "ffi heap string repr:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         assert!(
-            pkg.ffi_rs.contains("nros_platform_malloc"),
+            pkg.ffi.combined().contains("nros_platform_malloc"),
             "{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
-        assert!(!pkg.ffi_rs.contains("[u8; 256]"));
+        assert!(!pkg.ffi.combined().contains("[u8; 256]"));
     }
 
     #[test]
@@ -1524,11 +1535,15 @@ mod tests {
         );
         // FFI heap repr is a pointer to the [u8; N] element; element read_string.
         assert!(
-            pkg.ffi_rs.contains("pub data: *mut [u8; 256]"),
+            pkg.ffi.combined().contains("pub data: *mut [u8; 256]"),
             "ffi heap string-seq repr:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
-        assert!(pkg.ffi_rs.contains("read_string"), "{}", pkg.ffi_rs);
+        assert!(
+            pkg.ffi.combined().contains("read_string"),
+            "{}",
+            pkg.ffi.combined()
+        );
     }
 
     #[test]
@@ -1549,23 +1564,24 @@ mod tests {
             pkg.header
         );
         assert!(
-            pkg.ffi_rs.contains("geometry_msgs_msg_point_t"),
+            pkg.ffi.combined().contains("geometry_msgs_msg_point_t"),
             "ffi heap nested-seq elem repr:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         // issue #201 — the heap nested-seq deserializer zero-inits the element
         // buffer and tears elements down on a mid-loop error (both deserialize
         // bodies), so nested heap allocations can't strand.
         assert!(
-            pkg.ffi_rs.contains("core::ptr::write_bytes"),
+            pkg.ffi.combined().contains("core::ptr::write_bytes"),
             "ffi heap nested-seq missing zero-init:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         assert!(
-            pkg.ffi_rs
+            pkg.ffi
+                .combined()
                 .contains("teardown_geometry_msgs_msg_point_fields(unsafe { &mut *data.add(j) })"),
             "ffi heap nested-seq error path missing element teardown:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
     }
 
@@ -1589,31 +1605,35 @@ mod tests {
         .unwrap();
         let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
-            pkg.ffi_rs.contains("pub fn teardown_my_msgs_msg_m_fields"),
+            pkg.ffi
+                .combined()
+                .contains("pub fn teardown_my_msgs_msg_m_fields"),
             "teardown fn missing:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         // Heap string: freed + nulled.
         assert!(
-            pkg.ffi_rs
+            pkg.ffi
+                .combined()
                 .contains("msg.label.data = core::ptr::null_mut()"),
             "heap string not nulled:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         // Heap nested seq: recurse into the element teardown before the free.
         assert!(
-            pkg.ffi_rs.contains(
+            pkg.ffi.combined().contains(
                 "teardown_geometry_msgs_msg_point_fields(unsafe { &mut *msg.pts.data.add(i) })"
             ),
             "nested-element teardown recursion missing:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         // Heap primitive seq: freed + nulled, no recursion.
         assert!(
-            pkg.ffi_rs
+            pkg.ffi
+                .combined()
                 .contains("msg.pixels.data = core::ptr::null_mut()"),
             "heap primitive seq not nulled:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         // A heap-free message still gets an (empty) teardown fn.
         let plain = parse_message("int32 x\n").unwrap();
@@ -1622,10 +1642,11 @@ mod tests {
             generate_cpp_message_package("my_msgs", "Plain", &plain, "h", &plain_resolver).unwrap();
         assert!(
             plain_pkg
-                .ffi_rs
+                .ffi
+                .combined()
                 .contains("pub fn teardown_my_msgs_msg_plain_fields"),
             "heap-free message missing empty teardown fn:\n{}",
-            plain_pkg.ffi_rs
+            plain_pkg.ffi.combined()
         );
     }
 
@@ -1653,18 +1674,22 @@ mod tests {
         );
         // FFI: pointer-trio repr + shared allocator + heap publish buffer.
         assert!(
-            pkg.ffi_rs.contains("pub data: *mut u8"),
+            pkg.ffi.combined().contains("pub data: *mut u8"),
             "ffi heap repr:\n{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
         assert!(
-            pkg.ffi_rs.contains("nros_platform_malloc"),
+            pkg.ffi.combined().contains("nros_platform_malloc"),
             "{}",
-            pkg.ffi_rs
+            pkg.ffi.combined()
         );
-        assert!(pkg.ffi_rs.contains("nros_platform_free"), "{}", pkg.ffi_rs);
+        assert!(
+            pkg.ffi.combined().contains("nros_platform_free"),
+            "{}",
+            pkg.ffi.combined()
+        );
         // No fixed inline array for the heap field.
-        assert!(!pkg.ffi_rs.contains("data: [u8; 64]"));
+        assert!(!pkg.ffi.combined().contains("data: [u8; 64]"));
     }
 
     #[test]
@@ -1696,8 +1721,8 @@ mod tests {
         assert!(pkg.header.contains("int32_t sum"));
 
         // FFI files
-        assert!(pkg.request_ffi_rs.contains("#[repr(C)]"));
-        assert!(pkg.response_ffi_rs.contains("#[repr(C)]"));
+        assert!(pkg.request_ffi.combined().contains("#[repr(C)]"));
+        assert!(pkg.response_ffi.combined().contains("#[repr(C)]"));
     }
 
     #[test]
@@ -1735,8 +1760,8 @@ mod tests {
         assert!(pkg.header.contains("int32_t progress"));
 
         // FFI files
-        assert!(pkg.goal_ffi_rs.contains("#[repr(C)]"));
-        assert!(pkg.result_ffi_rs.contains("#[repr(C)]"));
-        assert!(pkg.feedback_ffi_rs.contains("#[repr(C)]"));
+        assert!(pkg.goal_ffi.combined().contains("#[repr(C)]"));
+        assert!(pkg.result_ffi.combined().contains("#[repr(C)]"));
+        assert!(pkg.feedback_ffi.combined().contains("#[repr(C)]"));
     }
 }
