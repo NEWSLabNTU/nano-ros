@@ -109,7 +109,11 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 - **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES** — only `just test-all`'s
   junit rewrite makes them skips. Read the panic text before filing a bare-run red as a regression.
   And full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3 in-sweep, passed
-  solo) — retest a QEMU red SOLO before filing. → AGENTS.md Test Pitfalls.
+  solo) — retest a QEMU red SOLO before filing. A "solo red" can ALSO be a stale-build artifact,
+  not code (issue 0268: the sizes-header mirror race made incremental trees red and clean trees
+  green — a bisect whose steps rebuilt clean "converged" on a docs-only commit). When a bisect's
+  first-bad is implausible for the symptom, the test tracked a confounder (build state, load,
+  ports) — rerun one rev N times before trusting any boundary. → AGENTS.md Test Pitfalls.
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
