@@ -13,4 +13,10 @@ find_package(std_msgs REQUIRED)
 # Typed component (RFC-0043): publishes on /chatter via the generated
 # std_msgs/Int32 serializer; reads publish_period_ms live via
 # nros_cpp_get_param_integer.
-nano_ros_add_node(param_talker CLASS c_param_talker_pkg::Talker TYPED src/Talker.c)
+nano_ros_auto_add_library(param_talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(param_talker_lib
+    PLUGIN c_param_talker_pkg::Talker
+    EXECUTABLE param_talker
+    SHAPE configure
+    TYPED)

@@ -10,4 +10,10 @@ find_package(custom_msgs REQUIRED)
 # Typed component (RFC-0043) publishing the workspace-local
 # `custom_msgs/Reading` through GENERATED C typesupport (phase-293 / issue
 # #212 — struct + serde + type name come from the generated bindings).
-nano_ros_add_node(reading_talker CLASS reading_talker_pkg::ReadingTalker TYPED src/ReadingTalker.c)
+nano_ros_auto_add_library(reading_talker_lib STATIC src/ReadingTalker.c)
+
+nros_components_register_node(reading_talker_lib
+    PLUGIN reading_talker_pkg::ReadingTalker
+    EXECUTABLE reading_talker
+    SHAPE configure
+    TYPED)

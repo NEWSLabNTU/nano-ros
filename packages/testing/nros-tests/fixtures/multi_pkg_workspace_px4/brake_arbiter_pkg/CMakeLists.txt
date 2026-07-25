@@ -23,9 +23,11 @@ if(NOT NANO_ROS_CMAKE_DIR)
 endif()
 include("${NANO_ROS_CMAKE_DIR}/NanoRosNodeRegister.cmake")
 
-nano_ros_node_register(
-    NAME    brake_arbiter
-    CLASS   brake_arbiter_pkg::brake_arbiter
-    SOURCES src/brake_arbiter.cpp
-    DEPLOY  px4)
+nano_ros_auto_add_library(brake_arbiter_lib STATIC src/brake_arbiter.cpp)
+
+nros_components_register_node(brake_arbiter_lib
+    PLUGIN brake_arbiter_pkg::brake_arbiter
+    EXECUTABLE brake_arbiter
+    SHAPE configure
+    DEPLOY px4)
 

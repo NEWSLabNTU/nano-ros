@@ -10,9 +10,14 @@ find_package(std_msgs REQUIRED)
 
 # Phase 269 W3 — C++ talker component: publishes a counter on /chatter.
 # With NANO_ROS_SAFETY_E2E=ON the zenoh backend automatically attaches a CRC on publish.
-nano_ros_add_node(talker CLASS cpp_safety_talker_pkg::SafetyTalker src/SafetyTalker.cpp)
+nano_ros_auto_add_library(talker_lib STATIC src/SafetyTalker.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN cpp_safety_talker_pkg::SafetyTalker
+    EXECUTABLE talker
+    SHAPE configure)
 
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(cpp_safety_talker_pkg_talker_component
+    target_link_libraries(talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

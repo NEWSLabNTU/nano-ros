@@ -10,7 +10,13 @@ find_package(std_msgs REQUIRED)
 
 
 # Phase 240.2b — typed component (header at include/listener_pkg/Listener.hpp).
-nano_ros_add_node(listener CLASS listener_pkg::Listener src/Listener.cpp DEPLOY native)
+nano_ros_auto_add_library(listener_lib STATIC src/Listener.cpp)
 
-target_link_libraries(listener_pkg_listener_component
+nros_components_register_node(listener_lib
+    PLUGIN listener_pkg::Listener
+    EXECUTABLE listener
+    SHAPE configure
+    DEPLOY native)
+
+target_link_libraries(listener_lib
     PUBLIC std_msgs__nano_ros_cpp)

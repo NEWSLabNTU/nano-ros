@@ -42,4 +42,10 @@ endif()
 find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
-nano_ros_add_node(talker CLASS nros_zephyr_talker_c::Talker TYPED src/Talker.c)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN nros_zephyr_talker_c::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

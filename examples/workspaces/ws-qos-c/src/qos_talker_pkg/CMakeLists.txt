@@ -15,4 +15,10 @@ find_package(std_msgs REQUIRED)
 # the QoS: this declares a NON-DEFAULT profile (reliable + transient-local +
 # keep-last-10) in code rather than `nros_c_qos_default()` (see
 # src/QosTalker.c).
-nano_ros_add_node(qos_talker CLASS qos_talker_pkg::QosTalker TYPED src/QosTalker.c)
+nano_ros_auto_add_library(qos_talker_lib STATIC src/QosTalker.c)
+
+nros_components_register_node(qos_talker_lib
+    PLUGIN qos_talker_pkg::QosTalker
+    EXECUTABLE qos_talker
+    SHAPE configure
+    TYPED)

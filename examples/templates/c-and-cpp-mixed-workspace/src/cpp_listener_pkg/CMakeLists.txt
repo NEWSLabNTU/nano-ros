@@ -8,7 +8,12 @@ find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 
-nano_ros_add_node(listener CLASS cpp_listener_pkg::Listener src/Listener.cpp)
+nano_ros_auto_add_library(listener_lib STATIC src/Listener.cpp)
 
-target_link_libraries(cpp_listener_pkg_listener_component
+nros_components_register_node(listener_lib
+    PLUGIN cpp_listener_pkg::Listener
+    EXECUTABLE listener
+    SHAPE configure)
+
+target_link_libraries(listener_lib
     PUBLIC std_msgs__nano_ros_cpp)

@@ -10,9 +10,14 @@ find_package(std_msgs REQUIRED)
 
 # Phase 269 W1 — typed C++ component that reads publish_period_ms live each tick
 # via nros_cpp_get_param_integer on the saved executor handle.
-nano_ros_add_node(param_talker CLASS cpp_param_talker_pkg::ParamTalker src/ParamTalker.cpp)
+nano_ros_auto_add_library(param_talker_lib STATIC src/ParamTalker.cpp)
+
+nros_components_register_node(param_talker_lib
+    PLUGIN cpp_param_talker_pkg::ParamTalker
+    EXECUTABLE param_talker
+    SHAPE configure)
 
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(cpp_param_talker_pkg_param_talker_component
+    target_link_libraries(param_talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

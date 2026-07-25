@@ -100,13 +100,10 @@ shim pkg. Compute the union workspace-wide or FATAL_ERROR with the recipe. See `
 declares can't port verbatim; yaml values copied into in-code defaults (drift hazard). Lower
 resolved param values into the generated entry. See `0276-*`.
 
-**#275** — NROS_COMPONENT identity rule forces namespace flattening (class prefix == pkg name);
-upstream nested `autoware::x` namespaces need a rename. Accept an explicit plugin-name arg.
-See `0275-*`.
-
-(#275-#278 + archived #279-#281 from the simple-autoware-safety-island port
-friction log, filed 2026-07-25 from docs/porting-notes.md 02/06/12/14 + the
-same-day-fixed 10/16/18.)
+(#276-#278 + archived #279-#281 from the simple-autoware-safety-island port
+friction log, filed 2026-07-25 from docs/porting-notes.md 06/12/14 + the
+same-day-fixed 10/16/18. #275 resolved by RFC-0057/phase-305 — see
+`archived/0275-*`: L.4 retired, upstream namespaces port verbatim.)
 
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,

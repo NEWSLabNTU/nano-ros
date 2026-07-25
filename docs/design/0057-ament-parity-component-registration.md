@@ -100,12 +100,12 @@ unchanged.
 ### D3 — `nano_ros_auto_add_library` wires interface deps
 
 The ament_auto analog: `add_library(STATIC …)` + automatic linking of
-the workspace's generated interface libraries — always routing the ONE
-superset FFI archive (the 0253/0277 topo-last mechanics stay internal).
-Consumers stop hand-picking the topo-last interface lib; the
-`if(TARGET <last_pkg>__nano_ros_cpp)` block in every ported CMakeLists
-disappears. (This is the UX half of 0277; the workspace-wide union
-closure remains 0277's engineering half.)
+the workspace's generated interface libraries. Consumers stop
+hand-picking interface libs; the `if(TARGET <last_pkg>__nano_ros_cpp)`
+block in every ported CMakeLists disappears. (Written against the
+0253-era topo-last superset routing; phase-306's per-package FFI crates
+since retired that mechanism entirely — the auto-wiring UX here is
+unchanged, and 0277's mixed-subset hazard is gone by design.)
 
 ## Compatibility / migration
 

@@ -18,7 +18,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 | File | Owns | Per |
 |------|------|-----|
 | `Cargo.toml` | Rust build: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`); node identity via `[package.metadata.nros.node]`; entry/boot via `[package.metadata.nros.entry]`; **embedded net config via `[package.metadata.nros.deploy.<target>]`**; workspace membership via `[workspace.metadata.nros]` | Rust project |
-| `CMakeLists.txt` | C/C++ build: targets, language deps, the `NROS_RMW` option; node/entry registration via `nano_ros_node_register` / `nano_ros_entry` | C/C++ project |
+| `CMakeLists.txt` | C/C++ build: targets, language deps, the `NROS_RMW` option; node/entry registration via `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry` | C/C++ project |
 | `.cargo/config.toml` | **`[patch.crates-io]` dependency injection only** (written by `nros sync`; local crate + generated-msg paths), plus the cargo `[build]`/`[target]`/`[env]` knobs (target triple, runner, rustflags). **No nano-ros runtime config.** | Rust project |
 | `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
 | **`system.toml`** | **System topology** — components, deploy targets, domain, RMW, capability axes (`[safety]`, `[param_services]`), tiers. The language-agnostic universal descriptor (same schema for Rust/C/C++). **Optional for single-node** (the toolchain synthesises an implicit 1-component system when absent). | bringup pkg |
@@ -38,7 +38,7 @@ Mirrors [RFC-0004 §3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/des
 | | Single-node | Workspace |
 |---|---|---|
 | **Rust** | `Cargo.toml [package.metadata.nros.{node,entry,deploy.<t>}]` (+ `nros::main!`); optional `system.toml` to pin rmw/domain | root `[workspace.metadata.nros]` + node `[package.metadata.nros.node]` + entry `[package.metadata.nros.entry]` + bringup `system.toml` |
-| **C / C++** | `CMakeLists.txt` + `package.xml` (the `<nano_ros deploy=… rmw=…/>` tuple); optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
+| **C / C++** | `CMakeLists.txt` + `package.xml` (the `<nano_ros deploy=… rmw=…/>` tuple); optional `system.toml` | `nros_components_register_node` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
 
 Where a concern has both a native-idiom projection and a `system.toml`, the
 resolution is a **fixed precedence ladder**, not a merge: explicit CLI/build

@@ -3,15 +3,30 @@ meta:
   inputs:
   - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-safety-c/src/demo_bringup/launch/safety_talker.launch.xml
     sha256: eaa9f9f7574b3ee771f162ff17b141eaeba1481483cbefcead28de4786669a6a
+  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-safety-c/src/demo_bringup/system.toml
+    sha256: ac8aea78dfdcb094c7c5da5940ae014b68c032e72cb2c3d29f19db50bf887f8f
   resolver:
     tool: play_launch
     version: 0.8.2
 structure:
   scopes:
-    /: {}
+    safety_talker.launch.xml:
+      file: safety_talker.launch.xml
   nodes:
     /talker:
-      scope: /
+      scope: safety_talker.launch.xml
       pkg: c_safety_talker_pkg
       exec: talker
       node_name: talker
+execution:
+  deploy:
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+  features:
+  - safety

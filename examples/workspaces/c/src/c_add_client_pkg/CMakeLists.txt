@@ -11,4 +11,10 @@ find_package(std_msgs REQUIRED)
 # phase-263 A1 (services, C projection) — typed component using the generated
 # example_interfaces/srv/AddTwoInts C bindings (deserialize request / serialize reply). The
 # verb generates + links the `example_interfaces__nano_ros_c` interface lib from package.xml.
-nano_ros_add_node(add_client CLASS c_add_client_pkg::AddClient TYPED src/AddClient.c)
+nano_ros_auto_add_library(add_client_lib STATIC src/AddClient.c)
+
+nros_components_register_node(add_client_lib
+    PLUGIN c_add_client_pkg::AddClient
+    EXECUTABLE add_client
+    SHAPE configure
+    TYPED)

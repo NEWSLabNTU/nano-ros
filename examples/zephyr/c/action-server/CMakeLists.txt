@@ -31,4 +31,10 @@ endif()
 find_package(nano_ros REQUIRED)
 find_package(example_interfaces REQUIRED)
 
-nano_ros_add_node(fibonacci_action_server CLASS nros_zephyr_zenoh_action_server_c::FibonacciServer TYPED src/FibonacciServer.c)
+nano_ros_auto_add_library(fibonacci_action_server_lib STATIC src/FibonacciServer.c)
+
+nros_components_register_node(fibonacci_action_server_lib
+    PLUGIN nros_zephyr_zenoh_action_server_c::FibonacciServer
+    EXECUTABLE fibonacci_action_server
+    SHAPE configure
+    TYPED)

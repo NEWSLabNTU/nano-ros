@@ -12,4 +12,10 @@ find_package(std_msgs REQUIRED)
 # differentiator vs the committed c_listener_pkg is the QoS: this declares the
 # SAME non-default profile (reliable + transient-local + keep-last-10) as the
 # talker so the QoS-matched endpoints connect (see src/QosListener.c).
-nano_ros_add_node(qos_listener CLASS qos_listener_pkg::QosListener TYPED src/QosListener.c)
+nano_ros_auto_add_library(qos_listener_lib STATIC src/QosListener.c)
+
+nros_components_register_node(qos_listener_lib
+    PLUGIN qos_listener_pkg::QosListener
+    EXECUTABLE qos_listener
+    SHAPE configure
+    TYPED)

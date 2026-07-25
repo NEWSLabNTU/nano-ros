@@ -9,9 +9,14 @@ find_package(example_interfaces REQUIRED)
 
 # phase-263 A1 (services, C++) — poll-model AddTwoInts client; republishes the sum on /sum.
 
-nano_ros_add_node(add_client CLASS cpp_add_client_pkg::AddClient src/AddClient.cpp)
+nano_ros_auto_add_library(add_client_lib STATIC src/AddClient.cpp)
+
+nros_components_register_node(add_client_lib
+    PLUGIN cpp_add_client_pkg::AddClient
+    EXECUTABLE add_client
+    SHAPE configure)
 
 if(TARGET example_interfaces__nano_ros_cpp)
-    target_link_libraries(cpp_add_client_pkg_add_client_component
+    target_link_libraries(add_client_lib
         PUBLIC example_interfaces__nano_ros_cpp)
 endif()

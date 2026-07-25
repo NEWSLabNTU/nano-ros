@@ -42,4 +42,11 @@ endif()
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
 
-nano_ros_add_node(talker CLASS zephyr_cpp_talker::Talker HEADER Talker.hpp TYPED src/Talker.cpp)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
+
+nros_components_register_node(talker_lib
+    HEADER Talker.hpp
+    PLUGIN zephyr_cpp_talker::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

@@ -11,9 +11,14 @@ find_package(example_interfaces REQUIRED)
 # + the raw send_goal_async / get_result_async / poll FFI (generated example_interfaces C++ action
 # bindings: serialize goal / deserialize result). PRINT-ONLY (one interface pkg, no dedup gap).
 
-nano_ros_add_node(fib_client CLASS cpp_fib_client_pkg::FibClient src/FibClient.cpp)
+nano_ros_auto_add_library(fib_client_lib STATIC src/FibClient.cpp)
+
+nros_components_register_node(fib_client_lib
+    PLUGIN cpp_fib_client_pkg::FibClient
+    EXECUTABLE fib_client
+    SHAPE configure)
 
 if(TARGET example_interfaces__nano_ros_cpp)
-    target_link_libraries(cpp_fib_client_pkg_fib_client_component
+    target_link_libraries(fib_client_lib
         PUBLIC example_interfaces__nano_ros_cpp)
 endif()

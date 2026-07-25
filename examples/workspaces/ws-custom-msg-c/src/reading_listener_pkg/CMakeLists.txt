@@ -10,6 +10,10 @@ find_package(custom_msgs REQUIRED)
 # Typed component (RFC-0043) subscribing to the workspace-local
 # `custom_msgs/Reading` through GENERATED C typesupport (phase-293 / issue
 # #212 — struct + deserialize + type name come from the generated bindings).
-nano_ros_add_node(reading_listener CLASS reading_listener_pkg::ReadingListener
-    TYPED
-    src/ReadingListener.c)
+nano_ros_auto_add_library(reading_listener_lib STATIC src/ReadingListener.c)
+
+nros_components_register_node(reading_listener_lib
+    PLUGIN reading_listener_pkg::ReadingListener
+    EXECUTABLE reading_listener
+    SHAPE configure
+    TYPED)

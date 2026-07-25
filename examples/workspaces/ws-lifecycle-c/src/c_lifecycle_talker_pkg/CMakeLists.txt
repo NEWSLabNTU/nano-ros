@@ -13,4 +13,10 @@ find_package(std_msgs REQUIRED)
 # Typed managed-node C component (RFC-0043): publishes a counter on /chatter
 # via the generated std_msgs/Int32 serializer. Lifecycle autostart is wired
 # in the generated entry.
-nano_ros_add_node(talker CLASS c_lifecycle_talker_pkg::Talker TYPED src/Talker.c)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN c_lifecycle_talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

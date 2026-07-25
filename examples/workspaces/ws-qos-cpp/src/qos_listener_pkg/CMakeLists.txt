@@ -13,12 +13,17 @@ find_package(std_msgs REQUIRED)
 # listener_pkg is the QoS: this declares the SAME non-default profile (reliable +
 # transient-local + keep-last-10) as the talker so the QoS-matched endpoints
 # connect (see src/QosListener.cpp).
-nano_ros_add_node(qos_listener CLASS qos_listener_pkg::QosListener src/QosListener.cpp)
+nano_ros_auto_add_library(qos_listener_lib STATIC src/QosListener.cpp)
+
+nros_components_register_node(qos_listener_lib
+    PLUGIN qos_listener_pkg::QosListener
+    EXECUTABLE qos_listener
+    SHAPE configure)
 
 # `nros_find_interfaces` declares the `std_msgs__nano_ros_cpp` INTERFACE lib (for
 # `Int32::TYPE_NAME`); guard with `if(TARGET)` (the Zephyr generator whole-archives
 # the interface into `app` instead).
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(qos_listener_pkg_qos_listener_component
+    target_link_libraries(qos_listener_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

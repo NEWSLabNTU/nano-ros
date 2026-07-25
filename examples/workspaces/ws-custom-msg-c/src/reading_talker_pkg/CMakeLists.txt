@@ -11,4 +11,10 @@ find_package(custom_msgs REQUIRED)
 # `custom_msgs/Reading` through GENERATED C typesupport (phase-293 / issue
 # #212 — the raw hand-encoded-CDR shape is retired; struct + serialize come
 # from the generated custom_msgs C bindings, same as std_msgs everywhere).
-nano_ros_add_node(reading_talker CLASS reading_talker_pkg::ReadingTalker TYPED src/ReadingTalker.c)
+nano_ros_auto_add_library(reading_talker_lib STATIC src/ReadingTalker.c)
+
+nros_components_register_node(reading_talker_lib
+    PLUGIN reading_talker_pkg::ReadingTalker
+    EXECUTABLE reading_talker
+    SHAPE configure
+    TYPED)

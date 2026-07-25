@@ -15,7 +15,12 @@ find_package(std_msgs REQUIRED)
 # Phase 212.L.9 — declarative Node pkg shape. No add_executable, no
 # `main()`; the linked Entry pkg's BSP-generated runtime (post-219.D)
 # owns the entry point, executor init, and the spin loop.
-nano_ros_add_node(talker CLASS talker_pkg::Talker src/Talker.cpp)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node
@@ -25,6 +30,6 @@ nano_ros_add_node(talker CLASS talker_pkg::Talker src/Talker.cpp)
 # would become an unresolved `-lstd_msgs__nano_ros_cpp`; the component gets the headers via the
 # `app` include mirror instead.
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(talker_pkg_talker_component
+    target_link_libraries(talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

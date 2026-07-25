@@ -40,4 +40,11 @@ endif()
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
 
-nano_ros_add_node(listener CLASS zephyr_cpp_listener::Listener HEADER Listener.hpp TYPED src/Listener.cpp)
+nano_ros_auto_add_library(listener_lib STATIC src/Listener.cpp)
+
+nros_components_register_node(listener_lib
+    HEADER Listener.hpp
+    PLUGIN zephyr_cpp_listener::Listener
+    EXECUTABLE listener
+    SHAPE configure
+    TYPED)

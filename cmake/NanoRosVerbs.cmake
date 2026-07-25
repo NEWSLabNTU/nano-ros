@@ -159,6 +159,14 @@ endfunction()
 # the carrier entry ELF is assembled by the workspace root / `nros plan`.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_node name)
+    # RFC-0057 (phase-305 W4.1): this fused spelling remains supported as the
+    # compat verb; the reference shape is nano_ros_auto_add_library +
+    # nros_components_register_node. Opt-in nudge only — no default noise.
+    if(NROS_WARN_LEGACY_VERBS)
+        message(DEPRECATION
+            "nano_ros_add_node(${name}): consider the RFC-0057 split shape "
+            "(nano_ros_auto_add_library + nros_components_register_node).")
+    endif()
     cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     set(_srcs ${_NRN_SOURCES} ${_NRN_UNPARSED_ARGUMENTS})
     if(NOT _srcs)
@@ -225,8 +233,8 @@ endfunction()
 #
 # The `ament_auto_add_library` analog: creates the component library AND
 # wires everything a nano-ros component TU needs — the declared interface
-# closure (from package.xml), the generated interface libs (routing the ONE
-# topo-last superset FFI archive; consumers never hand-pick it), the nros
+# closure (from package.xml), the generated interface libs (per-package FFI
+# crates since phase-306; consumers never hand-pick archives), the nros
 # runtime lib, the per-build config-header ordering, and the Zephyr compile
 # context. Registration is a separate step (`nros_components_register_node`),
 # exactly like ament: sources belong to the library, identity to the register.
@@ -263,7 +271,8 @@ function(nano_ros_auto_add_library name)
     set_target_properties(${name} PROPERTIES
         NROS_COMPONENT_PKG_SYM "${_pkg_sym}"
         NROS_COMPONENT_LANG "${_lang}")
-    # Generated interface libs (220.G.2 mechanics; zephyr gets headers via
+    # Generated interface libs (220.G.2 mechanics; per-package FFI crates
+    # since phase-306, so any subset links cleanly; zephyr gets headers via
     # the app include mirror instead — non-target lib names there).
     if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
         get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
@@ -303,6 +312,13 @@ function(nros_components_register_node target)
     endforeach()
     if(NOT _NCR_SHAPE)
         set(_NCR_SHAPE rclcpp)
+    endif()
+    # Same DEPLOY defaulting as nano_ros_add_node: the workspace/platform
+    # harness communicates the deploy tuple via NROS_DEPLOY when the call
+    # omits it (287-W6 slice 3 semantics — absent both, the component is
+    # carrier-less and the Entry pkg / workspace root selects).
+    if(NOT _NCR_DEPLOY AND NROS_DEPLOY)
+        set(_NCR_DEPLOY "${NROS_DEPLOY}")
     endif()
     # A C component links its runtime by TYPED-ness (see auto_add_library).
     get_target_property(_ncr_lang ${target} NROS_COMPONENT_LANG)

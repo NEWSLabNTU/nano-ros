@@ -4,8 +4,10 @@
 cmake_minimum_required(VERSION 3.22)
 project(talker_pkg CXX)
 
-nano_ros_node_register(
-    NAME talker
-    CLASS talker_pkg::Talker
-    SOURCES src/talker.cpp
+nano_ros_auto_add_library(talker_lib STATIC src/talker.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
     DEPLOY native)

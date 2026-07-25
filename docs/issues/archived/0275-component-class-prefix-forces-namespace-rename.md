@@ -1,11 +1,12 @@
 ---
 id: 275
 title: "NROS_COMPONENT identity rule forces C++ namespace rename — class prefix must equal package name"
-status: open
+status: resolved
 type: friction
 severity: low
 area: nros-cpp
-related: [rfc-0057, phase-306]
+related: [rfc-0057, phase-305]
+resolved_in: "phase-305"
 ---
 
 ## Finding (autoware-safety-island-example ports, 2026-07-24 — porting-notes 02)
@@ -34,3 +35,12 @@ lints accept nested class names, and the new
 `nros_components_register_node(target PLUGIN … EXECUTABLE …)` surface is
 keyword-parity with rclcpp_components. No explicit PKG argument — the
 register site already knows `${PROJECT_NAME}`.
+
+## Resolution (phase-305, 2026-07-26)
+
+L.4 retired per RFC-0057: cmake writes `pkg: ${PROJECT_NAME}` into
+nros-metadata.json, metadata.rs keys on it, the prefix lints accept any
+namespace-qualified class. The ASI ports restored verbatim
+`autoware::…` namespaces and register via
+`nros_components_register_node(<lib> PLUGIN … EXECUTABLE …)`; full MRM
+receipt PASS on native + zephyr islands.

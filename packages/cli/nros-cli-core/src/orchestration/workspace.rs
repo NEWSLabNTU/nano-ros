@@ -486,7 +486,109 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
         };
         out.push(summary);
     }
+    // RFC-0057 (phase-305) — the split spelling:
+    //   nano_ros_auto_add_library(<lib> [STATIC] <sources…>)
+    //   nros_components_register_node(<lib> PLUGIN <ns::Class> EXECUTABLE <name> …)
+    // The register call carries no sources; recover them from the matching
+    // auto_add_library call in the same file for language inference.
+    let mut lib_sources: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for call in extract_cmake_calls(&stripped, "nano_ros_auto_add_library") {
+        let toks = tokenize_cmake_body(&call);
+        let mut it = toks.into_iter().filter(|t| t != "STATIC" && t != "SHARED");
+        if let Some(lib) = it.next() {
+            lib_sources.insert(lib, it.collect());
+        }
+    }
+    for call in extract_cmake_calls(&stripped, "nros_components_register_node") {
+        let Some(summary) =
+            parse_register_node_call(&call, package_name, &cmakelists, &lib_sources)
+        else {
+            continue;
+        };
+        out.push(summary);
+    }
     Ok(out)
+}
+
+/// Parse a `nros_components_register_node(<lib> PLUGIN <ns::Class>
+/// EXECUTABLE <name> [HEADER <h>] [SHAPE <s>] [TYPED] [DEPLOY <t>…]
+/// [CALLBACK_GROUPS <g>…])` call body (RFC-0057). Sources come from the
+/// sibling `nano_ros_auto_add_library` call via `lib_sources`.
+fn parse_register_node_call(
+    body: &str,
+    package_name: &str,
+    cmakelists: &Path,
+    lib_sources: &std::collections::HashMap<String, Vec<String>>,
+) -> Option<CmakeNodeSummary> {
+    const KEYWORDS: &[&str] = &[
+        "PLUGIN",
+        "EXECUTABLE",
+        "TYPED",
+        "DEPLOY",
+        "HEADER",
+        "SHAPE",
+        "CALLBACK_GROUPS",
+    ];
+    let tokens = tokenize_cmake_body(body);
+    let mut target: Option<String> = None;
+    let mut plugin: Option<String> = None;
+    let mut executable: Option<String> = None;
+    let mut deploy: Vec<String> = Vec::new();
+    let mut current: Option<&str> = None;
+    for tok in tokens {
+        if KEYWORDS.contains(&tok.as_str()) {
+            current = match tok.as_str() {
+                "PLUGIN" => Some("PLUGIN"),
+                "EXECUTABLE" => Some("EXECUTABLE"),
+                "DEPLOY" => Some("DEPLOY"),
+                "HEADER" | "SHAPE" => Some("SKIP1"),
+                "CALLBACK_GROUPS" => Some("SKIPN"),
+                _ => None, // TYPED — bare flag
+            };
+            continue;
+        }
+        match current {
+            Some("PLUGIN") => {
+                plugin = Some(tok);
+                current = None;
+            }
+            Some("EXECUTABLE") => {
+                executable = Some(tok);
+                current = None;
+            }
+            Some("SKIP1") => {
+                current = None;
+            }
+            Some("SKIPN") => {}
+            Some("DEPLOY") => deploy.push(tok),
+            _ => {
+                if target.is_none() {
+                    target = Some(tok);
+                }
+            }
+        }
+    }
+    let executable = executable?;
+    let empty: Vec<String> = Vec::new();
+    let sources = target
+        .as_ref()
+        .and_then(|t| lib_sources.get(t))
+        .unwrap_or(&empty);
+    let language = if sources.is_empty() {
+        infer_cmake_language(None, plugin.as_deref())
+    } else {
+        infer_language_from_sources(sources)
+    };
+    Some(CmakeNodeSummary {
+        package: package_name.to_string(),
+        component: executable.clone(),
+        executable,
+        class: plugin,
+        language,
+        deploy_targets: deploy,
+        manifest_path: cmakelists.to_path_buf(),
+    })
 }
 
 /// Parse a `nano_ros_add_node(<name> CLASS <ns::Class> [TYPED] <src…> [DEPLOY <t>…])`
@@ -1820,5 +1922,37 @@ type = "std_msgs/msg/Int32"
         assert_eq!(meta.len(), 1);
         assert_eq!(meta[0].component, "talker");
         assert_eq!(meta[0].class.as_deref(), Some("talker_pkg::Talker"));
+    }
+
+    #[test]
+    fn discover_finds_rfc0057_split_spelling() {
+        // RFC-0057 (phase-305): nano_ros_auto_add_library +
+        // nros_components_register_node with a NESTED upstream namespace —
+        // the planner must see the component (language from the lib sources).
+        let s = Scratch::new("rfc0057");
+        s.write(
+            "src/autoware_mrm_handler/package.xml",
+            "<package format=\"3\"><name>autoware_mrm_handler</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/autoware_mrm_handler/CMakeLists.txt",
+            "find_package(nano_ros REQUIRED)\n\
+             nano_ros_auto_add_library(mrm_handler_lib STATIC src/mrm_handler_core.cpp)\n\
+             nros_components_register_node(mrm_handler_lib\n\
+                 PLUGIN autoware::mrm_handler::MrmHandler\n\
+                 EXECUTABLE mrm_handler\n\
+                 HEADER autoware/mrm_handler/mrm_handler_core.hpp)\n",
+        );
+        let ws = Workspace::discover(&s.0).unwrap();
+        let meta = &ws.packages[0].cmake_component_metadata;
+        assert_eq!(meta.len(), 1);
+        assert_eq!(meta[0].component, "mrm_handler");
+        assert_eq!(
+            meta[0].class.as_deref(),
+            Some("autoware::mrm_handler::MrmHandler")
+        );
+        assert!(matches!(meta[0].language, ComponentLanguage::Cpp));
     }
 }

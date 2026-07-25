@@ -34,9 +34,11 @@ if(NOT NANO_ROS_CMAKE_DIR)
 endif()
 include("${NANO_ROS_CMAKE_DIR}/NanoRosNodeRegister.cmake")
 
-nano_ros_node_register(
-    NAME    talker
-    CLASS   talker_pkg::talker
-    SOURCES src/talker.cpp
-    DEPLOY  px4)
+nano_ros_auto_add_library(talker_lib STATIC src/talker.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::talker
+    EXECUTABLE talker
+    SHAPE configure
+    DEPLOY px4)
 

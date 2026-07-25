@@ -10,15 +10,25 @@ find_package(std_msgs REQUIRED)
 
 # Phase 269 W2 — typed managed-node C++ component: counter publisher on /chatter.
 # Lifecycle autostart is wired in the entry by emit_cpp.rs W2.
-nano_ros_add_node(talker CLASS cpp_lifecycle_talker_pkg::LifecycleTalker src/LifecycleTalker.cpp)
+nano_ros_auto_add_library(talker_lib STATIC src/LifecycleTalker.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN cpp_lifecycle_talker_pkg::LifecycleTalker
+    EXECUTABLE talker
+    SHAPE configure)
 
 # Phase 270 (#103) — managed node written with the nros::LifecycleNode wrapper
 # (self-drives REP-2002 via the on_* overrides, not the entry autostart codegen).
-nano_ros_add_node(managed_talker CLASS cpp_lifecycle_talker_pkg::ManagedTalker src/ManagedTalker.cpp)
+nano_ros_auto_add_library(managed_talker_lib STATIC src/ManagedTalker.cpp)
+
+nros_components_register_node(managed_talker_lib
+    PLUGIN cpp_lifecycle_talker_pkg::ManagedTalker
+    EXECUTABLE managed_talker
+    SHAPE configure)
 
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(cpp_lifecycle_talker_pkg_talker_component
+    target_link_libraries(talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
-    target_link_libraries(cpp_lifecycle_talker_pkg_managed_talker_component
+    target_link_libraries(talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

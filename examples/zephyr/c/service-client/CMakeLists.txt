@@ -34,4 +34,10 @@ endif()
 find_package(nano_ros REQUIRED)
 find_package(example_interfaces REQUIRED)
 
-nano_ros_add_node(add_two_ints_client CLASS nros_zephyr_zenoh_service_client_c::AddTwoIntsClient TYPED src/AddTwoIntsClient.c)
+nano_ros_auto_add_library(add_two_ints_client_lib STATIC src/AddTwoIntsClient.c)
+
+nros_components_register_node(add_two_ints_client_lib
+    PLUGIN nros_zephyr_zenoh_service_client_c::AddTwoIntsClient
+    EXECUTABLE add_two_ints_client
+    SHAPE configure
+    TYPED)

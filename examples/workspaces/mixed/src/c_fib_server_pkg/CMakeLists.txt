@@ -11,4 +11,10 @@ find_package(example_interfaces REQUIRED)
 # example_interfaces/action/Fibonacci C bindings (deserialize goal / serialize result). The
 # auto-link sidecar links the generated `example_interfaces__nano_ros_c` interface lib.
 
-nano_ros_add_node(fib_server CLASS c_fib_server_pkg::FibServer TYPED src/FibServer.c)
+nano_ros_auto_add_library(fib_server_lib STATIC src/FibServer.c)
+
+nros_components_register_node(fib_server_lib
+    PLUGIN c_fib_server_pkg::FibServer
+    EXECUTABLE fib_server
+    SHAPE configure
+    TYPED)

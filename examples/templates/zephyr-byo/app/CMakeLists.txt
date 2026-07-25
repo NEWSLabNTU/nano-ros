@@ -15,10 +15,11 @@ project(nano_ros_byo_talker)
 set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_node_register(
-    NAME      byo_talker
-    CLASS     nano_ros_byo_talker::Talker
-    LANGUAGE  C
+nano_ros_auto_add_library(byo_talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(byo_talker_lib
+    PLUGIN nano_ros_byo_talker::Talker
+    EXECUTABLE byo_talker
+    SHAPE configure
     TYPED
-    SOURCES   src/Talker.c
-    DEPLOY    zephyr)
+    DEPLOY zephyr)

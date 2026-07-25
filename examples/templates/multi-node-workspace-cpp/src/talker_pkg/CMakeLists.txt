@@ -15,7 +15,13 @@ find_package(std_msgs REQUIRED)
 # `include/talker_pkg/Talker.hpp` (the component lib's PUBLIC include dir), so
 # the convention-derived `class_header` (`talker_pkg/Talker.hpp`) resolves for
 # the Entry pkg via the auto-linked component lib.
-nano_ros_add_node(talker CLASS talker_pkg::Talker src/Talker.cpp DEPLOY native)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
 
-target_link_libraries(talker_pkg_talker_component
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    DEPLOY native)
+
+target_link_libraries(talker_lib
     PUBLIC std_msgs__nano_ros_cpp)

@@ -13,17 +13,20 @@ find_package(std_msgs REQUIRED)
 # The CALLBACK_GROUPS declares "ctrl" and "telem" group IDs; the tier names
 # ("fast" / "bulk") are in deploy_bringup/system.toml — not here.
 # This proves the package is portable across workspaces (RFC-0047 coupling removed).
-nano_ros_add_node(subnode CLASS subnode_pkg::SubNode
-    SHAPE rclcpp
+nano_ros_auto_add_library(subnode_lib STATIC src/SubNode.cpp)
+
+nros_components_register_node(subnode_lib
     HEADER subnode_pkg/SubNode.hpp
-    CALLBACK_GROUPS ctrl telem
-    SOURCES src/SubNode.cpp)
+    PLUGIN subnode_pkg::SubNode
+    EXECUTABLE subnode
+    SHAPE rclcpp
+    CALLBACK_GROUPS ctrl telem)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Guard with `if(TARGET)`: some
 # embedded generators fold the generated interface into the app target
 # instead of exposing a `<pkg>__nano_ros_cpp` lib.
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(subnode_pkg_subnode_component
+    target_link_libraries(subnode_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

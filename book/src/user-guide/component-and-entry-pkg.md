@@ -36,8 +36,8 @@ Codegen owns the spin loop — your code only describes what the node
 Key rules:
 
 - **No `fn main()`.** A Node pkg builds as `rlib + staticlib` and is *linked into* an Entry pkg's binary. Codegen synthesises the spin driver; you never hand-write one.
-- **`class` field must start with the pkg dir name.** `nros check` rejects `class = "foo::Talker"` inside `src/talker_pkg/` — the pkg name and the class prefix are the same identity. (Phase 212.L.4.)
-- **C++ / C analogue:** `nano_ros_node_register(NAME … CLASS … SOURCES …)` cmake fn + a typed component in the source — C++ a `configure(::nros::Node&)` method, C a `NROS_C_COMPONENT(StateT, configure_fn)` seam (RFC-0043). Same conceptual shape, no Cargo.toml.
+- **`class` must be a namespace-qualified C++ name.** The old 212.L.4 prefix rule (`class` starting with the pkg dir name) is retired by RFC-0057 — `pkg` on the `[[component]]` row is the identity authority, so upstream namespaces (`autoware::x::Node`) port verbatim. `nros check` still rejects an unqualified `class`.
+- **C++ / C analogue:** `nano_ros_auto_add_library(<lib> STATIC <srcs>)` + `nros_components_register_node(<lib> PLUGIN … EXECUTABLE …)` (RFC-0057, rclcpp_components keyword parity) + a typed component in the source — C++ a `configure(::nros::Node&)` method, C a `NROS_C_COMPONENT(StateT, configure_fn)` seam (RFC-0043). Same conceptual shape, no Cargo.toml.
 - **`package.xml` is mandatory.** Even pure-Rust Node pkgs ship one — `<exec_depend>` lines drive ROS 2 launch discovery when the system runs through `ros2 launch` outside the nano-ros toolchain.
 
 ## Bringup pkg (optional)

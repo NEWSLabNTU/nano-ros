@@ -11,10 +11,15 @@ find_package(example_interfaces REQUIRED)
 # bind_action_server_raw + the generated example_interfaces C++ action bindings (deserialize goal
 # / serialize result).
 
-nano_ros_add_node(fib_server CLASS cpp_fib_server_pkg::FibServer src/FibServer.cpp)
+nano_ros_auto_add_library(fib_server_lib STATIC src/FibServer.cpp)
+
+nros_components_register_node(fib_server_lib
+    PLUGIN cpp_fib_server_pkg::FibServer
+    EXECUTABLE fib_server
+    SHAPE configure)
 
 # Guard with if(TARGET) (Zephyr whole-archives the generated interface; see talker_pkg).
 if(TARGET example_interfaces__nano_ros_cpp)
-    target_link_libraries(cpp_fib_server_pkg_fib_server_component
+    target_link_libraries(fib_server_lib
         PUBLIC example_interfaces__nano_ros_cpp)
 endif()

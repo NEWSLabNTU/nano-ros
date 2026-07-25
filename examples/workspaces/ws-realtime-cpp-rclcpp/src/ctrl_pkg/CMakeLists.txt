@@ -12,17 +12,20 @@ find_package(std_msgs REQUIRED)
 # counter on /ctrl every 10 ms as an IS-A-node (nros::ComponentNode subclass).
 # SHAPE rclcpp tells the codegen to emit placement-new with executor handle;
 # the tier binding is seeded via bind_node_name_sched (not NodeBuilder::sched).
-nano_ros_add_node(ctrl CLASS ctrl_pkg::Ctrl
-    SHAPE rclcpp
+nano_ros_auto_add_library(ctrl_lib STATIC src/Ctrl.cpp)
+
+nros_components_register_node(ctrl_lib
     HEADER ctrl_pkg/Ctrl.hpp
-    CALLBACK_GROUPS ctrl
-    SOURCES src/Ctrl.cpp)
+    PLUGIN ctrl_pkg::Ctrl
+    EXECUTABLE ctrl
+    SHAPE rclcpp
+    CALLBACK_GROUPS ctrl)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Guard with `if(TARGET)`: some
 # embedded generators fold the generated interface into the app target
 # instead of exposing a `<pkg>__nano_ros_cpp` lib.
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(ctrl_pkg_ctrl_component
+    target_link_libraries(ctrl_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

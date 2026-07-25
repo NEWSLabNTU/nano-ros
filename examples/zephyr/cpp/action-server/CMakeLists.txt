@@ -27,4 +27,11 @@ endif()
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
 
-nano_ros_add_node(fibonacci_action_server CLASS zephyr_cpp_action_server::FibonacciServer HEADER FibonacciServer.hpp TYPED src/FibonacciServer.cpp)
+nano_ros_auto_add_library(fibonacci_action_server_lib STATIC src/FibonacciServer.cpp)
+
+nros_components_register_node(fibonacci_action_server_lib
+    HEADER FibonacciServer.hpp
+    PLUGIN zephyr_cpp_action_server::FibonacciServer
+    EXECUTABLE fibonacci_action_server
+    SHAPE configure
+    TYPED)

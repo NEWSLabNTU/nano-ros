@@ -4,4 +4,10 @@ project(talker_pkg C CXX)
 # relative path (repo root = 5 levels up from this fixture dir).
 get_filename_component(_NROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
 include("${_NROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
-nano_ros_node_register(NAME talker CLASS talker_pkg::Talker SOURCES src/dummy.cpp DEPLOY native zephyr)
+nano_ros_auto_add_library(talker_lib STATIC src/dummy.cpp)
+
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    DEPLOY native zephyr)

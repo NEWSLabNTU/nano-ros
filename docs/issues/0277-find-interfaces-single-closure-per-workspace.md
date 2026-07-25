@@ -36,3 +36,8 @@ RFC-0057 D3 covers the UX half: `nano_ros_auto_add_library` auto-wires
 the generated interface deps so consumers never hand-pick the topo-last
 archive. The workspace-wide union closure stays this issue's engineering
 half.
+
+Phase-305 D3 landed: `nano_ros_auto_add_library` auto-wires the generated
+interface libs — the manual topo-last `if(TARGET …__nano_ros_cpp)` blocks
+are gone from the ASI workspace and in-tree examples. Remaining:
+workspace-wide union closure (this issue's engineering half).

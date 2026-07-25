@@ -15,4 +15,10 @@ find_package(std_msgs REQUIRED)
 # each message, and republishes the running CRC-valid count on /safe_ok via
 # the generated std_msgs/Int32 serializer.
 # Requires NANO_ROS_SAFETY_E2E=ON (from [system].features = ["safety"]).
-nano_ros_add_node(safe_listener CLASS c_safety_listener_pkg::Listener TYPED src/SafetyListener.c)
+nano_ros_auto_add_library(safe_listener_lib STATIC src/SafetyListener.c)
+
+nros_components_register_node(safe_listener_lib
+    PLUGIN c_safety_listener_pkg::Listener
+    EXECUTABLE safe_listener
+    SHAPE configure
+    TYPED)

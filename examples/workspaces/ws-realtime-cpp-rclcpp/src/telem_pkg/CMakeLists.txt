@@ -11,17 +11,20 @@ find_package(std_msgs REQUIRED)
 # rclcpp-shape low-tier telemetry node (RFC-0047, issue #124). Publishes a
 # counter on /telem every 100 ms as an IS-A-node (nros::ComponentNode
 # subclass). SHAPE rclcpp; tier binding via bind_node_name_sched.
-nano_ros_add_node(telem CLASS telem_pkg::Telem
-    SHAPE rclcpp
+nano_ros_auto_add_library(telem_lib STATIC src/Telem.cpp)
+
+nros_components_register_node(telem_lib
     HEADER telem_pkg/Telem.hpp
-    CALLBACK_GROUPS telem
-    SOURCES src/Telem.cpp)
+    PLUGIN telem_pkg::Telem
+    EXECUTABLE telem
+    SHAPE rclcpp
+    CALLBACK_GROUPS telem)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Guard with `if(TARGET)`: some
 # embedded generators fold the generated interface into the app target
 # instead of exposing a `<pkg>__nano_ros_cpp` lib.
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(telem_pkg_telem_component
+    target_link_libraries(telem_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

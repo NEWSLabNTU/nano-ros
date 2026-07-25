@@ -11,4 +11,10 @@ find_package(example_interfaces REQUIRED)
 # example_interfaces/srv/AddTwoInts C bindings (deserialize request / serialize reply). The
 # auto-link sidecar links the generated `example_interfaces__nano_ros_c` interface lib.
 
-nano_ros_add_node(add_server CLASS c_add_server_pkg::AddServer TYPED src/AddServer.c)
+nano_ros_auto_add_library(add_server_lib STATIC src/AddServer.c)
+
+nros_components_register_node(add_server_lib
+    PLUGIN c_add_server_pkg::AddServer
+    EXECUTABLE add_server
+    SHAPE configure
+    TYPED)

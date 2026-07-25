@@ -23,7 +23,11 @@ nros_generate_interfaces(std_msgs LANGUAGE CPP)
 # ZephyrBoard::run_components) and target_sources/links it into the global `app`.
 find_package(nano_ros REQUIRED)
 
-nano_ros_add_node(talker CLASS nros_zephyr_aemv8r_cyclonedds_talker::Talker
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
+
+nros_components_register_node(talker_lib
     HEADER Talker.hpp
-    TYPED
-    SOURCES src/Talker.cpp)
+    PLUGIN nros_zephyr_aemv8r_cyclonedds_talker::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

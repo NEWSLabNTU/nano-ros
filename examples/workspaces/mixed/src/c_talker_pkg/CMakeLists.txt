@@ -12,4 +12,10 @@ find_package(std_msgs REQUIRED)
 
 # Typed component (RFC-0043): publishes std_msgs/Int32 on `/chatter` via the
 # generated C serializer.
-nano_ros_add_node(talker CLASS c_talker_pkg::Talker TYPED src/Talker.c)
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN c_talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

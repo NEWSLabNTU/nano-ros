@@ -1,0 +1,12 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/examples/qemu-arm-baremetal/rust/listener/launch/system.launch.xml
+    sha256: 210a67e1dcbc9837705352cf6ec496b98f1cc5f971feb0be0de85f5b64136e0d
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    system.launch.xml:
+      file: system.launch.xml

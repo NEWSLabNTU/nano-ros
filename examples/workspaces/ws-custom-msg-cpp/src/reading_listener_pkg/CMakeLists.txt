@@ -9,5 +9,9 @@ find_package(custom_msgs REQUIRED)
 
 # Typed component (RFC-0043) subscribing through the GENERATED
 # `custom_msgs::msg::Reading` bindings (phase-293 / issue #212).
-nano_ros_add_node(reading_listener CLASS reading_listener_pkg::ReadingListener
-    src/ReadingListener.cpp)
+nano_ros_auto_add_library(reading_listener_lib STATIC src/ReadingListener.cpp)
+
+nros_components_register_node(reading_listener_lib
+    PLUGIN reading_listener_pkg::ReadingListener
+    EXECUTABLE reading_listener
+    SHAPE configure)

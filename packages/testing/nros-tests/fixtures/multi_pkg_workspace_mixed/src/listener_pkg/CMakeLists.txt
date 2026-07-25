@@ -15,11 +15,13 @@
 # Sub-`project()` rescopes the L.4 check to the pkg dir name.
 project(listener_pkg VERSION 0.1.0 LANGUAGES CXX)
 
-nano_ros_node_register(
-    NAME    listener
-    CLASS   listener_pkg::Listener
-    SOURCES src/listener.cpp
-    DEPLOY  native)
+nano_ros_auto_add_library(listener_lib STATIC src/listener.cpp)
+
+nros_components_register_node(listener_lib
+    PLUGIN listener_pkg::Listener
+    EXECUTABLE listener
+    SHAPE configure
+    DEPLOY native)
 
 
 # The consuming test (`cmake_mixed_corrosion_bridge_builds`) only

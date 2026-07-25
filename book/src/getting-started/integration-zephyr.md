@@ -92,14 +92,16 @@ project(my_app)
 
 set(NANO_ROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosVerbs.cmake")
 
-nano_ros_node_register(
-    NAME      talker
-    CLASS     my_app::Talker
-    LANGUAGE  C
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN my_app::Talker
+    EXECUTABLE talker
+    SHAPE configure
     TYPED
-    SOURCES   src/Talker.c
-    DEPLOY    zephyr)
+    DEPLOY zephyr)
 ```
 
 ```c

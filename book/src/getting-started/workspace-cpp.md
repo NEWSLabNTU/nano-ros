@@ -16,7 +16,7 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_node_register(NAME … CLASS … SOURCES …)` |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Entry pkg** | `src/main.rs` with `nros::main!(model = "demo_bringup:config/system_model.yaml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … MODEL "…/demo_bringup/config/system_model.yaml" DEPLOY native)` |
 | **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
@@ -38,7 +38,7 @@ my_ws/
 └── src/
     ├── talker_pkg/               # Node pkg (C++)
     │   ├── package.xml
-    │   ├── CMakeLists.txt        # nano_ros_node_register(…)
+    │   ├── CMakeLists.txt        # nano_ros_auto_add_library + nros_components_register_node
     │   └── src/{Talker.hpp,Talker.cpp}
     ├── listener_pkg/             # Node pkg (C++)
     │   ├── package.xml
@@ -108,12 +108,15 @@ project(talker_pkg LANGUAGES C CXX)
 nano_ros_workspace_pkg_guard()
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-nano_ros_node_register(
-    NAME    talker
-    CLASS   talker_pkg::Talker     # §212.L.4 — class prefix must equal PROJECT_NAME
-    SOURCES src/Talker.cpp)
+# RFC-0057: the ament shape — the library owns the sources, the register
+# owns the identity (keyword parity with rclcpp_components_register_node).
+# Interface deps (std_msgs__nano_ros_cpp) are wired automatically.
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
 
-target_link_libraries(talker_pkg_talker_component PUBLIC std_msgs__nano_ros_cpp)
+nros_components_register_node(talker_lib
+    PLUGIN talker_pkg::Talker      # any qualified name — upstream namespaces port verbatim
+    EXECUTABLE talker
+    SHAPE configure)               # this walkthrough uses the configure(Node&) shape
 ```
 
 ```cpp

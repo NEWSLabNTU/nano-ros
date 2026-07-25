@@ -1,0 +1,12 @@
+meta:
+  version: 1
+  inputs:
+  - path: /home/aeon/repos/nano-ros/packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/launch/system.launch.xml
+    sha256: 78e80db76c80cbf4fada1ba2a73062c7c1ce2d9d4e0a5bcb134d643cbbfd1bcf
+  resolver:
+    tool: play_launch
+    version: 0.8.2
+structure:
+  scopes:
+    system.launch.xml:
+      file: system.launch.xml

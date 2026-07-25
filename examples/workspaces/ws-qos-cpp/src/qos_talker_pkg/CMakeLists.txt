@@ -13,12 +13,17 @@ find_package(std_msgs REQUIRED)
 # NON-DEFAULT profile via the `nros::QoS` builder
 # (`.reliable().transient_local().keep_last(10)`) rather than the default profile
 # (see src/QosTalker.cpp).
-nano_ros_add_node(qos_talker CLASS qos_talker_pkg::QosTalker src/QosTalker.cpp)
+nano_ros_auto_add_library(qos_talker_lib STATIC src/QosTalker.cpp)
+
+nros_components_register_node(qos_talker_lib
+    PLUGIN qos_talker_pkg::QosTalker
+    EXECUTABLE qos_talker
+    SHAPE configure)
 
 # `nros_find_interfaces` declares the `std_msgs__nano_ros_cpp` INTERFACE lib
 # carrying the generated headers' include dirs; guard with `if(TARGET)` (the
 # Zephyr generator whole-archives the interface into `app` instead).
 if(TARGET std_msgs__nano_ros_cpp)
-    target_link_libraries(qos_talker_pkg_qos_talker_component
+    target_link_libraries(qos_talker_lib
         PUBLIC std_msgs__nano_ros_cpp)
 endif()

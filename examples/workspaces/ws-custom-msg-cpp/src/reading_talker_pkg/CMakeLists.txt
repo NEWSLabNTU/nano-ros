@@ -11,4 +11,9 @@ find_package(custom_msgs REQUIRED)
 # `custom_msgs::msg::Reading` (phase-293 / issue #212 — the raw hand-encoded
 # CDR shape is retired; the historical "double-builtin_interfaces glue" edge
 # this pkg used to dodge died with the #203 idempotency/header-mirror repairs).
-nano_ros_add_node(reading_talker CLASS reading_talker_pkg::ReadingTalker src/ReadingTalker.cpp)
+nano_ros_auto_add_library(reading_talker_lib STATIC src/ReadingTalker.cpp)
+
+nros_components_register_node(reading_talker_lib
+    PLUGIN reading_talker_pkg::ReadingTalker
+    EXECUTABLE reading_talker
+    SHAPE configure)

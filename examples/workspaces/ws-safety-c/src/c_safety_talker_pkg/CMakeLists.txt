@@ -15,4 +15,10 @@ find_package(std_msgs REQUIRED)
 # [system].features = ["safety"]) the zenoh backend automatically attaches a
 # CRC-32 + sequence number on every publish — no component code change
 # required. The CRC is what the paired safe_listener validates.
-nano_ros_add_node(talker CLASS c_safety_talker_pkg::Talker TYPED src/SafetyTalker.c)
+nano_ros_auto_add_library(talker_lib STATIC src/SafetyTalker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN c_safety_talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
+    TYPED)

@@ -39,4 +39,11 @@ endif()
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
 
-nano_ros_add_node(add_two_ints_client CLASS zephyr_cpp_service_client::AddTwoIntsClient HEADER AddTwoIntsClient.hpp TYPED src/AddTwoIntsClient.cpp)
+nano_ros_auto_add_library(add_two_ints_client_lib STATIC src/AddTwoIntsClient.cpp)
+
+nros_components_register_node(add_two_ints_client_lib
+    HEADER AddTwoIntsClient.hpp
+    PLUGIN zephyr_cpp_service_client::AddTwoIntsClient
+    EXECUTABLE add_two_ints_client
+    SHAPE configure
+    TYPED)

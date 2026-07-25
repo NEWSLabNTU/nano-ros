@@ -49,13 +49,14 @@ typed Entry creates the node and runs `configure` on the real executor.
 ```cmake
 # Raw `/chatter` publisher carries the type name as a string → no generated C
 # bindings needed (so no nros_find_interfaces for this pkg).
-nano_ros_node_register(
-    NAME     talker
-    CLASS    c_talker_pkg::Talker
-    LANGUAGE C
+nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
+
+nros_components_register_node(talker_lib
+    PLUGIN c_talker_pkg::Talker
+    EXECUTABLE talker
+    SHAPE configure
     TYPED
-    SOURCES  src/Talker.c
-    DEPLOY   native)
+    DEPLOY native)
 ```
 
 ```c
@@ -88,7 +89,7 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
 NROS_C_COMPONENT(c_talker_pkg_t, talker_configure)
 ```
 
-`nano_ros_node_register(... LANGUAGE C TYPED ...)` injects `NROS_PKG_NAME`, so
+`nano_ros_auto_add_library` injects `NROS_PKG_NAME` (language inferred from the sources), so
 `NROS_C_COMPONENT` exports the `__nros_c_component_<pkg>_{create,configure}`
 seam the typed Entry calls — interoperable with C++ `configure(Node&)` and Rust
 `nros::node!` components in one launch graph.
