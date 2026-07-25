@@ -13,7 +13,10 @@ matrix axis).
 
 ## Status (2026-07-25)
 
-**W3 LANDED** (extend the enum). The rest not started. The axis is **partially
+**W3 LANDED** (extend the enum). **W2 core + W4 started** (this commit):
+`[system].ros_edition` is declared + resolved + typo-guarded; `nros_tests::ros2`
+is distro-parametric; the Tier-A capture script exists. **W1 not started** (the
+biggest functional gap; needs the capture run). The axis is **partially
 built**: `RosEdition {Humble, Iron}` +
 `--ros-edition` CLI arg + `ros-humble`/`ros-iron` cargo features + a runtime
 keyexpr branch exist, but (a) `RosEdition::type_hash()` returns a **placeholder**
@@ -98,6 +101,18 @@ disconnect (baked type_hash must match the runtime keyexpr tail).
   feature; a mismatch is impossible by construction. A missing/`humble` value is
   byte-identical to today.
 
+**W2 core LANDED (2026-07-25):** `SystemHeader.ros_edition: Option<String>` +
+`SystemHeader::ros_edition() -> Result<RosEdition>` (absent ⇒ humble; unknown ⇒
+HARD error — typo guard, never a silent fallback). `nros codegen-system`
+resolves + validates + records it at bake (a bad `[system].ros_edition` fails
+loudly). Unit-tested (`ros_edition_resolves_with_humble_default_and_typo_guard`).
+
+**W2b REMAINING (the lowering):** thread the resolved edition into (a) the
+message-gen `--ros-edition` default (baked type_hash), (b) the `ros-<edition>`
+cargo feature on the generated entry crate (runtime keyexpr format — closes the
+last end of the codegen↔runtime disconnect), and (c) the `generated/<edition>/`
+interface dir. The DECLARATION + typo guard exist; the auto-lowering is next.
+
 ### W3 — extend the enum: `jazzy` / `rolling` — **LANDED (2026-07-25)**
 
 `RosEdition` gained `Jazzy`/`Rolling` + a single `RosEdition::parse` /
@@ -131,6 +146,18 @@ is not).
 - *Accept:* an Iron or Jazzy interop lane PASSES against a container peer (B1) or
   an installed distro (B2), and skips loudly when neither is present; the
   offline Tier-A fixture tests run in CI with no ROS runtime.
+
+**W4 STARTED (2026-07-25):**
+- `scripts/ros/capture-edition-fixtures.sh <iron|jazzy|rolling>` — captures the
+  Tier-A RIHS01 hashes (`ros2 interface hash`) + rosidl_adapter `.msg` from a
+  throwaway `osrf/ros:<distro>-ros-base` container into
+  `packages/testing/nros-tests/fixtures/ros-editions/<distro>/`. Syntax-checked +
+  distro-guarded (humble/unknown rejected). Running it (a ~1 GB pull) produces
+  the golden values **W1** asserts against — the capture is the W1 prerequisite.
+- `nros_tests::ros2` is now distro-parametric: `is_ros2_distro_available(distro)`
+  (bare-identifier-guarded) generalizes the hard-coded `/opt/ros/humble` check;
+  `is_ros2_available()` keeps the humble default. The container-peer harness
+  (B1) + the RFC-0051 edition matrix axis are the remaining W4 pieces.
 
 ### W5 — encoding field per edition (coordinates phase-303 W1b)
 

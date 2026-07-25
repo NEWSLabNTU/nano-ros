@@ -137,6 +137,16 @@ pub fn run(args: Args) -> Result<()> {
     // the single `default` tier (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
     let target_rtos = derive_target_rtos(&bringup.system, args.target.as_deref());
+    // phase-304 W2 (RFC-0056) — resolve + VALIDATE the declared ROS edition
+    // (typo guard: an unknown `[system].ros_edition` fails the bake loudly, not
+    // a silent humble fallback). Recorded so the operator sees the axis the
+    // image targets; the full lowering (message-gen `--ros-edition` + the
+    // `ros-<edition>` cargo feature + `generated/<edition>/`) is W2b.
+    let ros_edition = bringup.system.system.ros_edition()?;
+    eprintln!(
+        "codegen-system: ROS edition = {} (RFC-0056; type-hash + keyexpr format)",
+        ros_edition.as_str()
+    );
     // RFC-0052 W1 — a SystemModel's execution layer replaces the authored
     // tier tables before resolution (checked artifact wins; fail-loud on
     // bindings that name unknown components/groups/tiers). `bringup` is a

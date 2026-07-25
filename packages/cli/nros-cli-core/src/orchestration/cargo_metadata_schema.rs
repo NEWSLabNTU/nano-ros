@@ -723,6 +723,14 @@ pub struct SystemHeader {
     pub name: String,
     pub rmw: String,
     pub domain_id: u32,
+    /// Target ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`) — the
+    /// RFC-0056 axis, declared ONCE here and lowered (phase-304 W2) to the
+    /// message-gen `--ros-edition` (baked type hash), the `ros-<edition>` cargo
+    /// feature (runtime keyexpr format), and the `generated/<edition>/`
+    /// interface dir — so the baked hash and the runtime format can never
+    /// disagree. Absent ⇒ `humble` (the current default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ros_edition: Option<String>,
     /// Optional default locator. Per-deploy blocks can override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
@@ -747,6 +755,24 @@ pub struct SystemHeader {
     /// deprecated). Absent ⇒ empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+}
+
+impl SystemHeader {
+    /// phase-304 W2 (RFC-0056) — resolve the declared `[system].ros_edition`
+    /// into a [`RosEdition`]. Absent ⇒ `Humble` (the default). An unknown string
+    /// is a HARD error (typo guard), never a silent fallback to humble — a wrong
+    /// edition silently bakes the wrong type hash / keyexpr format.
+    pub fn ros_edition(&self) -> eyre::Result<rosidl_codegen::RosEdition> {
+        match &self.ros_edition {
+            None => Ok(rosidl_codegen::RosEdition::Humble),
+            Some(s) => rosidl_codegen::RosEdition::parse(s).ok_or_else(|| {
+                eyre::eyre!(
+                    "[system].ros_edition = '{s}' is not a known ROS edition \
+                     (humble | iron | jazzy | rolling)"
+                )
+            }),
+        }
+    }
 }
 
 /// `[[component]]` row.
@@ -887,6 +913,28 @@ fn is_false(b: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-304 W2 — `[system].ros_edition` resolves to a `RosEdition`; absent
+    /// ⇒ humble; an unknown string is a HARD error (typo guard).
+    #[test]
+    fn ros_edition_resolves_with_humble_default_and_typo_guard() {
+        use rosidl_codegen::RosEdition;
+        let hdr = |ed: &str| {
+            toml::from_str::<SystemHeader>(&format!(
+                "name = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\nros_edition = \"{ed}\"\n"
+            ))
+            .unwrap()
+        };
+        assert_eq!(hdr("jazzy").ros_edition().unwrap(), RosEdition::Jazzy);
+        assert_eq!(hdr("Iron").ros_edition().unwrap(), RosEdition::Iron);
+        // Absent → humble default.
+        let bare: SystemHeader =
+            toml::from_str("name = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
+        assert_eq!(bare.ros_edition().unwrap(), RosEdition::Humble);
+        // Unknown → loud error, never a silent humble fallback.
+        let err = hdr("foxy").ros_edition().unwrap_err().to_string();
+        assert!(err.contains("not a known ROS edition"), "got: {err}");
+    }
 
     /// phase-267 W1c/C3a — a node declares its published topics+types in
     /// `[package.metadata.nros.node]`; the planner reads them pre-build to

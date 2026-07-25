@@ -26,16 +26,35 @@ pub fn rmw_zenoh_overlay() -> Option<PathBuf> {
     overlay.exists().then_some(overlay)
 }
 
-/// Check if ROS 2 is available
-pub fn is_ros2_available() -> bool {
-    // Check if ros2 command exists by trying to get help
+/// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
+/// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
+/// and `skip!` when absent, instead of everything assuming humble. Returns false
+/// (never panics) when the setup script is missing or `ros2 --help` fails.
+pub fn is_ros2_distro_available(distro: &str) -> bool {
+    // Reject a distro name that isn't a bare identifier (defense against a
+    // caller interpolating an untrusted string into the sourced path).
+    if distro.is_empty()
+        || !distro
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return false;
+    }
     Command::new("bash")
-        .args(["-c", "source /opt/ros/humble/setup.bash && ros2 --help"])
+        .args([
+            "-c",
+            &format!("source /opt/ros/{distro}/setup.bash && ros2 --help"),
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Check if ROS 2 is available (the [`DEFAULT_ROS_DISTRO`] — humble today).
+pub fn is_ros2_available() -> bool {
+    is_ros2_distro_available(DEFAULT_ROS_DISTRO)
 }
 
 /// Require ROS 2 for a test (skips if not available)

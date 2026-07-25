@@ -353,6 +353,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             name: system_name,
             rmw: "zenoh".to_string(),
             domain_id: 0,
+            // Omitted from the scaffold → the humble default (RFC-0056); a user
+            // adds `ros_edition = "iron"|"jazzy"|…` when targeting a newer distro.
+            ros_edition: None,
             locator: None,
             default_launch: Some("system.launch.xml".to_string()),
             default_target: Some("native".to_string()),

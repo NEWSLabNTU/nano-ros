@@ -556,6 +556,10 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
             .clone()
             .unwrap_or_else(|| "zenoh".to_string()),
         domain_id: first_deploy.domain_id.unwrap_or(0),
+        // Self-bringup synthesized from component deploy metadata, which carries
+        // no edition today → humble default (RFC-0056; phase-304 W2 follow-up:
+        // thread a component-declared edition here if one is added).
+        ros_edition: None,
         locator: first_deploy.locator.clone(),
         default_launch: None,
         default_target: None,
