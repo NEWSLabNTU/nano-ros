@@ -82,10 +82,6 @@ subset pkg). Scope ts-generation to the used closure or fix srv IDL lowering. Se
 workspaces die at boot `ExecutorFull` with no build-time hint. The entry codegen knows the
 model's entity counts — derive or validate the knob. See `0257-*`.
 
-**#256** — generated C++ msg structs are uninitialized PODs (rosidl zero-initializes) — a
-ported Autoware node leaked stack garbage into `ResponseStatus.code` over the wire. Emit
-default member initializers. See `0256-*`.
-
 **#255** — launch `<remap>` parsed but not routed; `~/` names unsupported — every ported
 Autoware node hardcodes resolved topic names. Route remaps in entry codegen. See `0255-*`.
 

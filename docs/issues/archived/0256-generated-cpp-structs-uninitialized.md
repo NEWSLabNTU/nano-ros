@@ -1,7 +1,7 @@
 ---
 id: 256
 title: "Generated C++ message structs are uninitialized PODs — default-init leaked stack garbage over the wire"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: codegen
@@ -28,3 +28,14 @@ port is one missed `{}` away from the same leak.
 Emit default member initializers in `message_cpp.hpp.jinja` (+ srv/action
 templates): `= {}` per field (or `= 0` scalars). Zero runtime cost, restores
 rosidl semantics.
+
+## Resolution (2026-07-25)
+
+All 12 field-emission sites in the C++ message/service/action templates
+emit `= {}` default member initializers (aggregate-safe at the cxx_std_14
+floor; C templates untouched — C has no member init). Template tests
+updated (178/178); verified via the real cmake pipeline: regenerated
+`std_msgs_msg_string.hpp` carries `nros::FixedString<256> data = {};`
+and the native cpp example builds. Existing `generated/` trees pick the
+fix up on their next regeneration (the codegen-tool input signature
+already stales fixtures on a CLI rebuild).
