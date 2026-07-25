@@ -4,8 +4,10 @@
 //! `cargo check`. Ignored by default (spawns cargo); run with:
 //!   cargo test -p rosidl-codegen --test heap_compile_check -- --ignored
 
-use rosidl_codegen::{CapacityResolver, RosEdition, generate_nros_message_package};
-use rosidl_parser::parse_message;
+use rosidl_codegen::{
+    CapacityResolver, RosEdition, generate_nros_message_package, generate_nros_service_package,
+};
+use rosidl_parser::{parse_message, parse_service};
 use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
 #[test]
@@ -80,5 +82,73 @@ heapless = "0.8"
         "generated heap crate failed to compile:\n{}\n--- generated ---\n{}",
         String::from_utf8_lossy(&out.stderr),
         pkg.message_rs
+    );
+}
+
+/// phase-303 W4 — a generated SERVICE (with the DHEADER-wrapped serialize/
+/// deserialize) compiles. AddTwoInts is primitive-only (self-contained).
+#[test]
+#[ignore = "spawns cargo check against a generated crate"]
+fn generated_service_with_dheader_wrap_compiles() {
+    let srv = parse_service("int64 a\nint64 b\n---\nint64 sum\n").unwrap();
+    let ph = RosEdition::Humble.type_hash();
+    let pkg = generate_nros_service_package(
+        "my_srvs",
+        "AddTwoInts",
+        &srv,
+        &HashSet::new(),
+        "0.1.0",
+        ph,
+        ph,
+        ph,
+        &CapacityResolver::empty(),
+    )
+    .expect("generate");
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    let core = repo_root.join("packages/core");
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    fs::create_dir_all(root.join("src/srv")).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "srv_check"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+nros-core = {{ path = "{core}/nros-core" }}
+nros-serdes = {{ path = "{core}/nros-serdes" }}
+heapless = "0.8"
+
+[workspace]
+"#,
+            core = core.display()
+        ),
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub mod srv { pub mod add_two_ints; }\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/srv/add_two_ints.rs"), &pkg.service_rs).unwrap();
+
+    let out = Command::new(env!("CARGO"))
+        .args(["check", "--quiet"])
+        .current_dir(root)
+        .output()
+        .expect("spawn cargo check");
+    assert!(
+        out.status.success(),
+        "generated service crate failed to compile:\n{}\n--- generated ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.service_rs
     );
 }

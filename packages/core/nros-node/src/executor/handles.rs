@@ -126,8 +126,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// Publish a message with a custom buffer size.
     pub fn publish_with_buffer<const BUF: usize>(&self, msg: &M) -> Result<(), NodeError> {
         let mut buffer = [0u8; BUF];
-        let mut writer =
-            CdrWriter::new_with_header(&mut buffer).map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer = crate::tx_writer(&mut buffer).map_err(|_| NodeError::BufferTooSmall)?;
         msg.serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
         let len = writer.position();
@@ -1907,8 +1906,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             return Err(NodeError::RequestInFlight);
         }
         let mut buf = [0u8; REQ_BUF];
-        let mut writer =
-            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer = crate::tx_writer(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
         request
             .serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
@@ -1964,8 +1962,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     pub fn send_goal(&mut self, goal: &A::Goal) -> Result<nros_core::GoalId, NodeError> {
         let core = unsafe { &mut *self.core };
         let mut buf = [0u8; GOAL_BUF];
-        let mut writer =
-            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer = crate::tx_writer(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
         goal.serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
         let len = writer.position();
@@ -2032,8 +2029,8 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         }
 
         // Serialize request into req_buffer
-        let mut writer = CdrWriter::new_with_header(&mut self.req_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.req_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         request
             .serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;

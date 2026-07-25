@@ -189,6 +189,16 @@ by edition/negotiation — landed together so the path is wire-verifiable agains
 live Jazzy peer at once. The Cyclone path (the demo's actual corruption) is
 already fixed by W1c.
 
+## Update (W4 codegen-wrap + tx-writer gate LANDED, 2026-07-26)
+
+The nros-serdes XCDR2 machinery is now wired into the Rust path: generated
+serialize/deserialize wrap every struct in DHEADER calls (no-op XCDR1), and
+`nros_node::tx_writer` selects the XCDR2 writer on iron/jazzy/rolling (humble
+byte-identical). The reader auto-detects the encapsulation version. nros-node
+green under both editions. Remaining: the C/C++ tx writers (`nros-c`/`nros-cpp`)
+need the same gate, and the live-peer wire round-trip is the final confirmation.
+The Cyclone path (the demo's corruption) is already fixed by W1c.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

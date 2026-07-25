@@ -332,10 +332,8 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         _handle: &PublisherHandle<M>,
         msg: &M,
     ) -> Result<&[u8], NodeError> {
-        use nros_core::CdrWriter;
-
-        let mut writer = CdrWriter::new_with_header(&mut self.tx_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.tx_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         msg.serialize(&mut writer)
             .map_err(|_| NodeError::SerializationFailed)?;
         let len = writer.position();

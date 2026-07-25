@@ -279,8 +279,8 @@ impl<
     /// publishes status.
     pub fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
         // Serialize response: accepted=true + stamp (Time: sec=0, nanosec=0)
-        let mut writer = CdrWriter::new_with_header(&mut self.cancel_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.cancel_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer.write_u8(1).map_err(|_| NodeError::Serialization)?;
         writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
         writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
@@ -301,8 +301,8 @@ impl<
     /// Reject a goal: sends the rejection reply.
     pub fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError> {
         // Serialize response: accepted=false + stamp
-        let mut writer = CdrWriter::new_with_header(&mut self.cancel_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.cancel_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer.write_u8(0).map_err(|_| NodeError::Serialization)?;
         writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
         writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
@@ -328,8 +328,8 @@ impl<
             return Err(NodeError::BufferTooSmall);
         }
 
-        let mut writer = CdrWriter::new_with_header(&mut self.feedback_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.feedback_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
         write_goal_id(&mut writer, goal_id)?;
 
@@ -495,8 +495,8 @@ impl<
             self.set_goal_status(id, GoalStatus::Canceling);
         }
 
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
             .write_i8(return_code as i8)
             .map_err(|_| NodeError::Serialization)?;
@@ -559,8 +559,8 @@ impl<
         }
 
         // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
             .write_i8(response as i8)
             .map_err(|_| NodeError::Serialization)?;
@@ -656,8 +656,8 @@ impl<
             }
         } else {
             // Unknown goal → reply immediately with UNKNOWN + default result.
-            let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-                .map_err(|_| NodeError::BufferTooSmall)?;
+            let mut writer =
+                crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
             writer
                 .write_i8(GoalStatus::Unknown as i8)
                 .map_err(|_| NodeError::Serialization)?;
@@ -690,8 +690,8 @@ impl<
         slab_offset: usize,
         slab_len: usize,
     ) -> Result<(), NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
             .write_i8(status as i8)
             .map_err(|_| NodeError::Serialization)?;
@@ -732,8 +732,7 @@ impl<
     /// Publish the current GoalStatusArray on the status topic.
     pub fn publish_status_array(&self) -> Result<(), NodeError> {
         let mut buf = [0u8; STATUS_ARRAY_BUF];
-        let mut writer =
-            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer = crate::tx_writer(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
 
         writer
             .write_u32(self.active_goals.len() as u32)
@@ -848,8 +847,8 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         let counter_bytes = self.goal_counter.to_le_bytes();
         goal_id.uuid[..8].copy_from_slice(&counter_bytes);
 
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
         write_goal_id(&mut writer, &goal_id)?;
 
@@ -896,8 +895,8 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `cancel_goal_client` and `result_buffer` to construct
     /// a Promise for the cancel response.
     pub fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
         write_goal_id(&mut writer, goal_id)?;
         writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
@@ -915,8 +914,8 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `get_result_client` and `result_buffer` to construct
     /// a Promise for the result response.
     pub fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
         write_goal_id(&mut writer, goal_id)?;
 

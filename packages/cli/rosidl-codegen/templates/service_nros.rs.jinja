@@ -46,6 +46,8 @@ impl Default for {{ service_name }}Request {
 impl Serialize for {{ service_name }}Request {
 {%- if has_request_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
 {%- for field in request_fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -76,11 +78,14 @@ impl Serialize for {{ service_name }}Request {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
     // Empty request - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -89,7 +94,8 @@ impl Serialize for {{ service_name }}Request {
 impl Deserialize for {{ service_name }}Request {
 {%- if has_request_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in request_fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -153,11 +159,15 @@ impl Deserialize for {{ service_name }}Request {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
     // Empty request - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}
@@ -216,6 +226,8 @@ impl Default for {{ service_name }}Response {
 impl Serialize for {{ service_name }}Response {
 {%- if has_response_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
 {%- for field in response_fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -246,11 +258,14 @@ impl Serialize for {{ service_name }}Response {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
     // Empty response - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -259,7 +274,8 @@ impl Serialize for {{ service_name }}Response {
 impl Deserialize for {{ service_name }}Response {
 {%- if has_response_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in response_fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -323,11 +339,15 @@ impl Deserialize for {{ service_name }}Response {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
     // Empty response - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}

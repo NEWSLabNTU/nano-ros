@@ -50,6 +50,8 @@ impl Default for {{ action_name }}Goal {
 impl Serialize for {{ action_name }}Goal {
 {%- if has_goal_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
 {%- for field in goal_fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -80,11 +82,15 @@ impl Serialize for {{ action_name }}Goal {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
     // Empty goal - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -93,7 +99,8 @@ impl Serialize for {{ action_name }}Goal {
 impl Deserialize for {{ action_name }}Goal {
 {%- if has_goal_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in goal_fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -157,11 +164,15 @@ impl Deserialize for {{ action_name }}Goal {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
     // Empty goal - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}
@@ -224,6 +235,8 @@ impl Default for {{ action_name }}Result {
 impl Serialize for {{ action_name }}Result {
 {%- if has_result_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
 {%- for field in result_fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -254,11 +267,15 @@ impl Serialize for {{ action_name }}Result {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
     // Empty result - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -267,7 +284,8 @@ impl Serialize for {{ action_name }}Result {
 impl Deserialize for {{ action_name }}Result {
 {%- if has_result_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in result_fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -331,11 +349,15 @@ impl Deserialize for {{ action_name }}Result {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
     // Empty result - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}
@@ -396,6 +418,8 @@ impl Default for {{ action_name }}Feedback {
 impl Serialize for {{ action_name }}Feedback {
 {%- if has_feedback_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
 {%- for field in feedback_fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -426,11 +450,15 @@ impl Serialize for {{ action_name }}Feedback {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
     // Empty feedback - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -439,7 +467,8 @@ impl Serialize for {{ action_name }}Feedback {
 impl Deserialize for {{ action_name }}Feedback {
 {%- if has_feedback_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in feedback_fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -503,11 +532,15 @@ impl Deserialize for {{ action_name }}Feedback {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
     // Empty feedback - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}
@@ -558,18 +591,24 @@ pub struct {{ action_name }}_SendGoal_Request {
 
 impl Serialize for {{ action_name }}_SendGoal_Request {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         self.goal_id.serialize(writer)?;
         self.goal.serialize(writer)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for {{ action_name }}_SendGoal_Request {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             goal_id: Deserialize::deserialize(reader)?,
             goal: Deserialize::deserialize(reader)?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
@@ -599,18 +638,24 @@ pub struct {{ action_name }}_SendGoal_Response {
 
 impl Serialize for {{ action_name }}_SendGoal_Response {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         writer.write_bool(self.accepted)?;
         self.stamp.serialize(writer)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for {{ action_name }}_SendGoal_Response {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             accepted: reader.read_bool()?,
             stamp: Deserialize::deserialize(reader)?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
@@ -639,16 +684,22 @@ pub struct {{ action_name }}_GetResult_Request {
 
 impl Serialize for {{ action_name }}_GetResult_Request {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         self.goal_id.serialize(writer)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for {{ action_name }}_GetResult_Request {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             goal_id: Deserialize::deserialize(reader)?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
@@ -693,18 +744,24 @@ impl Default for {{ action_name }}_GetResult_Response {
 
 impl Serialize for {{ action_name }}_GetResult_Response {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         writer.write_i8(self.status)?;
         self.result.serialize(writer)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for {{ action_name }}_GetResult_Response {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             status: reader.read_i8()?,
             result: Deserialize::deserialize(reader)?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
@@ -749,18 +806,24 @@ impl Default for {{ action_name }}_FeedbackMessage {
 
 impl Serialize for {{ action_name }}_FeedbackMessage {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         self.goal_id.serialize(writer)?;
         self.feedback.serialize(writer)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for {{ action_name }}_FeedbackMessage {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             goal_id: Deserialize::deserialize(reader)?,
             feedback: Deserialize::deserialize(reader)?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

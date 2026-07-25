@@ -46,6 +46,9 @@ impl Default for {{ message_name }} {
 impl Serialize for {{ message_name }} {
 {%- if has_fields %}
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) — DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
 {%- for field in fields %}
 {%- if field.is_primitive %}
         writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
@@ -76,11 +79,15 @@ impl Serialize for {{ message_name }} {
         self.{{ field.name }}.serialize(writer)?;
 {%- endif %}
 {%- endfor %}
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- else %}
-    // Empty message - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    // Empty message — under XCDR2 an appendable struct still carries a DHEADER
+    // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 {%- endif %}
@@ -89,7 +96,10 @@ impl Serialize for {{ message_name }} {
 impl Deserialize for {{ message_name }} {
 {%- if has_fields %}
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) — read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in fields %}
 {%- if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
@@ -170,11 +180,15 @@ impl Deserialize for {{ message_name }} {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 {%- else %}
-    // Empty message - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    // Empty message — read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 {%- endif %}
@@ -210,7 +224,8 @@ pub struct {{ message_name }}View<'a> {
 
 impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
     fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
 {%- for field in fields %}
 {%- if field.is_borrowed %}
             {{ field.name }}: {{ field.borrowed_read_expr }},
@@ -293,7 +308,9 @@ impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
             {{ field.name }}: Deserialize::deserialize(reader)?,
 {%- endif %}
 {%- endfor %}
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

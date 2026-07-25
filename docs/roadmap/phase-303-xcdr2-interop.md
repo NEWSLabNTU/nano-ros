@@ -183,16 +183,31 @@ crates); (b) the RMW constructs an XCDR2 writer when the edition/negotiation
 selects it. These are inert until (b) flips, so they land WITH the negotiation so
 the whole path is wire-verifiable at once (a real Jazzy peer), not as inert code.
 
-### W4 — codegen DHEADER wrap + representation negotiation
+### W4 — codegen DHEADER wrap + edition-gated tx writer — LANDED (2026-07-26)
 
-Wire the W2/W3 machinery into the generated messages + the RMW:
-- codegen `serialize`/`deserialize` templates wrap the field block in
-  `begin/end_dheader` (no-op XCDR1);
-- the RMW picks `new_with_header_xcdr2` vs `new_with_header` by the resolved
-  edition (RFC-0056) + the negotiated representation;
-- advertise `data_representation` QoS `[XCDR2, XCDR1]`; the writer emits the
-  selected representation; per-endpoint override for the constrained embedded
-  default (RFC-0055 open-Q4).
+Wired the W2/W3 machinery into generated code + the Rust RMW path:
+- **codegen wrap:** the `message`/`service`/`action` `serialize`/`deserialize`
+  templates wrap each struct body in `begin_dheader`/`end_dheader`
+  (`writer`/`reader`) — including the empty-struct + `deserialize_borrowed`
+  variants. No-op under XCDR1 (byte-identical); under XCDR2 delimits every struct
+  with a DHEADER. Generated msg + service compile-checked
+  (`heap_compile_check.rs`).
+- **edition-gated tx writer:** `nros_node::tx_writer` picks
+  `new_with_header_xcdr2` for iron/jazzy/rolling, `new_with_header` for humble;
+  every production publish/action/lifecycle path routes through it (the reader
+  auto-detects the version from the encapsulation header, so ONLY the writer is
+  gated). nros-node green under BOTH `--features ros-humble` (default) and
+  `--features ros-jazzy` (231 tests).
+- **negotiation:** for the nros-serdes RMW paths (zenoh-pico / XRCE / native)
+  there is no runtime `data_representation` handshake — the edition selects the
+  format at compile time, matched endpoints agree, and the reader is
+  self-describing (header id). The DDS/Cyclone path negotiates natively (W1c).
+
+**W4 REMAINING (needs a live Jazzy peer to verify end-to-end):** the C/C++ tx
+paths (`nros-c`/`nros-cpp` `cdr.rs` writers) still construct XCDR1 writers — they
+need the same `tx_writer` gate for full C/C++ jazzy support; and the actual wire
+round-trip against a real Jazzy `domain_bridge`/peer (the #0267 demo clearing) is
+the final confirmation. The Rust pub/sub/action path is complete + edition-gated.
 
 - *Accept:* nano-ros ↔ a default humble peer negotiates XCDR2 and interoperates;
   nano-ros ↔ a legacy XCDR1-only peer falls back to XCDR1; the **#0267 demo

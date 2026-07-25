@@ -113,6 +113,24 @@ pub(crate) mod mock;
 #[cfg(all(feature = "param-services", any(has_rmw, test)))]
 pub mod parameter_services;
 
+/// phase-303 W4 (#0267) — construct the outbound CDR writer for the ROS-edition
+/// wire encoding. Humble → XCDR1 (byte-identical to pre-W4); iron/jazzy/rolling
+/// → XCDR2 DELIMITED_CDR2, so the generated serialize's DHEADER wrap emits a
+/// per-struct DHEADER matching a modern ROS 2 peer. The READER auto-detects the
+/// version from the encapsulation header, so only the writer is edition-gated —
+/// every tx path routes through here.
+#[inline]
+pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros_core::SerError> {
+    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+    {
+        nros_core::CdrWriter::new_with_header_xcdr2(buf)
+    }
+    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+    {
+        nros_core::CdrWriter::new_with_header(buf)
+    }
+}
+
 // Re-export parameter types when param-services is enabled
 #[cfg(feature = "param-services")]
 pub use nros_params::{

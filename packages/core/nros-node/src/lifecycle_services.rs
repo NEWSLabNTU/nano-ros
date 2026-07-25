@@ -553,7 +553,7 @@ mod tests {
         // Generous scratch for the largest lifecycle message under test.
         const ROUND_TRIP_BUF: usize = 4096;
         let mut buf = [0u8; ROUND_TRIP_BUF];
-        let mut writer = CdrWriter::new_with_header(&mut buf).expect("writer init");
+        let mut writer = crate::tx_writer(&mut buf).expect("writer init");
         value.serialize(&mut writer).expect("serialize");
         let len = writer.position();
 
