@@ -21,3 +21,13 @@ Every multi-node workspace will rediscover this. Either:
 - compute the union closure workspace-wide (defer FFI-crate emission to the
   end of the configure pass), or
 - detect the mixed-subset case and FATAL_ERROR with the shim-package recipe.
+
+## Partial mitigation (2026-07-25)
+
+`nros_find_interfaces` now tracks resolved packages workspace-wide
+(GLOBAL property) and emits a loud `message(WARNING …)` when a later CPP
+call introduces packages NOT covered by an earlier call — naming the
+union-shim recipe. Subset calls (the `island_interfaces` pattern) stay
+silent; verified against the autoware-safety-island workspace configure.
+Remaining work: compute the union closure workspace-wide so the shim
+package becomes unnecessary.

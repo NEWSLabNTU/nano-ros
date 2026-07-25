@@ -26,6 +26,10 @@ const dds_topic_descriptor_t *find_descriptor(const char *type_name);
 /** Number of registered descriptors. Useful for diagnostics + tests. */
 std::size_t registered_descriptor_count();
 
+/** Number of registrations DROPPED at the static cap (issue 0280). A
+ *  non-zero value is reported once to stderr on the first failed lookup. */
+std::size_t dropped_descriptor_count();
+
 /**
  * Resolve the effective DDS message type for a topic publisher /
  * subscriber. The action layer (`executor/action.rs`) creates the

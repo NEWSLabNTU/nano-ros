@@ -23,6 +23,7 @@
 
 // <string.h> (not <cstring>): the riscv64-threadx minimal libcpp does not
 // inject strchr/strrchr into namespace std (phase-287; NROS_CPP_STD pitfall).
+#include <stdio.h>
 #include <string.h>
 
 namespace nros_rmw_cyclonedds {
@@ -48,6 +49,15 @@ struct Entry {
 Entry g_entries[kMaxRegisteredTypes] = {};
 std::size_t g_count = 0;
 
+// Issue 0280 residual: overflow used to be COMPLETELY silent — the
+// registration runs from static ctors (can't fail, may predate the
+// console), so drops are counted here and warned about lazily on the
+// first failed lookup, when stdio is definitely up and the operator is
+// already staring at the resulting UNSUPPORTED error.
+std::size_t g_dropped = 0;
+const char *g_first_dropped = nullptr;
+bool g_overflow_warned = false;
+
 } // namespace
 
 void register_descriptor(const char *type_name,
@@ -66,11 +76,13 @@ void register_descriptor(const char *type_name,
         }
     }
     if (g_count >= kMaxRegisteredTypes) {
-        // Static cap exceeded. The link-time registration can't
-        // signal an error from a constructor, so this is dropped on
-        // the floor; downstream `publisher_create` will fail with
-        // NROS_RMW_RET_UNSUPPORTED for the missing type and the
-        // operator will see the failure at runtime.
+        // Static cap exceeded. The link-time registration can't signal
+        // an error from a constructor (and the console may not exist
+        // yet), so count the drop; find_descriptor warns on first miss.
+        if (g_dropped == 0) {
+            g_first_dropped = type_name;
+        }
+        ++g_dropped;
         return;
     }
     g_entries[g_count++] = Entry{type_name, descriptor};
@@ -85,11 +97,29 @@ const dds_topic_descriptor_t *find_descriptor(const char *type_name) {
             return g_entries[i].descriptor;
         }
     }
+    // Miss. If registrations were dropped at the cap, say so LOUDLY once
+    // — the pre-0280 silent path surfaced only as create_publisher
+    // UNSUPPORTED(-5) wrapped in TransportError(-100), nowhere near the
+    // cause, and cost a full debugging session.
+    if (g_dropped > 0 && !g_overflow_warned) {
+        g_overflow_warned = true;
+        fprintf(stderr,
+                "nros-rmw-cyclonedds: descriptor registry OVERFLOWED: %zu type "
+                "registration(s) dropped at cap %zu (first dropped: '%s'); lookup "
+                "of '%s' may fail because of this. Rebuild with "
+                "-DNROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=<n> raised.\n",
+                g_dropped, kMaxRegisteredTypes,
+                g_first_dropped != nullptr ? g_first_dropped : "?", type_name);
+    }
     return nullptr;
 }
 
 std::size_t registered_descriptor_count() {
     return g_count;
+}
+
+std::size_t dropped_descriptor_count() {
+    return g_dropped;
 }
 
 // Issue 0157 — accept the ROS user-level form `<pkg>/srv/<Svc>` (what a

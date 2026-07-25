@@ -482,6 +482,39 @@ function(nros_find_interfaces)
     #    consumers, e.g. autoware_control_msgs + tier4_system_msgs).
     list(GET _NROS_RESOLVED_PACKAGES -1 _nros_last_pkg)
     string(TOUPPER "${_ARG_LANGUAGE}" _nros_lang_upper) # verbs pass lowercase "cpp"
+
+    # Issue 0277 — mixed msg-dep subsets across multiple nros_find_interfaces
+    # calls: the superset FFI crate is per-CALL, so a later call that
+    # introduces NEW interface pkgs builds a SECOND superset archive; if both
+    # reach one link line, every shared `nros_cpp_*` symbol duplicates (and a
+    # consumer of only the first archive misses the new pkgs' symbols). A
+    # later call whose set is a SUBSET of what's already resolved is fine
+    # (generation no-ops; the routed union archive covers it) — that is the
+    # `island_interfaces` shim pattern. Diagnose the bad shape loudly here
+    # instead of at link time.
+    get_property(_nros_prev_resolved GLOBAL PROPERTY NROS_FIND_INTERFACES_RESOLVED)
+    if(_nros_lang_upper STREQUAL "CPP" AND _nros_prev_resolved)
+        set(_nros_new_pkgs "")
+        foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
+            if(NOT _pkg IN_LIST _nros_prev_resolved)
+                list(APPEND _nros_new_pkgs "${_pkg}")
+            endif()
+        endforeach()
+        if(_nros_new_pkgs)
+            message(WARNING
+                "nros_find_interfaces (issue 0277): this call resolves interface "
+                "package(s) [${_nros_new_pkgs}] NOT covered by an earlier "
+                "nros_find_interfaces call in this workspace. Each call builds its "
+                "own topo-last superset FFI crate — two superset archives on one "
+                "link line duplicate every shared nros_cpp_* symbol. Fix: resolve "
+                "the UNION once, first — either a first-SUBDIR interfaces shim "
+                "package whose package.xml depends on every msg pkg the workspace "
+                "uses (island_interfaces pattern), or a single nros_find_interfaces "
+                "call with the union package.xml; later subset calls then no-op.")
+        endif()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY NROS_FIND_INTERFACES_RESOLVED ${_NROS_RESOLVED_PACKAGES})
+
     set(_all_preceding_pkgs "")
     foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
         set(_skip "")

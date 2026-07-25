@@ -20,6 +20,10 @@ TransportError(-100), nowhere near the cause. Diagnosis red herring: the
 ## Resolution (same-day, 2026-07-24)
 
 Cap raised to 256 + `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` override define.
-Residual hardening worth keeping in mind: overflow should PANIC or log at
-registration time, not drop silently — the silent path is what cost the
-debugging session. Filed retroactively for the record trail.
+
+Residual hardening landed 2026-07-25: drops are now counted
+(`dropped_descriptor_count()`) and reported ONCE to stderr on the first
+failed lookup — registration runs from static ctors (can't fail, console
+may not exist yet), so the warning is lazy, emitted exactly where the
+operator is already looking at the UNSUPPORTED failure. Filed
+retroactively for the record trail.
