@@ -228,13 +228,19 @@ endfunction()
 # the ament shape reads uniformly; defaults to C++ bindings like rosidl does.
 # ---------------------------------------------------------------------------
 function(nano_ros_generate_interfaces name)
-    cmake_parse_arguments(_NRG "" "LANGUAGE" "DEPENDENCIES" ${ARGN})
+    cmake_parse_arguments(_NRG "" "LANGUAGE;ROS_EDITION" "DEPENDENCIES" ${ARGN})
     if(NOT _NRG_LANGUAGE)
         set(_NRG_LANGUAGE CPP)
+    endif()
+    # phase-304 W2b (RFC-0056) — forward an explicit ROS_EDITION; when omitted,
+    # nros_generate_interfaces inherits the workspace `NANO_ROS_ROS_EDITION`.
+    if(_NRG_ROS_EDITION)
+        set(_nrg_edition ROS_EDITION ${_NRG_ROS_EDITION})
     endif()
     nros_generate_interfaces(${name}
         ${_NRG_UNPARSED_ARGUMENTS}
         DEPENDENCIES ${_NRG_DEPENDENCIES}
         LANGUAGE ${_NRG_LANGUAGE}
+        ${_nrg_edition}
         SKIP_INSTALL)
 endfunction()

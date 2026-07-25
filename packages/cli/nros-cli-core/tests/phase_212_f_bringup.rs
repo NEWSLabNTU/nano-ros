@@ -50,6 +50,7 @@ fn default_new_args(
         no_readme: false,
         platform: None,
         rmw: "zenoh".to_string(),
+        ros_edition: "humble".to_string(),
         lang: "rust".to_string(),
         use_case: "talker".to_string(),
         component: false,

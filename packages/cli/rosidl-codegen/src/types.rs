@@ -45,6 +45,21 @@ impl RosEdition {
         }
     }
 
+    /// The `ros-<edition>` cargo feature that selects this edition's runtime
+    /// profile (keyexpr/liveliness type-hash tail) on the umbrella crates
+    /// (`nros`, `nros-cpp`, …). The SSoT the RMW analog `ResolvedRmw::cargo_feature`
+    /// lacks an edition twin for — phase-304 W2b threads this to the scaffold +
+    /// CMake runtime-crate feature lists so the baked type_hash and the runtime
+    /// keyexpr format can never disagree (they share this one edition value).
+    pub fn cargo_feature(&self) -> &'static str {
+        match self {
+            RosEdition::Humble => "ros-humble",
+            RosEdition::Iron => "ros-iron",
+            RosEdition::Jazzy => "ros-jazzy",
+            RosEdition::Rolling => "ros-rolling",
+        }
+    }
+
     /// Does this edition use REP-2011 RIHS01 type hashes? Humble uses the
     /// `TypeHashNotSupported` placeholder; Iron+ (iron/jazzy/rolling) compute a
     /// real hash. Drives the keyexpr/liveliness format (RFC-0056 profile).
@@ -1551,6 +1566,21 @@ mod ros_edition_tests {
             RosEdition::Rolling,
         ] {
             assert_eq!(RosEdition::parse(e.as_str()), Some(e));
+        }
+    }
+
+    #[test]
+    fn cargo_feature_is_ros_prefixed_as_str() {
+        // phase-304 W2b — the `ros-<edition>` cargo feature the scaffold + CMake
+        // runtime crate select. Must be `ros-` + the `as_str` name, so codegen +
+        // runtime always name the same feature.
+        for e in [
+            RosEdition::Humble,
+            RosEdition::Iron,
+            RosEdition::Jazzy,
+            RosEdition::Rolling,
+        ] {
+            assert_eq!(e.cargo_feature(), format!("ros-{}", e.as_str()));
         }
     }
 

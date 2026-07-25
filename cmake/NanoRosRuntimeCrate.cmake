@@ -177,7 +177,10 @@ ${_anchor_lines}")
 endfunction()
 
 function(nros_synth_runtime_umbrella)
-    cmake_parse_arguments(_NRR "" "BACKEND;PLATFORM" "" ${ARGN})
+    cmake_parse_arguments(_NRR "" "BACKEND;PLATFORM;EDITION" "" ${ARGN})
+    if(NOT _NRR_EDITION)
+        set(_NRR_EDITION humble)
+    endif()
     if(NOT _NRR_BACKEND)
         set(_NRR_BACKEND zenoh)
     endif()
@@ -225,7 +228,10 @@ function(nros_synth_runtime_umbrella)
     nros_rmw_dispatch("${_NRR_BACKEND}")
     set(_backend_feat "${NROS_RMW_UMBRELLA_CFFI_FEATURE}")
     _nros_runtime_platform_features("${_NRR_PLATFORM}" _plat_feats)
-    set(_cpp_features "ros-humble" "${_backend_feat}" ${_plat_feats})
+    # phase-304 W2b (RFC-0056) — the `ros-<edition>` feature is edition-driven,
+    # NOT hardcoded, so the umbrella's runtime keyexpr format matches the
+    # codegen-baked type_hash. Default `humble` → `ros-humble` (byte-identical).
+    set(_cpp_features "ros-${_NRR_EDITION}" "${_backend_feat}" ${_plat_feats})
 
     # Phase 241 W11 was inlined here; phase-263 C2c-zephyr factored it into
     # nros_write_runtime_umbrella_crate so the Zephyr/west lane reuses the IDENTICAL synthesis.

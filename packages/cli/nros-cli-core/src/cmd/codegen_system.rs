@@ -632,6 +632,21 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
         .map(|r| r.c_define_token.to_string())
         .unwrap_or_else(|_| rmw.to_ascii_uppercase().replace('-', "_"));
     out.push_str(&format!("#define NROS_SYSTEM_RMW_{rmw_token}\n"));
+    // phase-304 W2b (RFC-0056) — the ROS edition axis, informational for app
+    // source (#ifdef the type-hash/keyexpr profile). Emitted ONLY for a
+    // non-default edition so a `humble` (or absent) bake stays byte-identical to
+    // pre-W2b. The edition is validated at bake, so unwrap → humble.
+    let ros_edition = sys.system.ros_edition().unwrap_or_default();
+    if ros_edition != rosidl_codegen::RosEdition::Humble {
+        out.push_str(&format!(
+            "#define NROS_SYSTEM_ROS_EDITION \"{}\"\n",
+            ros_edition.as_str()
+        ));
+        out.push_str(&format!(
+            "#define NROS_SYSTEM_ROS_EDITION_{}\n",
+            ros_edition.as_str().to_ascii_uppercase()
+        ));
+    }
     if let Some(loc) = &sys.resolved_locator(target) {
         out.push_str(&format!(
             "#define NROS_SYSTEM_LOCATOR \"{}\"\n",
@@ -1729,6 +1744,35 @@ structure:
             render_system_config_h(&via_features, None, None)
                 .contains("#define NROS_SYSTEM_SAFETY_E2E\n")
         );
+    }
+
+    /// phase-304 W2b (RFC-0056) — a non-humble `[system].ros_edition` emits the
+    /// `NROS_SYSTEM_ROS_EDITION` defines; humble/absent emits NONE (byte-identical
+    /// to pre-W2b).
+    #[test]
+    fn system_config_h_emits_ros_edition_only_when_non_humble() {
+        let humble: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
+        let absent = render_system_config_h(&humble, None, None);
+        assert!(
+            !absent.contains("NROS_SYSTEM_ROS_EDITION"),
+            "humble/absent must emit no edition define:\n{absent}"
+        );
+
+        let jazzy: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nros_edition=\"jazzy\"\n",
+        )
+        .unwrap();
+        let out = render_system_config_h(&jazzy, None, None);
+        assert!(out.contains("#define NROS_SYSTEM_ROS_EDITION \"jazzy\"\n"), "{out}");
+        assert!(out.contains("#define NROS_SYSTEM_ROS_EDITION_JAZZY\n"), "{out}");
+
+        // Explicit humble is byte-identical to absent.
+        let explicit_humble: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nros_edition=\"humble\"\n",
+        )
+        .unwrap();
+        assert_eq!(render_system_config_h(&explicit_humble, None, None), absent);
     }
 
     /// Phase 261 W5 — the bake's `system_config.cmake` lists the enabled axes as

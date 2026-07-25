@@ -115,8 +115,16 @@ function(nros_generate_interfaces target)
     ${ARGN}
   )
 
+  # phase-304 W2b (RFC-0056) — an explicit ROS_EDITION wins; otherwise inherit
+  # the workspace edition baked by `nano_ros_workspace(EDITION …)`
+  # (`NANO_ROS_ROS_EDITION`) so the codegen type-hash matches the runtime
+  # `ros-<edition>` keyexpr feature. Neither set → humble (byte-identical).
   if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
-    set(_ARG_ROS_EDITION "humble")
+    if(DEFINED NANO_ROS_ROS_EDITION AND NOT NANO_ROS_ROS_EDITION STREQUAL "")
+      set(_ARG_ROS_EDITION "${NANO_ROS_ROS_EDITION}")
+    else()
+      set(_ARG_ROS_EDITION "humble")
+    endif()
   endif()
 
   if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")

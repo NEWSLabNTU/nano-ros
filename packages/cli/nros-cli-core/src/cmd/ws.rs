@@ -99,9 +99,11 @@ pub struct SyncArgs {
     #[arg(long, default_value = "generated")]
     pub build_dir: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`).
-    #[arg(long, default_value = "humble")]
-    pub ros_edition: String,
+    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`). When omitted,
+    /// inherits `[system].ros_edition` from a `system.toml` at the workspace root
+    /// (RFC-0056 W2b auto-lowering), else `humble`.
+    #[arg(long)]
+    pub ros_edition: Option<String>,
 
     /// Don't write — just print what would happen.
     #[arg(long)]
@@ -460,7 +462,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         return Ok(());
     }
 
-    let edition = parse_edition(&args.ros_edition)?;
+    let edition = resolve_sync_edition(args.ros_edition.as_deref(), &ws_root)?;
 
     // Track every pkg we generate so a later iteration (or AMENT-dep walk)
     // skips already-emitted ones. Keyed by pkg name.
@@ -592,6 +594,28 @@ fn parse_edition(s: &str) -> Result<RosEdition> {
     RosEdition::parse(s).ok_or_else(|| {
         eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy | rolling)")
     })
+}
+
+/// Resolve the codegen edition (phase-304 W2b): an explicit `--ros-edition`
+/// wins; otherwise auto-lower `[system].ros_edition` from a `system.toml` at the
+/// workspace root (declare once, RFC-0056); neither → humble (byte-identical).
+/// The baked type_hash then matches the runtime `ros-<edition>` keyexpr feature.
+fn resolve_sync_edition(cli: Option<&str>, ws_root: &Path) -> Result<RosEdition> {
+    if let Some(s) = cli {
+        return parse_edition(s);
+    }
+    let sys_toml = ws_root.join("system.toml");
+    if sys_toml.is_file() {
+        let raw = std::fs::read_to_string(&sys_toml)
+            .wrap_err_with(|| format!("ws sync: read {}", sys_toml.display()))?;
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
+            .wrap_err_with(|| format!("ws sync: parse {}", sys_toml.display()))?;
+        return sys
+            .system
+            .ros_edition()
+            .wrap_err_with(|| format!("ws sync: [system].ros_edition in {}", sys_toml.display()));
+    }
+    Ok(RosEdition::Humble)
 }
 
 // The interface index (ament, when a ROS 2 env is sourced, merged over the

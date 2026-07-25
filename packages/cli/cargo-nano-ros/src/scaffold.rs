@@ -43,6 +43,9 @@ pub struct ScaffoldConfig {
     pub lang: String,
     pub platform: String,
     pub rmw: String,
+    /// ROS edition (`humble`|`iron`|`jazzy`|`rolling`) → the `ros-<edition>`
+    /// cargo feature on the scaffolded package (phase-304 W2b, RFC-0056).
+    pub ros_edition: String,
     pub use_case: String,
     pub force: bool,
 }
@@ -62,6 +65,17 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // Phase 227.4 — validate + lower the declared RMW (RFC-0031). A bad
     // `--rmw` fails here with the known-list, not as a broken downstream build.
     let rmw = rmw_resolver::resolve_rmw(&cfg.rmw).map_err(|e| eyre::eyre!("nros new: {e}"))?;
+
+    // phase-304 W2b (RFC-0056) — validate + lower the declared ROS edition to the
+    // `ros-<edition>` cargo feature (a bad `--ros-edition` fails loud here).
+    let edition_feature = rosidl_codegen::RosEdition::parse(&cfg.ros_edition)
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "nros new: unknown ROS edition '{}' (humble | iron | jazzy | rolling)",
+                cfg.ros_edition
+            )
+        })?
+        .cargo_feature();
 
     // RFC-0048 (phase-287) — a C/C++ package is written in the ament shape:
     // `build_type` is `ament_cmake` and the platform delta lives in the
@@ -110,7 +124,13 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     fs::write(dir.join("package.xml"), package_xml)?;
 
     match cfg.lang.as_str() {
-        "rust" => scaffold_rust(&cfg.name, &cfg.platform, rmw.cargo_feature, &dir)?,
+        "rust" => scaffold_rust(
+            &cfg.name,
+            &cfg.platform,
+            rmw.cargo_feature,
+            edition_feature,
+            &dir,
+        )?,
         "c" => scaffold_c(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
         "cpp" => scaffold_cpp(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
         other => bail!("Unknown language: {other}. Use rust, c, or cpp."),
@@ -639,7 +659,13 @@ fn use_case_to_pascal(s: &str) -> String {
         .collect()
 }
 
-fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> Result<()> {
+fn scaffold_rust(
+    name: &str,
+    platform: &str,
+    rmw_feature: &str,
+    edition_feature: &str,
+    dir: &Path,
+) -> Result<()> {
     let mut deps = String::new();
     let is_embedded = platform != "native";
 
@@ -648,9 +674,9 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
         // crate (the board dep below carries `rmw-X` and brings the concrete
         // `nros-platform/platform-X` impl), so the umbrella `nros` dep stays
         // agnostic — no `platform-*`/`rmw-*`, vtable-only.
-        deps.push_str(
-            "nros = { version = \"*\", default-features = false, features = [\"ros-humble\"] }\n",
-        );
+        deps.push_str(&format!(
+            "nros = {{ version = \"*\", default-features = false, features = [\"{edition_feature}\"] }}\n",
+        ));
         let board_crate = match platform {
             "freertos" => "nros-board-mps2-an385-freertos",
             "baremetal" => "nros-board-mps2-an385",
@@ -666,7 +692,7 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
         // `nros-board-native` (its `rmw-X` feature self-links the backend, and it
         // brings `nros-platform/platform-posix`); `nros` stays agnostic.
         deps.push_str(&format!(
-            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"ros-humble\"] }}\n\
+            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"{edition_feature}\"] }}\n\
              # nros-board-native = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
         ));
     }
@@ -1001,7 +1027,7 @@ mod tests {
     fn rust_scaffold_uses_declared_rmw_feature() {
         // Phase 227.4 — `--rmw xrce` must produce an xrce-wired Cargo.toml, not zenoh.
         let d = tmp();
-        scaffold_rust("foo", "freertos", "rmw-xrce", d.path()).unwrap();
+        scaffold_rust("foo", "freertos", "rmw-xrce", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         assert!(toml.contains("rmw-xrce"), "expected rmw-xrce in:\n{toml}");
         assert!(!toml.contains("rmw-zenoh"), "stray rmw-zenoh in:\n{toml}");
@@ -1010,7 +1036,7 @@ mod tests {
     #[test]
     fn rust_scaffold_native_comments_declared_rmw() {
         let d = tmp();
-        scaffold_rust("foo", "native", "rmw-cyclonedds", d.path()).unwrap();
+        scaffold_rust("foo", "native", "rmw-cyclonedds", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         assert!(toml.contains("rmw-cyclonedds"), "{toml}");
     }
@@ -1058,6 +1084,7 @@ mod tests {
             lang: "rust".to_string(),
             platform: "native".to_string(),
             rmw: "dust-dds".to_string(),
+            ros_edition: "humble".to_string(),
             use_case: "talker".to_string(),
             force: false,
         };

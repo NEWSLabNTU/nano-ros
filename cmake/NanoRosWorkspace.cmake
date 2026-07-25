@@ -133,16 +133,22 @@ endfunction()
 function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
         ""
-        "SYSTEM;BACKEND;PLATFORM;NANO_ROS_ROOT"
+        "SYSTEM;BACKEND;PLATFORM;EDITION;NANO_ROS_ROOT"
         "SUBDIRS"
         ${ARGN})
 
-    # Defaults: backend = zenoh, platform = posix.
+    # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)
         set(_NRW_BACKEND zenoh)
     endif()
     if(NOT _NRW_PLATFORM)
         set(_NRW_PLATFORM posix)
+    endif()
+    # phase-304 W2b (RFC-0056) — the ROS edition axis. Drives BOTH the codegen
+    # type-hash AND the runtime `ros-<edition>` keyexpr feature from one value,
+    # so they can never disagree. Absent → humble (byte-identical to pre-W2b).
+    if(NOT _NRW_EDITION)
+        set(_NRW_EDITION humble)
     endif()
 
     # Resolve the nano-ros root (priority chain in _nros_resolve_root).
@@ -152,18 +158,20 @@ function(nano_ros_workspace)
 
     # Stamp the resolution so subdirs + the per-pkg guard reuse it
     # without re-walking. PARENT_SCOPE here = the workspace-root scope.
-    set(NANO_ROS_ROOT     "${_nros_root}"      PARENT_SCOPE)
-    set(NANO_ROS_PLATFORM "${_NRW_PLATFORM}"   PARENT_SCOPE)
-    set(NANO_ROS_RMW      "${_NRW_BACKEND}"    PARENT_SCOPE)
-    set(NROS_RMW          "${_NRW_BACKEND}"    PARENT_SCOPE)
+    set(NANO_ROS_ROOT        "${_nros_root}"      PARENT_SCOPE)
+    set(NANO_ROS_PLATFORM    "${_NRW_PLATFORM}"   PARENT_SCOPE)
+    set(NANO_ROS_RMW         "${_NRW_BACKEND}"    PARENT_SCOPE)
+    set(NROS_RMW             "${_NRW_BACKEND}"    PARENT_SCOPE)
+    set(NANO_ROS_ROS_EDITION "${_NRW_EDITION}"    PARENT_SCOPE)
 
     # Also set them in the local fn scope so _nros_import_once's
     # add_subdirectory body sees them directly (PARENT_SCOPE writes
     # don't reach the current fn frame).
-    set(NANO_ROS_ROOT     "${_nros_root}")
-    set(NANO_ROS_PLATFORM "${_NRW_PLATFORM}")
-    set(NANO_ROS_RMW      "${_NRW_BACKEND}")
-    set(NROS_RMW          "${_NRW_BACKEND}")
+    set(NANO_ROS_ROOT        "${_nros_root}")
+    set(NANO_ROS_PLATFORM    "${_NRW_PLATFORM}")
+    set(NANO_ROS_RMW         "${_NRW_BACKEND}")
+    set(NROS_RMW             "${_NRW_BACKEND}")
+    set(NANO_ROS_ROS_EDITION "${_NRW_EDITION}")
 
     _nros_import_once("${_nros_root}")
 
@@ -190,7 +198,7 @@ function(nano_ros_workspace)
     # AFTER the SUBDIRS loop so nros-metadata.json lists every registered node; the umbrella
     # archive swap is an INTERFACE property edit, evaluated at generate time.
     include("${_nros_root}/cmake/NanoRosRuntimeCrate.cmake")
-    nros_synth_runtime_umbrella(BACKEND "${_NRW_BACKEND}" PLATFORM "${_NRW_PLATFORM}")
+    nros_synth_runtime_umbrella(BACKEND "${_NRW_BACKEND}" PLATFORM "${_NRW_PLATFORM}" EDITION "${_NRW_EDITION}")
 endfunction()
 
 # ---------------------------------------------------------------------------

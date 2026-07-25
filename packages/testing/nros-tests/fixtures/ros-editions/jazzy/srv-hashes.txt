@@ -1,0 +1,30 @@
+# Service + action RIHS01 golden hashes captured from ros:jazzy-ros-base
+# (2026-07-25). Every top-level type_name in a srv/action DAG gets its own hash.
+# Used by phase-304 W1c (_Event synthesis) codegen assertions. See
+# docs/research/rep-2011-type-hash.md §3a/§3b for the full type-description shape.
+#
+# Uses ros-base packages (std_srvs, tf2_msgs) so the capture needs no extra
+# install. char[16] in ServiceEventInfo maps to uint8[16] (type_id 51).
+
+# std_srvs/srv/SetBool — the reference service (Request=bool, Response=bool+string)
+std_srvs/srv/SetBool              RIHS01_abe9e4bb6b41b40e6789712c00ec8871923e089af3f667a79992a428cff2da0a
+std_srvs/srv/SetBool_Event        RIHS01_3c4c20015afb4303eafd347b1d6a786f171a89c814726961a9593ef10df878cf
+std_srvs/srv/SetBool_Request      RIHS01_c62fbb99d94e1b25e8ef9e109f9581956bb1b3361a45a4e5810c36a90d29932e
+std_srvs/srv/SetBool_Response     RIHS01_d0814e7f7b4880ab77e9c57426c7aa1562ab69f11eef8e2e968812f9cbd0b059
+service_msgs/msg/ServiceEventInfo RIHS01_41bcbbe07a75c9b52bc96bfd5c24d7f0fc0a08c0cb7921b3373c5732345a6f45
+
+# tf2_msgs/action/LookupTransform — the reference action (six top-level members;
+# two nested services each carrying their own _Event triad)
+tf2_msgs/action/LookupTransform                 RIHS01_0b8adf6bc0b5958879e3265b41a457e03558fe523890a81252c70eba97a82c5d
+tf2_msgs/action/LookupTransform_Goal            RIHS01_815efc294ad17c813c6043cdde781ff55810d49da02ed07f9237dcd20e88d498
+tf2_msgs/action/LookupTransform_Result          RIHS01_061d4423af5352ff5314c8effef8faab133991a78f1b2bcd1fecabad80871225
+tf2_msgs/action/LookupTransform_Feedback        RIHS01_2da0b02f990f04404ab8c98a2a68cf5bbc773ae747f96911f2d55499cfb51542
+tf2_msgs/action/LookupTransform_FeedbackMessage RIHS01_10cb89922dcb103e95c185d43e8a5efa3d38db996f733151a2f3e2ac133f4839
+tf2_msgs/action/LookupTransform_SendGoal          RIHS01_4646ff5706c86b04d0a1098d329951a9731a7517e16702905de6073cc72c8530
+tf2_msgs/action/LookupTransform_SendGoal_Request  RIHS01_eb1312eb7aab35e35c71bb87c2ba3a94747c5a6544ea32bb2b32b0f75775b8ca
+tf2_msgs/action/LookupTransform_SendGoal_Response RIHS01_c1ada93304793c08813657255e7bde2e40e2114aa634b702c3f8d4b72ae098bc
+tf2_msgs/action/LookupTransform_SendGoal_Event    RIHS01_5ab93d3d6c35b56390325099cb088c73bae176a39123f2f6dfe119582436acc5
+tf2_msgs/action/LookupTransform_GetResult          RIHS01_3cd1715751899e3167b5aec3e4ac194f7da9e8493a77285f9f6a4c914f5e8b24
+tf2_msgs/action/LookupTransform_GetResult_Request  RIHS01_148f9bdc01f98922d6fb2072cb64468b89c57c7825d9d83b932c183deaa4697d
+tf2_msgs/action/LookupTransform_GetResult_Response RIHS01_954de3efc36b164c4d21116abdbdcc52746e454fd9c169b55d9cfd89e83d299d
+tf2_msgs/action/LookupTransform_GetResult_Event    RIHS01_3260115e0f6a676d621f191f85a72a0c82f9fcb1483965c1fbaaab0b1d651a9e

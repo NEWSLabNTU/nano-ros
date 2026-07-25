@@ -76,6 +76,10 @@ pub struct Args {
     #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"], default_value = "zenoh")]
     pub rmw: String,
 
+    /// ROS edition (drives the `ros-<edition>` cargo feature; RFC-0056)
+    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy", "rolling"], default_value = "humble")]
+    pub ros_edition: String,
+
     /// Source language
     #[arg(long, value_parser = ["rust", "c", "cpp"], default_value = "rust")]
     pub lang: String,
@@ -275,6 +279,7 @@ pub fn run(args: Args) -> Result<()> {
         lang: args.lang,
         platform,
         rmw: args.rmw,
+        ros_edition: args.ros_edition,
         use_case: args.use_case,
         force: args.force,
     })

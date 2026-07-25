@@ -138,14 +138,40 @@ hashes byte-for-byte, plus the Humble-placeholder and fail-loud paths.
   for the fixture set byte-for-byte (rihs unit tests + the codegen-level
   `generator.rs` tests); `humble` unchanged (placeholder).
 
-**W1b (c) REMAINING:** service/action `TYPE_HASH` still emit the placeholder on
-Iron+ (the `_Event` synthesis — a service's top-level description has three
-`NESTED_TYPE` members `<Srv>_{Request,Response,Event}`, where `_Event` is the
-`service_msgs/ServiceEventInfo`-plus-bounded-sequences shape rosidl generates —
-is a distinct REP-2011 sub-problem, not yet built). And the runtime keyexpr +
-liveliness token still read `RosEdition::type_hash()` (the compile-time
-placeholder) rather than the codegen-baked per-type `TYPE_HASH`; wiring the
-generated constant through to the wire is W2b's baking step.
+**W1b (c) note:** the runtime keyexpr/liveliness path was ALREADY baked — it
+reads `M::TYPE_HASH` (the codegen constant, `node.rs:266/297` →
+`TopicInfo::new`), NOT `RosEdition::type_hash()`. So a Rust pub/sub build carries
+the real per-type hash the moment codegen runs with an Iron+ edition. The
+remaining gap is service/action — see **W1c**.
+
+### W1c — service / action `_Event` synthesis (REP-2011) — **DESIGNED (2026-07-25)**
+
+Service + action `TYPE_HASH` still emit the placeholder on Iron+: rcl hashes the
+WHOLE service/action type-description DAG, which includes synthesized
+`_Request` / `_Response` / `_Event` members that nano-ros does not yet build. The
+complete recipe — captured byte-for-byte from live Jazzy (`std_srvs/srv/SetBool`,
+`tf2_msgs/action/LookupTransform`) — is documented in
+[`docs/research/rep-2011-type-hash.md`](../research/rep-2011-type-hash.md) §3a
+(service) / §3b (action), with golden hashes committed at
+`packages/testing/nros-tests/fixtures/ros-editions/jazzy/srv-hashes.txt`.
+
+Key facts the engine must encode:
+- **Service top-level** = 3 `NESTED_TYPE` fields (`request_message`,
+  `response_message`, `event_message`) in source order.
+- **`_Event`** = `{ info: NESTED service_msgs/ServiceEventInfo; request:
+  <Srv>_Request[<=1] (id 97); response: <Srv>_Response[<=1] (id 97) }`.
+- **`service_msgs/msg/ServiceEventInfo`** is a FIXED built-in — embed its
+  canonical ITD as a codegen constant (`event_type` u8, `stamp` Time, `client_gid`
+  **uint8[16] id 51** — `.msg` says `char[16]` but rosidl maps `char`→uint8,
+  `sequence_number` i64) rather than depending on the `service_msgs` package.
+- **Action top-level** = 6 `NESTED_TYPE` fields (`goal`, `result`, `feedback`,
+  `send_goal_service`, `get_result_service`, `feedback_message`); the two nested
+  services each reuse the §3a `_Event` synthesis; `goal_id` uses
+  `unique_identifier_msgs/msg/UUID`.
+
+- *Accept (W1c):* the engine reproduces the committed SetBool + LookupTransform
+  hashes byte-for-byte (codegen-level tests), and `generate_nros_service_package`
+  / `_action_package` emit the real `RIHS01_…` on Iron+ (placeholder on Humble).
 
 ### W2 — unify edition selection (`[system].ros_edition`, RFC-0056 open-Q1)
 
@@ -166,11 +192,38 @@ HARD error — typo guard, never a silent fallback). `nros codegen-system`
 resolves + validates + records it at bake (a bad `[system].ros_edition` fails
 loudly). Unit-tested (`ros_edition_resolves_with_humble_default_and_typo_guard`).
 
-**W2b REMAINING (the lowering):** thread the resolved edition into (a) the
-message-gen `--ros-edition` default (baked type_hash), (b) the `ros-<edition>`
-cargo feature on the generated entry crate (runtime keyexpr format — closes the
-last end of the codegen↔runtime disconnect), and (c) the `generated/<edition>/`
-interface dir. The DECLARATION + typo guard exist; the auto-lowering is next.
+**W2b LANDED (2026-07-25) — the lowering.** SSoT `RosEdition::cargo_feature()`
+(`ros-<edition>`, the twin `ResolvedRmw::cargo_feature` lacked). Threaded to:
+
+- **(a) codegen `--ros-edition` default** — `nros ws sync --ros-edition` is now
+  `Option`; when omitted it auto-lowers `[system].ros_edition` from a
+  `system.toml` at the workspace root (`resolve_sync_edition`), else humble. The
+  CMake C/C++ path: `nros_generate_interfaces` defaults `ROS_EDITION` from the
+  workspace `NANO_ROS_ROS_EDITION`, and `nano_ros_generate_interfaces` now
+  accepts+forwards `ROS_EDITION`.
+- **(b) `ros-<edition>` cargo feature** — `nano_ros_workspace(EDITION …)` sets
+  `NANO_ROS_ROS_EDITION`; the runtime umbrella (`NanoRosRuntimeCrate.cmake`) now
+  emits `ros-${edition}` (was hardcoded `ros-humble`) into `_cpp_features`,
+  exactly mirroring the RMW `_backend_feat`. The Rust scaffold (`nros new
+  --ros-edition`) emits the matching `ros-<edition>` on the `nros` dep. Since the
+  codegen hash (a) and the keyexpr feature (b) both derive from the ONE edition
+  value, a mismatch is impossible by construction.
+- **bake C-define parity** — `codegen-system` emits `#define
+  NROS_SYSTEM_ROS_EDITION "<e>"` + `…_<E>` for a non-humble edition (humble/absent
+  emits nothing → byte-identical).
+
+Verified: `cargo_feature` SSoT test; `system_config_h_emits_ros_edition_only_when_non_humble`
+(humble byte-identical); all 4 edited CMake files parse; codegen-system (20) +
+scaffold + rosidl-codegen suites green.
+
+**W2b DEFERRED — leg (c) `generated/<edition>/` interface dir.** Purely
+organizational (lets multiple editions' generated crates coexist); NOT a
+correctness requirement — a single-edition build is coherent edition-flat, and
+the codegen↔runtime coherence is already guaranteed by (a)+(b) sharing one
+edition value. Deferred because the `<edition>` path segment ripples through
+every `generated/<pkg>` patch-table computation in `ws.rs` (`write_patch_block`,
+`emitted_msg_dep_closure`, the CMake `OUTPUT_DIR`); worth doing only when a
+multi-edition workspace is an actual need.
 
 ### W3 — extend the enum: `jazzy` / `rolling` — **LANDED (2026-07-25)**
 
