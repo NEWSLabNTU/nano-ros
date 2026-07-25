@@ -138,7 +138,7 @@ package workflow. These are built with `nros setup`, `nros sync`,
 - `workspaces/cpp/` — C++ Node packages and a C++ native Entry package
 - `workspaces/mixed/` — mixed C / C++ Node packages and a C++ native Entry package
 
-Beyond those four layer-shape references, `examples/workspaces/` also holds 27
+Beyond those four layer-shape references, `examples/workspaces/` also holds 28
 `ws-<topic>-<lang>` capability workspaces — small single-capability demos, one
 per (topic, language) combination, following the same Node + Bringup + Entry
 two-layer scheme. Every workspace has its own README; one line each:
@@ -173,6 +173,7 @@ two-layer scheme. Every workspace has its own README; one line each:
 | `ws-realtime-cpp-subnode` | ONE node, two callback groups mapped to two tiers |
 | `ws-realtime-cpp-subnode-portable` | identical SubNode under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
 | `ws-realtime-rust` | scheduling-tiers differentiator in Rust (control + telemetry priorities via config) |
+| `ws-remap-rust` | model `<remap>` + `~` private name: `~/out` under `/island` hits the wire as `/remapped_out` |
 | `ws-safety-c` | E2E safety: auto CRC-32 + seq on `/chatter`, validated subscription reports faults on `/safe_ok` |
 | `ws-safety-cpp` | typed safety API `create_subscription_with_safety<Int32>()` with integrity status |
 | `ws-safety-rust` | E2E-safety declared once in `system.toml`, lowered to the Rust nodes |

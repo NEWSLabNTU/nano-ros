@@ -241,6 +241,23 @@ bringup = "src/demo_bringup"
 entry = "native_safety_listener_entry"
 target_dir = "target-fixtures"
 
+# phase-305 W4 (issue 0255) — the remap/private-name workspace, pure-cargo
+# `nros::main!(model = …)` path (no codegen_out). The node publishes on the
+# PRIVATE `~/out`; the model namespaces it under /island and remaps `~/out` to
+# /remapped_out. Consumed by tests/workspace_features_e2e.rs (native_rust_remap
+# cell): a sink on /remapped_out must receive, one on the unremapped expansion
+# /island/remap_talker/out must stay silent — proving the launch/model remap
+# reaches the WIRE.
+[[workspace_fixture]]
+id = "workspace-rust-native-remap"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-remap-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # phase-263 A3 (Track D) — the managed (lifecycle) workspace. `[lifecycle] autostart =
 # "active"` + the entry's `nros/lifecycle-services` feature; `nros::main!` registers the
 # 5 REP-2002 services and drives Configure→Activate at boot. Consumed by

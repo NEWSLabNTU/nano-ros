@@ -1,0 +1,21 @@
+# phase-305 W4 (issue 0255) — remap/private-name showcase bringup.
+#
+# The topology detail lives in the launch file / resolved model: the node is
+# namespaced under /island and its PRIVATE `~/out` publisher is remapped to
+# /remapped_out. This file only names the pkg/class the launch `<node>`
+# resolves to.
+
+[system]
+name = "remap_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "remap_talker_pkg"
+class = "remap_talker_pkg::RemapTalker"
+name = "remap_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

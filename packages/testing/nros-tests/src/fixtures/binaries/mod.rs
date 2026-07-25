@@ -232,6 +232,7 @@ static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell
 static NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 B1 (Track D) — cached paths to the cross-process E2E-safety entries.
+static NATIVE_WORKSPACE_RUST_REMAP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1194,6 +1195,23 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
             build_workspace_rust_entry(
                 "workspace-rust-native-realtime",
                 "ws-realtime-rust",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-305 W4 (issue 0255) — the remap/private-name native Rust workspace
+/// Entry pkg fixture (`ws-remap-rust`, cached; pure-cargo
+/// `nros::main!(model = …)`). The model namespaces the node under `/island`
+/// and remaps its PRIVATE `~/out` to `/remapped_out` — the wire-name proof
+/// lane consumed by `workspace_features_e2e` (native_rust_remap).
+pub fn build_native_workspace_rust_remap_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_REMAP_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-remap",
+                "ws-remap-rust",
                 "native_entry",
             )
         })

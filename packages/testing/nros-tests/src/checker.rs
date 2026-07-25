@@ -44,7 +44,10 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         Workload::Pubsub | Workload::EntryPubsub | Workload::CustomMsg | Workload::Multihost => {
             output::LISTENER_LOG_PREFIX
         }
-        Workload::RealtimeTiers | Workload::Qos => output::INT32_LISTENER_LOG_PREFIX,
+        // Remap: the external int32-sink on the REMAPPED topic proves delivery.
+        Workload::RealtimeTiers | Workload::Qos | Workload::Remap => {
+            output::INT32_LISTENER_LOG_PREFIX
+        }
         Workload::Service => output::SERVICE_RESULT_PREFIX,
         Workload::Action => output::ACTION_RESULT_PREFIX,
         // Logging / params / lifecycle / safety lanes assert their own

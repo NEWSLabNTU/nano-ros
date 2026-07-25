@@ -6,15 +6,14 @@
 //! `{c_,cpp_,mixed_}qos_workspace_e2e`, `lifecycle_workspace_e2e` +
 //! `cpp_c_lifecycle_autostart_e2e`, and `safety_workspace_e2e` +
 //! `cpp_c_safety_integrity_e2e` — into one parametrized test over the
-//! native `Workload::{CustomMsg,Logging,Qos,Lifecycle,Safety}` workspace
+//! native `Workload::{CustomMsg,Logging,Qos,Lifecycle,Safety,Remap}` workspace
 //! cells of the test matrix (`nros_tests::matrix`). The task list named
 //! only the two rust lifecycle/safety files, but the C/C++ halves of those
 //! matrix rows lived in the `cpp_c_*` twin files — they are the same
 //! family and fold in here (the `cpp_lifecycle_node_wrapper_e2e` stays: it
 //! pins the `nros::LifecycleNode` WRAPPER API, not the workspace cell).
 //!
-//! Five observation styles, preserved 1:1 from the per-cell files
-//! ([`Proof`]):
+//! Observation styles, preserved 1:1 from the per-cell files ([`Proof`]):
 //! - **CustomMsg** (phase-263 B6): the workspace-local `custom_msgs/Reading`
 //!   schema flows cross-process — C/C++/mixed talker + listener entries,
 //!   the listener prints ≥3 decoded `reading seq=` lines AND the `temp=`
@@ -37,6 +36,10 @@
 //!   talker attaches a CRC per `/chatter` publish, the listener's
 //!   validated subscription republishes the CRC-valid count on `/safe_ok`,
 //!   an external `int32-sink` sees the count climb.
+//! - **Remap** (phase-305 W4 / issue 0255): the model namespaces the node
+//!   under `/island` and remaps its PRIVATE `~/out` to `/remapped_out`; a
+//!   sink on the remapped topic receives, one on the `~` expansion stays
+//!   silent — the launch/model remap reaches the WIRE.
 //!
 //! All cells are native. The pre-consolidation files pinned arbitrary
 //! fixed router ports (17881–17883 logging, 17911/17933/17934 custom-msg,
@@ -68,7 +71,7 @@ use nros_tests::{
         build_native_workspace_mixed_custom_msg_talker_entry, build_native_workspace_mixed_entry,
         build_native_workspace_mixed_qos_listener_entry,
         build_native_workspace_mixed_qos_talker_entry, build_native_workspace_rust_entry,
-        build_native_workspace_rust_lifecycle_entry,
+        build_native_workspace_rust_lifecycle_entry, build_native_workspace_rust_remap_entry,
         build_native_workspace_rust_safety_listener_entry,
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
     },
@@ -107,6 +110,11 @@ enum Proof {
     /// must see ≥3 climbing CRC-valid counts. Per-cell spin/wait budgets
     /// preserved from the rust (16 s/22 s) vs C-family (20 s/25 s) files.
     SafetyCrcCount { spin_ms: u32, wait_secs: u64 },
+    /// Single entry publishing on a PRIVATE `~/out` name the model remaps
+    /// (phase-305 W4, issue 0255): a sink on the REMAPPED absolute topic
+    /// must see ≥3 messages, and a sink on the unremapped `~` expansion
+    /// must stay silent — the remap reached the WIRE.
+    RemapWireName,
 }
 
 /// One native workspace-feature matrix cell.
@@ -375,6 +383,19 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     note: "phase-269 W3 C++: node.create_subscription_with_safety<M>() delivers \
            (const M&, const nros_cpp_integrity_status_t&) with crc_valid == 1",
 })]
+// Remap — phase-305 W4 (issue 0255): the model namespaces the node under
+// /island and remaps its PRIVATE `~/out` to /remapped_out; the wire topic
+// must be the REMAPPED one. Rust only — the C/C++ `nros_cpp_declare_remap`
+// emitter path is unit-tested (W3); runtime C/C++ cells are residual.
+#[case::native_rust_remap(Cell {
+    lang: "rust", workload: "remap",
+    entry: || build_native_workspace_rust_remap_entry().map(|p| p.to_path_buf()),
+    peer: None,
+    proof: Proof::RemapWireName,
+    note: "phase-305 W3/W4: nros::main!(model = …) bakes the model's <remap> rules into \
+           runtime.remaps; entity creation expands ~/out against /island/remap_talker \
+           and resolves it to /remapped_out before it reaches the RMW",
+})]
 fn workspace_features(#[case] cell: Cell) {
     // Gate: lifecycle cells assert over the ros2 CLI (skip without ROS 2 +
     // rmw_zenoh_cpp — same contract as the other interop tests); everything
@@ -603,6 +624,55 @@ fn workspace_features(#[case] cell: Cell) {
                 "[{} {}] expected ≥3 CRC-validated /safe_ok publishes, got {n}\n{out}",
                 cell.lang,
                 cell.workload
+            );
+        }
+
+        Proof::RemapWireName => {
+            // Both sinks first so their subscriptions are live before the
+            // entry publishes: the REMAPPED topic must deliver; the
+            // unremapped `~` expansion must stay silent.
+            let mut remapped = spawn_listener("/remapped_out", &locator);
+            let mut unremapped = spawn_listener("/island/remap_talker/out", &locator);
+            let mut entry_proc = spawn_spinning(&entry, "remap-entry", &locator, 16000, Some(10));
+
+            let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
+            let out = remapped
+                .wait_for_output_count(prefix, 3, Duration::from_secs(22))
+                .unwrap_or_else(|_| {
+                    entry_proc.kill();
+                    remapped.kill();
+                    unremapped.kill();
+                    panic!(
+                        "[{} {}] /remapped_out never received 3 samples — the launch/model \
+                         <remap> did not reach the wire (the publisher is on the wrong \
+                         name) ({})",
+                        cell.lang, cell.workload, cell.note
+                    )
+                });
+            entry_proc.kill();
+            remapped.kill();
+
+            let n = nros_tests::count_pattern(&out, prefix);
+            assert!(
+                n >= 3,
+                "[{} {}] expected ≥3 receives on the REMAPPED topic, got {n}.\n{out}",
+                cell.lang,
+                cell.workload
+            );
+
+            // Negative half: nothing may have leaked onto the unremapped
+            // expansion. A short window suffices — the positive proof above
+            // already guarantees ≥3 publish cycles happened.
+            let leak = unremapped.wait_for_output_count(prefix, 1, Duration::from_secs(2));
+            unremapped.kill();
+            assert!(
+                leak.is_err(),
+                "[{} {}] the UNREMAPPED expansion /island/remap_talker/out received \
+                 traffic — the remap did not take effect on the wire ({}):\n{}",
+                cell.lang,
+                cell.workload,
+                cell.note,
+                leak.unwrap_or_default()
             );
         }
     }

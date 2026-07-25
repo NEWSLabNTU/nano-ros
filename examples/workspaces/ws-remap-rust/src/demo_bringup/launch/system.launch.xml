@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-305 W4 (issue 0255) — remap + `~` private name. The node publishes on
+     the PRIVATE `~/out`; the namespace puts its expansion at
+     /island/remap_talker/out and the `<remap>` redirects it to /remapped_out.
+     The committed resolved model (config/system_model.yaml) is the entry-codegen
+     input SSoT; this launch file is the source it resolves from. -->
+<launch>
+  <node pkg="remap_talker_pkg" exec="remap_talker" name="remap_talker" namespace="/island">
+    <remap from="~/out" to="/remapped_out"/>
+  </node>
+</launch>
