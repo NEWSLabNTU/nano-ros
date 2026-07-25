@@ -93,13 +93,35 @@ research doc's documented `std_msgs/msg/Int32` reference BYTE-FOR-BYTE; the
 engine's Int32 hash is snapshot-locked
 (`RIHS01_22ff2de7…f99b6`) as a regression guard. rihs.rs is clippy-clean.
 
-**W1b REMAINING:** (a) build the `TypeDescription` DAG from the parsed
-`.msg`/`.srv`/`.action` AST (nested-type closure + type-id mapping + service
-`_Event` synthesis); (b) run `scripts/ros/capture-edition-fixtures.sh jazzy` and
-assert the engine reproduces the captured Jazzy hashes (confirms the snapshot is
-the REAL REP-2011 value, not just deterministic); (c) wire `rihs01` into
-`RosEdition::type_hash()` / the per-type generated `TYPE_HASH` so iron/jazzy
-builds carry the real hash instead of the placeholder.
+**W1b (a) LANDED (2026-07-25) — AST → TypeDescription:** `field_type_desc`
+(primitive/string/bounded-string → scalar id; array/sequence/bounded-sequence →
+element base + `+48/+96/+144` offset with capacity/string_capacity; namespaced →
+NESTED_TYPE + `pkg/msg/Name`), `message_to_individual` (fields only, source
+order), and `build_type_description` (DAG closure over nested refs via a
+caller-supplied `resolve` callback — de-duped, loud error on an unresolvable
+ref). Tested: the primitive/array/`string<=20[]`→161/bare-bounded-string→21/
+nested mappings + a two-level DAG closure + the unresolvable-ref error. Bounded
+strings in collections + wstrings are best-effort pending the (b) Jazzy
+confirmation.
+
+**W1b (b) CONFIRMED against LIVE Jazzy (2026-07-25):** ran the capture against a
+`ros:jazzy-ros-base` container and read the rosidl type-description `.json`s. The
+loop FOUND A REAL BUG — the hashable form is NOT compact (the research doc
+guessed wrong): `calculate_type_hash` uses
+`json.dumps(separators=(', ', ': '), ensure_ascii=True, sort_keys=False)` with
+`default_value` stripped. Fixed `to_hashable_json` (spaced separators + ASCII
+escaping); the engine now reproduces the REAL Jazzy hashes byte-for-byte for
+`std_msgs/msg/Int32` (`RIHS01_b6578ded…`), `std_msgs/msg/Header` (nested Time +
+string, `RIHS01_f49fb3ae…`), and `builtin_interfaces/msg/Time`
+(`RIHS01_b106235e…`) — all locked as unit-test assertions. Reference hashes
+committed in `fixtures/ros-editions/jazzy/hashes.txt`; the research doc §4 is
+corrected. The capture script now reads the `.json` type descriptions (there is
+no `ros2 interface hash` subcommand — the doc's claim was also wrong).
+
+**W1b REMAINING:** (c) wire `build_type_description` + `rihs01` into codegen with
+a package-loader `resolve` so `RosEdition::type_hash()` / the per-type generated
+`TYPE_HASH` carry the real hash on iron/jazzy instead of the placeholder (service
+`_Event` synthesis + the per-type fixture assertions land here).
 
 - *Accept (W1b):* the engine reproduces the Tier-A captured reference hashes for
   the fixture set byte-for-byte; the keyexpr + liveliness token carry the real

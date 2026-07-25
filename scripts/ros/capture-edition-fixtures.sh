@@ -45,7 +45,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 out_dir="$repo_root/packages/testing/nros-tests/fixtures/ros-editions/$DISTRO"
 mkdir -p "$out_dir"
 
-image="osrf/ros:${DISTRO}-ros-base"
+# The `-ros-base` variants live in the docker-official `ros` repo (NOT `osrf/ros`,
+# which only publishes `-desktop`). Override with NROS_ROS_IMAGE if needed.
+image="${NROS_ROS_IMAGE:-ros:${DISTRO}-ros-base}"
 
 # A small, representative type set: a flat primitive msg, a nested-struct msg
 # (Header + fields), and a service — enough to exercise the RIHS01 canonical
@@ -60,11 +62,21 @@ TYPES=(
 
 echo "capturing $DISTRO fixtures from $image → $out_dir"
 
-# One container run collects every hash (cheaper than one run per type).
+# The RIHS01 hash is NOT a CLI subcommand (`ros2 interface hash` does not
+# exist on Iron/Jazzy either). rosidl generates a per-type description JSON at
+# `share/<pkg>/<kind>/<Name>.json` carrying `type_hashes[].hash_string` — read
+# that. Also copy the whole `.json` (the canonical type description) so the
+# nano-ros engine's `to_hashable_json` can be diffed structurally.
 hash_script='source /opt/ros/'"$DISTRO"'/setup.bash
 for t in '"${TYPES[*]}"'; do
-  h="$(ros2 interface hash "$t" 2>/dev/null || echo "MISSING")"
-  echo "$t $h"
+  pkg="${t%%/*}"; rest="${t#*/}"; kind="${rest%%/*}"; name="${rest##*/}"
+  share="$(ros2 pkg prefix "$pkg" 2>/dev/null)/share/$pkg/$kind/$name.json"
+  if [ -f "$share" ]; then
+    h="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(next(x[\"hash_string\"] for x in d[\"type_hashes\"] if x[\"type_name\"]==\"$t\"))" "$share" 2>/dev/null || echo MISSING)"
+    echo "$t $h"
+  else
+    echo "$t MISSING(no-json)"
+  fi
 done'
 
 docker run --rm "$image" bash -c "$hash_script" > "$out_dir/hashes.txt"

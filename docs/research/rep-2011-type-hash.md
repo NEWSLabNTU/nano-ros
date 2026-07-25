@@ -82,18 +82,23 @@ not emit it — hashes are independent of defaults.
    messages live in `referenced_type_descriptions` (still
    alphabetically sorted with any transitive deps). Actions are the
    same shape with seven members.
-4. **Serialize to "hashable JSON"** via libyaml in flow style: flow
-   sequences `[…]`, flow mappings `{…}`, all keys and string values
-   double-quoted, numerics plain, `width=-1` so nothing wraps. Object
-   key order is fixed by the writer:
+4. **Serialize to "hashable JSON".** **CORRECTED 2026-07-25 (phase-304 W1b) —
+   the earlier "no whitespace / `width=-1`" claim was WRONG.** The normative
+   generator is `rosidl_generator_type_description.calculate_type_hash`:
+   ```python
+   json.dumps(hashable_dict, ensure_ascii=True, indent=None,
+              separators=(', ', ': '), sort_keys=False)
+   ```
+   i.e. a **space after every `,` and `:`** (`', '` / `': '`), ASCII-escaped
+   strings, dict-INSERTION key order (not sorted). `default_value` IS stripped
+   from every field before hashing (the one thing the earlier notes got right).
+   Object key order (insertion):
    - `TypeDescription`: `type_description`, `referenced_type_descriptions`
    - `IndividualTypeDescription`: `type_name`, `fields`
-   - `Field`: `name`, `type`
+   - `Field`: `name`, `type` (default_value removed)
    - `FieldType`: `type_id`, `capacity`, `string_capacity`, `nested_type_name`
-5. **SHA-256** the UTF-8 byte buffer (the libyaml char buffer minus its
-   trailing NUL — `buffer_length - 1`). No leading/trailing newlines
-   are added by the writer; libyaml emits a single stream without a
-   final break (`YAML_NO_BREAK`).
+5. **SHA-256** the UTF-8 bytes of that `json.dumps` string. Confirmed
+   byte-exact against a live Jazzy install (see §3).
 6. **Format as `RIHS01_` + 64 lowercase hex chars.** Total length 71.
    Prefix bytes 4..6 are the version (`"01"`), bytes 0..4 the literal
    `"RIHS"`, byte 6 the separator `'_'`. Version 1 is the only
@@ -124,15 +129,25 @@ before they're committed to fixture tests.
   `RIHS01_<sha256-of-the-above>` — **unverified**, compute via Jazzy
   `ros2 interface hash std_msgs/msg/Int32` to confirm.
 
-  **Engine output (phase-304 W1, 2026-07-25):** the `rosidl_codegen::rihs`
-  engine SHA-256s the exact canonical JSON above to
-  `RIHS01_22ff2de7c2a194b0515c3169c17368e86ab95adbcdb2b6e6e05d5f5e011f99b6`.
-  This is a REGRESSION snapshot of the engine (locked in
-  `rihs::tests::rihs01_has_the_right_shape_and_is_deterministic`), NOT yet a
-  confirmed REP-2011 value — the phase-304 W4 capture script
-  (`scripts/ros/capture-edition-fixtures.sh jazzy`) cross-checks it against a
-  live Jazzy host. A diff between the two means the canonical form (§2) needs a
-  fix, not the snapshot.
+  **CONFIRMED against live Jazzy (phase-304 W1b, 2026-07-25):** the real value
+  is `RIHS01_b6578ded3c58c626cfe8d1a6fb6e04f706f97e9f03d2727c9ff4e74b1cef0deb`
+  (`/opt/ros/jazzy/share/std_msgs/msg/Int32.json` → `type_hashes[0]`). The
+  `rosidl_codegen::rihs` engine reproduces it byte-for-byte once the §4
+  separators fix (spaces) was applied — the capture loop found the bug. The
+  canonical hashable string (spaced separators, default_value stripped):
+  ```
+  {"type_description": {"type_name": "std_msgs/msg/Int32", "fields": [{"name": "data", "type": {"type_id": 6, "capacity": 0, "string_capacity": 0, "nested_type_name": ""}}]}, "referenced_type_descriptions": []}
+  ```
+
+  Other confirmed references (committed in
+  `packages/testing/nros-tests/fixtures/ros-editions/jazzy/hashes.txt`):
+  - `std_msgs/msg/Header` (nested Time + string) →
+    `RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01`
+  - `builtin_interfaces/msg/Time` →
+    `RIHS01_b106235e25a4c5ed35098aa0a61a3ee9c9b18d197f398b0e4206cea9acf9c197`
+  - `geometry_msgs/msg/Twist`, `sensor_msgs/msg/Imu` — captured; used when the
+    codegen wiring (W1b c) lands the per-type assertions.
+  The engine reproduces Int32 + Header + Time byte-for-byte (rihs unit tests).
 
 - **`example_interfaces/srv/AddTwoInts`** — `.srv` is `int64 a; int64
   b\n---\nint64 sum`. Top-level has three NESTED_TYPE fields; three
