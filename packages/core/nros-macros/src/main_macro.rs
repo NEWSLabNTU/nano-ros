@@ -1035,6 +1035,33 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let exec_sizing = read_entry_executor_sizing(&manifest_dir.join("Cargo.toml"));
 
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
+    // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell
+    // back to the posix tier rules and died later with a misleading
+    // `MissingRtosSpec("posix")` or a raw missing-method compile error.
+    if multi_tier.is_some()
+        && let Some(d) = deploy_for_framework.as_deref()
+        && [
+            "esp32",
+            "rtic",
+            "embassy",
+            "stm32",
+            "baremetal",
+            "bare-metal",
+            "orin",
+        ]
+        .iter()
+        .any(|f| d.contains(f))
+    {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            format!(
+                "target `{d}` does not support multi-tier execution (no run_tiers): \
+                 collapse the system to a single tier or pick a tiered board \
+                 (posix/zephyr/freertos/nuttx/threadx families). issue 0265"
+            ),
+        ));
+    }
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
             let tiers_ts = tier_specs_tokens(table);

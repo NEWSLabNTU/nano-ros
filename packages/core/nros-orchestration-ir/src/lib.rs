@@ -467,6 +467,17 @@ pub fn validate_tier_platform_applicability(
                 t.name
             ));
         }
+        // phase-302 W4 (issue 0264) — sched_class has NO runtime consumer on
+        // any platform (nuttx hardcodes SCHED_FIFO); a value would be a
+        // silently-dead knob. Reject until a consumer lands (phase-162).
+        if t.sched_class.is_some() {
+            return Err(format!(
+                "tier '{}': sched_class is accepted by no runtime yet (nuttx runs \
+                 SCHED_FIFO regardless; issue 0264) — remove it until a consumer \
+                 lands",
+                t.name
+            ));
+        }
         match t.class.as_deref() {
             Some("interrupt") => {
                 return Err(format!(
@@ -962,10 +973,26 @@ mod applicability_tests {
     fn sched_class_posix_family_only() {
         let mut t = base();
         t.sched_class = Some("SCHED_FIFO".into());
-        for ok in ["posix", "native", "nuttx"] {
+        // phase-302 W4 (issue 0264): sched_class has no runtime consumer, so
+        // it now rejects EVERYWHERE — posix-family included — until one
+        // lands. The off-family arm keeps its distinct family message.
+        for family in ["posix", "native", "nuttx", "freertos"] {
+            assert!(validate_tier_platform_applicability(&table(t.clone()), family).is_err());
+        }
+    }
+
+    #[test]
+    fn core_accepted_everywhere_consumers_exist() {
+        // phase-302 W2 originally rejected `core` on threadx/posix — then
+        // 296-W5.13 landed BOTH consumers (sched_setaffinity on posix,
+        // tx_thread_smp_core_exclude on threadx) while the wave was in
+        // flight, so every tiered platform now has a kernel-applied or
+        // loud-fallback consumer and the pin is accepted everywhere.
+        let mut t = base();
+        t.core = Some(1);
+        for ok in ["zephyr", "nuttx", "freertos", "threadx", "posix", "native"] {
             assert!(validate_tier_platform_applicability(&table(t.clone()), ok).is_ok());
         }
-        assert!(validate_tier_platform_applicability(&table(t), "freertos").is_err());
     }
 
     #[test]

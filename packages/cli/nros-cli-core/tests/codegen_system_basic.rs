@@ -382,7 +382,6 @@ execution:
       spin_period_us: 1000
       posix:
         priority: 80
-        sched_class: SCHED_FIFO
       freertos:
         priority: 5
         stack_bytes: 32768
@@ -411,7 +410,6 @@ execution:
       spin_period_us: 1000
       posix:
         priority: 80
-        sched_class: SCHED_FIFO
       freertos:
         priority: 5
         stack_bytes: 32768

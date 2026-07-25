@@ -377,6 +377,14 @@ test-group = "nuttx-realtime-cpp-port"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# phase-302 W5 (issue 0263) — the RUST arm's tier-priority marker e2e shares
+# the nuttx rust realtime image/port with its realtime cell; serialize them.
+[[profile.default.overrides]]
+filter = "binary(nuttx_tier_priority_applied) or (binary(realtime_tiers_e2e) and test(nuttx_arm_rust))"
+test-group = "nuttx-realtime-rust-port"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
 # phase-296 W5.10 — see [test-groups.threadx-realtime-rust-port].
 [[profile.default.overrides]]
 filter = "binary(threadx_preempt_threshold_applied) or binary(threadx_core_pin_applied) or (binary(realtime_tiers_e2e) and test(threadx_linux_rust))"

@@ -114,10 +114,15 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
     let t = target.trim().to_ascii_lowercase();
     let fam = t.as_str();
     match fam {
-        // Linux / POSIX host: SCHED_DEADLINE (EDF + CBS budget), affinity.
+        // Linux / POSIX host — phase-302 W1 (issue 0261): caps describe
+        // what nano-ros DELIVERS, not what Linux could do. edf/reservation
+        // are FALSE — no sched_setattr/SCHED_DEADLINE consumer exists
+        // (priorities are documented-advisory too); flip when phase-162
+        // lands real consumers. affinity stays TRUE: 296-W5.13 landed the
+        // sched_setaffinity tier consumer (runtime kernel-accept proven).
         "posix" | "native" => SchedCaps {
-            edf: true,
-            reservation: true,
+            edf: false,
+            reservation: false,
             preempt_threshold: false,
             affinity: true,
             n_priorities: 99,
@@ -142,7 +147,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             n_priorities: 16,
             low_number_is_high: false,
         },
-        // ThreadX: native preemption-threshold; SMP core exclude; low = high.
+        // ThreadX: native preemption-threshold; SMP core exclude
+        // (296-W5.13 consumer, fail-loud on non-SMP ports); low = high.
         f if f.contains("threadx") => SchedCaps {
             edf: false,
             reservation: false,
@@ -530,8 +536,13 @@ mod tests {
         assert!(sched_caps_for("threadx-linux").low_number_is_high);
         assert!(sched_caps_for("nuttx").reservation);
         assert!(!sched_caps_for("nuttx").low_number_is_high);
+        // phase-302 W1 (issue 0261): posix caps describe what nano-ros
+        // DELIVERS — nothing native on posix until phase-162 consumers land.
         let posix = sched_caps_for("native");
-        assert!(posix.edf && posix.reservation && !posix.low_number_is_high);
+        assert!(!posix.edf && !posix.reservation && !posix.low_number_is_high);
+        // 296-W5.13 consumers: affinity is genuinely delivered on both.
+        assert!(posix.affinity);
+        assert!(sched_caps_for("threadx-linux").affinity);
         // Unknown → bare-metal defaults (single-core, no EDF).
         assert!(!sched_caps_for("stm32f4-rtic").affinity);
     }

@@ -347,12 +347,28 @@ impl PosixBoard {
         let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
         let shared = SharedSession(boot_crt.executor_mut().session_ptr());
 
+        // phase-302 W2 (issue 0262) — posix tier priorities/pins are ADVISORY
+        // (no sched_setscheduler/affinity consumer; strict ordering needs
+        // SCHED_FIFO + privileges — phase-162 territory). Say so ONCE, loudly,
+        // when any tier declares them, instead of silently dropping the knobs.
+        if tiers.iter().any(|t| t.priority > 0 || t.core.is_some()) {
+            <Self as BoardPrint>::println(format_args!(
+                "nros: NOTE — posix tier priority/core are advisory (not applied \
+                 natively); scheduling is the executor's SchedContext"
+            ));
+        }
         let setup = &setup;
         std::thread::scope(|scope| {
             // Spawn every tier after the first; each borrows the shared
             // session pointer and `&setup` from the enclosing scope.
             for tier in &tiers[1..] {
-                let builder = std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
+                let mut builder =
+                    std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
+                // phase-302 W2 (issue 0262) — honor a declared per-tier stack
+                // (previously silently ignored; std default otherwise).
+                if tier.stack_bytes > 0 {
+                    builder = builder.stack_size(tier.stack_bytes);
+                }
                 let spawn = builder.spawn_scoped(scope, move || {
                     // Re-bind the whole wrapper so the closure captures the
                     // `Send` `SharedSession`, not the bare `*mut` field

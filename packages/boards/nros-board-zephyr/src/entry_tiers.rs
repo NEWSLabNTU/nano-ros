@@ -41,6 +41,7 @@ unsafe extern "C" {
         arg: *mut c_void,
         priority: i32,
         name: *const core::ffi::c_char,
+        stack_bytes: usize,
     ) -> i32;
     /// Adopt a raw Zephyr priority on the CALLING thread — the boot thread
     /// runs `tiers[0]` itself, so it must take that tier's declared priority
@@ -155,6 +156,9 @@ where
             raw as *mut c_void,
             prio,
             c"nros_tier".as_ptr(),
+            // phase-302 W2 (issue 0262) — the declared stack rides to the
+            // shim, which prints LOUD when it exceeds the fixed pool slot.
+            tier.stack_bytes,
         )
     };
     if rc != 0 {

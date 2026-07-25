@@ -332,13 +332,25 @@ static void nros_zephyr_tier_trampoline(void* entry, void* arg, void* unused) {
 /**
  * Spawn one tier task. `entry(arg)` runs on a pool thread at the RAW
  * Zephyr `priority` (cooperative if negative). `name` is the thread's
- * debug name (may be NULL). Returns 0 on success, -1 when the pool is
- * exhausted (more than NROS_ZEPHYR_MAX_TIERS spawns).
+ * debug name (may be NULL). `stack_bytes` is the tier's DECLARED stack
+ * (0 = undeclared): the pool slots are compile-time sized
+ * (K_THREAD_STACK_ARRAY_DEFINE), so the request cannot resize them — a
+ * request past the slot prints LOUD and the tier runs on the slot
+ * anyway (phase-302 W2 / issue 0262: previously the knob was silently
+ * ignored). Raise NROS_ZEPHYR_TIER_STACK_SIZE to honor bigger tiers.
+ * Returns 0 on success, -1 when the pool is exhausted (more than
+ * NROS_ZEPHYR_MAX_TIERS spawns).
  */
 int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
-                                 const char* name) {
+                                 const char* name, size_t stack_bytes) {
     if (entry == NULL || nros_tier_index >= NROS_ZEPHYR_MAX_TIERS) {
         return -1;
+    }
+    if (stack_bytes > (size_t)NROS_ZEPHYR_TIER_STACK_SIZE) {
+        printk("nros: tier stack request %u > fixed slot %u tier=`%s` — running with the "
+               "slot; raise NROS_ZEPHYR_TIER_STACK_SIZE\n",
+               (unsigned)stack_bytes, (unsigned)NROS_ZEPHYR_TIER_STACK_SIZE,
+               (name != NULL) ? name : "?");
     }
     int idx = nros_tier_index++;
     k_tid_t tid = k_thread_create(&nros_tier_threads[idx], nros_tier_stacks[idx],

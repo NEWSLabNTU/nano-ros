@@ -44,7 +44,7 @@
  * `nros_zephyr_msleep`: real-symbol wrapper around `k_msleep` for the idle /
  * park loops (the k_msleep inline has no exported symbol). */
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
-                                        const char* name);
+                                        const char* name, size_t stack_bytes);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 extern int32_t nros_zephyr_msleep(int32_t ms);
 /* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
@@ -349,8 +349,9 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* RAW Zephyr priority from the tier spec (the system.toml
      * [tiers.*.zephyr].priority is the numeric Zephyr value verbatim —
      * negatives are cooperative). Clamp to int32 range. The shim manages the
-     * tier's stack from its static pool (NROS_ZEPHYR_TIER_STACK_SIZE), so
-     * t->stack_bytes is not consulted here. */
+     * tier's stack from its static pool (NROS_ZEPHYR_TIER_STACK_SIZE);
+     * t->stack_bytes rides along so the shim can print LOUD when the
+     * declared stack exceeds the fixed slot (phase-302 W2, issue 0262). */
     int64_t p = t->priority;
     if (p > (int64_t)INT32_MAX) {
         p = (int64_t)INT32_MAX;
@@ -359,7 +360,8 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     }
 
     int rc = nros_zephyr_tier_task_create(zephyr_tier_task, ctx, (int32_t)p,
-                                          (t->name != NULL) ? t->name : "nros_tier");
+                                          (t->name != NULL) ? t->name : "nros_tier",
+                                          (size_t)t->stack_bytes);
     if (rc != 0) {
         nros_platform_dealloc(ctx);
         nros_platform_dealloc(tier_exec);
