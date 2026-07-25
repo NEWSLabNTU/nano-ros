@@ -355,6 +355,7 @@ impl ExecutorNodeRuntime {
             cell: cell.clone(),
             nodes: Vec::new(),
             node_identity: None, // direct API — no launch injection
+            remaps: &[],         // direct API — no launch remaps
         };
         let sink_dyn: &mut dyn NodeRuntime = &mut sink;
         let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -657,26 +658,38 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
 struct ExecutorSink<'a> {
     executor: &'a mut Executor<'static>,
     cell: Arc<ComponentCell>,
-    /// Per-registration node mapping: stable id → executor `NodeId`.
-    nodes: Vec<(String, nros_node::executor::NodeId)>,
+    /// Per-registration node mapping: stable id → executor `NodeId` plus the
+    /// EFFECTIVE `(name, namespace)` the node was created with (launch identity
+    /// or the `NodeOptions` default) — phase-305 W3 needs it to expand
+    /// `~`/relative entity names per node.
+    nodes: Vec<SinkNode>,
     /// Phase 268 W1 — launch-injected node identity `(name, namespace)` baked by
     /// `nros::main!` per component. When `Some`, `create_node` uses this identity
     /// instead of the `NodeOptions` default; `None` → default stands (backward-compat).
     node_identity: Option<(&'static str, &'static str)>,
+    /// Phase 305 W3 (issue 0255) — launch `<remap from= to=/>` rules baked by
+    /// `nros::main!` for this component. Applied in `create_entity` via the
+    /// shared `node_metadata::resolve_name` seam (exact-FQN match, first rule
+    /// wins). Empty → names still get ROS 2 expansion, no substitution.
+    remaps: &'a [(&'a str, &'a str)],
+}
+
+struct SinkNode {
+    stable_id: String,
+    node_id: nros_node::executor::NodeId,
+    name: String,
+    namespace: String,
 }
 
 impl ExecutorSink<'_> {
-    fn lookup_node(&self, stable_id: &str) -> Option<nros_node::executor::NodeId> {
-        self.nodes
-            .iter()
-            .find(|(id, _)| id == stable_id)
-            .map(|(_, n)| *n)
+    fn lookup_node(&self, stable_id: &str) -> Option<&SinkNode> {
+        self.nodes.iter().find(|n| n.stable_id == stable_id)
     }
 }
 
 impl NodeRuntime for ExecutorSink<'_> {
     fn create_node(&mut self, id: MetaNodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
-        if self.nodes.iter().any(|(s, _)| s.as_str() == id.as_str()) {
+        if self.nodes.iter().any(|n| n.stable_id == id.as_str()) {
             return Err(NodeDeclError::Runtime);
         }
         // Phase 268 W1 — launch wins over the NodeOptions default (RFC-0046).
@@ -693,7 +706,12 @@ impl NodeRuntime for ExecutorSink<'_> {
             .domain_id(options.domain_id)
             .build()
             .map_err(decl_err_from_node)?;
-        self.nodes.push((String::from(id.as_str()), node_id));
+        self.nodes.push(SinkNode {
+            stable_id: String::from(id.as_str()),
+            node_id,
+            name: String::from(name),
+            namespace: String::from(ns),
+        });
         Ok(())
     }
 
@@ -710,19 +728,36 @@ impl NodeRuntime for ExecutorSink<'_> {
         {
             return Ok(());
         }
-        let node = self
-            .lookup_node(metadata.node_id.as_str())
-            .ok_or(NodeDeclError::Runtime)?;
+        let (node, node_name, node_ns) = {
+            let entry = self
+                .lookup_node(metadata.node_id.as_str())
+                .ok_or(NodeDeclError::Runtime)?;
+            (entry.node_id, entry.name.clone(), entry.namespace.clone())
+        };
+        // Phase 305 W3 (issue 0255) — expand `~`/relative source names against
+        // the owning node's identity and apply the launch remap rules (shared
+        // `node_metadata::resolve_name` seam) before any name reaches the wire.
+        // Timers have no wire name; parameter names are NOT remapped (matches
+        // ROS 2 basic name remapping — param remaps are a separate rule class).
+        let resolved_name = match metadata.kind {
+            EntityKind::Timer | EntityKind::Parameter => None,
+            _ => Some(
+                crate::node_metadata::resolve_name(
+                    metadata.source_name.as_str(),
+                    &node_name,
+                    &node_ns,
+                    self.remaps.iter().copied(),
+                )
+                .map_err(|_| NodeDeclError::Runtime)?,
+            ),
+        };
+        let entity_name = resolved_name.as_ref().map(|r| r.as_str()).unwrap_or("");
         match metadata.kind {
             EntityKind::Publisher => {
                 let handle = self
                     .executor
                     .node_mut(node)
-                    .create_generic_publisher(
-                        metadata.source_name.as_str(),
-                        metadata.type_name,
-                        metadata.type_hash,
-                    )
+                    .create_generic_publisher(entity_name, metadata.type_name, metadata.type_hash)
                     .map_err(decl_err_from_node)?;
                 let id_owned = String::from(metadata.id.as_str());
                 self.cell.publishers.borrow_mut().push((id_owned, handle));
@@ -746,7 +781,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     self.executor
                         .node_mut(node)
                         .create_generic_subscription_with_integrity(
-                            metadata.source_name.as_str(),
+                            entity_name,
                             metadata.type_name,
                             metadata.type_hash,
                             move |payload: &[u8], status: &nros_node::IntegrityStatus| {
@@ -759,7 +794,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.executor
                     .node_mut(node)
                     .create_generic_subscription(
-                        metadata.source_name.as_str(),
+                        entity_name,
                         metadata.type_name,
                         metadata.type_hash,
                         move |payload: &[u8]| {
@@ -806,7 +841,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.executor
                     .register_service_raw_sized_on::<1024, 1024>(
                         node,
-                        metadata.source_name.as_str(),
+                        entity_name,
                         metadata.type_name,
                         metadata.type_hash,
                         crate::QosSettings::services_default(),
@@ -821,7 +856,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .executor
                     .register_service_client_raw_sized_on::<1024>(
                         node,
-                        metadata.source_name.as_str(),
+                        entity_name,
                         metadata.type_name,
                         metadata.type_hash,
                         crate::QosSettings::services_default(),
@@ -859,7 +894,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
                         crate::RawActionServerSpec {
                             node_id: Some(node),
-                            action_name: metadata.source_name.as_str(),
+                            action_name: entity_name,
                             type_name: metadata.type_name,
                             type_hash: metadata.type_hash,
                             qos: crate::QosSettings::services_default(),
@@ -906,7 +941,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .register_action_client_raw_sized::<1024, 1024, 1024>(
                         crate::RawActionClientSpec {
                             node_id: Some(node),
-                            action_name: metadata.source_name.as_str(),
+                            action_name: entity_name,
                             type_name: metadata.type_name,
                             type_hash: metadata.type_hash,
                             goal_response_callback: None,
@@ -1383,6 +1418,7 @@ fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     executor: &mut Executor<'static>,
     params: &'p [(&'p str, &'p str)],
     node_identity: Option<(&'static str, &'static str)>,
+    remaps: &'p [(&'p str, &'p str)],
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
@@ -1410,6 +1446,8 @@ where
         nodes: Vec::new(),
         // Phase 268 W1 — thread the per-component identity bake (RFC-0046).
         node_identity,
+        // Phase 305 W3 (issue 0255) — thread the per-component remap bake.
+        remaps,
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -1507,12 +1545,33 @@ pub unsafe fn install_node_typed_with_node_identity<C: ExecutableNode + 'static>
 where
     C::State: 'static,
 {
+    // SAFETY: forwarded per this fn's contract; no remap rules.
+    unsafe { install_node_typed_with_launch::<C>(executor, params, node_identity, &[]) }
+}
+
+/// Phase 305 W3 (issue 0255) — same as [`install_node_typed_with_node_identity`]
+/// but also carries the launch `<remap from= to=/>` rules `nros::main!` baked for
+/// this component (`RuntimeCtx::remaps`). `ExecutorSink::create_entity` applies
+/// them (plus `~`/relative expansion) before any entity name reaches the wire.
+/// All slices must outlive the call (`'static` promoted in the macro emit).
+///
+/// # Safety
+/// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
+pub unsafe fn install_node_typed_with_launch<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+    params: &[(&str, &str)],
+    node_identity: Option<(&'static str, &'static str)>,
+    remaps: &[(&str, &str)],
+) -> i32
+where
+    C::State: 'static,
+{
     if executor.is_null() {
         return -1;
     }
     // SAFETY: per the fn contract, `executor` is the live `*mut Executor<'static>` handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C>(exec, params, node_identity) {
+    match register_node_borrowed::<C>(exec, params, node_identity, remaps) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro
         // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque

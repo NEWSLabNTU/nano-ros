@@ -874,6 +874,27 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
                                          uint8_t sc_id);
 
 /**
+ * Phase 305 W3 (issue 0255) — declare one launch `<remap from= to=/>` rule for
+ * the node identified by `(node_name, node_namespace)`. Call BEFORE the node's
+ * component registers its entities (the entry codegen emits these right after
+ * `nros_cpp_node_create`); every subsequent entity registration resolves its
+ * source name through the executor-side remap table (`~`/relative expansion +
+ * exact-FQN match, first rule wins). Errors on a full table / oversized string
+ * so a dropped routing rule is never silent.
+ *
+ * # Safety
+ * `handle` must be a context returned by `nros_cpp_init`.
+ * `node_name`, `from`, `to` must be valid null-terminated UTF-8 strings.
+ * `node_namespace` may be NULL (defaults to `"/"`), otherwise must be a valid
+ * null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
+                                      const char *node_name,
+                                      const char *node_namespace,
+                                      const char *from,
+                                      const char *to);
+
+/**
  * Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
  *
  * Returns an opaque pointer to the underlying RMW session. Pass this to

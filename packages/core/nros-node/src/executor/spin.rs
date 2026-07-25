@@ -899,6 +899,23 @@ unsafe impl Sync for ComponentSlot {}
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
 pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
 
+/// Phase 305 W3 (issue 0255) — upper bound on launch remap rules held by one
+/// executor (across all its nodes). Launch files carry a handful per node;
+/// raise here if a plan legitimately outgrows it.
+pub const MAX_REMAPS: usize = 16;
+
+/// Phase 305 W3 (issue 0255) — one launch `<remap from= to=/>` rule, scoped to
+/// the node that declared it. `from`/`to` are stored RAW (as written); the
+/// lookup in [`Executor::resolve_entity_name_for`] expands both sides against
+/// the owning node's identity via `crate::names` (exact-FQN match, no
+/// wildcards).
+pub(crate) struct RemapRule {
+    pub(crate) node_name: heapless::String<64>,
+    pub(crate) namespace: heapless::String<64>,
+    pub(crate) from: heapless::String<{ crate::names::MAX_RESOLVED_NAME_LEN }>,
+    pub(crate) to: heapless::String<{ crate::names::MAX_RESOLVED_NAME_LEN }>,
+}
+
 pub struct Executor<'s> {
     pub(crate) session: SessionStore,
     /// phase-271 (issue 0110) — the six sized tables are no longer inline
@@ -998,6 +1015,13 @@ pub struct Executor<'s> {
         ),
         { crate::config::MAX_CBS },
     >,
+    /// Phase 305 W3 (issue 0255) — launch-baked per-node remap rules, keyed by
+    /// the declaring node's `(name, namespace)` identity. Entries store the
+    /// rule RAW (as written in launch); [`Self::resolve_entity_name`] expands
+    /// both sides against the owning node's identity at lookup, via the shared
+    /// `crate::names` seam (the same semantics the Rust `ExecutorSink` path
+    /// applies). Declaration order is match order (first rule wins).
+    pub(crate) remap_table: heapless::Vec<RemapRule, { MAX_REMAPS }>,
     /// Phase 216 follow-up — per-Node dispatch trampoline registry.
     ///
     /// Populated by [`Executor::register_dispatch_slot`]; walked by
@@ -1209,6 +1233,7 @@ impl<'s> Executor<'s> {
             nodes: heapless::Vec::new(),
             node_sched_table: heapless::Vec::new(),
             group_sched_table: heapless::Vec::new(),
+            remap_table: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1503,6 +1528,66 @@ impl<'s> Executor<'s> {
             self.namespace.clear();
             let _ = self.namespace.push_str(namespace);
         }
+    }
+
+    // =========================================================================
+    // Phase 305 W3 (issue 0255) — per-node launch remap table
+    // =========================================================================
+
+    /// Record one launch `<remap from= to=/>` rule for the node identified by
+    /// `(node_name, namespace)`. Rules are matched in declaration order (first
+    /// wins) by [`Self::resolve_entity_name_for`]. Errors when a string
+    /// overflows its slot or the table is at [`MAX_REMAPS`] — callers surface
+    /// this rather than silently dropping a routing rule.
+    #[allow(clippy::result_unit_err)]
+    pub fn declare_remap(
+        &mut self,
+        node_name: &str,
+        namespace: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<(), ()> {
+        let mut rule = RemapRule {
+            node_name: heapless::String::new(),
+            namespace: heapless::String::new(),
+            from: heapless::String::new(),
+            to: heapless::String::new(),
+        };
+        rule.node_name.push_str(node_name)?;
+        let ns = if namespace.is_empty() { "/" } else { namespace };
+        rule.namespace.push_str(ns)?;
+        rule.from.push_str(from)?;
+        rule.to.push_str(to)?;
+        self.remap_table.push(rule).map_err(|_| ())
+    }
+
+    /// Resolve a source-level entity name for the node identified by
+    /// `(node_name, namespace)`: ROS 2 name expansion (`~`/relative → FQN)
+    /// plus this node's declared remap rules (exact-FQN match, first rule
+    /// wins). Nodes with no rules still get expansion. Errors on an
+    /// unexpandable name (see `crate::names::expand_name`).
+    #[allow(clippy::result_unit_err)]
+    pub fn resolve_entity_name_for(
+        &self,
+        node_name: &str,
+        namespace: &str,
+        source: &str,
+    ) -> Result<crate::names::ResolvedName, ()> {
+        let ns = if namespace.is_empty() { "/" } else { namespace };
+        let rules = self
+            .remap_table
+            .iter()
+            .filter(|r| r.node_name.as_str() == node_name && r.namespace.as_str() == ns)
+            .map(|r| (r.from.as_str(), r.to.as_str()));
+        crate::names::resolve_name(source, node_name, ns, rules)
+    }
+
+    /// [`Self::resolve_entity_name_for`] against the executor's CURRENT node
+    /// identity (`set_node_identity`) — the nros-c registration sites set that
+    /// identity per node immediately before registering each entity.
+    #[allow(clippy::result_unit_err)]
+    pub fn resolve_entity_name(&self, source: &str) -> Result<crate::names::ResolvedName, ()> {
+        self.resolve_entity_name_for(self.node_name.as_str(), self.namespace.as_str(), source)
     }
 
     // =========================================================================

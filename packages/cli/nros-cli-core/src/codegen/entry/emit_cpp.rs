@@ -28,7 +28,9 @@
 
 use std::fmt::Write;
 
-use super::{Plan, QosOverrideSpec, emit_boot_config_static, sanitize_pkg};
+use super::{
+    Plan, QosOverrideSpec, emit_boot_config_static, emit_c::emit_declare_remaps, sanitize_pkg,
+};
 
 /// Phase 211.H (issue #52) — map a decomposed [`QosOverrideSpec`] to the C-ABI
 /// `(role, policy, value)` scalar codes the `nros_cpp_qos_override_t` struct
@@ -429,6 +431,9 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 }
                 let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
                 let _ = writeln!(out, "    {{");
+                // Phase 305 W3 (issue 0255) — remap rules BEFORE construction:
+                // an rclcpp-shape ctor registers entities immediately.
+                emit_declare_remaps(&mut out, n, "        ", "executor");
                 if is_rust_node(n) {
                     // Rust node: install onto the tier's explicit executor handle.
                     let pkg = sanitize_pkg(&n.pkg);
@@ -782,6 +787,9 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             let node_name = n.name.as_deref().unwrap_or(&n.exec);
             let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
             let _ = writeln!(out, "    {{");
+            // Phase 305 W3 (issue 0255) — remap rules BEFORE construction (rclcpp
+            // ctors register entities immediately). Global executor handle here.
+            emit_declare_remaps(&mut out, n, "        ", "::nros::global_handle()");
             if is_rust_node(n) {
                 // Phase 257 (W0-B) — Rust node on global executor.
                 let pkg = sanitize_pkg(&n.pkg);
@@ -965,6 +973,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: std::collections::BTreeMap::new(),
@@ -1002,6 +1011,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: std::collections::BTreeMap::new(),
@@ -1073,6 +1083,45 @@ mod tests {
         // multi-node: boot config must be all-unset (no single node name baked)
         assert!(src.contains(".set_flags  = 0,"));
         assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
+    }
+
+    // Phase 305 W3 (issue 0255) — launch `<remap>` rules bake as per-pair
+    // `nros_cpp_declare_remap` calls BEFORE construction/configure (rclcpp
+    // ctors register entities immediately; configure-shape registers there).
+    #[test]
+    fn typed_emit_remaps_declared_before_configure() {
+        let mut plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        plan.nodes[0].remaps = vec![("chatter".into(), "chatter_remapped".into())];
+        let src = emit_typed(&plan).expect("typed emit ok");
+        assert!(
+            src.contains(
+                "nros_cpp_declare_remap(::nros::global_handle(), \"talker\", \"/\", \"chatter\", \"chatter_remapped\")"
+            ),
+            "expected declare_remap call; src:\n{src}"
+        );
+        let remap_at = src.find("nros_cpp_declare_remap").unwrap();
+        let cfg_at = src.find(".configure(__nros_node_0)").unwrap();
+        assert!(remap_at < cfg_at, "remap decl must precede configure");
+    }
+
+    #[test]
+    fn typed_emit_no_remaps_no_declare_calls() {
+        // Guard: remap-free plans produce byte-identical output.
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let src = emit_typed(&plan).expect("typed emit ok");
+        assert!(!src.contains("nros_cpp_declare_remap"));
     }
 
     /// Phase 211.H (issue #52) — a configure-shape node carrying qos_overrides

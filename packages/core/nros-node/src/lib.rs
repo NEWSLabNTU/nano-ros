@@ -85,6 +85,7 @@ pub const SERVER_DISCOVERY_PROBE_TIMEOUT_MS: u32 = 1000;
 pub mod executor;
 pub mod lifecycle;
 pub mod limits;
+pub mod names;
 mod node;
 mod publisher;
 #[cfg(any(has_rmw, test))]

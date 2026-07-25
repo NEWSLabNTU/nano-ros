@@ -71,7 +71,16 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
-    let topic_info = TopicInfo::new(topic_str, type_str, hash_str)
+    // Phase 305 W3 (issue 0255) — expand `~`/relative topic names against this
+    // node's identity and apply its launch remap rules (executor-side table)
+    // before the name reaches the wire. QoS overrides below keep matching the
+    // SOURCE spelling (the plan writes them against launch names).
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let topic_info = TopicInfo::new(resolved_topic.as_str(), type_str, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
     let topic_info = match node_name_str {

@@ -14,3 +14,6 @@ name = "nros_launch_parser"
 eyre = "0.6"
 quick-xml = "0.37"
 nros-pkg-index = { path = "../nros-pkg-index" }
+
+[dev-dependencies]
+tempfile = "3.10"

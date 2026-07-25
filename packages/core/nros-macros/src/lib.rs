@@ -487,16 +487,19 @@ fn node_impl(input: TokenStream) -> TokenStream {
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
             let executor = runtime.runtime.executor_handle();
             // SAFETY: `executor` is the runtime sink's live `*mut Executor`
-            // (or null, which `install_node_typed_with_node_identity` rejects as an error).
+            // (or null, which `install_node_typed_with_launch` rejects as an error).
             // W4a — `runtime.params` carries the launch-baked `<param>` initials.
             // Phase 268 W1 — `runtime.node_identity` carries the launch `<node name= namespace=>`
             // baked by `nros::main!` so `ExecutorSink::create_node` uses the injected identity
             // instead of the `NodeOptions` default (RFC-0046). `None` → backward-compatible.
+            // Phase 305 W3 (issue 0255) — `runtime.remaps` carries the launch `<remap>` rules;
+            // `ExecutorSink::create_entity` applies them (plus `~`/relative expansion).
             match unsafe {
-                ::nros::install_node_typed_with_node_identity::<#node_ty>(
+                ::nros::install_node_typed_with_launch::<#node_ty>(
                     executor,
                     runtime.params,
                     runtime.node_identity,
+                    runtime.remaps,
                 )
             } {
                 0 => ::core::result::Result::Ok(()),

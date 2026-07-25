@@ -192,6 +192,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: std::collections::BTreeMap::new(),

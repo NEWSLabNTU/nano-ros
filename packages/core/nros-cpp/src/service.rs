@@ -103,6 +103,13 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let svc_str = resolved_svc.as_str();
+
     let mut svc_info = ServiceInfo::new(svc_str, type_str, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
@@ -195,6 +202,13 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     // record (register_service_raw_sized_on), so only the bare service name is
     // passed here — unlike the poll-style create which builds ServiceInfo itself.
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
     let result = if node_ref.node_id != 0 {
@@ -396,6 +410,13 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let svc_str = resolved_svc.as_str();
+
     let mut svc_info = ServiceInfo::new(svc_str, type_str, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
@@ -540,6 +561,13 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
     };
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
     let result = if node_ref.node_id != 0 {

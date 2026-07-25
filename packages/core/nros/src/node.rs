@@ -3361,4 +3361,85 @@ mod tests {
         assert_eq!(rt_b.resolved_name.as_str(), "default");
         assert_eq!(rt_b.resolved_ns.as_str(), "/d");
     }
+
+    // Phase 305 W3 (issue 0255) — unit test: entity source names are resolved
+    // through the launch remap seam against the node identity `create_node`
+    // stored. Applies the same `resolve_name` call shape as
+    // `ExecutorSink::create_entity` (Timer/Parameter exempt) and records the
+    // resolved wire name. No executor needed — tests the design contract.
+    #[test]
+    fn entity_names_resolved_through_launch_remaps() {
+        struct CapturingRuntime {
+            node_identity: (&'static str, &'static str),
+            remaps: &'static [(&'static str, &'static str)],
+            resolved: MetadataString,
+        }
+        impl NodeRuntime for CapturingRuntime {
+            fn create_node(&mut self, _id: NodeId<'_>, _o: NodeOptions<'_>) -> NodeResult<()> {
+                Ok(())
+            }
+            fn create_entity(&mut self, m: EntityMetadata) -> NodeResult<()> {
+                // Mirror ExecutorSink::create_entity kind gating + resolution.
+                let name = match m.kind {
+                    EntityKind::Timer | EntityKind::Parameter => m.source_name.clone(),
+                    _ => crate::node_metadata::resolve_name(
+                        m.source_name.as_str(),
+                        self.node_identity.0,
+                        self.node_identity.1,
+                        self.remaps.iter().copied(),
+                    )
+                    .map_err(|_| NodeDeclError::Runtime)?,
+                };
+                self.resolved.clear();
+                let _ = self.resolved.push_str(name.as_str());
+                Ok(())
+            }
+            fn record_callback_effect(
+                &mut self,
+                _id: CallbackId<'_>,
+                _kind: crate::node_metadata::CallbackEffectKind,
+                _entity: EntityId<'_>,
+            ) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+
+        let mut rt = CapturingRuntime {
+            node_identity: ("filter", "/sensing"),
+            remaps: &[("~/input/points", "/points_raw")],
+            resolved: MetadataString::new(),
+        };
+        {
+            let mut ctx = NodeContext::new("test_node", &mut rt);
+            let mut node = ctx
+                .create_node(NodeOptions::new("filter").namespace("/sensing"))
+                .unwrap();
+            // Remapped private name → the rule's target.
+            node.create_subscription_for_callback_name::<TestMsg>("cb", "~/input/points")
+                .unwrap();
+        }
+        assert_eq!(rt.resolved.as_str(), "/points_raw");
+
+        // Un-remapped relative name → plain expansion.
+        {
+            let mut ctx = NodeContext::new("test_node", &mut rt);
+            let mut node = ctx
+                .create_node(NodeOptions::new("filter").namespace("/sensing"))
+                .unwrap();
+            node.create_publisher_for_topic::<TestMsg>("status")
+                .unwrap();
+        }
+        assert_eq!(rt.resolved.as_str(), "/sensing/status");
+
+        // Parameter names bypass the remap seam.
+        {
+            let mut ctx = NodeContext::new("test_node", &mut rt);
+            let mut node = ctx
+                .create_node(NodeOptions::new("filter").namespace("/sensing"))
+                .unwrap();
+            node.declare_parameter_for_name("~/input/points", crate::ParameterType::Bool)
+                .unwrap();
+        }
+        assert_eq!(rt.resolved.as_str(), "~/input/points");
+    }
 }

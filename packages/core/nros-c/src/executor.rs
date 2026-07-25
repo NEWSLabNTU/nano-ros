@@ -768,6 +768,13 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
         // Propagate node identity into the executor so the underlying
         // create_subscription call gets liveliness keyexpr metadata.
         set_executor_node_identity(rust_exec, subscription_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let topic_str = __resolved_name.as_str();
 
         // Phase 104.C.8.b — when the Node was created via
         // `nros_executor_node_init`, route through `_on(NodeId, ...)`
@@ -889,6 +896,13 @@ pub unsafe extern "C" fn nros_executor_register_subscription_raw_with_info(
     {
         let rust_exec = get_executor(&mut executor._opaque);
         set_executor_node_identity(rust_exec, node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let topic_str = __resolved_name.as_str();
         let node_raw_id = if node.is_null() { 0 } else { (*node).node_id };
         let node_id =
             (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
@@ -1036,6 +1050,13 @@ pub unsafe extern "C" fn nros_executor_register_subscription_in_group(
         let context = subscription_ref.get_context();
 
         set_executor_node_identity(rust_exec, subscription_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let topic_str = __resolved_name.as_str();
 
         let node_raw_id = if subscription_ref.node.is_null() {
             0
@@ -1214,6 +1235,13 @@ pub unsafe extern "C" fn nros_executor_register_service(
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, service_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
@@ -1339,6 +1367,13 @@ pub unsafe extern "C" fn nros_executor_add_client(
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — service-client multi-Node dispatch.
         let node_raw_id = if client_ref.node.is_null() {
@@ -1529,6 +1564,13 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, server_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let action_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — action-server multi-Node dispatch.
         let node_raw_id = if server_ref.node.is_null() {
@@ -1665,6 +1707,13 @@ pub unsafe extern "C" fn nros_executor_register_action_client(
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
+        // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+        // against the identity just set (executor-side remap table).
+        let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
+            Ok(r) => r,
+            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let action_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — action-client multi-Node dispatch.
         // `spec.node_id` selects the target Node's session (or the

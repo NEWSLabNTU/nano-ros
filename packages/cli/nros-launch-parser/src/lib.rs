@@ -484,6 +484,15 @@ fn attach_group(g: GroupSpec, stack: &mut [Frame], desc: &mut LaunchDescription)
             node.namespace = Some(join_namespace(ns, node.namespace.as_deref()));
         }
     }
+    // Phase 305 W3 (issue 0255) — a group-level `<remap>` applies to every
+    // member node. Merge AFTER the node's own remaps so the closer rule wins
+    // (first-match-wins downstream), matching ROS 2 scoping. Rules stay on
+    // `g.remaps` too for tooling that reads the raw graph.
+    if !g.remaps.is_empty() {
+        for node in &mut g.nodes {
+            node.remaps.extend(g.remaps.iter().cloned());
+        }
+    }
     match stack.last_mut() {
         Some(Frame::Group(parent)) => parent.nodes.extend(g.nodes.drain(..)),
         _ => desc.groups.push(g),
@@ -643,5 +652,81 @@ fn resolve_substitution(
             "unknown substitution verb `{other}` in `{}` (supported: find, var, env)",
             here.display()
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_str(xml: &str) -> LaunchDescription {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let launch = dir.path().join("test.launch.xml");
+        fs::write(&launch, xml).expect("write launch file");
+        let index = nros_pkg_index::build_pkg_index(dir.path()).expect("pkg index");
+        parse_launch_file(&launch, &index, &[]).expect("parse launch")
+    }
+
+    // Phase 305 W3 (issue 0255) — group `<remap>` rules apply to member nodes,
+    // AFTER the node's own rules (closer rule wins under first-match-wins).
+    #[test]
+    fn group_remaps_merge_into_member_nodes() {
+        let desc = parse_str(
+            r#"<launch>
+                 <group ns="sensing">
+                   <remap from="scan" to="scan_filtered"/>
+                   <node pkg="a_pkg" exec="a">
+                     <remap from="scan" to="scan_own"/>
+                   </node>
+                   <node pkg="b_pkg" exec="b"/>
+                 </group>
+               </launch>"#,
+        );
+        assert_eq!(desc.groups.len(), 1);
+        let g = &desc.groups[0];
+        assert_eq!(g.nodes.len(), 2);
+        // Node with its own rule: own rule first, group rule appended.
+        assert_eq!(
+            g.nodes[0].remaps,
+            vec![
+                RemapSpec {
+                    from: "scan".into(),
+                    to: "scan_own".into()
+                },
+                RemapSpec {
+                    from: "scan".into(),
+                    to: "scan_filtered".into()
+                },
+            ]
+        );
+        // Node without: gets the group rule.
+        assert_eq!(
+            g.nodes[1].remaps,
+            vec![RemapSpec {
+                from: "scan".into(),
+                to: "scan_filtered".into()
+            }]
+        );
+        // The group keeps its raw rules for tooling.
+        assert_eq!(g.remaps.len(), 1);
+    }
+
+    #[test]
+    fn node_remaps_parse_without_group() {
+        let desc = parse_str(
+            r#"<launch>
+                 <node pkg="a_pkg" exec="a">
+                   <remap from="~/input" to="/wire"/>
+                 </node>
+               </launch>"#,
+        );
+        assert_eq!(desc.nodes.len(), 1);
+        assert_eq!(
+            desc.nodes[0].remaps,
+            vec![RemapSpec {
+                from: "~/input".into(),
+                to: "/wire".into()
+            }]
+        );
     }
 }

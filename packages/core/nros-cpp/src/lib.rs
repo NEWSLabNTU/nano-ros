@@ -803,6 +803,28 @@ pub struct nros_cpp_qos_override_t {
 pub(crate) const NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER: u8 = 0;
 pub(crate) const NROS_CPP_QOS_OVERRIDE_ROLE_SUBSCRIPTION: u8 = 1;
 
+/// Phase 305 W3 (issue 0255) — resolve an entity source name (`~`/relative
+/// expansion + launch remap rules) against the identity carried by the C
+/// node handle, via the executor-side remap table. Every nros-cpp entity
+/// registration funnels its topic/service/action name through this before
+/// it reaches the wire.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn resolve_node_entity_name(
+    ctx: &CppContext,
+    node_ref: &nros_cpp_node_t,
+    source: &str,
+) -> Result<nros_node::names::ResolvedName, ()> {
+    let name = core::str::from_utf8(&node_ref.name)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .unwrap_or("");
+    let ns = core::str::from_utf8(&node_ref.namespace)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .unwrap_or("/");
+    ctx.executor.resolve_entity_name_for(name, ns, source)
+}
+
 /// Fold any overrides matching `(topic, role)` into `qos`. Mirrors
 /// `nros_rmw::QosSettings::apply_overrides`: single linear scan,
 /// last-write-wins, no alloc. `overrides` may be null (`len == 0` ⇒ no-op).
@@ -1610,6 +1632,61 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
         nros_node::executor::sched_context::SchedContextId(sc_id),
     );
     NROS_CPP_RET_OK
+}
+
+/// Phase 305 W3 (issue 0255) — declare one launch `<remap from= to=/>` rule for
+/// the node identified by `(node_name, node_namespace)`. Call BEFORE the node's
+/// component registers its entities (the entry codegen emits these right after
+/// `nros_cpp_node_create`); every subsequent entity registration resolves its
+/// source name through the executor-side remap table (`~`/relative expansion +
+/// exact-FQN match, first rule wins). Errors on a full table / oversized string
+/// so a dropped routing rule is never silent.
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`.
+/// `node_name`, `from`, `to` must be valid null-terminated UTF-8 strings.
+/// `node_namespace` may be NULL (defaults to `"/"`), otherwise must be a valid
+/// null-terminated UTF-8 string.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_declare_remap(
+    handle: *mut c_void,
+    node_name: *const c_char,
+    node_namespace: *const c_char,
+    from: *const c_char,
+    to: *const c_char,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || node_name.is_null() || from.is_null() || to.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let name_str = match unsafe { cstr_to_str(node_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let ns_str = if node_namespace.is_null() {
+        "/"
+    } else {
+        match unsafe { cstr_to_str(node_namespace) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    let from_str = match unsafe { cstr_to_str(from) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let to_str = match unsafe { cstr_to_str(to) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    match ctx
+        .executor
+        .declare_remap(name_str, ns_str, from_str, to_str)
+    {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(()) => NROS_CPP_RET_FULL,
+    }
 }
 
 // ============================================================================

@@ -69,7 +69,15 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
-    let topic_info = TopicInfo::new(topic_str, type_str, hash_str)
+    // Phase 305 W3 (issue 0255) — expand `~`/relative topic names against this
+    // node's identity and apply its launch remap rules (executor-side table).
+    // QoS overrides below keep matching the SOURCE spelling.
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let topic_info = TopicInfo::new(resolved_topic.as_str(), type_str, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
     let topic_info = match node_name_str {
@@ -188,6 +196,14 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     // here — unlike the poll-style create which builds TopicInfo itself.
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
+    // against this node's identity before registering.
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let topic_str = resolved_topic.as_str();
+
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
     let node_id = if node_ref.node_id != 0 {
         Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
@@ -281,6 +297,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     };
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let topic_str = resolved_topic.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
     let node_id = if node_ref.node_id != 0 {
@@ -385,6 +408,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
     };
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let topic_str = resolved_topic.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
     let node_id = if node_ref.node_id != 0 {

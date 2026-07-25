@@ -457,6 +457,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // pair that `ExecutorSink::create_node` uses instead of the `NodeOptions` default
     // (RFC-0046). Empty (`None`) in the self-bringup arm.
     let mut node_identity_bakes: Vec<(String, String)> = Vec::new();
+    // Phase 305 W3 (issue 0255) — per-node launch `<remap from= to=/>` rules, parallel
+    // to `node_param_bakes` (model arm only). Each entry is the baked `(from, to)` slice
+    // `ExecutorSink::create_entity` matches entity source names against (exact-FQN,
+    // first rule wins). Empty in the self-bringup arm.
+    let mut node_remap_bakes: Vec<Vec<(String, String)>> = Vec::new();
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = if let Some(model_lit) = &args.model {
@@ -648,6 +653,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     })
                     .collect(),
             );
+
+            // Remaps (issue 0255) — resolved rules ride the model verbatim; the
+            // runtime seam does the `~`/relative expansion + matching.
+            node_remap_bakes.push(remap_bakes_for(inst));
 
             // Identity: bare name + namespace from the FQN.
             let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
@@ -929,8 +938,19 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     runtime.node_identity = ::core::option::Option::None;
                 },
             };
+            // Phase 305 W3 (issue 0255) — set `runtime.remaps` to this node's launch
+            // `<remap>` rules before the register call (same reset discipline as
+            // params: empty slice when the node has none, so a prior node's rules
+            // never leak into the next register).
+            let remaps = node_remap_bakes.get(i).cloned().unwrap_or_default();
+            let remap_lits = remaps.iter().map(|(from, to)| {
+                let f = LitStr::new(from, Span::call_site());
+                let t = LitStr::new(to, Span::call_site());
+                quote! { (#f, #t) }
+            });
             quote! {
                 runtime.params = &[ #( #param_lits ),* ];
+                runtime.remaps = &[ #( #remap_lits ),* ];
                 #identity_emit
                 ::#ident::register(runtime)?;
             }
@@ -2774,6 +2794,58 @@ mod custom_tasks_parser_tests {
             msg.contains("custom_tasks") && msg.contains("list of fn idents"),
             "diagnostic should mention custom_tasks list, got: {msg}"
         );
+    }
+}
+
+/// Phase 305 W3 (issue 0255) — lower one model node's `<remap>` rules into the
+/// `(from, to)` slice `nros::main!` bakes into `runtime.remaps` before that
+/// node's `register` call. Order preserved (first match wins at runtime).
+fn remap_bakes_for(inst: &ros_launch_manifest_model::NodeInstance) -> Vec<(String, String)> {
+    inst.remaps
+        .iter()
+        .map(|r| (r.from.clone(), r.to.clone()))
+        .collect()
+}
+
+#[cfg(test)]
+mod remap_bake_tests {
+    //! Phase 305 W3 (issue 0255) — a model node carrying remaps produces the
+    //! `(from, to)` bake slice in declaration order; a remap-free node bakes
+    //! an empty slice (the `runtime.remaps = &[]` reset shape).
+    use super::remap_bakes_for;
+
+    fn node_from_model_yaml(yaml: &str) -> ros_launch_manifest_model::NodeInstance {
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(yaml)
+            .expect("parse SystemModel yaml");
+        model
+            .structure
+            .nodes
+            .values()
+            .next()
+            .expect("one node in model")
+            .clone()
+    }
+
+    #[test]
+    fn model_remaps_produce_ordered_bakes() {
+        let inst = node_from_model_yaml(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /filter:\n      scope: root\n      pkg: filter_pkg\n      exec: filter\n      remaps:\n        - from: \"~/input/points\"\n          to: /points_raw\n        - from: scan\n          to: scan_filtered\n",
+        );
+        assert_eq!(
+            remap_bakes_for(&inst),
+            vec![
+                ("~/input/points".to_string(), "/points_raw".to_string()),
+                ("scan".to_string(), "scan_filtered".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn remap_free_node_bakes_empty() {
+        let inst = node_from_model_yaml(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /filter:\n      scope: root\n      pkg: filter_pkg\n      exec: filter\n",
+        );
+        assert!(remap_bakes_for(&inst).is_empty());
     }
 }
 

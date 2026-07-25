@@ -19,6 +19,35 @@ fn is_c_node(n: &super::PlanNode) -> bool {
     n.lang.as_deref() == Some("c")
 }
 
+/// Phase 305 W3 (issue 0255) — bake one `nros_cpp_declare_remap` call per
+/// launch `<remap>` pair, scoped to the node identity the entry creates the
+/// node with (name + `"/"` namespace, matching `nros_cpp_node_create` above).
+/// Must run BEFORE the component's configure registers entities. Shared by
+/// the C and C++ typed emitters (the non-drift rule).
+pub(super) fn emit_declare_remaps(
+    out: &mut String,
+    n: &super::PlanNode,
+    indent: &str,
+    exec_expr: &str,
+) {
+    let node_name = n.name.as_deref().unwrap_or(&n.exec);
+    let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
+    for (from, to) in &n.remaps {
+        let f = from.replace('\\', "\\\\").replace('"', "\\\"");
+        let t = to.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(out, "{indent}{{");
+        let _ = writeln!(
+            out,
+            "{indent}    nros_cpp_ret_t rrc = nros_cpp_declare_remap({exec_expr}, \"{name_lit}\", \"/\", \"{f}\", \"{t}\");"
+        );
+        let _ = writeln!(
+            out,
+            "{indent}    if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc;"
+        );
+        let _ = writeln!(out, "{indent}}}");
+    }
+}
+
 /// Phase 257 (W0-A, RFC-0043) — emit the **typed** C Entry TU: route each launch
 /// node to the real executor via its `NROS_C_COMPONENT` factory/configure seam,
 /// driven by the C-ABI `nros_board_native_run_components`. The C counterpart of
@@ -150,6 +179,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                     "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
                 );
                 out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
+                emit_declare_remaps(&mut out, n, "        ", "executor");
                 let _ = writeln!(
                     out,
                     "        void* self = __nros_c_component_{pkg}_create();"
@@ -331,6 +361,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
                 "        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, \"{name_lit}\", \"/\", &__nros_node_{i});"
             );
             out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
+            emit_declare_remaps(&mut out, n, "        ", "executor");
             let _ = writeln!(
                 out,
                 "        void* self = __nros_c_component_{pkg}_create();"
@@ -421,6 +452,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: std::collections::BTreeMap::new(),
@@ -505,6 +537,39 @@ mod tests {
         // Multi-node: set_flags must be 0 (not NROS_BOOT_SET_NODE_NAME).
         assert!(src.contains(".set_flags  = 0,"));
         assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
+    }
+
+    // Phase 305 W3 (issue 0255) — launch `<remap>` rules bake as per-pair
+    // `nros_cpp_declare_remap` calls BEFORE the component configure (entities
+    // register during configure, so the rules must already be in the table).
+    #[test]
+    fn typed_emit_remaps_declared_before_configure() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.nodes[0].remaps = vec![("~/out".into(), "/wire".into())];
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(
+            src.contains(
+                "nros_cpp_declare_remap(executor, \"talker\", \"/\", \"~/out\", \"/wire\")"
+            ),
+            "expected declare_remap call; src:\n{src}"
+        );
+        // Error-propagation guard.
+        assert!(src.contains("if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc"));
+        // Compare against the configure CALL (the extern forward-decl sits at
+        // the top of the TU before everything).
+        let remap_at = src.find("nros_cpp_declare_remap").unwrap();
+        let cfg_at = src
+            .find("__nros_c_component_talker_pkg_configure(&__nros_node_0")
+            .unwrap();
+        assert!(remap_at < cfg_at, "remap decl must precede configure");
+    }
+
+    #[test]
+    fn typed_emit_no_remaps_no_declare_calls() {
+        // Guard: remap-free plans produce byte-identical output (no declare block).
+        let plan = fixture_plan(&[("talker_pkg", "talker")]);
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(!src.contains("nros_cpp_declare_remap"));
     }
 
     #[test]
@@ -673,6 +738,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: Some(0), // high tier
                     group_tiers: std::collections::BTreeMap::new(),
@@ -689,6 +755,7 @@ mod tests {
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: Some(1), // low tier
                     group_tiers: std::collections::BTreeMap::new(),

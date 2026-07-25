@@ -250,6 +250,15 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    // No node handle crosses this seam (only the executor), so the executor's
+    // CURRENT identity scopes the lookup.
+    let resolved_act = match ctx.executor.resolve_entity_name(act_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let act_str = resolved_act.as_str();
+
     // Phase 104.C.9.b — `spec.node_id` routes registration through the
     // named multi-RMW Node's session (so the underlying
     // queryables/publishers land there); `None` uses the default Node.
@@ -783,6 +792,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     };
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
+    let resolved_act = match crate::resolve_node_entity_name(ctx, node_ref, act_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let act_str = resolved_act.as_str();
 
     // Register with executor — creates the ONLY ActionClientCore in the arena.
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).

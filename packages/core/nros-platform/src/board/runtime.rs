@@ -191,7 +191,12 @@ pub struct RuntimeCtx<'a> {
     /// `-p name:=value` CLI overrides.
     pub params: &'a [(&'a str, &'a str)],
 
-    /// Topic / service / action remaps: `(from, to)`.
+    /// Topic / service / action remaps: `(from, to)`, set per component by
+    /// `nros::main!` from the model's launch `<remap>` rules (phase-305 W3,
+    /// issue 0255). `nros::node!`'s `register` forwards them into
+    /// `install_node_typed_with_launch`, where entity creation expands
+    /// `~`/relative names and substitutes matching rules (exact-FQN match,
+    /// first rule wins).
     pub remaps: &'a [(&'a str, &'a str)],
 
     /// Environment-style key/value pairs (mostly POSIX). Empty on

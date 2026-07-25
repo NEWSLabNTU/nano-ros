@@ -246,6 +246,9 @@ pub use node_runtime::{
     // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
     // crate-internal — it returns the private `ComponentCell`.)
     install_node_typed,
+    // Phase 305 W3 (issue 0255) — same seam plus launch `<remap>` rules; the variant
+    // `nros::node!()` emits.
+    install_node_typed_with_launch,
     // Phase 268 W1 — same seam with both `<param>` initials AND `<node name= namespace=>`
     // identity injection; the variant `nros::node!()` now emits (RFC-0046).
     install_node_typed_with_node_identity,
@@ -300,6 +303,25 @@ pub unsafe fn install_node_typed_with_node_identity<C: node::ExecutableNode + 's
     _executor: *mut core::ffi::c_void,
     _params: &[(&str, &str)],
     _node_identity: Option<(&'static str, &'static str)>,
+) -> i32
+where
+    C::State: 'static,
+{
+    -1
+}
+
+/// Phase 305 W3 (issue 0255) — `install_node_typed_with_launch` stub for builds
+/// without the cffi runtime. Signature parity with the real impl; returns `-1`.
+///
+/// # Safety
+/// The stub dereferences nothing.
+#[cfg(not(feature = "rmw-cffi"))]
+#[doc(hidden)]
+pub unsafe fn install_node_typed_with_launch<C: node::ExecutableNode + 'static>(
+    _executor: *mut core::ffi::c_void,
+    _params: &[(&str, &str)],
+    _node_identity: Option<(&'static str, &'static str)>,
+    _remaps: &[(&str, &str)],
 ) -> i32
 where
     C::State: 'static,

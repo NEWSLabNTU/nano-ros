@@ -242,7 +242,7 @@ fn non_qos_params_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec
 /// for symbol-name use). `exec` and `name` come straight from the
 /// launch XML; today only `pkg` drives codegen (the per-pkg mangled
 /// register symbol is keyed on it), but the `exec` / `name` fields
-/// stay on the IR so future `<param>` / `<remap>` routing has them.
+/// stay on the IR for `<param>` / `<remap>` routing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlanNode {
     pub pkg: String,
@@ -284,6 +284,12 @@ pub struct PlanNode {
     /// Launch `<param name= value=>` initials (NON-qos params; qos ones go to
     /// `qos_overrides`). Preserved in launch-file order. (#116)
     pub params: Vec<(String, String)>,
+    /// Phase 305 W3 (issue 0255) — launch `<remap from= to=/>` rules `(from, to)`,
+    /// in launch declaration order (node-level rules first, then group-level —
+    /// first match wins at runtime). The typed emitters bake one
+    /// `nros_cpp_declare_remap` call per pair so entity registration resolves
+    /// `~`/relative names + substitutes matches (executor-side table).
+    pub remaps: Vec<(String, String)>,
     /// Per-component callback-group names (from cmake metadata). Empty until the
     /// W4 cmake surface lands. (#119)
     pub callback_groups: Vec<String>,
@@ -472,6 +478,11 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             host: n.machine.clone(),
             qos_overrides: qos_overrides_from_params(&n.params),
             params: non_qos_params_from_params(&n.params),
+            remaps: n
+                .remaps
+                .iter()
+                .map(|r| (r.from.clone(), r.to.clone()))
+                .collect(),
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers: BTreeMap::new(),
@@ -661,6 +672,11 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             host: model.execution.deploy.get(fqn).and_then(|d| d.host.clone()),
             qos_overrides: Vec::new(),
             params,
+            remaps: inst
+                .remaps
+                .iter()
+                .map(|r| (r.from.clone(), r.to.clone()))
+                .collect(),
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers,
@@ -893,6 +909,7 @@ mod tests {
             host: None,
             qos_overrides: Vec::new(),
             params: Vec::new(),
+            remaps: Vec::new(),
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers: BTreeMap::new(),
@@ -916,6 +933,7 @@ mod tests {
             host: host.map(str::to_string),
             qos_overrides: Vec::new(),
             params: Vec::new(),
+            remaps: Vec::new(),
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers: BTreeMap::new(),
@@ -1065,6 +1083,7 @@ mod tests {
                 host: None,
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
+                remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: BTreeMap::new(),
@@ -1329,6 +1348,7 @@ autostart = "active"
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: None,
                     group_tiers: BTreeMap::new(),
@@ -1345,6 +1365,7 @@ autostart = "active"
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: None,
                     group_tiers: BTreeMap::new(),
@@ -1445,6 +1466,7 @@ autostart = "active"
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: None,
                     group_tiers: ctrl_gt,
@@ -1461,6 +1483,7 @@ autostart = "active"
                     host: None,
                     qos_overrides: Vec::new(),
                     params: Vec::new(),
+                    remaps: Vec::new(),
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: None,
                     group_tiers: telem_gt,
@@ -1531,6 +1554,7 @@ autostart = "active"
                 host: None,
                 qos_overrides: Vec::new(),
                 params: Vec::new(),
+                remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: BTreeMap::new(),

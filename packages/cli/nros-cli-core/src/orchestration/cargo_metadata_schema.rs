@@ -276,6 +276,13 @@ pub struct ComponentMetadata {
     /// `from` → `to` topic / service remaps, mirroring rclpy / rclcpp.
     /// Aliased to [`RemapRule`] (already `{from, to}`-shaped in
     /// `super::schema`) to avoid creating a duplicate type.
+    ///
+    /// TODO(issue 0255): component-default remaps are parsed but not yet
+    /// routed into entry codegen — phase-305 W3 wired the launch/model remap
+    /// inputs (`NodeSpec.remaps` / `NodeInstance.remaps`) into
+    /// `PlanNode.remaps`; threading THIS metadata source through the planner
+    /// into the same field (launch rules win over component defaults) is the
+    /// remaining input.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remaps: Vec<RemapRule>,
     /// Phase 228.A (RFC-0015) — callback groups the node declares (it owns its

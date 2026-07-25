@@ -171,6 +171,14 @@ impl SourceNameKind {
     }
 }
 
+/// Phase 305 W3 (issue 0255) — the ONE name-resolution seam: ROS 2 source-name
+/// expansion (`~`/relative → FQN, ns=`/` collapse) + launch remap substitution
+/// (exact-FQN match, first rule wins; no wildcards). Implemented in
+/// `nros_node::names` so both the Rust `ExecutorSink` and the C-ABI
+/// executor-side remap table share one lowering; re-exported here next to
+/// [`SourceNameKind`] as the source-metadata-level entry point.
+pub use nros_node::names::{MAX_RESOLVED_NAME_LEN, ResolvedName, expand_name, resolve_name};
+
 /// Stable source-level identifier required for component-mode declarations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntityId<'a>(pub &'a str);
@@ -1360,6 +1368,54 @@ mod tests {
         assert_eq!(
             SourceNameKind::from_source_name("scan"),
             SourceNameKind::Relative
+        );
+    }
+
+    // Phase 305 W3 (issue 0255) — the expansion/remap seam as re-exported here.
+    // The exhaustive rule matrix lives with the impl (`nros_node::names`);
+    // these pin the metadata-level contract each `SourceNameKind` maps to.
+    #[test]
+    fn expand_name_covers_each_source_name_kind() {
+        // Absolute: unchanged.
+        assert_eq!(
+            expand_name("/scan", "lidar", "/sensing").unwrap().as_str(),
+            "/scan"
+        );
+        // Private: node-FQN prefixed; ns=/ collapses.
+        assert_eq!(
+            expand_name("~/scan", "lidar", "/sensing").unwrap().as_str(),
+            "/sensing/lidar/scan"
+        );
+        assert_eq!(
+            expand_name("~/scan", "lidar", "/").unwrap().as_str(),
+            "/lidar/scan"
+        );
+        // Relative: namespace prefixed; ns=/ collapses.
+        assert_eq!(
+            expand_name("scan", "lidar", "/sensing").unwrap().as_str(),
+            "/sensing/scan"
+        );
+        assert_eq!(expand_name("scan", "lidar", "/").unwrap().as_str(), "/scan");
+    }
+
+    #[test]
+    fn resolve_name_substitutes_first_matching_rule() {
+        let remaps = [
+            ("~/scan", "/points_raw"),
+            ("/sensing/lidar/scan", "/ignored"),
+        ];
+        assert_eq!(
+            resolve_name("~/scan", "lidar", "/sensing", remaps)
+                .unwrap()
+                .as_str(),
+            "/points_raw"
+        );
+        // No match → the expansion stands.
+        assert_eq!(
+            resolve_name("other", "lidar", "/sensing", [("/x", "/y")])
+                .unwrap()
+                .as_str(),
+            "/sensing/other"
         );
     }
 
