@@ -60,7 +60,17 @@ mod static_subscriber_storage {
 
     use portable_atomic::{AtomicBool, Ordering};
 
-    const SLOT_COUNT: usize = 4;
+    // Issue 0269 — the pool size is build-time configurable via
+    // `NROS_RMW_SUBSCRIBER_SLOTS` (build.rs, default 8). The old
+    // hardcoded 4 silently capped every embedded session at four
+    // subscriptions: the fifth `create_subscription` hit the exhausted
+    // pool, returned BAD_ALLOC, and the executor surfaced it as an
+    // opaque `SubscriberCreationFailed` (the autoware_sentinel comp-all
+    // wall — every std target Boxes instead and never sees a limit).
+    const SLOT_COUNT: usize = crate::parse_env_usize(
+        env!("NROS_RMW_SUBSCRIBER_SLOTS"),
+        "NROS_RMW_SUBSCRIBER_SLOTS must be a decimal integer",
+    );
     const SLOT_SIZE: usize = 1024;
     const SLOT_ALIGN: usize = 16;
 

@@ -2901,7 +2901,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         // Phase 231 Wave 0.2 (RFC-0038) — in-place dispatch when the backend
@@ -3030,7 +3030,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
         let handle_id = self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)?;
         // Phase 104.C.4 — apply Node's default SchedContext.
@@ -3094,7 +3094,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
@@ -3173,7 +3173,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
@@ -3249,7 +3249,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
@@ -3393,7 +3393,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
@@ -3469,7 +3469,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
@@ -3863,7 +3863,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
@@ -3948,7 +3948,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<RX_BUF>>()?;
@@ -4031,7 +4031,7 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             session
                 .create_subscription(&topic, qos)
-                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+                .map_err(NodeError::Transport)?
         };
 
         let offset = self.arena_alloc::<Entry<RX_BUF>>()?;

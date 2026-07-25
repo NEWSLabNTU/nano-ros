@@ -16,6 +16,7 @@
 
 fn main() {
     emit_max_backends();
+    emit_subscriber_slots();
     maybe_build_c_stub();
 }
 
@@ -39,6 +40,33 @@ fn emit_max_backends() {
     }
 
     println!("cargo:rustc-env=NROS_RMW_MAX_BACKENDS={parsed}");
+}
+
+/// Issue 0269 — size the embedded (`target_os = "none"`, no-std)
+/// subscription-handle pool in `rust_adapter::static_subscriber_storage`.
+/// The old hardcoded 4 silently capped a session at four subscriptions:
+/// the fifth `create_subscription` returned BAD_ALLOC, which the
+/// executor then surfaced as an opaque `SubscriberCreationFailed`.
+fn emit_subscriber_slots() {
+    println!("cargo:rerun-if-env-changed=NROS_RMW_SUBSCRIBER_SLOTS");
+
+    let raw = std::env::var("NROS_RMW_SUBSCRIBER_SLOTS").unwrap_or_else(|_| "8".to_string());
+    let parsed: usize = raw.trim().parse().unwrap_or_else(|err| {
+        panic!(
+            "NROS_RMW_SUBSCRIBER_SLOTS=\"{raw}\" is not a valid usize: {err}. \
+             Set a positive integer (default 8)."
+        )
+    });
+
+    if !(1..=128).contains(&parsed) {
+        panic!(
+            "NROS_RMW_SUBSCRIBER_SLOTS={parsed} out of range [1, 128]. Each \
+             slot is a 1 KiB static; bump the upper bound only with the \
+             memory budget in hand."
+        );
+    }
+
+    println!("cargo:rustc-env=NROS_RMW_SUBSCRIBER_SLOTS={parsed}");
 }
 
 fn maybe_build_c_stub() {
