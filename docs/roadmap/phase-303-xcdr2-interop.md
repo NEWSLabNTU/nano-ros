@@ -1,6 +1,9 @@
 # Phase 303 — XCDR2 + extensibility: modern ROS 2 wire interop
 
-Implements **RFC-0055** (wire encoding). Roots: issue **#0267** (Control
+Implements **RFC-0055** (wire encoding); the encoding default + extensibility it
+turns on are **fields of the ROS-edition profile** (**RFC-0056**) — `humble`
+keeps XCDR1, `jazzy`+ turns on XCDR2. Sibling phase **phase-41** owns the other
+edition-profile field (RIHS01 type hash for Iron+). Roots: issue **#0267** (Control
 mis-walked after a `domain_bridge` republish — nano-ros CDR proven canonical,
 the gap is the missing DHEADER + implicit type extensibility) and the adjacent
 serialization gaps (big-endian read, type-hash/RIHS).
@@ -69,6 +72,19 @@ diagnostic gate that unblocks the rest:
   both-descriptor extensibility are documented in #0267; the fix direction
   (W2/W3 vs idlc-default vs distro-gated annotation) is chosen with evidence,
   not inference.
+
+### W1b — extend the ROS-edition axis (RFC-0056) for `jazzy`
+
+Prerequisite for gating the encoding profile: add the `ros-jazzy` feature +
+`generated/jazzy/` interface dir, and make the wire-encoding default a
+**profile field selected by the edition** (like `nros-rmw-zenoh::keyexpr`
+already selects the type-hash tail by `ros-iron`). `humble` → XCDR1 (unchanged,
+parity intact); `jazzy` → the XCDR2 path (W2–W4).
+
+- *Accept:* a `ros-jazzy` build selects the XCDR2 encoding profile while a
+  `ros-humble` build is byte-identical to today (the `rosidl_adapter` parity
+  suite + the XCDR1 compat suite stay green); the profile is read from RFC-0056's
+  table, not scattered `#[cfg]`s.
 
 ### W2 — `nros-serdes` XCDR2 writer
 

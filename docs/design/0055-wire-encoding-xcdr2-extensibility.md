@@ -174,6 +174,12 @@ Consequences for the design:
   XCDR1/FINAL on the cyclone wire, while Iron/Jazzy+ moved toward
   APPENDABLE/XCDR2. Extensibility is therefore **distro/peer-matched or
   negotiated, never blanket-emitted**.
+- The distro is a first-class build selection — the **ROS edition axis**
+  (RFC-0056). The wire-encoding default + extensibility this RFC designs are
+  **fields of that axis's per-edition profile**, not a standalone knob: `humble`
+  keeps the XCDR1/`rosidl_adapter`-parity behavior, `jazzy`+ turns on the XCDR2
+  path below. This RFC owns the ENCODING mechanism (DHEADER, negotiation);
+  RFC-0056 owns WHICH profile applies per distro.
 - This re-opens the #0267 diagnosis: if the nano-ros cyclone `.idl` matches
   Humble exactly, the corruption implies the downstream is NOT pure-Humble
   (a newer-distro reader decoding Humble XCDR1 data as XCDR2/appendable), OR

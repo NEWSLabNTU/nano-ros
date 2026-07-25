@@ -4,6 +4,13 @@
 **Priority: Low**
 **Prerequisites:** Phase 16 (ROS 2 interop — complete for Humble)
 
+> **Part of the ROS-edition axis ([RFC-0056](../design/0056-ros-edition-axis.md)).**
+> RIHS01 type hash is one field of the per-edition interop profile; the wire
+> encoding / extensibility field is [RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)
+> / [phase-303](phase-303-xcdr2-interop.md). Both feed the same axis — extending
+> to a new distro (jazzy/rolling) needs BOTH the type hash (here) and the
+> encoding profile (there).
+
 ## Goal
 
 Add RIHS01 type hash computation for ROS 2 Iron and later distros, enabling nros ↔ ROS 2 Iron+ interoperability.

@@ -32,7 +32,10 @@ never cross-implied:
 - **RMW**: `rmw-{zenoh,xrce,cyclonedds,uorb}` (uorb is the PX4 C++-only port; dust-dds retired).
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}` (plus an esp-idf
   platform integration for ESP32 targets).
-- **ROS edition**: `ros-{humble,iron}`.
+- **ROS edition**: `ros-{humble,iron}` (`jazzy`/`rolling` planned) — a per-distro
+  **interop profile** (type hash, wire encoding/extensibility, interface set),
+  RFC-0056. Unlike RMW/platform, edition is a *functional* feature ordinary
+  crates may branch on (e.g. `nros-rmw-zenoh::keyexpr` selects the type-hash tail).
 
 `nros` default features are `["std"]` only; the user picks each axis explicitly. **RMW is a
 declared, language-agnostic selection** (`system.toml` / deploy override / CLI flag), *lowered* by
