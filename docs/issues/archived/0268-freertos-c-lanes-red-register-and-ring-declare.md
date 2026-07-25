@@ -1,7 +1,7 @@
 ---
 id: 268
 title: "freertos C lanes RED: executor register_subscription -1 + z_declare_subscriber (ring) -128 — pubsub/service/action all deliver nothing"
-status: open
+status: resolved
 type: bug
 severity: high
 area: freertos
@@ -70,3 +70,51 @@ Bisect start: last known-green for these lanes is unclear (lane is
 toolchain-gated; skips on hosts without arm-none-eabi-gcc — the 0232
 false-green class for this family). Check `main.c:128`'s register call +
 the freertos C executor storage header first; then the zenoh-pico pin.
+
+## Root cause (2026-07-25, confirmed end-to-end)
+
+NOT a code regression — the **sizes-header MIRROR race** (the
+0088/0114/0122/0123 recurring class) on the freertos C cmake-fixture build
+path, triggered by `63d271f43` (296-W3b.4 rate-monitor machinery):
+
+1. The commit grew the Rust `Executor` (`monitor_states: [MonitorState;
+   MAX_MONITORS]` + violations Vec) — `NROS_EXECUTOR_STORAGE_SIZE` 80696 →
+   81032.
+2. Incremental fixture rebuilds regenerated the probe's header but left the
+   build tree's SHADOW COPY on the include path stale — the same tree held
+   BOTH values (`nano_ros/packages/core/nros-c/nros_config_generated.h` =
+   81032, `…/nros-c/include/nros/nros_config_generated.h` = 80696), and the
+   TU compiled against the stale one.
+3. C `nros_executor_t._opaque` (sized 80696) received a placement-new of the
+   81032-byte Rust Executor → **336-byte overflow** → corrupted adjacent
+   memory → `nros_executor_register_subscription -> -1`, the zenoh session
+   killed its own link right after the transport handshake (router log:
+   handshake OK, guest-side EOF 17 ms later), `z_declare_subscriber (ring)
+   -128`.
+4. **Clean rebuild ⇒ one consistent header ⇒ all three freertos C lanes
+   PASS** (pubsub/service/action 3/3, solo).
+
+Full-stack bisect (fixtures + harness rebuilt per step) converged on
+`63d271f43`; zenoh-pico pin (87f7a84d drain), the 294 C-serialize
+convention, port values, host firewall, and TX batching were each ruled out
+empirically. (An earlier harness-only bisect result of `733dfd9ed` was an
+artifact — a partial old-commit fixture build re-baked locator ports and
+made good/bad track port-match instead of the defect.)
+
+### Class gap left open
+
+The build-side stale probe self-heals via cmake/ninja incremental — but the
+incremental graph does NOT refresh the include-path shadow of
+`nros_config_generated.h` on this path, so a museum header keeps compiling
+(exactly the issue-0196 "probe and gate must watch the same inputs" rule,
+build-side). The known class fix (the `nros_c_config_header` mirror target
+as a prerequisite of every consuming TU — the phase-mixed-umbrella
+treatment) needs applying to the freertos/plain cmake-fixture path.
+Follow-up filed as the recurrence datapoint on the mirror class rather than
+a new mechanism.
+
+Diagnostic breadcrumbs worth keeping: ZENOHD_LOG=debug gives per-port
+router logs in test-logs/fixtures/ (guest handshake visibility);
+`strings <fixture> | grep tcp/` reads the baked locator; a mid-bisect
+partial fixture build poisons every later run's port pairing — rebuild
+fixtures at the FINAL checkout before trusting any verdict.

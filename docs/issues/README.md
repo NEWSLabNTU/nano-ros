@@ -44,13 +44,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#268** — freertos C lanes RED (pubsub/service/action deliver nothing):
-`nros_executor_register_subscription -> -1` then `z_declare_subscriber
-(ring) failed: -128`; C+freertos only (rust freertos + native C green).
-Fresh-fixture solo repro; candidate windows = 294 C-serialize, 296-W5.x
-freertos, zenoh-pico 87f7a84d bump, executor-storage mirror class. See
-`0268-freertos-c-lanes-red-register-and-ring-declare.md`.
-
 Recently resolved: **#261–#265** — phase-302 tier-knob honesty: posix caps truthed
 (edf/reservation false, affinity true via the 296-W5.13 consumer), zephyr stack + posix
 stack/advisory fail-loud, nuttx Rust tier priority adopted (marker e2e), sched_class
@@ -134,8 +127,6 @@ now the boot tier stays Fifo + skips kernel sporadic (non-owner tiers still real
 matching the C++ per-handle-bind behaviour). Cell green solo 6/6 — `archived/0246-*`. (riscv trio
 lane-name mismatch left as a separate test-plumbing note in the archived issue.)
 
-=======
->>>>>>> 40591bec3 (docs(301): phase complete — resolve + archive 0240/0241)
 Recently resolved: **#236** — multihost `machine=` fully closed: play_launch carries `machine`→`deploy.host` (46.1) and rlm `6d64202` makes machine-only deploys UNPLACED (`Deploy.target: Option`); nano-ros slices treat unplaced as board-agnostic (host filter partitions), `zephyr_entry_robot1` migrated — `archived/0236-*`.
 
 Recently resolved: **#245** — zephyr C/C++ multi-tier heap-corruption crash: executor storage was a
@@ -144,6 +135,15 @@ tail overwrote the next sys_heap chunk, subscriber-delivery-gated; fixed by `__h
 generated `NROS_CPP_EXECUTOR_STORAGE_SIZE` (+ guarded-include on the freertos/nuttx mirrors —
 NuttX-arm was 856 bytes from the same cliff); all three zephyr realtime cells green —
 `archived/0245-*`.
+
+Recently resolved: **#268** — freertos C lanes red = the sizes-header MIRROR
+race recurring (0088/0114 class): 296-W3b.4 grew the Executor, the
+include-path shadow of `nros_config_generated.h` stayed stale on incremental
+fixture rebuilds → 336-byte `_opaque` placement overflow → register -1 +
+session self-close on first TX (`declare -128`). Clean rebuild = 3/3 green.
+Full-stack bisect → `63d271f43`; zenoh-pico/294-serialize/ports ruled out.
+Class gap (mirror not in the incremental graph on this path) noted inside.
+See `archived/0268-*`.
 
 Recently resolved: **#239** — RMW ABI hand-mirror now field-parity gated
 (`check-rmw-abi-mirror`: vtable 36 slots + 8 entity structs, ordered names;
