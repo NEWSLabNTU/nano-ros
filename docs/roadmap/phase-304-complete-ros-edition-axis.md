@@ -308,8 +308,37 @@ is not).
   the golden values **W1** asserts against — the capture is the W1 prerequisite.
 - `nros_tests::ros2` is now distro-parametric: `is_ros2_distro_available(distro)`
   (bare-identifier-guarded) generalizes the hard-coded `/opt/ros/humble` check;
-  `is_ros2_available()` keeps the humble default. The container-peer harness
-  (B1) + the RFC-0051 edition matrix axis are the remaining W4 pieces.
+  `is_ros2_available()` keeps the humble default.
+
+**W4 LANDED (2026-07-25) — offline fixture test + Tier-B1 container oracle.**
+
+The interop-critical invariant is the keyexpr TYPE-HASH TAIL: a Jazzy peer and a
+`ros-jazzy`-built nano-ros node interop iff their RIHS01 for the type matches.
+Two tests pin it, split so the always-run half needs no ROS:
+
+- **`edition_type_hash_offline.rs`** (rosidl-bindgen, CI, NO ROS) — drives the
+  committed `fixtures/ros-editions/jazzy/{hashes.txt,srv-hashes.txt}` as DATA:
+  the `rihs` engine reproduces the captured hashes for every type nano-ros can
+  reconstruct (Int32, Header, Twist, SetBool + members). Re-capture updates the
+  expected values automatically.
+- **`edition_hash_oracle.rs`** (rosidl-bindgen, docker-gated Tier-B1 peer) — runs
+  a live `ros:jazzy-ros-base` container as an oracle, reads the real RIHS01 a
+  Jazzy node emits (share type-description JSON), asserts it still equals the
+  committed fixture (a distro-DRIFT guard). Clean skip when docker/the image is
+  absent. VERIFIED here: 7 committed Jazzy hashes current against the live
+  container.
+
+Chain: engine == fixture (offline) + fixture == live Jazzy (oracle) ⟹ engine ==
+live Jazzy — i.e. nano-ros's keyexpr tail equals a real Jazzy node's.
+
+**W4 REMAINING (needs a provisioned host, not runnable here):** the full
+nano↔Jazzy WIRE lane — a `ros-jazzy`-built nano-ros listener + a container Jazzy
+`ros2 topic pub` over a shared zenohd — proving end-to-end DELIVERY (not just the
+hash). Blocked on (a) building the nano-ros jazzy stack and (b) a container image
+carrying `rmw_zenoh_cpp` (ros-base lacks it). Edition interop lanes are
+hand-picked cells (like the cyclone/xrce lanes, RFC-0051 §), NOT a 7th
+combinatorial matrix axis — an edition axis would multiply the QEMU-runtime
+`Cell` set for zero value, since edition doesn't affect a runtime fixture cell.
 
 ### W5 — encoding field per edition (coordinates phase-303 W1b)
 
@@ -320,6 +349,13 @@ open-Q5 / #0267) — do not build the XCDR2 encoder before the live-peer evidenc
 
 - *Accept:* deferred to phase-303 W1b acceptance; recorded here so the axis's
   encoding field is not forgotten.
+
+**W5 STATUS (2026-07-25): still BLOCKED — no code this pass, by design.** The
+encoding-profile field stays doc-only: adding a `RosEdition::wire_encoding()`
+that returned `Xcdr2` for jazzy would MISREPRESENT capability (nano-ros serializes
+XCDR1 only; the XCDR2 encoder is phase-303, gated on the #0267 live capture). The
+axis's encoding dimension is recorded here + in RFC-0056 §"per-edition interop
+profile"; it lands with phase-303 W1b, not before.
 
 ## Non-goals
 
