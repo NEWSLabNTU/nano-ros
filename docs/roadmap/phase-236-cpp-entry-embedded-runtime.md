@@ -300,6 +300,29 @@ for ASI) folds into 240.3/240.7.
 - [ ] ASI `actuation_module` runs its `controller` node through the
       generated Entry path on FVP, output observed by stock ROS 2.
 
+## Folded in: issue 0254 — rclcpp_compat surface gaps (2026-07-26)
+
+The autoware-safety-island ports (2026-07-24) found `rclcpp_compat.hpp`
+covers only pub/sub/timer/QoS/log, so every ported Autoware node had to
+drop to the `nros::ComponentNode` shape. Missing on `rclcpp::Node`:
+
+- `create_service` / service clients (`async_send_request` + futures)
+- `declare_parameter<T>` no-default (required-param) form
+- `this->now()` / `get_clock()` / `rclcpp::Time` arithmetic /
+  `rclcpp::Rate::period()`
+- `add_on_set_parameters_callback` +
+  `rcl_interfaces::msg::SetParametersResult` (runtime reconfigure —
+  dropped in the ports)
+- `rclcpp::create_timer(node, clock, period, cb)` free function
+
+`ComponentNode` already covers most of the runtime, so the work is
+**compat-surface aliasing + a clock story**, not new runtime — which is
+why it belongs to this phase (the C++ Entry/runtime line) rather than a
+standalone fix. Detail: simple-autoware-safety-island
+`docs/porting-notes.md` entries 01/03/05/06. Add as a work item when
+236.D lands the real NodeContext runtime: the compat header can only
+alias what the runtime actually provides.
+
 ## Notes / cross-refs
 
 - This phase is the missing runtime half of RFC-0032; see RFC-0032

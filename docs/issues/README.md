@@ -84,10 +84,6 @@ explicit extensibility + representation negotiation). See `0267-*`.
 workspaces die at boot `ExecutorFull` with no build-time hint. The entry codegen knows the
 model's entity counts — derive or validate the knob. See `0257-*`.
 
-**#254** — rclcpp_compat lacks services/params/clock/param-callbacks — real Autoware nodes
-fall back to the ComponentNode shape. Extend the compat surface. See `0254-*`.
-(#254-#258 all from the simple-autoware-safety-island port, 2026-07-24.)
-
 **#278** — no polling subscriber / blocking service futures: mrm_handler-class ports weaken to
 cache-latest subs + send-and-poll service calls (semantic weakening of the safety path,
 documented in-source). take()-style sub + bounded-wait call wanted. See `0278-*`.
