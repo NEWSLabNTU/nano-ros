@@ -124,6 +124,16 @@ before they're committed to fixture tests.
   `RIHS01_<sha256-of-the-above>` — **unverified**, compute via Jazzy
   `ros2 interface hash std_msgs/msg/Int32` to confirm.
 
+  **Engine output (phase-304 W1, 2026-07-25):** the `rosidl_codegen::rihs`
+  engine SHA-256s the exact canonical JSON above to
+  `RIHS01_22ff2de7c2a194b0515c3169c17368e86ab95adbcdb2b6e6e05d5f5e011f99b6`.
+  This is a REGRESSION snapshot of the engine (locked in
+  `rihs::tests::rihs01_has_the_right_shape_and_is_deterministic`), NOT yet a
+  confirmed REP-2011 value — the phase-304 W4 capture script
+  (`scripts/ros/capture-edition-fixtures.sh jazzy`) cross-checks it against a
+  live Jazzy host. A diff between the two means the canonical form (§2) needs a
+  fix, not the snapshot.
+
 - **`example_interfaces/srv/AddTwoInts`** — `.srv` is `int64 a; int64
   b\n---\nint64 sum`. Top-level has three NESTED_TYPE fields; three
   referenced messages, alphabetically: `_Event`, `_Request`,

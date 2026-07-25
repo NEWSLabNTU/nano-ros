@@ -84,9 +84,26 @@ Replace `RosEdition::type_hash()`'s Iron placeholder with the REP-2011 RIHS01
 implement the canonical type-description form + SHA-256, gate the real hash on
 `iron`+ (keep the Humble `TypeHashNotSupported`).
 
-- *Accept:* the Rust computation reproduces the Tier-A captured reference
-  hashes for the fixture set byte-for-byte; the keyexpr + liveliness token carry
-  the real hash on an `iron`/`jazzy` build; `humble` unchanged.
+**W1 engine LANDED (2026-07-25):** `rosidl_codegen::rihs` — the pure engine.
+`FieldTypeDesc`/`FieldDesc`/`IndividualTypeDescription`/`TypeDescription` (the
+REP-2011 type-id enum + array/sequence offsets), `to_hashable_json` (libyaml-flow
+canonical form, fixed key order, referenced-types sorted / fields kept), and
+`rihs01` (SHA-256 → `RIHS01_<64hex>`). Verified: the canonical JSON matches the
+research doc's documented `std_msgs/msg/Int32` reference BYTE-FOR-BYTE; the
+engine's Int32 hash is snapshot-locked
+(`RIHS01_22ff2de7…f99b6`) as a regression guard. rihs.rs is clippy-clean.
+
+**W1b REMAINING:** (a) build the `TypeDescription` DAG from the parsed
+`.msg`/`.srv`/`.action` AST (nested-type closure + type-id mapping + service
+`_Event` synthesis); (b) run `scripts/ros/capture-edition-fixtures.sh jazzy` and
+assert the engine reproduces the captured Jazzy hashes (confirms the snapshot is
+the REAL REP-2011 value, not just deterministic); (c) wire `rihs01` into
+`RosEdition::type_hash()` / the per-type generated `TYPE_HASH` so iron/jazzy
+builds carry the real hash instead of the placeholder.
+
+- *Accept (W1b):* the engine reproduces the Tier-A captured reference hashes for
+  the fixture set byte-for-byte; the keyexpr + liveliness token carry the real
+  hash on an `iron`/`jazzy` build; `humble` unchanged.
 
 ### W2 — unify edition selection (`[system].ros_edition`, RFC-0056 open-Q1)
 

@@ -1,6 +1,8 @@
 pub mod config;
 pub mod generator;
 pub mod idl_generator;
+/// phase-304 W1 (RFC-0056) — REP-2011 RIHS01 type-hash engine.
+pub mod rihs;
 pub mod templates;
 pub mod types;
 pub mod utils;
