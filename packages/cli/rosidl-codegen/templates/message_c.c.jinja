@@ -56,6 +56,9 @@ int32_t {{ struct_name }}_serialize_inline(const {{ struct_name }}* msg, uint8_t
     if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
     uint8_t* ptr = *ptr_ref;
     (void)origin; // may be unused for empty structs
+    // phase-303 W4 (#0267) — XCDR2 DHEADER wrap (no-op / returns -1 under XCDR1).
+    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    if (__dh < -1) return -1;
 {%- if has_fields %}
 {%- for field in fields %}
 {%- if field.is_primitive %}
@@ -92,6 +95,7 @@ int32_t {{ struct_name }}_serialize_inline(const {{ struct_name }}* msg, uint8_t
 {%- endif %}
 {%- endfor %}
 {%- endif %}
+    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }
@@ -106,12 +110,9 @@ int32_t {{ struct_name }}_serialize(const {{ struct_name }}* msg, uint8_t* buffe
     uint8_t* ptr = buffer;
     const uint8_t* end = buffer + buffer_size;
 
-    // Write CDR header (little-endian, version 1)
-    if (ptr + 4 > end) return -1;
-    *ptr++ = 0x00; // CDR encapsulation
-    *ptr++ = 0x01; // Little-endian
-    *ptr++ = 0x00; // Options (unused)
-    *ptr++ = 0x00; // Options (unused)
+    // Write the edition-appropriate CDR encapsulation header (XCDR1 `00 01` or
+    // XCDR2 DELIMITED `00 09`) — phase-303 W4 (#0267).
+    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
 
     if ({{ struct_name }}_serialize_inline(msg, &ptr, end, origin) < 0) return -1;
@@ -128,6 +129,9 @@ int32_t {{ struct_name }}_serialize(const {{ struct_name }}* msg, uint8_t* buffe
 int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin) {
     if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
     const uint8_t* ptr = *ptr_ref;
+    // phase-303 W4 (#0267) — XCDR2 DHEADER read (no-op / -1 under XCDR1).
+    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    if (__dh < -1) return -1;
     (void)origin;
 {%- if has_fields %}
 {%- for field in fields %}
@@ -220,6 +224,7 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
 {%- endif %}
 {%- endfor %}
 {%- endif %}
+    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }

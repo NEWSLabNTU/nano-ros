@@ -31,11 +31,40 @@ pub enum EncodingVersion {
 #[derive(Debug, Clone, Copy)]
 pub struct DHeaderMark(Option<usize>);
 
+impl DHeaderMark {
+    /// The reserved DHEADER byte offset (XCDR2), or `None` under XCDR1. Lets the
+    /// C FFI carry the mark across the `extern "C"` boundary (phase-303 W4).
+    #[inline]
+    pub fn raw(self) -> Option<usize> {
+        self.0
+    }
+
+    /// Reconstruct a mark from its [`raw`](Self::raw) offset (FFI round-trip).
+    #[inline]
+    pub fn from_raw(at: Option<usize>) -> Self {
+        DHeaderMark(at)
+    }
+}
+
 /// Opaque scope returned by [`CdrReader::begin_dheader`], passed back to
 /// [`CdrReader::end_dheader`]. Under XCDR1 it carries nothing (no-op); under
 /// XCDR2 it holds the absolute buffer offset of the delimited struct's end.
 #[derive(Debug, Clone, Copy)]
 pub struct DHeaderScope(Option<usize>);
+
+impl DHeaderScope {
+    /// The delimited struct's end offset (XCDR2), or `None` under XCDR1 (FFI).
+    #[inline]
+    pub fn raw(self) -> Option<usize> {
+        self.0
+    }
+
+    /// Reconstruct a scope from its [`raw`](Self::raw) offset (FFI round-trip).
+    #[inline]
+    pub fn from_raw(end: Option<usize>) -> Self {
+        DHeaderScope(end)
+    }
+}
 
 pub struct CdrWriter<'a> {
     buf: &'a mut [u8],
@@ -72,6 +101,22 @@ impl<'a> CdrWriter<'a> {
             pos,
             origin: 0,
             version: EncodingVersion::Xcdr1,
+        })
+    }
+
+    /// Like [`new_at`](Self::new_at) but XCDR2 (DELIMITED_CDR2) — 8-byte
+    /// primitives align to 4 and [`begin_dheader`](Self::begin_dheader) emits a
+    /// DHEADER. Used by the C FFI (`nros-c`) tx path, which manages the
+    /// encapsulation header + cursor itself (phase-303 W4 / #0267).
+    pub fn new_at_xcdr2(buf: &'a mut [u8], pos: usize) -> Result<Self, SerError> {
+        if pos > buf.len() {
+            return Err(SerError::BufferTooSmall);
+        }
+        Ok(Self {
+            buf,
+            pos,
+            origin: 0,
+            version: EncodingVersion::Xcdr2,
         })
     }
 
@@ -349,6 +394,21 @@ impl<'a> CdrReader<'a> {
             pos,
             origin: 0,
             version: EncodingVersion::Xcdr1,
+        })
+    }
+
+    /// Like [`new_at`](Self::new_at) but XCDR2 (DELIMITED_CDR2) — the align cap +
+    /// [`begin_dheader`](Self::begin_dheader) read the DHEADER. For the C FFI rx
+    /// path, which strips the encapsulation header itself (phase-303 W4).
+    pub fn new_at_xcdr2(buf: &'a [u8], pos: usize) -> Result<Self, DeserError> {
+        if pos > buf.len() {
+            return Err(DeserError::UnexpectedEof);
+        }
+        Ok(Self {
+            buf,
+            pos,
+            origin: 0,
+            version: EncodingVersion::Xcdr2,
         })
     }
 

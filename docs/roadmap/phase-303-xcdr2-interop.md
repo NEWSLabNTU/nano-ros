@@ -203,11 +203,23 @@ Wired the W2/W3 machinery into generated code + the Rust RMW path:
   format at compile time, matched endpoints agree, and the reader is
   self-describing (header id). The DDS/Cyclone path negotiates natively (W1c).
 
-**W4 REMAINING (needs a live Jazzy peer to verify end-to-end):** the C/C++ tx
-paths (`nros-c`/`nros-cpp` `cdr.rs` writers) still construct XCDR1 writers — they
-need the same `tx_writer` gate for full C/C++ jazzy support; and the actual wire
-round-trip against a real Jazzy `domain_bridge`/peer (the #0267 demo clearing) is
-the final confirmation. The Rust pub/sub/action path is complete + edition-gated.
+**W4 — C/C++ MESSAGE path LANDED (2026-07-26).** The C FFI (`nros-c`) gained
+edition-gated `nros_cdr_write_encaps_header` (XCDR1 `00 01` / XCDR2 `00 09`) +
+`nros_cdr_begin/end_dheader` (write) + `nros_cdr_begin/end_dheader_read` (read),
+all no-ops under humble. `writer_at`/`reader_at` pick `new_at_xcdr2` on
+iron/jazzy+ (align cap 4). The C message template (`message_c.c.jinja`) wraps
+`_serialize_inline`/`_deserialize_inline` in the DHEADER calls + emits the
+edition header. C++ **inherits this for free** — the C++ `ffi_serialize`
+delegates to the C `_serialize`. serdes gained `new_at_xcdr2` + `DHeaderMark`/
+`DHeaderScope` raw FFI accessors. Verified: nros-c builds both editions;
+generated C `-fsyntax-only`-checks (`heap_compile_check::generated_c_*`).
+
+**W4 REMAINING:** the C **service + action** templates (`service_c.c.jinja`,
+`action_c.c.jinja`) need the same wrap (their serialize writes the header inline
+— a slightly different shape than `message_c`); C++ srv/action inherit once C is
+wrapped. And the actual wire round-trip vs a real Jazzy `domain_bridge`/peer (the
+#0267 demo clearing) is the final confirmation. The Rust path (all) + the C/C++
+message path are complete + edition-gated.
 
 - *Accept:* nano-ros ↔ a default humble peer negotiates XCDR2 and interoperates;
   nano-ros ↔ a legacy XCDR1-only peer falls back to XCDR1; the **#0267 demo

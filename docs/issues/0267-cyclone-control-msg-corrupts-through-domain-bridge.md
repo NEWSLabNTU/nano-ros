@@ -199,6 +199,17 @@ green under both editions. Remaining: the C/C++ tx writers (`nros-c`/`nros-cpp`)
 need the same gate, and the live-peer wire round-trip is the final confirmation.
 The Cyclone path (the demo's corruption) is already fixed by W1c.
 
+## Update (W4 C/C++ MESSAGE path LANDED, 2026-07-26)
+
+The C tx/rx path is now edition-gated: `nros-c` gained
+`nros_cdr_write_encaps_header` (XCDR1/XCDR2) + `nros_cdr_begin/end_dheader[_read]`
+(no-ops under humble), the C message template wraps every struct in a DHEADER,
+and C++ inherits it (its `ffi_serialize` calls the C `_serialize`). Generated C
+`-fsyntax-only`-checks; nros-c builds both editions. Remaining: the C service +
+action templates need the same wrap (C++ inherits), plus the live-peer wire
+confirmation. The Cyclone path is fixed by W1c; the Rust path + C/C++ message path
+carry the full XCDR2 fix.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

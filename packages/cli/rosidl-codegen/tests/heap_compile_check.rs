@@ -152,3 +152,68 @@ heapless = "0.8"
         pkg.service_rs
     );
 }
+
+/// phase-303 W4 — the generated C (with the DHEADER FFI wrap +
+/// `nros_cdr_write_encaps_header`) is syntactically valid against `nros/cdr.h`.
+/// `cc -fsyntax-only`, no link. Skips if `cc` is absent.
+#[test]
+#[ignore = "spawns cc -fsyntax-only against generated C"]
+fn generated_c_with_dheader_wrap_syntax_checks() {
+    use rosidl_codegen::generate_c_message_package;
+
+    let msg =
+        parse_message("int32 seq\nstring frame_id\nfloat64 value\n").unwrap();
+    let pkg = generate_c_message_package(
+        "my_msgs",
+        "Framed",
+        &msg,
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .expect("generate C");
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    let inc = repo_root.join("packages/core/nros-c/include");
+    let plat = repo_root.join("packages/core/nros-platform-api/include");
+    let gen_dir = repo_root.join("target/nros-c-generated");
+    let tmp = tempfile::tempdir().unwrap();
+    // Write the generated header next to the source so its #include resolves.
+    let hdr = tmp.path().join("my_msgs__msg__framed.h");
+    fs::write(&hdr, &pkg.header).unwrap();
+    let src = tmp.path().join("framed.c");
+    // Point the source's #include at our temp header name.
+    let source = pkg
+        .source
+        .replacen("#include \"", &format!("#include \"{}\"\n// ", hdr.display()), 1);
+    fs::write(&src, source).unwrap();
+
+    let out = Command::new("cc")
+        .args([
+            "-fsyntax-only",
+            "-I",
+            gen_dir.to_str().unwrap(),
+            "-I",
+            inc.to_str().unwrap(),
+            "-I",
+            plat.to_str().unwrap(),
+            src.to_str().unwrap(),
+        ])
+        .output();
+    let out = match out {
+        Ok(o) => o,
+        Err(_) => {
+            eprintln!("SKIP generated_c_with_dheader_wrap_syntax_checks: cc not found");
+            return;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "generated C failed -fsyntax-only:\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.source
+    );
+}

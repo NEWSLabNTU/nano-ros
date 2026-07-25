@@ -34,6 +34,20 @@ extern "C" {
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
+// phase-303 W4 (#0267) — XCDR2 DHEADER delimiters. Under XCDR1 (humble) these
+// are no-ops returning -1 (mark) / 0. Under XCDR2 (iron/jazzy+) begin reserves a
+// 4-byte DHEADER (returns its offset as the mark); end backpatches it with the
+// member-block size. Generated `_serialize_inline` / `_deserialize_inline` wrap
+// every struct so appendable types carry a DHEADER matching a modern ROS 2 peer.
+// begin returns >=0 mark or -1 (XCDR1) on success, -2 on error.
+// Writes the edition-appropriate 4-byte encapsulation header (XCDR1 or XCDR2).
+int32_t nros_cdr_write_encaps_header(uint8_t** ptr, const uint8_t* end);
+
+int64_t nros_cdr_begin_dheader(uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t nros_cdr_end_dheader(int64_t mark, uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int64_t nros_cdr_begin_dheader_read(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t nros_cdr_end_dheader_read(int64_t scope, const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+
 int32_t nros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, bool value);
 
 /**

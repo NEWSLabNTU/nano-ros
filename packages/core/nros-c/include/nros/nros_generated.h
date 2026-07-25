@@ -2574,6 +2574,76 @@ extern uint32_t nros_platform_critical_section_acquire(void);
 extern void nros_platform_critical_section_release(uint32_t token);
 
 /**
+ * Write the 4-byte CDR encapsulation header for the active ROS edition and
+ * advance the cursor: XCDR1 `00 01 00 00` (humble) or XCDR2 DELIMITED_CDR2
+ * `00 09 00 00` (iron/jazzy+). Replaces the hardcoded header the generated C
+ * `_serialize` used to emit. Returns 0 on success, -1 on overrun/null.
+ *
+ * # Safety
+ * `ptr` is a `*mut *mut u8` cursor; `end` bounds the buffer.
+ */
+NROS_PUBLIC int32_t nros_cdr_write_encaps_header(uint8_t **ptr, const uint8_t *end);
+
+/**
+ * Begin a DHEADER-delimited struct. Under XCDR2 (iron/jazzy+) reserves a 4-byte
+ * DHEADER at the cursor (aligned) and advances it, returning the mark (its byte
+ * offset). Under XCDR1 (humble) this is a NO-OP returning `-1`. The generated C
+ * `_serialize_inline` calls this at the top of every struct and passes the mark
+ * to [`nros_cdr_end_dheader`]. Returns `-2` on any bounds/pointer failure.
+ *
+ * # Safety
+ * `ptr`/`end`/`origin` follow the same `(cursor, end, origin)` contract as the
+ * write helpers.
+ */
+NROS_PUBLIC
+int64_t nros_cdr_begin_dheader(uint8_t **ptr,
+                               const uint8_t *end,
+                               const uint8_t *origin);
+
+/**
+ * Finish a DHEADER-delimited struct: backpatch the reserved slot (from
+ * [`nros_cdr_begin_dheader`]) with the bytes written since. `mark < 0` (XCDR1)
+ * is a no-op. Returns 0 on success, -1 on failure.
+ *
+ * # Safety
+ * Same buffer contract as the write helpers.
+ */
+NROS_PUBLIC
+int32_t nros_cdr_end_dheader(int64_t mark,
+                             uint8_t **ptr,
+                             const uint8_t *end,
+                             const uint8_t *origin);
+
+/**
+ * Begin reading a DHEADER-delimited struct. Under XCDR2 reads the 4-byte
+ * DHEADER at the cursor (advancing it) and returns the struct's END offset;
+ * under XCDR1 returns `-1` (no-op). Returns `-2` on failure. The generated C
+ * `_deserialize` passes the result to [`nros_cdr_end_dheader_read`].
+ *
+ * # Safety
+ * Same `(cursor, end, origin)` contract as the read helpers.
+ */
+NROS_PUBLIC
+int64_t nros_cdr_begin_dheader_read(const uint8_t **ptr,
+                                    const uint8_t *end,
+                                    const uint8_t *origin);
+
+/**
+ * Finish reading a DHEADER-delimited struct: skip any unknown trailing members
+ * by advancing the cursor to the struct END (`scope` from
+ * [`nros_cdr_begin_dheader_read`]). `scope < 0` (XCDR1) is a no-op. Returns 0
+ * on success, -1 if the reader over-read past the declared end.
+ *
+ * # Safety
+ * Same buffer contract as the read helpers.
+ */
+NROS_PUBLIC
+int32_t nros_cdr_end_dheader_read(int64_t scope,
+                                  const uint8_t **ptr,
+                                  const uint8_t *end,
+                                  const uint8_t *origin);
+
+/**
  * Write a CDR-encoded `bool` (1 byte) and advance the cursor.
  *
  * Returns 0 on success, -1 if the cursor would overrun `end` or any

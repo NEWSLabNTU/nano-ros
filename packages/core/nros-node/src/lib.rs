@@ -170,7 +170,9 @@ pub use nros_core::lifecycle::{LifecycleState, LifecycleTransition, TransitionRe
 // nros-c/src/cdr.rs don't have to reach past nros-node either. These
 // are themselves re-exports from nros-serdes via nros-core; collecting
 // them here keeps the import boundary uniform. Phase 91.B6.
-pub use nros_core::{CdrReader, CdrWriter, DeserError, SerError};
+pub use nros_core::{
+    CdrReader, CdrWriter, DHeaderMark, DHeaderScope, DeserError, EncodingVersion, SerError,
+};
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]

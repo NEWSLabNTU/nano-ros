@@ -6,7 +6,221 @@
 //! advance `cursor` on success.
 
 use core::ffi::c_char;
-use nros_node::{CdrReader, CdrWriter, DeserError, SerError};
+use nros_node::{CdrReader, CdrWriter, DHeaderMark, DHeaderScope, DeserError, SerError};
+
+/// phase-303 W4 (#0267) — the ROS-edition wire encoding for the C tx/rx path.
+/// Humble → XCDR1 (byte-identical); iron/jazzy/rolling → XCDR2 DELIMITED_CDR2
+/// (the C codegen wraps each struct with `nros_cdr_begin/end_dheader`, and the
+/// per-primitive align caps at 4). Matched-endpoint editions agree.
+#[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+const XCDR2: bool = true;
+#[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+const XCDR2: bool = false;
+
+#[inline]
+fn writer_at(buf: &mut [u8], pos: usize) -> Result<CdrWriter<'_>, SerError> {
+    if XCDR2 {
+        CdrWriter::new_at_xcdr2(buf, pos)
+    } else {
+        CdrWriter::new_at(buf, pos)
+    }
+}
+
+#[inline]
+fn reader_at(buf: &[u8], pos: usize) -> Result<CdrReader<'_>, DeserError> {
+    if XCDR2 {
+        CdrReader::new_at_xcdr2(buf, pos)
+    } else {
+        CdrReader::new_at(buf, pos)
+    }
+}
+
+/// Write the 4-byte CDR encapsulation header for the active ROS edition and
+/// advance the cursor: XCDR1 `00 01 00 00` (humble) or XCDR2 DELIMITED_CDR2
+/// `00 09 00 00` (iron/jazzy+). Replaces the hardcoded header the generated C
+/// `_serialize` used to emit. Returns 0 on success, -1 on overrun/null.
+///
+/// # Safety
+/// `ptr` is a `*mut *mut u8` cursor; `end` bounds the buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_write_encaps_header(ptr: *mut *mut u8, end: *const u8) -> i32 {
+    if ptr.is_null() || end.is_null() {
+        return -1;
+    }
+    let cur = *ptr;
+    if cur.is_null() || (cur as *const u8).add(4) > end {
+        return -1;
+    }
+    let hdr: [u8; 4] = if XCDR2 {
+        [0x00, 0x09, 0x00, 0x00]
+    } else {
+        [0x00, 0x01, 0x00, 0x00]
+    };
+    core::ptr::copy_nonoverlapping(hdr.as_ptr(), cur, 4);
+    *ptr = cur.add(4);
+    0
+}
+
+// ===========================================================================
+// DHEADER (XCDR2 appendable delimiter) — phase-303 W4 / #0267
+// ===========================================================================
+
+/// Begin a DHEADER-delimited struct. Under XCDR2 (iron/jazzy+) reserves a 4-byte
+/// DHEADER at the cursor (aligned) and advances it, returning the mark (its byte
+/// offset). Under XCDR1 (humble) this is a NO-OP returning `-1`. The generated C
+/// `_serialize_inline` calls this at the top of every struct and passes the mark
+/// to [`nros_cdr_end_dheader`]. Returns `-2` on any bounds/pointer failure.
+///
+/// # Safety
+/// `ptr`/`end`/`origin` follow the same `(cursor, end, origin)` contract as the
+/// write helpers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_begin_dheader(
+    ptr: *mut *mut u8,
+    end: *const u8,
+    origin: *const u8,
+) -> i64 {
+    if !XCDR2 {
+        return -1;
+    }
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -2;
+    }
+    let cur = *ptr;
+    if cur.is_null() || (cur as *const u8) < origin || (cur as *const u8) > end {
+        return -2;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts_mut(origin as *mut u8, buf_len);
+    let mut w = match CdrWriter::new_at_xcdr2(slice, pos) {
+        Ok(w) => w,
+        Err(_) => return -2,
+    };
+    let mark = match w.begin_dheader() {
+        Ok(m) => m,
+        Err(_) => return -2,
+    };
+    *ptr = (origin as *mut u8).add(w.position());
+    mark.raw().map(|m| m as i64).unwrap_or(-1)
+}
+
+/// Finish a DHEADER-delimited struct: backpatch the reserved slot (from
+/// [`nros_cdr_begin_dheader`]) with the bytes written since. `mark < 0` (XCDR1)
+/// is a no-op. Returns 0 on success, -1 on failure.
+///
+/// # Safety
+/// Same buffer contract as the write helpers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_end_dheader(
+    mark: i64,
+    ptr: *mut *mut u8,
+    end: *const u8,
+    origin: *const u8,
+) -> i32 {
+    if mark < 0 {
+        return 0; // XCDR1 no-op
+    }
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -1;
+    }
+    let cur = *ptr;
+    if cur.is_null() || (cur as *const u8) < origin || (cur as *const u8) > end {
+        return -1;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts_mut(origin as *mut u8, buf_len);
+    let mut w = match CdrWriter::new_at_xcdr2(slice, pos) {
+        Ok(w) => w,
+        Err(_) => return -1,
+    };
+    if w.end_dheader(DHeaderMark::from_raw(Some(mark as usize)))
+        .is_err()
+    {
+        return -1;
+    }
+    0
+}
+
+/// Begin reading a DHEADER-delimited struct. Under XCDR2 reads the 4-byte
+/// DHEADER at the cursor (advancing it) and returns the struct's END offset;
+/// under XCDR1 returns `-1` (no-op). Returns `-2` on failure. The generated C
+/// `_deserialize` passes the result to [`nros_cdr_end_dheader_read`].
+///
+/// # Safety
+/// Same `(cursor, end, origin)` contract as the read helpers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_begin_dheader_read(
+    ptr: *mut *const u8,
+    end: *const u8,
+    origin: *const u8,
+) -> i64 {
+    if !XCDR2 {
+        return -1;
+    }
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -2;
+    }
+    let cur = *ptr;
+    if cur.is_null() || cur < origin || cur > end {
+        return -2;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts(origin, buf_len);
+    let mut r = match CdrReader::new_at_xcdr2(slice, pos) {
+        Ok(r) => r,
+        Err(_) => return -2,
+    };
+    let scope = match r.begin_dheader() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+    *ptr = origin.add(r.position());
+    scope.raw().map(|e| e as i64).unwrap_or(-1)
+}
+
+/// Finish reading a DHEADER-delimited struct: skip any unknown trailing members
+/// by advancing the cursor to the struct END (`scope` from
+/// [`nros_cdr_begin_dheader_read`]). `scope < 0` (XCDR1) is a no-op. Returns 0
+/// on success, -1 if the reader over-read past the declared end.
+///
+/// # Safety
+/// Same buffer contract as the read helpers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_end_dheader_read(
+    scope: i64,
+    ptr: *mut *const u8,
+    end: *const u8,
+    origin: *const u8,
+) -> i32 {
+    if scope < 0 {
+        return 0; // XCDR1 no-op
+    }
+    if ptr.is_null() || end.is_null() || origin.is_null() {
+        return -1;
+    }
+    let cur = *ptr;
+    if cur.is_null() || cur < origin || cur > end {
+        return -1;
+    }
+    let buf_len = (end as usize).wrapping_sub(origin as usize);
+    let pos = (cur as usize).wrapping_sub(origin as usize);
+    let slice = core::slice::from_raw_parts(origin, buf_len);
+    let mut r = match CdrReader::new_at_xcdr2(slice, pos) {
+        Ok(r) => r,
+        Err(_) => return -1,
+    };
+    if r.end_dheader(DHeaderScope::from_raw(Some(scope as usize)))
+        .is_err()
+    {
+        return -1;
+    }
+    // Advance the caller's cursor to the struct end (skip trailing members).
+    *ptr = origin.add(r.position());
+    0
+}
 
 // ===========================================================================
 // Bridge helpers
@@ -34,7 +248,7 @@ where
     let buf_len = (end as usize).wrapping_sub(origin as usize);
     let pos = (cur as usize).wrapping_sub(origin as usize);
     let slice = core::slice::from_raw_parts_mut(origin as *mut u8, buf_len);
-    let mut w = match CdrWriter::new_at(slice, pos) {
+    let mut w = match writer_at(slice, pos) {
         Ok(w) => w,
         Err(_) => return -1,
     };
@@ -64,7 +278,7 @@ where
     let buf_len = (end as usize).wrapping_sub(origin as usize);
     let pos = (cur as usize).wrapping_sub(origin as usize);
     let slice = core::slice::from_raw_parts(origin, buf_len);
-    let mut r = match CdrReader::new_at(slice, pos) {
+    let mut r = match reader_at(slice, pos) {
         Ok(r) => r,
         Err(_) => return -1,
     };
