@@ -62,6 +62,27 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 - **Acceptance:** `image-check <distro>` shows `rmw_zenoh_cpp` from the overlay
   (not apt) + `rmw_zenohd`; a zenoh handshake between two overlay nodes works.
 
+> **W2 investigation notes (2026-07-26 — probe, not yet landed).** Findings from
+> attempting the lighter "host zenohd as shared router" shortcut, kept so the
+> next attempt starts informed:
+> 1. **`rmw_zenoh_cpp` REQUIRES its own `rmw_zenohd` router** — it does NOT
+>    auto-connect to an arbitrary `zenohd`. A stock `ros2 topic echo` under
+>    `rmw_zenoh_cpp` warns *"Unable to connect to a Zenoh router … start one with
+>    `ros2 run rmw_zenoh_cpp rmw_zenohd`"*. To use nano-ros's pinned 1.7.2 zenohd
+>    as the shared router, the ROS side needs an explicit `ZENOH_ROUTER_CONFIG_URI`
+>    / connect-endpoint config pointing at it (and the apt-0.2.9 client must
+>    version-negotiate with the 1.7.2 router — the compat question, still open).
+> 2. **Orchestration:** `zenohd` needs `--listen tcp/127.0.0.1:7447` (bare
+>    `zenohd` doesn't listen on 7447) and exits immediately when detached via a
+>    chained shell `&` or the harness background mechanism (works foreground /
+>    under `timeout`) — start it under a process manager that keeps a live
+>    session, or via the `nros_tests` process helpers, not a bare `&`.
+> 3. **Two viable paths, ranked:** (a) the router shortcut above — cheap if
+>    apt-0.2.9 ↔ pinned-1.7.2-router negotiates, needs the ROS-side connect
+>    config + one compat test; (b) the full overlay build (this W2 as written) —
+>    guaranteed wire-match, heavy (rust + colcon `zenoh_cpp_vendor`). Resolve the
+>    compat question first (path a's one test) before committing to path b.
+
 ### W3 — micro-XRCE Agent in the edition image
 - Build `MicroXRCEAgent` from source (`scripts/xrce-agent/build.sh` shape) into
   the image; expose it on PATH.
