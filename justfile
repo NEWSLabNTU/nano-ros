@@ -1473,6 +1473,7 @@ build-workspace-embedded:
         --exclude nros-build-paths \
         --exclude xrce-sys \
         --exclude nros-orchestration-ir \
+        --exclude nros-rmw-metadata \
         --exclude nros-board-native \
         --exclude nros-board-posix \
         --exclude cyclonedds-sys \
@@ -1536,6 +1537,7 @@ check-workspace-embedded:
         --exclude nros-build-paths \
         --exclude xrce-sys \
         --exclude nros-orchestration-ir \
+        --exclude nros-rmw-metadata \
         --exclude nros-board-native \
         --exclude nros-board-posix \
         --exclude cyclonedds-sys \
