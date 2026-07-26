@@ -1,0 +1,22 @@
+# phase-307 W6 lane 2 — the executor-sizing showcase workspace (issue 0257).
+#
+# Its ONE node registers six timers and no subscription, so the launch wiring
+# names ZERO callback entities for it while the runtime needs six slots. Sized
+# from the SystemModel alone the entry emits no sizing at all and the executor
+# opens at the four-slot build default, dying at registration with
+# `code=-6 Full`. Sized from the `nros sync`-produced source-metadata sidecar it
+# opens at eight and boots.
+#
+# That gap — a node the model cannot count — is the whole of issue 0257, and
+# this is the only workspace in the tree that exhibits it.
+
+[workspace]
+resolver = "2"
+members = [
+    "src/burst_pkg",
+    "src/native_entry",
+]
+# `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

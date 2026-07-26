@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-307 W6 lane 2 — one node, six timers. The launch file cannot express
+     a timer, which is exactly the point: nothing here tells the bake that this
+     node needs six callback slots. -->
+<launch>
+  <node pkg="burst_pkg" exec="burst_talker" name="burst_talker"/>
+</launch>

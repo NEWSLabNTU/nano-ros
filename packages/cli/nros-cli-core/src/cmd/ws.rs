@@ -531,6 +531,24 @@ fn generate_bridge_configs(
     Ok(())
 }
 
+/// Join `rel` onto `base`, folding `.` and `..` textually.
+///
+/// `Path::join` + `is_file()` would walk the real filesystem, which fails when
+/// an intermediate component does not exist yet. Nothing here touches disk.
+fn lexically_join(base: &Path, rel: &Path) -> PathBuf {
+    let mut out = base.to_path_buf();
+    for part in rel.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 pub fn run_sync(args: SyncArgs) -> Result<()> {
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
@@ -1391,7 +1409,15 @@ fn write_patch_block(
         let resolved = if target.is_absolute() {
             target.to_path_buf()
         } else {
-            authority_dir.join(".cargo").join(target)
+            // Resolve the `..` segments LEXICALLY. The include is relative to
+            // the config file, i.e. `<authority>/.cargo/`, and on a first sync
+            // that directory does not exist yet — so a filesystem-walking
+            // `is_file()` on the unnormalised path fails through the missing
+            // component and reports a perfectly readable central patch file as
+            // unreachable. phase-307 hit exactly that adding a new example
+            // workspace: `nros sync` refused a workspace whose only sin was
+            // being new.
+            lexically_join(&authority_dir.join(".cargo"), target)
         };
         if !resolved.is_file() {
             bail!(

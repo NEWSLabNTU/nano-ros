@@ -211,6 +211,7 @@ static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_SIZING_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_BRIDGE_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1056,6 +1057,22 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-params",
                 "ws-params-rust",
+                "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-307 W6 lane 2 (issue 0257) — the executor-sizing showcase Entry
+/// (`ws-sizing-rust`). Its node registers six timers the SystemModel cannot
+/// count; the entry only links if `nros::main!` read the source-metadata
+/// sidecar and derived a table bigger than the four-slot default.
+pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SIZING_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-sizing",
+                "ws-sizing-rust",
                 "native_entry",
             )
         })

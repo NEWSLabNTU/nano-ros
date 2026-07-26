@@ -1,0 +1,21 @@
+# phase-307 W6 lane 2 (issue 0257) — the executor-sizing showcase.
+#
+# One node, six timers, no subscription. The launch wiring names zero callback
+# entities for it; the runtime needs six slots. Everything about this bringup is
+# ordinary — the interesting part is that the entity count lives only in the
+# source-metadata sidecar `nros sync` produces.
+
+[system]
+name = "sizing_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "burst_pkg"
+class = "burst_pkg::BurstTalker"
+name = "burst_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

@@ -75,6 +75,24 @@ target_dir = "target-fixtures"
 # system + the launch `<param>` initials). Consumed by tests/param_reconfig_e2e.rs:
 # boot the entry, `ros2 param set publish_period_ms N`, and assert the node's published
 # /chatter value follows — proving the in-callback `ctx.parameter::<T>` live read (W4c).
+# phase-307 W6 lane 2 (issue 0257) — the executor-sizing showcase. One node, six
+# timers, no subscription: the launch wiring names ZERO callback entities for it
+# while the runtime needs six slots, and the table defaults to four. Sized from
+# the SystemModel alone the entry dies at registration with
+# `ExecutorFull("burst_pkg")`; sized from the `nros sync`-produced
+# source-metadata sidecar it derives eight and boots. Pure-cargo `nros::main!`
+# (no codegen_out) because it is the MACRO's sizing under test — the CLI bake
+# only refuses over-capacity systems, it does not size this executor.
+[[workspace_fixture]]
+id = "workspace-rust-native-sizing"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-sizing-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 [[workspace_fixture]]
 id = "workspace-rust-native-params"
 platform = "native"

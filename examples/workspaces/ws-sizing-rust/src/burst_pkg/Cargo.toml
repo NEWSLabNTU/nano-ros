@@ -1,0 +1,27 @@
+[package]
+name = "burst_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — six timers on one node; the entity count the SystemModel cannot see."
+
+# Node pkg shape — lib only. `nros::node!()` exports the register / init /
+# dispatch trampolines; the sibling Entry pkg owns the executor + spin loop.
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "burst_pkg::BurstTalker"
+name = "burst_talker"
+default_namespace = "/"
+
+[dependencies]
+# Platform/RMW-agnostic: platform + RMW flow from the board crate the sibling
+# Entry pkg deps.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }
+log = "0.4"
