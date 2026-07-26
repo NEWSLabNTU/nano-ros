@@ -1,14 +1,78 @@
 ---
 id: 267
-title: "XCDR1-FINAL vs ROS2 XCDR2-APPENDABLE gap: Control msg mis-walked after domain_bridge republish (nano-ros serializer PROVEN canonical; no XCDR2/DHEADER path)"
-status: open
+title: "Cyclone descriptor builder mis-walked depth-2 nested types (Control/PoseStamped): m_size under-size + preorder sibling-skip → dropped/corrupted samples"
+status: resolved
 type: bug
 severity: high
 area: rmw
 related: [rfc-0055, phase-303]
 ---
 
-> **Fix tracked by [RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)
+> **RESOLVED 2026-07-26.** The root cause was NOT an XCDR1/XCDR2 extensibility gap
+> (that hypothesis is REFUTED below — a default Jazzy peer is FINAL/XCDR1 and
+> nano-ros already matches it byte-for-byte). It was **two bugs in the Cyclone
+> runtime descriptor builder** (`bridge/dynamic_type_builder.cpp`), both only
+> reachable for **depth-≥2 nested types** (a nested member that itself has nested
+> members). Fixed + regression-tested + verified live against a stock ROS 2 Jazzy
+> `domain_bridge`.
+
+## RESOLUTION (2026-07-26) — two descriptor-builder bugs, not extensibility
+
+Reproduced live: a `ros-jazzy` `domain_bridge` (`geometry_msgs/msg/PoseStamped`,
+the same nested shape as autoware `Control`) forwarding a nano-ros cyclone
+publisher on domain 2 → domain 1. Two distinct bugs, both in the descriptor the
+runtime builds from the flattened Rust schema:
+
+1. **`m_size` under-size (crash / heap corruption).** `compute_struct_size` used
+   a `size = 16` placeholder for every top-level nested field. A nested member
+   *larger* than 16 bytes (autoware `Longitudinal` = 32, `geometry_msgs/Pose` =
+   56) made `desc->m_size` too small; `publisher.cpp` does
+   `sample = ddsrt_calloc(1, desc->m_size)` then `dds_stream_read_sample` writes
+   the member out past the buffer → `malloc(): corrupted top size`. (Fixed by
+   computing the real nested size. `builtin_interfaces/Time` = 8 ≤ 16, which is
+   why `std_msgs/Header` never tripped it.)
+
+2. **Preorder sibling-skip (silent wire corruption — THE #0267 symptom).** The
+   flattened `kinds[]` table is **depth-first preorder**: a nested child's whole
+   subtree is inline right after it. The builder stepped to a struct's *i*-th
+   child as `inner + i`, which lands INSIDE the previous child's subtree. For
+   `Pose { Point position; Quaternion orientation; }` the 2nd child resolved to
+   `kinds[Point.x]` (an f64) instead of `kinds[Quaternion]`, so `orientation`
+   was emitted as a **single scalar f64**. A stock reader expecting a 32-byte
+   Quaternion then DROPPED the whole sample (or, with a lenient reader, decoded
+   shifted garbage — the demo's `acceleration = 2677354240.0`). Fixed with a
+   `kind_span` helper that advances to the next sibling by its subtree span.
+
+Only depth-≥2 types are affected: the top-level field walk uses `fields[]` (real
+offsets), so 1-level types (`std_msgs/Header`) always worked — which is exactly
+why direct echo of a flat type was clean while `Control` corrupted.
+
+**Verification (all live, stock `ros:jazzy-ros-base` cyclone):**
+- Direct `ros2 topic echo` of nano-ros `PoseStamped`: every field intact
+  (position `1.5,2.5,-3.5`, `orientation.w=1.0`, `frame_id=map`).
+- Through `domain_bridge` (2→1): all 5 values survive
+  (`scripts/ros/domain-bridge-repro.sh --publisher external`).
+- autoware `Control` writer-trace: `acceleration=0xC0200000=-2.5` (the demo's
+  corrupted value), `velocity=1.5`, `jerk=0.75`, both Lateral/Longitudinal nested
+  `Time` members correct.
+- Regression tests in `tests/dynamic_bridge_seq_nested.cpp`:
+  `test_nested_msize_covers_large_member` (bug 1) +
+  `test_nested_sibling_span_preorder` (bug 2). Full cyclone ctest 16/16.
+
+The RFC-0055 / phase-303 XCDR2 + `@appendable` workstream is a SEPARATE,
+now-optional axis (a future per-type opt-in), NOT the fix for this issue. The
+byte-exact serializer guard below still holds — `nros-serdes` was always
+canonical; the corruption was entirely in the descriptor the Cyclone re-encode
+walked.
+
+---
+
+## (superseded) original framing — XCDR2/extensibility hypothesis (REFUTED)
+
+> The section below was the pre-2026-07-26 hypothesis. Kept for history; the
+> live verification above refuted it (Jazzy default is FINAL/XCDR1).
+
+> **Was tracked by [RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)
 > + [phase-303](../roadmap/phase-303-xcdr2-interop.md)** — the XCDR2 + explicit
 > extensibility workstream. This issue is the root-cause record + the byte-exact
 > serializer guard; the code fix (DHEADER + declared extensibility + negotiation)

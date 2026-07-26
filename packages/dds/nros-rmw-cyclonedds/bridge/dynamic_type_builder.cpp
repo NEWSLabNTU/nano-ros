@@ -438,6 +438,39 @@ struct BuildContext {
 // `MAX_NESTED_DEPTH`, this is belt-and-braces).
 constexpr uint32_t kMaxNestedSizeDepth = 16;
 
+// #0267 — the flattened kinds[] table is DEPTH-FIRST PREORDER: a nested (or
+// sequence/array-element) child's ENTIRE subtree is laid out inline right after
+// it, before the parent's next sibling. So a struct's direct children are NOT at
+// consecutive indices `inner+i` — each child that owns a subtree pushes its
+// siblings further out. `kind_span` returns how many kinds[] entries the subtree
+// rooted at `idx` occupies, so sibling iteration can skip past a child's subtree.
+// (For leaf children span==1, which is why hand-built leaf-only tables — and the
+// 1-level top-level path that walks fields[] instead — never exposed this.)
+uint32_t kind_span(uint32_t idx, const NrosFieldKindDescriptor* kinds, uint32_t kind_count,
+                   uint32_t depth = 0) {
+    if (depth >= kMaxNestedSizeDepth || idx >= kind_count) return 1;
+    const auto& k = kinds[idx];
+    switch (k.kind) {
+    case NROS_FIELD_KIND_NESTED: {
+        uint32_t span = 1;
+        uint32_t child = idx + 1;
+        for (uint32_t i = 0; i < k.bound; ++i) {
+            uint32_t cs = kind_span(child, kinds, kind_count, depth + 1);
+            span += cs;
+            child += cs;
+        }
+        return span;
+    }
+    case NROS_FIELD_KIND_ARRAY:
+    case NROS_FIELD_KIND_SEQUENCE:
+    case NROS_FIELD_KIND_BOUNDED_SEQUENCE:
+        // The element type sits inline at idx+1; its subtree follows.
+        return 1 + kind_span(idx + 1, kinds, kind_count, depth + 1);
+    default:
+        return 1;
+    }
+}
+
 uint32_t compute_nested_size(uint32_t kind_idx, const NrosFieldKindDescriptor* kinds,
                              uint32_t kind_count, uint32_t depth = 0) {
     if (depth >= kMaxNestedSizeDepth) return 0;
@@ -447,9 +480,10 @@ uint32_t compute_nested_size(uint32_t kind_idx, const NrosFieldKindDescriptor* k
     uint32_t synth_offset = 0;
     uint32_t max_align = 1;
     uint32_t bound_count = k.bound;
-    uint32_t first_child = k.inner;
+    // #0267 — preorder table: advance to the next SIBLING by its subtree span,
+    // never `first_child + i` (that lands inside the previous child's subtree).
+    uint32_t child_idx = k.inner;
     for (uint32_t i = 0; i < bound_count; ++i) {
-        uint32_t child_idx = first_child + i;
         if (child_idx >= kind_count) return 0;
         const auto& c = kinds[child_idx];
         uint32_t size = 0, align = 1;
@@ -502,6 +536,7 @@ uint32_t compute_nested_size(uint32_t kind_idx, const NrosFieldKindDescriptor* k
         synth_offset = (synth_offset + align - 1) & ~(align - 1);
         synth_offset += size;
         if (align > max_align) max_align = align;
+        child_idx += kind_span(child_idx, kinds, kind_count);
     }
     // Round final size up to the max child alignment, matching
     // `compute_struct_size`'s discipline so `sizeof(struct)` matches.
@@ -544,9 +579,11 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
     // alignment.
     uint32_t synth_offset = 0;
     uint32_t bound_count = k.bound;
-    uint32_t first_child = k.inner;
+    // #0267 — preorder table: step to the next SIBLING by subtree span (see
+    // `kind_span`); `first_child + i` would index into a prior child's subtree
+    // (e.g. Pose's 2nd member Quaternion mis-read as Point's first f64).
+    uint32_t child_idx = k.inner;
     for (uint32_t i = 0; i < bound_count; ++i) {
-        uint32_t child_idx = first_child + i;
         if (child_idx >= kind_count) {
             ctx.err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
             return false;
@@ -633,6 +670,7 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
             (void)inner_idx;
         }
         synth_offset += size;
+        child_idx += kind_span(child_idx, kinds, kind_count);
     }
     if (!ctx.ops.push(DDS_OP_RTS)) {
         ctx.err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
@@ -919,16 +957,38 @@ uint32_t compute_struct_size(const NrosFieldDescriptor* fields, uint32_t field_c
                     size = esize * k.bound;
                     align = ealign;
                     sized = true;
+                } else if (elem.kind == NROS_FIELD_KIND_NESTED) {
+                    // #0267 — nested-element array: stride is the real
+                    // nested struct size, never the 16-byte placeholder
+                    // (which under-sizes `m_size` → `dds_stream_read_sample`
+                    // overflows the `calloc(m_size)` sample buffer).
+                    uint32_t esz = compute_nested_size(k.inner, kinds, kind_count);
+                    if (esz > 0) {
+                        size = esz * k.bound;
+                        align = 8;
+                        sized = true;
+                    }
                 }
             }
             break;
         }
-        case NROS_FIELD_KIND_NESTED:
-            size = 16; // conservative placeholder
+        case NROS_FIELD_KIND_NESTED: {
+            // #0267 — a top-level nested struct field. Its EXT op places the
+            // sub-struct's children at `field.offset + child_synth_offset`,
+            // extending to `field.offset + compute_nested_size(...)`. `m_size`
+            // MUST cover that end or `dds_stream_read_sample` writes past the
+            // `calloc(m_size)` sample buffer → heap corruption. The old
+            // `size = 16` placeholder only happened to be safe for nested
+            // types ≤16 bytes (e.g. builtin_interfaces/Time = 8); a larger
+            // nested member (autoware Lateral/Longitudinal) under-sized the
+            // buffer by its overflow. Use the real computed size.
+            uint32_t nsize = compute_nested_size(f.kind, kinds, kind_count);
+            size = nsize > 0 ? nsize : 16;
             align = 8;
             sized = true;
             out_fixed = false;
             break;
+        }
         default:
             if (primitive_size_align(k.kind, size, align)) {
                 sized = true;

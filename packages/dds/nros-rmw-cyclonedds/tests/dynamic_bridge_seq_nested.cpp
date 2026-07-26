@@ -40,6 +40,8 @@ namespace {
 constexpr uint8_t kKindInt8 = 2;
 constexpr uint8_t kKindInt32 = 6;
 constexpr uint8_t kKindUint32 = 5;
+constexpr uint8_t kKindFloat32 = 9;
+constexpr uint8_t kKindFloat64 = 10;
 constexpr uint8_t kKindNested = 15;
 constexpr uint8_t kKindArray = 16;
 constexpr uint8_t kKindSequence = 17;
@@ -308,6 +310,142 @@ int test_ext_three_word_emission() {
     return 0;
 }
 
+// ── Test 5: m_size covers a LARGE nested member (#0267 regression) ──────
+//
+// Mirrors the autoware_control_msgs/Control crash shape: a top-level struct
+// whose second field is a nested struct BIGGER than 16 bytes.
+//
+//   Repro {
+//     Small a;    // offset 0  — {int32,int32}         = 8 bytes
+//     Large big;  // offset 16 — {Small,Small,4×f32}   = 32 bytes
+//   }              // real sizeof = 16 + 32 = 48
+//
+// `compute_struct_size` used a `size = 16` placeholder for every nested
+// top-level field, so it computed m_size = max(0+16, 16+16) = 32 — SIXTEEN
+// bytes short of the real 48. `publisher.cpp` does
+// `sample = ddsrt_calloc(1, desc->m_size)` then `dds_stream_read_sample`
+// writes `big`'s children out to offset 48, overrunning the 32-byte buffer →
+// `malloc(): corrupted top size`. (builtin Time is only 8 bytes, ≤ the
+// placeholder, so std_msgs/Header never tripped it — only nested members
+// LARGER than 16 do.) The fix uses the real `compute_nested_size`.
+int test_nested_msize_covers_large_member() {
+    NrosFieldKindDescriptor kinds[] = {
+        // [0] Small (top field "a")  — 2 int32 children at [2],[3]
+        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
+        // [1] Large (top field "big") — 6 children at [4]..[9]
+        {kKindNested, {0, 0, 0}, 6, 4, "test_msgs/msg/Large"},
+        // [2],[3] Small.{x,y}
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
+        // [4],[5] Large.{a,b} — each a Small (children at [2],[3])
+        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
+        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
+        // [6]..[9] Large's 4 float32 members
+        {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
+        {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
+        {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
+        {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
+    };
+    NrosFieldDescriptor fields[] = {
+        {"a", 0, 0},
+        {"big", 16, 1},
+    };
+
+    int err = 0;
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/Repro", fields, 2,
+                                                                   kinds, 10, 0u, &err);
+    EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
+    const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
+
+    // The whole point: m_size must cover big's end (16 + 32 = 48), not the
+    // 32 the old 16-byte placeholder produced. Under-sizing here is the
+    // heap-overrun.
+    EXPECT(desc->m_size >= 48u, "m_size=%u under-sizes the sample buffer (need >=48)",
+           desc->m_size);
+
+    dds_entity_t pp = dds_create_participant(98, nullptr, nullptr);
+    EXPECT(pp >= 0, "participant: %d", int(pp));
+    dds_entity_t topic = dds_create_topic(pp, desc, "rt/repro_msize_audit", nullptr, nullptr);
+    EXPECT(topic >= 0, "topic: %d", int(topic));
+    (void)dds_delete(pp);
+
+    std::printf("OK nested_msize_covers_large_member (m_size=%u >= 48)\n", desc->m_size);
+    return 0;
+}
+
+// ── Test 6: nested struct with TWO nested members, PREORDER (#0267) ──────
+//
+// The flattened kinds[] table is DEPTH-FIRST PREORDER: a nested child's whole
+// subtree is inline right after it, so a parent's direct children are NOT at
+// consecutive indices. This mirrors geometry_msgs/Pose { Point position;
+// Quaternion orientation; } as the runtime flattener actually emits it:
+//
+//   [0] Pose        (bound=2, inner=1)   children: Point@1, then Quaternion@5
+//   [1] Point       (bound=3, inner=2)
+//   [2],[3],[4] f64   (Point x,y,z)  ← Point's subtree, INLINE
+//   [5] Quaternion  (bound=4, inner=6)
+//   [6]..[9] f64      (Quaternion x,y,z,w)
+//
+// The builder used to step to a struct's i-th child as `inner + i`, which lands
+// INSIDE the previous child's subtree: Pose's 2nd child resolved to kinds[2]
+// (Point's first f64) instead of kinds[5] (Quaternion). Result: `orientation`
+// was emitted as a single scalar f64 — a stock ROS 2 reader expecting a 32-byte
+// Quaternion then DROPPED the whole sample (nano-ros PoseStamped/Control were
+// undecodable across a domain_bridge). The `kind_span` sibling-skip fixes it.
+int test_nested_sibling_span_preorder() {
+    NrosFieldKindDescriptor kinds[] = {
+        {kKindNested, {0, 0, 0}, 2, 1, "geometry_msgs/msg/Pose"},       // [0] Pose
+        {kKindNested, {0, 0, 0}, 3, 2, "geometry_msgs/msg/Point"},      // [1] position
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [2] Point.x
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [3] Point.y
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [4] Point.z
+        {kKindNested, {0, 0, 0}, 4, 6, "geometry_msgs/msg/Quaternion"}, // [5] orientation
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [6] Quat.x
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [7] Quat.y
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [8] Quat.z
+        {kKindFloat64, {0, 0, 0}, 0, 0, nullptr},                       // [9] Quat.w
+    };
+    NrosFieldDescriptor fields[] = {{"pose", 0, 0}};
+    int err = 0;
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema("geometry_msgs/msg/PoseWrap",
+                                                                   fields, 1, kinds, 10, 0u, &err);
+    EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
+    const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
+
+    // Post-fix Pose = Point(24) + Quaternion(32) = 56. Pre-fix (orientation
+    // mis-read as one f64) it was 24+8 = 32. A short m_size is exactly the
+    // "Quaternion collapsed to a scalar" signature.
+    EXPECT(desc->m_size >= 56u,
+           "m_size=%u — orientation collapsed (Quaternion not a full nested "
+           "struct); need >=56",
+           desc->m_size);
+
+    // Walk Pose's body: BOTH members must be EXT (nested), never a bare scalar.
+    // Pose body is reached by the top EXT's JSR. ops[0]=ADR|EXT(pose@0),
+    // ops[2]=link (jsr in low16 from opcode word 0).
+    const uint32_t* ops = desc->m_ops;
+    int16_t pose_jsr = static_cast<int16_t>(ops[2] & 0xffffu);
+    size_t pose_body = 0 + size_t(pose_jsr);
+    uint32_t ext = DDS_OP_ADR | DDS_OP_TYPE_EXT;
+    EXPECT(ops[pose_body] == ext, "Pose.position expected EXT 0x%08x got 0x%08x", ext,
+           ops[pose_body]);
+    // 2nd member: EXT word is 3 words after the first (ADR,offset,link).
+    EXPECT(ops[pose_body + 3] == ext,
+           "Pose.orientation expected EXT (nested Quaternion) 0x%08x got 0x%08x — this is the "
+           "#0267 sibling-span bug (2nd member read as a scalar)",
+           ext, ops[pose_body + 3]);
+
+    dds_entity_t pp = dds_create_participant(97, nullptr, nullptr);
+    EXPECT(pp >= 0, "participant: %d", int(pp));
+    dds_entity_t topic = dds_create_topic(pp, desc, "rt/pose_wrap_audit", nullptr, nullptr);
+    EXPECT(topic >= 0, "topic: %d", int(topic));
+    (void)dds_delete(pp);
+
+    std::printf("OK nested_sibling_span_preorder (m_size=%u, both Pose members EXT)\n",
+                desc->m_size);
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -318,6 +456,10 @@ int main() {
     rc = test_bsq_of_nested();
     if (rc != 0) return rc;
     rc = test_ext_three_word_emission();
+    if (rc != 0) return rc;
+    rc = test_nested_msize_covers_large_member();
+    if (rc != 0) return rc;
+    rc = test_nested_sibling_span_preorder();
     if (rc != 0) return rc;
     std::printf("ALL OK\n");
     return 0;

@@ -39,10 +39,11 @@ DISTRO=jazzy
 TYPE="geometry_msgs/msg/PoseStamped"
 TOPIC=pose
 TIMEOUT=30
-# Known payload the downstream must reproduce (nested Time + a signed float).
-VALUES='{header: {stamp: {sec: 7, nanosec: 9}, frame_id: map}, pose: {position: {x: 1.5, y: 2.5, z: -3.5}, orientation: {w: 1.0}}}'
-# Substrings the downstream echo MUST contain for a pass.
-declare -a EXPECT=("sec: 7" "nanosec: 9" "x: 1.5" "z: -3.5" "w: 1.0")
+# Known payload the stock publisher sends (PoseStamped default: nested Time + a
+# signed float). Overridable with --values; the pass-check substrings default per
+# --type (or set explicitly with --expect a,b,c).
+VALUES=""
+EXPECT_ARG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -51,10 +52,30 @@ while [ $# -gt 0 ]; do
     --type)      TYPE="$2"; shift 2 ;;
     --topic)     TOPIC="$2"; shift 2 ;;
     --timeout)   TIMEOUT="$2"; shift 2 ;;
+    --values)    VALUES="$2"; shift 2 ;;
+    --expect)    EXPECT_ARG="$2"; shift 2 ;;
     -h|--help)   sed -n '2,40p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+# Per-type defaults for VALUES (stock publisher) + EXPECT (pass-check substrings).
+declare -a EXPECT
+case "$TYPE" in
+  *PoseStamped)
+    [ -z "$VALUES" ] && VALUES='{header: {stamp: {sec: 7, nanosec: 9}, frame_id: map}, pose: {position: {x: 1.5, y: 2.5, z: -3.5}, orientation: {w: 1.0}}}'
+    EXPECT=("sec: 7" "nanosec: 9" "x: 1.5" "z: -3.5" "w: 1.0") ;;
+  *Header)
+    [ -z "$VALUES" ] && VALUES='{stamp: {sec: 7, nanosec: 9}, frame_id: map}'
+    EXPECT=("sec: 7" "nanosec: 9" "frame_id: map") ;;
+  *)
+    [ -z "$VALUES" ] && VALUES='{}'
+    EXPECT=() ;;
+esac
+# Explicit --expect a,b,c overrides the per-type default.
+if [ -n "$EXPECT_ARG" ]; then
+  IFS=',' read -r -a EXPECT <<< "$EXPECT_ARG"
+fi
 
 command -v docker >/dev/null || { echo "error: docker required" >&2; exit 2; }
 
