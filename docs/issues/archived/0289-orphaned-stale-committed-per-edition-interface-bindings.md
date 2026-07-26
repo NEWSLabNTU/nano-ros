@@ -1,11 +1,29 @@
 ---
 id: 289
 title: "Orphaned + stale committed per-edition interface bindings (packages/interfaces/*/generated/{humble,iron}/)"
-status: open
+status: resolved
 type: tech-debt
 area: codegen
 related: [issue-0269]
 ---
+
+## Resolution (2026-07-26) — option 2: dropped the orphaned iron tree
+
+Took the recommended option 2. Deleted the only orphaned per-edition tree,
+`packages/interfaces/rcl-interfaces/generated/iron/` (26 files) — it was NOT a
+workspace member, nothing consumed it, and its `TYPE_HASH` constants were the
+`RIHS01_0000…0` placeholder (the latent trap this issue flagged).
+
+Kept the `generated/humble/` trees: contrary to the original "fully orphaned"
+read, they ARE live — the root `Cargo.toml` lists them as workspace members
+("Required by nros-node's param-services feature"), so a real dependency
+consumes them. The per-edition *directory* layout there is just how those
+committed bindings are stored, not a per-edition selection mechanism.
+
+`cargo metadata` still resolves after the deletion. A workspace targeting one
+edition regenerates in place (the standard-ROS single-edition model); shipping
+prebuilt multi-edition bindings (option 1) is not pursued. Rolling was dropped
+as a supported edition in the same pass (removed `RosEdition::Rolling`).
 
 ## Summary
 
