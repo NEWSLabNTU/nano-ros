@@ -27,8 +27,15 @@ byte-identical throughout.
 to XCDR1 (`00 01`, no DHEADER) for BOTH fastrtps + cyclonedds. nano-ros's XCDR1
 Header is byte-identical (guard: `cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`).
 So the DEFAULT interop already works; the XCDR2 path covers the non-default
-negotiated case (`domain_bridge` re-stamp — the #0267 trigger). The only open
-item is the live autoware/`domain_bridge` demo clearing end-to-end.
+negotiated case (`domain_bridge` re-stamp — the #0267 trigger).
+
+**Verification infra (2026-07-26):** replaced the heavy Autoware demo with a
+lightweight harness — [`scripts/ros/domain-bridge-repro.sh`](../../scripts/ros/domain-bridge-repro.sh)
+(simple Jazzy publisher → `domain_bridge` → downstream echo; see
+[`docs/development/domain-bridge-0267-verification.md`](../development/domain-bridge-0267-verification.md)).
+Stock baseline PASSES (pure-Jazzy XCDR1-clean). The last open item is running it
+`--publisher external` against a built `ros-jazzy`+cyclone nano-ros talker on the
+demo host.
 
 ## Status (2026-07-25)
 

@@ -251,6 +251,23 @@ The ONLY unverified item is the LIVE autoware + `domain_bridge` scenario clearin
 end-to-end (the exact negotiated-XCDR2 topology) — which needs the demo host, not
 reproducible from a serialize/raw-sub oracle. Everything mechanistic is proven.
 
+## Update (verification INFRA, 2026-07-26) — a lightweight domain_bridge harness (no Autoware)
+
+The full Autoware safety-island demo needs a newer Autoware on ROS 2 Jazzy —
+heavy. Instead, [`scripts/ros/domain-bridge-repro.sh`](../../scripts/ros/domain-bridge-repro.sh)
+wires SIMPLE ROS 2 Jazzy test nodes into the SAME topology (publisher → domain 2
+→ `domain_bridge` → domain 1 → echo) over a nested-`Time` message. Procedure +
+rationale: [`docs/development/domain-bridge-0267-verification.md`](../development/domain-bridge-0267-verification.md).
+
+- `--publisher stock` (BASELINE, run 2026-07-26): **PASS** — all values survive.
+  Confirms pure-Jazzy is XCDR1-clean (matches the wire oracle). The harness +
+  assertions are proven working.
+- `--publisher external`: NO internal publisher — plug a `ros-jazzy` + cyclone
+  nano-ros talker on domain 2; the harness (host-net container) runs the bridge +
+  the Jazzy downstream echo and asserts the values survive. This is the #0267 fix
+  verification and the last step — it needs a built nano-ros jazzy+cyclone
+  publisher on the demo host.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members
