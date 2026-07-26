@@ -14,6 +14,22 @@ Goal: nano-ros is byte-compatible with a **default ROS 2 humble+ peer**
 regardless of the data representation the peer negotiates — specifically,
 `@appendable` nested structs survive an XCDR2 decode (their DHEADER is present).
 
+## Status (2026-07-26) — implementation COMPLETE; only the live demo is unverified
+
+Every layer is landed + locally verified (see the W1c/W2/W3/W4 sections):
+Cyclone appendable descriptor (W1c, verified vs `libddsc.a`); `nros-serdes` XCDR2
+writer+reader+DHEADER (W2/W3); the codegen DHEADER wrap + edition-gated tx writer
+for the Rust path AND the C/C++ path (message+service+action, W4). Humble is
+byte-identical throughout.
+
+**WIRE ORACLE (2026-07-26):** captured the actual negotiated RTPS wire from
+`ros:jazzy-ros-base` (Header pub → `raw=True` sub) — modern Jazzy STILL defaults
+to XCDR1 (`00 01`, no DHEADER) for BOTH fastrtps + cyclonedds. nano-ros's XCDR1
+Header is byte-identical (guard: `cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`).
+So the DEFAULT interop already works; the XCDR2 path covers the non-default
+negotiated case (`domain_bridge` re-stamp — the #0267 trigger). The only open
+item is the live autoware/`domain_bridge` demo clearing end-to-end.
+
 ## Status (2026-07-25)
 
 W1 STARTED — and produced a **blocking finding** (below): the naive

@@ -222,6 +222,35 @@ Jazzy `domain_bridge`/peer (the demo clearing). Fix directions realized:
 - nros-serdes RMW paths (zenoh-pico/XRCE/native, Rust + C/C++): W2/W3/W4 (XCDR2 +
   DHEADER, edition-gated).
 
+## Update (WIRE ORACLE, 2026-07-26) — modern Jazzy defaults to XCDR1; nano-ros matches byte-for-byte
+
+Captured the ACTUAL negotiated RTPS wire from `ros:jazzy-ros-base` (a Header pub
+→ a `raw=True` subscriber, not just `serialize_message`), for both default rmws:
+
+- `rmw_fastrtps_cpp` (Jazzy default): `00 01 00 00 07 00 00 00 09 00 00 00 03 00
+  00 00 61 62 00` — 19 bytes, encapsulation **XCDR1**, NO DHEADER.
+- `rmw_cyclonedds_cpp`: identical content + one trailing `00` alignment pad (20
+  bytes) — decodes the same.
+
+**⇒ Modern Jazzy STILL defaults to XCDR1 on the wire.** nano-ros's XCDR1 Header is
+BYTE-IDENTICAL to it (regression-guarded by
+`nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`). So the
+DEFAULT nano-ros ↔ Jazzy interop already works — the XCDR2/DHEADER path is NOT the
+common case; it only appears when a peer negotiates a non-default
+`data_representation` (appendable + XCDR2), which is exactly the path
+`domain_bridge`'s serialized-passthrough republish exposed in this issue.
+
+This sharpens the residual risk: the fix stack now covers every layer —
+- Cyclone RMW (the island's backend, the demo's corrupting path): W1c appendable
+  descriptor (verified vs `libddsc.a`);
+- nros-serdes paths (zenoh-pico/XRCE/native, Rust + C/C++): W2/W3/W4 XCDR2 +
+  DHEADER, edition-gated;
+- default XCDR1 interop: byte-proven above.
+
+The ONLY unverified item is the LIVE autoware + `domain_bridge` scenario clearing
+end-to-end (the exact negotiated-XCDR2 topology) — which needs the demo host, not
+reproducible from a serialize/raw-sub oracle. Everything mechanistic is proven.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

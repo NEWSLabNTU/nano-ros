@@ -838,6 +838,78 @@ mod tests {
     /// string frame_id }`) wrapped in DHEADERs under XCDR2 lays out the
     /// encapsulation, the top DHEADER, the nested-Time DHEADER, and the members
     /// at the canonical offsets — and round-trips through the reader.
+    /// Serialize `std_msgs/Header { builtin_interfaces/Time stamp; string
+    /// frame_id }` the way the generated code does (each struct DHEADER-wrapped),
+    /// with `stamp = {sec:7, nanosec:9}`, `frame_id = "ab"`.
+    fn serialize_header(w: &mut CdrWriter) {
+        let h = w.begin_dheader().unwrap();
+        // nested Time
+        let t = w.begin_dheader().unwrap();
+        w.write_i32(7).unwrap();
+        w.write_u32(9).unwrap();
+        w.end_dheader(t).unwrap();
+        w.write_string("ab").unwrap();
+        w.end_dheader(h).unwrap();
+    }
+
+    /// WIRE ORACLE (phase-303 #0267). Under XCDR1 the DHEADER wrap is a no-op, so
+    /// nano-ros's Header bytes are BYTE-IDENTICAL to what a real ROS 2 Jazzy node
+    /// puts ON THE WIRE by default. Captured live from `ros:jazzy-ros-base`
+    /// (2026-07-26) — a Header pub → a `raw=True` subscriber (the actual
+    /// negotiated RTPS payload, not just `serialize_message`):
+    ///   - `rmw_fastrtps_cpp` (default): exactly these 19 bytes.
+    ///   - `rmw_cyclonedds_cpp`: identical content + one trailing `00`
+    ///     alignment pad (20 bytes) — decodes the same.
+    /// Both use encapsulation `00 01` (XCDR1), NO DHEADER: modern Jazzy STILL
+    /// defaults to XCDR1 on the wire. So nano-ros (humble, or a jazzy build
+    /// talking to a default peer) already interoperates byte-for-byte. XCDR2 +
+    /// DHEADER only appears with a non-default negotiated `data_representation`
+    /// (the #0267 domain_bridge trigger) — covered by the XCDR2 path.
+    #[test]
+    fn xcdr1_header_matches_live_jazzy_wire_bytes() {
+        let mut buf = [0u8; 64];
+        let n = {
+            let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+            serialize_header(&mut w);
+            w.position()
+        };
+        // Captured from `ros:jazzy-ros-base` rclpy serialize_message(Header):
+        //   00 01 00 00 | 07 00 00 00 | 09 00 00 00 | 03 00 00 00 | 61 62 00
+        let jazzy: [u8; 19] = [
+            0x00, 0x01, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x61, 0x62, 0x00,
+        ];
+        assert_eq!(
+            &buf[..n],
+            &jazzy,
+            "nano-ros XCDR1 Header must equal live Jazzy wire bytes"
+        );
+    }
+
+    /// The XCDR2 (jazzy build) Header: appendable → a DHEADER per struct. The
+    /// encapsulation flips to `00 09`, and Cyclone/a modern peer negotiating
+    /// XCDR2 reads the DHEADERs. Round-trips through the reader.
+    #[test]
+    fn xcdr2_header_has_dheaders_and_roundtrips() {
+        let mut buf = [0u8; 64];
+        let n = {
+            let mut w = CdrWriter::new_with_header_xcdr2(&mut buf).unwrap();
+            serialize_header(&mut w);
+            w.position()
+        };
+        assert_eq!(&buf[0..2], &[0x00, 0x09], "XCDR2 DELIMITED encapsulation");
+        // Round-trip via the auto-detecting reader.
+        let mut r = CdrReader::new_with_header(&buf[..n]).unwrap();
+        assert_eq!(r.version(), EncodingVersion::Xcdr2);
+        let h = r.begin_dheader().unwrap();
+        let t = r.begin_dheader().unwrap();
+        assert_eq!(r.read_i32().unwrap(), 7);
+        assert_eq!(r.read_u32().unwrap(), 9);
+        r.end_dheader(t).unwrap();
+        assert_eq!(r.read_string().unwrap(), "ab");
+        r.end_dheader(h).unwrap();
+    }
+
     #[test]
     fn xcdr2_nested_dheader_layout_and_roundtrip() {
         let mut buf = [0u8; 64];
