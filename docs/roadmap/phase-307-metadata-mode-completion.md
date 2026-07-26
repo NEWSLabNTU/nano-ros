@@ -54,8 +54,15 @@ same dedup pass (mirroring the phase-219.L cmake loop) with a
 `component_type_path` assumes `crate::module::Component`, while the shipped
 convention is `nros::node!(Class)` with `impl Node for Class` — derive the
 path from the summary's `class` instead of a positional guess.
-**Done when:** `nros metadata --build` produces a sidecar for an unmodified
-`examples/workspaces/rust` node pkg.
+**Done when:** `nros metadata --build` produces a schema-valid sidecar for
+EVERY unmodified Rust node pkg in the tree — both **standalone** examples
+(`examples/{native,zephyr,qemu-arm-freertos,qemu-arm-nuttx,qemu-riscv-nuttx,
+qemu-riscv64-threadx,threadx-linux,qemu-arm-baremetal,qemu-esp32-baremetal,
+stm32f4}/rust/*`) and **workspace** members
+(`examples/workspaces/{rust,ws-*}/src/*_pkg`) — with no per-example opt-in
+key. A pkg that legitimately declares no node (interfaces-only, bringup)
+produces nothing and is not an error; anything else missing a sidecar is a
+W1 failure, enumerated by the coverage gate in W5.
 
 ### W2 — automation (the ordering guarantee)
 
@@ -82,7 +89,11 @@ ops are no-ops — that is a metadata recorder in embryo. Emit its recording
 into the same `source-metadata.json` schema from a host-compiled probe,
 mirroring the Rust harness. **Coordinate with phase-236** (which turns that
 recording context into a real runtime — the two must not fork).
-**Done when:** a C++ node pkg produces a schema-valid sidecar.
+**Done when:** every unmodified C and C++ node pkg produces a schema-valid
+sidecar — standalone (`examples/*/c/*`, `examples/*/cpp/*`) and workspace
+(`examples/workspaces/{c,cpp,mixed,ws-*}`) alike — through the same schema
+and the same discovery path as Rust, so the count is one mechanism with
+three front-ends, not three mechanisms.
 
 ### W4 — consume it: exact sizing
 
@@ -98,6 +109,68 @@ msg/srv types per entry are derivable from the same source.
 **Done when:** an over-capacity workspace fails at bake naming the exact
 count, and 0257 closes.
 
+### W5 — coverage gate: platform- and shape-agnostic by construction
+
+The counting mechanism must not silently regress to "works for the two
+examples someone tested". Add a build-stage gate that enumerates every
+example — the SAME enumeration the fixture/example matrix already uses
+(`examples/fixtures.toml` rows + `packages/testing/nros-tests/src/matrix.rs`
+cells; reuse the phase-300 enumeration SSoT rather than a fresh `find`) —
+and asserts, per node pkg:
+
+1. a sidecar exists (or the pkg is on a tracked, reasoned exception list —
+   the `examples_fixture_coverage.rs` precedent), and
+2. the recorded entity set is non-empty when the pkg's source declares
+   entities, and
+3. the derived capacity is >= the entities the SystemModel wiring shows
+   (metadata may exceed the bound; it must never fall below it).
+
+Platform-agnosticism is a PROPERTY TO TEST, not an assumption: the producer
+compiles a HOST probe, so a zephyr/freertos/nuttx/threadx/bare-metal node
+pkg must yield the same sidecar as a native one from identical source.
+Assert exactly that — pick node pkgs that build for multiple deploys and
+compare their sidecars across platform selections (the entity set must be
+identical; only cfg-gated declarations may differ, which is the W3
+"host-vs-target cfg" delta and must FAIL LOUD rather than silently skew a
+count).
+
+**Done when:** the gate runs in `just check` (build stage, no QEMU) and
+fails on a missing/empty/under-counting sidecar for any example.
+
+### W6 — runtime E2E: the count is right where it matters
+
+Static gates prove the sidecars exist and agree; only a boot proves the
+sizing they produce is correct. Two lanes, both marker-gated
+(`nros_tests::output` constants, never literal greps):
+
+1. **Over-capacity is caught at BAKE, not boot** — a fixture whose model +
+   metadata exceed the compiled `MAX_CBS` must fail the build with the
+   count-naming error (the phase-306 W1 `compile-check-fixtures` shape is
+   the precedent for asserting a build-stage failure).
+2. **Derived capacity actually boots** — a workspace whose entity count
+   exceeds the default 4 (subs + TIMERS, so the model bound alone would
+   under-size it and the pre-307 code would die `code=-6 Full`) boots and
+   delivers on at least one hosted lane AND one embedded lane
+   (native + one of zephyr/freertos/nuttx/threadx), proving the sizing
+   reaches boards that DROP per-entry sizing and open at the compiled
+   `MAX_CBS`. This is the regression test 0257 never had: the original
+   Autoware-island failure reproduced in-tree.
+
+**Done when:** both lanes are matrix cells with fixture rows (RFC-0051
+rules: cell + row land together, allocator ports, no hand-picked numbers)
+and pass solo on a quiet host.
+
+## Scope note — "all examples" is the bar, deliberately
+
+The tree has ~250 standalone example fixtures and ~85 workspace fixtures
+across 11 platform families and 3 languages. A counting mechanism that
+works for a subset is worse than none: the bake would size some entries
+exactly and others by a bound, and a user could not tell which guarantee
+they were getting. Hence W5's enumeration gate and W6's two-lane E2E are
+acceptance criteria, not nice-to-haves — and the producer is a HOST probe
+precisely so platform coverage is structural (one probe per component,
+independent of the deploy target) rather than per-platform plumbing.
+
 ## Non-goals
 
 - Sandboxing the harness (the dropped 172.E item — re-open only under a
@@ -107,11 +180,23 @@ count, and 0257 closes.
 
 ## Acceptance
 
-- [ ] Unmodified Rust + C++ example node pkgs both produce sidecars.
+- [ ] EVERY unmodified node pkg in `examples/` produces a schema-valid
+      sidecar — Rust, C and C++; standalone examples and workspace members
+      alike — with no per-example opt-in and a tracked exception list for
+      legitimate non-nodes.
+- [ ] Identical source yields an identical entity set regardless of the
+      target platform selection (host probe ⇒ platform-agnostic);
+      cfg-divergent declarations fail loud instead of skewing a count.
 - [ ] Sidecars are produced by the documented workflow, not a manual verb,
       and staleness is detectable.
 - [ ] The executor-capacity gate uses the exact count where a sidecar
-      exists (timers included) and the model bound where it does not.
+      exists (timers included) and the model bound where it does not, and
+      never falls below the model bound.
+- [ ] W5 coverage gate runs in `just check` and fails on any missing,
+      empty, or under-counting sidecar.
+- [ ] W6 E2E: an over-capacity system fails at BAKE with the count named,
+      and a >4-entity system (subs + timers) boots and delivers on one
+      hosted AND one embedded lane.
 - [ ] 0257 closes; the "why not metadata?" note in
       `nros-orchestration-ir/src/executor_sizing.rs` is replaced by the
       real rule.
