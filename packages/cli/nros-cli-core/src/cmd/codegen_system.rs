@@ -185,6 +185,16 @@ pub fn run(args: Args) -> Result<()> {
         model_ages = crate::orchestration::model_ingest::age_rows(&model)?;
         // R1-N3 — transports ride the bake plan.
         model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
+        // Issue 0257 — refuse a bake whose modelled entity count cannot fit the
+        // executor callback table the image compiles with, instead of shipping
+        // an image that boots and dies on `create_* (code=-6 Full)`. Same count
+        // + derivation the `nros::main!` bake uses (shared in
+        // nros-orchestration-ir), so the two never disagree.
+        crate::orchestration::model_ingest::check_executor_capacity(
+            &model,
+            args.target.as_deref(),
+            crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
+        )?;
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
             &mut owned.system,

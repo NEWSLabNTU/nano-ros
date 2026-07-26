@@ -36,6 +36,10 @@ use thiserror::Error;
 // layer, not just resolve authored tiers. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
 pub mod derive;
+// issue 0257 — model-derived executor callback-table sizing, shared by the
+// proc-macro entry bake and the CLI's codegen-system so the two agree on the
+// count, the derivation and the over-capacity diagnostic.
+pub mod executor_sizing;
 pub mod mapper_input;
 pub mod rtos_realizer;
 

@@ -180,6 +180,158 @@ pub fn derive_execution_from_contracts(
     Ok(n)
 }
 
+/// Issue 0257 — read `[package.metadata.nros.entry] max_callbacks` from an
+/// entry pkg's `Cargo.toml`. `None` for a non-Cargo (C/C++) bringup, an absent
+/// key, or anything unparseable: the caller then compares against the build
+/// default, which is exactly what such an entry compiles with.
+pub fn declared_max_callbacks(manifest_path: &Path) -> Option<usize> {
+    if manifest_path.file_name()? != "Cargo.toml" {
+        return None;
+    }
+    let raw = std::fs::read_to_string(manifest_path).ok()?;
+    let v: toml::Value = toml::from_str(&raw).ok()?;
+    let n = v
+        .get("package")?
+        .get("metadata")?
+        .get("nros")?
+        .get("entry")?
+        .get("max_callbacks")?
+        .as_integer()?;
+    (n > 0).then_some(n as usize)
+}
+
+/// Issue 0257 — the CLI twin of the `nros::main!` capacity check: refuse to
+/// bake a system whose modelled entity count cannot fit the executor callback
+/// table the image will compile with.
+///
+/// Capacity mirrors the macro exactly (shared derivation in
+/// `nros_orchestration_ir::executor_sizing`, so the two bakes cannot drift):
+///
+/// - an entry that declares `max_callbacks` is sized by it;
+/// - otherwise a board that honors per-entry sizing gets the DERIVED size, so
+///   it always fits and the check is vacuous;
+/// - every other board opens at the build-time `NROS_EXECUTOR_MAX_CBS`
+///   (read from the env when the bake sets it, else the default).
+///
+/// A model with no wiring counts zero and is never checked — the pre-0257
+/// bake, unchanged.
+pub fn check_executor_capacity(
+    model: &SystemModel,
+    deploy_key: Option<&str>,
+    declared: Option<usize>,
+) -> Result<()> {
+    use nros_orchestration_ir::executor_sizing as sz;
+
+    let counted = sz::count_callbacks(model, |_| true);
+    if counted == 0 {
+        return Ok(());
+    }
+    let build_default = std::env::var("NROS_EXECUTOR_MAX_CBS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(sz::DEFAULT_MAX_CBS);
+    let (capacity, fix) = match declared {
+        Some(n) => (
+            n,
+            format!(
+                "raise `[package.metadata.nros.entry] max_callbacks` (currently {n}) to at \
+                 least {}",
+                sz::derive_max_callbacks(counted)
+            ),
+        ),
+        None if deploy_key.is_some_and(sz::board_honors_entry_sizing) => (
+            sz::derive_max_callbacks(counted).max(build_default),
+            String::new(),
+        ),
+        None => (
+            build_default,
+            format!(
+                "set `NROS_EXECUTOR_MAX_CBS` (currently {build_default}) to at least {} in \
+                 the build env, and rebuild from clean — resizing the executor arena mixes \
+                 stale objects",
+                sz::derive_max_callbacks(counted)
+            ),
+        ),
+    };
+    if counted > capacity {
+        bail!(
+            "codegen-system: the SystemModel registers {counted} callback entities but the \
+             executor callback table holds {capacity}: {fix}. issue 0257"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod executor_capacity_tests {
+    //! Issue 0257 — the CLI twin of the `nros::main!` capacity check.
+    use ros_launch_manifest_model::{ServiceWiring, SystemModel, TopicWiring};
+
+    use super::check_executor_capacity;
+
+    /// `n` subscribers + one service server = `n + 1` callback entities.
+    fn model_with(n: usize) -> SystemModel {
+        let mut m = SystemModel::default();
+        m.structure.topics.insert(
+            "/chatter".into(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/String".into(),
+                publishers: vec!["/talker/chatter".into()],
+                subscribers: (0..n).map(|i| format!("/listener{i}/chatter")).collect(),
+            },
+        );
+        m.structure.services.insert(
+            "/add".into(),
+            ServiceWiring {
+                srv_type: "example_interfaces/srv/AddTwoInts".into(),
+                server: vec!["/adder/add".into()],
+                client: vec![],
+            },
+        );
+        m
+    }
+
+    #[test]
+    fn wiring_free_model_is_never_checked() {
+        // The pre-0257 bake for every in-tree example.
+        check_executor_capacity(&SystemModel::default(), Some("zephyr"), None)
+            .expect("nothing to count");
+    }
+
+    #[test]
+    fn over_capacity_model_on_a_firmware_board_fails_the_bake() {
+        let err = check_executor_capacity(&model_with(8), Some("zephyr"), None)
+            .expect_err("9 entities do not fit the default 4")
+            .to_string();
+        assert!(err.contains("registers 9 callback entities"), "got: {err}");
+        assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
+        assert!(err.contains("at least 12"), "got: {err}");
+        assert!(err.contains("0257"), "got: {err}");
+    }
+
+    #[test]
+    fn declared_max_callbacks_below_the_count_fails_the_bake() {
+        let err = check_executor_capacity(&model_with(8), Some("posix"), Some(4))
+            .expect_err("declared 4 does not fit 9")
+            .to_string();
+        assert!(err.contains("max_callbacks"), "got: {err}");
+        assert!(err.contains("at least 12"), "got: {err}");
+    }
+
+    #[test]
+    fn declared_max_callbacks_above_the_count_passes() {
+        check_executor_capacity(&model_with(8), Some("zephyr"), Some(32)).expect("32 fits 9");
+    }
+
+    #[test]
+    fn sizing_honoring_board_derives_its_way_out() {
+        // posix opens via `run_with_deploy_sized`, so the derived size applies
+        // and no operator action is needed — mirroring the macro.
+        check_executor_capacity(&model_with(8), Some("posix"), None)
+            .expect("derived sizing covers the count on a hosted board");
+    }
+}
+
 #[cfg(test)]
 mod plan_record_tests {
     use ros_launch_manifest_model::{NodeInstance, SystemModel};

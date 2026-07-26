@@ -462,6 +462,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `ExecutorSink::create_entity` matches entity source names against (exact-FQN,
     // first rule wins). Empty in the self-bringup arm.
     let mut node_remap_bakes: Vec<Vec<(String, String)>> = Vec::new();
+    // Issue 0257 — callback-slot-consuming entities the model declares for the
+    // nodes THIS entry deploys (subs + service servers/clients + action
+    // servers/clients). A LOWER bound: the model has no timer/guard-condition
+    // entity. `0` in the self-bringup arm (no model) and for a model whose
+    // launch tree carried no wiring — both keep the pre-0257 emit exactly.
+    let mut model_callbacks: usize = 0;
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = if let Some(model_lit) = &args.model {
@@ -696,6 +702,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
             node_instances.push(bare);
         }
+        // Issue 0257 — count the callback slots the SLICED node set needs. Same
+        // `keep` predicate as the walk above, so a per-board/per-host entry
+        // sizes for the nodes it actually registers, not the whole system.
+        model_callbacks =
+            nros_orchestration_ir::executor_sizing::count_callbacks(&model, |fqn| keep(fqn));
         if idents.is_empty() {
             return Err(syn::Error::new(
                 model_lit.span(),
@@ -1132,7 +1143,22 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `[package.metadata.nros.entry] max_callbacks`. `None` → default sizing
     // (byte-identical to pre-271); `Some` → emit the `_sized` board entry so the
     // hosted board opens via `Executor::open_sized`.
-    let exec_sizing = read_entry_executor_sizing(&manifest_dir.join("Cargo.toml"));
+    let declared_sizing = read_entry_executor_sizing(&manifest_dir.join("Cargo.toml"));
+    // Issue 0257 — DERIVE the sizing from the model when the entry declares
+    // none. Explicit metadata always wins (the user may know about timers the
+    // model cannot see); a derived value only replaces the build default when
+    // it is bigger, so every entry whose model has no wiring — i.e. every
+    // in-tree example today — emits exactly what it emitted before.
+    let exec_sizing = executor_sizing_for(declared_sizing, model_callbacks)?;
+    // Issue 0257 — the loud bake-time check. On a board that ignores the
+    // per-entry sizing the capacity is whatever `NROS_EXECUTOR_MAX_CBS`
+    // compiled in, which the macro cannot read — so assert it in the emitted
+    // code against the real const rather than guessing here.
+    let capacity_assert = executor_capacity_assert(
+        model_callbacks,
+        deploy_for_framework.as_deref(),
+        exec_sizing,
+    );
 
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
@@ -1219,7 +1245,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // `run_with_deploy_sized` (phase-271, issue #110) to open at the
             // entry's declared `max_callbacks`.
             match exec_sizing {
-                ::core::option::Option::Some((max_cbs, max_sc)) => quote! {
+                EntrySizing::Declared(max_cbs, max_sc) => quote! {
                     <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy_sized(
                         &#deploy_overlay_ts,
                         #max_cbs,
@@ -1227,7 +1253,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         #setup_closure,
                     )
                 },
-                ::core::option::Option::None => quote! {
+                // Issue 0257 — a DERIVED size must never SHRINK the table below
+                // the build-time default (a workspace that already raised
+                // `NROS_EXECUTOR_MAX_CBS` keeps its value), hence the max.
+                EntrySizing::Derived(max_cbs) => quote! {
+                    <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy_sized(
+                        &#deploy_overlay_ts,
+                        {
+                            const DERIVED: usize = #max_cbs;
+                            const BUILD_DEFAULT: usize =
+                                ::nros::__macro_support::EXECUTOR_MAX_CBS;
+                            if DERIVED > BUILD_DEFAULT { DERIVED } else { BUILD_DEFAULT }
+                        },
+                        0usize,
+                        #setup_closure,
+                    )
+                },
+                EntrySizing::BuildDefault => quote! {
                     <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
                         &#deploy_overlay_ts,
                         #setup_closure,
@@ -2188,6 +2230,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // when any tracked file changes.
         #( #tracked_consts )*
 
+        // Issue 0257 — const-assert the model's entity count against the
+        // callback capacity that actually compiles in (no-op token stream
+        // when the board honors the emitted per-entry sizing).
+        #capacity_assert
+
         // W4b — baked boot-config static; emitted before the framework
         // body so `&NROS_BOOT_CONFIG` is in scope at every overlay use site.
         #boot_config_static_ts
@@ -2291,6 +2338,107 @@ fn read_entry_executor_sizing(cargo_toml: &Path) -> Option<(usize, usize)> {
         .filter(|n| *n > 0)
         .unwrap_or(0);
     Some((max_cbs as usize, max_sc as usize))
+}
+
+/// Issue 0257 — how the emitted entry sizes its executor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EntrySizing {
+    /// No per-entry sizing: the board opens at the build-time `MAX_CBS`.
+    BuildDefault,
+    /// `[package.metadata.nros.entry] max_callbacks` (+ `max_sched_contexts`).
+    Declared(usize, usize),
+    /// Derived from the model's entity count (issue 0257).
+    Derived(usize),
+}
+
+/// Issue 0257 — pick the executor sizing the entry emits.
+///
+/// Explicit metadata always wins: the author may know about entities the model
+/// cannot express (timers, guard conditions) — but it must still be big enough
+/// for what the model DOES declare, so an explicit value below the modelled
+/// count is a hard bake error rather than a runtime `Full`.
+///
+/// With no explicit value the model's count derives one
+/// ([`nros_orchestration_ir::executor_sizing::derive_max_callbacks`]), and only
+/// when that lands above the build default — a lean entry (or any model with no
+/// wiring) keeps emitting the pre-0257 unsized call.
+fn executor_sizing_for(
+    declared: Option<(usize, usize)>,
+    model_callbacks: usize,
+) -> syn::Result<EntrySizing> {
+    use nros_orchestration_ir::executor_sizing as sizing;
+
+    if let Some((cbs, sc)) = declared {
+        if model_callbacks > cbs {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                format!(
+                    "nros::main!: the SystemModel registers {model_callbacks} callback \
+                     entities on this entry but `[package.metadata.nros.entry] \
+                     max_callbacks = {cbs}` sizes the executor for {cbs}. Raise it to at \
+                     least {} in this pkg's Cargo.toml (the count is a lower bound — the \
+                     model cannot see timers). issue 0257",
+                    sizing::derive_max_callbacks(model_callbacks)
+                ),
+            ));
+        }
+        return Ok(EntrySizing::Declared(cbs, sc));
+    }
+    let derived = sizing::derive_max_callbacks(model_callbacks);
+    if derived > sizing::DEFAULT_MAX_CBS {
+        return Ok(EntrySizing::Derived(derived));
+    }
+    Ok(EntrySizing::BuildDefault)
+}
+
+/// Issue 0257 — the loud bake-time capacity check, emitted as a `const` item.
+///
+/// Only boards that override `BoardEntry::run_with_deploy_sized` honor the
+/// sizing the entry emits; every firmware board takes the default trait body
+/// and opens at the build-time `NROS_EXECUTOR_MAX_CBS`. For those the model's
+/// count is the only advance warning available — and the macro cannot read the
+/// compiled `MAX_CBS` (it is materialised by `nros-node`'s build script), so
+/// the comparison is emitted as a `const` panic against the real const instead
+/// of being decided here.
+///
+/// Emits nothing when the count is unknown/zero, when the board honors the
+/// emitted sizing (which by construction covers the count), or when the board
+/// is unknown (`board = <Zst>` form — no deploy key to classify).
+fn executor_capacity_assert(
+    model_callbacks: usize,
+    deploy: Option<&str>,
+    sizing: EntrySizing,
+) -> proc_macro2::TokenStream {
+    use nros_orchestration_ir::executor_sizing as sz;
+
+    let Some(key) = deploy else {
+        return quote! {};
+    };
+    if model_callbacks == 0 || sz::board_honors_entry_sizing(key) {
+        return quote! {};
+    }
+    let advice = match sizing {
+        EntrySizing::Declared(cbs, _) => format!(
+            "this entry declares `max_callbacks = {cbs}`, but board `{key}` ignores \
+             per-entry sizing"
+        ),
+        _ => format!("board `{key}` ignores per-entry sizing"),
+    };
+    let msg = format!(
+        "nros::main!: the SystemModel registers {model_callbacks} callback entities but the \
+         executor callback table compiled in is smaller ({advice}). Raise \
+         `NROS_EXECUTOR_MAX_CBS` (e.g. to {}) in the entry's `.cargo/config.toml` `[env]` \
+         and rebuild from clean — resizing the executor arena mixes stale objects. \
+         issue 0257",
+        sz::derive_max_callbacks(model_callbacks)
+    );
+    quote! {
+        const _: () = {
+            if #model_callbacks > ::nros::__macro_support::EXECUTOR_MAX_CBS {
+                ::core::panic!(#msg);
+            }
+        };
+    }
 }
 
 /// Issue #48 cause 1 — the deploy-overlay values read from the Entry pkg's
@@ -2916,5 +3064,84 @@ mod entry_sizing_tests {
     fn nonpositive_max_callbacks_is_none() {
         let p = write_tmp("zero", "[package.metadata.nros.entry]\nmax_callbacks = 0\n");
         assert_eq!(read_entry_executor_sizing(&p), None);
+    }
+}
+
+#[cfg(test)]
+mod derived_sizing_tests {
+    //! Issue 0257 — the sizing the entry emits is DERIVED from the model's
+    //! entity count when the entry declares none, and an over-capacity model
+    //! fails the bake loudly instead of dying at boot on `code=-6 Full`.
+    use super::{EntrySizing, executor_capacity_assert, executor_sizing_for};
+
+    #[test]
+    fn no_model_wiring_keeps_the_build_default() {
+        // Every in-tree example model today: no wiring ⇒ nothing to derive ⇒
+        // the pre-0257 unsized `run_with_deploy` emit.
+        assert_eq!(
+            executor_sizing_for(None, 0).unwrap(),
+            EntrySizing::BuildDefault
+        );
+    }
+
+    #[test]
+    fn small_model_stays_on_the_build_default() {
+        // 1 entity derives 3 — below the build default 4, so still no sized emit.
+        assert_eq!(
+            executor_sizing_for(None, 1).unwrap(),
+            EntrySizing::BuildDefault
+        );
+    }
+
+    #[test]
+    fn fat_model_derives_a_sizing() {
+        // The issue's 3-node workspace: 9 entities ⇒ 9 + 25 % = 12 slots.
+        assert_eq!(
+            executor_sizing_for(None, 9).unwrap(),
+            EntrySizing::Derived(12)
+        );
+    }
+
+    #[test]
+    fn declared_sizing_wins_over_the_derivation() {
+        // The author may know about timers the model cannot see.
+        assert_eq!(
+            executor_sizing_for(Some((32, 4)), 9).unwrap(),
+            EntrySizing::Declared(32, 4)
+        );
+    }
+
+    #[test]
+    fn declared_sizing_below_the_model_count_fails_the_bake() {
+        let err = executor_sizing_for(Some((4, 0)), 9)
+            .expect_err("9 entities do not fit a declared 4")
+            .to_string();
+        assert!(err.contains("registers 9 callback entities"), "got: {err}");
+        assert!(err.contains("max_callbacks = 4"), "got: {err}");
+        assert!(err.contains("at least 12"), "got: {err}");
+        assert!(err.contains("0257"), "got: {err}");
+    }
+
+    #[test]
+    fn firmware_board_gets_a_const_capacity_assert() {
+        // Zephyr ignores the emitted sizing → the only warning available is a
+        // const check against the compiled `MAX_CBS`.
+        let tokens = executor_capacity_assert(9, Some("zephyr"), EntrySizing::Derived(12));
+        // It is spliced at item position in the expansion — it must parse there.
+        syn::parse2::<syn::File>(tokens.clone()).expect("assert parses as an item");
+        let ts = tokens.to_string();
+        assert!(ts.contains("EXECUTOR_MAX_CBS"), "got: {ts}");
+        assert!(ts.contains("NROS_EXECUTOR_MAX_CBS"), "got: {ts}");
+        assert!(ts.contains("issue 0257"), "got: {ts}");
+    }
+
+    #[test]
+    fn hosted_board_and_countless_models_emit_no_assert() {
+        // posix honors the emitted sizing (which covers the count by
+        // construction); a wiring-free model has nothing to assert; an
+        // explicit `board = <Zst>` has no key to classify.
+        assert!(executor_capacity_assert(9, Some("posix"), EntrySizing::Derived(12)).is_empty());
+        assert!(executor_capacity_assert(0, Some("zephyr"), EntrySizing::BuildDefault).is_empty());
+        assert!(executor_capacity_assert(9, None, EntrySizing::BuildDefault).is_empty());
     }
 }

@@ -726,6 +726,13 @@ pub use nros_platform::DispatchStrategy;
 #[doc(hidden)]
 pub mod __macro_support {
     pub use ::nros_platform;
+
+    /// Issue 0257 — the build-time executor callback-table size
+    /// (`NROS_EXECUTOR_MAX_CBS`, default 4). Re-exported so the `nros::main!`
+    /// expansion can `const`-assert the model's entity count against the
+    /// capacity that ACTUALLY compiles in, instead of letting the image boot
+    /// and die on `create_timer (code=-6 Full)`.
+    pub use ::nros_node::config::MAX_CBS as EXECUTOR_MAX_CBS;
 }
 
 // Phase 110.B / 110.G — scheduling-context API surface. Consumers
