@@ -1,6 +1,6 @@
 ---
 id: 282
-title: "Zephyr XRCE builds never produce nros_cpp_config_generated.h — C probe detonated (fixed); C++ has no fallback (open)"
+title: "Zephyr XRCE fixtures raced the nros-cpp config header: unset NANO_ROS_PLATFORM disabled the ordering guard (0088/0090 class)"
 status: open
 type: bug
 severity: medium
@@ -98,3 +98,47 @@ Fix direction: make the Zephyr XRCE build produce/mirror
 i.e. find why the nros-cpp cargo build + header mirror is skipped for
 `NROS_RMW=xrce`. Papering this over on the include side would only move
 the failure later.
+
+
+## Second correction — the actual root cause (2026-07-26)
+
+The "(b) XRCE never produces the header" conclusion above was ALSO wrong.
+Direct evidence from a manual `west build` of `examples/zephyr/cpp/talker`
+with `CONF_FILE="prj.conf;prj-xrce.conf"`:
+
+- `CONFIG_NROS_CPP_API=y`, `CONFIG_NROS_RMW_XRCE=y`
+- `<build>/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h`
+  EXISTS, in exactly the same layout as the zenoh peer
+
+So the header is produced correctly. This is the **0088/0090 compile
+race**, and the reason it bit XRCE deterministically:
+
+`nano_ros_auto_add_library` (and the legacy fused register path) gated
+their Zephyr ordering logic on `NANO_ROS_PLATFORM STREQUAL "zephyr"` —
+but that variable is **not set in a `find_package(Zephyr)` app build**.
+The guard silently never fired, so the component library received no
+ordering edge to the nros-cpp cargo build. Proof from the generated
+`build.ninja`:
+
+```
+build cmake_object_order_depends_target_talker_lib: phony || \
+    zephyr/driver_validation_h_target zephyr/kobj_types_h_target \
+    zephyr/syscall_list_h_target
+build CMakeFiles/talker_lib.dir/src/Talker.cpp.obj: … | \
+    nros-rust/nros-c-generated/nros/nros_config_generated.h \
+    nros-rust/nros-c-generated/nros/nros_generated.h || …
+```
+
+— only Zephyr's own header targets in the order phony, and explicit deps
+on the nros-**c** generated headers but never nros-**cpp**. zenoh and
+cyclonedds won that race on timing; XRCE lost it every time.
+
+Fix: detect Zephyr by the reliable signal (`TARGET app` + `ZEPHYR_BASE`)
+instead of the unset variable, and add BOTH a target-level dependency on
+the cargo-build targets and the file-level `OBJECT_DEPENDS`. Verified:
+`examples/zephyr/cpp/talker` + XRCE builds clean where it previously
+failed.
+
+Note the same latent guard bug exists on the legacy fused
+`nano_ros_node_register` Zephyr branch — zenoh/cyclonedds only pass there
+by timing luck.

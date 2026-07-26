@@ -281,7 +281,13 @@ function(nano_ros_auto_add_library name)
             target_link_libraries(${name} PUBLIC ${_nros_iface_libs})
         endif()
     endif()
-    if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
+    # Zephyr detection: NANO_ROS_PLATFORM is NOT set in a `find_package(Zephyr)`
+    # app build (issue 0282) — the previous `STREQUAL "zephyr"` guard silently
+    # never fired there, so the per-build config headers got no ordering edge
+    # and a component TU could compile before the nros-cpp cargo build emitted
+    # `nros_cpp_config_generated.h` (reaching the in-tree `#error` stub). The
+    # global `app` target + ZEPHYR_BASE is the reliable signal.
+    if(TARGET app AND (DEFINED ZEPHYR_BASE OR NANO_ROS_PLATFORM STREQUAL "zephyr"))
         target_include_directories(${name} PRIVATE
             $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
         # APPEND, not set: the Zephyr interface-codegen module also stamps
@@ -291,6 +297,15 @@ function(nano_ros_auto_add_library name)
         # Losing the nros-cpp entry lets a C TU compile before
         # `nros_cpp_config_generated.h` exists and fall through to the in-tree
         # `#error` stub (issue 0088/0090 class).
+        # Target-level ordering too: the file-level OBJECT_DEPENDS below closes
+        # the compile race, this makes the dependency explicit for consumers
+        # that only look at target edges.
+        foreach(_cargo_tgt nros_cpp_cargo_build nros_c_cargo_build
+                           cargo-build_nros_cpp cargo-build_nros_c)
+            if(TARGET ${_cargo_tgt})
+                add_dependencies(${name} ${_cargo_tgt})
+            endif()
+        endforeach()
         set_property(SOURCE ${_srcs} APPEND PROPERTY OBJECT_DEPENDS
             "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h"
             "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
