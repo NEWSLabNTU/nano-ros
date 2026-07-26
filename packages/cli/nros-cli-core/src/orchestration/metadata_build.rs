@@ -99,14 +99,36 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
          nros = {{ path = {nros:?}, features = [\"std\"] }}\n\
-         {krate} = {{ path = {comp:?} }}\n",
+         {krate} = {{ path = {comp:?}, package = {pkg:?} }}\n",
         nros = o
             .nano_ros_workspace
             .join("packages/core/nros")
             .display()
             .to_string(),
         comp = o.component_dir.display().to_string(),
+        pkg = cargo_package_name(&o.component_dir).unwrap_or_else(|| krate.to_string()),
     ))
+}
+
+/// The component crate's REAL Cargo package name, read from its manifest.
+///
+/// The harness dep must be keyed by the rustc-visible crate name (so
+/// `use <krate>::…` in `main.rs` resolves) but a path dependency is looked up
+/// by PACKAGE name, and the two differ whenever an example is named with
+/// hyphens (`qemu-rtic-action-client` → crate `qemu_rtic_action_client`). Cargo
+/// resolves that with the `package = "…"` rename field; without it the build
+/// fails "no matching package named `qemu_rtic_action_client` found".
+///
+/// Falls back to the crate name when the manifest can't be read — the
+/// underscored-name case, which is the majority and was already working.
+fn cargo_package_name(component_dir: &Path) -> Option<String> {
+    let manifest = std::fs::read_to_string(component_dir.join("Cargo.toml")).ok()?;
+    let parsed: toml::Value = manifest.parse().ok()?;
+    parsed
+        .get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_string)
 }
 
 pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
@@ -163,6 +185,16 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
 
     let manifest = o.harness_dir.join("Cargo.toml");
     let target_dir = o.harness_dir.join("target");
+    // The probe is a HOST binary — it is compiled and RUN to print metadata.
+    // Since phase-307 W1 the harness runs from inside the consuming workspace
+    // (to pick up its `[patch]` entries), which also puts an embedded example's
+    // `.cargo/config.toml` in scope — and those set `[build] target =
+    // "armv7a-nuttx-eabihf"` and friends. Inheriting that default cross-compiles
+    // the std-linked probe for the board and fails at link time with undefined
+    // references to `malloc` / `pthread_mutex_init` / `_Unwind_Backtrace`.
+    // Naming the host triple explicitly pins the probe to the host regardless of
+    // whatever default target the surrounding workspace configures.
+    let host_triple = host_triple();
     let status = Command::new("cargo")
         // phase-307 W1 — cargo discovers `.cargo/config.toml` by walking up
         // from its CWD, and a Node pkg's generated interface deps
@@ -179,6 +211,10 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         .arg(&manifest)
         .arg("--target-dir")
         .arg(&target_dir)
+        .args(match host_triple.as_deref() {
+            Some(triple) => vec!["--target".to_string(), triple.to_string()],
+            None => Vec::new(),
+        })
         // The harness inherits no pinned toolchain so a generated
         // `rust-toolchain.toml` elsewhere can't force a re-resolve.
         .env_remove("RUSTUP_TOOLCHAIN")
@@ -207,6 +243,26 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
         return Ok(());
     }
     std::fs::write(path, contents).wrap_err_with(|| format!("write {}", path.display()))
+}
+
+/// The host target triple, from `rustc -vV`'s `host:` line.
+///
+/// `None` when rustc can't be run or the line is absent; callers then omit
+/// `--target` and inherit whatever the surrounding config selects — the
+/// pre-existing behaviour, so a probe failure stays a probe failure rather
+/// than becoming a "rustc missing" error.
+fn host_triple() -> Option<String> {
+    let out = Command::new("rustc").arg("-vV").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8(out.stdout)
+        .ok()?
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -259,7 +315,9 @@ mod tests {
         let main = render_harness_main(&o).unwrap();
         assert!(main.contains("record_node_metadata::<action_client_pkg::FibonacciClient>"));
         let toml = render_harness_cargo_toml(&o).unwrap();
-        assert!(toml.contains("action_client_pkg = { path = \"/ws/src/demo_pkg\" }"));
+        assert!(toml.contains(
+            "action_client_pkg = { path = \"/ws/src/demo_pkg\", package = \"action_client_pkg\" }"
+        ));
     }
 
     /// A class without an explicit crate name still resolves: the class's own
@@ -291,7 +349,34 @@ mod tests {
                 "nros = { path = \"/nano-ros/packages/core/nros\", features = [\"std\"] }"
             )
         );
-        assert!(toml.contains("demo_pkg = { path = \"/ws/src/demo_pkg\" }"));
+        assert!(
+            toml.contains("demo_pkg = { path = \"/ws/src/demo_pkg\", package = \"demo_pkg\" }")
+        );
+    }
+
+    /// A path dependency is looked up by PACKAGE name while the dep key must be
+    /// the rustc-visible CRATE name — they differ for every hyphenated example
+    /// (`qemu-rtic-action-client` → crate `qemu_rtic_action_client`), which used
+    /// to fail "no matching package named `qemu_rtic_action_client` found".
+    /// Cargo's `package = "…"` rename bridges the two.
+    #[test]
+    fn harness_cargo_toml_renames_hyphenated_component_packages() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"qemu-rtic-action-client\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let mut o = opts();
+        o.component_dir = dir.path().to_path_buf();
+        o.crate_name = Some("qemu_rtic_action_client".into());
+        let toml = render_harness_cargo_toml(&o).unwrap();
+        assert!(
+            toml.contains("qemu_rtic_action_client = { path =")
+                && toml.contains("package = \"qemu-rtic-action-client\""),
+            "dep must be keyed by crate name and renamed to the package, got:\n{toml}"
+        );
     }
 
     #[test]
