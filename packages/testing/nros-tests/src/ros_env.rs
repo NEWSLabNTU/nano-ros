@@ -25,7 +25,11 @@
 use std::{
     ffi::OsStr,
     process::{Command, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
 };
+
+/// Per-process counter for unique docker container names.
+static PEER_SEQ: AtomicU64 = AtomicU64::new(0);
 
 use crate::{
     TestError, TestResult,
@@ -90,23 +94,40 @@ pub trait RosEnv {
     /// [`RosPeer`] kills the whole group (and, for docker, the container) on
     /// drop — no orphan `ros2` daemons survive a test.
     fn spawn(&self, name: &str, inner: &str) -> TestResult<RosPeer> {
-        let name = name.to_string();
-        let mut cmd = self.shell(inner);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        let handle = cmd
-            .spawn()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
-        Ok(RosPeer { handle, name })
+        spawn_command(self.shell(inner), name, None)
     }
 }
 
+/// Spawn a prepared [`Command`] as a [`RosPeer`] in its own process group, with
+/// an optional `cleanup` command run on drop (e.g. `docker kill <name>` for the
+/// docker backend, whose container outlives a killed `docker run` client).
+fn spawn_command(
+    mut cmd: Command,
+    name: &str,
+    cleanup: Option<Vec<String>>,
+) -> TestResult<RosPeer> {
+    let name = name.to_string();
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    set_new_process_group(&mut cmd);
+    let handle = cmd
+        .spawn()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
+    Ok(RosPeer {
+        handle,
+        name,
+        cleanup,
+    })
+}
+
 /// A running ROS 2 peer (publisher, subscriber, server, `domain_bridge`, …).
-/// Killed on drop.
+/// Killed on drop. For the docker backend, killing the `docker run` client does
+/// NOT stop the container — so a `cleanup` command (`docker kill <name>`) is run
+/// on drop to tear the container down.
 pub struct RosPeer {
     handle: std::process::Child,
     name: String,
+    cleanup: Option<Vec<String>>,
 }
 
 impl RosPeer {
@@ -120,9 +141,19 @@ impl RosPeer {
         matches!(self.handle.try_wait(), Ok(None))
     }
 
-    /// Kill the peer's process group now.
+    /// Kill the peer's process group now, then run the backend cleanup (docker
+    /// container teardown) if any. Cleanup is best-effort + idempotent.
     pub fn kill(&mut self) {
         kill_process_group(&mut self.handle);
+        if let Some(argv) = self.cleanup.take() {
+            if let Some((prog, args)) = argv.split_first() {
+                let _ = Command::new(prog)
+                    .args(args)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
+        }
     }
 }
 
@@ -272,15 +303,35 @@ impl RosEnv for DockerRosEnv {
     }
 
     fn shell(&self, inner: &str) -> Command {
+        // One-shot (`run`/`run_text`): --rm auto-removes on completion.
+        self.docker_run(inner, None)
+    }
+
+    fn spawn(&self, name: &str, inner: &str) -> TestResult<RosPeer> {
+        // Long-lived peer: name the container so drop can `docker kill` it —
+        // killing the `docker run` client alone leaves the container running.
+        let cname = format!(
+            "nros-peer-{}-{}",
+            std::process::id(),
+            PEER_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let cmd = self.docker_run(inner, Some(&cname));
+        spawn_command(cmd, name, Some(vec!["docker".into(), "kill".into(), cname]))
+    }
+}
+
+impl DockerRosEnv {
+    /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc
+    /// '<sourced inner>'` command.
+    fn docker_run(&self, inner: &str, cname: Option<&str>) -> Command {
         let snippet = self.env_snippet();
         let mut cmd = Command::new("docker");
+        cmd.args(["run", "--rm", "--network", "host", "--init"]);
+        if let Some(name) = cname {
+            cmd.args(["--name", name]);
+        }
         cmd.args([
-            "run",
-            "--rm",
-            "--network",
-            "host",
-            "--init",
-            &self.image(),
+            self.image().as_str(),
             "bash",
             "-lc",
             &format!("{snippet} && {inner}"),
