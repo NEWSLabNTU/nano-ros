@@ -1,10 +1,11 @@
 ---
 id: 282
 title: "Zephyr XRCE fixtures raced the nros-cpp config header: unset NANO_ROS_PLATFORM disabled the ordering guard (0088/0090 class)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: zephyr
+resolved_in: "phase-305 (5a8db2413)"
 related: [0088, 0090]
 ---
 
@@ -142,3 +143,22 @@ failed.
 Note the same latent guard bug exists on the legacy fused
 `nano_ros_node_register` Zephyr branch — zenoh/cyclonedds only pass there
 by timing luck.
+
+
+## Resolved (2026-07-26)
+
+`nano_ros_auto_add_library` now detects Zephyr by `TARGET app` +
+`ZEPHYR_BASE` instead of the unset `NANO_ROS_PLATFORM`, and adds BOTH a
+target-level dependency on the cargo-build targets and the file-level
+`OBJECT_DEPENDS` on the generated config headers.
+
+Verified: full `just zephyr build-fixtures` GREEN — 2846 compiles, zero
+stub/undeclared errors, zero failing fixtures (from 4 C+XRCE failures,
+which became 8 once `make -j4` stopped aborting early and the C++/XRCE
+fixtures actually ran).
+
+Residual, tracked here rather than reopened: the legacy fused
+`nano_ros_node_register` Zephyr branch carries the same unset-variable
+guard at three sites. No in-tree example exercises it (all 9 migrated to
+the split spelling in phase-305 W2), so it needs an out-of-tree-shaped
+test rather than a lane run before touching it.

@@ -1036,3 +1036,5 @@ uses linker symbols `_heap_start`/`_heap_end` (`&_heap_end - &_heap_start`) this
 never declared. Fixed by declaring them `extern int` (matching esp-idf), gated to
 `ESP_PLATFORM`, before `<FreeRTOS.h>`. Verified: esp32c3 `platform.c.obj` compiles.
 See `archived/0044-*`.
+
+**#0282** — resolved, see `archived/0282-*`.
