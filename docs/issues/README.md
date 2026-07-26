@@ -80,6 +80,12 @@ path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DH
 bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
 explicit extensibility + representation negotiation). See `0267-*`.
 
+**#286** — the phase-307 metadata probe `cargo run`s a std-linked harness under whatever
+`[build] target` the example's `.cargo/config.toml` sets. qemu-arm-baremetal supplies a QEMU
+`runner` so this works (and its board-coupled component compiles ONLY for ARM); qemu-arm-nuttx
+has no runner, so the probe link-fails on `malloc`/`pthread_*` and blocks the nuttx fixture lane.
+Pinning to the host fixes nuttx and breaks qemu — needs a per-target answer. See `0286-*`.
+
 **#285** — `nros ws sync` invokes `play_launch resolve`, a subcommand the installed
 `play_launch` lacks → `build-examples` fails on EVERY platform (cmake-configure time).
 Version skew: the CLI's required `play_launch` is unpinned/uninstalled and

@@ -185,16 +185,6 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
 
     let manifest = o.harness_dir.join("Cargo.toml");
     let target_dir = o.harness_dir.join("target");
-    // The probe is a HOST binary — it is compiled and RUN to print metadata.
-    // Since phase-307 W1 the harness runs from inside the consuming workspace
-    // (to pick up its `[patch]` entries), which also puts an embedded example's
-    // `.cargo/config.toml` in scope — and those set `[build] target =
-    // "armv7a-nuttx-eabihf"` and friends. Inheriting that default cross-compiles
-    // the std-linked probe for the board and fails at link time with undefined
-    // references to `malloc` / `pthread_mutex_init` / `_Unwind_Backtrace`.
-    // Naming the host triple explicitly pins the probe to the host regardless of
-    // whatever default target the surrounding workspace configures.
-    let host_triple = host_triple();
     let status = Command::new("cargo")
         // phase-307 W1 — cargo discovers `.cargo/config.toml` by walking up
         // from its CWD, and a Node pkg's generated interface deps
@@ -211,10 +201,6 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         .arg(&manifest)
         .arg("--target-dir")
         .arg(&target_dir)
-        .args(match host_triple.as_deref() {
-            Some(triple) => vec!["--target".to_string(), triple.to_string()],
-            None => Vec::new(),
-        })
         // The harness inherits no pinned toolchain so a generated
         // `rust-toolchain.toml` elsewhere can't force a re-resolve.
         .env_remove("RUSTUP_TOOLCHAIN")
@@ -245,25 +231,6 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     std::fs::write(path, contents).wrap_err_with(|| format!("write {}", path.display()))
 }
 
-/// The host target triple, from `rustc -vV`'s `host:` line.
-///
-/// `None` when rustc can't be run or the line is absent; callers then omit
-/// `--target` and inherit whatever the surrounding config selects — the
-/// pre-existing behaviour, so a probe failure stays a probe failure rather
-/// than becoming a "rustc missing" error.
-fn host_triple() -> Option<String> {
-    let out = Command::new("rustc").arg("-vV").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    String::from_utf8(out.stdout)
-        .ok()?
-        .lines()
-        .find_map(|line| line.strip_prefix("host: "))
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(str::to_string)
-}
 
 #[cfg(test)]
 mod tests {
