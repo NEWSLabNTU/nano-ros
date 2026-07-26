@@ -358,7 +358,7 @@ fn write_header_preserve_nonzero(
             path.display()
         );
     }
-    std::fs::write(path, new_contents).unwrap();
+    crate::shared::write_atomic(path, new_contents);
 }
 
 fn read_template(manifest_dir: &Path, name: &str) -> String {

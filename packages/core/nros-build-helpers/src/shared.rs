@@ -298,7 +298,7 @@ fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).expect("create per-build header dir");
     }
-    std::fs::write(&dest, contents).expect("write per-build header");
+    write_atomic(&dest, contents);
 }
 
 pub fn write_header_to_corrosion(filename: &str, contents: &str) {
@@ -309,7 +309,50 @@ pub fn write_header_to_corrosion(filename: &str, contents: &str) {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).expect("create corrosion header dir");
     }
-    std::fs::write(&dest, contents).expect("write corrosion header");
+    write_atomic(&dest, contents);
+}
+
+/// Write a generated header atomically: temp file in the SAME directory, then
+/// rename.
+///
+/// `fs::write` truncates and then fills, so two writers targeting one path tear
+/// it. These headers have TWO writers by design: `nros-c`'s build script emits
+/// `nros-c-generated/nros/nros_config_generated.h`, and `nros-cpp`'s emits the
+/// same file so Zephyr CPP-only builds (where nros-c never compiles) still find
+/// it. Add parallel fixture lanes sharing a workspace build dir and the window
+/// widens further.
+///
+/// Observed 2026-07-26 — a zephyr fixture compiled a header whose tail was
+/// spliced mid-token:
+///
+/// ```text
+/// #endif /* NROS_CONFIG_GENERATED_H */
+/// plus            <- tail of `__cplus|plus` from the other writer
+/// }
+/// #endif
+/// ```
+///
+/// and failed with `#endif without #if`. `rename(2)` within a filesystem is
+/// atomic, so a reader sees the old file or the whole new one, never a splice.
+/// The unchanged-content early return also avoids touching mtimes that would
+/// re-trigger dependent rebuilds.
+pub fn write_atomic(dest: &std::path::Path, contents: &str) {
+    if std::fs::read_to_string(dest).is_ok_and(|old| old == contents) {
+        return;
+    }
+    let dir = dest.parent().unwrap_or_else(|| std::path::Path::new("."));
+    // Same directory (rename cannot cross filesystems); pid keeps concurrent
+    // writers from colliding on the temp name itself.
+    let tmp = dir.join(format!(
+        ".{}.{}.tmp",
+        dest.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("header"),
+        std::process::id()
+    ));
+    std::fs::write(&tmp, contents).unwrap_or_else(|e| panic!("write {}: {e}", tmp.display()));
+    std::fs::rename(&tmp, dest)
+        .unwrap_or_else(|e| panic!("rename {} -> {}: {e}", tmp.display(), dest.display()));
 }
 
 pub fn env_usize(name: &str, default: usize) -> usize {
