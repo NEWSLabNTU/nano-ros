@@ -1,8 +1,10 @@
 # Phase 305: Ament-parity component registration (RFC-0057)
 
 **Status:** ✅ Done (2026-07-26).
-**Implements:** RFC-0057. **Closes:** issue 0275; 0277 (UX half — the
-union-closure engineering half stays open).
+**Implements:** RFC-0057. **Closes:** issue 0275; 0277 (UX half; the
+engineering half was later closed too — phase-306's per-package FFI crates
+removed the mixed-subset failure mode by construction, so no union closure was
+ever needed. See `docs/issues/archived/0277-*`).
 **Reference consumer:** simple-autoware-safety-island (porting-notes 02/08/12).
 
 ## The shape change

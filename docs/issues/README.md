@@ -135,16 +135,15 @@ derivable from the same source-metadata sidecars phase-307 wired up. See `0284-*
 cache-latest subs + send-and-poll service calls (semantic weakening of the safety path,
 documented in-source). take()-style sub + bounded-wait call wanted. See `0278-*`.
 
-**#277** — `nros_find_interfaces` topo-last superset is per-CALL: mixed msg-dep subsets across a
-workspace miss/duplicate symbols; the example repo needs an `island_interfaces` union-closure
-shim pkg. Compute the union workspace-wide or FATAL_ERROR with the recipe. See `0277-*`.
-
-(#277-#278 + archived #276, #279-#281 from the simple-autoware-safety-island port
+(#278 + archived #276, #277, #279-#281 from the simple-autoware-safety-island port
 friction log, filed 2026-07-25 from docs/porting-notes.md 06/12/14 + the
 same-day-fixed 10/16/18. #275 resolved by RFC-0057/phase-305 — see
 `archived/0275-*`: L.4 retired, upstream namespaces port verbatim. #276 resolved
 2026-07-26 — see `archived/0276-*`: `<param from=…>` parses, param-file values
-project into the generated entry; seeding gated on `param_services`.)
+project into the generated entry; seeding gated on `param_services`. #277 resolved
+2026-07-26 — see `archived/0277-*`: phase-306's per-package FFI crates remove the
+mixed-subset failure mode by construction (verified on a disjoint-subset workspace,
+zero duplicate exports); no union closure needed, union-shim pkg obsolete.)
 
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
