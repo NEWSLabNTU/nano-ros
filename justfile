@@ -1144,6 +1144,12 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     if ! command -v pio >/dev/null 2>&1 && ! command -v platformio >/dev/null 2>&1; then
         env_exclude+=("not binary(cli_bringup_platformio)")
     fi
+    # ros_editions (phase-309): the multi-edition harness lanes are OPT-IN — they
+    # need docker, a slow-to-build `nano-ros-ros:<edition>` image, AND a
+    # per-edition-regenerated publisher fixture (not part of build-test-fixtures).
+    # Always deselect from the default sweep so `just ci` never depends on docker;
+    # run them explicitly with `just ros_editions ci <distro>`.
+    env_exclude+=("not binary(~ros_editions)")
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
         env_exclude+=("not binary(fvp_smoke)")
         # phase-298 W4 — the legacy fvp_runtime/fvp_runtime_rust binaries are
