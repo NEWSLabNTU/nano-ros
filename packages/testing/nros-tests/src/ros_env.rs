@@ -662,6 +662,107 @@ pub fn test_edition() -> String {
     std::env::var("NROS_ROS_EDITION").unwrap_or_else(|_| "jazzy".to_string())
 }
 
+/// The nano-ros RMW axis (phase-311), crossed with the edition axis. Selects how
+/// a nano-ros example node reaches a live ROS 2 edition peer:
+/// - `Cyclone` — nano-ros `rmw-cyclonedds` ↔ `rmw_cyclonedds_cpp` on a shared
+///   RTPS domain (phase-310).
+/// - `Zenoh` — nano-ros `rmw-zenoh` (zpico, pinned 1.7.2) ↔ a `rmw_zenohd`
+///   router ↔ `rmw_zenoh_cpp`.
+/// - `Xrce` — nano-ros `rmw-xrce` → a micro-XRCE Agent ↔ `rmw_fastrtps_cpp`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rmw {
+    Cyclone,
+    Zenoh,
+    Xrce,
+}
+
+impl Rmw {
+    /// The `NROS_RMW` token (`cyclone` | `zenoh` | `xrce`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Rmw::Cyclone => "cyclone",
+            Rmw::Zenoh => "zenoh",
+            Rmw::Xrce => "xrce",
+        }
+    }
+
+    /// The example-crate cargo feature that links this backend.
+    pub fn cargo_feature(&self) -> &'static str {
+        match self {
+            Rmw::Cyclone => "rmw-cyclonedds",
+            Rmw::Zenoh => "rmw-zenoh",
+            Rmw::Xrce => "rmw-xrce",
+        }
+    }
+
+    /// The `RMW_IMPLEMENTATION` the matching ROS 2 peer must run.
+    pub fn ros_rmw_impl(&self) -> &'static str {
+        match self {
+            Rmw::Cyclone => "rmw_cyclonedds_cpp",
+            Rmw::Zenoh => "rmw_zenoh_cpp",
+            // XRCE bridges to DDS via the Agent; the ROS peer speaks fastrtps.
+            Rmw::Xrce => "rmw_fastrtps_cpp",
+        }
+    }
+}
+
+/// The RMW the gated lanes target, from `NROS_RMW` (default `cyclone`).
+/// `just ros_editions ci` exports it to sweep the RMW axis.
+pub fn test_rmw() -> Rmw {
+    match std::env::var("NROS_RMW").unwrap_or_default().as_str() {
+        "zenoh" => Rmw::Zenoh,
+        "xrce" => Rmw::Xrce,
+        _ => Rmw::Cyclone,
+    }
+}
+
+/// The per-(edition, rmw) build of native example `name` (phase-311), under
+/// `target-ros-edition-<edition>-<rmw>/debug/<name>` — produced by
+/// `just ros_editions build-e2e-fixtures <edition> <rmw>`.
+pub fn example_bin_rmw(name: &str, edition: &str, rmw: Rmw) -> std::path::PathBuf {
+    crate::project_root()
+        .join("examples/native/rust")
+        .join(name)
+        .join(format!(
+            "target-ros-edition-{edition}-{}/debug/{name}",
+            rmw.as_str()
+        ))
+}
+
+/// A [`Command`] running nano-ros example `bin` over `rmw`, wrapped `bash -c
+/// 'exec … 2>&1'` (env_logger → stderr → captured stdout). `domain` seeds the
+/// cyclone RTPS domain; `locator` is the zenohd/agent endpoint for zenoh/xrce.
+pub fn nano_node_cmd_rmw(
+    bin: &std::path::Path,
+    rmw: Rmw,
+    domain: u8,
+    locator: &str,
+    extra_args: &[&str],
+) -> Command {
+    let mut c = Command::new("bash");
+    let args = if extra_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", extra_args.join(" "))
+    };
+    c.arg("-c")
+        .arg(format!("exec {}{args} 2>&1", bin.display()))
+        .env("RUST_LOG", "info");
+    match rmw {
+        Rmw::Cyclone => {
+            c.env("ROS_DOMAIN_ID", domain.to_string())
+                .env("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp");
+        }
+        // zpico + XRCE clients reach their router/agent via NROS_LOCATOR; the
+        // domain still scopes discovery where the backend honors it.
+        Rmw::Zenoh | Rmw::Xrce => {
+            c.env("NROS_LOCATOR", locator)
+                .env("ROS_DOMAIN_ID", domain.to_string());
+        }
+    }
+    c
+}
+
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen
 /// container ([`DockerRosEnv::generate`]). Prefers the in-tree release build,
 /// then `PATH`. `None` when neither is present (a codegen lane then `skip!`s).
