@@ -53,6 +53,9 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
             unsafe {
                 core::ptr::write(storage as *mut GuardConditionHandle, guard_handle);
             }
+            // phase-308 — guard conditions never reach the RMW either; one
+            // callback slot, same as a timer. No-op unless `metadata-mode`.
+            crate::metadata_hooks::on_guard_condition_create();
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,

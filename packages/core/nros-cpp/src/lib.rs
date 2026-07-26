@@ -144,8 +144,13 @@ pub static FORCE_LINK_ANCHOR: &[&[unsafe extern "C" fn()]] = &[
 pub use rmw_backend::auto_register as nros_cpp_auto_register_backend;
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
+// phase-308 — the three executor-side recording hooks the metadata RMW backend
+// cannot observe (node identity, timers, guard conditions). No-ops unless
+// `metadata-mode` is on.
 #[cfg(feature = "rmw-cffi")]
 mod guard_condition;
+#[cfg(feature = "rmw-cffi")]
+mod metadata_hooks;
 #[cfg(feature = "rmw-cffi")]
 mod publisher;
 #[cfg(feature = "rmw-cffi")]
@@ -1066,6 +1071,11 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     out.node_id = node_id.raw();
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
+    // phase-308 — open this node in the metadata recorder so the entities
+    // declared next attribute to it (the RMW seam carries no node). No-op
+    // unless `metadata-mode` is on.
+    crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
+
     NROS_CPP_RET_OK
 }
 
@@ -1169,6 +1179,11 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     }
     out.node_id = node_id.raw();
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
+
+    // phase-308 — open this node in the metadata recorder so the entities
+    // declared next attribute to it (the RMW seam carries no node). No-op
+    // unless `metadata-mode` is on.
+    crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
 }

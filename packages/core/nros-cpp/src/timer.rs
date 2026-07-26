@@ -57,6 +57,10 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
             unsafe {
                 *out_handle_id = handle_id.0;
             }
+            // phase-308 — timers never reach the RMW, so the recording backend
+            // cannot see them; this hook is how they enter the sidecar. No-op
+            // unless `metadata-mode` is on.
+            crate::metadata_hooks::on_timer_create(period_ms);
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
@@ -108,6 +112,10 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
             unsafe {
                 *out_handle_id = handle_id.0;
             }
+            // phase-308 — timers never reach the RMW, so the recording backend
+            // cannot see them; this hook is how they enter the sidecar. No-op
+            // unless `metadata-mode` is on.
+            crate::metadata_hooks::on_timer_create(delay_ms);
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
@@ -191,6 +199,10 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
             unsafe {
                 *out_handle_id = handle_id.0;
             }
+            // phase-308 — timers never reach the RMW, so the recording backend
+            // cannot see them; this hook is how they enter the sidecar. No-op
+            // unless `metadata-mode` is on.
+            crate::metadata_hooks::on_timer_create(period_ms);
             NROS_CPP_RET_OK
         }
         Err(_) => NROS_CPP_RET_FULL,
