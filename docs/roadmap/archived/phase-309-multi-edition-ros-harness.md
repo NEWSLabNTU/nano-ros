@@ -1,6 +1,6 @@
 # Phase 309 — multi-edition ROS test harness
 
-**Status (2026-07-26): W1–W6 + the W5 residual + the W4 golden landed.** The
+**Status: ARCHIVED (complete) 2026-07-26.** All work items + acceptance met (details below). The
 codegen axis now includes a per-edition GOLDEN diff
 (`ros_editions_codegen.rs::codegen_geometry_msgs_matches_edition_golden`): it
 regenerates `geometry_msgs` in the edition container and asserts the generated

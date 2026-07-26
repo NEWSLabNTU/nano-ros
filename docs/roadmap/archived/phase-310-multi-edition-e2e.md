@@ -1,6 +1,6 @@
 # Phase 310 — multi-edition rich E2E (pubsub + service + action, both directions)
 
-**Status (2026-07-26): W1–W6 landed.** All six direction-pairs pass against jazzy
+**Status: ARCHIVED (complete) 2026-07-26.** All six direction-pairs pass against jazzy
 (pub/sub, service, action; nano-ros ↔ live edition peer over direct same-domain
 cyclone). `just ros_editions build-e2e-fixtures <distro>` builds the six example
 nodes per-edition; `ros_editions_e2e_{pubsub,service,action}.rs` (2 tests each)
