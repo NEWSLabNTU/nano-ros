@@ -80,6 +80,12 @@ path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DH
 bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
 explicit extensibility + representation negotiation). See `0267-*`.
 
+**#285** — `nros ws sync` invokes `play_launch resolve`, a subcommand the installed
+`play_launch` lacks → `build-examples` fails on EVERY platform (cmake-configure time).
+Version skew: the CLI's required `play_launch` is unpinned/uninstalled and
+`~/.local/bin/play_launch` shadows it. Needs a pin + a `[PREREQ]` probe (the #197
+pattern). See `0285-play-launch-resolve-subcommand-skew.md`. (2026-07-26)
+
 **#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
 now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
 derivable from the same source-metadata sidecars phase-307 wired up. See `0284-*`.
