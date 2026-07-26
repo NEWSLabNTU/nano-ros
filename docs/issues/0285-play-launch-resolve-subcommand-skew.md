@@ -88,10 +88,15 @@ Item 1 — pinning and installing a resolve-capable `play_launch` under
 are never refreshed on such a host, so a launch-file edit silently does not
 reach the bake.
 
-**Design note (2026-07-26):** rather than pinning an external binary, the
-preferred direction is to split `play_launch` — link the Python-free resolve
-pipeline into our own toolchain as a library, and keep only the CPython-linked
-launch-file parsing in a separately-built tool (built on the user's machine
-against the user's Python, the way the CLI is built). That removes the version
-skew this issue is about instead of managing it. Being explored; see the
-phase/RFC that comes out of it.
+**Design direction (2026-07-26): [RFC-0059](../design/0059-launch-toolchain-split.md).**
+Rather than pinning an external binary, split the toolchain — link the
+Python-free resolve pipeline into our own tree, and keep only the
+CPython-requiring stages in a tool built on the user's machine against the
+user's Python. The seam becomes a committable IR artifact, not a CLI verb,
+which removes this version skew instead of managing it.
+
+Measured while writing that RFC: all **101** tracked launch files under
+`examples/` are XML, **none** uses `$(eval …)`, and the only substitutions in
+the tree are `$(var …)` and `$(env …)`. The entire corpus needs no interpreter,
+yet is blocked today behind a tool that embeds one unconditionally — which is
+why pinning that tool is the weaker answer.
