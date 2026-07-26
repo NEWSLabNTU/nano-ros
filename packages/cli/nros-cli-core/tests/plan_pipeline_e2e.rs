@@ -126,6 +126,8 @@ fn metadata_mode_build_emits_source_metadata_for_component() {
 
     build_metadata(&MetadataBuildOptions {
         component_id: "demo_pkg::talker".to_string(),
+        class: None,
+        crate_name: None,
         package: "demo_pkg".to_string(),
         component: "talker".to_string(),
         executable: Some("talker".to_string()),

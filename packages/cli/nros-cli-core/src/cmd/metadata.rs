@@ -54,15 +54,21 @@ pub struct Args {
 fn metadata_build_options(
     decl: &ComponentDeclaration,
     nano_ros: &Path,
-    out_root: &Path,
+    probe_root: &Path,
 ) -> MetadataBuildOptions {
     let id = decl.config.component.clone();
     let name = id.rsplit("::").next().unwrap_or(&id).to_string();
-    let probe = out_root.join("metadata-probe").join(id.replace("::", "__"));
+    let probe = probe_root
+        .join("metadata-probe")
+        .join(id.replace("::", "__"));
     // W.3 (Phase 172): a minimal `[component]` may omit `[linkage]` — derive the
     // executable + exported symbol from the component name / crate convention.
     MetadataBuildOptions {
         component_id: id,
+        // phase-307 W1 — carry the declared Rust identity instead of letting
+        // the harness guess `<crate>::<module>::Component` positionally.
+        class: decl.class.clone(),
+        crate_name: decl.crate_name.clone(),
         package: decl.config.package.clone(),
         executable: Some(decl.config.linkage.resolved_executable(&name)),
         exported_symbol: Some(decl.config.linkage.resolved_exported_symbol(&name)),
@@ -76,9 +82,28 @@ fn metadata_build_options(
 
 pub fn run(args: Args) -> Result<()> {
     let root = args.workspace.unwrap_or(std::env::current_dir()?);
+    // phase-307 W1 — the generated harness names the component crate as a
+    // cargo PATH dependency, and cargo resolves a relative path against the
+    // harness's own scratch dir, not the invoking cwd. A relative
+    // `--workspace` therefore produced a manifest path under
+    // `<out>/metadata-probe/<c>/<the/relative/path>` and failed to read. Every
+    // path the harness embeds must be absolute.
+    let root = root
+        .canonicalize()
+        .wrap_err_with(|| format!("workspace root {} does not exist", root.display()))?;
     let out_root = args
         .out_dir
         .unwrap_or_else(|| root.join("build").join(&args.system_pkg).join("nros"));
+    // phase-307 W1 — the harness must live INSIDE the workspace so cargo's
+    // config walk-up finds the `[patch.crates-io]` entries the Node pkgs'
+    // generated interface deps resolve through. `--out-dir` may point anywhere
+    // (CI writes it outside the tree), so derive the probe root from the
+    // workspace whenever the out dir escapes it.
+    let probe_root = if out_root.starts_with(&root) {
+        out_root.clone()
+    } else {
+        root.join("build").join("nros-metadata")
+    };
     let metadata_dir = out_root.join("metadata");
     fs::create_dir_all(&metadata_dir)?;
 
@@ -113,8 +138,11 @@ pub fn run(args: Args) -> Result<()> {
                      --nano-ros-workspace <path> or set NROS_WORKSPACE"
                 )
             })?;
+        let nano_ros = nano_ros.canonicalize().wrap_err_with(|| {
+            format!("nano-ros workspace {} does not exist", nano_ros.display())
+        })?;
         for decl in &missing {
-            let opts = metadata_build_options(decl, &nano_ros, &out_root);
+            let opts = metadata_build_options(decl, &nano_ros, &probe_root);
             build_metadata(&opts)
                 .wrap_err_with(|| format!("build source metadata for `{}`", decl.config.package))?;
             built.push(decl.source_metadata_path());
@@ -179,6 +207,8 @@ mod tests {
         let decl = ComponentDeclaration {
             package_root: PathBuf::from("/ws/src/demo_pkg"),
             manifest_path: PathBuf::from("/ws/src/demo_pkg/component_nros.toml"),
+            class: None,
+            crate_name: None,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),
@@ -228,6 +258,8 @@ mod tests {
         let decl = ComponentDeclaration {
             package_root: PathBuf::from("/ws/src/demo_pkg"),
             manifest_path: PathBuf::from("/ws/src/demo_pkg/nros.toml"),
+            class: None,
+            crate_name: None,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),

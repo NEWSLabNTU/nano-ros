@@ -21,8 +21,17 @@ use eyre::{Result, WrapErr, bail, eyre};
 
 #[derive(Debug, Clone)]
 pub struct MetadataBuildOptions {
-    /// Component id `crate::module` (e.g. `demo_pkg::talker`).
+    /// Component id (e.g. `demo_pkg::talker`, or a bare `talker` for the
+    /// Cargo `[package.metadata.nros.node]` shape). Diagnostics + probe dir
+    /// naming; the Rust identity comes from `class` / `crate_name`.
     pub component_id: String,
+    /// phase-307 W1 — the registered type's fully qualified path, verbatim
+    /// from the manifest's `class`. `None` keeps the legacy
+    /// `<crate>::<module>::Component` derivation from `component_id`.
+    pub class: Option<String>,
+    /// phase-307 W1 — rustc-visible crate name for the harness path dep.
+    /// `None` falls back to `component_id`'s first `::` segment.
+    pub crate_name: Option<String>,
     /// ROS package name (the `package` field of the emitted metadata).
     pub package: String,
     /// Component name (`Component::NAME`).
@@ -39,21 +48,39 @@ pub struct MetadataBuildOptions {
     pub harness_dir: PathBuf,
 }
 
-/// `crate::module` → `crate::module::Component` (the registered type). Mirrors
-/// the generator's `rust_component_type_path`.
-fn component_type_path(component_id: &str) -> Option<String> {
-    let mut parts = component_id.split("::").filter(|p| !p.is_empty());
+/// The registered type's path.
+///
+/// A declared `class` is authoritative: the shipping `nros::node!(Class)` shape
+/// is `impl Node for Class` in the crate root, so the historical positional
+/// guess below (`crate::module::Component`) names a type that does not exist
+/// and the harness fails to compile. The guess survives only as the fallback
+/// for legacy `crate::module` component manifests, where it IS the convention.
+fn component_type_path(o: &MetadataBuildOptions) -> Option<String> {
+    if let Some(class) = o.class.as_deref().filter(|c| !c.is_empty()) {
+        return Some(class.to_string());
+    }
+    let mut parts = o.component_id.split("::").filter(|p| !p.is_empty());
     let krate = parts.next()?;
     let module = parts.next()?;
     Some(format!("{krate}::{module}::Component"))
 }
 
-fn crate_name(component_id: &str) -> Option<&str> {
-    component_id.split("::").next().filter(|s| !s.is_empty())
+fn crate_name(o: &MetadataBuildOptions) -> Option<&str> {
+    if let Some(name) = o.crate_name.as_deref().filter(|n| !n.is_empty()) {
+        return Some(name);
+    }
+    // A declared class is `<crate>::<Type>`; the legacy id is `<crate>::<module>`.
+    // Either way the crate is the first segment.
+    o.class
+        .as_deref()
+        .unwrap_or(&o.component_id)
+        .split("::")
+        .next()
+        .filter(|s| !s.is_empty())
 }
 
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
-    let krate = crate_name(&o.component_id)
+    let krate = crate_name(o)
         .ok_or_else(|| eyre!("component id '{}' has no crate segment", o.component_id))?;
     // `[workspace]` — the harness is generated into an arbitrary scratch dir;
     // without its own (empty) workspace table cargo walks up and captures it
@@ -83,8 +110,13 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
 }
 
 pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
-    let type_path = component_type_path(&o.component_id)
-        .ok_or_else(|| eyre!("component id '{}' is not `crate::module`", o.component_id))?;
+    let type_path = component_type_path(o).ok_or_else(|| {
+        eyre!(
+            "component '{}' declares no `class` and its id is not `crate::module` \
+             — cannot name the registered type",
+            o.component_id
+        )
+    })?;
     let exe = o
         .executable
         .as_deref()
@@ -132,6 +164,15 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     let manifest = o.harness_dir.join("Cargo.toml");
     let target_dir = o.harness_dir.join("target");
     let status = Command::new("cargo")
+        // phase-307 W1 — cargo discovers `.cargo/config.toml` by walking up
+        // from its CWD, and a Node pkg's generated interface deps
+        // (`example_interfaces = { version = "*" }` and friends) exist ONLY as
+        // `[patch.crates-io]` entries in the consuming workspace's config. Run
+        // from the harness dir (which the caller places inside the workspace)
+        // so those patches are in scope; inheriting the invoking cwd resolved
+        // the interface crates against crates.io and failed with "no matching
+        // package named `example_interfaces` found".
+        .current_dir(&o.harness_dir)
         .arg("run")
         .arg("--quiet")
         .arg("--manifest-path")
@@ -175,6 +216,8 @@ mod tests {
     fn opts() -> MetadataBuildOptions {
         MetadataBuildOptions {
             component_id: "demo_pkg::talker".into(),
+            class: None,
+            crate_name: None,
             package: "demo_pkg".into(),
             component: "talker".into(),
             executable: Some("talker".into()),
@@ -187,13 +230,46 @@ mod tests {
     }
 
     #[test]
-    fn type_path_and_crate_name() {
+    fn type_path_and_crate_name_legacy_positional_guess() {
+        let o = opts();
         assert_eq!(
-            component_type_path("demo_pkg::talker").as_deref(),
+            component_type_path(&o).as_deref(),
             Some("demo_pkg::talker::Component")
         );
-        assert_eq!(crate_name("demo_pkg::talker"), Some("demo_pkg"));
-        assert_eq!(component_type_path("nocrate"), None); // needs crate::module
+        assert_eq!(crate_name(&o), Some("demo_pkg"));
+        let mut bare = opts();
+        bare.component_id = "nocrate".into();
+        assert_eq!(component_type_path(&bare), None); // needs crate::module
+    }
+
+    /// phase-307 W1 — the shipping `nros::node!(Class)` shape: a declared class
+    /// names the type directly, and the crate name is carried, not guessed from
+    /// a component id that no longer contains it.
+    #[test]
+    fn declared_class_wins_over_the_positional_guess() {
+        let mut o = opts();
+        o.component_id = "fibonacci_client".into();
+        o.class = Some("action_client_pkg::FibonacciClient".into());
+        o.crate_name = Some("action_client_pkg".into());
+        assert_eq!(
+            component_type_path(&o).as_deref(),
+            Some("action_client_pkg::FibonacciClient")
+        );
+        assert_eq!(crate_name(&o), Some("action_client_pkg"));
+        let main = render_harness_main(&o).unwrap();
+        assert!(main.contains("record_node_metadata::<action_client_pkg::FibonacciClient>"));
+        let toml = render_harness_cargo_toml(&o).unwrap();
+        assert!(toml.contains("action_client_pkg = { path = \"/ws/src/demo_pkg\" }"));
+    }
+
+    /// A class without an explicit crate name still resolves: the class's own
+    /// first segment IS the crate.
+    #[test]
+    fn crate_name_falls_back_to_the_class_head() {
+        let mut o = opts();
+        o.component_id = "talker".into();
+        o.class = Some("talker_pkg::Talker".into());
+        assert_eq!(crate_name(&o), Some("talker_pkg"));
     }
 
     #[test]

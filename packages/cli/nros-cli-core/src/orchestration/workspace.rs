@@ -156,6 +156,11 @@ pub struct CargoComponentSummary {
     /// Cargo `[package].name` the component belongs to. Used by the
     /// planner's `find_source_metadata` package match.
     pub package: String,
+    /// Cargo `[package].name` — the CRATE name, which routinely diverges from
+    /// `package` (the `package.xml` `<name>`). phase-307 W1 needs the real
+    /// crate name: the metadata harness declares the component as a cargo path
+    /// dependency and must `use` it under its rustc-visible name.
+    pub crate_name: String,
     /// Short component instance name. Derived per Phase 212.M-F.17:
     /// `metadata.name` when present, else the multi-shape table key,
     /// else the class basename (`talker_pkg::Talker` → `Talker`),
@@ -298,6 +303,8 @@ impl Workspace {
                 out.push(ComponentDeclaration {
                     package_root: pkg.root.clone(),
                     manifest_path: manifest_path.clone(),
+                    class: None,
+                    crate_name: Some(config.linkage.resolved_crate_name(&config.package)),
                     config,
                 });
             }
@@ -312,7 +319,29 @@ impl Workspace {
                 out.push(ComponentDeclaration {
                     package_root: pkg.root.clone(),
                     manifest_path: summary.manifest_path.clone(),
+                    class: summary.class.clone(),
+                    crate_name: None,
                     config: cmake_summary_to_component_config(summary),
+                });
+            }
+            // phase-307 W1 — the canonical shipping Rust shape is a lib-only
+            // Node pkg declaring `[package.metadata.nros.node]`, which
+            // `discover_cargo_component_metadata` has always PARSED but which
+            // never became a declaration. Without this loop `nros metadata
+            // --build` has no candidates in any real workspace, which is why
+            // no `source-metadata.json` exists anywhere in the tree outside the
+            // hand-written test fixtures. Appended last in the same dedup pass
+            // as the cmake loop: an explicit `[component]` table still wins.
+            for summary in &pkg.cargo_component_metadata {
+                if !seen.insert((summary.package.clone(), summary.component.clone())) {
+                    continue;
+                }
+                out.push(ComponentDeclaration {
+                    package_root: pkg.root.clone(),
+                    manifest_path: summary.manifest_path.clone(),
+                    class: summary.class.clone(),
+                    crate_name: Some(summary.crate_name.clone()),
+                    config: cargo_summary_to_component_config(summary),
                 });
             }
         }
@@ -337,6 +366,34 @@ fn cmake_summary_to_component_config(summary: &CmakeNodeSummary) -> ComponentCon
             generated_by: Some("nano_ros_node_register".to_string()),
         },
         overrides: ComponentOverrides::default(),
+    }
+}
+
+/// phase-307 W1 — synthesise a [`ComponentConfig`] from a Cargo-derived
+/// [`CargoComponentSummary`], mirroring [`cmake_summary_to_component_config`].
+///
+/// The sidecar path deliberately matches the cmake lowering's
+/// `metadata/<component>.json`: `Package::metadata_files` already collects
+/// `metadata/*.json`, so a produced sidecar is discovered by
+/// `source_metadata_files()` on the next run with no further wiring.
+fn cargo_summary_to_component_config(summary: &CargoComponentSummary) -> ComponentConfig {
+    ComponentConfig {
+        version: 1,
+        package: summary.package.clone(),
+        component: summary.component.clone(),
+        language: ComponentLanguage::Rust,
+        linkage: ComponentLinkage {
+            crate_name: Some(summary.crate_name.clone()),
+            ..ComponentLinkage::default()
+        },
+        metadata: ComponentMetadataConfig {
+            source_metadata: format!("metadata/{}.json", summary.component),
+            generated_by: Some("package.metadata.nros.node".to_string()),
+        },
+        overrides: ComponentOverrides {
+            default_namespace: summary.default_namespace.clone(),
+            ..ComponentOverrides::default()
+        },
     }
 }
 
@@ -371,6 +428,18 @@ pub struct ComponentDeclaration {
     /// `nros/components/*.toml`.
     pub manifest_path: PathBuf,
     pub config: ComponentConfig,
+    /// phase-307 W1 — the registered type's FULLY QUALIFIED path
+    /// (`talker_pkg::Talker`), verbatim from the declaring manifest's `class`.
+    ///
+    /// The metadata harness used to GUESS this as `<crate>::<module>::Component`
+    /// from the component id, which the shipping `nros::node!(Class)` shape
+    /// (`impl Node for Class`, no `Component` alias, no module segment) never
+    /// matches. Carrying the declared class removes the guess. `None` for the
+    /// legacy `crate::module` manifests, where the guess IS the convention.
+    pub class: Option<String>,
+    /// phase-307 W1 — rustc-visible crate name for the harness's path dep.
+    /// `None` falls back to the component id's first `::` segment.
+    pub crate_name: Option<String>,
 }
 
 impl ComponentDeclaration {
@@ -877,7 +946,10 @@ fn discover_cargo_component_metadata(
     // the package.xml `<name>`, NOT the Cargo.toml `[package].name`
     // (which is the crate name, often suffixed `_component` / `_pkg`).
     let pkg_name = pkg_xml_name.to_string();
-    let _ = package.name; // crate name kept readable for diagnostics if needed
+    // phase-307 W1: the crate name is NOT diagnostics-only any more — the
+    // metadata harness path-depends on this crate and names its type through
+    // it, so a `talker_pkg` / `talker-pkg-component` divergence is load-bearing.
+    let crate_name = package.name.replace('-', "_");
     let Some(metadata) = package.metadata else {
         return Ok(Vec::new());
     };
@@ -909,6 +981,7 @@ fn discover_cargo_component_metadata(
     if let Some(component) = single {
         out.push(synthesise_summary(
             &pkg_name,
+            &crate_name,
             None,
             component,
             &bins,
@@ -918,6 +991,7 @@ fn discover_cargo_component_metadata(
     for (key, component) in multi {
         out.push(synthesise_summary(
             &pkg_name,
+            &crate_name,
             Some(&key),
             component,
             &bins,
@@ -941,6 +1015,7 @@ fn discover_cargo_component_metadata(
 /// matches the chosen component name, that bin name wins instead.
 fn synthesise_summary(
     pkg_name: &str,
+    crate_name: &str,
     multi_key: Option<&str>,
     component: &ComponentMetadata,
     bins: &[String],
@@ -980,6 +1055,7 @@ fn synthesise_summary(
 
     CargoComponentSummary {
         package: pkg_name.to_string(),
+        crate_name: crate_name.to_string(),
         component: component_name,
         executable,
         class: component.class.clone(),
@@ -1219,6 +1295,7 @@ mod tests {
         use super::super::cargo_metadata_schema::TopicDecl;
         let summary = CargoComponentSummary {
             package: "talker_pkg".into(),
+            crate_name: "talker_pkg".into(),
             component: "talker".into(),
             executable: "talker".into(),
             class: Some("talker_pkg::Talker".into()),

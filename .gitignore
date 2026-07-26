@@ -98,3 +98,8 @@ examples/workspaces/**/config/*.record.json
 # stash once committed 36 of these; never track them)
 *~Stashed changes*
 /slides/
+
+# phase-307 W1 — `nros metadata --build` source-metadata sidecars. Generated
+# build artifacts (one per Node pkg, `<pkg>/metadata/<component>.json`), derived
+# from the pkg's own `Component::register` — never hand-edited, never committed.
+examples/**/metadata/*.json
