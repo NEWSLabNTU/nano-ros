@@ -183,6 +183,14 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         std::fs::create_dir_all(parent).wrap_err_with(|| format!("create {}", parent.display()))?;
     }
 
+    // The probe is a HOST binary — that is the whole reason one probe covers
+    // every deploy target. But a standalone embedded example's
+    // `.cargo/config.toml` sets `[build] target = "thumbv7m-none-eabi"`, and
+    // the harness inherits it through cargo's config walk-up (which it must,
+    // for the `[patch.crates-io]` entries). Without an explicit `--target` the
+    // probe cross-compiles for the board and dies on `can't find crate for
+    // std`. An explicit flag beats config, so name the host triple.
+    let host = host_triple();
     let manifest = o.harness_dir.join("Cargo.toml");
     let target_dir = o.harness_dir.join("target");
     let status = Command::new("cargo")
@@ -199,6 +207,8 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         .arg("--quiet")
         .arg("--manifest-path")
         .arg(&manifest)
+        .arg("--target")
+        .arg(&host)
         .arg("--target-dir")
         .arg(&target_dir)
         // The harness inherits no pinned toolchain so a generated
@@ -222,6 +232,22 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The host target triple, from `rustc -vV`.
+///
+/// Falls back to no explicit target when rustc cannot be read; a workspace
+/// whose config sets no `[build] target` then behaves exactly as before.
+fn host_triple() -> String {
+    let out = Command::new("rustc").arg("-vV").output();
+    if let Ok(out) = out
+        && let Ok(text) = String::from_utf8(out.stdout)
+        && let Some(line) = text.lines().find(|l| l.starts_with("host: "))
+    {
+        return line["host: ".len()..].trim().to_string();
+    }
+    // Best-effort default; the common host in this repo's CI + dev images.
+    "x86_64-unknown-linux-gnu".to_string()
 }
 
 fn write_if_changed(path: &Path, contents: &str) -> Result<()> {

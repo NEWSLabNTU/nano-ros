@@ -209,6 +209,7 @@ mod tests {
             manifest_path: PathBuf::from("/ws/src/demo_pkg/component_nros.toml"),
             class: None,
             crate_name: None,
+            deploy_bound: false,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),
@@ -260,6 +261,7 @@ mod tests {
             manifest_path: PathBuf::from("/ws/src/demo_pkg/nros.toml"),
             class: None,
             crate_name: None,
+            deploy_bound: false,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),

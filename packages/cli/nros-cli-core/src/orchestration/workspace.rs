@@ -179,6 +179,15 @@ pub struct CargoComponentSummary {
     /// Recorded so synthetic JSON artifacts can name a real on-disk path
     /// for diagnostics (matches the file-artifact `path` field shape).
     pub manifest_path: PathBuf,
+    /// phase-308 — the package ALSO declares `[package.metadata.nros.entry]`,
+    /// i.e. it is a self-contained standalone example (issue 0100) rather than
+    /// the canonical platform-agnostic Node pkg.
+    ///
+    /// Such a package deps its board crate directly, so it cannot be compiled
+    /// for the host and cannot be metadata-probed. Recorded here rather than
+    /// discovered by the producer, so the producer can report the exclusion
+    /// instead of failing the build on ARM inline asm.
+    pub deploy_bound: bool,
     /// phase-267 W1c/C3 — topics the node declares it PUBLISHES, carried from
     /// `[package.metadata.nros.node].publishes` into the synthetic metadata so
     /// the planner resolves a `[[bridge]]`'s topic names to types pre-build.
@@ -305,6 +314,7 @@ impl Workspace {
                     manifest_path: manifest_path.clone(),
                     class: None,
                     crate_name: Some(config.linkage.resolved_crate_name(&config.package)),
+                    deploy_bound: false,
                     config,
                 });
             }
@@ -321,6 +331,7 @@ impl Workspace {
                     manifest_path: summary.manifest_path.clone(),
                     class: summary.class.clone(),
                     crate_name: None,
+                    deploy_bound: false,
                     config: cmake_summary_to_component_config(summary),
                 });
             }
@@ -341,6 +352,7 @@ impl Workspace {
                     manifest_path: summary.manifest_path.clone(),
                     class: summary.class.clone(),
                     crate_name: Some(summary.crate_name.clone()),
+                    deploy_bound: summary.deploy_bound,
                     config: cargo_summary_to_component_config(summary),
                 });
             }
@@ -440,6 +452,10 @@ pub struct ComponentDeclaration {
     /// phase-307 W1 — rustc-visible crate name for the harness's path dep.
     /// `None` falls back to the component id's first `::` segment.
     pub crate_name: Option<String>,
+    /// phase-308 — the declaring package is bound to a deploy target (it also
+    /// declares an Entry, so it deps a board crate) and cannot be compiled for
+    /// the host. The metadata producer reports these instead of probing them.
+    pub deploy_bound: bool,
 }
 
 impl ComponentDeclaration {
@@ -960,6 +976,10 @@ fn discover_cargo_component_metadata(
     // canonical spelling, `component` is the deprecated alias. We accept
     // both at discovery time without warning (warnings live in
     // `parse_package_metadata_nros`).
+    // phase-308: a package that declares an ENTRY as well as a node is the
+    // self-contained standalone shape (issue 0100) — deploy-bound by
+    // definition, so not host-probeable.
+    let deploy_bound = nros.entry.is_some();
     let single = nros.node.as_ref().or(nros.component.as_ref());
     let multi: Vec<(String, &ComponentMetadata)> = if !nros.nodes.is_empty() {
         nros.nodes.iter().map(|(k, v)| (k.clone(), v)).collect()
@@ -982,6 +1002,7 @@ fn discover_cargo_component_metadata(
         out.push(synthesise_summary(
             &pkg_name,
             &crate_name,
+            deploy_bound,
             None,
             component,
             &bins,
@@ -992,6 +1013,7 @@ fn discover_cargo_component_metadata(
         out.push(synthesise_summary(
             &pkg_name,
             &crate_name,
+            deploy_bound,
             Some(&key),
             component,
             &bins,
@@ -1016,6 +1038,7 @@ fn discover_cargo_component_metadata(
 fn synthesise_summary(
     pkg_name: &str,
     crate_name: &str,
+    deploy_bound: bool,
     multi_key: Option<&str>,
     component: &ComponentMetadata,
     bins: &[String],
@@ -1056,6 +1079,7 @@ fn synthesise_summary(
     CargoComponentSummary {
         package: pkg_name.to_string(),
         crate_name: crate_name.to_string(),
+        deploy_bound,
         component: component_name,
         executable,
         class: component.class.clone(),
@@ -1296,6 +1320,7 @@ mod tests {
         let summary = CargoComponentSummary {
             package: "talker_pkg".into(),
             crate_name: "talker_pkg".into(),
+            deploy_bound: false,
             component: "talker".into(),
             executable: "talker".into(),
             class: Some("talker_pkg::Talker".into()),

@@ -76,6 +76,17 @@ pub fn refresh_stale_sidecars(
     let probe_root = ws_root.join("build").join("nros-metadata");
 
     for decl in &declarations {
+        if decl.deploy_bound {
+            // phase-308 — a self-contained standalone example (issue 0100)
+            // declares its node AND its entry in one crate, so the crate deps
+            // a board crate and cannot compile for the host. Probing it fails
+            // on the board's inline asm; reported, never silently skipped.
+            report.unsupported.push(format!(
+                "{}::{} (deploy-bound: node + entry in one crate)",
+                decl.config.package, decl.config.component
+            ));
+            continue;
+        }
         if decl.config.language != ComponentLanguage::Rust {
             // phase-307 W3 lands the C/C++ producer. Until then say so out
             // loud: a silently skipped component is a silently under-counted
