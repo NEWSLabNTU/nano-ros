@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_geometry_consumer</name>
+  <version>0.1.0</version>
+  <description>
+    phase-309 W4 codegen golden — a minimal Rust consumer that depends on
+    geometry_msgs, so `nros generate-rust` (run in an edition container) emits
+    the geometry_msgs bindings themselves. The generated MESSAGE SET is compared
+    to a per-edition golden manifest, catching edition drift (e.g. jazzy's
+    geometry_msgs has 33 messages vs humble's 32).
+  </description>
+  <maintainer email="noreply@nano-ros">nano-ros</maintainer>
+  <license>MIT</license>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <depend>geometry_msgs</depend>
+</package>

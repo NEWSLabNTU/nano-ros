@@ -1,6 +1,14 @@
 # Phase 309 — multi-edition ROS test harness
 
-**Status (2026-07-26): W1–W6 + the W5 residual landed.** The `RosEnv` provider,
+**Status (2026-07-26): W1–W6 + the W5 residual + the W4 golden landed.** The
+codegen axis now includes a per-edition GOLDEN diff
+(`ros_editions_codegen.rs::codegen_geometry_msgs_matches_edition_golden`): it
+regenerates `geometry_msgs` in the edition container and asserts the generated
+message set equals a committed golden (`fixtures/ros-editions/<edition>/
+geometry_msgs-modules.txt`). The goldens genuinely differ per edition (jazzy = 33
+modules vs iron = 30 — jazzy adds `polygon_instance*`,
+`velocity_with_covariance_stamped`), so the check catches ROS-edition def drift
+AND proves the codegen is edition-discriminating. The `RosEnv` provider,
 per-edition docker image, peer + `domain_bridge` backend, in-container codegen,
 the nano-ros publisher fixture, and the opt-in `just ros_editions ci <distro>`
 composite are implemented + green against a live jazzy image. Lanes (all skip
@@ -113,7 +121,16 @@ per-edition build-tree plumbing. Each step has an independent acceptance signal.
 
 ## Done when
 
-`just ros-editions-ci` builds the jazzy image, runs codegen (golden-clean) +
-interop (PoseStamped/Control survive the live jazzy peer + `domain_bridge`), the
-host humble suite is unchanged, and a second edition (iron or rolling) is wired
-by distro arg alone to prove the harness is edition-parametric.
+`just ros_editions ci <distro>` builds the edition image, runs codegen
+(golden-clean, edition-drift caught) + interop (**PoseStamped** survives the live
+edition peer + `domain_bridge`), the host humble suite is unchanged, and a
+second edition (iron) is wired by distro arg alone to prove the harness is
+edition-parametric.
+
+**Scope note (2026-07-26):** `autoware_control_msgs/Control` is intentionally NOT
+a harness lane. Autoware is not a dependency of nano-ros; verifying Control (or
+any Autoware type) against an edition is the Autoware safety-island consumer's
+job, in *their* repo. `PoseStamped` (`Pose{Point,Quaternion}` — the same depth-2
+nested descriptor path #0267 fixed) gives the harness identical coverage without
+pulling an Autoware dep into nano-ros. Control was live-verified once during the
+#0267 fix; it is not a repeatable nano-ros lane by design.

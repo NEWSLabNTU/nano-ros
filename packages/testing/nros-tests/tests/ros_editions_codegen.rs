@@ -69,6 +69,93 @@ fn codegen_edition_std_msgs_in_container() {
     );
 }
 
+/// The committed per-edition golden of geometry_msgs' generated message set, and
+/// a generated manifest, must match — so an edition-def change (add/remove a
+/// message) is caught. The goldens genuinely differ per edition (jazzy=33 vs
+/// iron=30 modules — jazzy adds polygon_instance*, velocity_with_covariance_*),
+/// so this also proves the codegen is edition-discriminating, not a no-op.
+#[test]
+fn codegen_geometry_msgs_matches_edition_golden() {
+    use std::path::PathBuf;
+
+    let ed = ros_env::test_edition();
+    let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: 1 });
+    if !env.available() {
+        nros_tests::skip!(
+            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
+        );
+    }
+    let Some(nros_bin) = ros_env::host_nros_bin() else {
+        nros_tests::skip!("host `nros` binary not found — run `just setup-cli`");
+    };
+
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/ros-editions");
+    let golden_path = fixtures.join(&ed).join("geometry_msgs-modules.txt");
+    let Ok(golden_body) = std::fs::read_to_string(&golden_path) else {
+        nros_tests::skip!("no geometry_msgs golden for edition {ed} at {golden_path:?}");
+    };
+    // Sort the golden the same way the manifest is sorted (Rust byte order), so
+    // the compare is order-independent of how the golden file was written.
+    let mut golden: Vec<String> = golden_body
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    golden.sort();
+
+    // Copy the committed consumer manifest to a scratch dir (the container writes
+    // a codegen sig into the workdir; keep the fixture pristine).
+    let scratch = tempfile::tempdir().expect("tempdir");
+    let consumer = scratch.path().join("consumer");
+    std::fs::create_dir_all(&consumer).unwrap();
+    std::fs::copy(
+        fixtures.join("geometry-consumer/package.xml"),
+        consumer.join("package.xml"),
+    )
+    .expect("copy consumer package.xml");
+    let out = scratch.path().join("out");
+
+    let result = env
+        .generate_from_consumer(&nros_bin, &consumer, &out)
+        .expect("in-container generate");
+    assert!(
+        result.status.success(),
+        "generate_from_consumer failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    let manifest = geometry_msg_modules(&out.join("geometry_msgs/src/msg"));
+    assert!(
+        !manifest.is_empty(),
+        "no geometry_msgs message modules generated in {out:?}"
+    );
+    assert_eq!(
+        manifest, golden,
+        "geometry_msgs generated message set for {ed} drifted from the golden \
+         {golden_path:?} (a ROS {ed} message def changed, or codegen dropped/added \
+         a message). Re-seed the golden if this is an intended def change."
+    );
+}
+
+/// Sorted `*.rs` message-module basenames under a generated `.../src/msg` dir
+/// (excluding `mod.rs`) — the stable "message set" fingerprint.
+fn geometry_msg_modules(msg_dir: &std::path::Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(msg_dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            (name.ends_with(".rs") && name != "mod.rs").then_some(name)
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 /// Any `.rs` file under `dir` (recursively) that is non-empty?
 fn walk_has_rs(dir: &std::path::Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {

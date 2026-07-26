@@ -548,6 +548,45 @@ impl DockerRosEnv {
         ))
     }
 
+    /// Codegen golden variant (phase-309 W4): run `nros generate-rust` in-container
+    /// against a HOST consumer directory (a dir with a `package.xml` that `<depend>`s
+    /// the interface packages to generate), writing bindings to `out_host`. Unlike
+    /// [`generate`], which points at an installed `share/<pkg>` dir (and so emits
+    /// that manifest's DEPENDENCIES), a consumer manifest emits the DECLARED
+    /// packages themselves — how the golden lane gets `geometry_msgs`.
+    pub fn generate_from_consumer(
+        &self,
+        nros_bin: &std::path::Path,
+        consumer_host: &std::path::Path,
+        out_host: &std::path::Path,
+    ) -> TestResult<std::process::Output> {
+        std::fs::create_dir_all(out_host)
+            .map_err(|e| TestError::ProcessFailed(format!("mkdir {out_host:?}: {e}")))?;
+        let snippet = self.env_snippet();
+        let mut cmd = Command::new("docker");
+        cmd.args(["run", "--rm", "--network", "host", "--init"]);
+        cmd.args([
+            "-v",
+            &format!("{}:/usr/local/bin/nros:ro", nros_bin.display()),
+            "-v",
+            &format!("{}:/consumer", consumer_host.display()),
+            "-v",
+            &format!("{}:/out", out_host.display()),
+        ]);
+        cmd.args([
+            self.image().as_str(),
+            "bash",
+            "-lc",
+            &format!("{snippet} && cd /consumer && nros generate-rust --force -o /out"),
+        ]);
+        cmd.output().map_err(|e| {
+            TestError::ProcessFailed(format!(
+                "[{}] generate_from_consumer failed: {e}",
+                self.distro
+            ))
+        })
+    }
+
     /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc
     /// '<sourced inner>'` command.
     fn docker_run(&self, inner: &str, cname: Option<&str>) -> Command {
