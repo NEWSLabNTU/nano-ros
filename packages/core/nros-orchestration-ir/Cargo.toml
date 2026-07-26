@@ -9,6 +9,11 @@ description = "Shared per-tier orchestration schema + resolver (RFC-0015), consu
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+# phase-307 — `sidecar_slots`, the ONE callback-slot accounting rule both bakes
+# read source-metadata sidecars with. Value-based on purpose: the proc-macro
+# cannot dep nros-cli-core for the typed schema, and a mirrored struct would be
+# the drift this crate exists to prevent.
+serde_json = "1"
 thiserror = { workspace = true }
 # RFC-0052 — the shared SystemModel tier schema. Both consumers of this crate
 # (the CLI's codegen-system and the nros::main! proc-macro) resolve tiers from

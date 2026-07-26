@@ -42,6 +42,7 @@ pub mod derive;
 pub mod executor_sizing;
 pub mod mapper_input;
 pub mod rtos_realizer;
+pub mod sidecar_slots;
 
 // =============================================================================
 // Board key → board ZST path mapping

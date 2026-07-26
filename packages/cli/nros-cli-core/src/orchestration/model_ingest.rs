@@ -24,10 +24,9 @@ pub use nros_orchestration_ir::tier_from_model;
 use nros_orchestration_ir::{CallbackGroupDecl, CallbackGroupOverride, NodeOverride};
 use ros_launch_manifest_model::SystemModel;
 
-use crate::orchestration::{
-    cargo_metadata_schema::SystemToml,
-    source_metadata::{SourceMetadata, SourceNode},
-};
+use serde_json::Value as JsonValue;
+
+use crate::orchestration::{cargo_metadata_schema::SystemToml, source_metadata::SourceMetadata};
 
 /// Load + schema-gate a SystemModel.
 pub fn load_model(path: &Path) -> Result<SystemModel> {
@@ -203,29 +202,25 @@ pub fn declared_max_callbacks(manifest_path: &Path) -> Option<usize> {
     (n > 0).then_some(n as usize)
 }
 
-/// phase-307 W4 — callback slots one recorded node declares.
-///
-/// Slot accounting mirrors `ExecutorSink::create_entity`: subscription, timer,
-/// service server and action server take one slot each; publishers take none.
-/// A recorded action's THREE callbacks (goal / cancel / result) still occupy
-/// one arena slot, so count entities, not the sidecar's `callbacks` array.
-fn recorded_slots(node: &SourceNode) -> usize {
-    node.subscribers.len() + node.timers.len() + node.services.len() + node.actions.len()
-}
-
 /// phase-307 W4 — `(package, executable)` → recorded callback slots, the key
 /// `SystemModel::structure.nodes` entries carry as `pkg` + `exec`.
-pub fn metadata_slot_counts(metadata: &[SourceMetadata]) -> BTreeMap<(String, String), usize> {
+///
+/// The accounting itself lives in `nros_orchestration_ir::sidecar_slots`, NOT
+/// here: the `nros::main!` macro reads the same sidecars, and the two bakes
+/// must agree — this one REFUSES an over-capacity system while the macro SIZES
+/// the executor, so a disagreement is an image that passes this check and dies
+/// at boot anyway. Same reasoning that already shares `count_callbacks`.
+pub fn metadata_slot_counts(metadata: &[JsonValue]) -> BTreeMap<(String, String), usize> {
     let mut out = BTreeMap::new();
     for md in metadata {
-        let Some(exec) = md.executable.clone() else {
+        let Some((key, slots)) = nros_orchestration_ir::sidecar_slots::slots_of_component(md)
+        else {
             continue;
         };
-        let slots: usize = md.nodes.iter().map(recorded_slots).sum();
         // A component declaring several nodes contributes all of them under
         // one executable; several sidecars for one executable would be a
         // producer bug, so take the max rather than silently halving a count.
-        let entry = out.entry((md.package.clone(), exec)).or_insert(0usize);
+        let entry = out.entry(key).or_insert(0usize);
         *entry = (*entry).max(slots);
     }
     out
@@ -237,16 +232,26 @@ pub fn metadata_slot_counts(metadata: &[SourceMetadata]) -> BTreeMap<(String, St
 /// bake: the fallback is the SystemModel bound, which is merely less precise,
 /// and a bake that dies because a stale sidecar exists would be a worse
 /// failure than the one this phase set out to fix.
-pub fn load_workspace_metadata(ws_root: &Path) -> Vec<SourceMetadata> {
+pub fn load_workspace_metadata(ws_root: &Path) -> Vec<JsonValue> {
     let Ok(workspace) = crate::orchestration::workspace::Workspace::discover(ws_root) else {
         return Vec::new();
     };
     let mut out = Vec::new();
     for path in workspace.source_metadata_files() {
+        // Parsed TYPED first — that parse is the schema gate, and it is why a
+        // garbage or schema-drifted sidecar is skipped instead of silently
+        // counted as zero. The counting then runs on the raw value through the
+        // shared rule, so the macro (which cannot dep this crate for the typed
+        // schema) and this bake do the same arithmetic.
         match std::fs::read_to_string(&path)
             .map_err(|e| e.to_string())
-            .and_then(|raw| serde_json::from_str::<SourceMetadata>(&raw).map_err(|e| e.to_string()))
-        {
+            .and_then(|raw| {
+                serde_json::from_str::<SourceMetadata>(&raw)
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| {
+                        serde_json::from_str::<JsonValue>(&raw).map_err(|e| e.to_string())
+                    })
+            }) {
             Ok(md) => out.push(md),
             Err(err) => eprintln!(
                 "codegen-system: ignoring unreadable source metadata {}: {err}",

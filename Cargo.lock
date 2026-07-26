@@ -1908,6 +1908,7 @@ dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

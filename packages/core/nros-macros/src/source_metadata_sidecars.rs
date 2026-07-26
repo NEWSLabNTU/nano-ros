@@ -19,10 +19,12 @@
 //! the CLI's check cannot save it, because the CLI only refuses over-capacity
 //! systems, it does not size this executor.
 //!
-//! No schema struct is mirrored here. The reader walks `serde_json::Value` and
-//! counts array lengths, so a sidecar that grows fields keeps parsing and the
-//! macro never needs to track `nros-cli-core`'s `SourceMetadata` definition —
-//! the mirror-drift failure mode this repo pays for elsewhere.
+//! No schema struct is mirrored here, and no counting rule either. The slot
+//! accounting lives in `nros_orchestration_ir::sidecar_slots` — the same crate
+//! that holds the merge rule — because the CLI bake reads these sidecars too
+//! and the two must agree: the CLI REFUSES an over-capacity system while this
+//! macro SIZES the executor, so a disagreement is an image that passes the
+//! check and dies at boot anyway. This module owns discovery and file I/O only.
 
 use std::{
     collections::BTreeMap,
@@ -99,25 +101,11 @@ fn workspace_src_root(entry_manifest_dir: &Path) -> Option<PathBuf> {
     entry_manifest_dir.parent().map(Path::to_path_buf)
 }
 
-/// `(package, executable)` + the callback slots the sidecar's nodes declare.
-///
-/// Slot accounting mirrors `ExecutorSink::create_entity`: subscription, timer,
-/// service server and action server take one slot each; publishers take none.
-/// A recorded action's three callbacks still occupy ONE arena slot, so entities
-/// are counted, never the sidecar's `callbacks` array.
+/// Read one sidecar and hand it to the shared accounting rule.
 fn read_sidecar(path: &Path) -> Option<((String, String), usize)> {
     let raw = std::fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let package = value.get("package")?.as_str()?.to_string();
-    let executable = value.get("executable")?.as_str()?.to_string();
-    let nodes = value.get("nodes")?.as_array()?;
-    let mut slots = 0usize;
-    for node in nodes {
-        for key in ["subscribers", "timers", "services", "actions"] {
-            slots += node.get(key).and_then(|v| v.as_array()).map_or(0, Vec::len);
-        }
-    }
-    Some(((package, executable), slots))
+    nros_orchestration_ir::sidecar_slots::slots_of_component(&value)
 }
 
 #[cfg(test)]
