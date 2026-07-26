@@ -1559,11 +1559,7 @@ mod ros_edition_tests {
 
     #[test]
     fn as_str_round_trips_parse() {
-        for e in [
-            RosEdition::Humble,
-            RosEdition::Iron,
-            RosEdition::Jazzy,
-        ] {
+        for e in [RosEdition::Humble, RosEdition::Iron, RosEdition::Jazzy] {
             assert_eq!(RosEdition::parse(e.as_str()), Some(e));
         }
     }
@@ -1573,11 +1569,7 @@ mod ros_edition_tests {
         // phase-304 W2b — the `ros-<edition>` cargo feature the scaffold + CMake
         // runtime crate select. Must be `ros-` + the `as_str` name, so codegen +
         // runtime always name the same feature.
-        for e in [
-            RosEdition::Humble,
-            RosEdition::Iron,
-            RosEdition::Jazzy,
-        ] {
+        for e in [RosEdition::Humble, RosEdition::Iron, RosEdition::Jazzy] {
             assert_eq!(e.cargo_feature(), format!("ros-{}", e.as_str()));
         }
     }

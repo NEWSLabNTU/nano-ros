@@ -832,9 +832,8 @@ fn refresh_source_metadata(
 }
 
 fn parse_edition(s: &str) -> Result<RosEdition> {
-    RosEdition::parse(s).ok_or_else(|| {
-        eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy)")
-    })
+    RosEdition::parse(s)
+        .ok_or_else(|| eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy)"))
 }
 
 /// Resolve the codegen edition (phase-304 W2b): an explicit `--ros-edition`

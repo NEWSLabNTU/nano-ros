@@ -30,7 +30,7 @@ use std::{
 use eyre::{Result, WrapErr};
 
 use super::{
-    metadata_build::{MetadataBuildOptions, build_metadata},
+    metadata_build::{MetadataBuildOptions, build_metadata, host_triple, probe_blocker},
     source_metadata::{ComponentLanguage, SourceMetadata, SourceMetadataProvenance},
     workspace::{ComponentDeclaration, Workspace},
 };
@@ -74,6 +74,8 @@ pub fn refresh_stale_sidecars(
         return Ok(report);
     }
     let probe_root = ws_root.join("build").join("nros-metadata");
+    // Issue 0286 — resolved once, not per component.
+    let host = host_triple();
 
     for decl in &declarations {
         if decl.deploy_bound {
@@ -83,6 +85,17 @@ pub fn refresh_stale_sidecars(
             // on the board's inline asm; reported, never silently skipped.
             report.unsupported.push(format!(
                 "{}::{} (deploy-bound: node + entry in one crate)",
+                decl.config.package, decl.config.component
+            ));
+            continue;
+        }
+        if let Some(blocker) = probe_blocker(&decl.package_root, Some(host.as_str())) {
+            // Issue 0286 — the probe cannot produce a runnable binary for this
+            // component. Degrade to the sidecar-less bake (SystemModel bound)
+            // instead of failing the whole build, which is what used to take
+            // the nuttx fixture lane — and therefore `just ci` — down.
+            report.unsupported.push(format!(
+                "{}::{} ({blocker})",
                 decl.config.package, decl.config.component
             ));
             continue;

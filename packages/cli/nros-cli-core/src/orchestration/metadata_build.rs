@@ -79,6 +79,111 @@ fn crate_name(o: &MetadataBuildOptions) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Why a component cannot be metadata-probed, when it cannot (issue 0286).
+///
+/// The probe is compiled AND RUN, so it is only meaningful where a runnable
+/// binary can be produced. `--target <host>` (above) handles the common case
+/// of a workspace whose `.cargo/config.toml` selects a board target: the
+/// harness ignores that target and builds for the host. One case defeats it.
+///
+/// **`[unstable] build-std` is not target-scoped.** A config that sets
+/// `build-std = ["std", "panic_abort"]` makes cargo rebuild `std` FROM SOURCE
+/// for whatever it is building — including the harness under
+/// `--target <host>`. NuttX's workspace does exactly this and additionally
+/// points `libc` at a NuttX-patched copy (`scripts/build/nuttx-libc-patch.sh`,
+/// phase-214.M), so the host `std` rebuild fails on members that patched libc
+/// does not carry:
+///
+/// ```text
+/// error[E0599]: no function or associated item named `default` found for
+///               struct `timespec`
+/// error: could not compile `std` (lib) due to 3 previous errors
+/// Error: refresh source metadata for `nuttx_listener`
+/// ```
+///
+/// There is no flag that turns `build-std` back off for one invocation, and
+/// running outside the config walk-up is not an option — the `[patch]` entries
+/// the harness needs live there. So such a component is simply un-probeable,
+/// and the caller degrades to the sidecar-less path (the SystemModel bound)
+/// rather than failing the build, exactly as it already does for a deploy-bound
+/// crate or a non-Rust component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProbeBlocker {
+    /// `[unstable] build-std` with a non-host `[build] target`: the host
+    /// harness would rebuild `std` against that target's patched sysroot deps.
+    BuildStdForForeignTarget { target: String },
+}
+
+impl core::fmt::Display for ProbeBlocker {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ProbeBlocker::BuildStdForForeignTarget { target } => write!(
+                f,
+                "cargo config sets `[unstable] build-std` for target `{target}`; \
+                 build-std is not target-scoped, so the host probe would rebuild \
+                 std against that target's patched sysroot deps and fail to compile"
+            ),
+        }
+    }
+}
+
+/// Decide whether the component at `component_dir` can be probed, from the
+/// cargo config governing it. `None` means "probe away".
+///
+/// `host` is the host triple. When it cannot be determined nothing is skipped
+/// — the probe is attempted, keeping the pre-0286 behaviour rather than
+/// silently dropping components.
+pub fn probe_blocker(component_dir: &Path, host: Option<&str>) -> Option<ProbeBlocker> {
+    let cfg = cargo_config_facts(component_dir)?;
+    let target = cfg.build_target?;
+    if !cfg.build_std {
+        return None; // `--target <host>` already handles this case
+    }
+    if host.is_some_and(|h| h == target) {
+        return None; // build-std, but FOR the host — nothing foreign about it
+    }
+    Some(ProbeBlocker::BuildStdForForeignTarget { target })
+}
+
+struct CargoConfigFacts {
+    build_target: Option<String>,
+    build_std: bool,
+}
+
+/// Read the nearest `.cargo/config.toml` walking up from `dir`.
+///
+/// Cargo merges configs closest-first; the first file that declares
+/// `build.target` is the one that decides it, and `[unstable] build-std` is
+/// read from that same file (the workspace/example root that sets a board
+/// target is where build-std is configured in this repo).
+fn cargo_config_facts(dir: &Path) -> Option<CargoConfigFacts> {
+    for ancestor in dir.ancestors() {
+        let Ok(raw) = std::fs::read_to_string(ancestor.join(".cargo").join("config.toml")) else {
+            continue;
+        };
+        let Ok(parsed) = raw.parse::<toml::Value>() else {
+            continue;
+        };
+        let build_target = parsed
+            .get("build")
+            .and_then(|b| b.get("target"))
+            .and_then(|t| t.as_str())
+            .map(str::to_string);
+        if build_target.is_none() {
+            continue;
+        }
+        let build_std = parsed
+            .get("unstable")
+            .and_then(|u| u.get("build-std"))
+            .is_some();
+        return Some(CargoConfigFacts {
+            build_target,
+            build_std,
+        });
+    }
+    None
+}
+
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
     let krate = crate_name(o)
         .ok_or_else(|| eyre!("component id '{}' has no crate segment", o.component_id))?;
@@ -238,7 +343,7 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
 ///
 /// Falls back to no explicit target when rustc cannot be read; a workspace
 /// whose config sets no `[build] target` then behaves exactly as before.
-fn host_triple() -> String {
+pub fn host_triple() -> String {
     let out = Command::new("rustc").arg("-vV").output();
     if let Ok(out) = out
         && let Ok(text) = String::from_utf8(out.stdout)
@@ -257,6 +362,116 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     std::fs::write(path, contents).wrap_err_with(|| format!("write {}", path.display()))
 }
 
+#[cfg(test)]
+mod probe_blocker_tests {
+    use super::*;
+
+    fn write_cfg(dir: &Path, body: &str) {
+        std::fs::create_dir_all(dir.join(".cargo")).unwrap();
+        std::fs::write(dir.join(".cargo").join("config.toml"), body).unwrap();
+    }
+
+    /// Issue 0286 — the nuttx shape: a foreign `[build] target` PLUS
+    /// `[unstable] build-std`. build-std is not target-scoped, so even the
+    /// `--target <host>` harness would rebuild std against that target's
+    /// patched sysroot deps. Must be reported un-probeable, not attempted.
+    #[test]
+    fn build_std_with_a_foreign_target_is_unprobeable() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cfg(
+            dir.path(),
+            "[build]\ntarget = \"armv7a-nuttx-eabihf\"\n\
+             [unstable]\nbuild-std = [\"std\", \"panic_abort\"]\n",
+        );
+        assert_eq!(
+            probe_blocker(dir.path(), Some("x86_64-unknown-linux-gnu")),
+            Some(ProbeBlocker::BuildStdForForeignTarget {
+                target: "armv7a-nuttx-eabihf".to_string()
+            })
+        );
+    }
+
+    /// The qemu-arm-baremetal shape: a foreign target but NO build-std. The
+    /// `--target <host>` flag already covers it, so it stays probeable —
+    /// skipping it would silently cost that lane its exact executor sizing.
+    #[test]
+    fn a_foreign_target_without_build_std_stays_probeable() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cfg(
+            dir.path(),
+            "[build]\ntarget = \"thumbv7m-none-eabi\"\n\
+             [target.thumbv7m-none-eabi]\nrunner = \"qemu-system-arm -kernel\"\n",
+        );
+        assert_eq!(
+            probe_blocker(dir.path(), Some("x86_64-unknown-linux-gnu")),
+            None
+        );
+    }
+
+    /// build-std FOR the host is not foreign — nothing to skip.
+    #[test]
+    fn build_std_for_the_host_target_is_probeable() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cfg(
+            dir.path(),
+            "[build]\ntarget = \"x86_64-unknown-linux-gnu\"\n\
+             [unstable]\nbuild-std = [\"std\"]\n",
+        );
+        assert_eq!(
+            probe_blocker(dir.path(), Some("x86_64-unknown-linux-gnu")),
+            None
+        );
+    }
+
+    /// No config, or a config selecting no target: plain host build.
+    #[test]
+    fn no_build_target_is_probeable() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            probe_blocker(dir.path(), Some("x86_64-unknown-linux-gnu")),
+            None
+        );
+        write_cfg(dir.path(), "[net]\nretry = 3\n");
+        assert_eq!(
+            probe_blocker(dir.path(), Some("x86_64-unknown-linux-gnu")),
+            None
+        );
+    }
+
+    /// An unknown host must not cause wholesale skipping — attempting the
+    /// probe and failing loudly beats silently under-counting every executor.
+    #[test]
+    fn an_unknown_host_never_skips() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cfg(
+            dir.path(),
+            "[build]\ntarget = \"armv7a-nuttx-eabihf\"\n\
+             [unstable]\nbuild-std = [\"std\"]\n",
+        );
+        // Host unknown -> the foreign-target comparison can't be made, but the
+        // blocker is still reported: build-std + a target we cannot prove is
+        // the host is exactly the failing shape.
+        assert!(probe_blocker(dir.path(), None).is_some());
+    }
+
+    /// The config nearest the component wins, matching cargo's own merge.
+    #[test]
+    fn the_nearest_config_decides() {
+        let root = tempfile::tempdir().unwrap();
+        write_cfg(
+            root.path(),
+            "[build]\ntarget = \"armv7a-nuttx-eabihf\"\n\
+             [unstable]\nbuild-std = [\"std\"]\n",
+        );
+        let inner = root.path().join("pkg");
+        write_cfg(&inner, "[build]\ntarget = \"x86_64-unknown-linux-gnu\"\n");
+        assert_eq!(
+            probe_blocker(&inner, Some("x86_64-unknown-linux-gnu")),
+            None,
+            "the closer config selects the host, so the outer nuttx one must not apply"
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {
