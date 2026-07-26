@@ -147,6 +147,15 @@ pub struct CmakeNodeSummary {
     pub language: ComponentLanguage,
     /// `nano_ros_node_register(DEPLOY <target>[ <target>...])` values.
     pub deploy_targets: Vec<String>,
+    /// phase-308 W1 — `HEADER <hdr>` when the verb declares one. The metadata
+    /// probe must `#include` the class's header to construct it; with no
+    /// explicit value the convention `<pkg>/<Class>.hpp` applies (derived at
+    /// the point of use, never guessed past an explicit declaration).
+    pub header: Option<String>,
+    /// phase-308 W1 — `SHAPE rclcpp|configure`. Decides how the probe drives
+    /// the declaration: call `configure(node)` directly, or go through the
+    /// rclcpp-compat factory. Defaults to `rclcpp` in the cmake verb.
+    pub shape: Option<String>,
     /// Absolute path to the `CMakeLists.txt` the summary was derived from.
     pub manifest_path: PathBuf,
 }
@@ -315,6 +324,8 @@ impl Workspace {
                     class: None,
                     crate_name: Some(config.linkage.resolved_crate_name(&config.package)),
                     deploy_bound: false,
+                    header: None,
+                    shape: None,
                     config,
                 });
             }
@@ -332,6 +343,8 @@ impl Workspace {
                     class: summary.class.clone(),
                     crate_name: None,
                     deploy_bound: false,
+                    header: summary.header.clone(),
+                    shape: summary.shape.clone(),
                     config: cmake_summary_to_component_config(summary),
                 });
             }
@@ -353,6 +366,8 @@ impl Workspace {
                     class: summary.class.clone(),
                     crate_name: Some(summary.crate_name.clone()),
                     deploy_bound: summary.deploy_bound,
+                    header: None,
+                    shape: None,
                     config: cargo_summary_to_component_config(summary),
                 });
             }
@@ -456,9 +471,43 @@ pub struct ComponentDeclaration {
     /// declares an Entry, so it deps a board crate) and cannot be compiled for
     /// the host. The metadata producer reports these instead of probing them.
     pub deploy_bound: bool,
+    /// phase-308 W1 — header the C/C++ probe must `#include` to construct the
+    /// class. `None` for Rust declarations and for CMake ones that declare no
+    /// explicit `HEADER`; the convention fallback is derived at the point of
+    /// use ([`ComponentDeclaration::probe_header`]).
+    pub header: Option<String>,
+    /// phase-308 W1 — `rclcpp` | `configure`: how the probe drives the
+    /// declaration path. `None` for Rust.
+    pub shape: Option<String>,
 }
 
 impl ComponentDeclaration {
+    /// phase-308 W1 — the header the probe TU must `#include`.
+    ///
+    /// An explicit `HEADER <hdr>` on the cmake verb wins. With none, the
+    /// in-tree convention is `<pkg>/<Class>.hpp` derived from the declared
+    /// class (`talker_pkg::Talker` → `talker_pkg/Talker.hpp`) — which is what
+    /// every C/C++ example ships. `None` when there is no class to derive
+    /// from: the probe cannot be generated and the caller must say so rather
+    /// than guess a path that will fail to compile.
+    pub fn probe_header(&self) -> Option<String> {
+        if let Some(h) = self.header.as_deref().filter(|h| !h.is_empty()) {
+            return Some(h.to_string());
+        }
+        let class = self.class.as_deref()?;
+        let (ns, leaf) = class.rsplit_once("::")?;
+        // A nested namespace maps to the outermost segment: the include root is
+        // the package dir, not the full path.
+        let pkg = ns.split("::").next().unwrap_or(ns);
+        Some(format!("{pkg}/{leaf}.hpp"))
+    }
+
+    /// phase-308 W1 — how the probe drives the declaration path.
+    /// Defaults to `rclcpp`, matching the cmake verb's own default.
+    pub fn probe_shape(&self) -> &str {
+        self.shape.as_deref().unwrap_or("rclcpp")
+    }
+
     /// Absolute path to the `[metadata].source_metadata` file the
     /// component is expected to emit. Relative paths resolve against
     /// `package_root`.
@@ -558,6 +607,8 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
             class,
             language,
             deploy_targets: args.multi("DEPLOY"),
+            header: args.single("HEADER"),
+            shape: args.single("SHAPE"),
             manifest_path: cmakelists.clone(),
         });
     }
@@ -620,6 +671,10 @@ fn parse_register_node_call(
     let mut plugin: Option<String> = None;
     let mut executable: Option<String> = None;
     let mut deploy: Vec<String> = Vec::new();
+    // phase-308 W1 — captured, not skipped: the probe needs the header to
+    // `#include` and the shape to know how to drive the declaration.
+    let mut header: Option<String> = None;
+    let mut shape: Option<String> = None;
     let mut current: Option<&str> = None;
     for tok in tokens {
         if KEYWORDS.contains(&tok.as_str()) {
@@ -627,7 +682,8 @@ fn parse_register_node_call(
                 "PLUGIN" => Some("PLUGIN"),
                 "EXECUTABLE" => Some("EXECUTABLE"),
                 "DEPLOY" => Some("DEPLOY"),
-                "HEADER" | "SHAPE" => Some("SKIP1"),
+                "HEADER" => Some("HEADER"),
+                "SHAPE" => Some("SHAPE"),
                 "CALLBACK_GROUPS" => Some("SKIPN"),
                 _ => None, // TYPED — bare flag
             };
@@ -642,7 +698,12 @@ fn parse_register_node_call(
                 executable = Some(tok);
                 current = None;
             }
-            Some("SKIP1") => {
+            Some("HEADER") => {
+                header = Some(tok);
+                current = None;
+            }
+            Some("SHAPE") => {
+                shape = Some(tok);
                 current = None;
             }
             Some("SKIPN") => {}
@@ -672,6 +733,8 @@ fn parse_register_node_call(
         class: plugin,
         language,
         deploy_targets: deploy,
+        header,
+        shape,
         manifest_path: cmakelists.to_path_buf(),
     })
 }
@@ -702,6 +765,8 @@ fn parse_add_node_call(
     let mut class: Option<String> = None;
     let mut deploy: Vec<String> = Vec::new();
     let mut sources: Vec<String> = Vec::new();
+    let mut header: Option<String> = None;
+    let mut shape: Option<String> = None;
     let mut current: Option<&str> = None;
     for tok in tokens {
         if KEYWORDS.contains(&tok.as_str()) {
@@ -721,8 +786,13 @@ fn parse_add_node_call(
                 class = Some(tok);
                 current = None;
             }
-            Some("HEADER") | Some("SHAPE") => {
-                current = None; // consumed; summary doesn't track them
+            Some("HEADER") => {
+                header = Some(tok);
+                current = None;
+            }
+            Some("SHAPE") => {
+                shape = Some(tok);
+                current = None;
             }
             Some("CALLBACK_GROUPS") => {
                 // multi-value; swallow until the next keyword
@@ -750,6 +820,8 @@ fn parse_add_node_call(
         class,
         language,
         deploy_targets: deploy,
+        header,
+        shape,
         manifest_path: cmakelists.to_path_buf(),
     })
 }
@@ -1303,6 +1375,85 @@ where
         .into_iter()
         .filter(|path| seen.insert(path.clone()))
         .collect()
+}
+
+#[cfg(test)]
+mod probe_target_tests {
+    //! phase-308 W1 — what the C/C++ metadata probe needs off a declaration.
+    use super::*;
+
+    fn decl(
+        class: Option<&str>,
+        header: Option<&str>,
+        shape: Option<&str>,
+    ) -> ComponentDeclaration {
+        ComponentDeclaration {
+            package_root: PathBuf::from("/ws/src/talker_pkg"),
+            manifest_path: PathBuf::from("/ws/src/talker_pkg/CMakeLists.txt"),
+            class: class.map(ToString::to_string),
+            crate_name: None,
+            deploy_bound: false,
+            header: header.map(ToString::to_string),
+            shape: shape.map(ToString::to_string),
+            config: ComponentConfig {
+                version: 1,
+                package: "talker_pkg".into(),
+                component: "talker".into(),
+                language: ComponentLanguage::Cpp,
+                linkage: ComponentLinkage::default(),
+                metadata: ComponentMetadataConfig {
+                    source_metadata: "metadata/talker.json".into(),
+                    generated_by: None,
+                },
+                overrides: ComponentOverrides::default(),
+            },
+        }
+    }
+
+    /// The in-tree convention every C/C++ example ships.
+    #[test]
+    fn header_derives_from_the_class_when_undeclared() {
+        assert_eq!(
+            decl(Some("talker_pkg::Talker"), None, None).probe_header(),
+            Some("talker_pkg/Talker.hpp".to_string())
+        );
+    }
+
+    /// An explicit `HEADER` on the cmake verb always wins — the whole reason
+    /// the parser captures it instead of skipping it.
+    #[test]
+    fn declared_header_wins_over_the_convention() {
+        assert_eq!(
+            decl(Some("talker_pkg::Talker"), Some("custom/Path.hpp"), None).probe_header(),
+            Some("custom/Path.hpp".to_string())
+        );
+    }
+
+    /// A nested namespace still maps to the package include root.
+    #[test]
+    fn nested_namespaces_use_the_outermost_segment() {
+        assert_eq!(
+            decl(Some("my_pkg::inner::Node"), None, None).probe_header(),
+            Some("my_pkg/Node.hpp".to_string())
+        );
+    }
+
+    /// No class ⇒ no derivable header. The caller must report that it cannot
+    /// generate a probe, NOT guess a path that fails to compile.
+    #[test]
+    fn no_class_yields_no_header() {
+        assert_eq!(decl(None, None, None).probe_header(), None);
+    }
+
+    /// Defaults match the cmake verb's own default.
+    #[test]
+    fn shape_defaults_to_rclcpp() {
+        assert_eq!(decl(Some("p::C"), None, None).probe_shape(), "rclcpp");
+        assert_eq!(
+            decl(Some("p::C"), None, Some("configure")).probe_shape(),
+            "configure"
+        );
+    }
 }
 
 #[cfg(test)]
