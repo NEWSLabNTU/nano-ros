@@ -252,6 +252,67 @@ impl RosEnv for HostRosEnv {
 // Docker backend — extra editions, nano-ros-ros:<distro> (filled in W3).
 // =============================================================================
 
+/// Wrap a python script in a `timeout N python3 - <<'PYEOF' … PYEOF` heredoc so
+/// its real newlines reach python (a `python3 -c '…\n…'` one-liner is a
+/// SyntaxError). Used for the rclpy E2E servers below.
+fn pyrun(script: &str, timeout_s: u32) -> String {
+    format!("timeout {timeout_s} python3 - <<'NROS_PYEOF'\n{script}\nNROS_PYEOF")
+}
+
+/// rclpy `example_interfaces/AddTwoInts` server on `/add_two_ints` (verbatim from
+/// the host `ros2.rs` helper — pinned to `example_interfaces`, the type nano-ros
+/// service nodes use).
+const RCLPY_ADD_TWO_INTS_SERVER: &str = r#"
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+class Server(Node):
+    def __init__(self):
+        super().__init__('add_two_ints_server')
+        self.srv = self.create_service(AddTwoInts, '/add_two_ints', self.callback)
+        print('SERVER READY', flush=True)
+    def callback(self, request, response):
+        response.sum = request.a + request.b
+        print(f'Request: {request.a} + {request.b} = {response.sum}', flush=True)
+        return response
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+
+/// rclpy `example_interfaces/Fibonacci` action server on `/fibonacci`.
+const RCLPY_FIBONACCI_SERVER: &str = r#"
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionServer
+from example_interfaces.action import Fibonacci
+
+class Server(Node):
+    def __init__(self):
+        super().__init__('fibonacci_action_server')
+        self._srv = ActionServer(self, Fibonacci, '/fibonacci', self.execute)
+        print('SERVER READY', flush=True)
+    def execute(self, goal_handle):
+        order = goal_handle.request.order
+        seq = [0, 1]
+        for i in range(1, order):
+            seq.append(seq[i] + seq[i - 1])
+            fb = Fibonacci.Feedback()
+            fb.sequence = seq
+            goal_handle.publish_feedback(fb)
+        goal_handle.succeed()
+        result = Fibonacci.Result()
+        result.sequence = seq
+        print(f'SERVER DONE {seq}', flush=True)
+        return result
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+
 /// Runs ROS commands inside a locally-built `nano-ros-ros:<distro>` container
 /// (`docker run --network host`). Used for editions the host does not have.
 pub struct DockerRosEnv {
@@ -426,6 +487,65 @@ impl DockerRosEnv {
             "domain_bridge",
             Some(vec!["docker".into(), "kill".into(), cname]),
         )
+    }
+
+    // ---- phase-310 E2E peer helpers (direct same-domain cyclone) -----------
+    // Construct the env with `Middleware::Cyclonedds { domain_id }`; every helper
+    // then runs on that shared domain, so a host nano-ros cyclone node (via
+    // `spawn_process`) and these container peers discover over RTPS.
+
+    /// Spawn a `ros2 topic pub` publisher (long-lived). Pairs with a nano-ros
+    /// subscriber (ROS → nano direction).
+    pub fn spawn_topic_pub(
+        &self,
+        topic: &str,
+        ros_type: &str,
+        data: &str,
+        rate: u32,
+    ) -> TestResult<RosPeer> {
+        self.spawn(
+            "ros2-topic-pub",
+            &format!("ros2 topic pub -r {rate} {topic} {ros_type} \"{data}\""),
+        )
+    }
+
+    /// Run `ros2 topic echo --once` and return its output. Pairs with a nano-ros
+    /// publisher (nano → ROS direction).
+    pub fn echo_topic_once(
+        &self,
+        topic: &str,
+        ros_type: &str,
+        timeout_s: u32,
+    ) -> TestResult<String> {
+        self.run_text(&format!(
+            "timeout {timeout_s} ros2 topic echo --once {topic} {ros_type} 2>&1"
+        ))
+    }
+
+    /// Spawn the rclpy `example_interfaces/AddTwoInts` server on `/add_two_ints`.
+    pub fn spawn_add_two_ints_server(&self) -> TestResult<RosPeer> {
+        self.spawn("rclpy-add-two-ints", &pyrun(RCLPY_ADD_TWO_INTS_SERVER, 60))
+    }
+
+    /// Run `ros2 service call /add_two_ints` and return its output.
+    pub fn service_call_add_two_ints(&self, a: i64, b: i64, timeout_s: u32) -> TestResult<String> {
+        self.run_text(&format!(
+            "timeout {timeout_s} ros2 service call /add_two_ints \
+             example_interfaces/srv/AddTwoInts \"{{a: {a}, b: {b}}}\" 2>&1"
+        ))
+    }
+
+    /// Spawn the rclpy `example_interfaces/Fibonacci` action server on `/fibonacci`.
+    pub fn spawn_fibonacci_server(&self) -> TestResult<RosPeer> {
+        self.spawn("rclpy-fibonacci", &pyrun(RCLPY_FIBONACCI_SERVER, 60))
+    }
+
+    /// Run `ros2 action send_goal --feedback /fibonacci` and return its output.
+    pub fn action_send_goal_fibonacci(&self, order: u32, timeout_s: u32) -> TestResult<String> {
+        self.run_text(&format!(
+            "timeout {timeout_s} ros2 action send_goal --feedback /fibonacci \
+             example_interfaces/action/Fibonacci \"{{order: {order}}}\" 2>&1"
+        ))
     }
 
     /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc

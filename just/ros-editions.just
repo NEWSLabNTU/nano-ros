@@ -61,6 +61,24 @@ build-fixture distro="jazzy":
     ( cd "$FIX" && cargo build )
     echo "build-fixture {{distro}}: $FIX/target/debug/ros-edition-pose-pub"
 
+# Build the six native example nodes (talker/listener/service-{server,client}/
+# action-{server,client}) with the CycloneDDS RMW into per-edition build dirs
+# (target-ros-edition-<distro>), for the phase-310 rich E2E matrix. The examples
+# build against their committed (host) generated msgs — the interop types
+# (Int32, AddTwoInts, Fibonacci) are edition-stable. Separate target dirs keep
+# the default/host builds untouched.
+[group("test")]
+build-e2e-fixtures distro="jazzy":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for ex in talker listener service-server service-client action-server action-client; do
+        DIR="{{justfile_directory()}}/examples/native/rust/$ex"
+        echo "== $ex (cyclone) → target-ros-edition-{{distro}} =="
+        ( cd "$DIR" && cargo build --no-default-features --features rmw-cyclonedds \
+            --target-dir "target-ros-edition-{{distro}}" )
+    done
+    echo "build-e2e-fixtures {{distro}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}/debug/"
+
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +
 # a built image + slow first build). Adding another edition = re-run with its
