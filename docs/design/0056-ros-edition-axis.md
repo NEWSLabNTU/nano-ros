@@ -42,12 +42,18 @@ which RMW or platform nano-ros runs:
   reject a mismatched/placeholder hash at discovery. (Already partly handled:
   `nros-rmw-zenoh::keyexpr` branches on `ros-iron`; the RIHS01 computation is
   phase-41, not-started.)
-- **Wire encoding / extensibility.** Humble is effectively XCDR1 / FINAL-shaped
-  on the cyclone wire; later distros moved toward **XCDR2 + `@appendable`**
-  (DHEADER). A blanket extensibility choice is wrong — it must match the peer's
-  edition (RFC-0055; the phase-303 W1 finding: the ROS 2 Humble `rosidl_adapter`
-  reference carries no `@appendable`, so nano-ros matches Humble by matching it,
-  and a blanket annotation breaks that parity).
+- **Wire encoding / extensibility.** **NOTE (2026-07-26): this is NOT actually an
+  edition-profile field — it is per-type, so it is being removed from this axis.**
+  Live verification (RFC-0055 CORRECTION, #0267) showed a **default Jazzy peer is
+  FINAL/XCDR1** on the wire (both fastrtps + cyclonedds), byte-identical to
+  Humble. Extensibility/XCDR2 depends on a specific type's `@appendable`
+  annotation, not the distro, and a per-edition blanket BREAKS interop
+  (DDS-XTypes rejects an appendable writer against a FINAL reader). So the edition
+  axis carries only **type hash** and the **interface set**; encoding/extensibility
+  is a per-type property handled where a type declares `@appendable`
+  (RFC-0055, parked). The bullet below is the original (refuted) framing.
+  ~~Humble is effectively XCDR1/FINAL; later distros moved toward XCDR2 +
+  `@appendable`; match the peer's edition.~~
 - **Interface set.** Message definitions and available packages differ across
   distros; nano-ros already generates interfaces into per-distro dirs
   (`packages/interfaces/*/generated/{humble,iron}/`).
@@ -65,7 +71,7 @@ table row, not a scavenger hunt.
 | --- | --- | --- | --- | --- |
 | `humble` | `ros-humble` (default) | supported | 22.04 LTS | XCDR1/placeholder-hash; the current baseline |
 | `iron` | `ros-iron` | keyexpr done; RIHS01 pending (phase-41) | 23.05 (EOL) | RIHS01 type hashes introduced |
-| `jazzy` | `ros-jazzy` | **planned** | 24.04 LTS | RIHS01; XCDR2/appendable default (phase-303) |
+| `jazzy` | `ros-jazzy` | RIHS01 done; harness green (phase-309/310) | 24.04 LTS | RIHS01; **FINAL/XCDR1 on the wire** (per-type `@appendable` only; NOT XCDR2-by-edition — see the encoding note) |
 | `rolling` | `ros-rolling` | **planned** | rolling | tracks latest; profile = current rolling |
 
 Mutually exclusive within the axis (compile-time), like the other two axes.
@@ -79,8 +85,8 @@ One profile per edition — the single source of truth for cross-distro behavior
 | --- | --- | --- | --- |
 | **Type hash** | `TypeHashNotSupported` + zeroed liveliness placeholder | RIHS01 SHA-256 (REP-2011) | RIHS01 SHA-256 |
 | **Data-keyexpr tail** | `…/<type>/TypeHashNotSupported` | `…/<type>/<RIHS01>` | `…/<type>/<RIHS01>` |
-| **Wire encoding default** | XCDR1 (`0x0001`) | XCDR1 | offer XCDR2 (`0x0008/0x0009`) + XCDR1 fallback |
-| **Type extensibility** | as ROS emits (no explicit annotation; matches `rosidl_adapter`) | same | `@appendable` where ROS declares it (XCDR2 DHEADER) |
+| **Wire encoding default** | XCDR1 (`0x0001`) | XCDR1 | **XCDR1** (a default jazzy peer is FINAL/XCDR1 — verified live; NOT XCDR2-by-edition) |
+| **Type extensibility** | as ROS emits (no explicit annotation; matches `rosidl_adapter`) | same | **FINAL by default**; `@appendable` is per-type, not per-edition (RFC-0055 parked) — *not an edition-profile field* |
 | **Interface set** | `generated/humble/` | `generated/iron/` | `generated/<edition>/` |
 
 Implementation notes:

@@ -1,18 +1,31 @@
 # Phase 303 — XCDR2 + extensibility: modern ROS 2 wire interop
 
-Implements **RFC-0055** (wire encoding); the encoding default + extensibility it
-turns on are **fields of the ROS-edition profile** (**RFC-0056**) — `humble`
-keeps XCDR1, `jazzy`+ turns on XCDR2. Sibling phase **phase-41** owns the other
-edition-profile field (RIHS01 type hash for Iron+); **phase-304** coordinates the
-whole axis + the multi-distro test method (this phase's W1b = phase-304 W5's
-encoding field). Roots: issue **#0267** (Control
-mis-walked after a `domain_bridge` republish — nano-ros CDR proven canonical,
-the gap is the missing DHEADER + implicit type extensibility) and the adjacent
-serialization gaps (big-endian read, type-hash/RIHS).
+> **⚠️ PREMISE REFUTED + DRIVER RESOLVED ELSEWHERE (2026-07-26).** Read the
+> **CORRECTION** section below FIRST. Two things changed after this phase was
+> written: (1) a default Jazzy peer is **FINAL/XCDR1**, not XCDR2/appendable — so
+> "jazzy+ turns on XCDR2" is a wrong blanket that BREAKS interop; extensibility is
+> a **per-type** property. (2) The issue this phase named as its root, **#0267**,
+> was **RESOLVED independently** — its real cause was two bugs in the Cyclone
+> runtime descriptor builder (`m_size` under-size + a preorder sibling-skip),
+> fixed under the phase-309 line, NOT a missing DHEADER. So the XCDR2 machinery
+> here is **built, tested, and parked** for a future *per-type* `@appendable`
+> opt-in; it has **no active driver**. The paragraphs immediately below are the
+> original (pre-correction) framing, kept for history.
 
-Goal: nano-ros is byte-compatible with a **default ROS 2 humble+ peer**
-regardless of the data representation the peer negotiates — specifically,
-`@appendable` nested structs survive an XCDR2 decode (their DHEADER is present).
+Implements **RFC-0055** (wire encoding); the encoding default + extensibility it
+turns on were originally planned as **fields of the ROS-edition profile**
+(**RFC-0056**) — `humble` keeps XCDR1, `jazzy`+ turns on XCDR2 *(refuted — see
+CORRECTION)*. Sibling phase **phase-41** owns the other edition-profile field
+(RIHS01 type hash for Iron+); **phase-304** coordinates the whole axis + the
+multi-distro test method (this phase's W1b = phase-304 W5's encoding field).
+Originally rooted in issue **#0267** (Control mis-walked after a `domain_bridge`
+republish) — but #0267's cause was the descriptor builder, not the missing
+DHEADER this phase hypothesized, and it is now closed independently.
+
+Goal (as originally stated; superseded by the CORRECTION): nano-ros is
+byte-compatible with a **default ROS 2 humble+ peer** regardless of the data
+representation the peer negotiates — specifically, `@appendable` nested structs
+survive an XCDR2 decode (their DHEADER is present).
 
 ## CORRECTION (2026-07-26) — the edition→appendable premise is WRONG (live-verified)
 

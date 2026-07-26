@@ -30,6 +30,29 @@ peer regardless of the representation the peer negotiates. It also records the
 adjacent interop gaps (big-endian read, type-hash/RIHS, mutable/optional) and
 where each lands.
 
+> **⚠️ CORRECTION (2026-07-26) — the driving premise was refuted; this is now an
+> OPTIONAL per-type feature, not a modern-edition requirement.** Two live findings
+> from the #0267 investigation overturned the framing above:
+> 1. **A default Jazzy peer serializes FINAL/XCDR1 on the wire** (verified live
+>    for both fastrtps and cyclonedds; guard
+>    `nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`). "Modern
+>    ROS 2 defaults types to `@appendable`/XCDR2 so nano-ros must too" is wrong —
+>    and DDS-XTypes REJECTS an appendable writer against a FINAL reader, so
+>    emitting appendable-by-edition BREAKS default interop. Extensibility is a
+>    **per-type** property (a specific type's `@appendable` annotation), never an
+>    edition property.
+> 2. **#0267 was NOT an XCDR2/DHEADER gap.** Its real cause was two bugs in the
+>    Cyclone runtime descriptor builder (`m_size` under-size for a nested member
+>    >16 B, and a preorder sibling-skip that read a struct's 2nd nested member as
+>    a scalar), fixed independently (phase-309 line). nano-ros's XCDR1 bytes were
+>    canonical all along.
+>
+> The XCDR2 + DHEADER machinery specified here stays **built + tested but parked**,
+> to be re-activated per-type once an `@appendable` signal is wired for a type
+> that genuinely declares it (e.g. a future autoware type). It is NOT on the
+> default interop path. The `#0267 (high)` motivation below is retained for
+> history but no longer holds.
+
 ## Motivation / problem
 
 Two serialization paths exist in the stack; the gap is shared:
@@ -50,12 +73,13 @@ Two serialization paths exist in the stack; the gap is shared:
 
 Consequences, in interop-impact order:
 
-- **#0267 (high):** appendable nested structs (e.g. `autoware_control_msgs/
-  Control` → `Lateral`/`Longitudinal`, each a nested `Time` + a trailing `bool`)
-  are mis-walked when a peer decodes them as XCDR2-appendable. nano-ros's XCDR1
-  bytes are **provably canonical** (`nros-serdes` byte-exact test
-  `test_control_nested_struct_time_bool_layout_0267`) — the fault is the missing
-  DHEADER + the implicit extensibility, not the field packing.
+- **#0267 (REFUTED — kept for history; see the CORRECTION above):** this phase
+  hypothesized that `autoware_control_msgs/Control` → `Lateral`/`Longitudinal`
+  was mis-walked because a peer decoded it as XCDR2-appendable and nano-ros's
+  XCDR1-FINAL stream lacked the DHEADER. **That is not what happened.** nano-ros's
+  XCDR1 bytes were canonical (correct), and the real fault was in the Cyclone
+  runtime descriptor builder (`m_size` under-size + a preorder sibling-skip);
+  fixed independently. Extensibility/DHEADER was never involved.
 - **No representation negotiation:** nano-ros advertises only XCDR1, so it
   cannot honor a peer that requires XCDR2 (or agree on it when the peer prefers
   it).
