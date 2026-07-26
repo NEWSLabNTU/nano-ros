@@ -15,6 +15,24 @@ pub struct SourceMetadata {
     pub callbacks: Vec<SourceCallback>,
     pub parameters: Vec<SourceParameter>,
     pub trace: SourceMetadataTrace,
+    /// phase-307 W2 — how this sidecar was produced and from what.
+    ///
+    /// Absent on a raw harness emission and on the hand-written test fixtures;
+    /// the refresh step stamps it. A consumer reads it to tell a sidecar that
+    /// describes the current source from museum data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<SourceMetadataProvenance>,
+}
+
+/// phase-307 W2 — sidecar provenance stamp.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceMetadataProvenance {
+    /// Content digest of the component sources the sidecar was derived from.
+    /// Content-addressed, NOT mtime-based — see `metadata_refresh`.
+    pub inputs_digest: String,
+    /// Producer identity + version (`nros 0.5.0`).
+    pub generator: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

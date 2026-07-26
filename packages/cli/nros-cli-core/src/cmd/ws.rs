@@ -118,6 +118,13 @@ pub struct SyncArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// phase-307 W2 — skip the source-metadata refresh. The refresh compiles a
+    /// host probe per Node pkg, which is the slow part of a cold sync; skipping
+    /// it leaves any existing sidecars untouched and makes bakes fall back to
+    /// the SystemModel's entity lower bound.
+    #[arg(long)]
+    pub no_metadata: bool,
+
     /// Path to the nano-ros source tree. Accepted for back-compat but
     /// currently a NO-OP since post-212 alignment: the canonical 212
     /// shape carries nros-* runtime crates as path-deps in the user's
@@ -610,6 +617,10 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         return Ok(());
     }
 
+    // Captured before `args` is partially moved below (the nano_ros_path take).
+    let no_metadata = args.no_metadata;
+    let verbose = args.verbose;
+
     let edition = resolve_sync_edition(args.ros_edition.as_deref(), &ws_root)?;
 
     // Track every pkg we generate so a later iteration (or AMENT-dep walk)
@@ -737,7 +748,47 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         )?;
     }
 
+    refresh_source_metadata(&ws_root, nano_ros_path.as_deref(), no_metadata, verbose)?;
+
     println!("ws sync: done.");
+    Ok(())
+}
+
+/// phase-307 W2 — the producer trigger.
+///
+/// Runs LAST, and the order is load-bearing: the metadata harness compiles the
+/// Node pkg for real, so the generated interface crates must already exist
+/// (codegen, above) and the `[patch.crates-io]` tables that redirect
+/// `example_interfaces = "*"` at them must already be written (immediately
+/// above). Running this any earlier fails to resolve the interface deps.
+fn refresh_source_metadata(
+    ws_root: &Path,
+    nano_ros_path: Option<&Path>,
+    no_metadata: bool,
+    verbose: bool,
+) -> Result<()> {
+    if no_metadata {
+        return Ok(());
+    }
+    let report = crate::orchestration::metadata_refresh::refresh_stale_sidecars(
+        ws_root,
+        nano_ros_path,
+        verbose,
+    )?;
+    if report.total() == 0 && report.unsupported.is_empty() {
+        return Ok(());
+    }
+    println!(
+        "ws sync: source metadata — {} rebuilt, {} already current",
+        report.rebuilt.len(),
+        report.fresh.len()
+    );
+    // Never silent: a component with no producer is a component whose entity
+    // count a bake cannot know, and that is exactly how issue 0257's executor
+    // ran out of callback slots at boot.
+    for what in &report.unsupported {
+        println!("ws sync: source metadata — no producer for {what}");
+    }
     Ok(())
 }
 
