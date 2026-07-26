@@ -145,14 +145,14 @@ impl RosPeer {
     /// container teardown) if any. Cleanup is best-effort + idempotent.
     pub fn kill(&mut self) {
         kill_process_group(&mut self.handle);
-        if let Some(argv) = self.cleanup.take() {
-            if let Some((prog, args)) = argv.split_first() {
-                let _ = Command::new(prog)
-                    .args(args)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-            }
+        if let Some(argv) = self.cleanup.take()
+            && let Some((prog, args)) = argv.split_first()
+        {
+            let _ = Command::new(prog)
+                .args(args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
         }
     }
 }
