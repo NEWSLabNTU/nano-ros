@@ -15,6 +15,11 @@ categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []
+# issue 0283 — opt OUT of ROS 2 liveliness declarations (node + entity
+# tokens). Data still flows; the session simply stays invisible to
+# `ros2 node list` / `topic list`. For peer-to-peer fixtures that want the
+# wire quiet; hardware images should leave liveliness ON.
+no-liveliness = []
 # Phase 129.C.3.a — `nros-platform/platform-<rtos>` forwards
 # dropped. Phase 129.D retired `zpico-platform-shim`, which was
 # the only consumer that needed `ConcretePlatform`. The two

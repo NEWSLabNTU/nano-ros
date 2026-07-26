@@ -1,7 +1,7 @@
 ---
 id: 283
 title: "ROS 2 liveliness is disabled wholesale on FreeRTOS (phase-127.B workaround) — MCU lanes are invisible to `ros2 node list`; re-enable per-platform"
-status: open
+status: partially-resolved
 type: enhancement
 severity: medium
 area: zpico
@@ -52,7 +52,34 @@ chased that asymmetry as a sentinel bug; it is this cfg.
    exhaustion; the `_z_send_tcp` write_all drain loop landed with it).
    The workaround has not been re-tested against the current stack.
 
-## Ask
+## Resolution (2026-07-26)
+
+**Re-tested at HEAD: the blocking bug is GONE.** With
+`should_declare_liveliness()` returning true on FreeRTOS, the sentinel's
+10-node MPS2 image registers every entity, enters its spin loop and
+keeps publishing — no hang, no error, with a zenohd peer present for the
+whole run (the original 127.B trigger).
+
+Landed here:
+- The platform cfg is replaced by an explicit **`no-liveliness` cargo
+  feature** on `nros-rmw-zenoh`. Default = liveliness ON for every
+  platform, including FreeRTOS; fixtures that want the wire quiet opt
+  out deliberately.
+- `zpico_declare_liveliness` now logs a failed
+  `z_liveliness_declare_token` (it was a silent graph outage; the
+  publisher/subscriber declare paths already logged theirs).
+
+**Residual, separate defect:** on FreeRTOS the tokens are declared with
+no error, yet `ros2 node list` / `topic list` from the host still see
+nothing (the NuttX lane, same code path, is fully visible). So the
+127.B-era symptom had TWO causes and only the blocking one is fixed.
+Next probes: confirm the tokens reach the router at all (zenohd-side
+`@ros2_lv` subscriber), and compare the FreeRTOS session's
+`Z_FEATURE_MULTI_THREAD` / read-task state against NuttX — a
+declare that is never flushed by a read/lease task would look exactly
+like this.
+
+## Ask (original)
 
 - Re-test liveliness declaration on FreeRTOS at HEAD: single peer, then
   with a second peer present (the original blocking trigger).

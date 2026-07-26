@@ -347,10 +347,18 @@ impl ZenohSession {
 
     #[inline]
     fn should_declare_liveliness(&self) -> bool {
-        // FreeRTOS QEMU/slirp peer-to-peer fixtures do not need ROS 2
-        // discovery tokens for data routing, and current zenoh-pico FreeRTOS
-        // liveliness declaration can block once another peer is present.
-        !cfg!(feature = "platform-freertos")
+        // issue 0283 — liveliness is ON everywhere. It used to be disabled
+        // wholesale on FreeRTOS (phase-127.B, 6866903ab) to dodge a
+        // declaration that could block once a second peer joined; that
+        // blocking path was the pre-0269 declare stack (slot exhaustion +
+        // the short-write `_z_send_tcp`), both fixed. A ROS 2 graph that
+        // no tool can see is not an acceptable steady state for hardware —
+        // `ros2 node list` is how an integrator confirms a safety MCU
+        // joined the system.
+        //
+        // Deliberate opt-out for peer-to-peer fixtures that want the wire
+        // quiet: the `no-liveliness` cargo feature.
+        !cfg!(feature = "no-liveliness")
     }
 
     /// Helper: build a liveliness keyexpr using a closure and declare it.

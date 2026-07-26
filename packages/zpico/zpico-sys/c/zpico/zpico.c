@@ -1975,6 +1975,10 @@ int32_t zpico_declare_liveliness(const char* keyexpr) {
     int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session), &g_liveliness[idx].token,
                                             z_view_keyexpr_loan(&ke), NULL);
     if (lv_ret < 0) {
+        /* issue 0283 — a failed token is a SILENT graph outage (the ROS 2
+         * tools see nothing) — say so on the console like the publisher /
+         * subscriber declare paths do. */
+        printk("zpico: z_liveliness_declare_token failed: %d for '%s'\n", lv_ret, keyexpr);
         return ZPICO_ERR_GENERIC;
     }
 
