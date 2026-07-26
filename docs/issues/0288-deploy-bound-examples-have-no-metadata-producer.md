@@ -1,5 +1,5 @@
 ---
-id: 286
+id: 288
 title: "Self-contained standalone examples cannot be metadata-probed, so exact executor sizing never applies to them"
 status: open
 type: limitation

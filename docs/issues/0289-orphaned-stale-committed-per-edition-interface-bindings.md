@@ -1,5 +1,5 @@
 ---
-id: 275
+id: 289
 title: "Orphaned + stale committed per-edition interface bindings (packages/interfaces/*/generated/{humble,iron}/)"
 status: open
 type: tech-debt

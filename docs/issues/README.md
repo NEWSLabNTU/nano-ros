@@ -99,10 +99,10 @@ Version skew: the CLI's required `play_launch` is unpinned/uninstalled and
 `~/.local/bin/play_launch` shadows it. Needs a pin + a `[PREREQ]` probe (the #197
 pattern). See `0285-play-launch-resolve-subcommand-skew.md`. (2026-07-26)
 
-**#286** — self-contained standalone examples (node + entry in one crate) dep their board
+**#288** — self-contained standalone examples (node + entry in one crate) dep their board
 crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
 back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
-grows one as a template. See `0286-*`.
+grows one as a template. See `0288-*`. (renumbered from a duplicate #286)
 
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.
@@ -124,8 +124,9 @@ Verification section); needs a reporter repro. See `0272-*`.
 **#273** — `nros-board-mps2-an385-freertos`'s `nros-board.toml` still advertises the retired
 `_start` entry signature. See `0273-*`.
 
-**#275** — orphaned + stale committed per-edition interface bindings under
-`packages/interfaces/*/generated/{humble,iron}/`. See `0275-*`.
+**#289** — orphaned + stale committed per-edition interface bindings under
+`packages/interfaces/*/generated/{humble,iron}/`. See `0289-*`. (renumbered from a
+duplicate #275 — the original #275 is the resolved class-prefix issue, `archived/0275-*`)
 
 **#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
 now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
