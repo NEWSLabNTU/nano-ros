@@ -10,6 +10,7 @@ use syn::{DeriveInput, Fields, LitByteStr, LitStr, Path, parse_macro_input};
 // Entry-pkg `build.rs + include!(concat!(env!("OUT_DIR"), "/run_plan.rs"))`
 // shape with a one-line `main.rs`. See `main_macro.rs` for the impl.
 mod main_macro;
+mod source_metadata_sidecars;
 
 /// One-line `fn main()` for Entry pkgs. Four forms:
 ///

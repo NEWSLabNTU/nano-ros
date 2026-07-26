@@ -273,29 +273,25 @@ pub fn load_workspace_metadata(ws_root: &Path) -> Vec<SourceMetadata> {
 /// Taking the max per node is monotone (never below today's model bound, so no
 /// existing build regresses) and never over-counts a node by mixing the two
 /// sources' blind spots together.
+///
+/// The rule itself lives in `nros-orchestration-ir` because the `nros::main!`
+/// macro applies it too (phase-307 W4 second half). This is only the CLI's
+/// adapter from a materialised map; a disagreement between the two would be an
+/// image that passes the bake's check and dies at boot anyway.
 pub fn count_callbacks_with_metadata(
     model: &SystemModel,
     slots: &BTreeMap<(String, String), usize>,
 ) -> usize {
-    use nros_orchestration_ir::executor_sizing as sz;
-
-    let mut total = 0usize;
-    for (fqn, inst) in &model.structure.nodes {
-        let modelled = sz::count_node_callbacks(model, fqn);
-        let recorded = match (inst.pkg.as_deref(), inst.exec.as_deref()) {
-            (Some(pkg), Some(exec)) => slots
+    nros_orchestration_ir::executor_sizing::count_callbacks_with_recorded(
+        model,
+        |_| true,
+        |pkg, exec| {
+            slots
                 .get(&(pkg.to_string(), exec.to_string()))
                 .copied()
-                .unwrap_or(0),
-            _ => 0,
-        };
-        total += modelled.max(recorded);
-    }
-    // Endpoints whose owning node the model does not list as an instance still
-    // register callbacks; count them from the wiring so the total is never
-    // below `count_callbacks(model, |_| true)`.
-    total += sz::count_callbacks(model, |node| !model.structure.nodes.contains_key(node));
-    total
+                .unwrap_or(0)
+        },
+    )
 }
 
 /// Issue 0257 — the CLI twin of the `nros::main!` capacity check: refuse to

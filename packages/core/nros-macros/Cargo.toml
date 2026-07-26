@@ -34,6 +34,11 @@ proc-macro2 = { workspace = true }
 #     by lockfile, not visibility, and proc-macro deps are host-only at the
 #     consumer's compile time.
 toml = "0.8"
+# phase-307 W4 (second half) — read the `nros sync`-produced source-metadata
+# sidecars so the macro sizes the executor for the entities the RECORDER saw
+# (timers included), not just the ones the launch wiring names. Host-only, like
+# every other dep here; the reader walks `Value` and mirrors no schema struct.
+serde_json = "1.0"
 nros-pkg-index = { path = "../../cli/nros-pkg-index" }
 nros-launch-parser = { path = "../../cli/nros-launch-parser" }
 # Phase 228.G — shared per-tier schema + resolver. Same crate the CLI's

@@ -99,6 +99,53 @@ pub fn count_callbacks<F: FnMut(&str) -> bool>(model: &SystemModel, mut keep: F)
     n
 }
 
+/// phase-307 W4 — the shared `max(model_wiring, recorded_metadata)` rule.
+///
+/// `keep` selects the nodes this entry registers (the CLI bake takes all of
+/// them; the macro slices per board). `recorded` answers "how many callback
+/// slots did the source-metadata sidecar record for this `(pkg, exec)`?", or 0
+/// when there is no sidecar.
+///
+/// The max is PER NODE and it is necessary, not merely safe — neither source is
+/// complete on its own (module docs). Per-node keeps the two sources' blind
+/// spots from being added together, and monotonicity means a workspace with no
+/// sidecars produces exactly today's model bound, so no existing build
+/// regresses.
+///
+/// Both bakes call this, for the same reason they share [`count_callbacks`]:
+/// the CLI refuses an over-capacity system and the `nros::main!` macro SIZES
+/// the executor, and a disagreement between them is an image that passes the
+/// check and dies at boot anyway.
+pub fn count_callbacks_with_recorded<F, R>(
+    model: &SystemModel,
+    mut keep: F,
+    mut recorded: R,
+) -> usize
+where
+    F: FnMut(&str) -> bool,
+    R: FnMut(&str, &str) -> usize,
+{
+    let mut total = 0usize;
+    for (fqn, inst) in &model.structure.nodes {
+        if !keep(fqn) {
+            continue;
+        }
+        let modelled = count_node_callbacks(model, fqn);
+        let slots = match (inst.pkg.as_deref(), inst.exec.as_deref()) {
+            (Some(pkg), Some(exec)) => recorded(pkg, exec),
+            _ => 0,
+        };
+        total += modelled.max(slots);
+    }
+    // Endpoints whose owning node the model does not list as an instance still
+    // register callbacks; count them from the wiring so the total can never
+    // fall below the plain `count_callbacks` bound.
+    total += count_callbacks(model, |node| {
+        keep(node) && !model.structure.nodes.contains_key(node)
+    });
+    total
+}
+
 /// Callback slots one node's modelled entities consume.
 pub fn count_node_callbacks(model: &SystemModel, fqn: &str) -> usize {
     count_callbacks(model, |node| node == fqn)

@@ -705,8 +705,25 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // Issue 0257 — count the callback slots the SLICED node set needs. Same
         // `keep` predicate as the walk above, so a per-board/per-host entry
         // sizes for the nodes it actually registers, not the whole system.
-        model_callbacks =
-            nros_orchestration_ir::executor_sizing::count_callbacks(&model, |fqn| keep(fqn));
+        // phase-307 W4 (second half) — `max(model_wiring, recorded)` per node,
+        // through the SAME shared rule the CLI bake uses. The model cannot see
+        // timers; on a board that honors per-entry sizing this derived value IS
+        // the executor's capacity, so a one-sub/five-timer node sized from the
+        // model alone dies at boot on its third timer. `nros sync` (W2) is what
+        // makes the sidecars dependable; absence just falls back to the bound.
+        let recorded = crate::source_metadata_sidecars::collect(&manifest_dir);
+        tracked.extend(recorded.paths.iter().cloned());
+        model_callbacks = nros_orchestration_ir::executor_sizing::count_callbacks_with_recorded(
+            &model,
+            |fqn| keep(fqn),
+            |pkg, exec| {
+                recorded
+                    .slots
+                    .get(&(pkg.to_string(), exec.to_string()))
+                    .copied()
+                    .unwrap_or(0)
+            },
+        );
         if idents.is_empty() {
             return Err(syn::Error::new(
                 model_lit.span(),

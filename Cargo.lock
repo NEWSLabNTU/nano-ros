@@ -1866,6 +1866,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "ros-launch-manifest-model",
+ "serde_json",
  "syn",
  "toml 0.8.23",
 ]
