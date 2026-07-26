@@ -1,0 +1,5 @@
+# Build artifacts. `generated/` is regenerated per ROS edition by
+# `just ros_editions build-fixture <distro>` (host humble, or an edition
+# container), so it is never committed.
+/target/
+/generated/

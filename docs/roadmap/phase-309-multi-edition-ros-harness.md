@@ -1,16 +1,17 @@
 # Phase 309 — multi-edition ROS test harness
 
-**Status (2026-07-26): W1–W6 landed.** The `RosEnv` provider, per-edition docker
-image, peer + `domain_bridge` backend, in-container codegen, and the opt-in
-`just ros_editions ci <distro>` composite are implemented + green against a live
-jazzy image (peer smoke, codegen, PoseStamped-through-`domain_bridge` — all
-skip cleanly without docker/image, none in `just ci`). **Residual:** the W5
-"nano-ros REBUILT against edition-E generated code" variant — the bridge lane
-currently drives a stock publisher, which proves the harness + topology against
-a non-host edition but not per-edition nano-ros generated-code drift. Wiring a
-nano-ros cyclone publisher fixture (built against `generated-editions/<E>/`) into
-the bridge lane is deferred; the cyclone wire path is already edition-compatible
-(issue 0267, verified live vs jazzy), so this catches only generated-code drift.
+**Status (2026-07-26): W1–W6 + the W5 residual landed.** The `RosEnv` provider,
+per-edition docker image, peer + `domain_bridge` backend, in-container codegen,
+the nano-ros publisher fixture, and the opt-in `just ros_editions ci <distro>`
+composite are implemented + green against a live jazzy image. Lanes (all skip
+cleanly without docker/image, none in `just ci`): peer smoke, codegen,
+stock-publisher `domain_bridge`, and — the completed residual — a REAL nano-ros
+CycloneDDS node (`bins/ros-edition-pose-pub`, built against the edition's
+regenerated `geometry_msgs` via `just ros_editions build-fixture <distro>`)
+publishing PoseStamped through the jazzy `domain_bridge` with every depth-2
+nested value intact. The per-edition rebuild proved non-vacuous: jazzy's
+`geometry_msgs` carries **33** messages vs humble's 32, so "rebuild against the
+edition's defs" is a real difference, not a no-op.
 
 Implements [RFC-0058](../design/0058-multi-edition-ros-test-harness.md)
 (the docker-backed `RosEnv` provider). Exercises the [RFC-0056](../design/0056-ros-edition-axis.md)

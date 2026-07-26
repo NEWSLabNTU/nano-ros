@@ -1,0 +1,33 @@
+[package]
+name = "ros-edition-pose-pub"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# phase-309 W5 residual — a nano-ros CYCLONE publisher of geometry_msgs/
+# PoseStamped (the #0267 depth-2 nested shape), built against GENERATED bindings
+# so the per-edition interop lane runs a real product node against a live ROS 2
+# edition peer (not a stock publisher). RMW is cyclone only (the edition peers
+# discover over RTPS on a shared domain). Values are fixed to the #0267 vector.
+
+[[bin]]
+name = "ros-edition-pose-pub"
+path = "src/main.rs"
+
+[package.metadata.nros.application]
+deploy = ["native"]
+
+[dependencies]
+# `nros/rmw-cyclonedds` is the typed-descriptor marker the Cyclone path needs
+# (native rust typed create_publisher::<M> fails PublisherCreationFailed
+# without it — see project memory).
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble", "rmw-cyclonedds"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
+nros-board-native = { version = "*", default-features = false, features = ["rmw-cyclonedds"] }
+nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"] }
+geometry_msgs = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[workspace]

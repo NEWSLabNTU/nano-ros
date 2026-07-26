@@ -120,6 +120,14 @@ fn spawn_command(
     })
 }
 
+/// Spawn an already-configured [`Command`] (e.g. a host nano-ros publisher
+/// binary with its env set) as a [`RosPeer`] — process-group isolated, killed on
+/// drop. Lets an interop lane run a real nano-ros node as the publisher, not
+/// only `ros2` CLI peers.
+pub fn spawn_process(cmd: Command, name: &str) -> TestResult<RosPeer> {
+    spawn_command(cmd, name, None)
+}
+
 /// A running ROS 2 peer (publisher, subscriber, server, `domain_bridge`, …).
 /// Killed on drop. For the docker backend, killing the `docker run` client does
 /// NOT stop the container — so a `cleanup` command (`docker kill <name>`) is run

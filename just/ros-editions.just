@@ -5,6 +5,7 @@
 # Opt-in — never part of `just ci`. See the `ros-editions-ci` composite (W6).
 
 _DOCKER_DIR := justfile_directory() / "docker" / "ros-editions"
+_FIX := justfile_directory() / "packages" / "testing" / "nros-tests" / "bins" / "ros-edition-pose-pub"
 
 # Build the per-edition ROS image locally (cached). First build is a few minutes
 # (apt only — no source compile). Tag: nano-ros-ros:<distro>.
@@ -35,6 +36,31 @@ image-check distro="jazzy":
     '
     echo "image-check {{distro}}: PASS"
 
+# Build the nano-ros CycloneDDS PoseStamped publisher fixture against a ROS
+# edition's message definitions (W5 residual). geometry_msgs is regenerated from
+# the edition's defs (in-container when the image exists, else host ROS), then
+# the publisher is built on the host. Consumed by the nano-ros interop lane.
+[group("test")]
+build-fixture distro="jazzy":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    FIX="{{_FIX}}"
+    NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
+    [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
+    if docker image inspect nano-ros-ros:{{distro}} >/dev/null 2>&1; then
+        echo "regenerating geometry_msgs against {{distro}} defs (container)"
+        docker run --rm \
+            -v "$NROS":/usr/local/bin/nros:ro \
+            -v "$FIX":/fix \
+            nano-ros-ros:{{distro}} \
+            bash -lc 'source /opt/ros/{{distro}}/setup.bash && cd /fix && nros generate-rust --force'
+    else
+        echo "image nano-ros-ros:{{distro}} absent — generating against host ROS"
+        ( cd "$FIX" && "$NROS" generate-rust --force )
+    fi
+    ( cd "$FIX" && cargo build )
+    echo "build-fixture {{distro}}: $FIX/target/debug/ros-edition-pose-pub"
+
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +
 # a built image + slow first build). Adding another edition = re-run with its
@@ -51,10 +77,14 @@ ci distro="jazzy":
         echo "error: codegen lane needs the nros CLI — run \`just setup-cli\` first" >&2
         exit 1
     fi
+    # Build the nano-ros publisher fixture against this edition's defs so the
+    # nano-ros interop lane runs (not just the stock-publisher lane).
+    just ros_editions build-fixture {{distro}}
     echo "== ros-editions harness lanes ({{distro}}) =="
     cargo test -p nros-tests \
         --test ros_editions_smoke \
         --test ros_editions_codegen \
         --test ros_editions_bridge \
+        --test ros_editions_nano_interop \
         -- --nocapture
     echo "ros_editions ci {{distro}}: PASS"

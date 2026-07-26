@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ros_edition_pose_pub</name>
+  <version>0.1.0</version>
+  <description>
+    nano-ros CycloneDDS geometry_msgs/PoseStamped publisher fixture for the
+    phase-309 multi-edition interop lane. Rust consumer of geometry_msgs.
+  </description>
+  <maintainer email="noreply@nano-ros">nano-ros</maintainer>
+  <license>MIT</license>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <depend>geometry_msgs</depend>
+</package>
