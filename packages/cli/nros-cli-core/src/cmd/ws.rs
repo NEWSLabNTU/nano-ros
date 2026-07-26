@@ -304,13 +304,34 @@ impl WsPkg {
 /// siblings that were previously committed (variant models stay opt-in:
 /// only refreshed, never created, for non-default launches).
 fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
-    // PATH probe without a which dep: try `play_launch --version`.
+    // PATH probe without a which dep. phase-308: probe the CAPABILITY, not the
+    // name. `play_launch` is also the name of an unrelated ROS 2 record/replay
+    // tool that answers `--version` happily and has no `resolve` subcommand, so
+    // a `--version` probe reported "present" and every `nros sync` then died
+    // with "unrecognized subcommand 'resolve'" — taking the whole fixture build
+    // with it. A host with the wrong tool on PATH must degrade to the committed
+    // model exactly like a host with no tool at all, which is the documented
+    // behaviour for absent; a hard failure here is worse than stale, because
+    // the model is checked in and usually current.
     let play_launch: Option<std::path::PathBuf> = std::process::Command::new("play_launch")
-        .arg("--version")
+        .arg("resolve")
+        .arg("--help")
         .output()
         .ok()
         .filter(|o| o.status.success())
         .map(|_| std::path::PathBuf::from("play_launch"));
+    if play_launch.is_none()
+        && std::process::Command::new("play_launch")
+            .arg("--version")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    {
+        eprintln!(
+            "ws sync: the `play_launch` on PATH does not support `resolve` (RFC-0050); \
+             committed SystemModels are used as-is and will NOT be refreshed. Install \
+             the resolve-capable build, or re-run `nros setup`."
+        );
+    }
     for pkg in scan {
         let launch_dir = pkg.dir.join("launch");
         if !launch_dir.is_dir() {
