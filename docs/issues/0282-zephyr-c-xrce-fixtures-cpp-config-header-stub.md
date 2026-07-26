@@ -1,6 +1,6 @@
 ---
 id: 282
-title: "Zephyr C + XRCE fixtures compile against the nros_cpp_config_generated.h stub (0088/0090 class, XRCE-only)"
+title: "Zephyr XRCE builds never produce nros_cpp_config_generated.h — C probe detonated (fixed); C++ has no fallback (open)"
 status: open
 type: bug
 severity: medium
@@ -57,3 +57,44 @@ carry a hard file-level `OBJECT_DEPENDS` on
 that property, which is necessary but evidently not sufficient here), or
 find why the XRCE Kconfig path pulls the nros-cpp header into a C TU at all
 — the zenoh/cyclonedds C lanes do not.
+
+
+## Correction + split (2026-07-26)
+
+The original scope in this issue was WRONG, and the correction matters:
+
+- I reported "only the 4 C+XRCE fixtures fail, the rest pass". They did not
+  pass — `make -j4` **aborts after the first failures**, so every fixture
+  scheduled behind them (including all C++/XRCE) never ran. "Not reported"
+  was mistaken for "green".
+- The real defect underneath is broader: **the Zephyr XRCE builds never
+  produce `nros_cpp_config_generated.h` at all** — `<build>/nros-rust/`
+  does not exist there, while the zenoh/cyclonedds peers carry the real
+  header.
+
+That splits cleanly by language:
+
+### (a) C components — FIXED
+
+`nros-c/component.h` probes for the generated sizes with `__has_include`,
+intending it OPTIONAL (it falls back to static sizes). But `__has_include`
+also matches the in-tree `#error` stub, which is always on the include
+path, so the optional probe detonated on any build that never produces the
+real header. Fixed: probes announce themselves
+(`NROS_CPP_CONFIG_OPTIONAL`) and the stub stays silent **for C probes
+only**, without defining the include guard (so a later mandatory include
+still reaches the hard error). All 5 Zephyr C+XRCE fixtures now build.
+
+### (b) C++ components — OPEN, the real defect
+
+`nros-cpp` headers (`publisher.hpp`, `client.hpp`, … via `config.hpp`)
+consume `NROS_*_SIZE` and have NO static fallback — they cannot work
+without the generated header. On XRCE the header is never produced, so
+every C++/XRCE fixture fails (currently as a cascade of
+`'storage_' was not declared`).
+
+Fix direction: make the Zephyr XRCE build produce/mirror
+`nros_cpp_config_generated.h` like the zenoh and cyclonedds lanes do —
+i.e. find why the nros-cpp cargo build + header mirror is skipped for
+`NROS_RMW=xrce`. Papering this over on the include side would only move
+the failure later.

@@ -23,6 +23,28 @@
  * docs/roadmap/phase-119-3-cmake-setup.md for the dispatch model.
  */
 
+#if defined(NROS_CPP_CONFIG_OPTIONAL) && !defined(NROS_PLATFORM_NUTTX) &&           \
+    !defined(__cplusplus)
+
+/* Issue 0282 — OPTIONAL probe (see nros-c/include/nros/component.h): the
+ * includer only wants the generated `NROS_CPP_*_STORAGE_SIZE` values when
+ * this build produces them and falls back to its own static defaults
+ * otherwise. `__has_include` cannot tell this stub from the real header, so
+ * probes announce themselves and we contribute NOTHING — deliberately
+ * including NOT defining the include guard,, so a later MANDATORY include in
+ * the same TU (e.g. nros-cpp/client.hpp, which needs
+ * NROS_SERVICE_CLIENT_SIZE) still reaches the hard error below instead of
+ * silently compiling against missing macros.
+ *
+ * The silent path is C-ONLY. A C++ TU that reaches this stub genuinely needs
+ * the generated sizes (`nros-cpp/publisher.hpp` etc. use NROS_*_SIZE without
+ * including this header themselves, relying on an earlier include), and has
+ * no static fallback — so it must keep failing LOUDLY here rather than
+ * cascading into a pile of `'storage_' was not declared` errors far from the
+ * cause. */
+
+#else
+
 #ifndef NROS_CPP_CONFIG_GENERATED_H
 #define NROS_CPP_CONFIG_GENERATED_H
 
@@ -33,3 +55,5 @@
 #endif
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
+
+#endif /* optional probe */

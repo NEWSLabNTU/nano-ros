@@ -56,7 +56,17 @@
  * in-tree `#error` stub because the build lists the mirror dir first. */
 #if defined(__has_include)
 #if __has_include(<nros/nros_cpp_config_generated.h>)
+/* Issue 0282 — this probe is OPTIONAL: when the real per-build header is
+ * absent we fall back to the static sizes below. But `__has_include` also
+ * matches the in-tree `#error` STUB (always on the include path), so the
+ * probe used to detonate on any build that never produces the real header
+ * — e.g. the Zephyr C + XRCE lane, which never builds nros-cpp at all
+ * (no `<build>/nros-rust/` exists there). Tell the stub this inclusion is
+ * a probe so it stays silent; it still `#error`s for anyone who includes
+ * it expecting the real thing. */
+#define NROS_CPP_CONFIG_OPTIONAL 1
 #include <nros/nros_cpp_config_generated.h>
+#undef NROS_CPP_CONFIG_OPTIONAL
 #endif
 #endif
 
