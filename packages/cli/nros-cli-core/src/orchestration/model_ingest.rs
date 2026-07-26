@@ -1071,8 +1071,9 @@ pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
                 ns.to_string()
             }
         };
+        // #276 — projected params (files under inline).
         let params: Vec<serde_json::Value> = inst
-            .params
+            .resolved_params(fqn)
             .iter()
             .map(|(k, v)| {
                 let s = match v {

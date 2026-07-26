@@ -639,8 +639,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             // Params (resolved values ride the model — the embedded target has
             // no record.json to read them from).
+            // #276 — `params_files` YAML projects under the inline values.
             node_param_bakes.push(
-                inst.params
+                inst.resolved_params(fqn)
                     .iter()
                     .map(|(k, v)| {
                         use ros_launch_manifest_model::ParamValue;

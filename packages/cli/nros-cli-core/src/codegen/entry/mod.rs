@@ -709,8 +709,12 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
                     .map(|p| p.rsplit("::").next().unwrap_or(p).to_string())
             })
             .ok_or_else(|| eyre::eyre!("model node '{fqn}' has neither exec nor plugin"))?;
+        // #276 (model path) — project `params_files` YAML under the inline
+        // `<param>` values. The launch path has its own projection
+        // (`resolve_node_params`), but every live bake now goes through the
+        // MODEL, so the projection has to exist here too.
         let params: Vec<(String, String)> = inst
-            .params
+            .resolved_params(fqn)
             .iter()
             .map(|(k, v)| {
                 let s = match v {

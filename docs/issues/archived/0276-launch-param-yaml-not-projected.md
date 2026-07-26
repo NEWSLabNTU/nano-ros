@@ -72,3 +72,26 @@ not the declare signature itself.
   `param_file_values_node_block_outranks_wildcard`
 - `codegen::entry`: `plan_from_launch_projects_param_file_values`,
   `plan_from_launch_rejects_missing_param_file`
+
+## Follow-up (2026-07-26) — the model path needed the same projection
+
+The resolution above fixed the LAUNCH path (`nros-launch-parser`
+`<param from=>` → `NodeSpec.param_files` → `resolve_node_params` inside
+`plan_from_launch`). But phase-296 R-code made the resolved SystemModel the
+only live bake input: `codegen entry --launch` is a removal error, and
+`plan_from_launch` is now reachable only from `entry_typed_plan.rs`. Every
+live path — `plan_from_model`, the `nros::main!(model = …)` macro arm, and
+`plan_record_from_model` — still read `inst.params` raw and dropped
+`params_files` on the floor.
+
+Closed by projecting model-side too: `NodeInstance::resolved_params(fqn)` in
+the shared model crate (rlm `0612574`) merges the verbatim `params_files`
+YAML under the inline `<param>` values, with ROS 2 section matching (`/**`,
+node FQN, bare name), dotted flattening for nested maps, sequences →
+`StrList`, and an unparsable file skipped rather than fatal. All three model
+consumers call it. Tests: `model/tests/params_projection.rs` (wildcard+FQN
+precedence, later-file-wins + foreign-section skip, unparsable-file).
+
+Both projections now agree on precedence (files in declaration order, inline
+`<param>` highest); the launch-side one stays for its test and for any
+future re-enablement of that arm.
