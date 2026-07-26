@@ -1,7 +1,7 @@
 ---
 id: 283
 title: "ROS 2 liveliness is disabled wholesale on FreeRTOS (phase-127.B workaround) — MCU lanes are invisible to `ros2 node list`; re-enable per-platform"
-status: partially-resolved
+status: resolved
 type: enhancement
 severity: medium
 area: zpico
@@ -69,15 +69,25 @@ Landed here:
   `z_liveliness_declare_token` (it was a silent graph outage; the
   publisher/subscriber declare paths already logged theirs).
 
-**Residual, separate defect:** on FreeRTOS the tokens are declared with
-no error, yet `ros2 node list` / `topic list` from the host still see
-nothing (the NuttX lane, same code path, is fully visible). So the
-127.B-era symptom had TWO causes and only the blocking one is fixed.
-Next probes: confirm the tokens reach the router at all (zenohd-side
-`@ros2_lv` subscriber), and compare the FreeRTOS session's
-`Z_FEATURE_MULTI_THREAD` / read-task state against NuttX — a
-declare that is never flushed by a read/lease task would look exactly
-like this.
+**Residual CLOSED — it was the measurement, not the firmware.** The
+"declares fine but invisible" reading came from a broken host probe:
+the sentinel's `rmw_zenoh_cpp` overlay had been wiped (it symlinked into
+a sibling checkout's build tree), so every `ros2` call was silently
+answering from a stale/absent RMW, and the router binary the probe used
+had vanished with it. With the overlay rebuilt in-repo and the router
+taken from the overlay itself (`rmw_zenohd`), the FreeRTOS lane shows
+its FULL graph from the host:
+
+```
+$ scripts/probe_mcu_graph.sh freertos      # in autoware_sentinel
+== nodes:      /adapi/default_adapi … /system/mrm_pull_over_manager   (10)
+== topics:     42
+== typed echo of /control/command/control_cmd: live data
+```
+
+NuttX re-probed identically (10 nodes / 42 topics) — no regression from
+the cfg removal. Liveliness on FreeRTOS works at HEAD; the phase-127.B
+workaround was obsolete, and nothing else was hiding behind it.
 
 ## Ask (original)
 
