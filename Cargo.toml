@@ -8,6 +8,11 @@ members = [
     "packages/core/nros-macros",
     "packages/core/nros-params",
     "packages/core/nros-rmw",
+    # phase-308 — the metadata-mode RMW backend: records what a component
+    # DECLARES instead of transporting it. Host probe only; its self-
+    # registration ctor is `not(target_os = "none")`, so it cannot reach
+    # firmware.
+    "packages/core/nros-rmw-metadata",
     "packages/core/nros-node",
     "packages/core/nros-log",
     "packages/core/nros-orchestration",

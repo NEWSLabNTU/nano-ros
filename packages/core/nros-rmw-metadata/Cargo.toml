@@ -1,0 +1,18 @@
+[package]
+name = "nros-rmw-metadata"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "phase-308 — the metadata-mode RMW backend: records declared entities instead of transporting them."
+
+[dependencies]
+# The ONE recorder + schema emitter (phase-308's layer constraint). This crate
+# is an adapter; it must never serialize anything itself.
+nros = { path = "../nros", default-features = false, features = ["metadata-mode"] }
+nros-rmw = { path = "../nros-rmw", default-features = false, features = ["std"] }
+nros-rmw-cffi = { path = "../nros-rmw-cffi", default-features = false, features = ["std", "alloc"] }
+
+[lints]
+workspace = true
