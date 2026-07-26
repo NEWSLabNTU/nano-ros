@@ -284,8 +284,16 @@ function(nano_ros_auto_add_library name)
     if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
         target_include_directories(${name} PRIVATE
             $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
-        set_source_files_properties(${_srcs} PROPERTIES OBJECT_DEPENDS
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
+        # APPEND, not set: the Zephyr interface-codegen module also stamps
+        # OBJECT_DEPENDS on these same sources (the generated msg headers), and
+        # a plain `set_source_files_properties` from either side silently
+        # CLOBBERS the other — the surviving set decides which race is closed.
+        # Losing the nros-cpp entry lets a C TU compile before
+        # `nros_cpp_config_generated.h` exists and fall through to the in-tree
+        # `#error` stub (issue 0088/0090 class).
+        set_property(SOURCE ${_srcs} APPEND PROPERTY OBJECT_DEPENDS
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
     endif()
 endfunction()
 

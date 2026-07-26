@@ -267,6 +267,48 @@ function(nano_ros_node_register)
         if(NOT _lib STREQUAL "${_NRC_EXISTING_TARGET}" AND NOT TARGET ${_lib})
             add_library(${_lib} INTERFACE)
             target_link_libraries(${_lib} INTERFACE ${_NRC_EXISTING_TARGET})
+            # phase-305 W2 fix: consumers that reach a component by its
+            # CONVENTIONAL name must still find the facts they read off it —
+            # notably the NuttX kernel link (cmake/board/nano-ros-board-nuttx-*),
+            # which recompiles each C component's SOURCES for the ARM target
+            # tagged with its own `-DNROS_PKG_NAME` (phase-263 C2b) and pulls the
+            # include dirs. An INTERFACE wrapper carries none of that by default:
+            # the symbols `__nros_c_component_<pkg>_{create,configure}` then never
+            # get built for the target arch and the kernel link fails undefined.
+            # Mirror the properties from the real library (INTERFACE targets may
+            # carry SOURCES since CMake 3.19; they are metadata, never compiled).
+            get_target_property(_et_srcs ${_NRC_EXISTING_TARGET} SOURCES)
+            if(_et_srcs)
+                set_property(TARGET ${_lib} PROPERTY SOURCES ${_et_srcs})
+            endif()
+            get_target_property(_et_pkg_sym ${_NRC_EXISTING_TARGET} NROS_COMPONENT_PKG_SYM)
+            if(_et_pkg_sym)
+                set_property(TARGET ${_lib} PROPERTY NROS_COMPONENT_PKG_SYM "${_et_pkg_sym}")
+            endif()
+            get_target_property(_et_lang ${_NRC_EXISTING_TARGET} NROS_COMPONENT_LANG)
+            if(_et_lang)
+                set_property(TARGET ${_lib} PROPERTY NROS_COMPONENT_LANG "${_et_lang}")
+            endif()
+            get_target_property(_et_incs ${_NRC_EXISTING_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+            if(_et_incs)
+                set_property(TARGET ${_lib} APPEND PROPERTY
+                    INTERFACE_INCLUDE_DIRECTORIES ${_et_incs})
+            endif()
+            # Issue 0149 descent (NuttX): consumers read the component's
+            # LINK_LIBRARIES to find its generated interface libs
+            # (`<pkg>__nano_ros_{c,cpp}`) — their include dirs, codegen order
+            # and (C lane) serdes SOURCES all flow from there. Those links live
+            # on the REAL library, so re-expose them on the wrapper's own
+            # LINK_LIBRARIES, otherwise the walk sees only the wrapper→lib edge
+            # and the cross-compile dies on `std_msgs/std_msgs.h`.
+            get_target_property(_et_links ${_NRC_EXISTING_TARGET} LINK_LIBRARIES)
+            if(_et_links)
+                foreach(_et_l IN LISTS _et_links)
+                    if(_et_l MATCHES "__nano_ros_(c|cpp)$")
+                        set_property(TARGET ${_lib} APPEND PROPERTY LINK_LIBRARIES ${_et_l})
+                    endif()
+                endforeach()
+            endif()
         endif()
         set(_lib "${_NRC_EXISTING_TARGET}")
     endif()
