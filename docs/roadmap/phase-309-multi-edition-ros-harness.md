@@ -1,6 +1,18 @@
 # Phase 309 — multi-edition ROS test harness
 
-**Status (2026-07-26): Draft.** Implements [RFC-0058](../design/0058-multi-edition-ros-test-harness.md)
+**Status (2026-07-26): W1–W6 landed.** The `RosEnv` provider, per-edition docker
+image, peer + `domain_bridge` backend, in-container codegen, and the opt-in
+`just ros_editions ci <distro>` composite are implemented + green against a live
+jazzy image (peer smoke, codegen, PoseStamped-through-`domain_bridge` — all
+skip cleanly without docker/image, none in `just ci`). **Residual:** the W5
+"nano-ros REBUILT against edition-E generated code" variant — the bridge lane
+currently drives a stock publisher, which proves the harness + topology against
+a non-host edition but not per-edition nano-ros generated-code drift. Wiring a
+nano-ros cyclone publisher fixture (built against `generated-editions/<E>/`) into
+the bridge lane is deferred; the cyclone wire path is already edition-compatible
+(issue 0267, verified live vs jazzy), so this catches only generated-code drift.
+
+Implements [RFC-0058](../design/0058-multi-edition-ros-test-harness.md)
 (the docker-backed `RosEnv` provider). Exercises the [RFC-0056](../design/0056-ros-edition-axis.md)
 ROS-edition axis against **live** peers + **live** codegen, not just the offline
 golden fixtures that exist today. Motivated by issue 0267, whose fix could only

@@ -34,3 +34,27 @@ image-check distro="jazzy":
         ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1 && echo "[ok] rmw_zenoh_cpp" || echo "[--] rmw_zenoh_cpp absent (apt-less distro; source overlay needed)"
     '
     echo "image-check {{distro}}: PASS"
+
+# Composite: build the edition image + run the gated harness lanes (peer smoke,
+# codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +
+# a built image + slow first build). Adding another edition = re-run with its
+# distro arg once the image builds (W2-W5 are distro-parametric).
+#
+# Prereqs: docker; the in-tree `nros` CLI for the codegen lane (`just setup-cli`).
+[group("test")]
+ci distro="jazzy":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just ros_editions image {{distro}}
+    just ros_editions image-check {{distro}}
+    if [ ! -x packages/cli/target/release/nros ] && ! command -v nros >/dev/null 2>&1; then
+        echo "error: codegen lane needs the nros CLI — run \`just setup-cli\` first" >&2
+        exit 1
+    fi
+    echo "== ros-editions harness lanes ({{distro}}) =="
+    cargo test -p nros-tests \
+        --test ros_editions_smoke \
+        --test ros_editions_codegen \
+        --test ros_editions_bridge \
+        -- --nocapture
+    echo "ros_editions ci {{distro}}: PASS"
