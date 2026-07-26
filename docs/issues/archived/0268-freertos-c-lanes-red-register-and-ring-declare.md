@@ -101,7 +101,7 @@ empirically. (An earlier harness-only bisect result of `733dfd9ed` was an
 artifact — a partial old-commit fixture build re-baked locator ports and
 made good/bad track port-match instead of the defect.)
 
-### Class gap left open
+### Class gap CLOSED (2026-07-26)
 
 The build-side stale probe self-heals via cmake/ninja incremental — but the
 incremental graph does NOT refresh the include-path shadow of
@@ -126,3 +126,39 @@ plain fixture staleness on BOTH halves — the native listener (stale rlm
 rlib artifacts in the per-example target dirs) and the riscv C talker
 (family not rebuilt since the executor growth). `just nuttx build-riscv-c`
 + native fixture rebuild → PASS in 3.4 s. No third bug.
+
+## Structural fix (2026-07-26)
+
+The mechanism was narrower than "the mirror target isn't in the graph": both mirror
+commands used `DEPENDS <target-name>`, which CMake emits as an **order-only** Ninja
+dependency (`|| cargo-build_nros_c`). Order-only guarantees the cargo build runs
+FIRST but never marks the copy out of date, so once the mirror file exists Ninja
+never re-runs it — the museum header survives every incremental build.
+
+Landed:
+- `packages/core/nros-{c,cpp}/CMakeLists.txt` — the mirror commands additionally
+  `DEPENDS` on `$<TARGET_FILE:nros_{c,cpp}-static>`, a REAL Ninja output of the cargo
+  edge. Verified with `ninja -t query`: the input list went from all-`||` to a real
+  `libnros_c.a` entry.
+- Configure-time `file(COPY_FILE … ONLY_IF_DIFFERENT)` in both files, so a tree that
+  already drifted converges on the next `cmake` run instead of waiting for a crate
+  rebuild (`file(COPY_FILE)` and NOT `configure_file`, which would add a
+  CMAKE_CONFIGURE_DEPENDS edge on a header cargo rewrites mid-build).
+- `scripts/check-sizes-header-mirrors.sh` (+ `just check-fast`, `--fix` to re-mirror
+  in place) asserts mirror ≡ build-dir source. Glob-based, ~30 ms warm; prints the
+  scanned-tree count so a vacuous pass is visible (issue-0196 rule).
+
+A/B proof on `examples/native/c/action-server/build-zenoh`, changing the Rust
+executor size across an incremental build:
+
+| rule | source | mirror | verdict |
+| --- | --- | --- | --- |
+| old (order-only) | 88896 → 88624 | 79912 (frozen) | 0268 reproduced, 8.7 KB undersized |
+| fixed (real edge) | 88624 | 88624 | tracks the change |
+
+**Scale of the latent damage:** the new gate found **307 of 333** mirror/source pairs
+stale on the dev machine (282 build trees), **240 of them undersized** — offsets up
+to 8.7 KB, i.e. far worse than the 336 bytes that produced this issue. Every C/C++
+fixture built in those trees was placement-constructing Rust objects past the end of
+its C buffer. All healed (`--fix`), gate green, `just check-fast` green, native
+C/C++ suites 48/48.

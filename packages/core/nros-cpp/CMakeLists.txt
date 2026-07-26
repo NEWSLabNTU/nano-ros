@@ -141,6 +141,16 @@ if(TARGET cargo-build_nros_cpp)
     # umbrella bundles nros-c, Phase 241.D3-rev) the C variant header into this dir.
     set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h")
     set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h")
+    # Issue 0268 — see the matching comment block in packages/core/nros-c/CMakeLists.txt.
+    # `DEPENDS cargo-build_nros_cpp` alone is ORDER-ONLY in Ninja, so a rebuilt crate
+    # never invalidates this copy and the mirror goes stale the moment a core struct
+    # grows. Depend on the staticlib file itself — a real Ninja output — so every cargo
+    # rebuild re-mirrors both headers.
+    if(TARGET nros_cpp-static)
+        set(_nros_cpp_mirror_trigger "$<TARGET_FILE:nros_cpp-static>")
+    else()
+        set(_nros_cpp_mirror_trigger "")
+    endif()
     add_custom_command(
         OUTPUT "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -149,12 +159,26 @@ if(TARGET cargo-build_nros_cpp)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
             "${_nros_cpp_gen_c_header}"
-        DEPENDS cargo-build_nros_cpp
+        DEPENDS cargo-build_nros_cpp ${_nros_cpp_mirror_trigger}
         COMMENT "nros-cpp: mirroring nros_{,cpp_}config_generated.h for in-tree consumers"
         VERBATIM
     )
     add_custom_target(nros_cpp_config_header
         DEPENDS "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}")
+    # Issue 0268 — heal an ALREADY-drifted mirror at configure time. The Ninja edge
+    # above only fires when the crate rebuilds, so a tree that went stale under the
+    # old order-only rule keeps its museum copy until something happens to touch the
+    # crate. `file(COPY_FILE)` deliberately, NOT `configure_file`: the latter adds a
+    # CMAKE_CONFIGURE_DEPENDS edge on a file cargo rewrites mid-build, which would
+    # re-trigger configure on every build.
+    foreach(_nros_cpp_hdr "nros_cpp_config_generated.h" "nros_config_generated.h")
+        if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}")
+            file(COPY_FILE
+                "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
+                "${_nros_cpp_intree_include_dir}/nros/${_nros_cpp_hdr}"
+                ONLY_IF_DIFFERENT)
+        endif()
+    endforeach()
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
     # Issue 0090 — export the absolute mirror-header paths (see nros-c/CMakeLists)

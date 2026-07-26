@@ -160,12 +160,30 @@ file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
 # (`nros_c_config_header`) that consumers `add_dependencies` on is the proper
 # producer→consumer edge.
 set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_generated.h")
+# Issue 0268 — `DEPENDS <target-name>` alone is ORDER-ONLY in the generated Ninja
+# graph (`|| cargo-build_nros_c`): it guarantees the cargo build runs FIRST, but a
+# rebuilt crate never makes this copy out of date. Once the mirror exists it is
+# never refreshed again, so an incremental build that grows the Rust `Executor`
+# (e.g. 296-W3b.4 adding `monitor_states`) leaves a MUSEUM mirror on the include
+# path while `${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h` carries the new
+# size. The C `_opaque` buffer is then sized from the stale header and the Rust
+# object is placement-constructed 336 bytes past its end — memory corruption that
+# surfaces as unrelated runtime failures (freertos C: register_subscription -1,
+# zenoh session self-close). Adding the staticlib — a REAL Ninja output of the
+# cargo edge — as a file-level DEPENDS gives the copy an actual input edge, so any
+# cargo rebuild re-mirrors. `copy_if_different` keeps the mtime (and therefore
+# consumer recompiles) tied to genuine content changes.
+if(TARGET nros_c-static)
+    set(_nros_c_mirror_trigger "$<TARGET_FILE:nros_c-static>")
+else()
+    set(_nros_c_mirror_trigger "")
+endif()
 add_custom_command(
     OUTPUT "${_nros_c_gen_config_header}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
         "${_nros_c_gen_config_header}"
-    DEPENDS cargo-build_nros_c
+    DEPENDS cargo-build_nros_c ${_nros_c_mirror_trigger}
     COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"
     VERBATIM
 )

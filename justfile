@@ -344,7 +344,7 @@ check-fast: \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
     check-c-fmt check-cpp-fmt check-python \
-    check-ffi-struct-mirrors
+    check-ffi-struct-mirrors check-sizes-header-mirrors
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -511,6 +511,16 @@ check-board-abi-mirror:
 [private]
 check-ffi-struct-mirrors:
     @bash scripts/check-ffi-struct-mirrors.sh
+
+# Issue 0268 — the per-build sizes headers (`nros_{,cpp_}config_generated.h`)
+# mirrored onto the consumer include path must equal the copy build.rs wrote.
+# A stale mirror sizes the C `_opaque` buffers from museum data while Rust
+# placement-constructs the current object into them — silent corruption
+# (0268: freertos C, 336 bytes; 0245: zephyr C++, 32 bytes). Scans whatever
+# build trees exist locally; prints the tree count so a vacuous pass is visible.
+[private]
+check-sizes-header-mirrors:
+    @bash scripts/check-sizes-header-mirrors.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
 # `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar
