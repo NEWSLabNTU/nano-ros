@@ -365,6 +365,61 @@ impl DockerRosEnv {
         })
     }
 
+    /// **Testing axis (phase-309 W5).** Spawn a `domain_bridge` that republishes
+    /// `topic` (`ros_type`, e.g. `geometry_msgs/msg/PoseStamped`) from
+    /// `from_domain` to `to_domain` — the #0267 topology as reusable harness
+    /// infra (supersedes the manual `scripts/ros/domain-bridge-repro.sh`). Runs
+    /// in this edition's container; the per-topic domains in the generated YAML
+    /// drive the bridge, independent of any exported `ROS_DOMAIN_ID`. RAII: the
+    /// returned peer `docker kill`s the container on drop.
+    pub fn spawn_domain_bridge(
+        &self,
+        topic: &str,
+        ros_type: &str,
+        from_domain: u8,
+        to_domain: u8,
+    ) -> TestResult<RosPeer> {
+        let inner = format!(
+            "cat > /tmp/nros_bridge.yaml <<'YAML'\n\
+             name: nros_edition_bridge\n\
+             topics:\n\
+             \x20 {topic}:\n\
+             \x20   type: {ros_type}\n\
+             \x20   from_domain: {from_domain}\n\
+             \x20   to_domain: {to_domain}\n\
+             YAML\n\
+             exec ros2 run domain_bridge domain_bridge /tmp/nros_bridge.yaml"
+        );
+        // The bridge sets domains itself; don't pin one via the env snippet.
+        let cname = format!(
+            "nros-bridge-{}-{}",
+            std::process::id(),
+            PEER_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let source = format!("source /opt/ros/{}/setup.bash", self.distro);
+        let mut cmd = Command::new("docker");
+        cmd.args([
+            "run",
+            "--rm",
+            "--network",
+            "host",
+            "--init",
+            "--name",
+            &cname,
+        ]);
+        cmd.args([
+            self.image().as_str(),
+            "bash",
+            "-lc",
+            &format!("{source} && {inner}"),
+        ]);
+        spawn_command(
+            cmd,
+            "domain_bridge",
+            Some(vec!["docker".into(), "kill".into(), cname]),
+        )
+    }
+
     /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc
     /// '<sourced inner>'` command.
     fn docker_run(&self, inner: &str, cname: Option<&str>) -> Command {
