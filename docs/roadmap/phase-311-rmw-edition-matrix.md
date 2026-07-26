@@ -1,6 +1,16 @@
 # Phase 311 — RMW × ROS-edition interop matrix
 
-**Status (2026-07-26): Draft.** Extends the multi-edition harness
+**Status (2026-07-26): W1 landed; zenoh lane DEFERRED (issue #0291); XRCE in
+progress.** The zenoh lane (W2/W5) is blocked on a version gap the source check
+surfaced: zpico pins zenoh **1.7.2** / vendored rmw_zenoh **1.7.1**, but a stock
+jazzy `rmw_zenoh_cpp` is **1.11.2** — a 4-minor-version gap, near-certainly
+wire-incompatible. Building the pinned-1.7.1 overlay would test a *non-default*
+jazzy zenoh, not a stock peer, so it is NOT the meaningful test; the real fix is
+a zpico version bump, filed as **issue #0291**. Zenoh is gated on that. The
+matrix this phase delivers is therefore **{jazzy, iron} × {cyclone, xrce}**, with
+zenoh added once #0291 lands.
+
+Extends the multi-edition harness
 ([RFC-0058](../design/0058-multi-edition-ros-test-harness.md), phase-309/310)
 from **cyclone-only** to the full **RMW axis** — so nano-ros's Zenoh (zpico) and
 XRCE paths are verified against live ROS 2 peers across ROS editions, not just
