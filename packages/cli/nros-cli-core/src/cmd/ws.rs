@@ -1315,8 +1315,14 @@ fn write_patch_block(
     // emit; the include line below carries them instead.
     let include_rel: Option<String> = central_patch.map(|cp| {
         entries.retain(|(name, _)| !CENTRAL_PATCH_CRATES.contains(&name.as_str()));
-        // `include` paths resolve relative to the INCLUDING file's directory
-        // (`<authority_dir>/.cargo/`).
+        // Cargo resolves a relative `include` against the INCLUDING file's
+        // directory (`<authority_dir>/.cargo/`). Prefer relative — the
+        // in-tree example configs are COMMITTED, so a host-absolute path
+        // there would break every other checkout. #272: cargo ignores a
+        // missing include target WITHOUT warning, so the reachability check
+        // below turns the silent-drop shape into a loud error. Fall back to
+        // absolute only when no relative path exists (different filesystem
+        // root — an out-of-tree consumer on another mount).
         let cfg_dir = authority_dir.join(".cargo");
         pathdiff::diff_paths(cp, &cfg_dir)
             .unwrap_or_else(|| cp.to_path_buf())
@@ -1326,6 +1332,27 @@ fn write_patch_block(
 
     // 1) Write the managed [patch.crates-io] into `<authority_dir>/.cargo/config.toml`
     //    (phase-265: never the consumer Cargo.toml). Format-preserving toml_edit DOM.
+    // #272 — fail loud when the include target is unreachable from this leaf
+    // (cargo would silently drop the patch and the build would die with an
+    // unexplained `no matching package named 'nros'`).
+    if let Some(inc) = include_rel.as_deref() {
+        let target = std::path::Path::new(inc);
+        let resolved = if target.is_absolute() {
+            target.to_path_buf()
+        } else {
+            authority_dir.join(".cargo").join(target)
+        };
+        if !resolved.is_file() {
+            bail!(
+                "ws sync: central patch file `{}` is not readable from `{}` — \
+                 cargo ignores a missing `include` WITHOUT warning and the build \
+                 would fail `no matching package named 'nros'`. Re-run `nros sync` \
+                 from the nano-ros checkout (the file is gitignored + regenerated).",
+                resolved.display(),
+                authority_dir.display(),
+            );
+        }
+    }
     write_patch_config(authority_dir, &entries, include_rel.as_deref())?;
 
     // 2) Migrate: vacate any legacy nros-managed `[patch.crates-io]` block from the
