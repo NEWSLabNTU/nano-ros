@@ -44,6 +44,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
+(`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
+
+Recently resolved: **#269** — the freertos aggregate-declare wall was NOT the platform layer:
+nros-rmw-cffi's `static_subscriber_storage` was hardcoded to 4 slots, so the 5th
+`create_subscription` returned BAD_ALLOC and the executor masked it as
+`SubscriberCreationFailed`. Pool now sized by `NROS_RMW_SUBSCRIBER_SLOTS` (default 8); the
+executor preserves transport errors — `archived/0269-*`.
+
+Recently resolved: **#274** — model-arm entry consumer walls: spin=forever arm,
+`[param_services]` node identity, model-arm `system.toml` read (`9fc0fba25`) — `archived/0274-*`.
+
+Recently resolved: **#283** — FreeRTOS liveliness on by default; the graph is fully visible
+(`54175c040`) — `archived/0283-*`.
+
 Recently resolved: **#253 + #255 + #258** — phase-306 interface-codegen correctness: per-package
 FFI crates (superset archives retired, any combination links), launch/model remaps routed to the
 wire with ROS 2 ~/relative expansion (runtime-proven, ws-remap-rust), and big-pkg cyclone deps
@@ -72,14 +87,6 @@ hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can'
 or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
 vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
 
-**#267** — `Control` mis-walked after a ros2 domain_bridge serialized-passthrough (direct typed
-echo clean). RE-SCOPED (2026-07-25): the nano-ros serializer is PROVEN canonical (byte-exact
-`test_control_nested_struct_time_bool_layout_0267` — acceleration @40 = -2.5, nested-struct
-alignment correct); the real cause is nano-ros being XCDR1-FINAL-only (`0x0001`, no XCDR2/DHEADER
-path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DHEADER after the
-bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
-explicit extensibility + representation negotiation). See `0267-*`.
-
 **#286** — the phase-307 metadata probe `cargo run`s a std-linked harness under whatever
 `[build] target` the example's `.cargo/config.toml` sets. qemu-arm-baremetal supplies a QEMU
 `runner` so this works (and its board-coupled component compiles ONLY for ARM); qemu-arm-nuttx
@@ -91,6 +98,25 @@ Pinning to the host fixes nuttx and breaks qemu — needs a per-target answer. S
 Version skew: the CLI's required `play_launch` is unpinned/uninstalled and
 `~/.local/bin/play_launch` shadows it. Needs a pin + a `[PREREQ]` probe (the #197
 pattern). See `0285-play-launch-resolve-subcommand-skew.md`. (2026-07-26)
+
+**#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
+residue). See `0200-*`.
+
+**#270** — `nros-rmw-zenoh` deps `zpico-sys` with DEFAULT features → the platform-aliases TU
+double-defines clock symbols on orin-spe. See `0270-*`.
+
+**#271** — Orin SPE BTCM footprint regressed ~+195 KB between `d9af52be` and `21a3a4248`; a
+minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
+
+**#272** — `nros sync`'s `include = [nros-patch.toml]` is silently dead on stable cargo →
+external consumers get "no matching package named nros". Premise contested (see the issue's
+Verification section); needs a reporter repro. See `0272-*`.
+
+**#273** — `nros-board-mps2-an385-freertos`'s `nros-board.toml` still advertises the retired
+`_start` entry signature. See `0273-*`.
+
+**#275** — orphaned + stale committed per-edition interface bindings under
+`packages/interfaces/*/generated/{humble,iron}/`. See `0275-*`.
 
 **#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
 now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
