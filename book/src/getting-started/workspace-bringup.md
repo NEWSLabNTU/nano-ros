@@ -139,7 +139,8 @@ Just Works.
 | `<launch>` | Root element |
 | `<arg name="…" default="…"/>` | Declare a launch argument |
 | `<node pkg="…" exec="…" name="…"/>` | Instantiate a node |
-| `<param name="…" value="…"/>` | Set a parameter (nested inside `<node>`) |
+| `<param name="…" value="…"/>` | Set one parameter inline (nested inside `<node>`) |
+| `<param from="…param.yaml"/>` | Load a ROS parameter FILE (nested inside `<node>`) |
 | `<remap from="…" to="…"/>` | Topic/service remapping (nested inside `<node>`) |
 | `<group ns="…">` | Namespace a group of nodes |
 | `<include file="…"/>` | Nest another launch file |
@@ -164,6 +165,43 @@ A richer example using args and remapping (taken from the real fixture):
   <node pkg="listener_pkg" exec="listener" name="listener"/>
 </launch>
 ```
+
+### Parameter files
+
+`<param from="…"/>` takes a standard ROS parameter file. Relative paths resolve
+against the launch file's own directory.
+
+```yaml
+# config/talker.param.yaml
+/**:                      # applies to every node
+  ros__parameters:
+    use_sim_time: false
+talker:                   # applies to the node named `talker` only
+  ros__parameters:
+    rate_hz: 25
+    limits:
+      max_accel: 1.5      # reaches the node as `limits.max_accel`
+```
+
+```xml
+<node pkg="talker_pkg" exec="talker" name="talker">
+  <param from="config/talker.param.yaml"/>
+  <param name="rate_hz" value="50"/>   <!-- wins over the file -->
+</node>
+```
+
+Precedence matches ROS: the `/**` wildcard block first, then the
+node-specific block, then inline `<param name= value=>` last. A node block
+may be keyed by fully-qualified name (`/ns/talker`), bare name (`talker`),
+or `/**/talker`.
+
+These values are resolved and **baked into the generated entry at build
+time** — embedded targets do no runtime file loading, the same approach the
+domain ID uses. Editing the YAML re-runs codegen. A `from=` naming a file
+that doesn't exist is a build error, not a silent skip.
+
+> **Note:** the baked values are seeded through the parameter services, so
+> they reach nodes only when `param_services` is enabled in `system.toml`.
 
 > **Note:** Python `.launch.py` files are not yet supported in v1 — use the XML
 > schema above.
