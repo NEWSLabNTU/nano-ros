@@ -1,6 +1,6 @@
 # Phase 308 — the C/C++ source-metadata producer
 
-**Status (2026-07-26): Draft.** Split out of phase-307 W3 once the Rust half
+**Status (2026-07-26): W2 (the adapter) COMPLETE. W1/W3/W4 remain.** Split out of phase-307 W3 once the Rust half
 landed and the C/C++ half proved phase-sized on its own. Phase-307 delivered
 the producer (W1), the trigger (W2), the consumer (W4), the coverage gate (W5)
 and the bake-time regression test (W6 lane 1) for **Rust**. C and C++ node
@@ -144,7 +144,33 @@ about. **Coordinate with phase-236 before starting.**
 
 ## Waves
 
-### W1 — the probe driver
+### W1 — the probe driver (NEXT)
+
+Two prerequisites found while landing W2, both concrete:
+
+1. **The CMake parser drops `HEADER` and `SHAPE`.** `CmakeNodeSummary`
+   carries package / component / executable / class / language / deploy, but
+   `nros_components_register_node` also accepts `HEADER <hdr>` and
+   `SHAPE rclcpp|configure`. The probe needs both: the header to `#include`,
+   and the shape to know whether to call `configure(node)` or construct
+   through the rclcpp-compat factory. Extend
+   `discover_cmake_node_metadata` first.
+2. **Header convention as the fallback.** With no explicit `HEADER`, the
+   in-tree shape is `<pkg>/include/<pkg>/<Class>.hpp` — derivable from the
+   class (`talker_pkg::Talker` → `talker_pkg/Talker.hpp`). Use the declared
+   `HEADER` when present; never guess silently past that.
+
+Then mirror `metadata_build.rs`, with CMake in place of cargo: generate a probe
+project that `add_subdirectory`s the node package, links it plus `nros-cpp`
+built with `metadata-mode`, constructs the class, runs its declaration path
+against the recorder, and calls `nros_cpp_metadata_dump`. Select the backend
+with `NROS_RMW=metadata`.
+
+The probe binary must run with `NROS_RMW=metadata` set, or the executor picks
+whatever real backend the component's own dependencies registered and the
+probe tries to open a transport.
+
+### W1 — the probe driver (original text)
 
 Mirror `metadata_build.rs`: generate a host probe that instantiates the node
 class named by the cmake `nano_ros_node_register(CLASS …)` summary, runs its
@@ -153,10 +179,38 @@ carries the C/C++ summaries (`cmake_component_metadata`) and already makes them
 component declarations — phase-307 W5's gate asserts it — so the discovery half
 is done; only the build+run half is missing.
 
-### W2 — the adapter
+### W2 — the adapter — DONE (2026-07-26)
 
-The recording backend + the two executor hooks, behind a gate that cannot be
-enabled in a firmware build. Feeds `MetadataRecorder`; serializes nothing.
+Landed in four commits:
+
+- **W2a** `nros::metadata_mode` — the process-global recorder non-Rust
+  adapters feed. The global is the only new thing: same `MetadataRecorder`,
+  same `push_node` / `push_entity`, same `to_source_metadata_json`.
+  `push_node` / `push_entity` / `entity_metadata` / `EntityMetadataSpec` went
+  `pub(crate)` → `pub` as the adapter surface, and `SourceMetadataExport`
+  gained `language` (it was a hardcoded `"rust"` literal in the serializer
+  while Rust was the only producer).
+- **W2b** `nros-rmw-metadata` — the recording backend. Written as a Rust
+  `Rmw`/`Session` impl and adapted by `RustBackendAdapter`, so it is ~15 tiny
+  functions rather than a 38-slot hand-written vtable. Registered by NAME, not
+  as default: a probe may well link a real backend too (the component's deps
+  pull one in), and registering as default would make the choice ambiguous and
+  the executor would refuse to open at all.
+- **W2c** the three `nros-cpp` hooks — timers, guard conditions, and node
+  identity. The first two never reach the RMW; the third is the finding that
+  changed this design: `create_publisher(session, topic_name, type_name, …)`
+  carries **no node**, so a backend alone yields a sidecar whose entities
+  belong to no node.
+- **W2d** `nros_cpp_metadata_dump` — exported from `nros-cpp` so the probe TU
+  links one Rust staticlib. Recording NOTHING returns an error rather than
+  writing an empty sidecar.
+
+Layer discipline holds: neither `nros-rmw-metadata` nor `nros-cpp`'s hooks
+contain JSON, a schema struct, or slot arithmetic.
+
+**Failure policy throughout:** a refused record fails the create (backend) or
+panics (hooks). A dropped entity is an under-counted sidecar is an under-sized
+executor at boot — a probe that lies is worse than a probe that fails.
 
 ### W3 — schema parity, by construction rather than by test
 
