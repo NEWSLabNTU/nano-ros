@@ -11,9 +11,9 @@ use nros::{
 use nros_node::config::DEFAULT_RX_BUF_SIZE;
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cstr_to_str,
-    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
+    NROS_CPP_RET_REENTRANT, NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR,
+    NROS_CPP_RET_TRY_AGAIN, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Scratch buffer for re-framing an incoming goal payload before handing
@@ -923,12 +923,24 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // client sends the goal (lease/keepalive serialization). The
     // 10 s budget was racing this on test_zephyr_cpp_action_server_to_client_e2e.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
+    // Issue 0290 — this helper BLOCKS by spinning the executor, so it must not
+    // run from inside a callback (the C twin `nros_action_send_goal` returns
+    // NROS_RET_REENTRANT for exactly this). Restore the caller's callback
+    // before bailing so the guard can't strand the client on the blocking one.
+    let CppContext {
+        executor,
+        in_dispatch,
+        ..
+    } = ctx;
+    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+        client.callbacks.goal_response = orig_cb;
+        client.callbacks.context = orig_ctx;
+        return NROS_CPP_RET_REENTRANT;
+    };
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 30_000_000_000; // 30 s
     loop {
-        let _ = ctx
-            .executor
-            .spin_once(core::time::Duration::from_millis(10));
+        let _ = executor.spin_once(core::time::Duration::from_millis(10));
         let flag = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_ACCEPTED)) };
         if flag >= 0 {
             // Restore original callback
@@ -1043,12 +1055,21 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // `send_goal` above for why `for _ in 0..1000` is insufficient on
     // multi-threaded zpico backends.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
+    // Issue 0290 — blocking helper; refuse to re-enter from a callback.
+    let CppContext {
+        executor,
+        in_dispatch,
+        ..
+    } = ctx;
+    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+        client.callbacks.result = orig_cb;
+        client.callbacks.context = orig_ctx;
+        return NROS_CPP_RET_REENTRANT;
+    };
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 10_000_000_000; // 10 s
     loop {
-        let _ = ctx
-            .executor
-            .spin_once(core::time::Duration::from_millis(10));
+        let _ = executor.spin_once(core::time::Duration::from_millis(10));
         let rlen = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_RESULT_LEN)) };
         if rlen >= 0 {
             client.callbacks.result = orig_cb;

@@ -442,7 +442,57 @@ pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::D
 pub(crate) struct CppContext {
     pub(crate) executor: CppExecutor,
     pub(crate) domain_id: u32,
+    /// Reentrancy guard — `true` while a spin is dispatching callbacks.
+    ///
+    /// The C twin of this flag is `nros_executor_t.in_dispatch` (nros-c
+    /// `executor.rs`), checked by `nros_client_call` / `nros_action_send_goal`
+    /// so a blocking helper invoked FROM a callback returns
+    /// `NROS_RET_REENTRANT` instead of re-entering the executor. nros-cpp had
+    /// no such flag (issue 0290): every blocking C++ helper reached
+    /// `&mut *(handle as *mut CppContext)` unconditionally, so calling
+    /// `Client::call()` inside a callback aliased `&mut Executor` — silently,
+    /// with no error returned.
+    ///
+    /// Guarding here rather than in each helper covers the whole family at
+    /// once: `Future::wait` / `Client::call` (via `nros_cpp_spin_once`) and
+    /// the action helpers, which spin `ctx.executor` directly.
+    pub(crate) in_dispatch: bool,
     pub(crate) backing: [core::mem::MaybeUninit<u64>; CPP_EXECUTOR_BACKING_U64S],
+}
+
+/// RAII guard: marks the context as dispatching for the duration of a spin and
+/// clears the flag on drop, so an early return can't leave it stuck.
+///
+/// Borrows only the FLAG, not the whole context — callers split-borrow the
+/// executor alongside it (`let CppContext { executor, in_dispatch, .. } = ctx`).
+/// That keeps the guard independently testable: it needs a `&mut bool`, not a
+/// live `Executor`.
+// NOT gated on `rmw-cffi`: this is pure flag logic with no FFI dependency, and
+// the `rmw-cffi` lib-test target does not link on the host (it needs a platform
+// impl for `nros_platform_sleep_ms`). Keeping the guard feature-independent is
+// what lets `dispatch_guard_tests` actually RUN in the default test lane
+// instead of being silently skipped.
+#[allow(dead_code)]
+pub(crate) struct DispatchGuard<'a> {
+    flag: &'a mut bool,
+}
+
+impl<'a> DispatchGuard<'a> {
+    /// `None` when a spin is already in progress — the caller must NOT spin.
+    #[allow(dead_code)]
+    pub(crate) fn enter(flag: &'a mut bool) -> Option<Self> {
+        if *flag {
+            return None;
+        }
+        *flag = true;
+        Some(Self { flag })
+    }
+}
+
+impl Drop for DispatchGuard<'_> {
+    fn drop(&mut self) {
+        *self.flag = false;
+    }
 }
 
 // Compile-time assertion: inline storage must fit CppContext (executor + domain
@@ -571,6 +621,7 @@ pub unsafe extern "C" fn nros_cpp_init(
                     core::ptr::addr_of_mut!((*ctx_ptr).domain_id),
                     domain_id as u32,
                 );
+                core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
             }
             NROS_CPP_RET_OK
         }
@@ -1285,6 +1336,20 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 
     let ctx = unsafe { &mut *(handle as *mut CppContext) };
     let ms = timeout_ms.max(0) as u64;
+    // Issue 0290 — refuse to re-enter from inside a callback. Without this a
+    // blocking helper called during dispatch (`Client::call`, `Future::wait`,
+    // which loop on this fn) would create a second `&mut Executor` while the
+    // outer dispatch still holds one. `Future::wait` treats REENTRANT as
+    // non-transient and propagates it, so the caller gets
+    // `ErrorCode::Reentrant` rather than corruption.
+    let CppContext {
+        executor,
+        in_dispatch,
+        ..
+    } = ctx;
+    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+        return NROS_CPP_RET_REENTRANT;
+    };
     // Phase 127.C.4 — the prior Zephyr+std bypass (drive_io(0) + msleep)
     // starved reliable XRCE retransmission on the server side and
     // skipped arena dispatch on the client side; the underlying
@@ -1292,9 +1357,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // `Executor::spin_once` for Zephyr+std, so a normal spin runs the
     // transport for the full timeout via UDP recv and fires the arena
     // trampolines.
-    let _ = ctx
-        .executor
-        .spin_once(core::time::Duration::from_millis(ms));
+    let _ = executor.spin_once(core::time::Duration::from_millis(ms));
     NROS_CPP_RET_OK
 }
 
@@ -2179,6 +2242,57 @@ pub(crate) unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     }
     let bytes = unsafe { core::slice::from_raw_parts(ptr as *const u8, len) };
     core::str::from_utf8(bytes).ok()
+}
+
+#[cfg(test)]
+mod dispatch_guard_tests {
+    use super::*;
+
+    /// Issue 0290 — the guard is what makes a blocking C++ helper refuse to
+    /// re-enter the executor from inside a callback. First entry succeeds;
+    /// a nested entry while the first is live returns `None`, which the
+    /// callers translate into `NROS_CPP_RET_REENTRANT`.
+    #[test]
+    fn entering_marks_dispatching_and_dropping_clears_it() {
+        let mut flag = false;
+        {
+            let _outer = DispatchGuard::enter(&mut flag).expect("first entry must succeed");
+            // `flag` is mutably borrowed by the guard here, so the "is it set?"
+            // assertion lives in `refused_entry_leaves_the_outer_dispatch_intact`
+            // below, which observes the same state the real nested call sees
+            // (it reaches the context through a raw pointer, not a borrow).
+        }
+        assert!(!flag, "dropping the guard must clear the flag");
+    }
+
+    /// A nested attempt against an already-dispatching flag is refused, and
+    /// the refusal does NOT clear the flag — the outer spin is still running.
+    #[test]
+    fn refused_entry_leaves_the_outer_dispatch_intact() {
+        let mut flag = true; // simulates "outer spin_once is dispatching"
+        assert!(
+            DispatchGuard::enter(&mut flag).is_none(),
+            "must refuse to re-enter while a spin is in progress"
+        );
+        assert!(
+            flag,
+            "a refused entry must not clear the outer dispatch flag — \
+             the outer spin is still live"
+        );
+    }
+
+    /// The flag is not sticky: sequential (non-nested) spins each succeed.
+    /// A guard that leaked its flag would deadlock every later blocking call.
+    #[test]
+    fn sequential_entries_each_succeed() {
+        let mut flag = false;
+        for i in 0..3 {
+            let g = DispatchGuard::enter(&mut flag);
+            assert!(g.is_some(), "sequential entry {i} must succeed");
+            drop(g);
+            assert!(!flag, "flag must be clear after entry {i}");
+        }
+    }
 }
 
 #[cfg(test)]
