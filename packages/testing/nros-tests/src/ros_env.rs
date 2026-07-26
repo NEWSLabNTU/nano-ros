@@ -321,6 +321,50 @@ impl RosEnv for DockerRosEnv {
 }
 
 impl DockerRosEnv {
+    /// **Codegen axis (phase-309 W4).** Run `nros generate-rust` INSIDE this
+    /// edition's container, so the bindings are generated against the edition's
+    /// own message definitions (`/opt/ros/<distro>/share/**`). The host-built
+    /// `nros` binary is bind-mounted (glibc is backward-compatible: a 22.04
+    /// binary runs on a 24.04 base), and `out_host` is bind-mounted at `/out`,
+    /// so the generated tree lands on the host (typically an edition-scoped
+    /// `generated-editions/<distro>/`, gitignored).
+    ///
+    /// `workdir_in_container` is the dir holding the `package.xml` to generate
+    /// from (e.g. `/opt/ros/jazzy/share/std_msgs`). `extra_args` are appended to
+    /// `nros generate-rust -o /out` (e.g. `["--ros-edition", "iron", "--force"]`).
+    pub fn generate(
+        &self,
+        nros_bin: &std::path::Path,
+        workdir_in_container: &str,
+        out_host: &std::path::Path,
+        extra_args: &[&str],
+    ) -> TestResult<std::process::Output> {
+        std::fs::create_dir_all(out_host)
+            .map_err(|e| TestError::ProcessFailed(format!("mkdir {out_host:?}: {e}")))?;
+        let inner = format!(
+            "cd {workdir_in_container} && nros generate-rust -o /out {}",
+            extra_args.join(" ")
+        );
+        let snippet = self.env_snippet();
+        let mut cmd = Command::new("docker");
+        cmd.args(["run", "--rm", "--network", "host", "--init"]);
+        cmd.args([
+            "-v",
+            &format!("{}:/usr/local/bin/nros:ro", nros_bin.display()),
+            "-v",
+            &format!("{}:/out", out_host.display()),
+        ]);
+        cmd.args([
+            self.image().as_str(),
+            "bash",
+            "-lc",
+            &format!("{snippet} && {inner}"),
+        ]);
+        cmd.output().map_err(|e| {
+            TestError::ProcessFailed(format!("[{}] generate failed: {e}", self.distro))
+        })
+    }
+
     /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc
     /// '<sourced inner>'` command.
     fn docker_run(&self, inner: &str, cname: Option<&str>) -> Command {
@@ -338,6 +382,25 @@ impl DockerRosEnv {
         ]);
         cmd
     }
+}
+
+/// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen
+/// container ([`DockerRosEnv::generate`]). Prefers the in-tree release build,
+/// then `PATH`. `None` when neither is present (a codegen lane then `skip!`s).
+pub fn host_nros_bin() -> Option<std::path::PathBuf> {
+    let in_tree = crate::project_root().join("packages/cli/target/release/nros");
+    if in_tree.is_file() {
+        return Some(in_tree);
+    }
+    let out = Command::new("bash")
+        .args(["-lc", "command -v nros"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!path.is_empty()).then(|| std::path::PathBuf::from(path))
 }
 
 /// Is `docker` on PATH and the daemon reachable?
