@@ -168,6 +168,16 @@ Two further facts worth recording, because they narrow the work:
    `ros-launch-manifest` and vendored. Upstreaming is better if `play_launch`
    would also consume it, since then there is one resolver rather than two.
 
+5. **Bug-compatibility with today's parser.** A Python-free reimplementation
+   inherits an installed base, and the current parser has documented deviations
+   the tests encode: it **swallows include cycles** rather than erroring (hence
+   the opt-in `--strict-includes` flag), it does not expand certain includes,
+   and `<set_env>` scoping is a known planner-side gap. Each is a decision, not
+   an accident to reproduce blindly — but changing one silently changes what a
+   user's launch tree resolves to. Pick per-behaviour: match, fix-with-a-flag,
+   or fix-and-announce. `packages/testing/nros-tests/tests/orchestration_includes.rs`
+   is where the current expectations live.
+
 ## What this does not change
 
 `play_launch` keeps `resolve` as a verb for its own users; this RFC is about
