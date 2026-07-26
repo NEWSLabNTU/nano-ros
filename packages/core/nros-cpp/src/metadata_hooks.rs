@@ -83,3 +83,57 @@ fn record(kind: nros::node_metadata::EntityKind, prefix: &str, period_ms: Option
         );
     }
 }
+
+/// phase-308 — write the recorded sidecar. The probe's last call.
+///
+/// Exported from `nros-cpp` rather than from the backend crate so the probe TU
+/// links exactly one Rust staticlib (the `nros-cpp` umbrella, phase-241 D3-rev)
+/// and needs no extra link line.
+///
+/// Serialization is `nros::metadata_mode::to_json` — the SAME emitter the Rust
+/// producer uses. Nothing here formats anything.
+///
+/// Returns 0 on success, -1 on a bad argument, -2 if nothing was recorded, -3
+/// on a serialize/write failure. Recording NOTHING is an error, not an empty
+/// sidecar: a component that declared no entities either failed to run its
+/// declaration path or has none, and both are bugs the driver must surface
+/// rather than bake a zero into an executor size.
+///
+/// # Safety
+/// Every pointer must be a valid NUL-terminated string.
+#[cfg(feature = "metadata-mode")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_metadata_dump(
+    package: *const core::ffi::c_char,
+    component: *const core::ffi::c_char,
+    executable: *const core::ffi::c_char,
+    language: *const core::ffi::c_char,
+    out_path: *const core::ffi::c_char,
+) -> i32 {
+    let read = |p: *const core::ffi::c_char| -> Option<&str> {
+        if p.is_null() {
+            return None;
+        }
+        unsafe { core::ffi::CStr::from_ptr(p) }.to_str().ok()
+    };
+    let (Some(package), Some(component), Some(out_path)) =
+        (read(package), read(component), read(out_path))
+    else {
+        return -1;
+    };
+    if nros::metadata_mode::entity_count() == 0 {
+        return -2;
+    }
+    let mut export = nros::node_metadata::SourceMetadataExport::new(package, component)
+        .language(read(language).unwrap_or("cpp"));
+    if let Some(exe) = read(executable) {
+        export = export.executable(exe);
+    }
+    let Ok(json) = nros::metadata_mode::to_json(&export) else {
+        return -3;
+    };
+    if std::fs::write(out_path, json).is_err() {
+        return -3;
+    }
+    0
+}

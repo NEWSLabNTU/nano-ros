@@ -1038,6 +1038,31 @@ nros_cpp_ret_t nros_cpp_guard_condition_destroy(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_relocate(void *old_storage, void *new_storage);
 
 /**
+ * phase-308 — write the recorded sidecar. The probe's last call.
+ *
+ * Exported from `nros-cpp` rather than from the backend crate so the probe TU
+ * links exactly one Rust staticlib (the `nros-cpp` umbrella, phase-241 D3-rev)
+ * and needs no extra link line.
+ *
+ * Serialization is `nros::metadata_mode::to_json` — the SAME emitter the Rust
+ * producer uses. Nothing here formats anything.
+ *
+ * Returns 0 on success, -1 on a bad argument, -2 if nothing was recorded, -3
+ * on a serialize/write failure. Recording NOTHING is an error, not an empty
+ * sidecar: a component that declared no entities either failed to run its
+ * declaration path or has none, and both are bugs the driver must surface
+ * rather than bake a zero into an executor size.
+ *
+ * # Safety
+ * Every pointer must be a valid NUL-terminated string.
+ */
+int32_t nros_cpp_metadata_dump(const char *package,
+                               const char *component,
+                               const char *executable,
+                               const char *language,
+                               const char *out_path);
+
+/**
  * Create a publisher on a node.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
