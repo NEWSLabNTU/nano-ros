@@ -103,6 +103,39 @@ skew against it.
 the committed artifact; only someone **editing** a `.launch.py` or an
 `$(eval)` expression needs the Python tool.
 
+## The user-side build mechanism already exists
+
+This is the part that makes the split cheap rather than speculative: the
+"built on the user's machine against the user's Python" model is **not new
+work**. It is already how the CPython-linked parser ships:
+
+- `just/workspace.just` pins `PLAY_LAUNCH_PARSER_VERSION` to an exact rev;
+- installs it with `cargo install --path …/crates/play_launch_parser` from a
+  checkout at that rev, into `~/.nros/sdk/play_launch_parser`;
+- `.envrc` / `activate.sh` prepend that `bin` so PATH is ours, not
+  `~/.local/bin`'s;
+- a doctor lane stamps `.installed-version` and reports `[OK]` / `[PATH]` /
+  `[MISSING]`.
+
+So [A] needs no new distribution mechanism — it needs the existing one pointed
+at the right thing. And issue 0285's item 1 ("pin and install a resolve-capable
+build under `~/.nros/…`") is asking for exactly this machinery to be extended
+to the second tool; this RFC's position is that the better move is to need
+less of the second tool rather than to pin more of it.
+
+Two further facts worth recording, because they narrow the work:
+
+- **`play_launch_parser` is barely shelled from `nros` today.** The only live
+  spawn in `nros-cli-core` is `play_launch resolve` (`cmd/ws.rs`); the parser
+  binary is consumed by tests and `scripts/build/compile-check-fixtures.sh`,
+  which already degrades gracefully when it is absent. So the Python-free
+  library path has few call sites to convert.
+- **A `--no-default-features` build is the shape of [A]'s Python-free half.**
+  Once `pyo3` is optional (three surgical changes: optional dep, `#[cfg]` the
+  `From<PyErr>` impl and the `python` module, decide the `$(eval)` policy),
+  `nros` can link the XML/YAML path directly and keep the pinned out-of-tree
+  binary for `.launch.py` and `$(eval)` alone.
+
 ## Decisions this RFC must make
 
 1. **`$(eval …)` policy** — the only non-extension-gated Python dependency.
