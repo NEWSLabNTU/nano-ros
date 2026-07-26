@@ -124,10 +124,6 @@ Verification section); needs a reporter repro. See `0272-*`.
 **#273** — `nros-board-mps2-an385-freertos`'s `nros-board.toml` still advertises the retired
 `_start` entry signature. See `0273-*`.
 
-**#289** — orphaned + stale committed per-edition interface bindings under
-`packages/interfaces/*/generated/{humble,iron}/`. See `0289-*`. (renumbered from a
-duplicate #275 — the original #275 is the resolved class-prefix issue, `archived/0275-*`)
-
 **#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
 now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
 derivable from the same source-metadata sidecars phase-307 wired up. See `0284-*`.

@@ -22,7 +22,7 @@ pub struct Args {
     #[arg(long, short)]
     pub output: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`).
+    /// ROS 2 edition (`humble` | `iron` | `jazzy`).
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 
@@ -45,7 +45,7 @@ pub fn run(args: Args) -> Result<()> {
 
     let edition = RosEdition::parse(&args.ros_edition).ok_or_else(|| {
         eyre!(
-            "unknown ROS edition '{}' (humble | iron | jazzy | rolling)",
+            "unknown ROS edition '{}' (humble | iron | jazzy)",
             args.ros_edition
         )
     })?;

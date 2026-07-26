@@ -769,7 +769,7 @@ pub struct SystemHeader {
     pub name: String,
     pub rmw: String,
     pub domain_id: u32,
-    /// Target ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`) — the
+    /// Target ROS 2 edition (`humble` | `iron` | `jazzy`) — the
     /// RFC-0056 axis, declared ONCE here and lowered (phase-304 W2) to the
     /// message-gen `--ros-edition` (baked type hash), the `ros-<edition>` cargo
     /// feature (runtime keyexpr format), and the `generated/<edition>/`
@@ -814,7 +814,7 @@ impl SystemHeader {
             Some(s) => rosidl_codegen::RosEdition::parse(s).ok_or_else(|| {
                 eyre::eyre!(
                     "[system].ros_edition = '{s}' is not a known ROS edition \
-                     (humble | iron | jazzy | rolling)"
+                     (humble | iron | jazzy)"
                 )
             }),
         }

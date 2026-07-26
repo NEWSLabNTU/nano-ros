@@ -77,7 +77,7 @@ pub struct Args {
     pub rmw: String,
 
     /// ROS edition (drives the `ros-<edition>` cargo feature; RFC-0056)
-    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy", "rolling"], default_value = "humble")]
+    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = "humble")]
     pub ros_edition: String,
 
     /// Source language

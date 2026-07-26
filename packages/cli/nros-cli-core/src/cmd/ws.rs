@@ -99,7 +99,7 @@ pub struct SyncArgs {
     #[arg(long, default_value = "generated")]
     pub build_dir: PathBuf,
 
-    /// ROS 2 edition (`humble` | `iron` | `jazzy` | `rolling`). When omitted,
+    /// ROS 2 edition (`humble` | `iron` | `jazzy`). When omitted,
     /// inherits `[system].ros_edition` from a `system.toml` at the workspace root
     /// (RFC-0056 W2b auto-lowering), else `humble`.
     #[arg(long)]
@@ -833,7 +833,7 @@ fn refresh_source_metadata(
 
 fn parse_edition(s: &str) -> Result<RosEdition> {
     RosEdition::parse(s).ok_or_else(|| {
-        eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy | rolling)")
+        eyre::eyre!("ws sync: unknown ROS edition '{s}' (humble | iron | jazzy)")
     })
 }
 

@@ -13,23 +13,24 @@ pub enum RosEdition {
     /// ROS 2 Iron: type hash = "RIHS01_<sha256>" (placeholder until phase-304 W1
     /// computes the real REP-2011 hash).
     Iron,
-    /// ROS 2 Jazzy (24.04 LTS): RIHS01 type hash; XCDR2/appendable wire encoding
-    /// is a separate profile field (RFC-0055 / phase-303 W1b).
+    /// ROS 2 Jazzy (24.04 LTS): RIHS01 type hash. (Extensibility/XCDR2 is a
+    /// per-type property, not an edition one — RFC-0055 parked, RFC-0056.)
     Jazzy,
-    /// ROS 2 Rolling: tracks the latest; RIHS01 type hash.
-    Rolling,
+    // ROS 2 Rolling is intentionally UNSUPPORTED — it is a rolling (nightly)
+    // release with a moving profile, so nano-ros does not pin to it. Selecting
+    // `rolling` errors as an unknown edition.
 }
 
 impl RosEdition {
-    /// Parse an edition name (case-insensitive). The single place the four
-    /// editions are recognized — every CLI/`[system].ros_edition` parse routes
-    /// here so a new distro is one arm (RFC-0056).
+    /// Parse an edition name (case-insensitive). The single place the supported
+    /// editions (humble/iron/jazzy) are recognized — every CLI/`[system].
+    /// ros_edition` parse routes here so a new distro is one arm (RFC-0056).
+    /// `rolling` is intentionally NOT recognized (unsupported nightly release).
     pub fn parse(s: &str) -> Option<RosEdition> {
         match s.trim().to_ascii_lowercase().as_str() {
             "humble" => Some(RosEdition::Humble),
             "iron" => Some(RosEdition::Iron),
             "jazzy" => Some(RosEdition::Jazzy),
-            "rolling" => Some(RosEdition::Rolling),
             _ => None,
         }
     }
@@ -41,7 +42,6 @@ impl RosEdition {
             RosEdition::Humble => "humble",
             RosEdition::Iron => "iron",
             RosEdition::Jazzy => "jazzy",
-            RosEdition::Rolling => "rolling",
         }
     }
 
@@ -56,12 +56,11 @@ impl RosEdition {
             RosEdition::Humble => "ros-humble",
             RosEdition::Iron => "ros-iron",
             RosEdition::Jazzy => "ros-jazzy",
-            RosEdition::Rolling => "ros-rolling",
         }
     }
 
     /// Does this edition use REP-2011 RIHS01 type hashes? Humble uses the
-    /// `TypeHashNotSupported` placeholder; Iron+ (iron/jazzy/rolling) compute a
+    /// `TypeHashNotSupported` placeholder; Iron+ (iron/jazzy) compute a
     /// real hash. Drives the keyexpr/liveliness format (RFC-0056 profile).
     pub fn uses_type_hash(&self) -> bool {
         !matches!(self, RosEdition::Humble)
@@ -75,7 +74,7 @@ impl RosEdition {
     pub fn type_hash(&self) -> &'static str {
         match self {
             RosEdition::Humble => "TypeHashNotSupported",
-            // iron / jazzy / rolling: RIHS01 placeholder (phase-304 W1).
+            // iron / jazzy: RIHS01 placeholder (phase-304 W1).
             _ => "RIHS01_0000000000000000000000000000000000000000000000000000000000000000",
         }
     }
@@ -1549,11 +1548,12 @@ mod ros_edition_tests {
     use super::RosEdition;
 
     #[test]
-    fn parse_all_four_editions_case_insensitive() {
+    fn parse_supported_editions_case_insensitive() {
         assert_eq!(RosEdition::parse("humble"), Some(RosEdition::Humble));
         assert_eq!(RosEdition::parse("IRON"), Some(RosEdition::Iron));
         assert_eq!(RosEdition::parse(" Jazzy "), Some(RosEdition::Jazzy));
-        assert_eq!(RosEdition::parse("rolling"), Some(RosEdition::Rolling));
+        // rolling is unsupported — an unknown edition.
+        assert_eq!(RosEdition::parse("rolling"), None);
         assert_eq!(RosEdition::parse("foxy"), None);
     }
 
@@ -1563,7 +1563,6 @@ mod ros_edition_tests {
             RosEdition::Humble,
             RosEdition::Iron,
             RosEdition::Jazzy,
-            RosEdition::Rolling,
         ] {
             assert_eq!(RosEdition::parse(e.as_str()), Some(e));
         }
@@ -1578,7 +1577,6 @@ mod ros_edition_tests {
             RosEdition::Humble,
             RosEdition::Iron,
             RosEdition::Jazzy,
-            RosEdition::Rolling,
         ] {
             assert_eq!(e.cargo_feature(), format!("ros-{}", e.as_str()));
         }
@@ -1589,7 +1587,7 @@ mod ros_edition_tests {
         assert_eq!(RosEdition::Humble.type_hash(), "TypeHashNotSupported");
         assert!(!RosEdition::Humble.uses_type_hash());
         // Iron+ all use the RIHS01 form (placeholder digest until phase-304 W1).
-        for e in [RosEdition::Iron, RosEdition::Jazzy, RosEdition::Rolling] {
+        for e in [RosEdition::Iron, RosEdition::Jazzy] {
             assert!(e.uses_type_hash());
             assert!(e.type_hash().starts_with("RIHS01_"));
             assert_eq!(e.type_hash().len(), 71); // RIHS01_ + 64 hex

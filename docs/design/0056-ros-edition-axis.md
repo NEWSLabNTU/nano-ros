@@ -25,7 +25,7 @@ phase-41, wire encoding → phase-303) feed one coherent profile instead of
 scattered `#[cfg]`s.
 
 Today the axis exists but is **enumerated only `humble`/`iron`** and carries
-only the type-hash difference. This RFC extends it to `jazzy`/`rolling` and
+only the type-hash difference. This RFC extends it to `jazzy` and
 folds in the wire-encoding profile (RFC-0055), so "match the peer's ROS distro"
 is a single first-class selection rather than a per-call guess (the phase-303
 W1 finding: extensibility is distro-matched, never blanket-emitted).
@@ -72,7 +72,6 @@ table row, not a scavenger hunt.
 | `humble` | `ros-humble` (default) | supported | 22.04 LTS | XCDR1/placeholder-hash; the current baseline |
 | `iron` | `ros-iron` | keyexpr done; RIHS01 pending (phase-41) | 23.05 (EOL) | RIHS01 type hashes introduced |
 | `jazzy` | `ros-jazzy` | RIHS01 done; harness green (phase-309/310) | 24.04 LTS | RIHS01; **FINAL/XCDR1 on the wire** (per-type `@appendable` only; NOT XCDR2-by-edition — see the encoding note) |
-| `rolling` | `ros-rolling` | **planned** | rolling | tracks latest; profile = current rolling |
 
 Mutually exclusive within the axis (compile-time), like the other two axes.
 `humble` is the default when none is selected.
@@ -81,7 +80,7 @@ Mutually exclusive within the axis (compile-time), like the other two axes.
 
 One profile per edition — the single source of truth for cross-distro behavior:
 
-| Profile field | humble | iron | jazzy / rolling |
+| Profile field | humble | iron | jazzy |
 | --- | --- | --- | --- |
 | **Type hash** | `TypeHashNotSupported` + zeroed liveliness placeholder | RIHS01 SHA-256 (REP-2011) | RIHS01 SHA-256 |
 | **Data-keyexpr tail** | `…/<type>/TypeHashNotSupported` | `…/<type>/<RIHS01>` | `…/<type>/<RIHS01>` |
@@ -99,10 +98,12 @@ Implementation notes:
   `docs/research/rep-2011-type-hash.md`), gate the real hash on `iron`+, keep
   the Humble placeholder on `humble`. Feeds the keyexpr + liveliness + the
   RFC-0055 §type-hash/RIHS interop check.
-- **Wire encoding (phase-303 / RFC-0055)** — the encoding default +
-  extensibility are profile fields, not a per-message guess. `humble` keeps the
-  XCDR1/`rosidl_adapter`-parity behavior (the W1 finding); `jazzy`+ turns on the
-  XCDR2 writer/reader (DHEADER) + `data_representation` negotiation.
+- **Wire encoding (phase-303 / RFC-0055) — REMOVED from the profile (2026-07-26).**
+  Live verification showed a default jazzy peer is FINAL/XCDR1, so encoding/
+  extensibility is NOT edition-driven; ALL editions emit XCDR1/FINAL. The XCDR2
+  writer/reader + DHEADER machinery is built but **parked**, to be re-activated
+  per-type where a type declares `@appendable` — never by edition. (See the
+  RFC-0055 CORRECTION and #0267.)
 - **Selection + lowering** — the edition is declared once (build feature today;
   a future `system.toml [system].ros_edition` lowering is an open question),
   and it propagates through the `nros` umbrella (`ros-humble`/`ros-iron` →
@@ -149,4 +150,4 @@ Implementation notes:
 - 2026-07 — created. Formalizes the ROS-edition axis (was `humble`/`iron`,
   keyexpr-only) into a per-edition interop profile spanning type hash
   (phase-41), wire encoding/extensibility (RFC-0055 / phase-303), and interface
-  set; extends the enum to `jazzy`/`rolling`.
+  set; extends the enum to `jazzy`. (rolling is unsupported — a nightly release.)
