@@ -134,11 +134,9 @@ documented in-source). take()-style sub wanted — note the original "RMW alread
 per sub" premise is FALSE (corrected 2026-07-26; needs new retained storage). The bounded-wait
 call already exists; its in-callback hazard split out as #290. See `0278-*`.
 
-**#290** — RESOLVED. nros-cpp blocking helpers (`Client::call`, `Future::wait`, the action
-send-goal/get-result pair) had no reentrancy guard, so calling one from inside a callback
-re-entered `spin_once` and aliased `&mut Executor` — silently, no error. C guarded this all
-along via `nros_executor_t.in_dispatch`; C++ did not. Fixed with a `DispatchGuard` at the spin
-sites. See `0290-*`.
+(#290 resolved 2026-07-26 — see `archived/0290-*`: nros-cpp blocking helpers had no
+reentrancy guard, so calling one from inside a callback aliased `&mut Executor` silently;
+C guarded it all along via `nros_executor_t.in_dispatch`. Fixed with a `DispatchGuard`.)
 
 (#278 + archived #276, #277, #279-#281 from the simple-autoware-safety-island port
 friction log, filed 2026-07-25 from docs/porting-notes.md 06/12/14 + the
