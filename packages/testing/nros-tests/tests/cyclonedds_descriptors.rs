@@ -190,7 +190,7 @@ fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
 /// cyclone typesupport stage msg-shaped IDLs whose cross-package includes
 /// idlc rejects. Stages a nav_msgs-shaped workspace pkg (real msg + real srv
 /// + derived siblings) behind `NROS_INTERFACE_SEARCH_PATH` and asserts the
-/// emitted cmake file list keeps the sources and drops the derived pair.
+///   emitted cmake file list keeps the sources and drops the derived pair.
 #[test]
 fn resolve_deps_skips_derived_srv_sibling_msgs() {
     if !nros_tests::require_nros_cli() {
