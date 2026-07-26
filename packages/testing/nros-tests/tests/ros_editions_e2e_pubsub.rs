@@ -11,63 +11,16 @@
 //! Skips (never a silent pass) without the built fixtures / docker / image. Not
 //! in `just ci`; run by `just ros_editions ci`.
 
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-    time::Duration,
-};
+use std::time::Duration;
 
-use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
-
-/// The per-edition cyclone build of native example `name`.
-fn example_bin(name: &str, edition: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../examples/native/rust")
-        .join(name)
-        .join(format!("target-ros-edition-{edition}/debug/{name}"))
-}
-
-/// A nano-ros example node on `domain`, cyclone RMW. Wrapped in `bash -c 'exec …
-/// 2>&1'` so the node's `env_logger` output (which goes to STDERR) merges into
-/// the captured stdout — a `RosPeer` reads stdout, and the receive-side markers
-/// (`I heard: […]`) are logged, not printed.
-fn nano_node(bin: &Path, domain: u8) -> Command {
-    let mut c = Command::new("bash");
-    c.arg("-c")
-        .arg(format!("exec {} 2>&1", bin.display()))
-        .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
-        .env("RUST_LOG", "info");
-    c
-}
-
-/// Guard: the edition ROS peer usable + the example fixture built, else skip.
-fn setup(name: &str) -> Option<(DockerRosEnv, PathBuf, u8)> {
-    let ed = ros_env::test_edition();
-    let bin = example_bin(name, &ed);
-    if !bin.is_file() {
-        nros_tests::skip!(
-            "example `{name}` not built for {ed} — run `just ros_editions build-e2e-fixtures {ed}`"
-        );
-    }
-    let domain = nros_tests::unique_ros_domain_id();
-    let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
-    if !env.available() {
-        nros_tests::skip!(
-            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
-        );
-    }
-    Some((env, bin, domain))
-}
+use nros_tests::ros_env;
 
 #[test]
 fn nano_talker_to_ros_echo() {
-    let Some((env, bin, domain)) = setup("talker") else {
-        return;
-    };
+    let (env, bin, domain) = ros_env::e2e_setup("talker");
     let _talker = ros_env::spawn_process(
         {
-            let mut c = nano_node(&bin, domain);
+            let mut c = ros_env::nano_node_cmd(&bin, domain, &[]);
             c.env("NROS_PUB_TYPE", "int32");
             c
         },
@@ -86,16 +39,14 @@ fn nano_talker_to_ros_echo() {
 
 #[test]
 fn ros_pub_to_nano_listener() {
-    let Some((env, bin, domain)) = setup("listener") else {
-        return;
-    };
+    let (env, bin, domain) = ros_env::e2e_setup("listener");
     let _pub = env
         .spawn_topic_pub("/chatter", "std_msgs/msg/Int32", "{data: 42}", 5)
         .expect("spawn ros2 topic pub");
 
     let mut listener = ros_env::spawn_process(
         {
-            let mut c = nano_node(&bin, domain);
+            let mut c = ros_env::nano_node_cmd(&bin, domain, &[]);
             c.env("NROS_SUB_TYPE", "int32");
             c
         },

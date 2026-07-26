@@ -1,6 +1,15 @@
 # Phase 310 — multi-edition rich E2E (pubsub + service + action, both directions)
 
-**Status (2026-07-26): Draft.** Extends the [phase-309](phase-309-multi-edition-ros-harness.md)
+**Status (2026-07-26): W1–W6 landed.** All six direction-pairs pass against jazzy
+(pub/sub, service, action; nano-ros ↔ live edition peer over direct same-domain
+cyclone). `just ros_editions build-e2e-fixtures <distro>` builds the six example
+nodes per-edition; `ros_editions_e2e_{pubsub,service,action}.rs` (2 tests each)
+run them via `ros_env::e2e_setup` + `nano_node_cmd`; folded into
+`just ros_editions ci <distro>` (still opt-in, deselected from `just ci`). One
+implementation note: nano-ros nodes are wrapped in `bash -c 'exec … 2>&1'` so
+`env_logger`'s STDERR markers reach the captured stdout.
+
+Extends the [phase-309](phase-309-multi-edition-ros-harness.md)
 multi-edition harness ([RFC-0058](../design/0058-multi-edition-ros-test-harness.md))
 from one thin E2E slice (nano-ros PoseStamped publish → `domain_bridge`) to a
 **rich** matrix: pub/sub, service, and action, in **both directions**, between a

@@ -95,9 +95,10 @@ ci distro="jazzy":
         echo "error: codegen lane needs the nros CLI — run \`just setup-cli\` first" >&2
         exit 1
     fi
-    # Build the nano-ros publisher fixture against this edition's defs so the
-    # nano-ros interop lane runs (not just the stock-publisher lane).
+    # Build the nano-ros publisher fixture (bridge lane) + the six example nodes
+    # (rich E2E matrix) against this edition.
     just ros_editions build-fixture {{distro}}
+    just ros_editions build-e2e-fixtures {{distro}}
     echo "== ros-editions harness lanes ({{distro}}) =="
     export NROS_ROS_EDITION={{distro}}
     cargo test -p nros-tests \
@@ -105,5 +106,8 @@ ci distro="jazzy":
         --test ros_editions_codegen \
         --test ros_editions_bridge \
         --test ros_editions_nano_interop \
+        --test ros_editions_e2e_pubsub \
+        --test ros_editions_e2e_service \
+        --test ros_editions_e2e_action \
         -- --nocapture
     echo "ros_editions ci {{distro}}: PASS"

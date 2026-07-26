@@ -567,6 +567,55 @@ impl DockerRosEnv {
     }
 }
 
+/// phase-310 E2E lane guard: resolve the target edition, its per-edition example
+/// binary, a fresh RTPS domain, and a docker env on it. `skip!`s (never a silent
+/// pass) when the fixture, docker, or image is absent.
+pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
+    let ed = test_edition();
+    let bin = example_bin(example, &ed);
+    if !bin.is_file() {
+        crate::skip!(
+            "example `{example}` not built for {ed} — run `just ros_editions build-e2e-fixtures {ed}`"
+        );
+    }
+    let domain = crate::unique_ros_domain_id();
+    let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
+    if !env.available() {
+        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+    }
+    (env, bin, domain)
+}
+
+/// The per-edition cyclone build of native example `name` (phase-310), under
+/// `examples/native/rust/<name>/target-ros-edition-<edition>/debug/<name>` —
+/// produced by `just ros_editions build-e2e-fixtures <edition>`.
+pub fn example_bin(name: &str, edition: &str) -> std::path::PathBuf {
+    crate::project_root()
+        .join("examples/native/rust")
+        .join(name)
+        .join(format!("target-ros-edition-{edition}/debug/{name}"))
+}
+
+/// A [`Command`] that runs a nano-ros example node `bin` on `domain` over the
+/// CycloneDDS RMW, wrapped in `bash -c 'exec … 2>&1'` so the node's `env_logger`
+/// output (STDERR) merges into the captured stdout — [`RosPeer::wait_for_output`]
+/// reads stdout, and the nodes log their receive/result markers, not print them.
+/// `extra_args` are appended (e.g. service-client summands).
+pub fn nano_node_cmd(bin: &std::path::Path, domain: u8, extra_args: &[&str]) -> Command {
+    let mut c = Command::new("bash");
+    let args = if extra_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", extra_args.join(" "))
+    };
+    c.arg("-c")
+        .arg(format!("exec {}{args} 2>&1", bin.display()))
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
+        .env("RUST_LOG", "info");
+    c
+}
+
 /// The ROS 2 edition the gated harness lanes target, from `NROS_ROS_EDITION`
 /// (default `"jazzy"`). `just ros_editions ci <distro>` exports it so the same
 /// tests run against any built edition image (jazzy, iron, …).
