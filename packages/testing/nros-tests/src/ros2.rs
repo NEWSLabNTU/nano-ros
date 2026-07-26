@@ -458,6 +458,85 @@ pub fn collect_ros2_output(process: &mut Ros2Process, timeout: Duration) -> Stri
     process.wait_for_output(timeout).unwrap_or_default()
 }
 
+/// Read everything a spawned child prints on stdout within `timeout`, without
+/// blocking forever. Shared by [`Ros2Process`] and [`crate::ros_env::RosPeer`]
+/// (phase-309) so both peer wrappers use identical non-blocking drain logic.
+pub fn wait_child_output(handle: &mut Child, name: &str, timeout: Duration) -> TestResult<String> {
+    use std::io::Read;
+    #[cfg(unix)]
+    use std::os::unix::io::AsRawFd;
+
+    let start = std::time::Instant::now();
+    let mut output = String::new();
+
+    let mut stdout = handle
+        .stdout
+        .take()
+        .ok_or_else(|| TestError::ProcessFailed(format!("No stdout for {name}")))?;
+
+    #[cfg(unix)]
+    let fd = {
+        let fd = stdout.as_raw_fd();
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFL);
+            libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+        fd
+    };
+
+    let mut buffer = [0u8; 4096];
+    loop {
+        if start.elapsed() > timeout {
+            kill_process_group(handle);
+            if output.is_empty() {
+                return Err(TestError::Timeout);
+            }
+            break;
+        }
+        match handle.try_wait() {
+            Ok(Some(_)) => {
+                let _ = stdout.read_to_string(&mut output);
+                break;
+            }
+            Ok(None) => match stdout.read(&mut buffer) {
+                Ok(0) => wait_child_data(
+                    #[cfg(unix)]
+                    fd,
+                    timeout.saturating_sub(start.elapsed()),
+                ),
+                Ok(n) => output.push_str(&String::from_utf8_lossy(&buffer[..n])),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => wait_child_data(
+                    #[cfg(unix)]
+                    fd,
+                    timeout.saturating_sub(start.elapsed()),
+                ),
+                Err(_) => break,
+            },
+            Err(_) => break,
+        }
+    }
+    Ok(output)
+}
+
+/// Block up to `remaining` (capped) for data on `fd`, or sleep on non-Unix.
+#[cfg(unix)]
+fn wait_child_data(fd: std::os::unix::io::RawFd, remaining: Duration) {
+    let ms = remaining.as_millis().min(500) as i32;
+    let mut fds = [libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    unsafe {
+        libc::poll(fds.as_mut_ptr(), 1, ms);
+    }
+}
+
+#[cfg(not(unix))]
+fn wait_child_data(remaining: Duration) {
+    std::thread::sleep(remaining.min(Duration::from_millis(50)));
+}
+
 // =============================================================================
 // Discovery Helpers
 // =============================================================================
