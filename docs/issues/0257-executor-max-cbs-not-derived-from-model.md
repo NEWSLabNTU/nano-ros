@@ -55,3 +55,44 @@ env; its overflow is at least loud at runtime (`dynamic_type.rs` names the
 env). The distinct msg/srv types per entry ARE derivable from the model the
 same way — unimplemented. The C++ descriptor registry cap needs nothing
 (raised 64 → 256 + overridable + loud in `2092e7cff` / `ce186d35e`).
+
+## Investigated + rejected (2026-07-26): exact count from source-metadata
+
+The phase-172.E metadata mechanism (host harness links the component crate,
+runs `Component::register` against `MetadataRecorder`, emits
+`source-metadata.json`) DOES carry `timers` and would give an exact count —
+its recorder and the runtime consume the same `EntityMetadata` declarations,
+and per-kind slot accounting matches the arena (`spin.rs`: sub/timer/service
+server+client/action server/guard = 1 slot each; publishers 0; param +
+lifecycle service sets outside the arena).
+
+It is nevertheless NOT a dependable bake input today:
+
+1. **No automation.** `nros metadata --build` has zero call sites in `just/`,
+   `cmake/`, `scripts/`, or the colcon extension — the books instruct the user
+   to run it manually before `cargo build`. No ordering guarantee exists for
+   the proc-macro bake, and manufacturing one means a nested `cargo run`
+   during macro expansion (the 172.E docs explicitly defer that hardening).
+2. **Wrong component shape.** `Workspace::component_declarations` enumerates
+   only `nros.toml`/`component_nros.toml` `[component]` tables; the canonical
+   lib-only Rust node pkgs declare `[package.metadata.nros.node]` and are
+   never built for metadata (`book/src/getting-started/workspace-bringup.md`
+   states the gap). The harness type path (`crate::module::Component`) is also
+   stale vs the shipped `nros::node!(Class)` convention.
+3. **No C/C++ producer.** The cmake `nros-metadata.json` carries
+   name/pkg/class/class_header/shape/deploy/lang/callback_groups — no entity
+   detail — so metadata-driven sizing would be Rust-only, forking the shared
+   count the macro and CLI deliberately share.
+
+Empirical: the only `*metadata.json` files in-tree are 9 hand-written test
+fixtures; no example workspace ships one.
+
+**Decision:** keep the model-wiring lower bound + headroom + the loud gate.
+Recorded follow-ups if exactness is ever wanted: (a) revive 172.E — declare
+`[package.metadata.nros.node]` pkgs, refresh the harness type path, add a C/C++
+producer, wire the verb into the build; then (b) fold metadata in as
+`max(model_count, metadata_count)` (monotone, never false-positive), cheapest
+first in the CLI bake, which already scans the workspace
+(`Workspace::source_metadata_files`).
+
+Remaining 0257 scope is unchanged: `NROS_CYCLONEDDS_MAX_TYPES`.

@@ -20,6 +20,29 @@
 //!   headroom and why the bake-time check only fires on a count that already
 //!   exceeds capacity (never a false positive).
 //!
+//! Why not the phase-172.E `source-metadata.json` instead (it DOES carry
+//! `timers`, and its recorder walks the same `Component::register` the runtime
+//! does, so its count would be exact)? Because it is not a dependable bake
+//! input, on three independent counts:
+//!
+//! 1. Nothing produces it automatically — `nros metadata --build` is a manual
+//!    verb with zero call sites in `just/`, `cmake/`, `scripts/`, or the colcon
+//!    extension; the docs ask the USER to run it before `cargo build`. There is
+//!    no build-graph edge a proc-macro could rely on, and creating one would
+//!    mean shelling a nested `cargo run` during macro expansion.
+//! 2. It does not cover the shipping component shape — `component_declarations`
+//!    enumerates only `nros.toml`-style `[component]` tables, so the canonical
+//!    `[package.metadata.nros.node]` lib-only Rust pkgs are never built for
+//!    metadata (`book/src/getting-started/workspace-bringup.md` says so).
+//! 3. It has no C/C++ producer at all — the cmake `nros-metadata.json` is a
+//!    (pkg, exec) -> class/header/groups map with NO entity detail, so a
+//!    metadata-driven derivation would be Rust-only and this shared count
+//!    would fork in two — exactly the drift this module exists to prevent.
+//!
+//! If those are ever fixed, the sound rule is
+//! `max(model_wiring_count, metadata_count)`: monotone, never regresses an
+//! existing build, still never false-positives.
+//!
 //! Publishers are deliberately not counted: `create_publisher` allocates no
 //! callback entry.
 //!
