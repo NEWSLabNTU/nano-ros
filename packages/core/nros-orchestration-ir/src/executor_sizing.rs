@@ -20,28 +20,31 @@
 //!   headroom and why the bake-time check only fires on a count that already
 //!   exceeds capacity (never a false positive).
 //!
-//! Why not the phase-172.E `source-metadata.json` instead (it DOES carry
-//! `timers`, and its recorder walks the same `Component::register` the runtime
-//! does, so its count would be exact)? Because it is not a dependable bake
-//! input, on three independent counts:
+//! Where the exact count comes from (phase-307). The 172.E
+//! `source-metadata.json` DOES carry `timers`, and its recorder walks the same
+//! `Component::register` the runtime does. Phase-307 W1/W2 made it real: every
+//! Rust Node pkg is now a producer candidate, and `nros sync` refreshes stale
+//! sidecars automatically with a content-addressed provenance stamp, so a bake
+//! can tell a current sidecar from museum data.
 //!
-//! 1. Nothing produces it automatically — `nros metadata --build` is a manual
-//!    verb with zero call sites in `just/`, `cmake/`, `scripts/`, or the colcon
-//!    extension; the docs ask the USER to run it before `cargo build`. There is
-//!    no build-graph edge a proc-macro could rely on, and creating one would
-//!    mean shelling a nested `cargo run` during macro expansion.
-//! 2. It does not cover the shipping component shape — `component_declarations`
-//!    enumerates only `nros.toml`-style `[component]` tables, so the canonical
-//!    `[package.metadata.nros.node]` lib-only Rust pkgs are never built for
-//!    metadata (`book/src/getting-started/workspace-bringup.md` says so).
-//! 3. It has no C/C++ producer at all — the cmake `nros-metadata.json` is a
-//!    (pkg, exec) -> class/header/groups map with NO entity detail, so a
-//!    metadata-driven derivation would be Rust-only and this shared count
-//!    would fork in two — exactly the drift this module exists to prevent.
+//! The consuming rule is `max(model_wiring_count, recorded_count)` PER NODE,
+//! and the max is necessary, not merely safe — neither source is complete:
 //!
-//! If those are ever fixed, the sound rule is
-//! `max(model_wiring_count, metadata_count)`: monotone, never regresses an
-//! existing build, still never false-positives.
+//! - the model has no timer entity, so a node that publishes on a timer counts
+//!   one too few here;
+//! - the recorder does not record service/action CLIENTS as node entities,
+//!   while the model's wiring names them.
+//!
+//! The rule lives in the CLI bake (`nros-cli-core`
+//! `model_ingest::count_callbacks_with_metadata`), not here, because reading
+//! sidecars needs `std` + the CLI's schema types. This module stays the shared
+//! COUNT + derivation so the two bakes cannot drift on the part they share.
+//!
+//! The `nros::main!` proc-macro keeps the model bound alone: a macro expansion
+//! has no ordering guarantee that `nros sync` already ran, and shelling a
+//! nested cargo build during expansion is the trap that killed the naive 0257
+//! approach. The macro therefore under-counts where a node has timers — which
+//! is why the derivation below adds headroom.
 //!
 //! Publishers are deliberately not counted: `create_publisher` allocates no
 //! callback entry.

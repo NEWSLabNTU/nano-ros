@@ -24,7 +24,10 @@ pub use nros_orchestration_ir::tier_from_model;
 use nros_orchestration_ir::{CallbackGroupDecl, CallbackGroupOverride, NodeOverride};
 use ros_launch_manifest_model::SystemModel;
 
-use crate::orchestration::cargo_metadata_schema::SystemToml;
+use crate::orchestration::{
+    cargo_metadata_schema::SystemToml,
+    source_metadata::{SourceMetadata, SourceNode},
+};
 
 /// Load + schema-gate a SystemModel.
 pub fn load_model(path: &Path) -> Result<SystemModel> {
@@ -200,6 +203,101 @@ pub fn declared_max_callbacks(manifest_path: &Path) -> Option<usize> {
     (n > 0).then_some(n as usize)
 }
 
+/// phase-307 W4 — callback slots one recorded node declares.
+///
+/// Slot accounting mirrors `ExecutorSink::create_entity`: subscription, timer,
+/// service server and action server take one slot each; publishers take none.
+/// A recorded action's THREE callbacks (goal / cancel / result) still occupy
+/// one arena slot, so count entities, not the sidecar's `callbacks` array.
+fn recorded_slots(node: &SourceNode) -> usize {
+    node.subscribers.len() + node.timers.len() + node.services.len() + node.actions.len()
+}
+
+/// phase-307 W4 — `(package, executable)` → recorded callback slots, the key
+/// `SystemModel::structure.nodes` entries carry as `pkg` + `exec`.
+pub fn metadata_slot_counts(metadata: &[SourceMetadata]) -> BTreeMap<(String, String), usize> {
+    let mut out = BTreeMap::new();
+    for md in metadata {
+        let Some(exec) = md.executable.clone() else {
+            continue;
+        };
+        let slots: usize = md.nodes.iter().map(recorded_slots).sum();
+        // A component declaring several nodes contributes all of them under
+        // one executable; several sidecars for one executable would be a
+        // producer bug, so take the max rather than silently halving a count.
+        let entry = out.entry((md.package.clone(), exec)).or_insert(0usize);
+        *entry = (*entry).max(slots);
+    }
+    out
+}
+
+/// Read + parse every source-metadata sidecar the workspace carries.
+///
+/// Unparseable sidecars are SKIPPED with a warning rather than failing the
+/// bake: the fallback is the SystemModel bound, which is merely less precise,
+/// and a bake that dies because a stale sidecar exists would be a worse
+/// failure than the one this phase set out to fix.
+pub fn load_workspace_metadata(ws_root: &Path) -> Vec<SourceMetadata> {
+    let Ok(workspace) = crate::orchestration::workspace::Workspace::discover(ws_root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for path in workspace.source_metadata_files() {
+        match std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|raw| serde_json::from_str::<SourceMetadata>(&raw).map_err(|e| e.to_string()))
+        {
+            Ok(md) => out.push(md),
+            Err(err) => eprintln!(
+                "codegen-system: ignoring unreadable source metadata {}: {err}",
+                path.display()
+            ),
+        }
+    }
+    out
+}
+
+/// phase-307 W4 — the entity count the capacity check runs on:
+/// `max(model_wiring, recorded_metadata)` PER NODE, summed.
+///
+/// Neither source is complete on its own, which is why the rule is a max and
+/// not a choice:
+///
+/// - the model has no timer entity, so a `talker` that publishes on a 500 ms
+///   timer counts ZERO in the model and ONE in the recorder — the exact hole
+///   issue 0257 documented;
+/// - the recorder only sees what `Component::register` declares as an entity,
+///   and service/action CLIENTS are not recorded as node entities, while the
+///   model's wiring names them.
+///
+/// Taking the max per node is monotone (never below today's model bound, so no
+/// existing build regresses) and never over-counts a node by mixing the two
+/// sources' blind spots together.
+pub fn count_callbacks_with_metadata(
+    model: &SystemModel,
+    slots: &BTreeMap<(String, String), usize>,
+) -> usize {
+    use nros_orchestration_ir::executor_sizing as sz;
+
+    let mut total = 0usize;
+    for (fqn, inst) in &model.structure.nodes {
+        let modelled = sz::count_node_callbacks(model, fqn);
+        let recorded = match (inst.pkg.as_deref(), inst.exec.as_deref()) {
+            (Some(pkg), Some(exec)) => slots
+                .get(&(pkg.to_string(), exec.to_string()))
+                .copied()
+                .unwrap_or(0),
+            _ => 0,
+        };
+        total += modelled.max(recorded);
+    }
+    // Endpoints whose owning node the model does not list as an instance still
+    // register callbacks; count them from the wiring so the total is never
+    // below `count_callbacks(model, |_| true)`.
+    total += sz::count_callbacks(model, |node| !model.structure.nodes.contains_key(node));
+    total
+}
+
 /// Issue 0257 — the CLI twin of the `nros::main!` capacity check: refuse to
 /// bake a system whose modelled entity count cannot fit the executor callback
 /// table the image will compile with.
@@ -219,10 +317,13 @@ pub fn check_executor_capacity(
     model: &SystemModel,
     deploy_key: Option<&str>,
     declared: Option<usize>,
+    slots: &BTreeMap<(String, String), usize>,
 ) -> Result<()> {
     use nros_orchestration_ir::executor_sizing as sz;
 
-    let counted = sz::count_callbacks(model, |_| true);
+    // phase-307 W4 — exact where a sidecar exists, model bound where it does
+    // not. With no sidecars this is byte-identical to the pre-307 check.
+    let counted = count_callbacks_with_metadata(model, slots);
     if counted == 0 {
         return Ok(());
     }
@@ -267,7 +368,70 @@ mod executor_capacity_tests {
     //! Issue 0257 — the CLI twin of the `nros::main!` capacity check.
     use ros_launch_manifest_model::{ServiceWiring, SystemModel, TopicWiring};
 
+    use std::collections::BTreeMap;
+
     use super::check_executor_capacity;
+
+    /// The pre-307 world: no sidecars ⇒ the model bound alone.
+    fn no_metadata() -> BTreeMap<(String, String), usize> {
+        BTreeMap::new()
+    }
+
+    /// phase-307 W4 — a node instance the sidecar key `(pkg, exec)` matches.
+    fn with_node(mut m: SystemModel, fqn: &str, pkg: &str, exec: &str) -> SystemModel {
+        m.structure.nodes.insert(
+            fqn.to_string(),
+            ros_launch_manifest_model::NodeInstance {
+                pkg: Some(pkg.to_string()),
+                exec: Some(exec.to_string()),
+                ..Default::default()
+            },
+        );
+        m
+    }
+
+    fn slots(rows: &[(&str, &str, usize)]) -> BTreeMap<(String, String), usize> {
+        rows.iter()
+            .map(|(p, e, n)| ((p.to_string(), e.to_string()), *n))
+            .collect()
+    }
+
+    /// The 0257 hole, closed: a node whose only modelled entity is one
+    /// subscription but which ALSO registers timers the model has no entity
+    /// for. The model bound says 1 and fits; the recorded count says 6 and
+    /// does not — and the bake must fail on the truth, not the bound.
+    #[test]
+    fn recorded_timers_raise_the_count_past_the_model_bound() {
+        let model = with_node(model_with(1), "/listener0", "listener_pkg", "listener");
+        check_executor_capacity(&model, Some("zephyr"), None, &no_metadata())
+            .expect("model bound alone: 2 entities fit the default 4");
+        let err = check_executor_capacity(
+            &model,
+            Some("zephyr"),
+            None,
+            &slots(&[("listener_pkg", "listener", 6)]),
+        )
+        .expect_err("6 recorded slots on one node do not fit 4")
+        .to_string();
+        assert!(err.contains("registers 7 callback entities"), "got: {err}");
+    }
+
+    /// Monotone: metadata may only ever RAISE a node's count. A sidecar that
+    /// records fewer entities than the wiring (service/action clients are
+    /// modelled but not recorded) must not shrink the bake's count.
+    #[test]
+    fn metadata_never_lowers_the_model_bound() {
+        let model = with_node(model_with(8), "/adder", "adder_pkg", "adder");
+        let err = check_executor_capacity(
+            &model,
+            Some("zephyr"),
+            None,
+            &slots(&[("adder_pkg", "adder", 0)]),
+        )
+        .expect_err("still 9")
+        .to_string();
+        assert!(err.contains("registers 9 callback entities"), "got: {err}");
+    }
 
     /// `n` subscribers + one service server = `n + 1` callback entities.
     fn model_with(n: usize) -> SystemModel {
@@ -294,13 +458,18 @@ mod executor_capacity_tests {
     #[test]
     fn wiring_free_model_is_never_checked() {
         // The pre-0257 bake for every in-tree example.
-        check_executor_capacity(&SystemModel::default(), Some("zephyr"), None)
-            .expect("nothing to count");
+        check_executor_capacity(
+            &SystemModel::default(),
+            Some("zephyr"),
+            None,
+            &no_metadata(),
+        )
+        .expect("nothing to count");
     }
 
     #[test]
     fn over_capacity_model_on_a_firmware_board_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), Some("zephyr"), None)
+        let err = check_executor_capacity(&model_with(8), Some("zephyr"), None, &no_metadata())
             .expect_err("9 entities do not fit the default 4")
             .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
@@ -311,7 +480,7 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_below_the_count_fails_the_bake() {
-        let err = check_executor_capacity(&model_with(8), Some("posix"), Some(4))
+        let err = check_executor_capacity(&model_with(8), Some("posix"), Some(4), &no_metadata())
             .expect_err("declared 4 does not fit 9")
             .to_string();
         assert!(err.contains("max_callbacks"), "got: {err}");
@@ -320,14 +489,15 @@ mod executor_capacity_tests {
 
     #[test]
     fn declared_max_callbacks_above_the_count_passes() {
-        check_executor_capacity(&model_with(8), Some("zephyr"), Some(32)).expect("32 fits 9");
+        check_executor_capacity(&model_with(8), Some("zephyr"), Some(32), &no_metadata())
+            .expect("32 fits 9");
     }
 
     #[test]
     fn sizing_honoring_board_derives_its_way_out() {
         // posix opens via `run_with_deploy_sized`, so the derived size applies
         // and no operator action is needed — mirroring the macro.
-        check_executor_capacity(&model_with(8), Some("posix"), None)
+        check_executor_capacity(&model_with(8), Some("posix"), None, &no_metadata())
             .expect("derived sizing covers the count on a hosted board");
     }
 }

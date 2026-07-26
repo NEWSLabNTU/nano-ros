@@ -190,10 +190,19 @@ pub fn run(args: Args) -> Result<()> {
         // an image that boots and dies on `create_* (code=-6 Full)`. Same count
         // + derivation the `nros::main!` bake uses (shared in
         // nros-orchestration-ir), so the two never disagree.
+        // phase-307 W4 — where the workspace carries source-metadata sidecars
+        // (produced by `nros sync`, W2), the count is EXACT: the recorder sees
+        // the timers the model has no entity for. Per-node `max(model,
+        // recorded)`, so a workspace with no sidecars keeps the pre-307 bound
+        // and no existing build regresses.
+        let metadata_slots = crate::orchestration::model_ingest::metadata_slot_counts(
+            &crate::orchestration::model_ingest::load_workspace_metadata(&workspace),
+        );
         crate::orchestration::model_ingest::check_executor_capacity(
             &model,
             args.target.as_deref(),
             crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
+            &metadata_slots,
         )?;
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
