@@ -96,3 +96,13 @@ first in the CLI bake, which already scans the workspace
 (`Workspace::source_metadata_files`).
 
 Remaining 0257 scope is unchanged: `NROS_CYCLONEDDS_MAX_TYPES`.
+
+**Phase-307 drafted (2026-07-26)** to do exactly the revival above:
+W1 producer covers the shipping `[package.metadata.nros.node]` Rust shape
+(the summaries are already parsed — just never turned into declarations)
++ harness type-path refresh; W2 automation so a bake has an ordering
+guarantee (prefer a `nros ws sync`/`plan` refresh step over a
+proc-macro-time nested cargo); W3 a C/C++ producer built on phase-235's
+already-recording NativeBoard NodeContext (coordinate with phase-236);
+W4 folds it in as `max(model, metadata)` with the tier-group filter and
+closes this issue. See `docs/roadmap/phase-307-metadata-mode-completion.md`.
