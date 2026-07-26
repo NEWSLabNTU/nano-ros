@@ -99,6 +99,26 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 - **Acceptance:** `image-check` runs `MicroXRCEAgent --help`; a smoke XRCE↔DDS
   bridge stands up.
 
+> **W3 progress (2026-07-27).** Built `MicroXRCEAgent` (24.04-ABI) by mounting
+> `third-party/xrce/agent` into the jazzy image (cmake/g++ ARE already present)
+> → `build/ros-editions/jazzy/xrce-agent/MicroXRCEAgent`. It runs (usage:
+> `MicroXRCEAgent <udp4|tcp4|serial|…> <args>`). **TODO:** only the executable was
+> copied — it dynlinks the built Fast-DDS/fastcdr/microxrcedds_agent `.so`s, so
+> the runtime lane must copy the whole `build/*/lib` install (or set
+> `LD_LIBRARY_PATH`), not just the binary. Low XRCE version-gap risk (client +
+> agent are co-pinned submodules; the DDS side is standard RTPS).
+
+### W3.5 — example rmw-xrce build (blocker found)
+- The example nodes do NOT build with a naive `cargo build --no-default-features
+  --features rmw-xrce` — `nros-macros` errors `no method resolved_params for
+  &NodeInstance` (`main_macro.rs:644`). The working fixture build (host xrce
+  tests) uses the `examples/fixtures.toml` xrce rows (`features = ["rmw-xrce"]`,
+  `target_dir = "target-xrce"`) via the build-stage recipe — so a feature the
+  naive flags drop provides `resolved_params`. **Next attempt must reuse the
+  fixtures.toml xrce feature set (via `build_example_rmw`/the build recipe), not
+  hand-rolled flags.** (Pre-existing to this phase; unrelated to the edition/
+  rolling work.)
+
 ### W4 — per-(edition, rmw) example fixtures
 - Extend `build-e2e-fixtures` to build the six example nodes with the selected
   `rmw-*` feature into `target-ros-edition-<distro>-<rmw>/`.
