@@ -31,7 +31,42 @@ minimal intercept — but timers are executor-side, not RMW-side, and timers are
 exactly the entity the SystemModel already cannot see. A producer that misses
 them reproduces the bug it exists to fix.
 
-## Two candidate designs
+## Design settled (2026-07-26, after reading the seam)
+
+Neither of the two candidates below is the right shape. Reading
+`nros-cpp/src/*.rs` shows the declaration path splits cleanly in two, and the
+split lands almost entirely on an extension point that already exists:
+
+- **Publishers, subscriptions, services, service clients, actions** all reach
+  `ctx.session` — i.e. they go through the RMW seam. A **recording RMW
+  backend** sees every one of them, with their topic/service names and type
+  names, as ordinary backend calls. That is not a fork of anything: it is a
+  backend, the RFC-0054 vtable's supported extension point, selected by name.
+  `Executor::open_with_rmw(rmw_name, config)` already exists, so
+  `nros_cpp_init` needs no metadata-mode branch at all — it opens against the
+  recording backend the same way it opens against zenoh.
+
+- **Timers and guard conditions** reach `ctx.executor` directly
+  (`register_timer_on`, `register_guard_condition`) and never touch the
+  session. They are invisible to any RMW-level intercept — which is exactly
+  why the "just use a recording RMW backend" shortcut was rejected earlier in
+  this document, and the rejection stands as far as it goes. But the exception
+  is *two functions*, not a reason to abandon the approach: hook
+  `nros_cpp_timer_create*` and `nros_cpp_guard_condition_create` and the gap
+  closes.
+
+So the work is: one recording backend + two hooks + a dump export, instead of
+a ~20-function recording mode (a) or a shim that forks ABI behaviour (b). The
+must-not-fork constraint is satisfied structurally rather than by discipline,
+and the "timers are executor-side" fact — the same fact that makes the
+SystemModel blind and this whole phase necessary — is isolated to the two
+places where it actually applies.
+
+Note the pleasing symmetry with issue 0257: the model cannot see timers
+because launch wiring has no timer entity, and an RMW-level recorder cannot
+see them because they never reach the RMW. Same blind spot, two layers.
+
+## Two candidate designs (superseded by the section above; kept for the reasoning)
 
 **(a) Metadata mode inside `nros-c`.** A cargo feature under which the
 declaration-path exports (`nros_cpp_node_create*`, `publisher_create`,
