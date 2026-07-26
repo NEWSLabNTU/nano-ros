@@ -108,16 +108,24 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 > `LD_LIBRARY_PATH`), not just the binary. Low XRCE version-gap risk (client +
 > agent are co-pinned submodules; the DDS side is standard RTPS).
 
-### W3.5 — example rmw-xrce build (blocker found)
-- The example nodes do NOT build with a naive `cargo build --no-default-features
-  --features rmw-xrce` — `nros-macros` errors `no method resolved_params for
-  &NodeInstance` (`main_macro.rs:644`). The working fixture build (host xrce
-  tests) uses the `examples/fixtures.toml` xrce rows (`features = ["rmw-xrce"]`,
-  `target_dir = "target-xrce"`) via the build-stage recipe — so a feature the
-  naive flags drop provides `resolved_params`. **Next attempt must reuse the
-  fixtures.toml xrce feature set (via `build_example_rmw`/the build recipe), not
-  hand-rolled flags.** (Pre-existing to this phase; unrelated to the edition/
-  rolling work.)
+### W3.5 — example rmw-xrce build — RESOLVED (2026-07-27)
+- **It was NOT a feature-flag or code bug — it was a `ros-launch-manifest`
+  submodule DRIFT.** `nros-macros` (a core crate) depends on
+  `ros-launch-manifest-model` by path (the submodule at
+  `packages/cli/third-party/ros-launch-manifest`) and calls
+  `NodeInstance::resolved_params` (`main_macro.rs:644`). The submodule was checked
+  out at a **divergent** commit `db91f2bad` (heads/main, from a parallel agent)
+  that lacks `resolved_params`, while the superproject records `0612574f4` (which
+  HAS it, added in "project params_files YAML into resolved parameters", #276).
+  A fresh `nros-macros` compile (triggered by the xrce build's distinct
+  target-dir) hit the stale checkout; the cyclone builds passed only on a cached
+  `nros-macros`.
+- **Fix:** sync the submodule to the recorded commit —
+  `git -C packages/cli/third-party/ros-launch-manifest checkout 0612574f4`
+  (or `git submodule update`). Then ALL six xrce example nodes build with
+  `--no-default-features --features rmw-xrce` (talker/listener/service-{server,
+  client}/action-{server,client}, verified). No code change; a submodule-sync
+  hygiene fix (the CLAUDE.md submodule-drift rule).
 
 ### W4 — per-(edition, rmw) example fixtures
 - Extend `build-e2e-fixtures` to build the six example nodes with the selected
