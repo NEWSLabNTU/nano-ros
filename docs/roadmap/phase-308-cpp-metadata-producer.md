@@ -12,6 +12,58 @@ test (`cpp_producer_gap_is_tracked_not_hidden`). That test is the acceptance
 signal: when this phase lands, its `unsupported` list goes empty and the
 assertion tightens from a bound to zero.
 
+## The layering: what is per-language and what must not be
+
+The producer is three layers, and only the first is irreducibly per-language.
+Getting this boundary wrong is the whole risk of this phase, because the thing
+being produced is a COUNT, and two counters is how counts drift.
+
+| Layer | Per-language? | Rust (landed) | C/C++ (this phase) |
+| --- | --- | --- | --- |
+| **Front-end** — construct the object, invoke its declaration path | Yes, irreducibly | generated harness crate calling `record_node_metadata::<Class>` | generated probe TU constructing the class and calling `configure` |
+| **Adapter** — translate declaration calls into recorder calls | Small, per-language | `MetadataRecorder` as the `NodeContext` sink | recording RMW backend + two executor hooks (below) |
+| **Recorder + schema + slot accounting** | **No — exactly one** | `MetadataRecorder` + `to_source_metadata_json` | **the same two**, reached from `nros-cpp` |
+
+The third row is a hard constraint, not an aspiration, and it is nearly free:
+`nros-cpp`'s implementation is itself Rust, so the recording backend and the
+hooks can feed the same `MetadataRecorder` VALUE and dump through the same
+`to_source_metadata_json`. Then there is one definition of what a slot is and
+one schema emitter; only the adapter differs.
+
+**Gate for it:** the C/C++ recording path must contain no serialization of its
+own — no JSON, no schema struct, no slot arithmetic. If a reviewer finds any of
+those three in `nros-cpp`, the layer boundary has been crossed. The consumption
+side already works this way after phase-307's correction: the slot rule lives
+once in `nros_orchestration_ir::sidecar_slots`, because the CLI bake and the
+`nros::main!` macro both read sidecars and must agree.
+
+## Why the adapter cannot also be shared
+
+The tempting deeper unification is to record at the executor + session layer
+for BOTH languages, so even the adapter is common. Rejected, for one concrete
+reason: **the schema is declaration-flavored.** It carries `unresolved_topic:
+{value, kind}` and `declaration_slot` — pre-resolution names, in declaration
+order. By the time a call reaches the RMW those names are resolved and the
+information is gone.
+
+The C++ ABI still carries the user's literal declared string, which is why an
+ABI-level intercept works there; the Rust equivalent of that boundary is
+`NodeContext`, which is where the recorder already sits. Same conceptual layer,
+different language surface. That is a legitimate per-language adapter, not a
+fork.
+
+Two things the executor-layer version WOULD buy, both currently blind spots of
+*both* mechanisms — worth revisiting only if they start to matter:
+
+- **Non-declarative registrations.** Board glue and macro-emitted timers never
+  pass through `register()` / `configure()`, so nothing sees them. Handled
+  today by counting them as a known constant in the bake.
+- **Tier gating.** `create_entity` early-returns for entities whose callback
+  group is inactive on the running tier; the recorder has no such gate, so a
+  multi-tier entry's metadata OVER-counts. Safe direction, but inaccurate.
+
+Neither is worth losing the unresolved names for.
+
 ## Why it is not a small wave
 
 The Rust producer works because the recorder and the runtime consume the same
@@ -21,17 +73,12 @@ recording sink in ~40 lines of generated code. C++ has no such seam:
 - A C++ node declares its entities inside `configure(nros::Node&)`, against
   real `nros::Node` methods.
 - Those methods call the `nros_cpp_*` C ABI directly
-  (`nros-cpp/include/nros/nros_cpp_ffi.h`, ~137 exported functions), whose
-  implementation is the `nros-c` Rust crate over a real RMW session.
+  (`nros-cpp/include/nros/nros_cpp_ffi.h`, ~137 exported functions).
 - So "record instead of create" has to happen at the C ABI, not above it.
 
-Timers are the reason a cheaper seam does not exist. A recording RMW backend
-(implementing `nros_rmw_vtable_t`, the RFC-0054 seam) would be the obvious
-minimal intercept — but timers are executor-side, not RMW-side, and timers are
-exactly the entity the SystemModel already cannot see. A producer that misses
-them reproduces the bug it exists to fix.
+Which C ABI functions, and why it is still bounded, is the next section.
 
-## Design settled (2026-07-26, after reading the seam)
+## The adapter, settled (2026-07-26, after reading the seam)
 
 Neither of the two candidates below is the right shape. Reading
 `nros-cpp/src/*.rs` shows the declaration path splits cleanly in two, and the
@@ -106,17 +153,24 @@ carries the C/C++ summaries (`cmake_component_metadata`) and already makes them
 component declarations — phase-307 W5's gate asserts it — so the discovery half
 is done; only the build+run half is missing.
 
-### W2 — recording mode
+### W2 — the adapter
 
-Whichever design W0 settles on, behind a gate that cannot be enabled in a
-firmware build.
+The recording backend + the two executor hooks, behind a gate that cannot be
+enabled in a firmware build. Feeds `MetadataRecorder`; serializes nothing.
 
-### W3 — schema parity
+### W3 — schema parity, by construction rather than by test
 
-The emitted sidecar must be byte-schema-identical to the Rust one: same
-`SourceMetadata`, same `(package, executable)` key, so
-`model_ingest::metadata_slot_counts` needs no language branch. One mechanism
-with three front-ends, not three mechanisms.
+The emitted sidecar is byte-schema-identical to the Rust one because it comes
+out of the same serializer, not because a test compares two of them. Same
+`(package, executable)` key, so the consumption side needs no language branch —
+`nros_orchestration_ir::sidecar_slots` already counts C++ sidecars correctly the
+day they appear, with no change.
+
+Also close phase-307's documented-but-unenforced contract here: a component
+whose DECLARATIONS differ under `#ifdef` / `#[cfg]` between host and target
+records a count that does not describe the firmware. The rule is *declare
+unconditionally, gate behavior not declaration*, and C++ makes it easier to
+break than Rust does. Detect and fail loud rather than silently skew a count.
 
 ### W4 — close the ledger
 
@@ -127,6 +181,11 @@ with three front-ends, not three mechanisms.
 
 - [ ] Every C and C++ node package in `examples/` produces a schema-valid
       sidecar through the same discovery path and schema as Rust.
-- [ ] `metadata_slot_counts` has no language branch.
+- [ ] The consumption side has no language branch (it should need no edit at
+      all — `sidecar_slots` counts a C++ sidecar the day it appears).
 - [ ] Phase-307's producer-gap ledger test asserts zero unsupported packages.
 - [ ] The recording mode cannot be reached from a firmware build.
+- [ ] `nros-cpp`'s recording path contains no JSON, no schema struct and no
+      slot arithmetic — the layer boundary holds by inspection.
+- [ ] A cfg-divergent declaration fails loud instead of recording a count that
+      does not describe the firmware.
