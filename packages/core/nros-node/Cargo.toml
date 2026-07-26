@@ -90,7 +90,6 @@ posix-serial = []
 ros-humble = []
 ros-iron = []
 ros-jazzy = []
-ros-rolling = []
 log = ["dep:log"]
 
 # Phase 248 (C2) — `platform-*` backend-selector features DELETED.

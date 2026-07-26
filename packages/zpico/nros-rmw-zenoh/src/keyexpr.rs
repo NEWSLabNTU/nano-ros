@@ -25,7 +25,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
     fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let topic_stripped = self.name.trim_matches('/');
-        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -33,7 +33,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
                 self.domain_id, topic_stripped, self.type_name
             ),
         );
-        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -72,7 +72,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
     fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let service_stripped = self.name.trim_matches('/');
-        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -80,7 +80,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
                 self.domain_id, service_stripped, self.type_name
             ),
         );
-        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -154,7 +154,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
     fn test_topic_key_generation() {
         let topic =
             TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "abc123").with_domain(42);
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
     fn test_topic_key_generation_iron() {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123")
             .with_domain(42);
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
     fn test_topic_info_to_key_humble() {
         let topic = TopicInfo::new(
             "/chatter",
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
     fn test_topic_info_to_key_iron() {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "RIHS01_deadbeef");
         let key: heapless::String<128> = topic.to_key();
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
     fn test_service_key() {
         let service = ServiceInfo::new(
             "/add_two_ints",
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
+    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
     fn test_service_key_iron() {
         let service = ServiceInfo::new(
             "/add_two_ints",

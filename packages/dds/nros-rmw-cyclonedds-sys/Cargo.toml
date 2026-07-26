@@ -53,7 +53,6 @@ default = ["vendored"]
 ros-humble = ["nros-rmw-cyclonedds/ros-humble"]
 ros-iron = ["nros-rmw-cyclonedds/ros-iron"]
 ros-jazzy = ["nros-rmw-cyclonedds/ros-jazzy"]
-ros-rolling = ["nros-rmw-cyclonedds/ros-rolling"]
 # Phase 144.3 — toggled on when emitting this crate as a top-level
 # `staticlib` (hosted POSIX builds). Embedded consumers keep the
 # default no_std build.

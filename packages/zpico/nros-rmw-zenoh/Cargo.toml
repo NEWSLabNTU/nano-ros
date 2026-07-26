@@ -88,7 +88,6 @@ lending = ["nros-rmw/lending"]
 ros-humble = []
 ros-iron = []
 ros-jazzy = []
-ros-rolling = []
 
 [dependencies]
 nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }

@@ -23,7 +23,6 @@ default = []
 ros-humble = []
 ros-iron = []
 ros-jazzy = []
-ros-rolling = []
 # Hosted-build escape hatch. Off by default to honour the K.7
 # `no_std`-only contract. Test code never enables `std`; the
 # `#[cfg(test)]` tree compiles under `no_std + alloc-free`.

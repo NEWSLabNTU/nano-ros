@@ -180,16 +180,13 @@ pub struct GenerateCppConfig {
     pub verbose: bool,
 }
 
-/// Parse a ROS edition string into a `RosEdition` enum value.
+/// Parse a ROS edition string into a `RosEdition` enum value. Routes through the
+/// single `RosEdition::parse` SSoT (humble | iron | jazzy — rolling is
+/// unsupported) so a new edition is added in one place, not here.
 fn parse_ros_edition(s: &str) -> Result<RosEdition> {
-    match s {
-        "humble" => Ok(RosEdition::Humble),
-        "iron" => Ok(RosEdition::Iron),
-        _ => Err(eyre!(
-            "Unknown ROS edition '{}'. Expected 'humble' or 'iron'.",
-            s
-        )),
-    }
+    RosEdition::parse(s).ok_or_else(|| {
+        eyre!("Unknown ROS edition '{s}'. Expected 'humble' | 'iron' | 'jazzy'.")
+    })
 }
 
 /// Generate bindings from package.xml dependencies.

@@ -1,6 +1,26 @@
 # Phase 41: Iron+ Type Hash Support
 
-**Status: Not Started**
+**Status: Substantially complete (2026-07-26).** The RIHS01 machinery is built,
+wired, and verified end to end for iron + jazzy:
+- **Computation** — `rosidl-codegen/src/rihs.rs` (`build_type_description` +
+  `rihs01`, message/service/action) computes REP-2011 hashes; proven
+  `engine == fixture == live Jazzy` by `rosidl-bindgen/tests/edition_hash_oracle.rs`.
+- **Codegen** — `nros generate-rust --ros-edition {iron,jazzy}` emits the real
+  per-message `const TYPE_HASH` (verified: `std_msgs/Int32` →
+  `RIHS01_b6578ded3c58c626cfe8d1a6fb6e04f706f97e9f03d2727c9ff4e74b1cef0deb`,
+  not the `RIHS01_0…0` placeholder). `--ros-edition jazzy` now parses (was
+  rejected — `cargo-nano-ros::parse_ros_edition` only knew humble|iron; fixed to
+  route through the `RosEdition::parse` SSoT).
+- **Runtime** — `nros-node` threads `M::TYPE_HASH` → `TopicInfo` → the
+  edition-gated zenoh keyexpr / liveliness (`nros-rmw-zenoh/src/keyexpr.rs`):
+  humble → `TypeHashNotSupported`, iron/jazzy → the real hash.
+
+**Residual:** a live-peer ZENOH interop check — a `ros-jazzy` nano-ros node's
+keyexpr type-hash tail accepted by a real `rmw_zenoh_cpp` Jazzy peer at discovery
+(the phase-309/310 harness is cyclone-based, which carries the hash in RTPS
+typeinfo, not the zenoh keyexpr). The offline+container hash oracle already pins
+the values; this would close the wire loop for the zenoh path.
+
 **Priority: Low**
 **Prerequisites:** Phase 16 (ROS 2 interop — complete for Humble)
 

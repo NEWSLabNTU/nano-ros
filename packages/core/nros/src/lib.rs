@@ -71,7 +71,6 @@
 //! - `ros-humble` - ROS 2 Humble (default; `TypeHashNotSupported`, XCDR1)
 //! - `ros-iron` - ROS 2 Iron (RIHS01 type hash)
 //! - `ros-jazzy` - ROS 2 Jazzy (RIHS01; XCDR2/appendable is phase-303)
-//! - `ros-rolling` - ROS 2 Rolling
 //!
 //! **Other**:
 //! - `std` (default) - Enable standard library support
@@ -104,16 +103,12 @@
 #[cfg(any(
     all(
         feature = "ros-humble",
-        any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")
+        any(feature = "ros-iron", feature = "ros-jazzy")
     ),
-    all(
-        feature = "ros-iron",
-        any(feature = "ros-jazzy", feature = "ros-rolling")
-    ),
-    all(feature = "ros-jazzy", feature = "ros-rolling"),
+    all(feature = "ros-iron", feature = "ros-jazzy"),
 ))]
 compile_error!(
-    "`ros-{humble,iron,jazzy,rolling}` are mutually exclusive — select one ROS edition."
+    "`ros-{humble,iron,jazzy}` are mutually exclusive — select one ROS edition."
 );
 
 #[cfg(feature = "std")]
