@@ -1181,8 +1181,14 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     // phase-308 — open this node in the metadata recorder so the entities
-    // declared next attribute to it (the RMW seam carries no node). No-op
-    // unless `metadata-mode` is on.
+    // declared next attribute to it (the RMW seam carries no node). The `_ex`
+    // path takes its namespace from the options struct, so read it back out of
+    // the handle just written rather than re-deriving it. No-op unless
+    // `metadata-mode` is on.
+    let ns_str = core::str::from_utf8(&out.namespace)
+        .ok()
+        .and_then(|s| s.split('\0').next())
+        .unwrap_or("/");
     crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
