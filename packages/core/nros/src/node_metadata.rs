@@ -332,6 +332,13 @@ pub struct SourceMetadataExport<'a> {
     pub exported_symbol: Option<&'a str>,
     pub package_manifest: &'a str,
     pub source_artifacts: &'a [&'a str],
+    /// phase-308 — the source language the sidecar describes (`"rust"`,
+    /// `"c"`, `"cpp"`). It was a hardcoded `"rust"` literal in the serializer
+    /// while Rust was the only producer; the C/C++ producer reaches this SAME
+    /// serializer, so the value has to come from the caller. The consumption
+    /// side keys on `(package, executable)` and never branches on it, but the
+    /// schema declares it and a wrong value is a lie in the artifact.
+    pub language: &'a str,
 }
 
 #[cfg(feature = "std")]
@@ -345,7 +352,14 @@ impl<'a> SourceMetadataExport<'a> {
             exported_symbol: None,
             package_manifest: "package.xml",
             source_artifacts: &[],
+            language: "rust",
         }
+    }
+
+    /// Set the source language (`"c"` / `"cpp"`; defaults to `"rust"`).
+    pub const fn language(mut self, language: &'a str) -> Self {
+        self.language = language;
+        self
     }
 
     /// Set executable name.
@@ -371,6 +385,12 @@ impl<'a> SourceMetadataExport<'a> {
         self.source_artifacts = source_artifacts;
         self
     }
+}
+
+/// phase-308 — `pub` for metadata-mode adapters (see
+/// [`MetadataRecorder::push_node`]); the capacity error is theirs to surface.
+pub fn metadata_string(value: &str) -> Result<MetadataString, NodeMetadataError> {
+    copy_str(value)
 }
 
 pub(crate) fn copy_str(value: &str) -> Result<MetadataString, NodeMetadataError> {
@@ -451,7 +471,8 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         out.write_char(',')?;
         write_json_field(out, "component", export.component)?;
         out.write_char(',')?;
-        write!(out, "\"language\":\"rust\",")?;
+        write_json_field(out, "language", export.language)?;
+        out.write_char(',')?;
         write_json_opt_field(out, "executable", export.executable)?;
         out.write_char(',')?;
         write_json_opt_field(out, "exported_symbol", export.exported_symbol)?;
@@ -466,7 +487,16 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         write!(out, "}}")
     }
 
-    pub(crate) fn push_node(
+    /// Record a node.
+    ///
+    /// phase-308 — `pub` because the recorder is the ONE recorder: the Rust
+    /// adapter (a `NodeContext` sink) and the C/C++ adapter (a recording RMW
+    /// backend + the timer/guard hooks in `nros-cpp`) both feed it, so there is
+    /// one definition of what a slot is and one schema emitter. Only the
+    /// adapter is per-language. Not a general-purpose API — it exists for
+    /// metadata-mode adapters, and misuse produces a sidecar that lies about
+    /// what the component declares.
+    pub fn push_node(
         &mut self,
         id: NodeId<'_>,
         name: &str,
@@ -489,10 +519,11 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             .map_err(|_| NodeMetadataError::Capacity)
     }
 
-    pub(crate) fn push_entity(
-        &mut self,
-        mut entity: EntityMetadata,
-    ) -> Result<(), NodeMetadataError> {
+    /// Record an entity against an already-recorded node. See [`push_node`]
+    /// for why this is public.
+    ///
+    /// [`push_node`]: Self::push_node
+    pub fn push_entity(&mut self, mut entity: EntityMetadata) -> Result<(), NodeMetadataError> {
         if !self.has_node(&entity.node_id) {
             return Err(NodeMetadataError::UnknownNode);
         }
@@ -912,7 +943,10 @@ pub(crate) fn entity_callback_ids(entity: &EntityMetadata) -> [Option<&MetadataS
 /// arguments — three of them adjacent `&str` (`source_name` /
 /// `type_name` / `type_hash`) that are trivially transposable at a
 /// call site — into one named-field struct.
-pub(crate) struct EntityMetadataSpec<'a> {
+/// phase-308 — `pub` alongside [`MetadataRecorder::push_entity`]: metadata-mode
+/// adapters for other languages build entities through this ONE constructor so
+/// the defaults (and therefore the recorded shape) cannot diverge per language.
+pub struct EntityMetadataSpec<'a> {
     pub id: EntityId<'a>,
     pub node_id: NodeId<'a>,
     pub kind: EntityKind,
@@ -922,9 +956,9 @@ pub(crate) struct EntityMetadataSpec<'a> {
     pub qos: QosSettings,
 }
 
-pub(crate) fn entity_metadata(
-    spec: EntityMetadataSpec<'_>,
-) -> Result<EntityMetadata, NodeMetadataError> {
+/// Build an [`EntityMetadata`] from its identifying fields, defaulting the
+/// rest. See [`EntityMetadataSpec`] for why this is public.
+pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, NodeMetadataError> {
     let EntityMetadataSpec {
         id,
         node_id,

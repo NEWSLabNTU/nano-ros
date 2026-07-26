@@ -151,6 +151,8 @@ extern crate self as nros;
 
 pub mod dispatch_tag;
 pub mod guide;
+#[cfg(feature = "metadata-mode")]
+pub mod metadata_mode;
 pub mod node;
 pub mod node_metadata;
 /// Phase 212.M.5.a.2 — executor-backed component runtime.
