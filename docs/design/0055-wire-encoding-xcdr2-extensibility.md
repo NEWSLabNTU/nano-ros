@@ -187,6 +187,26 @@ Consequences for the design:
   downstream distro + its negotiated `data_representation` must be captured
   before any extensibility change lands** (see open Q5).
 
+## Finding (LIVE verification, 2026-07-26) — extensibility/encoding is PER-TYPE, not per-edition
+
+A live run (nano-ros cyclone talker ↔ a real ROS 2 Jazzy `ros2 topic echo`, DDS
+domain 2, `std_msgs/Header`) overturned the "jazzy edition ⇒ appendable + XCDR2"
+model this RFC assumed:
+
+- nano-ros FINAL/XCDR1 → Jazzy decodes perfectly (byte-for-byte).
+- nano-ros APPENDABLE → Jazzy REJECTS it ("incompatible QoS … INVALID").
+
+**Jazzy's standard types are FINAL/XCDR1**; DDS-XTypes strict assignability
+rejects an appendable writer against a final reader. So the wire-encoding +
+extensibility **default is FINAL/XCDR1 for every edition** — a jazzy build is
+byte-identical to humble and interoperates with a default Jazzy peer. XCDR2 +
+DHEADER (§2–§4) is the correct mechanism for a type the peer treats as
+`@appendable` (a PER-TYPE decision — the annotation on that specific type), and
+must NOT be gated on the ROS edition. The machinery stays built; its ACTIVATION
+moves to a per-type `@appendable` signal (future work). This supersedes the
+edition-gated framing in the phase-303 W1b/W2b coordination — the edition axis
+still owns the RIHS01 type-hash tail (phase-304), but NOT the encoding/extensibility.
+
 ## Open questions
 
 1. **DHEADER length strategy** — backpatch (reserve-then-fill, one pass, needs a

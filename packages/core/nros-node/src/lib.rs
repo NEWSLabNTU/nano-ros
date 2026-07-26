@@ -113,22 +113,20 @@ pub(crate) mod mock;
 #[cfg(all(feature = "param-services", any(has_rmw, test)))]
 pub mod parameter_services;
 
-/// phase-303 W4 (#0267) — construct the outbound CDR writer for the ROS-edition
-/// wire encoding. Humble → XCDR1 (byte-identical to pre-W4); iron/jazzy/rolling
-/// → XCDR2 DELIMITED_CDR2, so the generated serialize's DHEADER wrap emits a
-/// per-struct DHEADER matching a modern ROS 2 peer. The READER auto-detects the
-/// version from the encapsulation header, so only the writer is edition-gated —
-/// every tx path routes through here.
+/// phase-303 W4 (#0267) — construct the outbound CDR writer. Every tx path routes
+/// through here so the wire encoding is chosen in ONE place.
+///
+/// **DEFAULT XCDR1 — corrected 2026-07-26 after live verification.** An earlier
+/// version selected XCDR2 (DELIMITED_CDR2) for iron/jazzy+. That is WRONG: a
+/// default Jazzy peer serializes its types FINAL/XCDR1 on the wire (verified
+/// live + by `nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`),
+/// and an APPENDABLE/XCDR2 writer is DDS-incompatible with its FINAL readers. So
+/// nano-ros emits XCDR1 — byte-identical to a default Jazzy node. The XCDR2 path
+/// (`new_with_header_xcdr2` + the generated DHEADER wrap) stays built for a
+/// future PER-TYPE `@appendable` opt-in, not an edition blanket. See #0267.
 #[inline]
 pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros_core::SerError> {
-    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
-    {
-        nros_core::CdrWriter::new_with_header_xcdr2(buf)
-    }
-    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
-    {
-        nros_core::CdrWriter::new_with_header(buf)
-    }
+    nros_core::CdrWriter::new_with_header(buf)
 }
 
 // Re-export parameter types when param-services is enabled

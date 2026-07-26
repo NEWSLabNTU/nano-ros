@@ -28,7 +28,7 @@ use core::fmt::Write as _;
 
 use log::{error, info};
 use nros::prelude::*;
-use std_msgs::msg::{Int32, String as StringMsg};
+use std_msgs::msg::{Header, Int32, String as StringMsg};
 
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
@@ -52,7 +52,35 @@ fn main() {
     // demo); `NROS_PUB_TYPE=int32` publishes `std_msgs/Int32` instead — used by
     // the cross-RMW ws-bridge e2e, whose demo forwards Int32 on /chatter.
     let pub_type = std::env::var("NROS_PUB_TYPE").unwrap_or_default();
-    if pub_type.eq_ignore_ascii_case("int32") {
+    if pub_type.eq_ignore_ascii_case("header") {
+        // phase-303 / #0267 — a nested-`Time` type (std_msgs/Header) to exercise
+        // the appendable/DHEADER path against a live Jazzy peer + domain_bridge.
+        let publisher = {
+            let mut node = executor
+                .create_node("talker")
+                .expect("Failed to create node");
+            let pub_ = node
+                .create_publisher::<Header>("/chatter")
+                .expect("Failed to create publisher");
+            info!("Publisher created for /chatter (std_msgs/Header)");
+            pub_
+        };
+        executor
+            .register_timer(nros::TimerDuration::from_millis(500), move || {
+                let mut msg = Header::default();
+                msg.stamp.sec = 7;
+                msg.stamp.nanosec = 9;
+                let _ = write!(msg.frame_id, "map");
+                match publisher.publish(&msg) {
+                    Ok(()) => info!(
+                        "Publishing Header stamp={}.{}",
+                        msg.stamp.sec, msg.stamp.nanosec
+                    ),
+                    Err(e) => error!("Publish error: {:?}", e),
+                }
+            })
+            .expect("Failed to register publish timer");
+    } else if pub_type.eq_ignore_ascii_case("int32") {
         let publisher = {
             let mut node = executor
                 .create_node("talker")

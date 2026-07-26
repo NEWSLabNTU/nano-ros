@@ -8,13 +8,15 @@
 use core::ffi::c_char;
 use nros_node::{CdrReader, CdrWriter, DHeaderMark, DHeaderScope, DeserError, SerError};
 
-/// phase-303 W4 (#0267) — the ROS-edition wire encoding for the C tx/rx path.
-/// Humble → XCDR1 (byte-identical); iron/jazzy/rolling → XCDR2 DELIMITED_CDR2
-/// (the C codegen wraps each struct with `nros_cdr_begin/end_dheader`, and the
-/// per-primitive align caps at 4). Matched-endpoint editions agree.
-#[cfg(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling"))]
-const XCDR2: bool = true;
-#[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy", feature = "ros-rolling")))]
+/// The wire encoding for the C tx/rx path. `false` = XCDR1, `true` = XCDR2
+/// DELIMITED_CDR2 (the C codegen wraps each struct with `nros_cdr_begin/end_dheader`,
+/// per-primitive align caps at 4).
+///
+/// **DEFAULT `false` (XCDR1) — corrected 2026-07-26 after live verification.** An
+/// earlier version keyed this on `ros-<edition>` (XCDR2 on iron/jazzy+). That is
+/// WRONG: default Jazzy is FINAL/XCDR1 on the wire and rejects an APPENDABLE/XCDR2
+/// peer. XCDR2 is a PER-TYPE `@appendable` property, not an edition blanket; the
+/// path stays built for that future opt-in. See #0267.
 const XCDR2: bool = false;
 
 #[inline]

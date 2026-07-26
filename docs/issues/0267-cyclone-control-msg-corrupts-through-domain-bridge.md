@@ -268,6 +268,45 @@ rationale: [`docs/development/domain-bridge-0267-verification.md`](../developmen
   verification and the last step — it needs a built nano-ros jazzy+cyclone
   publisher on the demo host.
 
+## Update (LIVE verification — DECISIVE, 2026-07-26) — blanket appendable-on-jazzy is WRONG
+
+Ran a real nano-ros cyclone talker against a live Jazzy node (host-net container,
+`ros2 topic echo`, DDS domain 2). Results — a nested-`Time` type
+(`std_msgs/msg/Header`, `stamp = {7, 9}`, `frame_id = "map"`):
+
+| nano-ros build | descriptor | live Jazzy decode |
+|----------------|-----------|-------------------|
+| `ros-humble` (FINAL / XCDR1) | FINAL | ✅ `sec:7 nanosec:9 frame_id:map` — perfect |
+| `ros-jazzy` (W1c APPENDABLE) | appendable | ❌ *"New publisher … incompatible QoS. No messages will be received … Last incompatible policy: INVALID"* |
+
+**Jazzy's standard message types are FINAL (XCDR1), and DDS-XTypes rejects an
+APPENDABLE writer against a FINAL reader** (final is strict-assignability). So the
+W1c/W2/W3/W4 premise — "the jazzy edition ⇒ appendable + XCDR2" — is WRONG as a
+blanket: it BREAKS interop with a default Jazzy peer for every standard type. The
+live verification caught a real design error the offline analysis missed.
+
+**Corrected root cause + fix direction:**
+- Extensibility is a **per-type** property (from the type's `.idl`/descriptor),
+  NOT an edition property. Jazzy std types are FINAL; a type is APPENDABLE only
+  if compiled that way (e.g. autoware may build `Control` `@appendable`).
+- nano-ros's DEFAULT must be **FINAL / XCDR1** — which already interops with
+  default Jazzy byte-for-byte (proven above + by the wire oracle). No edition
+  flip.
+- The #0267 corruption therefore was NOT "nano-ros should be appendable"
+  wholesale. It was a specific type (`autoware_control_msgs/Control`) that the
+  DOWNSTREAM read as appendable while nano-ros wrote FINAL/XCDR1 — a per-type
+  extensibility mismatch. The fix is to match THAT type's extensibility (emit
+  appendable+DHEADER only for it), gated by the type's annotation, not the
+  edition.
+- The XCDR2 + DHEADER machinery (serdes W2/W3, codegen wrap W4, cyclone DLC W1c)
+  is correct + reusable — but its ACTIVATION must move from the edition gate to a
+  per-type `@appendable` signal, defaulting FINAL.
+
+⇒ **Action:** the edition→extensibility/encoding gates are being defaulted back to
+FINAL/XCDR1 (so a jazzy build interoperates with default Jazzy); the
+appendable/XCDR2 path stays built, to be re-activated per-type. See the code
+change + phase-303 re-scope.
+
 ## Suspect (original — superseded by the investigation above)
 
 nano-ros CDR serializer's padding for nested structs w/ Time members

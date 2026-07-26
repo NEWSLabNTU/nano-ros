@@ -14,6 +14,30 @@ Goal: nano-ros is byte-compatible with a **default ROS 2 humble+ peer**
 regardless of the data representation the peer negotiates — specifically,
 `@appendable` nested structs survive an XCDR2 decode (their DHEADER is present).
 
+## CORRECTION (2026-07-26) — the edition→appendable premise is WRONG (live-verified)
+
+A live run (nano-ros cyclone talker ↔ a real Jazzy `ros2 topic echo`, DDS domain
+2, `std_msgs/Header`) overturned this phase's core assumption:
+
+- nano-ros **FINAL/XCDR1** (humble default) → Jazzy decodes it PERFECTLY.
+- nano-ros **APPENDABLE** (the W1c jazzy build) → Jazzy REJECTS it: *"incompatible
+  QoS … Last incompatible policy: INVALID"*, no messages delivered.
+
+**Jazzy's standard types are FINAL/XCDR1, and DDS-XTypes rejects an appendable
+writer against a final reader.** So "the jazzy edition ⇒ appendable + XCDR2" is a
+wrong blanket — it BREAKS interop with default Jazzy. Extensibility is a PER-TYPE
+property (from the type's `@appendable` annotation, e.g. a specific autoware
+`Control`), never an edition property.
+
+**Applied:** the three extensibility/encoding gates now DEFAULT to FINAL/XCDR1
+regardless of edition — `nros_rmw_cyclonedds::dynamic_type::TYPE_EXTENSIBILITY = 0`,
+`nros_node::tx_writer` = XCDR1, `nros_c::cdr::XCDR2 = false`. A `ros-jazzy` build
+is now byte-identical to humble on the wire and interoperates with a default
+Jazzy peer (re-verified live). The XCDR2 + DHEADER machinery (serdes W2/W3,
+codegen wrap W4, cyclone DLC W1c) stays built + tested, to be RE-ACTIVATED
+per-type once a `@appendable` signal is wired (the real remaining work for
+`autoware_control_msgs/Control`-class types). See #0267 "LIVE verification".
+
 ## Status (2026-07-26) — implementation COMPLETE; only the live demo is unverified
 
 Every layer is landed + locally verified (see the W1c/W2/W3/W4 sections):
