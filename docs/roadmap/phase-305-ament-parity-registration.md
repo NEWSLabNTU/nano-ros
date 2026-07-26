@@ -1,6 +1,6 @@
 # Phase 305: Ament-parity component registration (RFC-0057)
 
-**Status:** 🔨 W1-W3 landed, W2 validation partially blocked by host disk (2026-07-26).
+**Status:** ✅ Done (2026-07-26).
 **Implements:** RFC-0057. **Closes:** issue 0275; 0277 (UX half — the
 union-closure engineering half stays open).
 **Reference consumer:** simple-autoware-safety-island (porting-notes 02/08/12).
@@ -176,3 +176,48 @@ active parallel-agent work (212-series) — coordinate before W1.5.
   (per-package FFI crates) — D3's auto-wiring UX is unchanged, 0277's
   mixed-subset hazard is gone by design, and the pre-306 mixed-subset
   warning was removed with it.
+
+## Closure (2026-07-26)
+
+Host disk freed (the earlier lane reds were ENOSPC, not code), lanes rerun
+sequentially: **9/10 green** — native, qemu, freertos, nuttx, threadx_linux,
+threadx_riscv64, stm32f4, esp32, px4. `just check` green.
+
+Two REAL regressions surfaced by the honest rerun and fixed (8cac4e2ce) —
+both from the `EXISTING_TARGET` INTERFACE wrapper that keeps the
+conventional `<pkg>_<exec>_component` name alive, which consumers reach by
+name and read facts off:
+
+1. NuttX kernel link `undefined reference to
+   __nros_c_component_<pkg>_{create,configure}` — the board walk
+   recompiles each C component's SOURCES for the ARM target tagged with its
+   own `-DNROS_PKG_NAME` (phase-263 C2b), reading SOURCES +
+   NROS_COMPONENT_PKG_SYM off the target. Now mirrored onto the wrapper
+   (SOURCES, PKG_SYM, LANG, include dirs).
+2. NuttX `std_msgs/std_msgs.h: No such file` — the issue-0149 descent walks
+   the component's LINK_LIBRARIES for its generated interface libs. Those
+   sit on the real library; `<pkg>__nano_ros_{c,cpp}` links are now
+   re-exposed on the wrapper.
+
+Hardening: `nano_ros_auto_add_library` APPENDs OBJECT_DEPENDS instead of
+setting it — the Zephyr interface-codegen module stamps the same sources
+and either side's plain `set` silently clobbered the other (0088/0090 race
+class).
+
+Remaining red is NOT this phase: 4 Zephyr **C+XRCE** fixtures hit the
+`nros_cpp_config_generated.h` stub — filed as **#282**, proven pre-existing
+by two clean-disk A/Bs (fused spelling → same failure; pre-W1 `cmake/` →
+same failure). All C+zenoh, C+cyclonedds and every C++ Zephyr fixture pass.
+
+RFC-0057 → **Stable**.
+
+### Lessons
+
+- A saturated host produces failure signatures that mimic code bugs
+  (missing headers, undefined symbols, link errors). Check `df` before
+  bisecting: three separate "regressions" here were ENOSPC.
+- When a refactor keeps a legacy NAME alive as a facade, enumerate what
+  consumers read off that name — properties, sources, link edges — not just
+  what it links to. Both real regressions were exactly this.
+- `set_source_files_properties(... OBJECT_DEPENDS)` is a footgun when two
+  modules stamp the same sources: last writer wins, silently. APPEND.
