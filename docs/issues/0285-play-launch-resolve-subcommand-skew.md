@@ -61,3 +61,37 @@ to have a new enough copy.
 
 Owned by whoever landed the `resolve` call — filed from an unrelated session
 (0268 build-graph work) that hit it as a blocker.
+
+## Partial mitigation landed (2026-07-26)
+
+Item 2 is done, in a stronger form than "fail loudly": `resolve_system_models`
+now probes `play_launch resolve --help` — the CAPABILITY, not the name — and a
+`play_launch` that lacks the subcommand is treated exactly like an ABSENT one,
+which was already the designed behaviour (committed `SystemModel`s are used
+as-is, with a loud one-line warning so staleness is never mistaken for
+freshness). `nros-cli-core/src/cmd/ws.rs`.
+
+Probing `--version` was the actual defect. `play_launch` is also the name of an
+unrelated ROS 2 record/replay tool, which answers `--version` happily; the
+probe therefore reported "present" and the clap error surfaced from inside a
+cmake configure. Degrading is strictly better than failing here: the model is
+checked in and usually current, so a host with the wrong tool can still build
+everything.
+
+With that, `just build-test-fixtures` proceeds on a host whose `play_launch` is
+the wrong tool.
+
+## Still open
+
+Item 1 — pinning and installing a resolve-capable `play_launch` under
+`~/.nros/…` so `activate.sh` owns the PATH entry. Until then, committed models
+are never refreshed on such a host, so a launch-file edit silently does not
+reach the bake.
+
+**Design note (2026-07-26):** rather than pinning an external binary, the
+preferred direction is to split `play_launch` — link the Python-free resolve
+pipeline into our own toolchain as a library, and keep only the CPython-linked
+launch-file parsing in a separately-built tool (built on the user's machine
+against the user's Python, the way the CLI is built). That removes the version
+skew this issue is about instead of managing it. Being explored; see the
+phase/RFC that comes out of it.

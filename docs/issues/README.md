@@ -99,6 +99,15 @@ Version skew: the CLI's required `play_launch` is unpinned/uninstalled and
 `~/.local/bin/play_launch` shadows it. Needs a pin + a `[PREREQ]` probe (the #197
 pattern). See `0285-play-launch-resolve-subcommand-skew.md`. (2026-07-26)
 
+**#286** — self-contained standalone examples (node + entry in one crate) dep their board
+crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
+back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
+grows one as a template. See `0286-*`.
+
+**#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
+feature unification, and the error names `nros-serdes` rather than the crate that caused it.
+The `--exclude` list is manual and duplicated. See `0287-*`.
+
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
 residue). See `0200-*`.
 
