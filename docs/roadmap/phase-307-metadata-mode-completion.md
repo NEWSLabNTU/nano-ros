@@ -1,6 +1,8 @@
 # Phase 307 — metadata-mode completion: make the exact entity count real
 
-**Status (2026-07-26): Draft.** Finishes the phase-172.E metadata-mode
+**Status (2026-07-26): W1, W2, W4, W5 and W6 lane 1 landed. W3 split out to
+[phase-308](phase-308-cpp-metadata-producer.md); W6 lane 2 (runtime boot)
+remains.** Finishes the phase-172.E metadata-mode
 *driver* (landed 2026-05-28) into a mechanism the bakes can actually depend
 on, and consumes it where exactness matters. Motivated by issue 0257: the
 executor callback-table sizing currently derives from the SystemModel's
@@ -79,7 +81,18 @@ staleness stamp so a bake can tell fresh from museum data.
 **Done when:** the documented workflow produces sidecars without a manual
 verb, and a stale sidecar is detectable.
 
-### W3 — C/C++ producer
+### W3 — C/C++ producer — MOVED to phase-308
+
+Split out once the Rust half landed and this proved phase-sized: the C++
+declaration path bottoms out in the ~137-function `nros_cpp_*` C ABI, so
+"record instead of create" has to happen at that seam. A recording RMW
+backend would be the cheap intercept but misses TIMERS (executor-side, not
+RMW-side) — the one entity the model already cannot see, so it would
+reproduce the bug it exists to fix. Design options + the "must not fork"
+constraint are recorded in
+[phase-308](phase-308-cpp-metadata-producer.md).
+
+### W3 (original text) — C/C++ producer
 
 The cmake `nros-metadata.json` is a (pkg, exec) → class/header/groups map
 with no entity detail, so C/C++ components can never contribute a count
@@ -160,6 +173,18 @@ sizing they produce is correct. Two lanes, both marker-gated
 rules: cell + row land together, allocator ports, no hand-picked numbers)
 and pass solo on a quiet host.
 
+**Status:** lane 1 LANDED as
+`nros-cli-core/tests/executor_sizing_bake_gate.rs` — three cases through
+the real `codegen-system` verb (control fits; six recorded timers over-run
+and the bake names "7 callback entities … holds 4"; a thin sidecar never
+lowers the count). It needs no compilation, so it runs in `just check`
+rather than a QEMU lane.
+
+Lane 2 (a >4-entity system BOOTING on one hosted and one embedded lane)
+remains. It needs a new node package — no example in the tree registers
+more than one callback entity today, which is itself why the 4-slot
+default survived this long — plus its fixture rows and matrix cells.
+
 ## Scope note — "all examples" is the bar, deliberately
 
 The tree has ~250 standalone example fixtures and ~85 workspace fixtures
@@ -180,6 +205,14 @@ independent of the deploy target) rather than per-platform plumbing.
 
 ## Acceptance
 
+Landed: W1 (Rust producer covers `[package.metadata.nros.node]`), W2
+(`nros sync` refreshes, content-addressed provenance), W4
+(`max(model, recorded)` per node in the CLI bake), W5 (coverage gate over
+all 421 example packages — which found three schema holes that made
+`Workspace::discover` hard-fail on 15 board examples), W6 lane 1.
+
+- [x] Every unmodified RUST node pkg is a metadata-mode candidate, standalone
+      and workspace alike, asserted by enumeration over the whole tree.
 - [ ] EVERY unmodified node pkg in `examples/` produces a schema-valid
       sidecar — Rust, C and C++; standalone examples and workspace members
       alike — with no per-example opt-in and a tracked exception list for
