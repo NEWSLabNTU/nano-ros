@@ -82,10 +82,17 @@ fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /
 Needs ONE SMP fixture (a separate zephyr native_sim SMP variant, not the shared image) to flip a
 two-mode core-pin e2e to accept. See `0260-*`. (phase-296 W5.11 2026-07-24)
 
-**#259** — the RTOS realizer never derives `placement` / `non_preempt_scope` from the model (both
-hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can't assign a core pin
-or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
-vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
+**#259** — derived scheduling is quantitatively INERT: the model carries no per-callback WCET
+(`MapperPath.exec_ms` is `None` everywhere), so the budget dim short-circuits, blocking (`B_i`)
+can never be numeric, and the feasibility check assumes `B_i = 0` — **unsound whenever callbacks
+share a resource**. The originally-filed symptom (`placement`/`non_preempt_scope` hardcoded
+`NotRequested`) follows from it: both are MECHANISMS, not requirements, so no contract fact
+implies them. Rewritten 2026-07-26 with the design review — contention is already declared via
+MutuallyExclusive callback groups (no new vocabulary for the intra-node case), a `holds:` contract
+field is rejected (locking is implementation, not interface), and `criticality → core pin` is
+rejected outright (unfalsifiable adjective; would look like a partitioning claim nothing backs).
+Prereqs: WCET fact, board peripheral registry, `SchedCaps` core count. See `0259-*`.
+(phase-296 W5.11 2026-07-24; reframed 2026-07-26)
 
 (#286 resolved 2026-07-26 — see `archived/0286-*`: the blocker was NOT the missing runner but
 `[unstable] build-std`, which is not target-scoped and rebuilds std against nuttx's patched libc

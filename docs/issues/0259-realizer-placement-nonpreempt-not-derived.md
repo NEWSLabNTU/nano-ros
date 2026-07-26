@@ -1,19 +1,18 @@
 ---
 id: 259
-title: "RTOS realizer never derives placement / non_preempt_scope from the model — both dims hardcoded NotRequested"
+title: "Derived scheduling is quantitatively inert — no WCET in the model, so blocking is unmodelled and budget/placement/non_preempt can't be derived"
 status: open
 type: limitation
 area: orchestration
-related: [phase-296]
+related: [phase-296, rfc-0052]
 ---
 
-## Finding (phase-296 W5.5–W5.11 placement/preempt consumer work, 2026-07-24)
+## Original finding (phase-296 W5.5–W5.11, 2026-07-24)
 
-`realize_rtos` (`packages/cli/nros-cli-core/src/orchestration/rtos_realizer.rs`)
-derives the `deadline` and `budget` dims from the self-derived DAG facts
-(`node_facts` → `max_latency_ms`, timer-rate period, exec/WCET) and lowers them
-to `Native` / `Backfill` / `Degrade`. But the `placement` and `non_preempt_scope`
-dims are HARDCODED to `NotRequested` (rtos_realizer.rs ~line 341):
+`realize_rtos` (`packages/core/nros-orchestration-ir/src/rtos_realizer.rs`)
+derives `activation`, `urgency`, `deadline` and `budget` from the self-derived
+DAG facts, but `placement` and `non_preempt_scope` are HARDCODED
+(`rtos_realizer.rs:347`):
 
 ```rust
 // non_preempt_scope + placement: not derived from the model yet.
@@ -22,35 +21,136 @@ let placement_real = DimRealization::NotRequested;
 ```
 
 So `RealizedNode.core` and `.preempt_threshold` are always `None` — the derived
-schedule NEVER assigns a core pin or a preemption threshold.
+schedule NEVER assigns a core pin or a preemption threshold. The board
+consumers for both dims EXIST and are e2e-verified (W5.7/W5.8 Zephyr core-pin,
+W5.9 NuttX sporadic, W5.10 ThreadX preempt-threshold, W5.11 NuttX/FreeRTOS
+core-pin) — but they only fire from EXPLICIT per-tier knobs
+(`<platform>.core`, `<platform>.preempt_threshold`). The derived path
+(`derive_execution_from_contracts`, RFC-0052's whole point) can never produce
+them, so a self-derived schedule silently omits placement + non-preemption.
 
-## Why it matters
+## Rewritten framing (design review, 2026-07-26)
 
-The board consumers for both dims now EXIST and are e2e-verified (phase-296
-W5.7/W5.8 Zephyr core-pin, W5.9 NuttX sporadic, W5.10 ThreadX
-preempt-threshold, W5.11 NuttX/FreeRTOS core-pin), but they only fire from the
-EXPLICIT per-tier knobs in `system_model.yaml` (`<platform>.core`,
-`<platform>.preempt_threshold`). The DERIVED-schedule path (RFC-0052's whole
-point — `derive_execution_from_contracts` when a model declares no
-`execution.tiers`) can never produce those knobs, so a self-derived schedule
-silently omits placement + non-preemption.
+The two hardcoded dims are a SYMPTOM. Tracing the consumers turned up three
+findings that reframe the work.
 
-## Blocker (design-open)
+### 1. The blocker is a missing NUMBER (WCET), not a missing adjective
 
-This is NOT a mechanical gap — `model.contracts.node_paths` has no fact that
-implies "pin to a core" or "this callback is non-preemptible". Deriving them
-needs a model vocabulary decision (RFC-0052 §Open questions: dims-on-segment vs
-dims-on-callback; and what contract fact maps to placement/non-preemption).
-Candidates: a criticality/isolation contract → core pin; a
-mutual-exclusion / shared-resource contract → non_preempt_scope. Resolve in
-RFC-0052 before implementing.
+Both remaining dims — and one of the four "working" ones — need per-callback
+execution time, and **the model carries none**. `MapperPath.exec_ms` is `None`
+everywhere (`chain_aware_mapper.rs:692/701/712`; W5.1 derives it as `None`),
+and the realizer's budget arm short-circuits on `budget_ms: None →
+NotRequested`. So today:
 
-## Direction
+- **budget** is nominally implemented but practically inert (no WCET ⇒ no
+  budget ⇒ no reservation/sporadic on the derived path).
+- **blocking** (`B_i`) can only ever be structural ("A can block B"), never
+  numeric.
+- The feasibility check therefore assumes `B_i = 0`, which is **unsound
+  whenever callbacks share a resource** — it reports more headroom than
+  exists. This is the most serious item in this issue.
 
-1. RFC-0052: decide the contract vocabulary for placement + non_preempt_scope.
-2. Extend `node_facts` / `MapperPath` to carry the new facts.
-3. Fill `placement_real` / `preempt_real` in `realize_rtos` (Native where the
-   `SchedCaps` support it, Degrade/Backfill otherwise, recorded like the other
-   dims); set `RealizedNode.core` / `.preempt_threshold`.
-4. Emit the knobs from `derive_execution_from_contracts` into the synthesized
-   `[tiers.*]` rows so the existing consumers fire on the derived path.
+Response-time analysis needs
+`R_i = C_i + B_i + Σ_{j∈hp(i)} ⌈R_i/T_j⌉·C_j`; we have neither `C_i` nor `B_i`.
+
+**Action: add per-callback WCET as a measured numeric fact** (node-manifest
+level — see §3). It is the highest-value missing input in the whole scheduling
+story, and exactly the kind of fact the contract vocabulary already prefers:
+numeric, measurable, falsifiable.
+
+### 2. `placement` and `non_preempt_scope` are MECHANISMS, not requirements
+
+The four working dims each trace to a fact that implies them
+(`max_latency_ms` → deadline, contracted rate → period, WCET → budget, rank →
+priority). "Pin to core N" and "don't preempt me" imply nothing on their own —
+they are *ways of achieving* a deadline under interference. Asking "which
+contract fact means core-pin?" is the wrong question; the right one is "what
+does the realizer need in order to DECIDE placement?" — an interference model,
+not a new per-node adjective.
+
+Consequences:
+
+- **placement** splits in two. *Performance placement* (spread load, colocate a
+  chain) must be a DERIVED allocation output — from per-core utilization and
+  chain structure — never a declared field; the user cannot state it correctly
+  because it depends on the whole taskset. *Hardware locality* ("this callback
+  services the IMU whose IRQ lands on core 0") is a legitimate declared fact,
+  but it names a DEVICE, not a core number, and resolves against the board.
+- **non_preempt_scope** derives from resource contention:
+  `ceiling(R) = max urgency among R's holders` → ThreadX preempt-threshold
+  natively, executor-enforced Backfill elsewhere, Degrade recorded otherwise.
+  The same contention set yields `B_i`.
+
+### 3. Contention is already declared — and does NOT belong in the contract layer
+
+`CallbackGroupDecl { type: "MutuallyExclusive" }` already states "these
+callbacks never run concurrently" — a resource declaration in all but name,
+authored by the node author, carried in `execution.bindings`, enforced by the
+executor. For the intra-node case (the case that exists in-tree today) NO new
+vocabulary is needed: `B_i` = longest WCET among the group's other members;
+`ceiling` = max urgency in the group.
+
+A `holds: [resource]` field in `contracts.node_paths` was considered and
+**rejected**: a contract is an interface promise (what other components may
+rely on), while locking is an implementation fact — invisible at the interface,
+changed by refactors, and different between two implementations of the same
+interface. It belongs in the node's own manifest beside the callback groups.
+Cross-node hardware contention is then INFERRED: two nodes whose manifests
+both bind `spi0`, plus a board that has one `spi0`, contend. Nobody writes a
+contention contract.
+
+If a resource name ever does become referenceable, it must be a first-class
+declared entity with a resolution check (like topics) — a free-form string is
+worse than nothing here, because a typo yields NO match, hence no blocking
+term, hence a MORE optimistic verdict. Silence on a misspelled safety-relevant
+input is the wrong failure mode.
+
+Rejected outright: deriving placement from `criticality`. It is an ordinal
+adjective with no unit, unfalsifiable, already load-bearing as a mapper
+tie-break, and imported from the assurance-process world (DAL/ASIL). Making it
+imply core pinning would (a) fragment capacity with no schedulability
+argument, (b) change physical topology as a side effect of an "importance"
+label, and (c) resemble a spatial-partitioning claim that nothing here backs
+(no cache/bus interference bound). Where deadlines exist, deadline-monotonic
+ordering already determines priority; where they do not, the honest response is
+a warning ("unconstrained path — declare a deadline or rate"), not a silent
+bucket. Note the present hazard: a tight-deadline path marked `criticality:
+low` currently sorts BELOW a slack path marked `high` — priority inversion by
+adjective.
+
+## Prerequisites (blocking, in order)
+
+1. **Per-callback WCET** in the node manifest (measured). Without it, budget +
+   blocking stay inert and the feasibility verdict stays optimistic.
+2. **Board peripheral registry** — `BoardDescriptor` today is build-oriented
+   (toolchain / features / link kind) with no device list; both cross-node
+   contention (`spi0`) and hardware locality (`drives: imu0`) need one.
+3. **`SchedCaps` core count** — `affinity: bool` exists, but placement
+   allocation needs the number of cores.
+
+## Direction (staged; each step lands green on its own)
+
+1. **Ceiling + blocking from callback groups** — zero new user vocabulary.
+   Derive `ceiling(R)` / `B_i` from MutuallyExclusive group membership, feed
+   `B_i` into the feasibility check (fixes the unsoundness for the intra-node
+   case), and fill `preempt_real` through the existing Native/Backfill/Degrade
+   machinery → `RealizedNode.preempt_threshold`. Quantitatively meaningful only
+   once (1) lands; structurally correct before that.
+2. **Hardware locality** — device bindings in the node manifest + the board
+   peripheral registry → `placement_real` where the board routes the IRQ,
+   fail-loud when it cannot.
+3. **Performance placement** — per-core utilization + chain colocation as an
+   allocation OUTPUT, rendered in `--explain` ("chain A → core 1: util 0.62,
+   segments s1→s3 colocated") and Degrade-marked honestly ("affinity from
+   utilization only; no cache/bus interference bound proven").
+4. **Emit the resulting knobs** from `derive_execution_from_contracts` into the
+   synthesized `[tiers.*]` rows so the existing board consumers fire on the
+   derived path.
+
+## Open question for RFC-0052
+
+The executor runs one task per tier, so a ceiling derived per callback GROUP
+may be unrepresentable at runtime — in which case the honest realization is
+tier-level with a Degrade record ("ceiling applied at tier granularity;
+group-level non-preemption not enforced"). Decide group-granular vs
+tier-granular before implementing step 1.
