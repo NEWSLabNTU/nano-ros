@@ -1,7 +1,7 @@
 ---
 id: 257
 title: "NROS_EXECUTOR_MAX_CBS is a hidden compile-time env the entry codegen could derive from the model"
-status: open
+status: resolved
 type: enhancement
 area: build
 ---
@@ -106,3 +106,50 @@ proc-macro-time nested cargo); W3 a C/C++ producer built on phase-235's
 already-recording NativeBoard NodeContext (coordinate with phase-236);
 W4 folds it in as `max(model, metadata)` with the tier-group filter and
 closes this issue. See `docs/roadmap/phase-307-metadata-mode-completion.md`.
+
+## Resolved (2026-07-26) — phase-307
+
+The executor-sizing scope is closed. The "Decision" above (keep the
+model-wiring lower bound, exactness not worth it) was overturned by doing
+the revival it listed as a follow-up, and the three blockers it recorded
+all fell:
+
+1. **Nothing produced sidecars automatically.** `nros sync` now refreshes
+   them as its last step (after codegen + the `[patch.crates-io]` tables,
+   which the harness needs to resolve generated interface deps), with a
+   content-addressed provenance stamp so a consumer can tell a current
+   sidecar from museum data. No nested cargo runs during proc-macro
+   expansion — the trap that killed the naive approach — because the
+   producer is a build step and the macro only READS a file.
+2. **The producer did not cover the shipping shape.** It does now:
+   `[package.metadata.nros.node]` packages become component declarations,
+   and the harness names the registered type from the declared `class`
+   instead of guessing `<crate>::<module>::Component`.
+3. **No C/C++ producer.** Still true, and still the reason this issue's
+   fix is Rust-only — tracked as
+   `docs/roadmap/phase-308-cpp-metadata-producer.md`. C/C++ node packages
+   keep the model bound, which is exactly today's behaviour, so nothing
+   regresses.
+
+Consumption is `max(model_wiring, recorded)` PER NODE, in the shared
+`nros-orchestration-ir::count_callbacks_with_recorded` that both the CLI
+bake and the `nros::main!` macro call. The max is necessary, not just
+safe: measuring real sidecars showed the model misses TIMERS and the
+recorder misses service/action CLIENTS. Monotone, so a workspace with no
+sidecars produces exactly the pre-fix result.
+
+Regression coverage the issue never had:
+
+* `nros-cli-core/tests/executor_sizing_bake_gate.rs` — an over-capacity
+  system fails at BAKE and names the count ("7 callback entities … holds
+  4") instead of shipping an image that dies at boot.
+* `examples/workspaces/ws-sizing-rust` + `nros-tests/tests/executor_sizing_e2e.rs`
+  — a six-timer node the model counts as ZERO. With its sidecar removed
+  the entry dies `ExecutorFull("burst_pkg")`, which is this issue's
+  reported failure reproduced in-tree; with it, the entry boots.
+
+**Remaining scope, unchanged:** `NROS_CYCLONEDDS_MAX_TYPES` is still a
+hidden compile-time knob. Distinct msg/srv types per entry are derivable
+from the same source-metadata the sizing now uses; filed separately
+rather than holding this issue open, since the callback-slot failure
+mode it was opened for is fixed.

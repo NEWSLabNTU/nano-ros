@@ -80,12 +80,9 @@ path) vs ROS 2's XCDR2-APPENDABLE default — a downstream consumes a phantom DH
 bridge crosses a representation boundary. Fix tracked by **RFC-0055 + phase-303** (XCDR2 +
 explicit extensibility + representation negotiation). See `0267-*`.
 
-**#257** — `NROS_EXECUTOR_MAX_CBS` (default 4) is a hidden compile-time env; multi-node
-workspaces die at boot `ExecutorFull` with no build-time hint. NARROWED (2026-07-26): the
-executor half is done — both bakes count the model's entities via the shared
-`nros_orchestration_ir::executor_sizing`, derive the per-entry sizing on boards that honor it,
-and fail the BUILD (macro `const` assert / codegen-system bail) on the boards that don't. The
-same treatment for `NROS_CYCLONEDDS_MAX_TYPES` is what's left. See `0257-*`.
+**#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
+now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
+derivable from the same source-metadata sidecars phase-307 wired up. See `0284-*`.
 
 **#278** — no polling subscriber / blocking service futures: mrm_handler-class ports weaken to
 cache-latest subs + send-and-poll service calls (semantic weakening of the safety path,

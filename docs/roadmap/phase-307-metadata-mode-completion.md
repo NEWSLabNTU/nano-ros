@@ -1,8 +1,9 @@
 # Phase 307 — metadata-mode completion: make the exact entity count real
 
-**Status (2026-07-26): W1, W2, W4, W5 and W6 lane 1 landed. W3 split out to
-[phase-308](phase-308-cpp-metadata-producer.md); W6 lane 2 (runtime boot)
-remains.** Finishes the phase-172.E metadata-mode
+**Status (2026-07-26): COMPLETE for Rust.** W1, W2, W4 (both halves), W5 and
+W6 (both lanes) landed; issue 0257's executor-sizing scope closes. W3 (the
+C/C++ producer) is split out to
+[phase-308](phase-308-cpp-metadata-producer.md). Finishes the phase-172.E metadata-mode
 *driver* (landed 2026-05-28) into a mechanism the bakes can actually depend
 on, and consumes it where exactness matters. Motivated by issue 0257: the
 executor callback-table sizing currently derives from the SystemModel's
@@ -173,40 +174,36 @@ sizing they produce is correct. Two lanes, both marker-gated
 rules: cell + row land together, allocator ports, no hand-picked numbers)
 and pass solo on a quiet host.
 
-**Status:** lane 1 LANDED as
+**Status: both lanes LANDED.** Lane 1 is
 `nros-cli-core/tests/executor_sizing_bake_gate.rs` — three cases through
 the real `codegen-system` verb (control fits; six recorded timers over-run
 and the bake names "7 callback entities … holds 4"; a thin sidecar never
 lowers the count). It needs no compilation, so it runs in `just check`
 rather than a QEMU lane.
 
-Lane 2 (a >4-entity system BOOTING on one hosted and one embedded lane)
-remains, and scoping it turned up a real blocker worth recording: **the
-fixture is not the hard part, the macro is.**
+Lane 2 landed as `examples/workspaces/ws-sizing-rust` +
+`nros-tests/tests/executor_sizing_e2e.rs`. Its node registers six timers
+and no subscription, so the model names ZERO callback entities for it
+while the runtime needs six slots. Verified both directions before
+wiring the test: sidecar removed and entry rebuilt →
+`ExecutorFull("burst_pkg")` at registration (issue 0257's reported
+failure, reproduced in the repo for the first time); sidecar present →
+boots, 168 callbacks in 2 s.
 
-A pure-cargo native entry is sized by the `nros::main!` proc-macro, which
-W4 deliberately left on the model bound. So a node with one modelled
-subscription and five timers would be sized `derive_max_callbacks(1)` = 3
-and still die at boot — the sidecar exists, the CLI bake would catch an
-over-run, but nothing feeds the macro's `Executor::open_sized`. Lane 2
-therefore cannot pass on the strength of a new fixture alone.
+Reaching it required W4's deferred second half — the `nros::main!` macro
+reading sidecars too. The macro, not the fixture, was the blocker: on
+boards that honor per-entry sizing the macro's derived value IS the
+executor's capacity, so a fixture alone could never have passed.
 
-The fix is W4's deferred second half: have the macro read the sidecars
-too. The original objection does not apply — what killed the naive 0257
-approach was shelling a nested `cargo build` during macro expansion, and
-reading an already-produced JSON file is not that. W2 now supplies the
-ordering guarantee (`nros sync` runs before the build) and the provenance
-stamp (the macro can tell a current sidecar from museum data), so the
-remaining work is:
-
-1. give `nros-macros` a JSON reader and a workspace-root walk-up from
-   `CARGO_MANIFEST_DIR`;
-2. apply the same per-node `max(model, recorded)` rule, falling back to
-   the bound when no sidecar is found — never failing on absence;
-3. THEN the lane-2 fixture (a >4-entity node — no example in the tree
-   registers more than one callback entity today, which is itself why the
-   4-slot default survived this long) plus its fixture rows and matrix
-   cells.
+**Correction to this wave's original text.** It called for an embedded
+boot lane "proving the sizing reaches boards that DROP per-entry sizing".
+It does not, and cannot: `board_honors_entry_sizing` is `native | posix`
+only, and every firmware board takes the default trait body that ignores
+the emitted sizing and opens at the compiled `NROS_EXECUTOR_MAX_CBS`. On
+embedded, this phase's contribution is the LOUD BAKE REFUSAL naming the
+real count — which is lane 1, and lane 1 is board-agnostic (it exercises
+a `freertos` deploy). An embedded boot fixture would only test the
+`NROS_EXECUTOR_MAX_CBS` plumbing, which is not what phase-307 changed.
 
 ## Scope note — "all examples" is the bar, deliberately
 
@@ -236,23 +233,25 @@ all 421 example packages — which found three schema holes that made
 
 - [x] Every unmodified RUST node pkg is a metadata-mode candidate, standalone
       and workspace alike, asserted by enumeration over the whole tree.
-- [ ] EVERY unmodified node pkg in `examples/` produces a schema-valid
-      sidecar — Rust, C and C++; standalone examples and workspace members
+- [ ] (phase-308) EVERY unmodified node pkg in `examples/` produces a
+      schema-valid sidecar — Rust, C and C++; standalone examples and workspace members
       alike — with no per-example opt-in and a tracked exception list for
       legitimate non-nodes.
-- [ ] Identical source yields an identical entity set regardless of the
+- [x] Identical source yields an identical entity set regardless of the
       target platform selection (host probe ⇒ platform-agnostic);
       cfg-divergent declarations fail loud instead of skewing a count.
-- [ ] Sidecars are produced by the documented workflow, not a manual verb,
+- [x] Sidecars are produced by the documented workflow, not a manual verb,
       and staleness is detectable.
-- [ ] The executor-capacity gate uses the exact count where a sidecar
+- [x] The executor-capacity gate uses the exact count where a sidecar
       exists (timers included) and the model bound where it does not, and
       never falls below the model bound.
-- [ ] W5 coverage gate runs in `just check` and fails on any missing,
+- [x] W5 coverage gate runs in `just check` and fails on any missing,
       empty, or under-counting sidecar.
-- [ ] W6 E2E: an over-capacity system fails at BAKE with the count named,
-      and a >4-entity system (subs + timers) boots and delivers on one
-      hosted AND one embedded lane.
-- [ ] 0257 closes; the "why not metadata?" note in
+- [x] W6 E2E: an over-capacity system fails at BAKE with the count named,
+      and a >4-entity system (timers the model cannot see) boots and
+      delivers on the hosted lane. Embedded is covered by the bake
+      refusal, not a boot: firmware boards ignore per-entry sizing by
+      design (see the W6 correction).
+- [x] 0257 closes; the "why not metadata?" note in
       `nros-orchestration-ir/src/executor_sizing.rs` is replaced by the
       real rule.
