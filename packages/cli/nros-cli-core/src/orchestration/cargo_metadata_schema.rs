@@ -245,6 +245,11 @@ pub struct EntryMetadata {
     /// slots. Absent / `0` → build default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_sched_contexts: Option<usize>,
+    /// Node packages this entry links and boots. Consumed by the `nros::main!`
+    /// bake; accepted here so discovery does not reject the entry (issue 0100's
+    /// self-contained standalone examples all declare it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_pkgs: Vec<String>,
 }
 
 /// `[package.metadata.nros.node]` (single shape, canonical post Phase
@@ -268,6 +273,19 @@ pub struct ComponentMetadata {
     /// Default namespace the component is mounted at. Absent → `/`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_namespace: Option<String>,
+    /// Phase 216.A.5 — `"inline" | "deferred" | "from_isr"`.
+    ///
+    /// Accepted here but VALIDATED in `cmd::check_workspace`, which owns the
+    /// (framework × strategy) matrix and its own parse of this same table.
+    /// Two parsers, one TOML table: this field existing only in the other one
+    /// meant `Workspace::discover` returned a hard "unknown field `dispatch`"
+    /// error for every standalone example that declares it — 15 of them,
+    /// across stm32f4 / esp32 / nuttx — so `nros metadata` and every other
+    /// `Workspace::discover` caller simply could not read those packages.
+    /// phase-307 W5's coverage gate is what surfaced it. Keep the two parsers
+    /// in sync; the gate re-checks the whole tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<String>,
     /// Raw ROS parameter declarations. Values stay as `toml::Value` here so
     /// the planner can do its own type-aware lowering (mirrors the existing
     /// `params::ParameterTable` resolution path).
@@ -361,6 +379,27 @@ pub struct DeployTargetMetadata {
     /// Optional RMW locator URI (e.g. `tcp/127.0.0.1:7447`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
+    /// Static network overlay the `nros::main!` bake lowers into a
+    /// `DeployOverlay` (`main_macro::DeployOverlayLit`), overlaying the board's
+    /// compiled-in `Config::default()`. Dotted IPv4 strings.
+    ///
+    /// Same two-parser drift as [`ComponentMetadata::dispatch`]: the macro read
+    /// these keys while this envelope rejected them, so `Workspace::discover`
+    /// hard-failed on every board example that declares a static IP — stm32f4,
+    /// esp32, nuttx. phase-307 W5's coverage gate surfaced it. Parsed here for
+    /// discovery; the macro remains the consumer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub netmask: Option<String>,
+    /// Transport selector (`udp` / `tcp` / `serial`), consumed by the bake.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    /// Rust target triple the deploy builds for (`armv7a-nuttx-eabihf`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// Convenience alias: spec calls these `RemapEntry`. The existing
