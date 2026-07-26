@@ -44,9 +44,11 @@ NROS_PUBLIC
 int32_t nros_cdr_write_encaps_header(uint8_t** ptr, const uint8_t* end);
 
 int64_t nros_cdr_begin_dheader(uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
-int32_t nros_cdr_end_dheader(int64_t mark, uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t nros_cdr_end_dheader(int64_t mark, uint8_t** ptr, const uint8_t* end,
+                             const uint8_t* origin);
 int64_t nros_cdr_begin_dheader_read(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
-int32_t nros_cdr_end_dheader_read(int64_t scope, const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t nros_cdr_end_dheader_read(int64_t scope, const uint8_t** ptr, const uint8_t* end,
+                                  const uint8_t* origin);
 
 int32_t nros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, bool value);
 
