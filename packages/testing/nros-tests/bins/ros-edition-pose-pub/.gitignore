@@ -3,3 +3,4 @@
 # container), so it is never committed.
 /target/
 /generated/
+/Cargo.lock

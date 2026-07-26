@@ -81,6 +81,7 @@ ci distro="jazzy":
     # nano-ros interop lane runs (not just the stock-publisher lane).
     just ros_editions build-fixture {{distro}}
     echo "== ros-editions harness lanes ({{distro}}) =="
+    export NROS_ROS_EDITION={{distro}}
     cargo test -p nros-tests \
         --test ros_editions_smoke \
         --test ros_editions_codegen \

@@ -24,11 +24,12 @@ fn fixture_bin() -> PathBuf {
 }
 
 #[test]
-fn nano_ros_posestamped_survives_jazzy_domain_bridge() {
+fn nano_ros_posestamped_survives_edition_domain_bridge() {
+    let ed = ros_env::test_edition();
     let bin = fixture_bin();
     if !bin.is_file() {
         nros_tests::skip!(
-            "nano-ros pose publisher fixture not built — run `just ros_editions build-fixture jazzy`"
+            "nano-ros pose publisher fixture not built — run `just ros_editions build-fixture {ed}`"
         );
     }
 
@@ -38,10 +39,10 @@ fn nano_ros_posestamped_survives_jazzy_domain_bridge() {
     } else {
         (base, base + 1)
     };
-    let env_to = DockerRosEnv::new("jazzy", Middleware::Cyclonedds { domain_id: d_to });
+    let env_to = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: d_to });
     if !env_to.available() {
         nros_tests::skip!(
-            "jazzy image not built or docker absent — run `just ros_editions image jazzy`"
+            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
 

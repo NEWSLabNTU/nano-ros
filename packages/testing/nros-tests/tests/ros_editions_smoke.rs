@@ -12,19 +12,20 @@
 //! It is NOT part of `just ci` (docker + a built image are required); the
 //! `just ros_editions ci` composite (W6) runs it.
 
-use nros_tests::ros_env::{DockerRosEnv, Middleware, RosEnv};
+use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
 
-/// A stock ROS 2 publisher (in the jazzy container) is discovered + decoded by a
-/// stock echo (another jazzy container) over cyclone RTPS on a shared domain —
-/// entirely through `DockerRosEnv`, on a host with no jazzy install.
+/// A stock ROS 2 publisher (in the edition container) is discovered + decoded by
+/// a stock echo (another container) over cyclone RTPS on a shared domain —
+/// entirely through `DockerRosEnv`, on a host without that edition installed.
 #[test]
-fn docker_jazzy_cyclone_pub_echo_smoke() {
+fn docker_edition_cyclone_pub_echo_smoke() {
+    let ed = ros_env::test_edition();
     let domain = nros_tests::unique_ros_domain_id();
-    let env = DockerRosEnv::new("jazzy", Middleware::Cyclonedds { domain_id: domain });
+    let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
 
     if !env.available() {
         nros_tests::skip!(
-            "jazzy image not built or docker absent — run `just ros_editions image jazzy`"
+            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
 

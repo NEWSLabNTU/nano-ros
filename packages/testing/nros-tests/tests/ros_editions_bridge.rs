@@ -16,10 +16,11 @@
 //!
 //! Skips without docker/image. Not in `just ci`; run by `just ros_editions ci`.
 
-use nros_tests::ros_env::{DockerRosEnv, Middleware, RosEnv};
+use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
 
 #[test]
-fn jazzy_domain_bridge_posestamped_survives() {
+fn edition_domain_bridge_posestamped_survives() {
+    let ed = ros_env::test_edition();
     let base = nros_tests::unique_ros_domain_id();
     let (d_from, d_to) = if base >= 232 {
         (base, base - 1)
@@ -27,12 +28,12 @@ fn jazzy_domain_bridge_posestamped_survives() {
         (base, base + 1)
     };
 
-    let env_from = DockerRosEnv::new("jazzy", Middleware::Cyclonedds { domain_id: d_from });
-    let env_to = DockerRosEnv::new("jazzy", Middleware::Cyclonedds { domain_id: d_to });
+    let env_from = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: d_from });
+    let env_to = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: d_to });
 
     if !env_to.available() {
         nros_tests::skip!(
-            "jazzy image not built or docker absent — run `just ros_editions image jazzy`"
+            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
 

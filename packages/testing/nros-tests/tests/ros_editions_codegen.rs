@@ -15,11 +15,12 @@
 use nros_tests::ros_env::{self, DockerRosEnv, Middleware, RosEnv};
 
 #[test]
-fn codegen_jazzy_std_msgs_in_container() {
-    let env = DockerRosEnv::new("jazzy", Middleware::Cyclonedds { domain_id: 1 });
+fn codegen_edition_std_msgs_in_container() {
+    let ed = ros_env::test_edition();
+    let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: 1 });
     if !env.available() {
         nros_tests::skip!(
-            "jazzy image not built or docker absent — run `just ros_editions image jazzy`"
+            "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
     let Some(nros_bin) = ros_env::host_nros_bin() else {
@@ -27,18 +28,18 @@ fn codegen_jazzy_std_msgs_in_container() {
     };
 
     let out = tempfile::tempdir().expect("tempdir");
-    let gen_dir = out.path().join("jazzy");
+    let gen_dir = out.path().join(&ed);
 
     // Generate from std_msgs' installed manifest. `nros generate-rust` resolves
     // + emits the packages reachable from that manifest (here builtin_interfaces,
-    // std_msgs' dependency) against the JAZZY definitions. (Selecting an exact
+    // std_msgs' dependency) against the EDITION's definitions. (Selecting an exact
     // target package uses the `nros ws sync` workspace flow — a W5 concern; this
     // W4 test proves only that codegen RUNS per-edition, in-container, producing
     // real bindings from the edition's own defs.)
     let result = env
         .generate(
             &nros_bin,
-            "/opt/ros/jazzy/share/std_msgs",
+            &format!("/opt/ros/{ed}/share/std_msgs"),
             &gen_dir,
             &["--force"],
         )

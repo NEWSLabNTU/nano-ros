@@ -447,6 +447,13 @@ impl DockerRosEnv {
     }
 }
 
+/// The ROS 2 edition the gated harness lanes target, from `NROS_ROS_EDITION`
+/// (default `"jazzy"`). `just ros_editions ci <distro>` exports it so the same
+/// tests run against any built edition image (jazzy, iron, …).
+pub fn test_edition() -> String {
+    std::env::var("NROS_ROS_EDITION").unwrap_or_else(|_| "jazzy".to_string())
+}
+
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen
 /// container ([`DockerRosEnv::generate`]). Prefers the in-tree release build,
 /// then `PATH`. `None` when neither is present (a codegen lane then `skip!`s).

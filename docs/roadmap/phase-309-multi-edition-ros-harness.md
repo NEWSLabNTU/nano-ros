@@ -13,6 +13,13 @@ nested value intact. The per-edition rebuild proved non-vacuous: jazzy's
 `geometry_msgs` carries **33** messages vs humble's 32, so "rebuild against the
 edition's defs" is a real difference, not a no-op.
 
+**Two editions wired: jazzy + iron.** The lanes are edition-parametric — tests
+read `NROS_ROS_EDITION` (default `jazzy`), which `just ros_editions ci <distro>`
+exports. `just ros_editions ci iron` passes all four lanes (iron ships no apt
+`rmw_zenoh_cpp` — the image-check reports `[--]`, non-fatal; cyclone/fastrtps/
+domain_bridge/codegen/nano-ros-interop all green). rolling is intentionally not
+wired yet — same recipes, one distro arg away.
+
 Implements [RFC-0058](../design/0058-multi-edition-ros-test-harness.md)
 (the docker-backed `RosEnv` provider). Exercises the [RFC-0056](../design/0056-ros-edition-axis.md)
 ROS-edition axis against **live** peers + **live** codegen, not just the offline
