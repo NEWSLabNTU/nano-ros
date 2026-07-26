@@ -161,8 +161,7 @@ heapless = "0.8"
 fn generated_c_with_dheader_wrap_syntax_checks() {
     use rosidl_codegen::generate_c_message_package;
 
-    let msg =
-        parse_message("int32 seq\nstring frame_id\nfloat64 value\n").unwrap();
+    let msg = parse_message("int32 seq\nstring frame_id\nfloat64 value\n").unwrap();
     let pkg = generate_c_message_package(
         "my_msgs",
         "Framed",
@@ -186,9 +185,11 @@ fn generated_c_with_dheader_wrap_syntax_checks() {
     fs::write(&hdr, &pkg.header).unwrap();
     let src = tmp.path().join("framed.c");
     // Point the source's #include at our temp header name.
-    let source = pkg
-        .source
-        .replacen("#include \"", &format!("#include \"{}\"\n// ", hdr.display()), 1);
+    let source = pkg.source.replacen(
+        "#include \"",
+        &format!("#include \"{}\"\n// ", hdr.display()),
+        1,
+    );
     fs::write(&src, source).unwrap();
 
     let out = Command::new("cc")

@@ -98,14 +98,12 @@ documented in-source). take()-style sub + bounded-wait call wanted. See `0278-*`
 workspace miss/duplicate symbols; the example repo needs an `island_interfaces` union-closure
 shim pkg. Compute the union workspace-wide or FATAL_ERROR with the recipe. See `0277-*`.
 
-**#276** — launch `*.param.yaml` values not projected into node params: upstream no-default
-declares can't port verbatim; yaml values copied into in-code defaults (drift hazard). Lower
-resolved param values into the generated entry. See `0276-*`.
-
-(#276-#278 + archived #279-#281 from the simple-autoware-safety-island port
+(#277-#278 + archived #276, #279-#281 from the simple-autoware-safety-island port
 friction log, filed 2026-07-25 from docs/porting-notes.md 06/12/14 + the
 same-day-fixed 10/16/18. #275 resolved by RFC-0057/phase-305 — see
-`archived/0275-*`: L.4 retired, upstream namespaces port verbatim.)
+`archived/0275-*`: L.4 retired, upstream namespaces port verbatim. #276 resolved
+2026-07-26 — see `archived/0276-*`: `<param from=…>` parses, param-file values
+project into the generated entry; seeding gated on `param_services`.)
 
 **#248** — Embassy board entry is a stub: every Board/EmbassyBoardEntry method `todo!()`, the C.3
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,

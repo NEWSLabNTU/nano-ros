@@ -236,6 +236,64 @@ fn non_qos_params_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec
         .collect()
 }
 
+/// Issue 0276 — the node's effective launch params: every `<param from=…>` file
+/// resolved and flattened first, then the inline `<param name= value=>` pairs on
+/// top (ROS precedence — inline wins over file). QoS-override keys are filtered
+/// out of both, since they travel via `qos_overrides`.
+///
+/// Relative `from=` paths resolve against the launch file's own directory. Each
+/// file actually read is pushed to `deps` so it lands in the depfile.
+fn resolve_node_params(
+    n: &NodeSpec,
+    launch_dir: &Path,
+    deps: &mut Vec<PathBuf>,
+) -> eyre::Result<Vec<(String, String)>> {
+    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+    let mut out: Vec<(String, String)> = Vec::new();
+    let node_name = n.name.clone().unwrap_or_else(|| n.exec.clone());
+    let namespace = n.namespace.clone().unwrap_or_else(|| "/".to_string());
+
+    for file in &n.param_files {
+        let path = {
+            let raw = Path::new(file);
+            if raw.is_absolute() {
+                raw.to_path_buf()
+            } else {
+                launch_dir.join(raw)
+            }
+        };
+        if !path.exists() {
+            bail!(
+                "`<param from=\"{file}\"/>` on node `{node_name}` names a file that does not exist: `{}`",
+                path.display()
+            );
+        }
+        deps.push(path.clone());
+        for (key, value) in
+            crate::orchestration::params::param_file_values(&path, &node_name, &namespace)?
+        {
+            if key.starts_with(QOS_OVERRIDE_PREFIX) {
+                continue;
+            }
+            upsert_param(&mut out, key, value);
+        }
+    }
+
+    for (key, value) in non_qos_params_from_params(&n.params) {
+        upsert_param(&mut out, key, value);
+    }
+    Ok(out)
+}
+
+/// Last writer wins, in place — a later declaration of the same param name
+/// replaces the earlier value without changing first-declaration order.
+fn upsert_param(out: &mut Vec<(String, String)>, key: String, value: String) {
+    match out.iter_mut().find(|(k, _)| *k == key) {
+        Some(slot) => slot.1 = value,
+        None => out.push((key, value)),
+    }
+}
+
 /// One Node-pkg invocation in launch order.
 ///
 /// `pkg` is the cargo-style pkg name (sanitised via [`sanitize_pkg`]
@@ -462,7 +520,17 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
     // PlanNode. Order matches the source XML (top-scope first, then
     // each group's children).
     let mut nodes: Vec<PlanNode> = Vec::new();
-    let push_node = |n: &NodeSpec, out: &mut Vec<PlanNode>| {
+    // Issue 0276 — `<param from="…yaml"/>` files are read HERE, at codegen time,
+    // and their values baked into the entry (matching the compile-time domain-id
+    // precedent): embedded targets have no launch-time file loading. Each file
+    // read is recorded as a depfile input so editing the YAML rebuilds.
+    let launch_dir = launch_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut param_file_deps: Vec<PathBuf> = Vec::new();
+    let mut push_node = |n: &NodeSpec, out: &mut Vec<PlanNode>| -> eyre::Result<()> {
+        let params = resolve_node_params(n, &launch_dir, &mut param_file_deps)?;
         out.push(PlanNode {
             pkg: n.pkg.clone(),
             exec: n.exec.clone(),
@@ -477,7 +545,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             shape: None,
             host: n.machine.clone(),
             qos_overrides: qos_overrides_from_params(&n.params),
-            params: non_qos_params_from_params(&n.params),
+            params,
             remaps: n
                 .remaps
                 .iter()
@@ -487,15 +555,18 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             sched_context: None,
             group_tiers: BTreeMap::new(),
         });
+        Ok(())
     };
     for n in &desc.nodes {
-        push_node(n, &mut nodes);
+        push_node(n, &mut nodes)?;
     }
     for g in &desc.groups {
         for n in &g.nodes {
-            push_node(n, &mut nodes);
+            push_node(n, &mut nodes)?;
         }
     }
+    drop(push_node);
+    depfile_paths.extend(param_file_deps);
 
     if nodes.is_empty() {
         bail!(
@@ -1277,6 +1348,114 @@ autostart = "active"
         assert_eq!(
             plan.nodes[0].params,
             vec![("p".to_string(), "v".to_string())]
+        );
+    }
+
+    /// Issue 0276 — `<param from="…yaml"/>` values are projected into
+    /// `PlanNode.params` at codegen time: wildcard `/**` block, then the
+    /// node-specific block (which overrides it), then inline `<param name=
+    /// value=>` on top (ROS precedence). Nested maps flatten to dotted keys.
+    #[test]
+    fn plan_from_launch_projects_param_file_values() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+
+        let bringup_dir = tmp.path().join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
+        std::fs::write(
+            bringup_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bringup_dir.join("launch").join("talker.param.yaml"),
+            "/**:\n  ros__parameters:\n    use_sim_time: false\n    rate: 10\n\
+             talker:\n  ros__parameters:\n    rate: 25\n    limits:\n      max_accel: 1.5\n\
+             other_node:\n  ros__parameters:\n    rate: 999\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bringup_dir.join("launch").join("system.launch.xml"),
+            r#"<launch><node pkg="talker_pkg" exec="talker" name="talker">
+                 <param from="talker.param.yaml"/>
+                 <param name="rate" value="50"/>
+               </node></launch>"#,
+        )
+        .unwrap();
+        let talker_dir = tmp.path().join("src").join("talker_pkg");
+        std::fs::create_dir_all(&talker_dir).unwrap();
+        std::fs::write(
+            talker_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
+        )
+        .unwrap();
+
+        let plan = plan_from_launch(PlanInput {
+            workspace: tmp.path(),
+            launch_spec: "demo_bringup",
+            board: None,
+            arg_overrides: vec![],
+        })
+        .expect("plan_from_launch should succeed with a param file");
+
+        let params: std::collections::BTreeMap<_, _> =
+            plan.nodes[0].params.iter().cloned().collect();
+        // wildcard value survives where nothing overrides it
+        assert_eq!(
+            params.get("use_sim_time").map(String::as_str),
+            Some("false")
+        );
+        // nested map flattened
+        assert_eq!(
+            params.get("limits.max_accel").map(String::as_str),
+            Some("1.5")
+        );
+        // inline `<param name=…>` beats BOTH the wildcard and the node block
+        assert_eq!(params.get("rate").map(String::as_str), Some("50"));
+        // a block naming a different node contributes nothing
+        assert!(!params.values().any(|v| v == "999"));
+    }
+
+    /// Issue 0276 — a `<param from=…>` naming a missing file is a hard error, not
+    /// a silently-empty param set (a silent skip would ship a node whose
+    /// no-default declares fail at boot).
+    #[test]
+    fn plan_from_launch_rejects_missing_param_file() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+
+        let bringup_dir = tmp.path().join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
+        std::fs::write(
+            bringup_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bringup_dir.join("launch").join("system.launch.xml"),
+            r#"<launch><node pkg="talker_pkg" exec="talker">
+                 <param from="nope.param.yaml"/>
+               </node></launch>"#,
+        )
+        .unwrap();
+        let talker_dir = tmp.path().join("src").join("talker_pkg");
+        std::fs::create_dir_all(&talker_dir).unwrap();
+        std::fs::write(
+            talker_dir.join("package.xml"),
+            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
+        )
+        .unwrap();
+
+        let err = plan_from_launch(PlanInput {
+            workspace: tmp.path(),
+            launch_spec: "demo_bringup",
+            board: None,
+            arg_overrides: vec![],
+        })
+        .expect_err("a missing param file must fail the plan");
+        assert!(
+            format!("{err:?}").contains("does not exist"),
+            "error should name the missing file, got: {err:?}"
         );
     }
 

@@ -77,6 +77,12 @@ pub struct NodeSpec {
     /// into per-host entry bakes (`Plan::for_host`).
     pub machine: Option<String>,
     pub params: Vec<ParamSpec>,
+    /// Issue 0276 — `<param from="…yaml"/>` param FILES, substitution-resolved
+    /// absolute paths, in launch order. Upstream ROS nodes declare parameters
+    /// with no default and receive values from these files; the codegen loads
+    /// them and projects the values into the baked entry (embedded has no
+    /// runtime file loading). Inline `<param name= value=>` wins over a file.
+    pub param_files: Vec<String>,
     pub remaps: Vec<RemapSpec>,
 }
 
@@ -342,6 +348,7 @@ fn handle_start(
             let node = NodeSpec {
                 pkg,
                 exec,
+                param_files: Vec::new(),
                 name: attrs.get("name").cloned(),
                 namespace: attrs.get("namespace").cloned(),
                 machine: attrs.get("machine").cloned(),
@@ -355,17 +362,33 @@ fn handle_start(
             }
         }
         "param" => {
-            let name = attrs
-                .get("name")
-                .cloned()
-                .ok_or_else(|| eyre!("<param> missing `name=` in `{}`", here.display()))?;
-            let value = attrs
-                .get("value")
-                .cloned()
-                .ok_or_else(|| eyre!("<param> missing `value=` in `{}`", here.display()))?;
-            match stack.last_mut() {
-                Some(Frame::Node(n)) => n.params.push(ParamSpec { name, value }),
-                _ => bail!("<param> must be a child of <node> in `{}`", here.display()),
+            // Issue 0276 — ROS 2 XML launch has TWO `<param>` forms: the inline
+            // `name=`/`value=` pair, and `from="<file.yaml>"` naming a param
+            // FILE. The `from=` form used to hard-error here ("missing
+            // `name=`"), so an upstream Autoware launch could not even parse.
+            if let Some(from) = attrs.get("from").cloned() {
+                match stack.last_mut() {
+                    Some(Frame::Node(n)) => n.param_files.push(from),
+                    _ => bail!(
+                        "<param from=…> must be a child of <node> in `{}`",
+                        here.display()
+                    ),
+                }
+            } else {
+                let name = attrs.get("name").cloned().ok_or_else(|| {
+                    eyre!(
+                        "<param> needs `name=`+`value=` or `from=` in `{}`",
+                        here.display()
+                    )
+                })?;
+                let value = attrs
+                    .get("value")
+                    .cloned()
+                    .ok_or_else(|| eyre!("<param> missing `value=` in `{}`", here.display()))?;
+                match stack.last_mut() {
+                    Some(Frame::Node(n)) => n.params.push(ParamSpec { name, value }),
+                    _ => bail!("<param> must be a child of <node> in `{}`", here.display()),
+                }
             }
         }
         "remap" => {
@@ -665,6 +688,34 @@ mod tests {
         fs::write(&launch, xml).expect("write launch file");
         let index = nros_pkg_index::build_pkg_index(dir.path()).expect("pkg index");
         parse_launch_file(&launch, &index, &[]).expect("parse launch")
+    }
+
+    /// Issue 0276 — `<param from="…yaml"/>` is the param-FILE form and lands in
+    /// `NodeSpec.param_files`; it used to hard-error as "missing `name=`", which
+    /// made upstream Autoware launch files unparseable. Inline `name=`/`value=`
+    /// params still land in `params`, and substitutions in `from=` resolve.
+    #[test]
+    fn param_from_collects_param_files() {
+        let desc = parse_str(
+            r#"<launch>
+                 <arg name="cfg" default="tuned"/>
+                 <node pkg="p" exec="e">
+                   <param from="$(var cfg).param.yaml"/>
+                   <param from="/abs/other.param.yaml"/>
+                   <param name="inline" value="1"/>
+                 </node>
+               </launch>"#,
+        );
+        let n = &desc.nodes[0];
+        assert_eq!(
+            n.param_files,
+            vec![
+                "tuned.param.yaml".to_string(),
+                "/abs/other.param.yaml".to_string()
+            ]
+        );
+        assert_eq!(n.params.len(), 1);
+        assert_eq!(n.params[0].name, "inline");
     }
 
     // Phase 305 W3 (issue 0255) — group `<remap>` rules apply to member nodes,
