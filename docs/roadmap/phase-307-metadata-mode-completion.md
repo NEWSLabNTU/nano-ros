@@ -181,9 +181,32 @@ lowers the count). It needs no compilation, so it runs in `just check`
 rather than a QEMU lane.
 
 Lane 2 (a >4-entity system BOOTING on one hosted and one embedded lane)
-remains. It needs a new node package — no example in the tree registers
-more than one callback entity today, which is itself why the 4-slot
-default survived this long — plus its fixture rows and matrix cells.
+remains, and scoping it turned up a real blocker worth recording: **the
+fixture is not the hard part, the macro is.**
+
+A pure-cargo native entry is sized by the `nros::main!` proc-macro, which
+W4 deliberately left on the model bound. So a node with one modelled
+subscription and five timers would be sized `derive_max_callbacks(1)` = 3
+and still die at boot — the sidecar exists, the CLI bake would catch an
+over-run, but nothing feeds the macro's `Executor::open_sized`. Lane 2
+therefore cannot pass on the strength of a new fixture alone.
+
+The fix is W4's deferred second half: have the macro read the sidecars
+too. The original objection does not apply — what killed the naive 0257
+approach was shelling a nested `cargo build` during macro expansion, and
+reading an already-produced JSON file is not that. W2 now supplies the
+ordering guarantee (`nros sync` runs before the build) and the provenance
+stamp (the macro can tell a current sidecar from museum data), so the
+remaining work is:
+
+1. give `nros-macros` a JSON reader and a workspace-root walk-up from
+   `CARGO_MANIFEST_DIR`;
+2. apply the same per-node `max(model, recorded)` rule, falling back to
+   the bound when no sidecar is found — never failing on absence;
+3. THEN the lane-2 fixture (a >4-entity node — no example in the tree
+   registers more than one callback entity today, which is itself why the
+   4-slot default survived this long) plus its fixture rows and matrix
+   cells.
 
 ## Scope note — "all examples" is the bar, deliberately
 
