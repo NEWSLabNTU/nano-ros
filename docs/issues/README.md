@@ -87,11 +87,10 @@ hardcoded `NotRequested` in rtos_realizer.rs) — the derived-schedule path can'
 or preemption threshold, though the board consumers exist. Design-open (needs an RFC-0052 contract
 vocabulary for the two dims). See `0259-*`. (phase-296 W5.11 2026-07-24)
 
-**#286** — the phase-307 metadata probe `cargo run`s a std-linked harness under whatever
-`[build] target` the example's `.cargo/config.toml` sets. qemu-arm-baremetal supplies a QEMU
-`runner` so this works (and its board-coupled component compiles ONLY for ARM); qemu-arm-nuttx
-has no runner, so the probe link-fails on `malloc`/`pthread_*` and blocks the nuttx fixture lane.
-Pinning to the host fixes nuttx and breaks qemu — needs a per-target answer. See `0286-*`.
+(#286 resolved 2026-07-26 — see `archived/0286-*`: the blocker was NOT the missing runner but
+`[unstable] build-std`, which is not target-scoped and rebuilds std against nuttx's patched libc
+even under `--target <host>`. `probe_blocker()` now degrades such components to the documented
+sidecar-less path; nuttx build-fixtures rc=2 → rc=0, qemu still probing.)
 
 **#285** — `nros ws sync` invokes `play_launch resolve`, a subcommand the installed
 `play_launch` lacks → `build-examples` fails on EVERY platform (cmake-configure time).
