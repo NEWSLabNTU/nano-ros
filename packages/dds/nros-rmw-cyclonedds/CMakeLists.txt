@@ -47,9 +47,21 @@ nros_provide_cyclonedds()
 set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
 if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
+    # A CACHE PATH survives a source-tree rename, so the usual cause is a build
+    # dir configured before the headers moved from `nros-rmw-cffi/include` to
+    # `nros-rmw-abi/include` — the DEFAULT above is already correct, and the
+    # stale value comes from CMakeCache.txt. Say so: the previous wording sent
+    # readers looking for a missing header instead of a stale build dir.
+    set(_nros_rmw_hint "")
+    if(NROS_RMW_CFFI_DIR MATCHES "nros-rmw-cffi/include")
+        set(_nros_rmw_hint
+            " This is the PRE-RENAME path, so it came from a stale CMakeCache.txt, "
+            "not from this file — delete the build directory and re-configure.")
+    endif()
     message(FATAL_ERROR
-        "nros-rmw-cffi headers not found at NROS_RMW_CFFI_DIR='${NROS_RMW_CFFI_DIR}'. "
-        "Set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-abi/include>.")
+        "nros-rmw-cffi headers not found at NROS_RMW_CFFI_DIR='${NROS_RMW_CFFI_DIR}'."
+        "${_nros_rmw_hint} "
+        "Otherwise set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-abi/include>.")
 endif()
 
 # ---- Static library --------------------------------------------------------
