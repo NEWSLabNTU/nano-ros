@@ -1,6 +1,7 @@
-# Phase 312 — one probe project per workspace, not per component
+# Phase 313 — one probe project per workspace, not per component
 
-**Status (2026-07-28): COMPLETE.** W1/W2/W3 landed; issue 0294 closes.
+**Status (2026-07-28): COMPLETE.** (Renumbered from 312 — a parallel session
+had already taken that number for the launch-toolchain layering.) W1/W2/W3 landed; issue 0294 closes.
 
 Resolved issue 0294, which had blocked phase-308 W1 from being testable:
 probing a six-component workspace cost ~16 GB and six cold Rust builds, so a

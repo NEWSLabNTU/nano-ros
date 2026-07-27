@@ -76,7 +76,7 @@ pub fn refresh_stale_sidecars(
     let probe_root = ws_root.join("build").join("nros-metadata");
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
-    // phase-312 — C/C++ components to probe in ONE workspace-scoped project.
+    // phase-313 — C/C++ components to probe in ONE workspace-scoped project.
     let mut cpp_batch: Vec<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions> =
         Vec::new();
 
@@ -104,7 +104,7 @@ pub fn refresh_stale_sidecars(
             continue;
         }
         if decl.config.language != ComponentLanguage::Rust {
-            // phase-312 — C/C++ probes are COLLECTED here and run as one
+            // phase-313 — C/C++ probes are COLLECTED here and run as one
             // batch below, so the workspace builds the runtime (and the ~1.2 GB
             // of nested sizes-probe cargo builds) once rather than once per
             // component.
@@ -147,7 +147,7 @@ pub fn refresh_stale_sidecars(
         report.rebuilt.push(sidecar);
     }
 
-    // phase-312 — one project, one configure, one runtime build; the BUILD is
+    // phase-313 — one project, one configure, one runtime build; the BUILD is
     // still per target so an uncompilable component costs only its own sidecar.
     if !cpp_batch.is_empty() {
         let dir = crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root);
@@ -189,7 +189,7 @@ pub fn refresh_stale_sidecars(
     Ok(report)
 }
 
-/// phase-312 — build the probe options for one C/C++ component, or explain why
+/// phase-313 — build the probe options for one C/C++ component, or explain why
 /// it cannot be probed.
 ///
 /// `Ok(None)` = the sidecar is already current. `Err` = this component only;

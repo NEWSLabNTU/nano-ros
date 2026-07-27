@@ -83,7 +83,7 @@ endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
 
-# phase-312 — extension point for callers needing an extra nros-cpp feature.
+# phase-313 — extension point for callers needing an extra nros-cpp feature.
 #
 # NOTE: this is the SECOND place a `_cpp_features` list is assembled for the
 # same crate; NanoRosRuntimeCrate.cmake builds another for the workspace
