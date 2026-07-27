@@ -15,13 +15,17 @@ wired, and verified end to end for iron + jazzy:
   edition-gated zenoh keyexpr / liveliness (`nros-rmw-zenoh/src/keyexpr.rs`):
   humble → `TypeHashNotSupported`, iron/jazzy → the real hash.
 
-**Residual:** a live-peer ZENOH interop check — a `ros-jazzy` nano-ros node's
-keyexpr type-hash tail accepted by a real `rmw_zenoh_cpp` Jazzy peer at discovery
-(the phase-309/310 harness is cyclone-based, which carries the hash in RTPS
-typeinfo, not the zenoh keyexpr). The offline+container hash oracle already pins
-the values; this would close the wire loop for the zenoh path.
+**Residual — CLOSED (2026-07-27, via phase-311 W5).** The live-peer ZENOH interop
+check now exists: `packages/testing/nros-tests/tests/ros_editions_zenoh.rs` runs a
+`ros-jazzy` nano-ros zpico node against a stock jazzy `rmw_zenoh_cpp` peer over a
+shared `rmw_zenohd`, and delivery only succeeds because the keyexpr RIHS01
+type-hash tail matches (proven: a `ros-humble` build with the placeholder tail
+does NOT deliver). pub/sub + service + action all interop both ways. The wire
+loop for the zenoh path is closed — the offline+container oracle's hashes are now
+also confirmed on the wire. (Issue #0291 established the zenoh transport itself is
+version-compatible; #0292 fixed the action-server service-hash tail.)
 
-**Priority: Low**
+**Priority: Low (residual now done)**
 **Prerequisites:** Phase 16 (ROS 2 interop — complete for Humble)
 
 > **Part of the ROS-edition axis ([RFC-0056](../design/0056-ros-edition-axis.md)).**

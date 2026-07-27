@@ -203,12 +203,16 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 ## Done when
 
 The harness runs pub/sub (min) both directions for the delivered cells
-({jazzy, iron} × {cyclone, xrce}) against live ROS 2 peers — cyclone over RTPS,
-xrce through a host micro-XRCE Agent to `rmw_fastrtps_cpp` — green via
+({jazzy, iron} × {cyclone, xrce} + {jazzy} × zenoh) against live ROS 2 peers —
+cyclone over RTPS, xrce through a host micro-XRCE Agent to `rmw_fastrtps_cpp`,
+zenoh through a `rmw_zenohd` to `rmw_zenoh_cpp` — green via
 `just ros_editions ci <distro>`. **Met (2026-07-27).**
 
-The zenoh cells ({jazzy, iron} × zenoh) and the phase-41 RIHS01-keyexpr residual
-they carry stay **deferred on issue #0291** (zpico's zenoh 1.7.2 pin vs a stock
-jazzy `rmw_zenoh_cpp` 1.11.2) — a zpico version bump, tracked separately. They
-land here once #0291 resolves; the harness axis (`Rmw::Zenoh`, `Middleware::Zenoh`,
-the overlay build in W2) is already wired for them.
+**The zenoh cells DID land** (jazzy, 6/6) — issue #0291's investigation refuted the
+version-gap premise (zenoh proto `0x09` is stable across 1.x; zpico 1.7.2 interops
+with jazzy 1.11.2), so the fix was the RIHS01 keyexpr tail (build the fixture
+`ros-jazzy`), not a zpico bump. #0292 fixed the action-server service-hash tail.
+This also closed the phase-41 RIHS01-keyexpr residual on the wire. Only **iron +
+humble zenoh** stay N/A — those editions ship no `rmw_zenoh_cpp` (the lane skips
+loudly). Zenoh **version** divergence (relevant only if a future edition bumps the
+proto past `0x09`) remains future work under #0291.
