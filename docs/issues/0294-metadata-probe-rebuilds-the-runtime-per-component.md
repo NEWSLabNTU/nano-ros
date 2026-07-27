@@ -33,6 +33,26 @@ Inside one probe:
 **2.6 GB of the 2.7 GB is a private cargo target dir.** The component — the
 only thing that differs between probes — is 33 MB.
 
+### Where the 2.6 GB actually goes
+
+Breaking the cargo dir down changes the cost model:
+
+```
+1.3G  debug/build/          <- build-script OUTPUT dirs
+ 615M   └─ nros-cpp .../sizes-probe-target-rustc-1.96.0-…
+ (a second, comparable one under nros-c)
+1.1G  debug/                <- the actual library build
+172M  .../debug/deps
+```
+
+The single biggest item is a **nested cargo build inside the build script**:
+`nros-c` and `nros-cpp` each compile the whole `nros` crate again to extract
+`size_of::<T>()` for the generated sizes header. That is ~1.2 GB of the 2.6 GB,
+and it runs once per probe PROJECT — six times for six components.
+
+So the duplication is worse than "the runtime is rebuilt": the *sizes probe*,
+which is itself a full nested build, is what is being repeated.
+
 ## Cause
 
 `metadata_probe_cmake::run_probe` generates one CMake project per component,
@@ -69,9 +89,28 @@ Each probe still writes its own sidecar, so the driver's per-component
 `Ok/Err` reporting is unchanged; only the build is shared. Expected cost drops
 from N cold runtime builds to one.
 
+Build **per target** rather than the whole project — `cmake --build <dir>
+--target probe_<i>` — so one component that fails to compile does not cost
+every other component its sidecar. Configure is shared; failures stay
+per-component, which keeps the driver's existing per-component `Ok`/`Err`
+ledger meaningful.
+
+The probe build dir already persists across `nros sync` runs, so once the
+restructure lands the second and later syncs are incremental and near-free.
+
 Interim mitigation if the restructure is deferred: point every probe at a
 shared `CARGO_TARGET_DIR`. Whether Corrosion honours it needs checking — it may
-override with its own `--target-dir`.
+override with its own `--target-dir`. This is a partial win at best: it would
+share the library build but each project still re-runs configure, interface
+codegen and the sizes probes.
+
+## Adjacent, not this issue
+
+The `sizes-probe-target-*` nested builds are ~615 MB EACH and are keyed by
+rustc version + feature hash. They are recomputed per build tree for every
+consumer of nano-ros, not just probes. A shared cache location for them would
+help every C/C++ build in the tree. Worth its own issue if someone measures the
+wall-clock share.
 
 ## Also worth fixing alongside
 
