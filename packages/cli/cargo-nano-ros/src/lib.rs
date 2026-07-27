@@ -184,9 +184,8 @@ pub struct GenerateCppConfig {
 /// single `RosEdition::parse` SSoT (humble | iron | jazzy — rolling is
 /// unsupported) so a new edition is added in one place, not here.
 fn parse_ros_edition(s: &str) -> Result<RosEdition> {
-    RosEdition::parse(s).ok_or_else(|| {
-        eyre!("Unknown ROS edition '{s}'. Expected 'humble' | 'iron' | 'jazzy'.")
-    })
+    RosEdition::parse(s)
+        .ok_or_else(|| eyre!("Unknown ROS edition '{s}'. Expected 'humble' | 'iron' | 'jazzy'."))
 }
 
 /// Generate bindings from package.xml dependencies.

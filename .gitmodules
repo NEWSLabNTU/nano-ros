@@ -73,3 +73,6 @@
 [submodule "packages/cli/third-party/ros-launch-manifest"]
 	path = packages/cli/third-party/ros-launch-manifest
 	url = https://github.com/NEWSLabNTU/ros-launch-manifest.git
+[submodule "packages/cli/third-party/play_launch"]
+	path = packages/cli/third-party/play_launch
+	url = https://github.com/NEWSLabNTU/play_launch.git

@@ -2175,6 +2175,48 @@ setup-cli:
     echo "[setup-cli] built: $bin"
     warn_stale_shadow
 
+# Build the launch-resolution helper (issue 0285).
+#
+# `nros ws sync` needs a resolver that can execute Python for `.launch.py`
+# trees, which cannot be linked into the portable `nros` binary. It used to
+# shell out to `play_launch` BY NAME through PATH — where an unrelated ROS 2
+# record/replay tool of the same name shadowed it and every platform's
+# fixture build died inside a cmake configure.
+#
+# This builds our own distinctly-named binary from the pinned play_launch
+# submodule, versioned with the CLI, and `nros` invokes it by ABSOLUTE PATH.
+# Neither tool can shadow the other.
+#
+# Its own cargo workspace: it links play_launch, whose vendored
+# ros-launch-manifest would otherwise collide with nano-ros's copy in one
+# graph. Needs CPython (pyo3) but NOT ROS/ament/colcon — the play_launch
+# `runtime` feature is off.
+[group("setup")]
+setup-launch-resolve:
+    #!/usr/bin/env bash
+    set -e
+    root="{{justfile_directory()}}"
+    crate="$root/packages/cli/nros-launch-resolve"
+    bin="$crate/target/release/nros-launch-resolve"
+    if [ ! -f "$crate/../third-party/play_launch/src/play_launch/Cargo.toml" ]; then
+        echo "[setup-launch-resolve] SKIP: play_launch submodule not initialised"
+        echo "  git submodule update --init packages/cli/third-party/play_launch"
+        exit 0
+    fi
+    # `find -newer` errors when the reference file is absent, and `set -e`
+    # would abort the very first build — check existence before comparing.
+    if [ -x "$bin" ]; then
+        stale_src="$(find "$crate" -name target -prune -o \
+            \( -name '*.rs' -o -name 'Cargo.toml' \) -newer "$bin" -print -quit 2>/dev/null)"
+        if [ -z "$stale_src" ]; then
+            exit 0
+        fi
+    fi
+    echo "[setup-launch-resolve] building nros-launch-resolve…"
+    cargo build --release --manifest-path "$crate/Cargo.toml"
+    touch "$bin"
+    echo "[setup-launch-resolve] built: $bin"
+
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
 [group("maintenance")]

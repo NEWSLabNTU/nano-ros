@@ -295,43 +295,43 @@ impl WsPkg {
 /// (and a stale one is removed). Non-bridge workspaces never plan here.
 /// R-code UX — materialize each bringup's SystemModel as part of `nros
 /// sync`, so the user's canonical flow (sync → west/cargo/cmake) never
-/// hand-runs `play_launch resolve`. For every pkg with a `launch/` dir:
-/// resolve `config/system_model.yaml` when it is missing or older than any
-/// input (launch XMLs, system.toml). Requires `play_launch` on PATH; when
-/// absent, models that already exist are used as-is and missing ones warn
-/// with the manual recipe (the bake later fail-louds the same way).
+/// hand-runs the resolver. For every pkg with a `launch/` dir: resolve
+/// `config/system_model.yaml` when it is missing or older than any input
+/// (launch XMLs, system.toml). When the helper is absent, models that already
+/// exist are used as-is and missing ones warn with the manual recipe (the bake
+/// later fail-louds the same way).
 /// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
 /// siblings that were previously committed (variant models stay opt-in:
 /// only refreshed, never created, for non-default launches).
+
 fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
-    // PATH probe without a which dep. phase-308: probe the CAPABILITY, not the
-    // name. `play_launch` is also the name of an unrelated ROS 2 record/replay
-    // tool that answers `--version` happily and has no `resolve` subcommand, so
-    // a `--version` probe reported "present" and every `nros sync` then died
-    // with "unrecognized subcommand 'resolve'" — taking the whole fixture build
-    // with it. A host with the wrong tool on PATH must degrade to the committed
-    // model exactly like a host with no tool at all, which is the documented
-    // behaviour for absent; a hard failure here is worse than stale, because
-    // the model is checked in and usually current.
-    let play_launch: Option<std::path::PathBuf> = std::process::Command::new("play_launch")
-        .arg("resolve")
-        .arg("--help")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|_| std::path::PathBuf::from("play_launch"));
-    if play_launch.is_none()
-        && std::process::Command::new("play_launch")
-            .arg("--version")
-            .output()
-            .is_ok_and(|o| o.status.success())
-    {
+    // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
+    //
+    // This used to run `play_launch` by bare name. `play_launch` is also an
+    // unrelated ROS 2 record/replay tool, so on a host that had that one the
+    // wrong binary won and every `nros sync` died with "unrecognized
+    // subcommand 'resolve'", taking the whole fixture build with it. Probing
+    // the capability instead of the name made that degrade rather than fail,
+    // but it could not make the RIGHT tool findable.
+    //
+    // Now we ship our own `nros-launch-resolve`, built from the pinned
+    // play_launch submodule and versioned with this CLI, and look for it next
+    // to the running `nros` binary. Nothing on PATH can shadow it — and,
+    // equally deliberate, we never put it ON PATH, so we cannot shadow a
+    // user's real `play_launch` either.
+    //
+    // Absent (a partial checkout, or `just setup-launch-resolve` not run) stays
+    // a degrade, not an error: committed models are used as-is, because the
+    // model is checked in and usually current.
+    let resolver = launch_resolver_path();
+    if resolver.is_none() {
         eprintln!(
-            "ws sync: the `play_launch` on PATH does not support `resolve` (RFC-0050); \
-             committed SystemModels are used as-is and will NOT be refreshed. Install \
-             the resolve-capable build, or re-run `nros setup`."
+            "ws sync: `nros-launch-resolve` not found next to the nros binary; \
+             committed SystemModels are used as-is and will NOT be refreshed. \
+             Build it with `just setup-launch-resolve`."
         );
     }
+    let play_launch = resolver;
     for pkg in scan {
         let launch_dir = pkg.dir.join("launch");
         if !launch_dir.is_dir() {
@@ -416,8 +416,8 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 if !model.exists() {
                     eprintln!(
                         "ws sync: warning — `{}` has no committed SystemModel and \
-                         `play_launch` is not on PATH; the bake will refuse. Resolve \
-                         manually: play_launch resolve {} [--system {}] -o {}",
+                         `nros-launch-resolve` is unavailable; the bake will refuse. \
+                         Resolve manually: nros-launch-resolve {} [--system {}] -o {}",
                         pkg.name,
                         launch.display(),
                         system_toml.display(),
@@ -429,17 +429,17 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
             std::fs::create_dir_all(&cfg_dir)
                 .wrap_err_with(|| format!("ws sync: create {}", cfg_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
-            cmd.arg("resolve").arg(&launch);
+            cmd.arg(&launch);
             if system_toml.is_file() {
                 cmd.arg("--system").arg(&system_toml);
             }
             cmd.arg("-o").arg(&model);
             let out = cmd
                 .output()
-                .wrap_err_with(|| format!("ws sync: spawn play_launch resolve for {}", pkg.name))?;
+                .wrap_err_with(|| format!("ws sync: spawn nros-launch-resolve for {}", pkg.name))?;
             if !out.status.success() {
                 eyre::bail!(
-                    "ws sync: play_launch resolve failed for `{}` ({}):\n{}",
+                    "ws sync: nros-launch-resolve failed for `{}` ({}):\n{}",
                     pkg.name,
                     launch.display(),
                     String::from_utf8_lossy(&out.stderr),
@@ -460,6 +460,33 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Locate `nros-launch-resolve` next to the running `nros` binary (issue 0285).
+///
+/// Deliberately NOT a PATH lookup: the whole failure this fixes was a
+/// same-named third-party tool winning PATH. Siblings of the current
+/// executable are the CLI we shipped, so the pairing is exact and unspoofable.
+/// Falls back to the in-tree release path so a developer running
+/// `packages/cli/target/release/nros` from a checkout finds the helper too.
+fn launch_resolver_path() -> Option<std::path::PathBuf> {
+    const HELPER: &str = "nros-launch-resolve";
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+
+    let sibling = dir.join(HELPER);
+    if sibling.is_file() {
+        return Some(sibling);
+    }
+    // In-tree layout: the helper is its own cargo workspace, so its binary
+    // lands under `packages/cli/nros-launch-resolve/target/release/`, not
+    // beside `nros` in `packages/cli/target/release/`.
+    let in_tree = dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|cli| cli.join(HELPER).join("target").join("release").join(HELPER))
+        .filter(|p| p.is_file());
+    in_tree
 }
 
 fn generate_bridge_configs(
