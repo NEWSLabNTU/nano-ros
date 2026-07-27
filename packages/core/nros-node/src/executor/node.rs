@@ -1410,7 +1410,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         self.create_generic_publisher_with_qos(topic, type_name, type_hash, QosSettings::default())
     }
 
-    /// Issue 0304 — the same, with an explicit profile. The declarative
+    /// Issue 0306 — the same, with an explicit profile. The declarative
     /// component path needs it: a node that declares
     /// `create_publisher_for_topic_with_qos(...)` carries its profile in
     /// `EntityMetadata::qos`, and the runtime used to drop it on the floor by
@@ -1690,7 +1690,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         )
     }
 
-    /// Issue 0304 — the same, with an explicit profile (see
+    /// Issue 0306 — the same, with an explicit profile (see
     /// [`Self::create_generic_publisher_with_qos`] for why).
     pub fn create_generic_subscription_with_qos<F>(
         &mut self,

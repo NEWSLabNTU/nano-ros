@@ -2,7 +2,7 @@ meta:
   version: 1
 # RFC-0052 / phase-296 R4 — resolved model for the qos demo (2 nodes).
 #
-# Issue #52 / 0303 / 0304 — the talker's publisher carries a plan-level QoS
+# Issue #52 / 0303 / 0306 — the talker's publisher carries a plan-level QoS
 # OVERRIDE. `reliable_talker_pkg` declares `reliable + transient_local +
 # depth(10)` in code; the model overrides RELIABILITY to `best_effort`, which
 # the code never asks for. That makes the override the only possible source of

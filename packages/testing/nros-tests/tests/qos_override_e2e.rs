@@ -1,4 +1,4 @@
-//! Issue #52 / 0303 / 0304 — a plan-level QoS override reaches a running
+//! Issue #52 / 0303 / 0306 — a plan-level QoS override reaches a running
 //! entity's ADVERTISED profile.
 //!
 //! ## Why this test exists
@@ -6,7 +6,7 @@
 //! Every layer of the override path had unit coverage and none of it was joined
 //! up, which is how two bugs shipped in one week: the C and Rust emitters never
 //! applied overrides at all (only C++ did), and the component runtime discarded
-//! a node's own declared QoS (issue 0304) — so the plan could set QoS the code
+//! a node's own declared QoS (issue 0306) — so the plan could set QoS the code
 //! could not. `ws-qos-rust` had demonstrated "the visible behaviour" of a QoS
 //! profile for three phases while its e2e asserted only a message COUNT, which
 //! default-to-default delivery satisfies just as well.
@@ -36,7 +36,7 @@
 //! | `BEST_EFFORT` | the override reached the live entity — correct |
 //! | `RELIABLE` | the override was dropped; the code's profile stands |
 //!
-//! and the transient_local half of the same report doubles as an 0304 guard: it
+//! and the transient_local half of the same report doubles as an 0306 guard: it
 //! can only be there if the node's OWN declared QoS survived too.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test qos_override_e2e`
@@ -146,7 +146,7 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
     // Per-ENDPOINT assertions. A whole-report `contains` is useless here: the
     // report carries the publisher AND the subscription, so a substring match
     // passes on the wrong endpoint's profile. (Verified the hard way — an
-    // earlier draft of this test passed with the issue-0304 fix reverted,
+    // earlier draft of this test passed with the issue-0306 fix reverted,
     // because the subscription's TRANSIENT_LOCAL satisfied the assertion while
     // the publisher's had been dropped to VOLATILE.)
     let publisher = endpoint_block(&report, "PUBLISHER").unwrap_or_else(|| {
@@ -163,16 +163,16 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
         "the plan's `qos_overrides.{TOPIC}.publisher.reliability = best_effort` did not reach the \
          live entity; the publisher advertises the code's own profile:\n{publisher}"
     );
-    // Issue 0304 — the node's OWN declared QoS must survive alongside the
+    // Issue 0306 — the node's OWN declared QoS must survive alongside the
     // override: `transient_local` and depth 10 come from the code, not the plan.
     assert!(
         publisher.contains("Durability: TRANSIENT_LOCAL"),
-        "the node's code-declared durability was dropped (issue 0304 regression): the plan \
+        "the node's code-declared durability was dropped (issue 0306 regression): the plan \
          override applied but the declared profile did not:\n{publisher}"
     );
     assert!(
         publisher.contains("KEEP_LAST (10)"),
-        "the node's code-declared depth was dropped (issue 0304 regression):\n{publisher}"
+        "the node's code-declared depth was dropped (issue 0306 regression):\n{publisher}"
     );
 
     // Role targeting: the override names `publisher`, so the SUBSCRIPTION must
@@ -184,7 +184,7 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
     );
     assert!(
         subscription.contains("Durability: TRANSIENT_LOCAL"),
-        "the subscription's code-declared durability was dropped (issue 0304 \
+        "the subscription's code-declared durability was dropped (issue 0306 \
          regression):\n{subscription}"
     );
 }

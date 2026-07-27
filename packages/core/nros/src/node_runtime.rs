@@ -766,7 +766,7 @@ impl NodeRuntime for ExecutorSink<'_> {
         let entity_name = resolved_name.as_ref().map(|r| r.as_str()).unwrap_or("");
         match metadata.kind {
             EntityKind::Publisher => {
-                // Issue 0304 — the node's DECLARED profile
+                // Issue 0306 — the node's DECLARED profile
                 // (`create_publisher_for_topic_with_qos`) rides
                 // `metadata.qos`; this used to call the default-QoS
                 // constructor, so every declarative entity was created
@@ -815,7 +815,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         .map_err(decl_err_from_node)?;
                     return Ok(());
                 }
-                // Issue 0304 — same as the publisher branch: honour the
+                // Issue 0306 — same as the publisher branch: honour the
                 // node's declared profile instead of defaulting it.
                 self.executor
                     .node_mut(node)

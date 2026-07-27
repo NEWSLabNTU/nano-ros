@@ -1,5 +1,5 @@
 ---
-id: 304
+id: 306
 title: "A declarative node's per-entity QoS was DROPPED by the component runtime — `create_publisher_for_topic_with_qos` had no effect, and `ws-qos-rust` demonstrates a feature that did not work"
 status: resolved
 type: bug

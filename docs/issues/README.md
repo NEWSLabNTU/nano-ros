@@ -147,13 +147,13 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
-Recently resolved: **#304** — a declarative Rust node's per-entity QoS was DROPPED: `EntityMetadata.qos`
+Recently resolved: **#306** — a declarative Rust node's per-entity QoS was DROPPED: `EntityMetadata.qos`
 existed, the declarative API populated it, and `ExecutorSink::create_entity` never read it — every
 publisher/subscription ran `QosSettings::default()`. `ws-qos-rust` had demonstrated "the visible
 behaviour" of a transient_local profile for three phases while its e2e asserted only a message COUNT,
 which default-to-default delivery satisfies equally. Plan `qos_overrides` DID apply (they fold inside
 the executor), so the model could set QoS the code could not. Fixed + covered by the new
-`qos_override_e2e`. See `0304-*`. (2026-07-28)
+`qos_override_e2e`. See `0306-*`. (2026-07-28)
 
 Recently resolved: **#303** — QoS overrides: an unmodelled policy or a misspelled role/policy was
 dropped by a `filter_map` in every language, with no diagnostic. Fixed by collapsing FOUR copies of

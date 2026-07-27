@@ -276,7 +276,7 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
-# issue #52 / 0303 / 0304 — the QoS workspace on NATIVE (the C/C++ projections
+# issue #52 / 0303 / 0306 — the QoS workspace on NATIVE (the C/C++ projections
 # already had native rows; the Rust one was zephyr-only, which is part of why
 # the dropped-per-entity-QoS bug went unseen). The committed model overrides the
 # talker publisher's RELIABILITY to best_effort — a value the code never asks
