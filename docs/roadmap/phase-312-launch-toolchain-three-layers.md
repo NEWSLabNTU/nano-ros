@@ -1,6 +1,6 @@
 # Phase 312: Three-layer launch toolchain (RFC-0060)
 
-**Status:** In progress (started 2026-07-28). **W1 complete** — acceptance met. W2 next.
+**Status:** In progress (started 2026-07-28). **W1 + W2 complete.** W3 next.
 **Implements:** RFC-0060. **Closes:** the structural half of issue 0293 (one
 implementation per contract); removes the vendoring drift behind issues
 0285/0293.
@@ -135,7 +135,24 @@ Now `env!("CARGO_PKG_NAME")`.
 Still owed here: argument-parsing tests for the four remaining verbs. The ones
 that existed covered `launch`/`run`/`replay`/`check` and went with them.
 
-**Next: W2** — re-point nano-ros at the new repo and drop its two old pins.
+**W2 done (2026-07-28).** Three pins became one:
+`third-party/{play_launch, ros-launch-manifest, play_launch_parser}` →
+`third-party/ros-launch-resolve`, with rlm arriving transitively. The drift
+class behind 0285/0293 is closed by construction — one copy of the spec below
+any consumer.
+
+Receipts: `nros sync` resolves 6/6; regenerated models differ ONLY in the
+provenance stamp; `rclrs`, `play_launch_msgs` and `rosidl_runtime_rs` are gone
+from both `packages/cli/Cargo.lock` and the helper's lock; 453 cli-core tests
+pass.
+
+One design correction on the way: `build_checked_model` lived in the resolver's
+CLI crate, so a program LINKING the library could not build a model without
+reimplementing argument parsing. It moved to `resolve/src/model.rs`; file IO
+and progress output stayed in the binary.
+
+**Next: W3** — play_launch depends on layer 2 and deletes the moved modules.
+Strictly after W2, so nothing ever points at code that has moved.
 
 ## Risks
 
