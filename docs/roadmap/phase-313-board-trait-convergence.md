@@ -53,13 +53,65 @@ is a different symbol, unaffected.
 - **Verified:** `nros-platform` builds + lib tests 8/8, clippy clean;
   `nros-board-native` builds; no board-trait `NodeRuntime` reference remains.
 
-### W2 — template: migrate the simplest kernel family fully (native/posix)
-Take `nros-board-native` / `nros-board-posix` fully onto `nros-platform::board`
-(config via `RuntimeCtx`), deleting their legacy `board_init` usage. Establishes
-the migration recipe every later wave follows.
-- **Acceptance:** native/posix implement ONLY `nros-platform::board`; native
-  example + host lanes green; no `nros-board-common::board_init` reference in
-  either crate.
+### W2 — template: native/posix — ALREADY DONE (verified 2026-07-28)
+`nros-board-native` / `nros-board-posix` already implement ONLY
+`nros-platform::board` (`impl BoardInit { init_hardware() }` + `impl BoardEntry`
+with `RuntimeCtx`); zero real `nros_board_common` refs, no dep. They needed no
+hardware `Config` (hosted), so they were the trivial case — the recipe, but not
+the hard part. (The earlier "22 crates on legacy" figure was a comment-match
+false positive; see the precise audit below.)
+
+### Precise audit (2026-07-28) — real (non-comment) legacy usage
+
+| Bucket | Crates |
+| --- | --- |
+| **Off legacy** (0 real refs, no/dead dep) | native, posix, bare-metal, fvp-aemv8r-smp, mps2-an385-freertos, rtic-mps2-an385, s32z270dc2-r52, zephyr, **embassy-stm32f4** + **rtic-stm32f4** (dead dep dropped W3, below) |
+| **Real legacy users** (config-flow coupled) | cffi(7), esp32-qemu(4), esp32s3(4), freertos(2), mps2-an385(4), nuttx(1), nuttx-qemu-arm(3), nuttx-qemu-riscv(3), orin-spe(1), stm32f4(5), threadx(3), threadx-linux(1), threadx-qemu-riscv64(1) — **~13**, plus `nros-board-common` (the home to delete) |
+
+### W3 — dead-dep drops — PARTIAL DONE (2026-07-28)
+`embassy-stm32f4` + `rtic-stm32f4` carried a `nros-board-common` dep with only
+COMMENT references ("for symmetry"). Dropped both; each compile-checks clean for
+`thumbv7em-none-eabihf`. They are now fully off legacy. The remaining direct-exec
+boards (esp32*, mps2-an385, stm32f4) have REAL usage — see the blocker.
+
+## BLOCKER (2026-07-28) — the core migration is a verification-gated boot-path + config-flow refactor
+
+The ~13 real legacy users are NOT a mechanical trait-rename. They are coupled
+through the **shared `nros_board_common::run<B: BoardInit>(config, f)` boot
+path** and the **config-carrying `BoardInit { type Config; init_hardware(&cfg) }`
+model**:
+
+- `stm32f4`/`esp32`/`mps2` etc. call `nros_board_common::run::<Self>(config, f)`
+  and `impl BoardInit for Self { type Config = …; init_hardware(&cfg) }`.
+- `nros-board-cffi`'s C-export macro hard-depends on the legacy shapes:
+  `<$ty as BoardInit>::Config`, `init_hardware(cfg)`, and the config-CARRYING
+  `BoardEntry::run(cfg, closure)` — the new `run(setup)` drops the `cfg` arg.
+- the kernel families (`freertos`/`threadx`/`nuttx`) own generic `run<B>` boot
+  paths that thread `config` explicitly.
+
+Migrating them means (a) rewriting the SHARED `run<B>` boot path to the
+`RuntimeCtx` model — all its callers move at once, and (b) SPLITTING each board's
+`type Config` into build-time consts (clock tree / MMIO base → board-crate
+`const`) vs runtime knobs (→ `RuntimeCtx`), which is **runtime-behavior-affecting**
+and must be validated per board on its QEMU/hardware boot. Board crates are
+outside the root workspace (per-manifest `cargo check` works, but runtime
+correctness of the config split does NOT show up at compile time).
+
+Landing the shared-boot-path rework + 13 config-flow refactors WITHOUT per-board
+QEMU runtime verification risks silent boot/config breakage on targets that can't
+be re-tested in a single session. **This is a multi-session, verification-gated
+effort — not completable in one turn.** Resuming needs: the per-kernel QEMU
+lanes (`just {freertos,threadx,nuttx,esp32} …`) run per migrated board, and a
+decision per board on the Config field split.
+
+## Next steps when resumed
+1. Rework the shared `nros_board_common::run<B>` boot path → the `RuntimeCtx`
+   model behind a NEW-family `run(setup)` in the family-driver crates, keeping
+   the legacy `run` alive until every caller moves (parallel, not big-bang).
+2. Migrate one kernel family end-to-end WITH its QEMU lane green, as the real
+   template (freertos → mps2-an385-freertos is the smallest).
+3. Then the direct-exec boards, then cffi (the C-export macro API change), then
+   the delete + lint gate (W6).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
