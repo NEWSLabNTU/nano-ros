@@ -982,8 +982,16 @@ fn emit_metadata_probe_main(out: &mut String, export: &ProbeExport) {
         "// phase-308 — metadata probe. Records what this component DECLARES;\n\
          // opens no transport and never spins.\n\
          extern \"C\" int nros_cpp_metadata_dump(const char*, const char*, const char*,\n\
-         \x20                                    const char*, const char*);\n\n\
+         \x20                                    const char*, const char*);\n\
+         // Registering the recording backend EXPLICITLY, rather than relying on\n\
+         // its `.init_array` ctor. A static archive only contributes objects\n\
+         // that resolve an undefined symbol, so with no reference the linker\n\
+         // never pulled the backend into the executable — it was present in\n\
+         // libnros_cpp.a and absent from the binary, and `NROS_RMW=metadata`\n\
+         // resolved to an unknown backend. This reference is what pulls it in.\n\
+         extern \"C\" int nros_rmw_metadata_register(void);\n\n\
          int main(int /*argc*/, char** /*argv*/) {\n\
+         \x20   (void)nros_rmw_metadata_register();\n\
          \x20   ::nros::Result r = ::nros::init(nullptr, 0, \"nros_metadata_probe\");\n\
          \x20   if (!r.ok()) return 1;\n\
          \x20   int32_t rc = __nros_entry_setup();\n\
@@ -1146,6 +1154,9 @@ mod tests {
             src.contains("/ws/src/talker_pkg/metadata/talker.json"),
             "{src}"
         );
+        // Explicit registration is what pulls the backend object out of the
+        // static archive; with no reference the linker omits it entirely.
+        assert!(src.contains("nros_rmw_metadata_register()"), "{src}");
 
         // NOT an entry: no board CALL, no spin, no boot-config blob. Match the
         // call form — the generated file's header comment mentions
