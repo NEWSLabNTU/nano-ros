@@ -252,6 +252,16 @@ fn resolve_node_params(
     let mut out: Vec<(String, String)> = Vec::new();
     let node_name = n.name.clone().unwrap_or_else(|| n.exec.clone());
     let namespace = n.namespace.clone().unwrap_or_else(|| "/".to_string());
+    let fqn = {
+        let ns = namespace.trim().trim_end_matches('/');
+        if ns.is_empty() {
+            format!("/{node_name}")
+        } else if ns.starts_with('/') {
+            format!("{ns}/{node_name}")
+        } else {
+            format!("/{ns}/{node_name}")
+        }
+    };
 
     for file in &n.param_files {
         let path = {
@@ -269,13 +279,21 @@ fn resolve_node_params(
             );
         }
         deps.push(path.clone());
-        for (key, value) in
-            crate::orchestration::params::param_file_values(&path, &node_name, &namespace)?
-        {
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|e| eyre::eyre!("read param file `{}`: {e}", path.display()))?;
+        // The resolution algorithm is single-sourced in the shared `model`
+        // crate (section matching, specificity, flattening, stringification) —
+        // this path must not carry a second copy that can drift from the one
+        // every live bake uses.
+        let inst = ros_launch_manifest_model::NodeInstance {
+            params_files: vec![raw],
+            ..Default::default()
+        };
+        for (key, value) in inst.resolved_params(&fqn) {
             if key.starts_with(QOS_OVERRIDE_PREFIX) {
                 continue;
             }
-            upsert_param(&mut out, key, value);
+            upsert_param(&mut out, key, value.to_bake_string());
         }
     }
 
@@ -650,7 +668,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
 /// a board no node targets is a placement bug, not an empty entry.
 pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
     use crate::orchestration::model_ingest;
-    use ros_launch_manifest_model::{ParamValue, Target};
+    use ros_launch_manifest_model::Target;
 
     let model = model_ingest::load_model(model_path)?;
     let board = board.unwrap_or_else(|| "native".to_string());
@@ -716,16 +734,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         let params: Vec<(String, String)> = inst
             .resolved_params(fqn)
             .iter()
-            .map(|(k, v)| {
-                let s = match v {
-                    ParamValue::Bool(b) => b.to_string(),
-                    ParamValue::Int(i) => i.to_string(),
-                    ParamValue::Float(f) => f.to_string(),
-                    ParamValue::Str(s) => s.clone(),
-                    ParamValue::StrList(l) => l.join(","),
-                };
-                (k.clone(), s)
-            })
+            .map(|(k, v)| (k.clone(), v.to_bake_string()))
             .collect();
         // Group→tier from the model's resolved bindings (`<fqn>/<group>`).
         let mut group_tiers: BTreeMap<String, String> = BTreeMap::new();
@@ -1359,6 +1368,9 @@ autostart = "active"
     /// `PlanNode.params` at codegen time: wildcard `/**` block, then the
     /// node-specific block (which overrides it), then inline `<param name=
     /// value=>` on top (ROS precedence). Nested maps flatten to dotted keys.
+    ///
+    /// The projection itself lives in the shared `model` crate — this asserts
+    /// the wiring, not a second copy of the algorithm.
     #[test]
     fn plan_from_launch_projects_param_file_values() {
         use tempfile::TempDir;
@@ -1373,8 +1385,11 @@ autostart = "active"
         .unwrap();
         std::fs::write(
             bringup_dir.join("launch").join("talker.param.yaml"),
-            "/**:\n  ros__parameters:\n    use_sim_time: false\n    rate: 10\n\
-             talker:\n  ros__parameters:\n    rate: 25\n    limits:\n      max_accel: 1.5\n\
+            // The node block is written ABOVE the wildcard on purpose:
+            // section precedence is by specificity, not file order.
+            "talker:\n  ros__parameters:\n    rate: 25\n    use_sim_time: true\n\
+             \x20   limits:\n      max_accel: 1.5\n\
+             /**:\n  ros__parameters:\n    use_sim_time: false\n    rate: 10\n\
              other_node:\n  ros__parameters:\n    rate: 999\n",
         )
         .unwrap();
@@ -1404,11 +1419,9 @@ autostart = "active"
 
         let params: std::collections::BTreeMap<_, _> =
             plan.nodes[0].params.iter().cloned().collect();
-        // wildcard value survives where nothing overrides it
-        assert_eq!(
-            params.get("use_sim_time").map(String::as_str),
-            Some("false")
-        );
+        // The node block sets it true and the wildcard false, with the node
+        // block written FIRST — specificity decides, not file order.
+        assert_eq!(params.get("use_sim_time").map(String::as_str), Some("true"));
         // nested map flattened
         assert_eq!(
             params.get("limits.max_accel").map(String::as_str),
@@ -1416,6 +1429,12 @@ autostart = "active"
         );
         // inline `<param name=…>` beats BOTH the wildcard and the node block
         assert_eq!(params.get("rate").map(String::as_str), Some("50"));
+        // A float keeps its ".0" — the shared `to_bake_string` rendering. Bare
+        // `to_string()` gives "1", which the runtime re-types as an INTEGER.
+        assert_eq!(
+            params.get("limits.max_accel").map(String::as_str),
+            Some("1.5")
+        );
         // a block naming a different node contributes nothing
         assert!(!params.values().any(|v| v == "999"));
     }

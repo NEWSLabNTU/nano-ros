@@ -642,23 +642,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // no record.json to read them from).
             // #276 — `params_files` YAML projects under the inline values.
             node_param_bakes.push(
+                // `to_bake_string` is the shared rendering (issue-0269-adjacent:
+                // `1.0f64.to_string()` is "1", which the runtime's
+                // infer_param_value re-types as INTEGER).
                 inst.resolved_params(fqn)
                     .iter()
-                    .map(|(k, v)| {
-                        use ros_launch_manifest_model::ParamValue;
-                        let s = match v {
-                            ParamValue::Bool(b) => b.to_string(),
-                            ParamValue::Int(i) => i.to_string(),
-                            // issue-0269-adjacent: `1.0f64.to_string()` is "1",
-                            // which the runtime's infer_param_value re-types as
-                            // INTEGER — Debug formatting keeps the ".0" so a
-                            // launch double stays a double end-to-end.
-                            ParamValue::Float(f) => format!("{f:?}"),
-                            ParamValue::Str(s) => s.clone(),
-                            ParamValue::StrList(l) => l.join(","),
-                        };
-                        (k.clone(), s)
-                    })
+                    .map(|(k, v)| (k.clone(), v.to_bake_string()))
                     .collect(),
             );
 

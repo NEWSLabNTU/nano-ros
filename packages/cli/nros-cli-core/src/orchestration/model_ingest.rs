@@ -1056,7 +1056,6 @@ mod monitor_tests {
 /// model without parsing launch XML. Params/remaps/env come resolved from
 /// the model (post-46 `NodeInstance` carries them all).
 pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
-    use ros_launch_manifest_model::ParamValue;
     let mut nodes: Vec<serde_json::Value> = Vec::new();
     let mut containers: Vec<serde_json::Value> = Vec::new();
     let mut load_nodes: Vec<serde_json::Value> = Vec::new();
@@ -1075,16 +1074,7 @@ pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
         let params: Vec<serde_json::Value> = inst
             .resolved_params(fqn)
             .iter()
-            .map(|(k, v)| {
-                let s = match v {
-                    ParamValue::Bool(b) => b.to_string(),
-                    ParamValue::Int(i) => i.to_string(),
-                    ParamValue::Float(f) => f.to_string(),
-                    ParamValue::Str(s) => s.clone(),
-                    ParamValue::StrList(l) => l.join(","),
-                };
-                serde_json::json!([k, s])
-            })
+            .map(|(k, v)| serde_json::json!([k, v.to_bake_string()]))
             .collect();
         let remaps: Vec<serde_json::Value> = inst
             .remaps
