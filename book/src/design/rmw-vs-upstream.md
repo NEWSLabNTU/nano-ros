@@ -731,28 +731,72 @@ Two return-shape conventions, picked by call shape:
 **Why same style.** Named constants make `switch` statements
 possible at call sites; bare negative ints don't.
 
-## Recorded carve-outs (phase-301 / issue 0242)
+## Publisher GID & message-info: functional-parity, different shape (issue 0242)
 
-Two upstream `rmw.h` capabilities are deliberately absent from the
-vtable, recorded here so their absence reads as a decision rather
-than an oversight:
+Two upstream `rmw.h` capabilities exist in nano-ros in a **different
+shape** — the functionality is present, but the upstream-exact C entry
+points are deliberately not mirrored. Recorded here so the divergence
+reads as a decision, and updated (2026-07-27) to describe what nano-ros
+actually provides today.
 
-- **No publisher GID.** Upstream exposes `rmw_get_gid_for_publisher`
-  and stamps every sample with the writer's GID so subscribers can
-  attribute messages. nano-ros carries no GID: it costs ~16 bytes per
-  publisher plus per-sample wire overhead, and no embedded consumer
-  of it exists yet. The one in-tree need — bridge loop-suppression /
-  dedup — is served by the `bridge_origin` attachment instead.
-- **No message-info take slot.** Upstream's `rmw_take_with_info`
-  returns `rmw_message_info_t` (source timestamp, sender GID,
-  sequence numbers) alongside the payload. nano-ros's `try_recv_raw`
-  returns bytes only; backends that need per-sample metadata for QoS
-  emulation (lifespan, message-lost) keep it in their native
-  attachment / sample-info channel and never surface it to the app.
+### Message-info: surfaced via a builder, not a `take_with_info` slot
 
-Both can land later as NULL-able optional vtable slots — the
-established tail-append extension pattern (RFC-0035) — without an
-ABI break, if a consumer with a concrete need shows up.
+Upstream's `rmw_take_with_info` fills an `rmw_message_info_t` (source +
+received timestamp, publisher GID, publication + reception sequence
+numbers) alongside the payload.
+
+nano-ros provides the **same information** — `MessageInfo` carries all five
+fields — but through a different seam:
+
+- **Application API (present).** A subscription opts into message-info
+  with the `message_info()` builder:
+  ```rust
+  node.subscription::<Msg>("/topic")
+      .message_info()
+      .build(|msg, info: Option<&MessageInfo>| {
+          if let Some(i) = info {
+              log::info!("from {:?} at {:?}", i.publisher_gid(), i.source_timestamp());
+          }
+      })?;
+  ```
+  C mirrors this with `nros_executor_register_subscription_raw_with_info`
+  (the callback receives a `nros_raw_message_info_t`).
+- **What's carved out.** The hot `try_recv_raw` vtable slot returns
+  bytes ONLY. The metadata rides a separate `MessageInfoSlot`
+  side-channel that the backend populates from its native attachment /
+  sample-info (Zenoh attachment, DDS sample-info, XRCE topic callback)
+  and the runtime pairs with the payload. A `take_with_info`-shaped
+  vtable slot would widen the ABI of the byte-count-return take path
+  (`int32_t` bytes) for no functional gain — the side-channel already
+  delivers the info to the `message_info()` builder.
+
+### Publisher identity: per-message GID, no standalone query
+
+Upstream exposes `rmw_get_gid_for_publisher(pub, out_gid)` and stamps
+every sample with the writer's GID.
+
+nano-ros **does carry a publisher GID** where the wire supports it: a
+zenoh publisher generates a 16-byte GID at create time
+(`RmwAttachment::generate_gid`) and stamps it into the per-sample
+attachment; the subscriber extracts it into `MessageInfo.publisher_gid`,
+so **per-message publisher attribution is observable** via
+`info.publisher_gid()` (populated on the zenoh path; zero-filled on
+backends whose wire carries no writer GID).
+
+- **What's carved out.** The standalone `rmw_get_gid_for_publisher`
+  QUERY — reading a *publisher's own* GID back through a C API — is not
+  provided. The publisher holds its GID internally, but no in-tree
+  consumer needs to query it: the one need, bridge loop-suppression /
+  dedup, is served by the `bridge_origin` attachment, and per-message
+  attribution is already covered by `MessageInfo.publisher_gid`.
+
+### If a consumer shows up
+
+Both carved-out shapes — a `take_with_info` vtable slot and a
+`get_publisher_gid` query slot — can land later as NULL-able optional
+vtable slots (the established tail-append extension pattern, RFC-0035)
+without an ABI break, the day a concrete consumer needs the upstream-exact
+entry point rather than the builder / per-message forms above.
 
 ## See also
 

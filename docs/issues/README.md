@@ -47,6 +47,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#242** — RMW parity gaps (publisher GID / message-info) resolved as a
+documented carve-out: both already exist in nano-ros's own shape. Message-info is surfaced via the
+`message_info()` subscription builder (Rust + C); only the `take_with_info` VTABLE slot is carved
+(info rides a side-channel, keeping `try_recv_raw` lean). Publisher GID rides the zenoh wire
+attachment → `MessageInfo.publisher_gid` (per-message attribution); only the standalone
+`rmw_get_gid_for_publisher` query is carved (no consumer). Corrected the stale carve-out text in
+`book/src/design/rmw-vs-upstream.md`. No code change. (2026-07-27)
+
 Recently resolved: **#292** — nano-ros zpico ACTION SERVER now interops with a stock jazzy
 `rmw_zenoh_cpp` client. Two bugs: entity liveliness tokens shared a hardcoded id `0/11` (five
 action entities collided → action never assembled), and send_goal/get_result advertised the action
