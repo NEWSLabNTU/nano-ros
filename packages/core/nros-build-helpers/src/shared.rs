@@ -350,9 +350,19 @@ pub fn write_atomic(dest: &std::path::Path, contents: &str) {
             .unwrap_or("header"),
         std::process::id()
     ));
-    std::fs::write(&tmp, contents).unwrap_or_else(|e| panic!("write {}: {e}", tmp.display()));
-    std::fs::rename(&tmp, dest)
-        .unwrap_or_else(|e| panic!("rename {} -> {}: {e}", tmp.display(), dest.display()));
+    if let Err(e) = std::fs::write(&tmp, contents) {
+        let _ = std::fs::remove_file(&tmp);
+        panic!("write {}: {e}", tmp.display());
+    }
+    if let Err(e) = std::fs::rename(&tmp, dest) {
+        // Never leave the temp behind on a failed rename: some of these
+        // destinations are SOURCE directories (`nros_cpp_ffi.h` is a committed
+        // header regenerated in place), so litter there shows up as untracked
+        // files and can be committed by accident. A hard kill can still strand
+        // one, which is why `.gitignore` also covers the pattern.
+        let _ = std::fs::remove_file(&tmp);
+        panic!("rename {} -> {}: {e}", tmp.display(), dest.display());
+    }
 }
 
 pub fn env_usize(name: &str, default: usize) -> usize {
