@@ -1,6 +1,6 @@
 # Phase 312: Three-layer launch toolchain (RFC-0060)
 
-**Status:** In progress (started 2026-07-28). **W1 + W2 complete.** W3 next.
+**Status:** In progress (started 2026-07-28). **W1–W3 complete.** W4 (closure) remains.
 **Implements:** RFC-0060. **Closes:** the structural half of issue 0293 (one
 implementation per contract); removes the vendoring drift behind issues
 0285/0293.
@@ -151,8 +151,27 @@ CLI crate, so a program LINKING the library could not build a model without
 reimplementing argument parsing. It moved to `resolve/src/model.rs`; file IO
 and progress output stayed in the binary.
 
-**Next: W3** — play_launch depends on layer 2 and deletes the moved modules.
-Strictly after W2, so nothing ever points at code that has moved.
+**W3 done (2026-07-28).** play_launch is layer 3 and nothing else: 12,570
+lines of resolution left, replaced by a dependency on `ros-launch-resolve`.
+Its `src/{ros-launch-manifest, play_launch_parser}` submodules are gone —
+both arrive transitively, so one copy of the spec exists in the tree instead
+of two.
+
+The `runtime` feature is **retired**. It had been simulating a crate boundary;
+now there is one, so the ROS deps go back to unconditional and every
+`#[cfg(feature = "runtime")]` is gone.
+
+`resolve` stays as a deprecating delegate (RFC-0060 decision 3) because ASI
+embeds it in `pilot.launch.xml`; `dump`/`plot`/`contract` had no such user and
+were dropped. `SchedApplyMode` was deduplicated — play_launch held a second
+definition of the same enum, the shape that produced issue 0293.
+
+Receipts: `just build-rust` green under colcon; the delegate emits a model
+byte-identical to layer 2's apart from provenance.
+
+**Next: W4** — RFC-0060 Draft → Stable, the 0293 SSoT follow-up (one
+`system.toml` deploy schema), and CLAUDE.md/AGENTS.md pointers for the new
+chain.
 
 ## Risks
 
