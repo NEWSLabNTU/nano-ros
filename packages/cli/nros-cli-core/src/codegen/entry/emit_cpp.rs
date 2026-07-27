@@ -194,7 +194,49 @@ pub(crate) fn board_is_nuttx(board: &str) -> bool {
 /// factory + configure seam `__nros_c_component_<pkg>_{create,configure}`
 /// (`NROS_C_COMPONENT`), to which the entry hands the node's `ffi_handle()`.
 /// Returns an error naming the offending pkg on a missing requirement.
+/// phase-308 W1 — what the generated TU does after `__nros_entry_setup` has
+/// constructed and configured every node.
+///
+/// The setup body is identical for a real entry and for a metadata probe: both
+/// need the same per-node includes, static storage, construction and
+/// `configure` call, across all three component shapes (C++ `configure`, the C
+/// ABI seam, rclcpp construct-with-handle). Only the tail differs — an entry
+/// spins, a probe records and exits.
+///
+/// Splitting here rather than writing a second emitter is deliberate: a
+/// parallel emitter would fork three shape-handlers, and the count those
+/// probes produce is exactly what must not drift between them.
+pub enum EntryTail<'a> {
+    /// Hand the setup fn to `Board::run_components` (init → setup → spin →
+    /// shutdown). The shipping entry.
+    Board,
+    /// Open a session against the recording RMW backend, run setup once, dump
+    /// the recorded metadata, exit. Never spins.
+    MetadataProbe(&'a ProbeExport),
+}
+
+/// phase-308 W1 — identity the probe stamps into the sidecar it writes.
+pub struct ProbeExport {
+    pub package: String,
+    pub component: String,
+    pub executable: String,
+    /// `"c"` or `"cpp"` — the sidecar's `language` field.
+    pub language: String,
+    /// Absolute path the probe writes the sidecar to.
+    pub out_path: String,
+}
+
 pub fn emit_typed(plan: &Plan) -> Result<String, String> {
+    emit_typed_with_tail(plan, &EntryTail::Board)
+}
+
+/// phase-308 W1 — the metadata probe: the same TU an entry would be, with a
+/// recording tail.
+pub fn emit_typed_probe(plan: &Plan, export: &ProbeExport) -> Result<String, String> {
+    emit_typed_with_tail(plan, &EntryTail::MetadataProbe(export))
+}
+
+pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String, String> {
     for n in &plan.nodes {
         if n.class_name.is_none() {
             return Err(format!(
@@ -382,7 +424,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         .resolved_tiers
         .as_ref()
         .is_some_and(|t| t.has_group_split_node());
-    let use_run_tiers = use_tiers
+    // phase-308 W1 — a metadata probe always takes the single-setup shape.
+    // Tiers would be worse than irrelevant here: `create_entity` early-returns
+    // for entities whose callback group is inactive on the running tier, so a
+    // per-tier probe would UNDER-count exactly the entities the sidecar exists
+    // to count. Recording everything once is the correct probe semantics.
+    let use_run_tiers = !matches!(tail, EntryTail::MetadataProbe(_))
+        && use_tiers
         && !has_group_split
         && (!board_is_embedded(&plan.board)
             || board_is_freertos_embedded(&plan.board)
@@ -891,6 +939,13 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
         }
         out.push_str("    return 0;\n}\n\n");
 
+        // phase-308 W1 — the probe never boots a board: it opens a session
+        // against the recording backend, runs setup once, and dumps.
+        if let EntryTail::MetadataProbe(export) = tail {
+            emit_metadata_probe_main(&mut out, export);
+            return Ok(out);
+        }
+
         // Phase 266 (W6) — bake the boot config blob.
         emit_boot_config_static(&mut out, plan)?;
         out.push('\n');
@@ -931,6 +986,41 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);"
 }
 
 /// A `lang == "c"` node is built via the C factory/configure seam (no C++ class).
+/// phase-308 W1 — the probe's `main`.
+///
+/// `nros::init` opens against whatever `$NROS_RMW` selects; the driver sets
+/// `NROS_RMW=metadata`, so every publisher / subscription / service / client
+/// created during `configure` is RECORDED rather than transported. Timers and
+/// guard conditions never reach the RMW and are captured by the `nros-cpp`
+/// hooks instead.
+///
+/// No spin loop: a probe runs the declaration path and exits. A non-zero
+/// return is a real failure the driver surfaces — recording NOTHING is an
+/// error, not an empty sidecar.
+fn emit_metadata_probe_main(out: &mut String, export: &ProbeExport) {
+    out.push_str(
+        "// phase-308 — metadata probe. Records what this component DECLARES;\n\
+         // opens no transport and never spins.\n\
+         extern \"C\" int nros_cpp_metadata_dump(const char*, const char*, const char*,\n\
+         \x20                                    const char*, const char*);\n\n\
+         int main(int /*argc*/, char** /*argv*/) {\n\
+         \x20   ::nros::Result r = ::nros::init(nullptr, 0, \"nros_metadata_probe\");\n\
+         \x20   if (!r.ok()) return 1;\n\
+         \x20   int32_t rc = __nros_entry_setup();\n\
+         \x20   if (rc != 0) return rc;\n",
+    );
+    let _ = writeln!(
+        out,
+        "    return nros_cpp_metadata_dump({pkg:?}, {comp:?}, {exe:?}, {lang:?}, {out_path:?});\n\
+         }}",
+        pkg = export.package,
+        comp = export.component,
+        exe = export.executable,
+        lang = export.language,
+        out_path = export.out_path,
+    );
+}
+
 fn is_c_node(n: &super::PlanNode) -> bool {
     n.lang.as_deref() == Some("c")
 }
@@ -1037,6 +1127,58 @@ mod tests {
             n.shape = Some("rclcpp".into());
         }
         plan
+    }
+
+    #[test]
+    /// phase-308 W1 — the probe is the SAME TU an entry would be, minus the
+    /// board and plus a dump. That is the point: the per-node construction and
+    /// `configure` calls come from one emitter, so the entity count a probe
+    /// records cannot drift from what the real entry registers.
+    #[test]
+    fn metadata_probe_reuses_the_setup_body_and_swaps_the_tail() {
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let export = ProbeExport {
+            package: "talker_pkg".into(),
+            component: "talker".into(),
+            executable: "talker".into(),
+            language: "cpp".into(),
+            out_path: "/ws/src/talker_pkg/metadata/talker.json".into(),
+        };
+        let src = emit_typed_probe(&plan, &export).expect("probe emit ok");
+
+        // Same setup body as the entry: header, construction, configure.
+        assert!(src.contains("#include \"talker_pkg/Talker.hpp\""), "{src}");
+        assert!(src.contains("__nros_entry_setup"), "{src}");
+        assert!(src.contains(".configure("), "{src}");
+
+        // Probe tail: dump, with the identity the sidecar is stamped with.
+        assert!(
+            src.contains("nros_cpp_metadata_dump(\"talker_pkg\", \"talker\", \"talker\", \"cpp\""),
+            "{src}"
+        );
+        assert!(
+            src.contains("/ws/src/talker_pkg/metadata/talker.json"),
+            "{src}"
+        );
+
+        // NOT an entry: no board CALL, no spin, no boot-config blob. Match the
+        // call form — the generated file's header comment mentions
+        // `Board::run_components` prose, which a bare substring test flags.
+        assert!(
+            !src.contains("::run_components("),
+            "probe must not spin:\n{src}"
+        );
+        assert!(!src.contains("NROS_BOOT_CONFIG"), "{src}");
+        assert!(
+            !src.contains("run_tiers"),
+            "probe records every tier:\n{src}"
+        );
     }
 
     #[test]
