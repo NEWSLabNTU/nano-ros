@@ -276,6 +276,22 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
+# issue #52 / 0303 / 0304 — the QoS workspace on NATIVE (the C/C++ projections
+# already had native rows; the Rust one was zephyr-only, which is part of why
+# the dropped-per-entity-QoS bug went unseen). The committed model overrides the
+# talker publisher's RELIABILITY to best_effort — a value the code never asks
+# for — so a peer reporting the advertised profile proves the plan override
+# reached the live entity. Consumed by tests/qos_override_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-rust-native-qos"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-qos-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # phase-263 A3 (Track D) — the managed (lifecycle) workspace. `[lifecycle] autostart =
 # "active"` + the entry's `nros/lifecycle-services` feature; `nros::main!` registers the
 # 5 REP-2002 services and drives Configure→Activate at boot. Consumed by

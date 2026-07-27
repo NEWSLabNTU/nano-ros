@@ -1407,13 +1407,23 @@ impl<'e, 's> NodeCtx<'e, 's> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
-        self.executor.create_publisher_raw_on(
-            self.node_id,
-            topic,
-            type_name,
-            type_hash,
-            QosSettings::default(),
-        )
+        self.create_generic_publisher_with_qos(topic, type_name, type_hash, QosSettings::default())
+    }
+
+    /// Issue 0304 — the same, with an explicit profile. The declarative
+    /// component path needs it: a node that declares
+    /// `create_publisher_for_topic_with_qos(...)` carries its profile in
+    /// `EntityMetadata::qos`, and the runtime used to drop it on the floor by
+    /// calling the default-QoS constructor here.
+    pub fn create_generic_publisher_with_qos(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.executor
+            .create_publisher_raw_on(self.node_id, topic, type_name, type_hash, qos)
     }
 
     /// Convenient typed subscription (the `fork` tier — rclcpp/rclrs shape).
@@ -1671,13 +1681,35 @@ impl<'e, 's> NodeCtx<'e, 's> {
     where
         F: FnMut(&[u8]) + 'static,
     {
+        self.create_generic_subscription_with_qos(
+            topic,
+            type_name,
+            type_hash,
+            QosSettings::default(),
+            callback,
+        )
+    }
+
+    /// Issue 0304 — the same, with an explicit profile (see
+    /// [`Self::create_generic_publisher_with_qos`] for why).
+    pub fn create_generic_subscription_with_qos<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
         self.executor
             .register_subscription_buffered_raw_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
                 topic,
                 type_name,
                 type_hash,
-                QosSettings::default(),
+                qos,
                 callback,
             )
     }

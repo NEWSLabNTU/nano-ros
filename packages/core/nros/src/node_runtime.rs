@@ -766,10 +766,22 @@ impl NodeRuntime for ExecutorSink<'_> {
         let entity_name = resolved_name.as_ref().map(|r| r.as_str()).unwrap_or("");
         match metadata.kind {
             EntityKind::Publisher => {
+                // Issue 0304 — the node's DECLARED profile
+                // (`create_publisher_for_topic_with_qos`) rides
+                // `metadata.qos`; this used to call the default-QoS
+                // constructor, so every declarative entity was created
+                // `QosSettings::default()` and a node's own QoS was silently
+                // discarded. Plan overrides still win: they fold in below this,
+                // inside the executor's create path.
                 let handle = self
                     .executor
                     .node_mut(node)
-                    .create_generic_publisher(entity_name, metadata.type_name, metadata.type_hash)
+                    .create_generic_publisher_with_qos(
+                        entity_name,
+                        metadata.type_name,
+                        metadata.type_hash,
+                        metadata.qos,
+                    )
                     .map_err(decl_err_from_node)?;
                 let id_owned = String::from(metadata.id.as_str());
                 self.cell.publishers.borrow_mut().push((id_owned, handle));
@@ -803,12 +815,15 @@ impl NodeRuntime for ExecutorSink<'_> {
                         .map_err(decl_err_from_node)?;
                     return Ok(());
                 }
+                // Issue 0304 — same as the publisher branch: honour the
+                // node's declared profile instead of defaulting it.
                 self.executor
                     .node_mut(node)
-                    .create_generic_subscription(
+                    .create_generic_subscription_with_qos(
                         entity_name,
                         metadata.type_name,
                         metadata.type_hash,
+                        metadata.qos,
                         move |payload: &[u8]| {
                             dispatch_into_cell(&cell, &cb_id_owned, payload);
                         },

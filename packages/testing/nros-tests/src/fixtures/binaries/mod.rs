@@ -211,6 +211,7 @@ static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_QOS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SIZING_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_BRIDGE_XRCE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1059,6 +1060,17 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
                 "ws-params-rust",
                 "native_entry",
             )
+        })
+        .map(|p| p.as_path())
+}
+
+/// issue #52 / 0303 / 0304 — the QoS workspace Entry pkg on native
+/// (`ws-qos-rust`). Its committed model overrides the talker publisher's
+/// reliability to `best_effort`, which the node's code never asks for.
+pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_QOS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry("workspace-rust-native-qos", "ws-qos-rust", "native_entry")
         })
         .map(|p| p.as_path())
 }
