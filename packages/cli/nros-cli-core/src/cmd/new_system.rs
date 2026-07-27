@@ -345,6 +345,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             features: Vec::new(),
             domain_id: None,
             locator: None,
+            // Placement is stated in the launch file for a scaffolded
+            // system; an empty list means "this block governs every node".
+            nodes: Vec::new(),
         },
     );
 

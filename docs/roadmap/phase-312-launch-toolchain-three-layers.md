@@ -1,6 +1,6 @@
 # Phase 312: Three-layer launch toolchain (RFC-0060)
 
-**Status:** In progress (started 2026-07-28). **W1–W3 complete.** W4 (closure) remains.
+**Status:** ✅ **Done** (2026-07-28). W1–W4 complete.
 **Implements:** RFC-0060. **Closes:** the structural half of issue 0293 (one
 implementation per contract); removes the vendoring drift behind issues
 0285/0293.
@@ -169,9 +169,41 @@ definition of the same enum, the shape that produced issue 0293.
 Receipts: `just build-rust` green under colcon; the delegate emits a model
 byte-identical to layer 2's apart from provenance.
 
-**Next: W4** — RFC-0060 Draft → Stable, the 0293 SSoT follow-up (one
-`system.toml` deploy schema), and CLAUDE.md/AGENTS.md pointers for the new
-chain.
+**W4 done (2026-07-28).**
+
+- **W4.1** RFC-0060 Draft → **Stable**. Its three open questions were decided
+  earlier; only "when to publish rlm to crates.io" remains, with the trigger
+  recorded.
+- **W4.2** Issue 0293's SSoT half is CLOSED.
+  `ros_launch_manifest_model::system_config::DeployBlock` is the single
+  `system.toml` deploy schema; nano-ros's `DeployTarget` is a re-export, not a
+  redeclaration. The struct gained `Serialize` (nano-ros writes the file, rlm
+  only read it) and `deny_unknown_fields`, so the next divergence is a parse
+  error rather than a silently dropped key.
+
+  The audit that gated `deny_unknown_fields` turned out trivial: nano-ros's
+  mirror ALREADY denied, so every `system.toml` in use satisfied its field set,
+  and unifying to the union — which adds only `nodes` — can reject nothing that
+  previously parsed. Cost was two struct literals learning one field.
+- **W4.3** CLAUDE.md carries the three-layer chain and the
+  absolute-path-not-PATH rule for the helper.
+
+Receipts: rlm 17 tests; nano-ros 459 cli-core tests; `nros sync` resolves 6/6;
+play_launch's colcon build green.
+
+## Outcome
+
+The launch toolchain is three layers with a strictly linear dependency chain,
+and the two failure classes that motivated it are closed by construction:
+
+- **Double-vendored spec.** One copy of `ros-launch-manifest` in the tree,
+  reached transitively. The pin drift that bit three times during issue 0285
+  cannot recur.
+- **Two parsers for one file.** One `DeployBlock`, with `deny_unknown_fields`.
+
+Layer 2 builds under `env -i` with no ROS and no colcon, which is what lets
+nano-ros — and future descendants — link resolution without inheriting a
+runtime they cannot build.
 
 ## Risks
 

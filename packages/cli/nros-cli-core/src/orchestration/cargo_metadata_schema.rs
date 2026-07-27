@@ -851,62 +851,14 @@ pub struct SystemComponentEntry {
 /// `nros check` is the place to surface a heads-up when `kind`/`target`
 /// is absent AND the runner can't synthesise defaults from the target
 /// name; that's a lint, not a parser error.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DeployTarget {
-    /// `"self"`, `"qemu"`, `"flash"`, … — interpreted by the runner stage.
-    /// Optional (F.4 §12 gap #2): absent ⇒ runner derives from the
-    /// `<target>` map key.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    /// Target triple / board id / runner key. The exact semantics depend
-    /// on `kind`. Optional (F.4 §12 gap #2): absent ⇒ runner derives
-    /// from the `<target>` map key + the chosen `kind`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    /// Optional path (relative to the bringup pkg root) to a
-    /// `launch/*.launch.xml` used for this deploy.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub launch: Option<String>,
-    /// Optional board identifier (e.g. `mps2_an385`, `qemu_riscv64`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub board: Option<String>,
-    /// Optional framework identifier for runners that surface one — today
-    /// PlatformIO (`"espidf"`, `"arduino"`, …) and indirectly ESP-IDF. Held
-    /// verbatim and forwarded to the runner stage; no schema-level
-    /// validation. Resolves F.4 §12 known gap #3 (the platformio fixture
-    /// authored `framework = "espidf"` against a `DeployTarget` that
-    /// didn't know the field).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub framework: Option<String>,
-    /// Phase 255 — per-deploy RMW override of `[system].rmw` (RFC-0031
-    /// precedence: `--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`).
-    /// Resolved via [`SystemToml::resolved_rmw`]; both codegen paths read it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rmw: Option<String>,
-    /// Phase 256 Wave 3 — per-target build tuning, the typed home superseding the
-    /// deprecated `nros.toml` `[build]` overlay. Build tuning is per-deploy (size
-    /// on embedded, debug on native), so it lives in the deploy block. The
-    /// planner resolves these for the selected target (`resolve_target`) into the
-    /// plan's `PlanBuildOptions`. (The `[build.cargo]` / `[build.cc]` per-layer
-    /// tables + compile `cfg` are a follow-up — Eq-clean scalars first.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub profile: Option<String>,
-    /// Coherent size/speed intent (`size`|`speed`|`balanced`|`debug`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub optimize: Option<String>,
-    /// Extra cargo features for this target's generated build.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub features: Vec<String>,
-    /// Phase 256 Wave 8 — per-deploy override of `[system].domain_id` (RFC-0004
-    /// §3.1 ladder, like `rmw`). Resolved via [`SystemToml::resolved_domain_id`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain_id: Option<u32>,
-    /// Phase 256 Wave 8 — per-deploy override of `[system].locator`. Resolved via
-    /// [`SystemToml::resolved_locator`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub locator: Option<String>,
-}
+///
+/// **Re-exported, not redeclared** (nano-ros issue 0293). This was a second
+/// definition of `ros_launch_manifest_model::system_config::DeployBlock`, and
+/// the two drifted: rlm's copy lacked `launch`, so serde silently dropped the
+/// key and launch-scoped deploy blocks were counted against every launch file.
+/// One schema now; `deny_unknown_fields` lives on it, so the next divergence
+/// is a parse error rather than a dropped key.
+pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
 
 /// `[[domain]]` row.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 # RFC-0060 — Three layers: spec, resolver, runtime
 
-**Status:** Draft (2026-07-28)
+**Status:** Stable (2026-07-28)
 **Supersedes nothing. Amends:** RFC-0059 (launch-toolchain-split) — this is the
 repository-level answer to the same problem RFC-0059 framed at crate level.
 **Motivated by:** issue 0285 (a PATH-resolved `play_launch` broke every

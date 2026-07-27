@@ -106,23 +106,23 @@ in `demo_bringup` resolve, `multihost` included, with `host: robot1` /
 - `node_machine_attribute_places_without_a_nodes_list` — both nodes place from
   `machine=`, their hosts survive the insert, an unknown host still fails loud.
 
-## The SSoT question — still open
+## The SSoT question — CLOSED (2026-07-28, phase-312 W4.2)
 
-The fix removes the *symptom*; the divergence that caused it is structural and
-remains. Two structs still describe one file, and nothing prevents the next
-field from being added to one and not the other.
+The original fix removed the *symptom*. The structural cause is now gone too:
+there is ONE definition of the deploy schema.
 
-The durable answer is one schema. `DeployBlock` is the natural home — the
-resolver consumes it, and nano-ros already depends on
-`ros-launch-manifest-model` — with nano-ros's `DeployTarget` becoming an alias
-rather than a redeclaration. That needs `Serialize` on the rlm struct (nano-ros
-writes `system.toml`, rlm only reads it) and touches ~14 `DeployTarget` uses
-including struct literals, so it was not folded into a bug fix.
+`ros_launch_manifest_model::system_config::DeployBlock` is the single schema.
+It gained `Serialize`/`Clone`/`PartialEq`/`Eq` (nano-ros WRITES `system.toml`;
+rlm only read it) and `skip_serializing_if` so absent fields stay absent.
+nano-ros's `DeployTarget` is now a re-export of it, not a redeclaration — the
+two struct literals that had to learn `nodes` were the whole cost.
 
-`deny_unknown_fields` on the shared struct would additionally turn the next
-drift into a loud parse error rather than a silently dropped key. It is
-deliberately NOT added yet: it would reject existing configs carrying keys
-either parser currently ignores, which needs its own audit.
+`deny_unknown_fields` IS now on the shared struct, so the next divergence is a
+loud parse error rather than a dropped key. The audit it was waiting on turned
+out to be trivial: nano-ros's mirror already denied unknown fields, so every
+`system.toml` in use already satisfied its field set, and unifying to the union
+(which only adds `nodes`) can reject nothing that previously parsed.
 
-Tracked as follow-up work; see RFC-0059, which names "two parsers disagreeing
-about one file" as the drift class to eliminate.
+Receipts: rlm 17 tests pass, including one asserting the round-trip, that
+absent options are skipped on serialize, and that an unknown key fails with the
+key named. nano-ros: 459 cli-core tests pass; `nros sync` resolves 6/6.

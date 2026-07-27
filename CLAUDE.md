@@ -74,8 +74,15 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 - **Codegen + orchestration CLI lives in-tree at `packages/cli/`** (a sub-workspace, own
   `Cargo.toml`/`Cargo.lock`). Edits to codegen / `colcon_nano_ros` / orchestration land there; build
   via `just setup-cli`. The retired `packages/codegen` submodule is fully gone (no stray leftover).
-  `packages/cli/` itself nests three submodules under `third-party/` + `testing_workspaces/`
-  (`play_launch_parser`, `ros-launch-manifest`, `ros2_rust_examples`).
+  `packages/cli/` nests `third-party/ros-launch-resolve` + `testing_workspaces/ros2_rust_examples`.
+- **Launch toolchain is THREE layers (RFC-0060), and nano-ros pins only layer 2:**
+  `ros-launch-manifest` (spec/theory/proofs/algorithms — no ROS, no Python) ← `ros-launch-resolve`
+  (launch tree → SystemModel; needs CPython, NOT ROS/colcon) ← `play_launch` (Linux runtime).
+  rlm arrives transitively through the resolver, so there is ONE copy of the spec — the
+  double-vendoring that drifted three times during issue 0285 is gone. `nros` never links
+  layer 3. The `nros-launch-resolve` helper is built by `just setup-launch-resolve` and
+  invoked by ABSOLUTE PATH, never `$PATH` (issue 0285: an unrelated ROS 2 `play_launch`
+  won the PATH race and broke every platform's fixture build).
 - **Don’t modify vendored/generated:** `third-party/`, `packages/interfaces/*/generated/`, build
   output — unless the task explicitly requires regeneration. Preserve worktree changes.
 - **Examples are standalone copy-out projects** (`examples/<plat>/<lang>/<example>/`); no workspace

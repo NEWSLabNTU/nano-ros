@@ -630,6 +630,10 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 // projection into the synthesized DeployTarget (RFC-0004 §3.1).
                 domain_id: dt.domain_id,
                 locator: dt.locator.clone(),
+                // A self-bringup deploy governs every node in its launch file;
+                // explicit placement is the multi-deploy case, which Cargo
+                // metadata has no projection for.
+                nodes: Vec::new(),
             },
         );
     }
