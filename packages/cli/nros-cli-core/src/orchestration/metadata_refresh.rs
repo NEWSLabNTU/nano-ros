@@ -140,6 +140,71 @@ pub fn refresh_stale_sidecars(
     Ok(report)
 }
 
+/// phase-308 W1 — probe one C/C++ component.
+///
+/// `Ok(None)` = already current. `Err` = cannot be probed, which the caller
+/// records in the unsupported ledger rather than failing the sync: the
+/// fallback is the SystemModel bound, which is what these components get
+/// today, so a probe that cannot run must not take the workspace down with it.
+fn refresh_cpp_sidecar(
+    decl: &ComponentDeclaration,
+    nano_ros: Option<&Path>,
+    probe_root: &Path,
+    verbose: bool,
+) -> Result<Option<PathBuf>, String> {
+    let Some(nano_ros) = nano_ros else {
+        return Err("no nano-ros path".into());
+    };
+    let Some(class) = decl.class.clone() else {
+        return Err("no declared CLASS — nothing to construct".into());
+    };
+    // `probe_header` returns None only when there is no class to derive from,
+    // which the check above already caught; keep the message specific anyway.
+    let Some(header) = decl.probe_header() else {
+        return Err("no declared HEADER and none derivable from CLASS".into());
+    };
+
+    let sidecar = decl.source_metadata_path();
+    let digest = source_digest(&decl.package_root).map_err(|e| e.to_string())?;
+    if sidecar_is_fresh(&sidecar, &digest) {
+        return Ok(None);
+    }
+    if verbose {
+        println!(
+            "ws sync: metadata {}::{} — sources changed, probing (cmake)",
+            decl.config.package, decl.config.component
+        );
+    }
+
+    let language = match decl.config.language {
+        ComponentLanguage::C => "c",
+        _ => "cpp",
+    };
+    let opts = crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
+        package: decl.config.package.clone(),
+        component: decl.config.component.clone(),
+        executable: decl
+            .config
+            .linkage
+            .resolved_executable(&decl.config.component),
+        class,
+        header,
+        language: language.to_string(),
+        shape: decl.probe_shape().to_string(),
+        package_dir: decl.package_root.clone(),
+        nano_ros_workspace: nano_ros.to_path_buf(),
+        output_path: sidecar.clone(),
+        probe_dir: crate::orchestration::metadata_probe_cmake::probe_dir_for(
+            probe_root,
+            &decl.config.package,
+            &decl.config.component,
+        ),
+    };
+    crate::orchestration::metadata_probe_cmake::run_probe(&opts).map_err(|e| format!("{e:#}"))?;
+    stamp_provenance(&sidecar, &digest).map_err(|e| e.to_string())?;
+    Ok(Some(sidecar))
+}
+
 fn build_options(
     decl: &ComponentDeclaration,
     nano_ros: &Path,

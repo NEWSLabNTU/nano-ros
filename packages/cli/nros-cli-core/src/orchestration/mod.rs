@@ -17,6 +17,7 @@ pub mod manifest;
 // re-exported so `crate::orchestration::mapper_input::…` paths keep resolving.
 pub use nros_orchestration_ir::mapper_input;
 pub mod metadata_build;
+pub mod metadata_probe_cmake;
 pub mod metadata_refresh;
 pub mod model_ingest;
 pub mod names;
