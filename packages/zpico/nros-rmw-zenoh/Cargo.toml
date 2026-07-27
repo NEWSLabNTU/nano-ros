@@ -14,7 +14,22 @@ keywords = ["ros2", "zenoh", "rmw", "embedded", "no-std"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-default = []
+# issue 0270 — `platform-aliases` + `link-ip` were `zpico-sys`'s OWN defaults,
+# reaching every consumer transitively (the `zpico-sys` dep below is now
+# `default-features = false`) so `platform-orin-spe` could NOT drop them — cargo
+# unification can't subtract, and orin-spe's native `system.c` double-defines the
+# alias TU's `z_*` clock symbols. They are now nros-rmw-zenoh features, supplied
+# BOTH here in `default` (the test / native path that keeps default features on)
+# AND from each non-orin-spe `platform-*` (the boards that build
+# `default-features = false`); `platform-orin-spe` forwards NEITHER. Existing
+# builds are byte-identical; orin-spe finally gets the alias TU OFF.
+default = ["platform-aliases", "link-ip"]
+# The `zpico-sys` C alias TU (`platform_aliases.c`) forwarding every `_z_*`
+# zenoh-pico symbol to the canonical `nros_platform_*` ABI, and the IP link
+# (`Z_FEATURE_LINK_{TCP,UDP_*}`). Kept as explicit features so `platform-orin-spe`
+# (native `system.c` + IVC-only) omits both.
+platform-aliases = ["zpico-sys/platform-aliases"]
+link-ip = ["zpico-sys/link-ip"]
 # issue 0283 — opt OUT of ROS 2 liveliness declarations (node + entity
 # tokens). Data still flows; the session simply stays invisible to
 # `ros2 node list` / `topic list`. For peer-to-peer fixtures that want the
@@ -39,16 +54,21 @@ no-liveliness = []
 # definitions, surfacing as a wall of `undefined symbol:
 # nros_platform_mutex_*` from rust-lld. See Track G in
 # `docs/roadmap/phase-214-antipattern-audit-findings.md`.
-platform-posix = ["zpico-sys/posix", "nros-platform/platform-posix"]
+platform-posix = [
+    "zpico-sys/posix",
+    "zpico-sys/platform-aliases",
+    "zpico-sys/link-ip",
+    "nros-platform/platform-posix",
+]
 # Embedded targets keep `nros-platform/platform-<rtos>` opt-in —
 # their providers live in C ports linked at the consumer's
 # board / west / ninja site (Zephyr module, NuttX build system,
 # FreeRTOS / ThreadX board build.rs), not in `nros-platform-cffi`.
-platform-zephyr = ["zpico-sys/zephyr"]
-platform-bare-metal = ["zpico-sys/bare-metal"]
-platform-freertos = ["zpico-sys/freertos"]
-platform-nuttx = ["zpico-sys/nuttx"]
-platform-threadx = ["zpico-sys/threadx"]
+platform-zephyr = ["zpico-sys/zephyr", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
+platform-bare-metal = ["zpico-sys/bare-metal", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
+platform-freertos = ["zpico-sys/freertos", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
+platform-nuttx = ["zpico-sys/nuttx", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
+platform-threadx = ["zpico-sys/threadx", "zpico-sys/platform-aliases", "zpico-sys/link-ip"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
 platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted (were
@@ -102,7 +122,11 @@ nros-core = { workspace = true, default-features = false }
 # ConcretePlatform pick on the same feature flags as the rest of
 # nros, so adding it here doesn't constrain platform selection.
 nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false }
-zpico-sys = { version = "0.5.0", path = "../zpico-sys" }
+# issue 0270 — `default-features = false` so `platform-aliases` + `link-ip` are
+# NOT forced transitively; they arrive via nros-rmw-zenoh's `default` / the
+# non-orin-spe `platform-*` features instead, letting `platform-orin-spe` drop
+# the alias TU (its `system.c` provides `z_*` natively → no double-define).
+zpico-sys = { version = "0.5.0", path = "../zpico-sys", default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }

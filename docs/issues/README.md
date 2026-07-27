@@ -47,6 +47,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#270** — `nros-rmw-zenoh` forced `zpico-sys` default features
+(`platform-aliases` + `link-ip`) transitively, so `platform-orin-spe` couldn't drop the alias TU →
+double-defined `z_*` clock symbols vs orin-spe's native `system.c`. Fixed: `zpico-sys` dep is now
+`default-features = false`; the two features are re-supplied via nros-rmw-zenoh `default` + each
+non-orin-spe `platform-*`, so orin-spe forwards neither. Byte-identical for every other target
+(verified via `cargo tree -e features`). See `0270-*`. (2026-07-28)
+
 Recently resolved: **#242** — RMW parity gaps (publisher GID / message-info) resolved as a
 documented carve-out: both already exist in nano-ros's own shape. Message-info is surfaced via the
 `message_info()` subscription builder (Rust + C); only the `take_with_info` VTABLE slot is carved

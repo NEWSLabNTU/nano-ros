@@ -61,6 +61,10 @@ platform-threadx-std = [
     "nros-platform/global-allocator",
 ]
 platform-bare-metal = ["nros-rmw-zenoh/platform-bare-metal"]
+# issue 0270 — AGX Orin SPE (Cortex-R5F, IVC-only). Forwards the alias-TU-free
+# orin-spe path so a staticlib consumer gets `system.c`'s native `z_*` symbols
+# without `platform_aliases.c` (no double-define).
+platform-orin-spe = ["nros-rmw-zenoh/platform-orin-spe"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted on
 # `nros-rmw-zenoh` (always-on in vendor build). Forwards
 # stripped here too.
