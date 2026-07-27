@@ -1,6 +1,6 @@
 # Phase 312: Three-layer launch toolchain (RFC-0060)
 
-**Status:** In progress (started 2026-07-28).
+**Status:** In progress (started 2026-07-28). W1.1–W1.5 done; W1.6 next.
 **Implements:** RFC-0060. **Closes:** the structural half of issue 0293 (one
 implementation per contract); removes the vendoring drift behind issues
 0285/0293.
@@ -82,6 +82,37 @@ pipeline no longer in-tree.
   nano-ros's `DeployTarget` an alias of rlm's `DeployBlock`, and
   `deny_unknown_fields` once the key audit is done.
 - **W4.3** CLAUDE.md / AGENTS.md pointers updated for the new chain.
+
+## Progress
+
+**W1.1–W1.3 done (2026-07-28).** `NEWSLabNTU/ros-launch-resolve` created;
+`ros-launch-manifest` and `play_launch_parser` vendored as its two submodules.
+
+**W1.4 done.** ~12.3k lines moved with `git filter-repo` — history preserved,
+`git log --follow` walks through the move (24 commits on `model_builder.rs`
+alone; 106 in the repo). A second filtered extraction brought `cli/options`,
+`python/` and the sched helpers with their history rather than copying them.
+
+**W1.5 done — the load-bearing receipt.** The resolve library compiles under
+`env -i` with no `ROS_DISTRO`, no `AMENT_PREFIX_PATH` and an empty target dir.
+Layer 2 genuinely does not need ROS or colcon.
+
+Two layering leaks were fixed rather than carried across, both found by the
+compiler once the crate boundary was real:
+
+- `util::logging::init_verbose` took the consumer's entire `Options` enum and
+  matched every subcommand to read one `bool`.
+- `sched/{plan,apply}` pulled in `play_launch::sched`, whose `apply_tier` /
+  `has_sched_privilege` are `sched_setscheduler` wrappers. Applying a schedule
+  is runtime work; nothing in layer 2 used `SchedPlan`, only the
+  `SchedApplyMode` enum. Both files stayed in play_launch.
+
+That second one is the useful signal: a crate boundary catches layer violations
+that a feature flag cannot.
+
+**Next: W1.6** — trim the CLI's `Options` enum to the four launch-tree verbs
+(it still names Launch/Run/Replay), then the byte-identical-SystemModel
+acceptance check.
 
 ## Risks
 
