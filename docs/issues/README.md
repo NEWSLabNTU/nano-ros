@@ -168,7 +168,7 @@ blocks against every launch file; `<node machine=>` was ignored as a placement t
 could not be re-resolved at all. Fixed in rlm + play_launch. The SSoT question — one deploy
 schema instead of two mirrors — is recorded there as follow-up.)
 
-**#294** — the C/C++ metadata probe generates one CMake project per component, so each gets a
+**#305** — the C/C++ metadata probe generates one CMake project per component, so each gets a
 private cargo target dir and rebuilds the whole Rust runtime from scratch: 2.6 GB and a cold
 build EACH, ~16 GB for a six-component workspace. Runtime config is identical across
 components; one project with N probe executables fixes it. See `0294-*`.

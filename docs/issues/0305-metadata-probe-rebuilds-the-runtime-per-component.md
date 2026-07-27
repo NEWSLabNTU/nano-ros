@@ -1,5 +1,5 @@
 ---
-id: 294
+id: 305
 title: "The C/C++ metadata probe rebuilds the entire Rust runtime once per component — 2.6 GB and a cold build each"
 status: open
 type: bug
