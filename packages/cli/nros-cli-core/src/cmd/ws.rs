@@ -870,6 +870,15 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         Some(nrp) => Some(write_central_patch_file(nrp)?),
         None => None,
     };
+    // #272 — the central patch is reached via an `include = [...]` config key
+    // that was NIGHTLY-ONLY before cargo 1.93 (stabilized there). On an older
+    // build toolchain cargo silently drops the include and the build dies with
+    // an unexplained `no matching package named 'nros'`. Warn LOUDLY once when
+    // the workspace's effective cargo predates 1.93 — the reachability check
+    // above only catches a missing FILE, not a cargo too old to read it.
+    if central_patch.is_some() {
+        warn_if_cargo_predates_config_include(&ws_root);
+    }
 
     for (authority, pkgs) in authority_to_pkgs {
         let mut unique = pkgs;
@@ -1459,6 +1468,59 @@ const CENTRAL_PATCH_FILE: &str = "nros-patch.toml";
 /// one generated file serves every leaf regardless of depth. Idempotent
 /// (skip-write when content is unchanged, so repeated syncs don't churn the
 /// mtime); atomic temp + rename otherwise.
+/// #272 — the minor version of cargo that stabilized the `include` config key.
+/// Before this, `include` is `-Z config-include` (nightly-only) and stable cargo
+/// silently ignores it — dropping the central `[patch.crates-io]` and failing the
+/// build with `no matching package named 'nros'`.
+const CONFIG_INCLUDE_STABLE_MINOR: u64 = 93;
+
+/// Parse the minor version out of `cargo --version` output
+/// (`"cargo 1.96.0 (abc 2026-..)"` → `Some(96)`). `None` when the shape is
+/// unrecognised (a custom/edge build) — the caller then stays quiet rather than
+/// warn on a version it cannot read.
+fn parse_cargo_minor(version_line: &str) -> Option<u64> {
+    let ver = version_line.split_whitespace().nth(1)?; // "1.96.0"
+    let mut parts = ver.split('.');
+    let _major = parts.next()?;
+    parts.next()?.parse::<u64>().ok()
+}
+
+/// Warn once if the workspace's effective cargo predates the `include` config-key
+/// stabilization (1.93), so an external consumer on an old pinned toolchain gets
+/// a clear diagnostic instead of a silent patch drop (#272). Best-effort: any
+/// failure to run/parse `cargo --version` stays silent (never blocks sync).
+fn warn_if_cargo_predates_config_include(ws_root: &Path) {
+    // Run in the workspace root so a `rust-toolchain.toml` there selects the
+    // SAME cargo the build will use, not whatever invoked `nros`.
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let Ok(out) = std::process::Command::new(cargo)
+        .arg("--version")
+        .current_dir(ws_root)
+        .output()
+    else {
+        return;
+    };
+    if !out.status.success() {
+        return;
+    }
+    let line = String::from_utf8_lossy(&out.stdout);
+    let Some(minor) = parse_cargo_minor(&line) else {
+        return;
+    };
+    if minor < CONFIG_INCLUDE_STABLE_MINOR {
+        eprintln!(
+            "warning: this workspace's cargo ({}) predates the `include` config-key \
+             stabilization (cargo 1.{CONFIG_INCLUDE_STABLE_MINOR}). nros sync writes the \
+             nros/nros-core/nros-serdes [patch.crates-io] rows into a central file reached \
+             via `include = [\"…/nros-patch.toml\"]`, which stable cargo < 1.{CONFIG_INCLUDE_STABLE_MINOR} \
+             SILENTLY IGNORES — the build will then fail `no matching package named 'nros'`. \
+             Upgrade to cargo >= 1.{CONFIG_INCLUDE_STABLE_MINOR}, or add those three `path = ` rows \
+             to `[patch.crates-io]` by hand.",
+            line.trim(),
+        );
+    }
+}
+
 fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
     let nrp = nano_ros_path
         .canonicalize()
@@ -2441,6 +2503,34 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
 // =============================================================================
 // Phase 210.D.1 regression tests — `[patch.crates-io]` dedup writer.
 // =============================================================================
+
+#[cfg(test)]
+mod config_include_version_tests {
+    use super::*;
+
+    #[test]
+    fn parses_minor_from_cargo_version_line() {
+        assert_eq!(parse_cargo_minor("cargo 1.96.0 (abc 2026-01-01)"), Some(96));
+        assert_eq!(parse_cargo_minor("cargo 1.93.0"), Some(93));
+        assert_eq!(parse_cargo_minor("cargo 1.90.1 (deadbeef 2025-06-01)"), Some(90));
+    }
+
+    #[test]
+    fn unrecognised_version_line_parses_to_none() {
+        assert_eq!(parse_cargo_minor(""), None);
+        assert_eq!(parse_cargo_minor("cargo"), None);
+        assert_eq!(parse_cargo_minor("cargo weird-build"), None);
+    }
+
+    #[test]
+    fn stable_boundary_is_1_93() {
+        // The warn gate: < 93 warns, >= 93 stays quiet. Lock the boundary so a
+        // refactor can't silently move it off the actual stabilization release.
+        assert_eq!(CONFIG_INCLUDE_STABLE_MINOR, 93);
+        assert!(parse_cargo_minor("cargo 1.92.0").unwrap() < CONFIG_INCLUDE_STABLE_MINOR);
+        assert!(parse_cargo_minor("cargo 1.93.0").unwrap() >= CONFIG_INCLUDE_STABLE_MINOR);
+    }
+}
 
 #[cfg(test)]
 mod launch_resolver_tests {

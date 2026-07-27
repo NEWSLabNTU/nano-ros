@@ -94,12 +94,24 @@ in-tree example configs are COMMITTED, so a host-absolute path would break
 every other checkout. Relative stays; absolute is the fallback only when no
 relative path exists — a consumer on a different filesystem root.)
 
-**Next step (needs the reporter):** capture, from the failing
-autoware_sentinel tree, (a) `cargo --version`, (b) the consumer's
-`.cargo/config.toml` verbatim, (c) whether
-`<nano-ros>/nros-patch.toml` exists and its paths resolve, (d)
-`cargo config get patch --merged` on nightly (shows what cargo actually
-merged). Fix direction stays open pending that: if (1), sync should write an
-ABSOLUTE include path (matching the file's absolute-path convention) rather
-than inlining the trio; if (2), sync should fail loud when the central file
-it just wrote is unreachable from a leaf.
+**Landed (2026-07-28) — cause (3) now diagnosed.** `nros sync` runs
+`cargo --version` in the workspace root (so a `rust-toolchain.toml` there selects
+the SAME cargo the build uses) once per sync when it writes an `include`-based
+central patch, and warns LOUDLY if the minor is `< 93` — the release that
+stabilized the `include` config key. Below that, cargo silently drops the
+include and the build fails `no matching package named 'nros'`; the warning names
+the version, the mechanism, and the two escapes (upgrade to ≥ 1.93, or add the
+three `path =` rows by hand). Best-effort: an unparseable `cargo --version`
+stays quiet (never blocks sync). Unit-tested (`config_include_version_tests` —
+minor parse + the 1.93 boundary). `parse_cargo_minor` + `CONFIG_INCLUDE_STABLE_MINOR`
+in `cmd/ws.rs`.
+
+**Status of the three diagnosable causes** — all now emit a loud, specific
+diagnostic instead of the cryptic `no matching package named 'nros'`:
+(1) relative-path-from-wrong-base + (2) absent/unreadable central file → the
+reachability bail (landed 2026-07-26); (3) cargo `< 1.93` → the version warning
+(landed 2026-07-28). If the autoware_sentinel tree still fails AFTER these, its
+cause is none of the three — then capture (a) `cargo --version`, (b) the
+consumer's `.cargo/config.toml` verbatim, (c) whether `<nano-ros>/nros-patch.toml`
+exists + resolves, (d) `cargo config get patch --merged`. Kept OPEN pending that
+confirmation.
