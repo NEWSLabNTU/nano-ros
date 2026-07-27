@@ -301,6 +301,79 @@ fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
     write_atomic(&dest, contents);
 }
 
+/// Write a header only when nobody else has, and FAIL if someone else wrote a
+/// different one (phase-308 follow-up).
+///
+/// `nros_config_generated.h` has two potential writers: `nros-c`'s build script
+/// owns it, and `nros-cpp`'s emits the same file so a build without `nros-c`
+/// still finds it rather than the source-tree `#error` stub. Two unconditional
+/// writers to one path is the race that produced a torn header on 2026-07-26;
+/// making both writes atomic removed the tearing but left the deeper problem —
+/// the values are probed from each crate's own view of the runtime, and the
+/// claim that they always agree was a comment, not a check. If they ever
+/// disagreed, the last writer won and one language silently got wrong
+/// `_opaque` sizes.
+///
+/// So: the owner writes; this writes only into a GAP, and otherwise verifies.
+/// A mismatch here is not staleness — `nros-c` is a non-optional dependency of
+/// `nros-cpp`, so cargo runs the owner's build script first and any file
+/// present is already current for this build. A difference therefore means the
+/// two crates genuinely resolved different sizes (divergent features), which
+/// must stop the build rather than produce an image whose C and C++ halves
+/// disagree about a struct's size.
+pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label: &str) {
+    let Some(dest) = target_dir_path(relative) else {
+        return;
+    };
+    match std::fs::read_to_string(&dest) {
+        Ok(existing) if existing == contents => {}
+        Ok(existing) => panic!(
+            "{label}: {} was written by another crate with DIFFERENT probed sizes.
+             The C and C++ halves of this build resolved different runtime layouts, so one              of them would size its `_opaque` storage wrong (silent overflow at runtime).
+             Usually this means nros-c and nros-cpp were built with different features.
+             --- on disk ---
+{}
+--- this crate would write ---
+{}",
+            dest.display(),
+            first_defines(&existing),
+            first_defines(contents),
+        ),
+        Err(_) => write_to_path(&dest, contents),
+    }
+}
+
+/// The `#define` lines of a generated header — enough to see WHICH size
+/// disagrees without dumping a 60-line file into a build error.
+fn first_defines(header: &str) -> String {
+    header
+        .lines()
+        .filter(|l| l.starts_with("#define"))
+        .take(12)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn target_dir_path(relative: &[&str]) -> Option<PathBuf> {
+    let root = if let Ok(d) = env::var("CARGO_TARGET_DIR") {
+        PathBuf::from(d)
+    } else {
+        nros_sizes_build::cargo_target_dir().ok()?
+    };
+    let mut dest = root;
+    for segment in relative {
+        dest.push(segment);
+    }
+    Some(dest)
+}
+
+fn write_to_path(dest: &std::path::Path, contents: &str) {
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).expect("create per-build header dir");
+    }
+    write_atomic(dest, contents);
+}
+
 pub fn write_header_to_corrosion(filename: &str, contents: &str) {
     let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") else {
         return;

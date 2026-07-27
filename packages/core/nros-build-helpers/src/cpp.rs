@@ -256,15 +256,21 @@ fn generate_config(
     );
     write_header_to_corrosion("nros_cpp_config_generated.h", &exact_header);
 
-    // Phase 119.3: also write a nros-c-format header to
-    // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user
-    // code transitively includes the C-side `<nros/parameter.h>` →
-    // `<nros/types.h>` → `<nros/nros_config_generated.h>`, but in
-    // Zephyr CPP-only builds nros-c isn't compiled (its build.rs
-    // doesn't run), so without this fallback the C header would
-    // resolve to the source-tree stub. The cpp + c sizes are
-    // identical (same nros rlib), so it's safe to emit both from
-    // nros-cpp's build script.
+    // Phase 119.3: also emit a nros-c-format header to
+    // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user code
+    // transitively includes the C-side `<nros/parameter.h>` →
+    // `<nros/types.h>` → `<nros/nros_config_generated.h>`, and without this
+    // the C header would resolve to the source-tree `#error` stub.
+    //
+    // phase-308 follow-up — the original rationale ("in Zephyr CPP-only builds
+    // nros-c isn't compiled") is STALE: phase-241 D3-rev made `nros-c` a
+    // non-optional dependency of this crate, so cargo builds it and runs its
+    // build script FIRST on every nros-cpp build. nros-c therefore owns this
+    // file, and what remains here is a gap-filler plus an equality check.
+    //
+    // The old comment also asserted "the cpp + c sizes are identical (same
+    // nros rlib)" — true when both crates get the same features, and nothing
+    // enforced that. It is enforced now.
     let probe_session = probed.get("SESSION_SIZE").copied().unwrap_or(0) as usize;
     let probe_lifecycle_ctx = probed.get("LIFECYCLE_CTX_SIZE").copied().unwrap_or(0) as usize;
     let probe_action_server_internal = probed
@@ -337,9 +343,13 @@ typedef struct ActionServerRawHandle {{
 #endif /* NROS_CONFIG_GENERATED_H */
 "
     );
-    write_header_to_target_dir(
+    // phase-308 follow-up — nros-c OWNS this file; we only fill a gap, and
+    // verify otherwise. See `write_header_if_absent_or_verify` for why a
+    // mismatch is genuine divergence rather than staleness.
+    crate::shared::write_header_if_absent_or_verify(
         &["nros-c-generated", "nros", "nros_config_generated.h"],
         &c_format_header,
+        "nros-cpp",
     );
 }
 
