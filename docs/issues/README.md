@@ -47,6 +47,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#291** — zenoh interop with a stock jazzy peer. The version gap (zpico 1.7.2
+vs jazzy rmw_zenoh 1.11.2) was a RED HERRING — the zenoh wire is proto `0x09` on both sides (frozen
+at 1.0), and a live handshake + delivery works. The real blocker was the RIHS01 keyexpr type-hash
+tail: interop fixtures were built `ros-humble` (placeholder). Fixed by selecting the ROS edition on
+the examples like the RMW (`ros-<edition>` passthrough feature) + the `ros_editions_zenoh` lane
+(jazzy 5/6; ROS→nano action server is #0292). No zenoh version bump. See `0291-*` (kept in place,
+reframed). (2026-07-27)
+
 Recently resolved: **#269** — the freertos aggregate-declare wall was NOT the platform layer:
 nros-rmw-cffi's `static_subscriber_storage` was hardcoded to 4 slots, so the 5th
 `create_subscription` returned BAD_ALLOC and the executor masked it as
@@ -108,6 +116,13 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
 back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
 grows one as a template. See `0288-*`. (renumbered from a duplicate #286)
+
+**#292** — a nano-ros zpico ACTION SERVER is not discovered by a stock jazzy `rmw_zenoh_cpp`
+0.2.9 client (`ros2 action list`/`info` show 0 servers → `send_goal` hangs). The action-entity
+liveliness/graph tokens (send_goal/get_result services + status/feedback) don't match rmw_zenoh
+0.2.x's action schema. Distinct from #0291 (the type-hash keyexpr, fixed): pub/sub + service +
+the action CLIENT direction all interop. Surfaced by the phase-311 zenoh lane (the one `#[ignore]`d
+cell). See `0292-*`. (2026-07-27)
 
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.

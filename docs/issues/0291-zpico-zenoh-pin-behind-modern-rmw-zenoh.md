@@ -1,14 +1,50 @@
 ---
 id: 291
-title: "zpico's zenoh pin (1.7.2) is behind modern rmw_zenoh (jazzy = 1.11.2) — zenoh interop with a stock jazzy peer likely broken"
-status: open
+title: "zenoh interop with a stock jazzy peer — the blocker was the RIHS01 keyexpr tail, NOT the zenoh version pin (zpico 1.7.2 interops with jazzy 1.11.2)"
+status: resolved
 type: bug
 severity: medium
 area: rmw
-related: [phase-311, phase-41]
+related: [phase-311, phase-304, phase-41, 292]
 ---
 
-## Summary
+## RESOLUTION (2026-07-27) — the version gap was a red herring
+
+Live investigation **refuted** the original premise. The zenoh WIRE protocol is
+version `0x09` on BOTH sides (`zenoh-protocol::VERSION` in the 1.7.2 submodule +
+`Z_PROTO_VERSION 0x09` in zenoh-pico 1.7.2; zenoh froze the wire at 1.0, so
+1.11.2 is also `0x09`). **Proven:** the pinned zpico 1.7.2 opens a session with
+a stock jazzy `rmw_zenohd` **1.11.2** router (pub AND sub), and — once the
+keyexpr matched — a `rmw_zenoh_cpp` peer received nano-ros samples.
+
+The REAL blocker was the **RIHS01 type-hash tail of the data keyexpr**. jazzy
+`rmw_zenoh_cpp` (0.2.10 source studied) builds the data keyexpr
+`<domain>/<topic>/<type>/<type_hash>` and subscribers declare it CONCRETELY (no
+hash wildcard), so delivery needs the hash to match EXACTLY. nano-ros emitted
+`TypeHashNotSupported` because the interop **fixtures were built `ros-humble`**
+(the keyexpr type-hash tail is cfg-gated on `ros-iron`/`ros-jazzy` in
+`nros-rmw-zenoh`, and humble codegen bakes the placeholder). The product +
+RIHS01 engine were already correct (phase-304): building the fixture with
+`ros-jazzy` bakes the real `RIHS01_b6578…` (== live jazzy) and the keyexprs
+match.
+
+**Fix (no zenoh version bump):**
+- The `examples/native/rust/*` now select the ROS edition like the RMW — a
+  `ros-humble`(default)/`ros-iron`/`ros-jazzy` passthrough feature (forwarding to
+  `nros` + `nros-rmw-zenoh?`), instead of hardcoding `ros-humble`.
+- `just ros_editions build-e2e-fixtures <distro> zenoh` regenerates msgs for the
+  edition (real RIHS01) + builds `--features "rmw-zenoh ros-<edition>"`.
+- `ros_editions_zenoh.rs` lane: zpico node ↔ `rmw_zenohd` ↔ `rmw_zenoh_cpp` peer,
+  both directions. **jazzy: 5/6 green** (pub/sub both, service both, action
+  client). The ROS→nano action-SERVER direction is a separate graph-token gap,
+  tracked as **#0292**. Completes phase-304 W4-remaining (the wire lane).
+
+Residual (below) kept for the record; the **version divergence** is now FUTURE
+WORK, only relevant if a future edition bumps the zenoh PROTO version past `0x09`
+(1.7→1.11 did not). iron + humble ship no `rmw_zenoh_cpp` at all, so jazzy is the
+only edition this axis touches today.
+
+## Summary (original — premise since refuted)
 
 nano-ros pins **zenoh-pico 1.7.2** (`packages/zpico/zpico-sys/zenoh-pico/
 version.txt`) and its vendored `rmw_zenoh` fork pins **zenoh-c/cpp 1.7.1**

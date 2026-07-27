@@ -1,10 +1,18 @@
 # Phase 311 — RMW × ROS-edition interop matrix
 
-**Status (2026-07-27): W1/W3/W3.5/W4/W6/W7 landed — the full XRCE lane is green
-for {jazzy, iron}, both directions, pub/sub + service + action. zenoh lane
-DEFERRED (issue #0291).** Delivered matrix: **{jazzy, iron} × {cyclone, xrce}**
-(4 cells), each both-directions green via `just ros_editions ci <distro>`. Zenoh
-(W2/W5) stays gated on #0291.
+**Status (2026-07-27): W1/W3/W3.5/W4/W5/W6/W7 landed — XRCE full (jazzy+iron) +
+Zenoh (jazzy) both green.** Delivered matrix: **{jazzy, iron} × {cyclone, xrce}**
+(4 cells, pub/sub+service+action both ways) **+ {jazzy} × zenoh** (5/6 — ROS→nano
+action server is #0292). All via `just ros_editions ci <distro>`.
+
+**W5 (zenoh) resolved the #0291 premise (2026-07-27):** the zenoh version gap
+was a red herring — the wire is proto `0x09` on both sides (zpico 1.7.2 handshakes
+with a stock jazzy 1.11.2 router, live-proven). The real blocker was the RIHS01
+keyexpr type-hash tail (fixtures built `ros-humble` → placeholder). Fixed by
+selecting the edition on the examples like the RMW (`ros-<edition>` passthrough
+feature) + regenerating msgs per edition; NO zenoh bump. Only jazzy ships
+`rmw_zenoh_cpp` (iron/humble skip the lane loudly). Completes phase-304
+W4-remaining (the nano↔jazzy zenoh wire lane). Version divergence → future work.
 
 The zenoh lane (W2/W5) is blocked on a version gap the source check
 surfaced: zpico pins zenoh **1.7.2** / vendored rmw_zenoh **1.7.1**, but a stock
@@ -153,12 +161,26 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
   `xrce`), and BOTH `nano_node_cmd` + `nano_node_cmd_rmw` now set `NROS_RMW`
   explicitly to it — self-contained selection, immune to the ambient leak.
 
-### W5 — zenoh interop lane (both directions)
-- nano-ros zpico node ↔ `rmw_zenohd` ↔ `rmw_zenoh_cpp` ROS peer, per edition,
-  pub/sub (+ service/action as feasible). Asserts delivery AND — closing the
-  phase-41 residual — that the keyexpr type-hash tail is accepted at discovery.
-- **Acceptance:** pub/sub survives both ways vs a live `rmw_zenoh_cpp` edition
-  peer; iron/jazzy use the real RIHS01 keyexpr.
+### W5 — zenoh interop lane (both directions) — DONE (2026-07-27, jazzy)
+- `tests/ros_editions_zenoh.rs`: nano-ros zpico node ↔ `rmw_zenohd`
+  (`spawn_zenoh_router`, readiness-polled) ↔ `rmw_zenoh_cpp` peer
+  (`Middleware::Zenoh { domain_id }`, `--network host`). Six tests: pub/sub,
+  service, action, both directions.
+- **The #0291 investigation** proved transport-compat (proto `0x09`) and pinned
+  the blocker to the RIHS01 keyexpr tail — the fix is building the fixture with
+  the `ros-<edition>` feature, not a zenoh bump. Examples now carry
+  `ros-humble`/`ros-iron`/`ros-jazzy` passthrough features (mirroring the RMW
+  block); `build-e2e-fixtures … zenoh` regenerates msgs for the edition.
+- **The native zpico zenoh node uses a COMPILE-TIME domain (0)** — it ignores
+  `ROS_DOMAIN_ID`/`NROS_DOMAIN_ID` at runtime (unlike cyclone), and the domain is
+  the first keyexpr segment, so the peer runs on domain 0 too. The lane is serial
+  (one host router on tcp/7447).
+- **Verified GREEN:** jazzy **5/6** — pub/sub both, service both, action client.
+  ROS→nano action SERVER (`#[ignore]`) is a distinct graph-token gap → **#0292**.
+  iron/humble ship no `rmw_zenoh_cpp` → the lane `skip!`s loudly.
+- **Acceptance met** for the pub/sub minimum both ways vs a live `rmw_zenoh_cpp`
+  jazzy peer, using the real RIHS01 keyexpr (closes the phase-41 residual on the
+  wire); completes phase-304 W4-remaining.
 
 ### W6 — XRCE interop lane (both directions) — DONE (2026-07-27)
 - `tests/ros_editions_xrce.rs`: nano-ros `rmw-xrce` node → host Agent

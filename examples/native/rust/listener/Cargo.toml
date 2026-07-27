@@ -16,7 +16,7 @@ deploy = ["native"]
 [features]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh`
 # so `cargo run -p native-rs-listener` Just Works.
-default = ["rmw-zenoh"]
+default = ["rmw-zenoh", "ros-humble"]
 # Each `rmw-*` activates the app-owned optional backend dep and forwards to
 # `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens. (`nros/rmw-cyclonedds`
@@ -25,6 +25,18 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
+# ROS edition — orthogonal to RMW/platform, selected like the `rmw-*` block.
+# `default` pins `ros-humble` (byte-identical to the historical build); the
+# multi-edition harness builds with `--no-default-features --features
+# "rmw-<x> ros-<edition>"`. Forwards to BOTH the `nros` umbrella and the
+# app-owned optional `nros-rmw-zenoh` (whose keyexpr cfg-gates the RIHS01
+# type-hash tail on iron/jazzy — without this forward a jazzy build silently
+# keeps the Humble `TypeHashNotSupported` placeholder). Editions are mutually
+# exclusive, like the RMW backends.
+ros-humble = ["nros/ros-humble", "nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron"]
+ros-jazzy = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy"]
+
 # Zenoh-specific feature carry-overs (link/feature plumbing only — no source
 # gates). The E2E-safety listener variant lives in
 # `packages/testing/nros-tests/bins/safety-chatter-listener`.
@@ -32,7 +44,7 @@ unstable-zenoh-api = ["nros/unstable-zenoh-api"]
 link-tls           = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # Native board shim: `nros_board_native::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature

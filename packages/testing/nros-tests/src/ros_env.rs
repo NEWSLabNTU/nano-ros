@@ -42,8 +42,10 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Middleware {
     /// `rmw_zenoh_cpp` with a client-mode session pointed at `locator` (the
-    /// pinned overlay in `build/rmw_zenoh_ws/` is sourced when present).
-    Zenoh { locator: String },
+    /// pinned overlay in `build/rmw_zenoh_ws/` is sourced when present). The
+    /// `domain_id` scopes discovery — it is the FIRST segment of the rmw_zenoh
+    /// keyexpr, so a peer and the nano-ros node MUST share it to match.
+    Zenoh { locator: String, domain_id: u8 },
     /// `rmw_fastrtps_cpp` on an explicit ROS domain (multicast discovery).
     FastRtps { domain_id: u8 },
     /// `rmw_cyclonedds_cpp` on an explicit ROS domain (RTPS/SPDP).
@@ -55,6 +57,7 @@ impl Middleware {
     pub fn zenoh_default() -> Self {
         Middleware::Zenoh {
             locator: "tcp/127.0.0.1:7447".to_string(),
+            domain_id: 0,
         }
     }
 }
@@ -202,7 +205,7 @@ impl HostRosEnv {
     /// that must outlive any process reading it.
     fn env_snippet(&self) -> (String, Option<tempfile::TempDir>) {
         match &self.mw {
-            Middleware::Zenoh { locator } => {
+            Middleware::Zenoh { locator, .. } => {
                 let (snip, dir) = ros2::ros2_env_setup_with_locator(&self.distro, locator);
                 (snip, Some(dir))
             }
@@ -340,11 +343,12 @@ impl DockerRosEnv {
     fn env_snippet(&self) -> String {
         let distro = &self.distro;
         match &self.mw {
-            Middleware::Zenoh { locator } => format!(
+            Middleware::Zenoh { locator, domain_id } => format!(
                 "source /opt/ros/{distro}/setup.bash && \
                  [ -f /opt/nros-overlay/install/setup.bash ] && \
                  source /opt/nros-overlay/install/setup.bash; \
                  export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
+                 export ROS_DOMAIN_ID={domain_id} && \
                  export ZENOH_ROUTER_CONFIG_URI= && \
                  export NROS_LOCATOR={locator}"
             ),
@@ -585,6 +589,62 @@ impl DockerRosEnv {
                 self.distro
             ))
         })
+    }
+
+    /// **phase-311 zenoh lane.** Spawn the ROS `rmw_zenohd` router in this
+    /// edition's container (`--network host`, so it binds host `tcp/…:7447`).
+    /// `rmw_zenoh_cpp` peers do NOT auto-connect to an arbitrary `zenohd` — they
+    /// require THIS router — and the nano-ros zpico node reaches the same router
+    /// via `NROS_LOCATOR=tcp/127.0.0.1:7447`. RAII: `docker kill`ed on drop.
+    ///
+    /// Proto version `0x09` is stable across zenoh 1.x, so the pinned zpico 1.7.2
+    /// interoperates with a stock jazzy router (1.11.2); the interop key is the
+    /// RIHS01 type-hash tail (baked by the `ros-<edition>` build), not the zenoh
+    /// version — see issue #0291.
+    pub fn spawn_zenoh_router(&self) -> TestResult<RosPeer> {
+        let cname = format!(
+            "nros-zenohd-{}-{}",
+            std::process::id(),
+            PEER_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let source = format!("source /opt/ros/{}/setup.bash", self.distro);
+        let mut cmd = Command::new("docker");
+        cmd.args([
+            "run",
+            "--rm",
+            "--network",
+            "host",
+            "--init",
+            "--name",
+            &cname,
+        ]);
+        cmd.args([
+            self.image().as_str(),
+            "bash",
+            "-lc",
+            &format!("{source} && exec ros2 run rmw_zenoh_cpp rmw_zenohd"),
+        ]);
+        let peer = spawn_command(
+            cmd,
+            "rmw_zenohd",
+            Some(vec!["docker".into(), "kill".into(), cname]),
+        )?;
+        // The container zenohd takes a few seconds to bind tcp/7447; a zpico node
+        // or rmw_zenoh_cpp peer that connects before then silently fails to open
+        // a session. Block until the router accepts a TCP connection (or give up
+        // after ~20s and let the test's own assertion fail loudly).
+        for _ in 0..40 {
+            if std::net::TcpStream::connect_timeout(
+                &"127.0.0.1:7447".parse().unwrap(),
+                std::time::Duration::from_millis(300),
+            )
+            .is_ok()
+            {
+                return Ok(peer);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        Ok(peer)
     }
 
     /// Build a `docker run --rm --network host [--name <cname>] <image> bash -lc
@@ -861,6 +921,52 @@ pub fn e2e_setup_xrce(
         crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
     }
     (env, bin, domain, agent, port)
+}
+
+/// phase-311 zenoh lane guard: resolve the target edition, its per-(edition,
+/// zenoh) example binary, a fresh domain, the shared `tcp/127.0.0.1:7447`
+/// locator, and a `rmw_zenoh_cpp` docker env. Caller spawns the router with
+/// [`DockerRosEnv::spawn_zenoh_router`]. `skip!`s (never a silent pass) when the
+/// fixture, docker, or the image is absent. Returns
+/// `(zenoh_env, zenoh_bin, domain, locator)`.
+pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, String) {
+    let ed = test_edition();
+    let bin = example_bin_rmw(example, &ed, Rmw::Zenoh);
+    if !bin.is_file() {
+        crate::skip!(
+            "example `{example}` not built for {ed}/zenoh — run `just ros_editions build-e2e-fixtures {ed} zenoh`"
+        );
+    }
+    // The native zpico zenoh node uses a COMPILE-TIME domain (0) — unlike the
+    // cyclone path it does not read `ROS_DOMAIN_ID`/`NROS_DOMAIN_ID` at runtime,
+    // and the domain is the FIRST keyexpr segment, so the `rmw_zenoh_cpp` peer
+    // must run on domain 0 to match. The lane is serial anyway (one host router
+    // on tcp/7447), so a fixed domain does not collide.
+    let domain = 0u8;
+    let locator = "tcp/127.0.0.1:7447".to_string();
+    let env = DockerRosEnv::new(
+        &ed,
+        Middleware::Zenoh {
+            locator: locator.clone(),
+            domain_id: domain,
+        },
+    );
+    if !env.available() {
+        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+    }
+    // Only editions that SHIP `rmw_zenoh_cpp` can be a zenoh peer (jazzy; iron
+    // and humble have no official apt package). Skip loudly otherwise — never a
+    // silent pass on an edition that structurally cannot run this lane.
+    let has_zenoh = env
+        .run_text("ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1 && echo OK")
+        .map(|s| s.contains("OK"))
+        .unwrap_or(false);
+    if !has_zenoh {
+        crate::skip!(
+            "{ed} ships no rmw_zenoh_cpp (only jazzy does) — zenoh interop lane N/A for this edition"
+        );
+    }
+    (env, bin, domain, locator)
 }
 
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen

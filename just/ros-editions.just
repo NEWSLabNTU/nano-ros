@@ -78,13 +78,28 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
         xrce)    FEATURE=rmw-xrce ;;
         *) echo "unknown rmw '{{rmw}}' (want cyclone|zenoh|xrce)" >&2; exit 1 ;;
     esac
+    # The ROS edition is selected the SAME way as the RMW — a cargo feature on
+    # the example (`ros-<edition>`), lowered to the umbrella + backend. This is
+    # what puts the real RIHS01 type-hash tail in the zenoh keyexpr so a
+    # `ros-jazzy` node matches a stock jazzy `rmw_zenoh_cpp` peer (#0291). The
+    # distro name IS the edition name (jazzy/iron/humble).
+    ED="{{distro}}"
+    NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
+    [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"
-        echo "== $ex ({{rmw}}) → target-ros-edition-{{distro}}-{{rmw}} =="
-        ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE" \
+        # Regenerate this example's messages for the edition so the baked
+        # TYPE_HASH is the edition's real RIHS01 (iron/jazzy) — the placeholder
+        # on humble. The .msg defs are edition-stable for the interop types, so
+        # host defs + `--ros-edition` compute the correct hash. `generated/` is
+        # gitignored (regenerated on demand), so this rewrite is not tree churn.
+        echo "== $ex ({{rmw}}, ros-$ED) regen msgs =="
+        ( cd "$DIR" && "$NROS" generate-rust --ros-edition "$ED" --force >/dev/null )
+        echo "== $ex ({{rmw}}, ros-$ED) → target-ros-edition-{{distro}}-{{rmw}} =="
+        ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE ros-$ED" \
             --target-dir "target-ros-edition-{{distro}}-{{rmw}}" )
     done
-    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}-{{rmw}}/debug/"
+    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}-{{rmw}}/debug/ (ros-$ED)"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +
@@ -107,6 +122,7 @@ ci distro="jazzy":
     just ros_editions build-fixture {{distro}}
     just ros_editions build-e2e-fixtures {{distro}} cyclone
     just ros_editions build-e2e-fixtures {{distro}} xrce
+    just ros_editions build-e2e-fixtures {{distro}} zenoh
     export NROS_ROS_EDITION={{distro}}
     echo "== ros-editions harness lanes ({{distro}}) — codegen/bridge/cyclone =="
     NROS_RMW=cyclone cargo test -p nros-tests \
@@ -121,6 +137,12 @@ ci distro="jazzy":
     echo "== ros-editions harness lanes ({{distro}}) — XRCE (Agent + fastrtps) =="
     NROS_RMW=xrce cargo test -p nros-tests \
         --test ros_editions_xrce \
-        -- --nocapture
-    echo "ros_editions ci {{distro}}: PASS (cyclone + xrce)"
-    echo "note: zenoh lane deferred on issue #0291 (zpico 1.7.2 vs jazzy rmw_zenoh 1.11.2)"
+        -- --nocapture --test-threads=1
+    echo "== ros-editions harness lanes ({{distro}}) — Zenoh (rmw_zenohd + rmw_zenoh_cpp) =="
+    # Serial: one host rmw_zenohd on tcp/7447 at a time. Skips loudly on editions
+    # without rmw_zenoh_cpp (iron/humble); jazzy runs 5/6 (ROS→nano action server
+    # is #0292, ignored). Interop key is the RIHS01 keyexpr, NOT a zenoh bump (#0291).
+    NROS_RMW=zenoh cargo test -p nros-tests \
+        --test ros_editions_zenoh \
+        -- --nocapture --test-threads=1
+    echo "ros_editions ci {{distro}}: PASS (cyclone + xrce + zenoh)"

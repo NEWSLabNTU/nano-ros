@@ -20,7 +20,7 @@ deploy = ["native"]
 # `--features` flag falls into the canonical `rmw-zenoh` path so
 # `cargo run -p native-rs-talker` Just Works for the docs-first
 # experience.
-default = ["rmw-zenoh"]
+default = ["rmw-zenoh", "ros-humble"]
 # Each `rmw-*` activates the app-owned optional backend dep and forwards to
 # `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens. (`nros/rmw-cyclonedds`
@@ -29,13 +29,28 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
 
+# ROS edition — orthogonal to RMW/platform, selected like the `rmw-*` block
+# above. `default` pins `ros-humble` (byte-identical to the historical build);
+# the multi-edition harness builds a fixture with `--no-default-features
+# --features "rmw-<x> ros-<edition>"`. Each forwards to the `nros` umbrella,
+# which gates the RIHS01 keyexpr/type-hash tail. Editions are mutually exclusive
+# (the umbrella `compile_error!`s on two), exactly like the RMW backends.
+# Forward to BOTH the `nros` umbrella (codegen/type-hash consistency) AND the
+# app-owned optional `nros-rmw-zenoh` (the `?` = only when `rmw-zenoh` is on),
+# whose keyexpr module cfg-gates the RIHS01 type-hash tail on `ros-iron`/
+# `ros-jazzy`. Without the zenoh forward the keyexpr silently stays the Humble
+# `TypeHashNotSupported` placeholder even in a jazzy build.
+ros-humble = ["nros/ros-humble", "nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron"]
+ros-jazzy = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy"]
+
 # Zenoh-specific link plumbing (no source gate). The test-only variants that
 # used to be feature gates here (safety-e2e / param-services / header) live in
 # `packages/testing/nros-tests/bins/{safety,param,header}-chatter-talker`.
 link-tls = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

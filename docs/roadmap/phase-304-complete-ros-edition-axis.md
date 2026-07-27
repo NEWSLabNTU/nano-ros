@@ -331,14 +331,18 @@ Two tests pin it, split so the always-run half needs no ROS:
 Chain: engine == fixture (offline) + fixture == live Jazzy (oracle) ⟹ engine ==
 live Jazzy — i.e. nano-ros's keyexpr tail equals a real Jazzy node's.
 
-**W4 REMAINING (needs a provisioned host, not runnable here):** the full
-nano↔Jazzy WIRE lane — a `ros-jazzy`-built nano-ros listener + a container Jazzy
-`ros2 topic pub` over a shared zenohd — proving end-to-end DELIVERY (not just the
-hash). Blocked on (a) building the nano-ros jazzy stack and (b) a container image
-carrying `rmw_zenoh_cpp` (ros-base lacks it). Edition interop lanes are
-hand-picked cells (like the cyclone/xrce lanes, RFC-0051 §), NOT a 7th
-combinatorial matrix axis — an edition axis would multiply the QEMU-runtime
-`Cell` set for zero value, since edition doesn't affect a runtime fixture cell.
+**W4 REMAINING — LANDED (2026-07-27, via phase-311 W5).** The full nano↔Jazzy
+WIRE lane now exists: `packages/testing/nros-tests/tests/ros_editions_zenoh.rs`
+runs a `ros-jazzy`-built nano-ros zpico node ↔ a shared `rmw_zenohd` ↔ a stock
+jazzy `rmw_zenoh_cpp` peer, proving end-to-end DELIVERY (not just the hash),
+both directions, pub/sub + service + action-client (5/6; ROS→nano action server
+is #0292). Both former blockers cleared: (a) the examples now build the jazzy
+stack via the `ros-<edition>` passthrough feature (the RMW-mirrored selection
+this W2 designed), and (b) the phase-311 `nano-ros-ros:jazzy` image carries
+`rmw_zenoh_cpp` 0.2.9. The investigation (issue #0291) also PROVED the zenoh
+transport is version-compatible (proto `0x09`, 1.7↔1.11) — the interop key is the
+RIHS01 keyexpr tail this phase bakes, exactly as W1/W2 intended. Edition interop
+lanes remain hand-picked cells (RFC-0051 §), NOT a 7th combinatorial matrix axis.
 
 ### W5 — encoding field per edition (coordinates phase-303 W1b)
 
