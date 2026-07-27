@@ -265,6 +265,14 @@ fn write_cbindgen_header_atomically(output_path: &Path, bindings: cbindgen::Bind
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
+    // The temp file MUST live in the header's own directory: the atomicity
+    // here comes from `rename`, which is only atomic within one filesystem.
+    // That directory is the SOURCE tree, so a build killed between the write
+    // and the rename orphans a `.<header>.tmp.<pid>` there — where the next
+    // `git add -A` will commit it (this is how `.nros_cpp_ffi.h.tmp.229021`
+    // reached main). Nothing runs on SIGKILL, so cleanup cannot be RAII;
+    // sweep any stale siblings on the way in instead.
+    sweep_stale_header_temps(output_path);
     let tmp = output_path.with_file_name(format!(
         ".{}.tmp.{}",
         output_path
@@ -302,6 +310,54 @@ fn write_cbindgen_header_atomically(output_path: &Path, bindings: cbindgen::Bind
 ///
 /// Adding a generated artifact? Ask which of the two it is. If a second crate
 /// or a parallel lane could name the same path, it belongs in the first group.
+/// Remove orphaned `.<header>.tmp.<pid>` siblings left by builds that died
+/// between the atomic write and its rename.
+///
+/// Only files matching THIS header's temp shape are touched, and only when the
+/// recorded pid is not a live process — a concurrent build's in-flight temp
+/// must survive (the header lock serializes writers, but a different crate's
+/// build can be mid-write on its own header in the same directory).
+fn sweep_stale_header_temps(output_path: &Path) {
+    let (Some(dir), Some(name)) = (output_path.parent(), output_path.file_name()) else {
+        return;
+    };
+    let Some(name) = name.to_str() else { return };
+    let prefix = format!(".{name}.tmp.");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(pid) = file_name.strip_prefix(&prefix) else {
+            continue;
+        };
+        if pid.is_empty() || !pid.bytes().all(|b| b.is_ascii_digit()) {
+            continue; // not our shape — leave it alone
+        }
+        if pid.parse::<u32>().is_ok_and(pid_is_live) {
+            continue; // a live build owns this one
+        }
+        std::fs::remove_file(entry.path()).ok();
+    }
+}
+
+/// Whether `pid` names a live process. Non-Unix conservatively answers "yes",
+/// so a temp file is kept rather than deleted out from under a running build.
+fn pid_is_live(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
 pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
     if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
         write_to(PathBuf::from(target_dir), relative, contents);
@@ -490,6 +546,43 @@ pub fn non_zero_or(probe: usize, fallback: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The cbindgen temp-header sweep removes ONLY orphans of this header
+    /// whose owning pid is gone. A live build's in-flight temp, another
+    /// header's temp, and anything not matching the `.tmp.<digits>` shape all
+    /// survive — deleting those would corrupt a concurrent build.
+    #[test]
+    fn sweep_removes_only_dead_orphans_of_this_header() {
+        let dir = std::env::temp_dir().join(format!("nros-sweep-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let header = dir.join("nros_cpp_ffi.h");
+        std::fs::write(&header, "// header\n").unwrap();
+
+        // Orphan: a pid that cannot be live (0 is never a real user process).
+        let dead = dir.join(".nros_cpp_ffi.h.tmp.0");
+        // Live: this very process still owns it.
+        let live = dir.join(format!(".nros_cpp_ffi.h.tmp.{}", std::process::id()));
+        // A DIFFERENT header's orphan — not ours to reap.
+        let other = dir.join(".other_header.h.tmp.0");
+        // Right prefix, wrong shape (not all digits).
+        let malformed = dir.join(".nros_cpp_ffi.h.tmp.notapid");
+        for f in [&dead, &live, &other, &malformed] {
+            std::fs::write(f, "x").unwrap();
+        }
+
+        sweep_stale_header_temps(&header);
+
+        assert!(!dead.exists(), "a dead pid's orphan must be swept");
+        assert!(live.exists(), "a live build's in-flight temp must survive");
+        assert!(
+            other.exists(),
+            "another header's temp is not ours to remove"
+        );
+        assert!(malformed.exists(), "non-pid suffixes must be left alone");
+        assert!(header.exists(), "the real header must never be touched");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn non_zero_or_prefers_probe() {
