@@ -848,13 +848,29 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // ride per-target system tomls, and reading the fixed
         // `<bringup>/system.toml` leaked the native profile's
         // [param_services] into every MCU entry. Fallback: the fixed name.
+        // Issue 0293 — `meta.inputs` paths are recorded RELATIVE to the bringup
+        // package so a committed model is portable. Older models carry the
+        // resolving machine's absolute path; accept both, absolute first.
+        //
+        // This matters more than provenance: an unresolvable path falls
+        // through to the fixed `<bringup>/system.toml` below, which is exactly
+        // the per-target leak recording the input was meant to prevent. With
+        // absolute paths that fallback fired on every machine except the one
+        // that resolved the model.
         let system_toml_path = model
             .meta
             .inputs
             .iter()
-            .map(|i| std::path::PathBuf::from(&i.path))
-            .find(|p| p.extension().is_some_and(|e| e == "toml"))
-            .filter(|p| p.exists())
+            .filter(|i| std::path::Path::new(&i.path).extension().is_some_and(|e| e == "toml"))
+            .find_map(|i| {
+                let raw = std::path::Path::new(&i.path);
+                let candidate = if raw.is_absolute() {
+                    raw.to_path_buf()
+                } else {
+                    bringup_dir.join(raw)
+                };
+                candidate.exists().then_some(candidate)
+            })
             .unwrap_or_else(|| bringup_dir.join("system.toml"));
         if system_toml_path.exists() {
             tracked.push(system_toml_path.clone());

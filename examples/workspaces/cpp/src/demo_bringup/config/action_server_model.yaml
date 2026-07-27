@@ -1,17 +1,30 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/cpp/src/demo_bringup/launch/action_server.launch.xml
+  - path: launch/action_server.launch.xml
     sha256: 148a80d27eaffe922a6c16831792f617ae8dd61172784a30fba9b6b0a76c1613
+  - path: system.toml
+    sha256: 3cd441e084eac7610b2d0b9b2802739d834f951dcc1cf407ade162de967e55d7
   resolver:
     tool: play_launch
     version: 0.8.2
 structure:
   scopes:
-    /: {}
+    action_server.launch.xml:
+      file: action_server.launch.xml
   nodes:
     /fib_server:
-      scope: /
+      scope: action_server.launch.xml
       pkg: cpp_fib_server_pkg
       exec: fib_server
       node_name: fib_server
+execution:
+  deploy:
+    /fib_server:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
