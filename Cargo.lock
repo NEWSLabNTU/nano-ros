@@ -1800,6 +1800,7 @@ dependencies = [
  "nros-node",
  "nros-platform",
  "nros-rmw",
+ "nros-rmw-metadata",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
  "panic-halt",

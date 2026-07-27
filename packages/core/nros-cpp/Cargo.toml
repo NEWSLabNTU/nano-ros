@@ -39,7 +39,7 @@ rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
 # host metadata probe. Turns on the three executor-side hooks (node / timer /
 # guard condition) that the recording RMW backend cannot observe. Host only:
 # never enabled by a board or entry build.
-metadata-mode = ["nros/metadata-mode"]
+metadata-mode = ["nros/metadata-mode", "dep:nros-rmw-metadata"]
 
 # Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Forwards
 # to nros + nros-c + the zenoh backend's safety-e2e, and surfaces
@@ -165,6 +165,12 @@ nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
 # Backend deps for nros-cpp's own root-crate force-link (`src/rmw_backend.rs`);
 # shared with nros-c's copy by cargo (one backend rlib).
+# phase-308 — the recording RMW backend. Optional and pulled in ONLY by
+# `metadata-mode`, so a firmware build never links it. Without this dep the
+# backend is an orphan crate: the probe links `libnros_cpp.a`, the backend's
+# `.init_array` self-registration is never in the image, and `NROS_RMW=metadata`
+# resolves to an unknown backend.
+nros-rmw-metadata = { path = "../nros-rmw-metadata", optional = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
