@@ -47,6 +47,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#244** — platform-surface asymmetries recorded as decisions. Serial/IVC (+
+PlatformLibc) are a deliberate Rust-only carve-out (post-RFC-0054 the C headers are SSoT; a
+primitive joins the C ABI only when a C consumer needs it, authored — never hand-mirrored). zpico's
+`smoltcp_set_clock_ms` externally-fed tick is required today; unifying it onto the SSoT clock is a
+phase-230 item. Documented in platform-implementation-notes.md. See `0244-*`. (2026-07-28)
+
 Recently resolved: **#284** — `NROS_CYCLONEDDS_MAX_TYPES` (the cyclone type-registry size) is now
 DERIVED from the SystemModel + auto-emitted into `.cargo/config.toml [env]` by `codegen-system`, so
 an image can't `RegistryFull` at runtime. Distinct-type count mirrors the backend's expansion

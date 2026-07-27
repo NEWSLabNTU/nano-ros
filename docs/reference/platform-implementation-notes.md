@@ -260,3 +260,25 @@ just feature gates). zenoh-pico C keeps per-platform system layers and
 Verified 2026-06-09: native_sim-less, on `qemu-system-arm -M virt -cpu
 cortex-a7`, the NuttX workspace Entry boots → registers → publishes `/chatter`
 → an external native listener receives it cross-process.
+
+## Platform-ABI carve-outs: Serial / IVC / PlatformLibc are Rust-only (issue 0244)
+
+Not every platform primitive has a C-ABI mirror in the `nros_platform_*`
+headers. `PlatformSerial` and `PlatformIvc` (Tegra IVC mailbox) are **Rust
+traits only** — no `nros_platform_serial` / `nros_platform_ivc` header — because
+they are consumed exclusively by Rust boards. `PlatformLibc` is documentary-only
+(link-resolved from `nros-baremetal-common`, never dispatched).
+
+This is a **deliberate carve-out, not an oversight.** Post-RFC-0054 the C headers
+are the platform-ABI SSoT and the Rust side consumes committed bindgen output;
+hand-written C mirrors of Rust traits are the RETIRED model. So the rule is: a
+primitive joins the portable C ABI only when a C consumer needs it, at which
+point it is AUTHORED as an SSoT header and the Rust trait wraps the generated
+bindings — never hand-mirrored ahead of a consumer. Until then, Rust-only is
+correct.
+
+Separately, `zpico-sys/src/platform_smoltcp.rs` exposes `smoltcp_set_clock_ms` /
+`smoltcp_clock_now_ms` — an externally-fed monotonic tick (PUSH: the board timer
+ISR calls `set_clock_ms`) the bare-metal smoltcp stack needs, beside the
+canonical `nros_platform_clock_ms` (PULL). It is required today; unifying it onto
+the SSoT platform-clock header is a phase-230 normalization item.

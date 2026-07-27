@@ -1,12 +1,38 @@
 ---
 id: 244
 title: "Platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: platform
 related: [rfc-0034, issue-0239]
 ---
+
+## RESOLUTION (2026-07-28) — item 1 = recorded carve-out, item 2 = phase-230
+
+**Item 1 (Serial/IVC Rust-only) — deliberate carve-out, recorded.** Confirmed no
+C header / C consumer exists for `PlatformSerial` / `PlatformIvc` (grep of the
+`nros_platform_*` headers: no `nros_platform_serial` / `_ivc`). Per the post-299
+inversion (RFC-0054 made the C headers the platform-ABI SSoT; hand-written C
+mirrors of Rust traits are the RETIRED model), the fix is NOT to write mirrors.
+Serial/IVC are consumed only by Rust boards today, so they stay a **deliberate
+Rust-only carve-out**: if/when a C backend needs them, they get AUTHORED as SSoT
+headers with the Rust trait wrapping the generated bindings — not hand-mirrored.
+Recorded in `docs/reference/platform-implementation-notes.md`. `PlatformLibc` is
+documentary-only (link-resolved from `nros-baremetal-common`, never dispatched) —
+same carve-out class.
+
+**Item 2 (zpico second clock) — routed to phase-230.** `smoltcp_set_clock_ms` /
+`smoltcp_clock_now_ms` (`zpico-sys/src/platform_smoltcp.rs`) is an externally-fed
+monotonic tick the bare-metal smoltcp stack needs — a PUSH model (the board's
+timer ISR calls `set_clock_ms`) vs the canonical `nros_platform_clock_ms` PULL
+model. It is genuinely required today (a bare-metal board with no on-demand
+readable free-running timer feeds smoltcp this way). Whether to unify it onto the
+SSoT platform-clock header is a normalization the post-299 note already assigns to
+**phase-230** (platform-layer split); tracked there, not a standalone fix.
+
+Both are now recorded decisions, not unexplained asymmetries — closing the audit
+flag.
 
 ## Finding (RMW/platform API audit, 2026-07-21)
 
