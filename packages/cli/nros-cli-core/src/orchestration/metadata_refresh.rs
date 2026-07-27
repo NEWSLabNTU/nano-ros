@@ -101,13 +101,18 @@ pub fn refresh_stale_sidecars(
             continue;
         }
         if decl.config.language != ComponentLanguage::Rust {
-            // phase-307 W3 lands the C/C++ producer. Until then say so out
-            // loud: a silently skipped component is a silently under-counted
-            // executor, which is the exact failure 0257 is about.
-            report.unsupported.push(format!(
-                "{}::{}",
-                decl.config.package, decl.config.component
-            ));
+            // phase-308 W1 — C/C++ go through the CMake probe driver. A failure
+            // lands in the unsupported ledger rather than failing the sync:
+            // the fallback is the SystemModel bound, which is what these
+            // components get today.
+            match refresh_cpp_sidecar(decl, nano_ros, &probe_root, verbose) {
+                Ok(Some(path)) => report.rebuilt.push(path),
+                Ok(None) => report.fresh.push(decl.source_metadata_path()),
+                Err(why) => report.unsupported.push(format!(
+                    "{}::{} ({why})",
+                    decl.config.package, decl.config.component
+                )),
+            }
             continue;
         }
         let sidecar = decl.source_metadata_path();

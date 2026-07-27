@@ -609,6 +609,9 @@ fn lexically_join(base: &Path, rel: &Path) -> PathBuf {
 }
 
 pub fn run_sync(args: SyncArgs) -> Result<()> {
+    // phase-308 W1 — captured up front: `args.workspace` is moved just below,
+    // and the C/C++-only early return still needs the probe's nano-ros path.
+    let nano_ros_for_probes = nano_ros_path_for(&args);
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
             std::fs::canonicalize(&p).wrap_err_with(|| format!("ws sync: {}", p.display()))?
@@ -747,6 +750,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     if rust_consumers.is_empty() {
         println!("ws sync: no Rust consumer pkgs — patch tables not written.");
+        // phase-308 W1 — a C/C++-only workspace has no Rust consumers, but it
+        // DOES have components to probe. Returning here skipped the metadata
+        // refresh entirely for exactly the workspaces the C/C++ producer
+        // exists to serve.
+        refresh_source_metadata(&ws_root, nano_ros_for_probes, no_metadata, verbose)?;
+        println!("ws sync: done.");
         return Ok(());
     }
 
@@ -825,12 +834,19 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         )?;
     }
 
-    refresh_source_metadata(&ws_root, nano_ros_path.as_deref(), no_metadata, verbose)?;
+    refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
     println!("ws sync: done.");
     Ok(())
 }
 
+/// phase-308 W1 — resolve the nano-ros checkout the metadata probes build
+/// against. Mirrors the resolution the patch-table path already does.
+fn nano_ros_path_for(args: &SyncArgs) -> Option<PathBuf> {
+    args.nano_ros_path
+        .clone()
+        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
+}
 /// phase-307 W2 — the producer trigger.
 ///
 /// Runs LAST, and the order is load-bearing: the metadata harness compiles the
@@ -840,7 +856,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 /// above). Running this any earlier fails to resolve the interface deps.
 fn refresh_source_metadata(
     ws_root: &Path,
-    nano_ros_path: Option<&Path>,
+    nano_ros_path: Option<PathBuf>,
     no_metadata: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -849,7 +865,7 @@ fn refresh_source_metadata(
     }
     let report = crate::orchestration::metadata_refresh::refresh_stale_sidecars(
         ws_root,
-        nano_ros_path,
+        nano_ros_path.as_deref(),
         verbose,
     )?;
     if report.total() == 0 && report.unsupported.is_empty() {

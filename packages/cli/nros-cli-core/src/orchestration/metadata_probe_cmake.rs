@@ -94,7 +94,11 @@ pub fn render_probe_cmakelists(o: &CmakeProbeOptions) -> String {
          add_subdirectory({pkg_dir} component_pkg)\n\
          \n\
          add_executable(nros_metadata_probe probe_main.cpp)\n\
-         target_link_libraries(nros_metadata_probe PRIVATE NanoRos::NanoRos)\n\
+         # NanoRosCpp, not NanoRos: the probe TU is C++ even when the component\n\
+         # is C (it drives the C ABI seam), and only the Cpp target carries the\n\
+         # `nros/*.hpp` include dirs. Linking the C target compiles the probe\n\
+         # with no `<nros/component.hpp>` on the include path.\n\
+         target_link_libraries(nros_metadata_probe PRIVATE NanoRos::NanoRosCpp)\n\
          nano_ros_link_rmw(nros_metadata_probe)\n",
         pkg = o.package,
         comp = o.component,
@@ -270,6 +274,12 @@ mod tests {
         assert!(
             txt.contains("nano_ros_link_rmw(nros_metadata_probe)"),
             "{txt}"
+        );
+        // NanoRosCpp, not NanoRos: only the Cpp target carries the `nros/*.hpp`
+        // include dirs, and the probe TU is C++ even for a C component.
+        assert!(
+            txt.contains("NanoRos::NanoRosCpp"),
+            "probe needs the C++ include dirs:\n{txt}"
         );
     }
 

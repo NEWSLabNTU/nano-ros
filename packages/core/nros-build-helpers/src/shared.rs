@@ -402,32 +402,66 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
         return;
     };
     match std::fs::read_to_string(&dest) {
-        Ok(existing) if existing == contents => {}
+        // Compare the VALUES, not the bytes. The two writers build this header
+        // from different sources — nros-c from
+        // `templates/nros_config_generated.h.template`, nros-cpp from an inline
+        // string — so comments and spacing differ even when every probed size
+        // agrees. A byte comparison called that divergence and broke EVERY
+        // native C++ build; only a disagreeing `#define` is a real problem.
+        Ok(existing) if defines_of(&existing) == defines_of(contents) => {}
         Ok(existing) => panic!(
-            "{label}: {} was written by another crate with DIFFERENT probed sizes.
-             The C and C++ halves of this build resolved different runtime layouts, so one              of them would size its `_opaque` storage wrong (silent overflow at runtime).
-             Usually this means nros-c and nros-cpp were built with different features.
-             --- on disk ---
-{}
---- this crate would write ---
-{}",
+            "{label}: {} was written by another crate with DIFFERENT probed sizes.\n\
+             The C and C++ halves of this build resolved different runtime layouts, \
+             so one of them would size its `_opaque` storage wrong (silent overflow \
+             at runtime). Usually this means nros-c and nros-cpp were built with \
+             different features.\nDisagreeing defines:\n{}",
             dest.display(),
-            first_defines(&existing),
-            first_defines(contents),
+            disagreeing_defines(&existing, contents),
         ),
         Err(_) => write_to_path(&dest, contents),
     }
 }
 
-/// The `#define` lines of a generated header — enough to see WHICH size
-/// disagrees without dumping a 60-line file into a build error.
-fn first_defines(header: &str) -> String {
-    header
+/// `#define NAME VALUE` pairs, in a comparable form.
+///
+/// The semantic content of a generated sizes header; everything else (comments,
+/// blank lines, include guards, the opaque-struct prose) is presentation that
+/// legitimately differs between the two writers.
+fn defines_of(header: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = header
         .lines()
-        .filter(|l| l.starts_with("#define"))
-        .take(12)
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("#define "))
+        .filter_map(|rest| {
+            let mut it = rest.splitn(2, char::is_whitespace);
+            let name = it.next()?.to_string();
+            Some((name, it.next().unwrap_or("").trim().to_string()))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Only the `#define`s that actually DISAGREE — the useful part of a mismatch
+/// report, rather than the first N, which are usually the ones that match. The
+/// original report printed twelve identical lines under "on disk" and "would
+/// write", which read as the tool contradicting itself.
+fn disagreeing_defines(a: &str, b: &str) -> String {
+    let (da, db) = (defines_of(a), defines_of(b));
+    let mut lines = Vec::new();
+    for (name, va) in &da {
+        match db.iter().find(|(n, _)| n == name) {
+            Some((_, vb)) if vb == va => {}
+            Some((_, vb)) => lines.push(format!("  {name}: on-disk={va} vs would-write={vb}")),
+            None => lines.push(format!("  {name}: on-disk={va} vs would-write=<absent>")),
+        }
+    }
+    for (name, vb) in &db {
+        if !da.iter().any(|(n, _)| n == name) {
+            lines.push(format!("  {name}: on-disk=<absent> vs would-write={vb}"));
+        }
+    }
+    lines.join("\n")
 }
 
 fn target_dir_path(relative: &[&str]) -> Option<PathBuf> {
