@@ -225,8 +225,7 @@ The `--exclude` list is manual and duplicated. See `0287-*`.
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
 residue). See `0200-*`.
 
-**#270** — `nros-rmw-zenoh` deps `zpico-sys` with DEFAULT features → the platform-aliases TU
-double-defines clock symbols on orin-spe. See `0270-*`.
+(#270 resolved — `nros-rmw-zenoh` pulled `zpico-sys` DEFAULT features, double-defining clock symbols on orin-spe. See `archived/0270-*`.)
 
 **#271** — Orin SPE BTCM footprint regressed ~+195 KB between `d9af52be` and `21a3a4248`; a
 minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
@@ -238,9 +237,7 @@ Verification section); needs a reporter repro. See `0272-*`.
 **#273** — `nros-board-mps2-an385-freertos`'s `nros-board.toml` still advertises the retired
 `_start` entry signature. See `0273-*`.
 
-**#284** — `NROS_CYCLONEDDS_MAX_TYPES` is a hidden compile-time knob, the twin of the
-now-fixed `NROS_EXECUTOR_MAX_CBS` (#257, resolved). Distinct msg/srv types per entry are
-derivable from the same source-metadata sidecars phase-307 wired up. See `0284-*`.
+(#284 resolved — `NROS_CYCLONEDDS_MAX_TYPES` hidden compile-time knob, twin of the fixed `NROS_EXECUTOR_MAX_CBS`. See `archived/0284-*`.)
 
 **#278** — no polling subscriber / blocking service futures: mrm_handler-class ports weaken to
 cache-latest subs + send-and-poll service calls (semantic weakening of the safety path,
@@ -266,17 +263,13 @@ zero duplicate exports); no union closure needed, union-shim pkg obsolete.)
 dispatch body is a placeholder — images boot but callbacks never fire (RTIC twin is complete,
 phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-prep audit 2026-07-24)
 
-**#244** — platform ABI surface asymmetry: PlatformSerial/PlatformIvc are Rust-trait-only (no C
-header mirror) unlike net/timer; zpico adds a second clock surface beside nros_platform_clock_ms.
-See `0244-*`. (RMW/platform audit 2026-07-21)
+(#244 resolved — platform ABI surface asymmetry: PlatformSerial/PlatformIvc had no C header mirror. See `archived/0244-*`.)
 
 **#243** — platform board-trait family duplicated during transition (nros-platform::board vs legacy
 nros-board-common::board_init, both live) with no recorded convergence end-state. See `0243-*`.
 (audit 2026-07-21)
 
-**#242** — RMW parity gaps vs rmw.h: no publisher GID (rmw_get_gid_for_publisher) and no
-message-info out-param (rmw_message_info_t) at the take slot; decide add-vs-carveout. See `0242-*`.
-(audit 2026-07-21)
+(#242 resolved — RMW parity gaps vs rmw.h: publisher GID + message-info out-param. See `archived/0242-*`.)
 
 Recently resolved: **#240 + #241** — phase-301 landed the batched RMW shape alignment on the
 RFC-0054 header SSoT (create_session/subscription/service/client terms, hints in options structs,
