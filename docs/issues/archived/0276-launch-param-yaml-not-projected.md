@@ -95,3 +95,34 @@ precedence, later-file-wins + foreign-section skip, unparsable-file).
 Both projections now agree on precedence (files in declaration order, inline
 `<param>` highest); the launch-side one stays for its test and for any
 future re-enablement of that arm.
+
+## Fidelity audit vs standard ROS (2026-07-27)
+
+Checked both engines against `rcl_yaml_param_parser` semantics.
+
+**play_launch (Linux spawn): faithful.** `node_cmdline.rs` materializes each
+`params_files` entry to disk and passes one `--params-file` per file in
+declaration order, then writes the inline `<param>` values to an
+`overrides.yaml` rendered LAST. All node-key matching therefore happens inside
+rcl itself — wildcards, namespaces and nested params are whatever ROS says
+they are, by construction. (It also sidesteps `-p` parser limits: `::` in
+names, empty values.)
+
+**nano-ros (compile-time bake): had a matching gap, now closed.** The bake
+cannot delegate to rcl — there is no rcl on the target — so
+`resolved_params` re-implements the matcher, and the first cut recognized only
+`/**`, exact FQN, and a bare name. rcl also accepts PARTIAL wildcards
+(`/sensing/**`, `/*/planner`, `/foo/*/bar`), which real Autoware configs use,
+so whole sections were being dropped silently. Fixed in rlm `2a8f952`:
+segment-wise globbing where `**` consumes any number of segments (including
+zero — `/sensing/**` also selects `/sensing`) and `*` exactly one.
+
+**Known divergence, both engines, documented not fixed.** ROS 2 launch takes
+ONE ordered `parameters=[…]` list mixing dicts and files, so
+`parameters=[{"a": 1}, "f.yaml"]` lets the file win for `a`. Our model splits
+the two (`NodeInstance.params` vs `.params_files`) and loses the interleaving,
+so both engines apply files first and inline last — inline always wins.
+play_launch (`overrides.yaml` last) and the nano-ros bake agree with each
+other; they diverge from upstream only when a launch file deliberately orders
+a file AFTER an inline dict for the same key. Restoring exact fidelity would
+need an ordered parameter-source list in the model.
