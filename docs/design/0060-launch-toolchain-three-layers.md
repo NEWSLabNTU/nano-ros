@@ -187,11 +187,64 @@ alternative, and worth doing later: rlm is dependency-light and would remove
 submodule pins for the spec layer entirely. Out of scope here because it
 constrains release cadence.
 
+## Decisions (2026-07-28)
+
+**1. rlm is vendored as a submodule; publishing is deferred behind a trigger.**
+
+None of rlm's four crates is publishable as written — none carries a `license`,
+and only `model` carries a `description`; crates.io requires both. Beyond
+metadata, publishing imposes a release cadence, and rlm's schema moved four
+times in two days (`DeployBlock.launch`, `machine=` placement,
+`input_path_string`, ordered param sources). Each would have needed a version
+bump and a publish before any consumer could move.
+
+The drift that motivated this RFC came from **two copies**, not from vendoring:
+three layers leave exactly one, inherited transitively, so the failure mode
+closes either way. Metadata is added now as prep; the trigger to publish is W4
+closing plus the 0293 SSoT work landing — i.e. when the schema stops moving
+weekly.
+
+Consequence to accept with it: nano-ros links rlm directly as well
+(`nros-macros` → `nros-orchestration-ir` → `sched`), so until rlm is published
+that path-dep runs through
+`third-party/ros-launch-resolve/third-party/ros-launch-manifest`. One copy, no
+drift, but an ugly path — and the strongest argument for publishing sooner
+rather than later.
+
+**2. The parser keeps its name, and the premise for renaming was wrong.**
+
+An earlier draft of this RFC said renaming "touches the pyo3 module name". That
+is not true: the Rust crate (`crates/play_launch_parser`) and the Python
+extension (`crates/python`, package `play_launch_parser_python`) are separate
+crates, and the resolver depends only on the former. They rename
+independently.
+
+The actual objection is ownership. `play_launch_parser` is its own repository
+(`jerry73204/play_launch_parser`), vendored by play_launch and now by this
+layer — it was never part of play_launch. It has Python users importing
+`play_launch_parser` directly. Renaming an upstream project to suit our
+repository layout would break them for our convenience. If the name should
+change, the honest form is a neutral `ros_launch_parser` decided upstream on
+its own timeline, not folded into phase-312.
+
+**3. play_launch keeps a `resolve` verb that delegates to layer 2, with a
+deprecation line.**
+
+nano-ros no longer calls it, but simple-autoware-safety-island does — and not
+only in prose: the command is embedded in
+`sentinel_bringup/launch/pilot.launch.xml` as the documented recipe for
+regenerating that model. Since play_launch depends on layer 2 after W3 anyway,
+forwarding costs almost nothing, while dropping the verb breaks a live
+workflow.
+
+Issue 0285 is the argument from the other side: that whole bug presented as
+`unrecognized subcommand 'resolve'` surfacing inside a cmake configure.
+Removing a verb people invoke reproduces exactly that failure shape with us as
+the cause. The verb stays, prints one line naming `ros-launch-resolve`, and is
+dropped in a later release once the downstream recipe has moved.
+
 ## Open questions
 
-1. Does `ros-launch-resolve` vendor rlm as a submodule, or consume it from
-   crates.io once published? Submodule first, publishing later.
-2. Does the resolver keep the `play_launch_parser` name for its parser crate,
-   or rename to match the new repo? Renaming touches the pyo3 module name.
-3. Does play_launch keep a thin `resolve` verb (delegating to layer 2) for
-   backward compatibility, or drop it?
+1. **When to publish rlm to crates.io.** Trigger recorded above; the deciding
+   input is whether nano-ros's nested path-dep proves painful enough to pull it
+   forward.
