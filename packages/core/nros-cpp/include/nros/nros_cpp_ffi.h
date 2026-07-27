@@ -181,13 +181,19 @@ typedef struct nros_cpp_qos_override_t {
    */
   uint8_t role;
   /**
-   * `0` = reliability, `1` = durability, `2` = history, `3` = depth.
+   * `0` = reliability, `1` = durability, `2` = history, `3` = depth,
+   * `4` = deadline, `5` = lifespan, `6` = liveliness,
+   * `7` = liveliness_lease_duration. Append-only — these numbers are baked
+   * into shipped images; `nros_rmw::qos_override_policy` is the SSoT.
    */
   uint8_t policy;
   /**
    * Policy-specific value: reliability `0`=best_effort/`1`=reliable;
    * durability `0`=volatile/`1`=transient_local; history
-   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth.
+   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
+   * lifespan / liveliness_lease_duration = milliseconds; liveliness =
+   * the `QosLivelinessPolicy` discriminant
+   * (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
    */
   uint32_t value;
 } nros_cpp_qos_override_t;

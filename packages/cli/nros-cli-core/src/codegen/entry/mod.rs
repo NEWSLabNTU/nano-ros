@@ -151,24 +151,13 @@ impl Plan {
     }
 }
 
-/// Phase 211.H (issue #52) — one per-topic QoS override on a node, decomposed
-/// from a `qos_overrides.<topic>.<role>.<policy>` launch param. The typed C++
-/// entry emitter (`emit_cpp`) bakes these into a static `nros_cpp_qos_override_t[]`
-/// + a `node.set_qos_overrides(...)` call before `configure(node)`, so the
-/// node's entities honour the override at create time. Fields are the raw
-/// decomposed strings; the emitter maps them to the C-ABI `{role, policy, value}`
-/// scalar codes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QosOverrideSpec {
-    /// Resolved topic (e.g. `"/chatter"`).
-    pub topic: String,
-    /// `"publisher"` or `"subscription"`.
-    pub role: String,
-    /// `"reliability"` / `"durability"` / `"history"` / `"depth"`.
-    pub policy: String,
-    /// Raw launch value (e.g. `"best_effort"`, `"transient_local"`, `"5"`).
-    pub value: String,
-}
+/// Issue #52 / 0303 — one lowered QoS override on a plan node.
+///
+/// The lowering (parameter key/value strings → `(topic, role, policy, value)`
+/// codes) lives in `nros_orchestration_ir::qos_override`, shared with the
+/// `nros::main!` proc-macro, and REJECTS what it cannot lower. A plan therefore
+/// never carries an override the emitters would silently drop.
+pub type QosOverrideSpec = nros_orchestration_ir::qos_override::LoweredOverride;
 
 /// One Node-pkg invocation in launch order.
 ///
@@ -325,40 +314,18 @@ pub fn sanitize_pkg(pkg: &str) -> String {
     out
 }
 
-/// `qos_overrides.<topic>.<role>.<policy>` — QoS travels via
-/// [`PlanNode::qos_overrides`], never as a declared parameter.
-const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
-
-/// Decompose `qos_overrides.<topic>.<role>.<policy>` parameters into typed
-/// [`QosOverrideSpec`]s, sorted for deterministic emission.
+/// Issue #52 — decompose `qos_overrides.<topic>.<role>.<policy>` parameters
+/// into the baked override table, sorted for deterministic emission.
 ///
-/// Phase 211.H (issue #52) introduced this on the launch path; phase-296
-/// R-code retired that path and the model path had NOT inherited the split, so
-/// a model carrying `params: {qos_overrides./chatter.publisher.reliability: …}`
-/// baked the override as an ordinary parameter and applied no QoS at all.
-fn qos_overrides_from_params(params: &[(String, String)]) -> Vec<QosOverrideSpec> {
-    let mut out: Vec<QosOverrideSpec> = params
-        .iter()
-        .filter_map(|(name, value)| {
-            let rest = name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
-            // rsplitn(3, '.') → [policy, role, topic]
-            let mut parts = rest.rsplitn(3, '.');
-            let policy = parts.next()?;
-            let role = parts.next()?;
-            let topic = parts.next()?;
-            if topic.is_empty() || role.is_empty() || policy.is_empty() {
-                return None;
-            }
-            Some(QosOverrideSpec {
-                topic: topic.to_string(),
-                role: role.to_string(),
-                policy: policy.to_string(),
-                value: value.clone(),
-            })
-        })
-        .collect();
-    out.sort_by(|a, b| (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy)));
-    out
+/// Issue 0303 — this REJECTS an unusable override (unknown role or policy,
+/// unparseable value) instead of filtering it away. Silence is the wrong
+/// failure mode for QoS: the image would run different delivery semantics than
+/// the model declares, invisibly.
+fn qos_overrides_from_params(params: &[(String, String)]) -> Result<Vec<QosOverrideSpec>> {
+    nros_orchestration_ir::qos_override::lower_all(
+        params.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+    )
+    .map_err(|e| eyre::eyre!("{e}"))
 }
 
 /// The complement of [`qos_overrides_from_params`]: everything that is NOT a
@@ -366,7 +333,7 @@ fn qos_overrides_from_params(params: &[(String, String)]) -> Vec<QosOverrideSpec
 fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
     params
         .iter()
-        .filter(|(name, _)| !name.starts_with(QOS_OVERRIDE_PREFIX))
+        .filter(|(name, _)| !nros_orchestration_ir::qos_override::is_qos_override(name))
         .cloned()
         .collect()
 }
@@ -452,7 +419,8 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             .iter()
             .map(|(k, v)| (k.clone(), v.to_bake_string()))
             .collect();
-        let qos_overrides = qos_overrides_from_params(&resolved);
+        let qos_overrides =
+            qos_overrides_from_params(&resolved).with_context(|| format!("node `{fqn}`"))?;
         let params = non_qos_params(&resolved);
         // Group→tier from the model's resolved bindings (`<fqn>/<group>`).
         let mut group_tiers: BTreeMap<String, String> = BTreeMap::new();
@@ -837,11 +805,19 @@ contracts: {}
             !params.keys().any(|k| k.starts_with("qos_overrides.")),
             "qos override leaked into params: {params:?}"
         );
+        // Lowered to codes at plan time (issue 0303): publisher(0),
+        // reliability(0), best_effort(0).
         assert_eq!(node.qos_overrides.len(), 1);
         assert_eq!(node.qos_overrides[0].topic, "/chatter");
-        assert_eq!(node.qos_overrides[0].role, "publisher");
-        assert_eq!(node.qos_overrides[0].policy, "reliability");
-        assert_eq!(node.qos_overrides[0].value, "best_effort");
+        assert_eq!(
+            node.qos_overrides[0].role,
+            nros_orchestration_ir::qos_override::role::PUBLISHER
+        );
+        assert_eq!(
+            node.qos_overrides[0].policy,
+            nros_orchestration_ir::qos_override::policy::RELIABILITY
+        );
+        assert_eq!(node.qos_overrides[0].value, 0);
     }
 
     /// #236 — an UNPLACED deploy (`target: None`, e.g. a machine-derived
@@ -895,15 +871,36 @@ contracts: {}
                 "transient_local".to_string(),
             ),
         ];
-        let got = qos_overrides_from_params(&params);
+        use nros_orchestration_ir::qos_override::{policy, role};
+        let got = qos_overrides_from_params(&params).expect("lower");
         assert_eq!(got.len(), 2);
         // sorted (topic, role, policy): publisher before subscription.
-        assert_eq!(got[0].role, "publisher");
-        assert_eq!(got[0].policy, "reliability");
+        assert_eq!(got[0].role, role::PUBLISHER);
+        assert_eq!(got[0].policy, policy::RELIABILITY);
         assert_eq!(got[0].topic, "/chatter");
-        assert_eq!(got[0].value, "best_effort");
-        assert_eq!(got[1].role, "subscription");
-        assert_eq!(got[1].policy, "durability");
+        assert_eq!(got[0].value, 0); // best_effort
+        assert_eq!(got[1].role, role::SUBSCRIPTION);
+        assert_eq!(got[1].policy, policy::DURABILITY);
+        assert_eq!(got[1].value, 1); // transient_local
+    }
+
+    /// Issue 0303 — an override the bake cannot lower FAILS the codegen; it is
+    /// not filtered away. Silence would ship different delivery semantics than
+    /// the model declares, with nothing to read.
+    #[test]
+    fn an_unusable_qos_override_fails_codegen() {
+        let params = vec![(
+            // `pub` instead of `publisher` — the typo that used to vanish.
+            "qos_overrides./chatter.pub.reliability".to_string(),
+            "reliable".to_string(),
+        )];
+        let err = qos_overrides_from_params(&params).expect_err("must reject");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("qos_overrides./chatter.pub.reliability"),
+            "{msg}"
+        );
+        assert!(msg.contains("publisher"), "{msg}");
     }
 
     #[test]

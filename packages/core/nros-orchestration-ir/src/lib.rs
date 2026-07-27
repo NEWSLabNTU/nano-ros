@@ -41,6 +41,10 @@ pub mod derive;
 // count, the derivation and the over-capacity diagnostic.
 pub mod executor_sizing;
 pub mod mapper_input;
+// issue 0303 — the ONE lowering of `qos_overrides.*` params into baked codes,
+// shared by the CLI's entry emitters and the nros::main! proc-macro, and
+// fail-loud on anything it cannot lower.
+pub mod qos_override;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
 

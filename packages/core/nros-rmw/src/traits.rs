@@ -402,6 +402,134 @@ pub enum QosOverrideValue {
     History(QosHistoryPolicy),
     /// `.depth` → KeepLast depth.
     Depth(u32),
+    /// Issue 0303 — `.deadline` → [`QosSettings::deadline_ms`]. `0` /
+    /// [`DURATION_INFINITE_MS`] = no deadline check.
+    Deadline(u32),
+    /// Issue 0303 — `.lifespan` → [`QosSettings::lifespan_ms`].
+    Lifespan(u32),
+    /// Issue 0303 — `.liveliness` → [`QosSettings::liveliness_kind`].
+    Liveliness(QosLivelinessPolicy),
+    /// Issue 0303 — `.liveliness_lease_duration` →
+    /// [`QosSettings::liveliness_lease_ms`].
+    LivelinessLease(u32),
+}
+
+/// Issue 0303 — the wire form a baked QoS override travels in:
+/// `(topic, role, policy, value)`, all primitives.
+///
+/// One numbering for every language: `nros_qos_override_t` (C),
+/// `nros_cpp_qos_override_t` (C++), `RuntimeCtx::qos_overrides` (the Rust
+/// entry bake) and `NodeRecord::qos_overrides` are all THIS tuple. Codes rather
+/// than [`QosOverride`] because the table crosses the C ABI and rides
+/// `nros-platform`, which sits below this crate in the layer graph.
+///
+/// `topic` is `&'static` because every producer bakes a literal.
+pub type QosOverrideCode = (&'static str, u8, u8, u32);
+
+/// `role` codes for [`QosOverrideCode`].
+pub mod qos_override_role {
+    /// The override targets publishers on the topic.
+    pub const PUBLISHER: u8 = 0;
+    /// The override targets subscriptions on the topic.
+    pub const SUBSCRIPTION: u8 = 1;
+}
+
+/// `policy` codes for [`QosOverrideCode`].
+///
+/// Append-only: these numbers are baked into shipped images and mirrored in
+/// two C headers. Never renumber — add.
+pub mod qos_override_policy {
+    /// value `0` = best_effort, `1` = reliable.
+    pub const RELIABILITY: u8 = 0;
+    /// value `0` = volatile, `1` = transient_local.
+    pub const DURABILITY: u8 = 1;
+    /// value `0` = keep_last, `1` = keep_all.
+    pub const HISTORY: u8 = 2;
+    /// value = the KeepLast depth.
+    pub const DEPTH: u8 = 3;
+    /// value = milliseconds (issue 0303).
+    pub const DEADLINE: u8 = 4;
+    /// value = milliseconds (issue 0303).
+    pub const LIFESPAN: u8 = 5;
+    /// value = [`super::QosLivelinessPolicy`] discriminant (issue 0303).
+    pub const LIVELINESS: u8 = 6;
+    /// value = milliseconds (issue 0303).
+    pub const LIVELINESS_LEASE: u8 = 7;
+}
+
+/// Decode one [`QosOverrideCode`] into a typed [`QosOverride`].
+///
+/// `None` for an unrecognised role or policy code. THE one decoder: before
+/// issue 0303 this match existed four times (nros-node, nros-c, nros-cpp, and
+/// the executor's node record), each with a silent catch-all, so adding a
+/// policy meant finding all four — and the two FFI copies had already been
+/// forgotten once.
+pub fn decode_qos_override(code: &QosOverrideCode) -> Option<QosOverride> {
+    let (topic, role, policy, value) = *code;
+    decode_qos_override_parts(topic, role, policy, value)
+}
+
+/// [`decode_qos_override`] over loose parts — for the FFI paths, which read the
+/// fields out of a `#[repr(C)]` struct rather than a tuple.
+pub fn decode_qos_override_parts(
+    topic: &'static str,
+    role: u8,
+    policy: u8,
+    value: u32,
+) -> Option<QosOverride> {
+    Some(QosOverride {
+        topic,
+        role: decode_qos_override_role(role)?,
+        value: decode_qos_override_value(policy, value)?,
+    })
+}
+
+/// Decode a `role` code. `None` for an unrecognised one.
+pub fn decode_qos_override_role(role: u8) -> Option<QosOverrideRole> {
+    match role {
+        qos_override_role::PUBLISHER => Some(QosOverrideRole::Publisher),
+        qos_override_role::SUBSCRIPTION => Some(QosOverrideRole::Subscription),
+        _ => None,
+    }
+}
+
+/// Decode a `(policy, value)` code pair. `None` for an unrecognised policy or
+/// an out-of-range enum value.
+///
+/// Split out from [`decode_qos_override`] for the FFI paths: they have already
+/// matched the topic against a `*const c_char`, so they need the VALUE without
+/// a `&'static str` to build a whole [`QosOverride`] around.
+pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QosOverrideValue> {
+    let out = match policy {
+        qos_override_policy::RELIABILITY => QosOverrideValue::Reliability(if value == 0 {
+            QosReliabilityPolicy::BestEffort
+        } else {
+            QosReliabilityPolicy::Reliable
+        }),
+        qos_override_policy::DURABILITY => QosOverrideValue::Durability(if value == 1 {
+            QosDurabilityPolicy::TransientLocal
+        } else {
+            QosDurabilityPolicy::Volatile
+        }),
+        qos_override_policy::HISTORY => QosOverrideValue::History(if value == 1 {
+            QosHistoryPolicy::KeepAll
+        } else {
+            QosHistoryPolicy::KeepLast
+        }),
+        qos_override_policy::DEPTH => QosOverrideValue::Depth(value),
+        qos_override_policy::DEADLINE => QosOverrideValue::Deadline(value),
+        qos_override_policy::LIFESPAN => QosOverrideValue::Lifespan(value),
+        qos_override_policy::LIVELINESS => QosOverrideValue::Liveliness(match value {
+            0 => QosLivelinessPolicy::None,
+            1 => QosLivelinessPolicy::Automatic,
+            2 => QosLivelinessPolicy::ManualByTopic,
+            3 => QosLivelinessPolicy::ManualByNode,
+            _ => return None,
+        }),
+        qos_override_policy::LIVELINESS_LEASE => QosOverrideValue::LivelinessLease(value),
+        _ => return None,
+    };
+    Some(out)
 }
 
 /// Phase 211.H — one per-topic QoS override, lowered from a ROS 2
@@ -519,15 +647,46 @@ impl QosSettings {
     ) -> Self {
         for ovr in overrides {
             if ovr.topic == topic && ovr.role == role {
-                match ovr.value {
-                    QosOverrideValue::Reliability(r) => self.reliability = r,
-                    QosOverrideValue::Durability(d) => self.durability = d,
-                    QosOverrideValue::History(h) => self.history = h,
-                    QosOverrideValue::Depth(d) => self.depth = d,
-                }
+                self.apply_override_value(ovr.value);
             }
         }
         self
+    }
+
+    /// Issue 0303 — apply ONE decoded override value. The single place a
+    /// policy maps to the field it sets; `apply_overrides` and the FFI folds
+    /// both go through it, so a new policy cannot reach some paths only.
+    pub fn apply_override_value(&mut self, value: QosOverrideValue) {
+        match value {
+            QosOverrideValue::Reliability(r) => self.reliability = r,
+            QosOverrideValue::Durability(d) => self.durability = d,
+            QosOverrideValue::History(h) => self.history = h,
+            QosOverrideValue::Depth(d) => self.depth = d,
+            QosOverrideValue::Deadline(ms) => self.deadline_ms = ms,
+            QosOverrideValue::Lifespan(ms) => self.lifespan_ms = ms,
+            QosOverrideValue::Liveliness(k) => self.liveliness_kind = k,
+            QosOverrideValue::LivelinessLease(ms) => self.liveliness_lease_ms = ms,
+        }
+    }
+
+    /// Issue 0303 — fold baked [`QosOverrideCode`]s for one `(topic, role)`.
+    /// Unrecognised codes are skipped; the producers reject them at BAKE time
+    /// (`nros_orchestration_ir::qos_override`), so a code reaching here that
+    /// this build does not know is an older image running newer data, not a
+    /// user error to diagnose at runtime.
+    pub fn apply_override_codes(
+        self,
+        topic: &str,
+        role: QosOverrideRole,
+        codes: &[QosOverrideCode],
+    ) -> Self {
+        let mut qos = self;
+        for code in codes {
+            if let Some(ovr) = decode_qos_override(code) {
+                qos = qos.apply_overrides(topic, role, core::slice::from_ref(&ovr));
+            }
+        }
+        qos
     }
 }
 

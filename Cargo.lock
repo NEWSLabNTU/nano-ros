@@ -1906,6 +1906,7 @@ dependencies = [
 name = "nros-orchestration-ir"
 version = "0.5.0"
 dependencies = [
+ "nros-rmw",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "serde",

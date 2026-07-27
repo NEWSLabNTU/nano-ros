@@ -657,11 +657,28 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // decompose into the node's QoS-override table. Until this, the
             // Rust path baked them as ordinary params and applied no QoS at
             // all, while the same model configured QoS on a C/C++ image.
-            node_qos_bakes.push(qos_override_codes_for(&resolved));
+            //
+            // Issue 0303 — one shared lowering (the same crate the CLI
+            // emitters use), and an override it cannot lower is a COMPILE
+            // ERROR: an unknown policy or a misspelled role used to vanish,
+            // leaving the image with different delivery semantics than the
+            // model declares and nothing to read.
+            let lowered = nros_orchestration_ir::qos_override::lower_all(
+                resolved.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+            )
+            .map_err(|e| {
+                syn::Error::new(model_lit.span(), format!("nros::main!: node `{fqn}`: {e}"))
+            })?;
+            node_qos_bakes.push(
+                lowered
+                    .into_iter()
+                    .map(|o| (o.topic, o.role, o.policy, o.value))
+                    .collect(),
+            );
             node_param_bakes.push(
                 resolved
                     .into_iter()
-                    .filter(|(k, _)| !k.starts_with(QOS_OVERRIDE_PREFIX))
+                    .filter(|(k, _)| !nros_orchestration_ir::qos_override::is_qos_override(k))
                     .collect(),
             );
 
@@ -861,7 +878,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .meta
             .inputs
             .iter()
-            .filter(|i| std::path::Path::new(&i.path).extension().is_some_and(|e| e == "toml"))
+            .filter(|i| {
+                std::path::Path::new(&i.path)
+                    .extension()
+                    .is_some_and(|e| e == "toml")
+            })
             .find_map(|i| {
                 let raw = std::path::Path::new(&i.path);
                 let candidate = if raw.is_absolute() {
@@ -2995,49 +3016,6 @@ mod custom_tasks_parser_tests {
 /// Phase 305 W3 (issue 0255) — lower one model node's `<remap>` rules into the
 /// `(from, to)` slice `nros::main!` bakes into `runtime.remaps` before that
 /// node's `register` call. Order preserved (first match wins at runtime).
-/// `qos_overrides.<topic>.<role>.<policy>` — QoS travels via the node's
-/// override table, never as a declared parameter.
-const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
-
-/// Issue #52 — decompose `qos_overrides.<topic>.<role>.<policy>` params into
-/// the primitive `(topic, role, policy, value)` codes the runtime's
-/// `RuntimeCtx::qos_overrides` carries.
-///
-/// The code assignment mirrors `nros_cpp_qos_override_t` and the CLI's C/C++
-/// emitters exactly — one wire form for all three languages. An unrecognised
-/// role or policy is SKIPPED, never baked as a silently wrong override.
-fn qos_override_codes_for(params: &[(String, String)]) -> Vec<(String, u8, u8, u32)> {
-    let mut out: Vec<(String, u8, u8, u32)> = params
-        .iter()
-        .filter_map(|(name, value)| {
-            let rest = name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
-            // rsplitn(3, '.') → [policy, role, topic]
-            let mut parts = rest.rsplitn(3, '.');
-            let policy_s = parts.next()?;
-            let role_s = parts.next()?;
-            let topic = parts.next()?;
-            if topic.is_empty() {
-                return None;
-            }
-            let role = match role_s {
-                "publisher" => 0u8,
-                "subscription" => 1u8,
-                _ => return None,
-            };
-            let v = value.trim();
-            let (policy, val) = match policy_s {
-                "reliability" => (0u8, u32::from(v != "best_effort")),
-                "durability" => (1u8, u32::from(v == "transient_local")),
-                "history" => (2u8, u32::from(v == "keep_all")),
-                "depth" => (3u8, v.parse::<u32>().ok()?),
-                _ => return None,
-            };
-            Some((topic.to_string(), role, policy, val))
-        })
-        .collect();
-    out.sort();
-    out
-}
 
 fn remap_bakes_for(inst: &ros_launch_manifest_model::NodeInstance) -> Vec<(String, String)> {
     inst.remaps
@@ -3256,7 +3234,15 @@ mod derived_sizing_tests {
             ),
             ("use_sim_time".to_string(), "true".to_string()),
         ];
-        let got = super::qos_override_codes_for(&params);
+        let got: Vec<(String, u8, u8, u32)> = nros_orchestration_ir::qos_override::lower_all(
+            params
+                .iter()
+                .map(|(k, v): &(String, String)| (k.as_str(), v.as_str())),
+        )
+        .expect("lower")
+        .into_iter()
+        .map(|o| (o.topic, o.role, o.policy, o.value))
+        .collect();
         assert_eq!(
             got,
             vec![
@@ -3267,25 +3253,59 @@ mod derived_sizing_tests {
         );
     }
 
-    /// An unrecognised role or policy is skipped, never baked as a silently
-    /// wrong override; a non-numeric depth is skipped too.
+    /// Issue 0303 — an unusable override is REJECTED, not skipped. Each of
+    /// these used to vanish from the bake with no diagnostic, leaving the image
+    /// with different delivery semantics than the model declared.
     #[test]
-    fn unrecognised_qos_override_params_are_skipped() {
-        let params = vec![
+    fn unusable_qos_override_params_are_rejected() {
+        for (name, value) in [
+            // Unknown role (`listener` is not a ROS role).
+            ("qos_overrides./t.listener.reliability", "reliable"),
+            // Unknown policy.
+            ("qos_overrides./t.publisher.bandwidth", "10"),
+            // Right policy, unparseable value.
+            ("qos_overrides./t.publisher.depth", "lots"),
+            // Prefix present, shape wrong.
+            ("qos_overrides.", "x"),
+        ] {
+            let e =
+                nros_orchestration_ir::qos_override::lower(name, value).expect_err("must reject");
+            assert!(e.to_string().contains(name), "{e}");
+        }
+    }
+
+    /// The policies issue 0303 ADDED lower rather than being dropped —
+    /// `lifespan` here was previously an "unrecognised policy" in this very
+    /// test, which is what made the gap easy to miss.
+    #[test]
+    fn the_duration_policies_lower() {
+        use nros_orchestration_ir::qos_override::{lower, policy};
+        for (name, value, expect_policy, expect_value) in [
             (
-                "qos_overrides./t.listener.reliability".to_string(),
-                "reliable".to_string(),
+                "qos_overrides./t.publisher.deadline",
+                "100",
+                policy::DEADLINE,
+                100u32,
             ),
             (
-                "qos_overrides./t.publisher.lifespan".to_string(),
-                "10".to_string(),
+                "qos_overrides./t.publisher.lifespan",
+                "10",
+                policy::LIFESPAN,
+                10,
             ),
             (
-                "qos_overrides./t.publisher.depth".to_string(),
-                "lots".to_string(),
+                "qos_overrides./t.publisher.liveliness_lease_duration",
+                "500",
+                policy::LIVELINESS_LEASE,
+                500,
             ),
-            ("qos_overrides.".to_string(), "x".to_string()),
-        ];
-        assert!(super::qos_override_codes_for(&params).is_empty());
+        ] {
+            let got = lower(name, value).expect("lowers").expect("is an override");
+            assert_eq!(
+                (got.policy, got.value),
+                (expect_policy, expect_value),
+                "{name}"
+            );
+        }
     }
 }

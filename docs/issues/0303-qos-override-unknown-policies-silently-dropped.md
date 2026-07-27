@@ -1,7 +1,7 @@
 ---
 id: 303
 title: "A `qos_overrides.*` policy the bake doesn't model (deadline, lifespan, liveliness) is silently DROPPED — the opposite of the stated design"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: codegen, rmw
@@ -60,7 +60,42 @@ precisely the launch-vs-image divergence the SystemModel exists to prevent.
 - Any misspelled topic/role/policy is inert and unreported.
 - Both are invisible until someone measures the wire.
 
-## Direction
+## Resolved (2026-07-28)
+
+All three steps landed together — (1) alone would have left two lowerings to
+teach about the new policies, so (3) came first.
+
+**One lowering** — `nros_orchestration_ir::qos_override` (the crate that
+already owns tier resolution "so the macro's compile-time resolution can't
+drift from the bake path"). `lower()` / `lower_all()` return
+`Result<_, QosOverrideError>`; the CLI emitters and the proc-macro both call
+it and neither parses a parameter key any more. `PlanNode.qos_overrides` now
+carries LOWERED CODES, so `emit_c` / `emit_cpp` print them and decode nothing.
+
+**One decoder** — the runtime-side match had been copied FOUR times
+(`nros-node` executor, `nros-node` node record, `nros-c`, `nros-cpp`), each
+with a silent catch-all. All four now call `nros_rmw::decode_qos_override*` +
+`QosSettings::apply_override_value`, and `nros-rmw` owns the role/policy code
+constants that the C and C++ headers mirror. Adding a policy is now one match
+arm, not five.
+
+**Four policies added** — `deadline`, `lifespan`, `liveliness`,
+`liveliness_lease_duration` (codes 4-7, append-only) with the matching
+`QosOverrideValue` variants and `QosSettings` fields.
+
+**Fail-loud** — an unknown role, an unknown policy, or an unparseable value is
+now a build error naming the parameter and the accepted spellings, from both
+producers. One bad override fails the whole list: a half-applied QoS table is
+worse than a failed build.
+
+The stale test that made this easy to miss is worth recording — the macro's
+`unrecognised_qos_override_params_are_skipped` used `lifespan` as its example
+of an "unrecognised policy" and asserted it was skipped. The suite documented
+the gap as intended behaviour. It is now
+`unusable_qos_override_params_are_rejected`, alongside
+`the_duration_policies_lower`.
+
+## Direction (as filed)
 
 1. **Fail loud at generation time** (the cheap half, and what the doc already
    promises). The lowering should return a Result, and an unrecognised role or

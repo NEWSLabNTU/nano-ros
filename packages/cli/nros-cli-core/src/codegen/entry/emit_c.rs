@@ -56,22 +56,20 @@ pub(super) fn emit_declare_remaps(
 /// C entries create nodes through the same `nros_cpp_*` FFI as C++ ones, so
 /// this is the C++ emitter's table with a function call instead of a method
 /// call. The `(role, policy, value)` lowering is shared
-/// ([`super::emit_cpp::qos_override_codes`]) — two spellings of the same codes
-/// is exactly the drift this codebase keeps paying for.
+/// (`nros_orchestration_ir::qos_override`, shared with the proc-macro) — two
+/// spellings of the same codes is exactly the drift this codebase keeps paying
+/// for.
 pub(super) fn emit_qos_overrides(out: &mut String, n: &super::PlanNode, i: usize, indent: &str) {
-    let coded: Vec<(&super::QosOverrideSpec, (u8, u8, u32))> = n
-        .qos_overrides
-        .iter()
-        .filter_map(|o| super::emit_cpp::qos_override_codes(o).map(|c| (o, c)))
-        .collect();
-    if coded.is_empty() {
+    // Issue 0303 — the plan carries CODES; nothing to decode or skip here.
+    if n.qos_overrides.is_empty() {
         return;
     }
     let _ = writeln!(
         out,
         "{indent}static const nros_cpp_qos_override_t __nros_qos_{i}[] = {{"
     );
-    for (o, (role, policy, value)) in &coded {
+    for o in &n.qos_overrides {
+        let (role, policy, value) = (o.role, o.policy, o.value);
         let topic = o.topic.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(
             out,
@@ -83,7 +81,7 @@ pub(super) fn emit_qos_overrides(out: &mut String, n: &super::PlanNode, i: usize
     let _ = writeln!(
         out,
         "{indent}    nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_{i}, __nros_qos_{i}, {});",
-        coded.len()
+        n.qos_overrides.len()
     );
     let _ = writeln!(
         out,
@@ -524,20 +522,16 @@ mod tests {
     #[test]
     fn typed_emit_bakes_qos_overrides_before_configure() {
         let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
-        plan.nodes[0].qos_overrides = vec![
-            super::super::QosOverrideSpec {
-                topic: "/chatter".into(),
-                role: "publisher".into(),
-                policy: "reliability".into(),
-                value: "best_effort".into(),
-            },
-            super::super::QosOverrideSpec {
-                topic: "/chatter".into(),
-                role: "subscription".into(),
-                policy: "depth".into(),
-                value: "7".into(),
-            },
-        ];
+        // Built through the shared lowering, so the test cannot assert codes
+        // the real bake would never produce.
+        plan.nodes[0].qos_overrides = nros_orchestration_ir::qos_override::lower_all([
+            (
+                "qos_overrides./chatter.publisher.reliability",
+                "best_effort",
+            ),
+            ("qos_overrides./chatter.subscription.depth", "7"),
+        ])
+        .expect("fixture overrides lower");
         let src = emit_typed(&plan).expect("typed C emit ok");
         assert!(
             src.contains("static const nros_cpp_qos_override_t __nros_qos_0[] = {"),

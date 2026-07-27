@@ -217,11 +217,17 @@ pub struct nros_qos_override_t {
     pub topic: *const core::ffi::c_char,
     /// `0` = publisher, `1` = subscription. Other values never match.
     pub role: u8,
-    /// `0` = reliability, `1` = durability, `2` = history, `3` = depth.
+    /// `0` = reliability, `1` = durability, `2` = history, `3` = depth,
+    /// `4` = deadline, `5` = lifespan, `6` = liveliness,
+    /// `7` = liveliness_lease_duration. Append-only — these numbers are baked
+    /// into shipped images; `nros_rmw::qos_override_policy` is the SSoT.
     pub policy: u8,
     /// Policy-specific value: reliability `0`=best_effort/`1`=reliable;
     /// durability `0`=volatile/`1`=transient_local; history
-    /// `0`=keep_last/`1`=keep_all; depth = the KeepLast depth.
+    /// `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
+    /// lifespan / liveliness_lease_duration = milliseconds; liveliness =
+    /// the `QosLivelinessPolicy` discriminant
+    /// (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
     pub value: u32,
 }
 
@@ -246,8 +252,6 @@ pub(crate) unsafe fn apply_qos_overrides(
     topic: &str,
     role: u8,
 ) -> nros_node::QosSettings {
-    use nros_node::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
-
     if overrides.is_null() || len == 0 {
         return qos;
     }
@@ -263,30 +267,11 @@ pub(crate) unsafe fn apply_qos_overrides(
         if ovr_topic != topic {
             continue;
         }
-        match ovr.policy {
-            0 => {
-                qos.reliability = if ovr.value == 0 {
-                    QosReliabilityPolicy::BestEffort
-                } else {
-                    QosReliabilityPolicy::Reliable
-                }
-            }
-            1 => {
-                qos.durability = if ovr.value == 0 {
-                    QosDurabilityPolicy::Volatile
-                } else {
-                    QosDurabilityPolicy::TransientLocal
-                }
-            }
-            2 => {
-                qos.history = if ovr.value == 0 {
-                    QosHistoryPolicy::KeepLast
-                } else {
-                    QosHistoryPolicy::KeepAll
-                }
-            }
-            3 => qos.depth = ovr.value,
-            _ => {}
+        // Issue 0303 — ONE decoder lives in `nros-rmw`. This match used to be
+        // spelled here with a silent catch-all, so a policy added to the enum
+        // reached three languages and not this one.
+        if let Some(value) = nros_rmw::decode_qos_override_value(ovr.policy, ovr.value) {
+            qos.apply_override_value(value);
         }
     }
     qos

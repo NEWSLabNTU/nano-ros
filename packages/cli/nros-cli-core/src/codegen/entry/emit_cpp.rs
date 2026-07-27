@@ -32,44 +32,24 @@ use super::{
     Plan, QosOverrideSpec, emit_boot_config_static, emit_c::emit_declare_remaps, sanitize_pkg,
 };
 
-/// Phase 211.H (issue #52) — map a decomposed [`QosOverrideSpec`] to the C-ABI
-/// `(role, policy, value)` scalar codes the `nros_cpp_qos_override_t` struct
-/// uses. Returns `None` for an unrecognised role/policy (skipped — never baked
-/// as a silent wrong override).
-pub(super) fn qos_override_codes(o: &QosOverrideSpec) -> Option<(u8, u8, u32)> {
-    let role = match o.role.as_str() {
-        "publisher" => 0u8,
-        "subscription" => 1u8,
-        _ => return None,
-    };
-    let v = o.value.trim();
-    let (policy, value) = match o.policy.as_str() {
-        "reliability" => (0u8, if v == "best_effort" { 0 } else { 1 }),
-        "durability" => (1u8, if v == "transient_local" { 1 } else { 0 }),
-        "history" => (2u8, if v == "keep_all" { 1 } else { 0 }),
-        "depth" => (3u8, v.parse::<u32>().ok()?),
-        _ => return None,
-    };
-    Some((role, policy, value))
-}
-
 /// Emit a `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…};` + the
 /// `__nros_node_<i>.set_qos_overrides(…)` call for node `i`. No-op when the node
 /// has no (recognised) overrides.
 fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec]) {
-    let coded: Vec<(&QosOverrideSpec, (u8, u8, u32))> = overrides
-        .iter()
-        .filter_map(|o| qos_override_codes(o).map(|c| (o, c)))
-        .collect();
-    if coded.is_empty() {
+    // Issue 0303 — the plan already carries CODES: the lowering (and its
+    // rejection of anything unusable) happened in
+    // `nros_orchestration_ir::qos_override`, so there is nothing to decode or
+    // silently skip here.
+    if overrides.is_empty() {
         return;
     }
     let _ = writeln!(
         out,
         "        static const ::nros_cpp_qos_override_t __nros_qos_{i}[] = {{"
     );
-    for (o, (role, policy, value)) in &coded {
+    for o in overrides {
         let topic = o.topic.replace('\\', "\\\\").replace('"', "\\\"");
+        let (role, policy, value) = (o.role, o.policy, o.value);
         let _ = writeln!(
             out,
             "            {{ \"{topic}\", {role}, {policy}, {value} }},"
@@ -79,7 +59,7 @@ fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec])
     let _ = writeln!(
         out,
         "        __nros_node_{i}.set_qos_overrides(__nros_qos_{i}, {});",
-        coded.len()
+        overrides.len()
     );
 }
 
@@ -1278,20 +1258,19 @@ mod tests {
             "talker_pkg::Talker",
             "talker_pkg/Talker.hpp",
         )]);
-        plan.nodes[0].qos_overrides = vec![
-            QosOverrideSpec {
-                topic: "/chatter".into(),
-                role: "publisher".into(),
-                policy: "reliability".into(),
-                value: "best_effort".into(),
-            },
-            QosOverrideSpec {
-                topic: "/chatter".into(),
-                role: "subscription".into(),
-                policy: "durability".into(),
-                value: "transient_local".into(),
-            },
-        ];
+        // Built through the shared lowering, so the test cannot assert codes
+        // the real bake would never produce.
+        plan.nodes[0].qos_overrides = nros_orchestration_ir::qos_override::lower_all([
+            (
+                "qos_overrides./chatter.publisher.reliability",
+                "best_effort",
+            ),
+            (
+                "qos_overrides./chatter.subscription.durability",
+                "transient_local",
+            ),
+        ])
+        .expect("fixture overrides lower");
         let src = emit_typed(&plan).expect("typed emit ok");
 
         // Static table with the two overrides, C-ABI codes:

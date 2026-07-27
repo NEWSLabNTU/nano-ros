@@ -134,12 +134,13 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
-**#303** — a `qos_overrides.*` policy the bake does not model (deadline, lifespan, liveliness) is
-silently DROPPED — as is a misspelled topic/role/policy. The lowering `filter_map`s the unknown
-away in all three languages, while the type's doc comment claims the typed enum "catches an unknown
-policy at generation time rather than silently no-op-ing". Silence is the wrong failure mode for a
-QoS setting: the image runs different delivery semantics than the model declares. Fail-loud at
-codegen is the independently-shippable half. See `0303-*`. (2026-07-28)
+Recently resolved: **#303** — QoS overrides: an unmodelled policy or a misspelled role/policy was
+dropped by a `filter_map` in every language, with no diagnostic. Fixed by collapsing FOUR copies of
+the runtime decoder into `nros_rmw::decode_qos_override*` and BOTH bake-time lowerings into
+`nros_orchestration_ir::qos_override`, adding `deadline`/`lifespan`/`liveliness`/
+`liveliness_lease_duration` (codes 4-7), and making every rejection a build error that names the
+parameter and the accepted spellings. A stale test had documented the gap as intended behaviour
+(`lifespan` was its example of an "unrecognised policy"). See `0303-*`. (2026-07-28)
 
 **#302** — `nros codegen entry --lang rust` emits an entry with NO params, remaps, node identity or
 QoS overrides: `emit_rust` writes bare `::<pkg>::register(runtime)?;` calls, while the canonical

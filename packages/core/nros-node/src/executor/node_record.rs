@@ -86,69 +86,21 @@ pub struct NodeRecord {
     pub qos_overrides: &'static [QosOverrideCode],
 }
 
-/// One baked QoS override: `(topic, role, policy, value)`.
-///
-/// - `role`: `0` publisher, `1` subscription.
-/// - `policy`: `0` reliability, `1` durability, `2` history, `3` depth.
-/// - `value`: reliability `0`=best_effort/`1`=reliable; durability
-///   `0`=volatile/`1`=transient_local; history `0`=keep_last/`1`=keep_all;
-///   depth = the KeepLast depth.
-///
-/// Identical to `nros_cpp_qos_override_t`'s scalar fields — one wire form for
-/// all three languages.
-pub type QosOverrideCode = (&'static str, u8, u8, u32);
-
-/// Decode one [`QosOverrideCode`] into the typed override the QoS folder takes.
-/// Unrecognised role/policy codes yield `None` and are SKIPPED — never applied
-/// as a silently wrong override.
-pub fn decode_qos_override(code: &QosOverrideCode) -> Option<nros_rmw::QosOverride> {
-    use nros_rmw::{
-        QosDurabilityPolicy, QosHistoryPolicy, QosOverride, QosOverrideRole, QosOverrideValue,
-        QosReliabilityPolicy,
-    };
-    let (topic, role, policy, value) = *code;
-    let role = match role {
-        0 => QosOverrideRole::Publisher,
-        1 => QosOverrideRole::Subscription,
-        _ => return None,
-    };
-    let value = match policy {
-        0 => QosOverrideValue::Reliability(if value == 0 {
-            QosReliabilityPolicy::BestEffort
-        } else {
-            QosReliabilityPolicy::Reliable
-        }),
-        1 => QosOverrideValue::Durability(if value == 1 {
-            QosDurabilityPolicy::TransientLocal
-        } else {
-            QosDurabilityPolicy::Volatile
-        }),
-        2 => QosOverrideValue::History(if value == 1 {
-            QosHistoryPolicy::KeepAll
-        } else {
-            QosHistoryPolicy::KeepLast
-        }),
-        3 => QosOverrideValue::Depth(value),
-        _ => return None,
-    };
-    Some(QosOverride { topic, role, value })
-}
+/// Issue #52 / 0303 — one baked QoS override, re-exported from `nros-rmw`
+/// where the single decoder lives. Kept as a name here because `NodeRecord`
+/// and the entry bake spell it.
+pub use nros_rmw::QosOverrideCode;
 
 /// Fold a node's baked override codes into `qos` for one `(topic, role)`.
-/// A no-op when the table is empty — the common case.
+/// Thin alias over [`nros_rmw::QosSettings::apply_override_codes`] — issue 0303
+/// collapsed four copies of this match into that one.
 pub fn apply_qos_override_codes(
     qos: nros_rmw::QosSettings,
     topic: &str,
     role: nros_rmw::QosOverrideRole,
     codes: &[QosOverrideCode],
 ) -> nros_rmw::QosSettings {
-    let mut qos = qos;
-    for code in codes {
-        if let Some(ovr) = decode_qos_override(code) {
-            qos = qos.apply_overrides(topic, role, core::slice::from_ref(&ovr));
-        }
-    }
-    qos
+    qos.apply_override_codes(topic, role, codes)
 }
 
 impl NodeRecord {
@@ -496,8 +448,8 @@ mod tests {
     #[test]
     fn unknown_codes_are_skipped_not_guessed() {
         const BAD: &[QosOverrideCode] = &[("/t", 9, 0, 1), ("/t", 0, 9, 1)];
-        assert!(decode_qos_override(&BAD[0]).is_none());
-        assert!(decode_qos_override(&BAD[1]).is_none());
+        assert!(nros_rmw::decode_qos_override(&BAD[0]).is_none());
+        assert!(nros_rmw::decode_qos_override(&BAD[1]).is_none());
         let qos = apply_qos_override_codes(
             QosSettings::default(),
             "/t",

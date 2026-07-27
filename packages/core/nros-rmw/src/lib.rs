@@ -70,10 +70,12 @@ pub use safety::{IntegrityStatus, SafetyValidator, crc32};
 // Re-export main types
 pub use traits::{
     ActionInfo, ClientTrait, DURATION_INFINITE_MS, LocatorProtocol, Publisher, QosDurabilityPolicy,
-    QosHistoryPolicy, QosLivelinessPolicy, QosOverride, QosOverrideRole, QosOverrideValue,
-    QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest,
-    ServiceTrait, Session, SessionMode, Subscription, TopicInfo, Transport, TransportConfig,
-    TransportError, duration_to_qos_ms, locator_protocol, validate_locator,
+    QosHistoryPolicy, QosLivelinessPolicy, QosOverride, QosOverrideCode, QosOverrideRole,
+    QosOverrideValue, QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw, RmwConfig,
+    ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode, Subscription, TopicInfo,
+    Transport, TransportConfig, TransportError, decode_qos_override, decode_qos_override_parts,
+    decode_qos_override_role, decode_qos_override_value, duration_to_qos_ms, locator_protocol,
+    qos_override_policy, qos_override_role, validate_locator,
 };
 
 // Re-export `MessageInfo` from nros-core so backends implementing
