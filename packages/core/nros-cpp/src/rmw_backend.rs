@@ -37,4 +37,15 @@ pub unsafe extern "C" fn auto_register() {
     {
         let _ = nros_rmw_xrce_cffi::register();
     }
+    // phase-312 — the recording backend needs the same force-link as the real
+    // ones. Being an optional DEP is not enough: nothing referenced it, so
+    // rustc's staticlib DCE dropped its `#[no_mangle]` export and the probe
+    // binary linked only zenoh (`nm` showed no
+    // `nros_rmw_metadata_register`). The `.init_array` ctor cannot fire for
+    // code that is not in the image. Same class as the FORCE_LINK note in
+    // CLAUDE.md for pure-Rust images.
+    #[cfg(feature = "metadata-mode")]
+    {
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+    }
 }
