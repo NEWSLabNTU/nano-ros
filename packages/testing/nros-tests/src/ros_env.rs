@@ -626,13 +626,12 @@ pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
 }
 
 /// The per-edition cyclone build of native example `name` (phase-310), under
-/// `examples/native/rust/<name>/target-ros-edition-<edition>/debug/<name>` —
-/// produced by `just ros_editions build-e2e-fixtures <edition>`.
+/// `examples/native/rust/<name>/target-ros-edition-<edition>-cyclone/debug/<name>`
+/// — produced by `just ros_editions build-e2e-fixtures <edition>` (cyclone is the
+/// default RMW). Delegates to [`example_bin_rmw`] so the cyclone lanes share the
+/// phase-311 per-(edition, rmw) path convention.
 pub fn example_bin(name: &str, edition: &str) -> std::path::PathBuf {
-    crate::project_root()
-        .join("examples/native/rust")
-        .join(name)
-        .join(format!("target-ros-edition-{edition}/debug/{name}"))
+    example_bin_rmw(name, edition, Rmw::Cyclone)
 }
 
 /// A [`Command`] that runs a nano-ros example node `bin` on `domain` over the
@@ -651,6 +650,11 @@ pub fn nano_node_cmd(bin: &std::path::Path, domain: u8, extra_args: &[&str]) -> 
         .arg(format!("exec {}{args} 2>&1", bin.display()))
         .env("ROS_DOMAIN_ID", domain.to_string())
         .env("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
+        // Pin the nano-ros backend selector to cyclone's CANONICAL registry name
+        // so an ambient `NROS_RMW` (e.g. the lane-selector `NROS_RMW=cyclone`
+        // exported by `just ros_editions ci`) can't mis-resolve the backend and
+        // fail `Executor::open` with `Transport(ConnectionFailed)`.
+        .env("NROS_RMW", "cyclonedds")
         .env("RUST_LOG", "info");
     c
 }
@@ -692,6 +696,23 @@ impl Rmw {
             Rmw::Cyclone => "rmw-cyclonedds",
             Rmw::Zenoh => "rmw-zenoh",
             Rmw::Xrce => "rmw-xrce",
+        }
+    }
+
+    /// The canonical `NROS_RMW` backend selector the nano-ros node honors — the
+    /// name the backend registers under (`nros_rmw_cffi_register_named`), NOT the
+    /// short harness token [`as_str`]. Cyclone registers as `"cyclonedds"` (the
+    /// token is `"cyclone"`); zenoh/xrce match their tokens. A wrong selector
+    /// makes `Executor::open` fail `Transport(ConnectionFailed)` (the resolver
+    /// finds no matching backend), so the node command sets this explicitly
+    /// rather than inheriting an ambient `NROS_RMW`.
+    ///
+    /// [`as_str`]: Rmw::as_str
+    pub fn nros_rmw_name(&self) -> &'static str {
+        match self {
+            Rmw::Cyclone => "cyclonedds",
+            Rmw::Zenoh => "zenoh",
+            Rmw::Xrce => "xrce",
         }
     }
 
@@ -747,7 +768,11 @@ pub fn nano_node_cmd_rmw(
     };
     c.arg("-c")
         .arg(format!("exec {}{args} 2>&1", bin.display()))
-        .env("RUST_LOG", "info");
+        .env("RUST_LOG", "info")
+        // Pin the backend selector to the CANONICAL registry name (not the short
+        // token) so selection is self-contained — never at the mercy of an
+        // ambient `NROS_RMW`. Cyclone: `cyclonedds`; zenoh/xrce: same as token.
+        .env("NROS_RMW", rmw.nros_rmw_name());
     match rmw {
         Rmw::Cyclone => {
             c.env("ROS_DOMAIN_ID", domain.to_string())
@@ -761,6 +786,81 @@ pub fn nano_node_cmd_rmw(
         }
     }
     c
+}
+
+/// Locate the host relocatable **micro-XRCE Agent** launcher — the phase-311
+/// XRCE lane's DDS↔XRCE bridge. Provisioned into the nros SDK store by
+/// `nros setup … --rmw xrce` at `~/.nros/sdk/xrce-agent/<ver>/bin/MicroXRCEAgent`
+/// (a launcher that resolves its bundled Fast-DDS/fastcdr `.so`s next to itself,
+/// so it runs on the host with no system Fast-DDS). `None` → the lane `skip!`s.
+pub fn host_xrce_agent_bin() -> Option<std::path::PathBuf> {
+    let home = std::env::var("NROS_HOME")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join(".nros"))
+        })?;
+    let store = home.join("sdk/xrce-agent");
+    let mut versions: Vec<_> = std::fs::read_dir(&store)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect();
+    versions.sort();
+    versions
+        .into_iter()
+        .rev()
+        .map(|v| v.join("bin/MicroXRCEAgent"))
+        .find(|p| p.is_file())
+}
+
+/// Spawn the micro-XRCE Agent on the host as a UDP4 bridge on `port`, with its
+/// Fast-DDS side scoped to ROS `domain`. The nano-ros `rmw-xrce` client reaches
+/// it over UDP (`NROS_LOCATOR=127.0.0.1:<port>`); the Agent republishes onto the
+/// DDS domain where a `rmw_fastrtps_cpp` container peer (same domain,
+/// `--network host`) discovers it. RAII: killed on drop.
+pub fn spawn_xrce_agent(agent: &std::path::Path, port: u16, domain: u8) -> TestResult<RosPeer> {
+    let mut c = Command::new("bash");
+    c.arg("-c")
+        .arg(format!("exec {} udp4 -p {port} 2>&1", agent.display()))
+        .env("ROS_DOMAIN_ID", domain.to_string());
+    spawn_process(c, "xrce-agent")
+}
+
+/// phase-311 XRCE lane guard: resolve the target edition, its per-(edition, xrce)
+/// example binary, a fresh RTPS/fastrtps domain, the host Agent launcher, and a
+/// `rmw_fastrtps_cpp` docker env. `skip!`s (never a silent pass) when the
+/// fixture, the Agent, docker, or the image is absent. Returns
+/// `(fastrtps_env, xrce_bin, domain, agent_path, agent_port)`.
+pub fn e2e_setup_xrce(
+    example: &str,
+) -> (
+    DockerRosEnv,
+    std::path::PathBuf,
+    u8,
+    std::path::PathBuf,
+    u16,
+) {
+    let ed = test_edition();
+    let bin = example_bin_rmw(example, &ed, Rmw::Xrce);
+    if !bin.is_file() {
+        crate::skip!(
+            "example `{example}` not built for {ed}/xrce — run `just ros_editions build-e2e-fixtures {ed} xrce`"
+        );
+    }
+    let agent = host_xrce_agent_bin().unwrap_or_else(|| {
+        crate::skip!("micro-XRCE Agent not in the nros store — run `nros setup … --rmw xrce`")
+    });
+    let domain = crate::unique_ros_domain_id();
+    // UDP port unique per-domain so parallel xrce lanes don't collide.
+    let port = 8000 + domain as u16;
+    let env = DockerRosEnv::new(&ed, Middleware::FastRtps { domain_id: domain });
+    if !env.available() {
+        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+    }
+    (env, bin, domain, agent, port)
 }
 
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen

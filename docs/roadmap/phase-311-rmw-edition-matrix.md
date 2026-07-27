@@ -1,7 +1,12 @@
 # Phase 311 — RMW × ROS-edition interop matrix
 
-**Status (2026-07-26): W1 landed; zenoh lane DEFERRED (issue #0291); XRCE in
-progress.** The zenoh lane (W2/W5) is blocked on a version gap the source check
+**Status (2026-07-27): W1/W3/W3.5/W4/W6/W7 landed — the full XRCE lane is green
+for {jazzy, iron}, both directions, pub/sub + service + action. zenoh lane
+DEFERRED (issue #0291).** Delivered matrix: **{jazzy, iron} × {cyclone, xrce}**
+(4 cells), each both-directions green via `just ros_editions ci <distro>`. Zenoh
+(W2/W5) stays gated on #0291.
+
+The zenoh lane (W2/W5) is blocked on a version gap the source check
 surfaced: zpico pins zenoh **1.7.2** / vendored rmw_zenoh **1.7.1**, but a stock
 jazzy `rmw_zenoh_cpp` is **1.11.2** — a 4-minor-version gap, near-certainly
 wire-incompatible. Building the pinned-1.7.1 overlay would test a *non-default*
@@ -99,14 +104,17 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 - **Acceptance:** `image-check` runs `MicroXRCEAgent --help`; a smoke XRCE↔DDS
   bridge stands up.
 
-> **W3 progress (2026-07-27).** Built `MicroXRCEAgent` (24.04-ABI) by mounting
-> `third-party/xrce/agent` into the jazzy image (cmake/g++ ARE already present)
-> → `build/ros-editions/jazzy/xrce-agent/MicroXRCEAgent`. It runs (usage:
-> `MicroXRCEAgent <udp4|tcp4|serial|…> <args>`). **TODO:** only the executable was
-> copied — it dynlinks the built Fast-DDS/fastcdr/microxrcedds_agent `.so`s, so
-> the runtime lane must copy the whole `build/*/lib` install (or set
-> `LD_LIBRARY_PATH`), not just the binary. Low XRCE version-gap risk (client +
-> agent are co-pinned submodules; the DDS side is standard RTPS).
+> **W3 RESOLVED (2026-07-27).** The lib-packaging TODO is moot — the nros SDK
+> store ALREADY ships a **relocatable** Agent at
+> `~/.nros/sdk/xrce-agent/<ver>/bin/MicroXRCEAgent` (a launcher that sets
+> `LD_LIBRARY_PATH` to its bundled `../lib` Fast-DDS/fastcdr/microxrcedds_agent
+> `.so`s), provisioned by `nros setup … --rmw xrce`. The lane runs it **on the
+> host** (host-native ABI, no container), not the 24.04 image build. Because
+> every container peer is `--network host`, the Agent's UDP side (nano-ros
+> client) and Fast-DDS side (the `rmw_fastrtps_cpp` container peer) share host
+> loopback. `ros_env::host_xrce_agent_bin()` locates it; `spawn_xrce_agent(port,
+> domain)` runs `MicroXRCEAgent udp4 -p <port>` with `ROS_DOMAIN_ID=<domain>`.
+> The abandoned 24.04-in-image build is not used.
 
 ### W3.5 — example rmw-xrce build — RESOLVED (2026-07-27)
 - **It was NOT a feature-flag or code bug — it was a `ros-launch-manifest`
@@ -127,10 +135,23 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
   client}/action-{server,client}, verified). No code change; a submodule-sync
   hygiene fix (the CLAUDE.md submodule-drift rule).
 
-### W4 — per-(edition, rmw) example fixtures
-- Extend `build-e2e-fixtures` to build the six example nodes with the selected
-  `rmw-*` feature into `target-ros-edition-<distro>-<rmw>/`.
-- **Acceptance:** all (edition, rmw) fixture sets build.
+### W4 — per-(edition, rmw) example fixtures — DONE (2026-07-27)
+- `build-e2e-fixtures <distro> <rmw>` gained the `rmw` arg (`cyclone|zenoh|xrce`
+  → `rmw-cyclonedds|rmw-zenoh|rmw-xrce`), building the six nodes into
+  `target-ros-edition-<distro>-<rmw>/`. **Path convention unified:** the
+  phase-310 cyclone lanes now also use the `-<rmw>` suffix (`example_bin`
+  delegates to `example_bin_rmw(.., Cyclone)`) — one scheme, no duplication.
+- **Verified:** cyclone + xrce fixture sets build for jazzy + iron.
+- **Footgun found + fixed — the `NROS_RMW` canonical-name trap.** `just
+  ros_editions ci` exports `NROS_RMW=<token>` as the lane selector; that env
+  LEAKS into the spawned nano-ros node. `Executor::open` (spin.rs) resolves the
+  backend by the env's value against the backend's REGISTERED name — and cyclone
+  registers as **`cyclonedds`**, not the harness token `cyclone`. So an ambient
+  `NROS_RMW=cyclone` mis-resolved → `Transport(ConnectionFailed)` and every
+  cyclone cell went red (empty, silent, discovery-looking failure). Fix:
+  `Rmw::nros_rmw_name()` returns the canonical selector (`cyclonedds`/`zenoh`/
+  `xrce`), and BOTH `nano_node_cmd` + `nano_node_cmd_rmw` now set `NROS_RMW`
+  explicitly to it — self-contained selection, immune to the ambient leak.
 
 ### W5 — zenoh interop lane (both directions)
 - nano-ros zpico node ↔ `rmw_zenohd` ↔ `rmw_zenoh_cpp` ROS peer, per edition,
@@ -139,23 +160,33 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 - **Acceptance:** pub/sub survives both ways vs a live `rmw_zenoh_cpp` edition
   peer; iron/jazzy use the real RIHS01 keyexpr.
 
-### W6 — XRCE interop lane (both directions)
-- nano-ros XRCE node → Agent → `rmw_fastrtps_cpp` ROS peer, per edition, pub/sub
-  (+ service/action as feasible).
-- **Acceptance:** pub/sub survives both ways through the Agent vs a live
-  `rmw_fastrtps_cpp` edition peer.
+### W6 — XRCE interop lane (both directions) — DONE (2026-07-27)
+- `tests/ros_editions_xrce.rs`: nano-ros `rmw-xrce` node → host Agent
+  (`spawn_xrce_agent`) → `rmw_fastrtps_cpp` container peer (`Middleware::FastRtps`
+  env, `--network host`, same domain). Six tests — pub/sub, service, action, each
+  both directions. `e2e_setup_xrce` guards on fixture + Agent + docker + image
+  (skips, never a silent pass).
+- **Verified GREEN:** jazzy 6/6, iron 6/6 (`NROS_RMW=xrce`).
 
-### W7 — matrix CI + docs
-- `just ros_editions ci <distro>` runs all three RMWs (env-driven `NROS_RMW`);
-  build the per-rmw fixtures. AGENTS.md documents the RMW × edition matrix. Still
-  opt-in, still deselected from `just ci`.
-- **Acceptance:** `just ros_editions ci jazzy` and `ci iron` run the full
-  {cyclone, zenoh, xrce} matrix green; `just ci` stays docker-free.
+### W7 — matrix CI + docs — DONE (2026-07-27, xrce+cyclone; zenoh deferred)
+- `just ros_editions ci <distro>` builds the cyclone + xrce per-rmw fixtures and
+  runs the cyclone lanes (`NROS_RMW=cyclone`) then the xrce lane
+  (`NROS_RMW=xrce`); prints the zenoh-deferred note (#0291). Still opt-in, still
+  deselected from `just ci` (`not binary(~ros_editions)` covers the new lane).
+- AGENTS.md documents the RMW × edition matrix + the `NROS_RMW` canonical-name
+  footgun.
+- **Acceptance met:** `ci jazzy` + `ci iron` run {cyclone, xrce} green; zenoh
+  gated on #0291; `just ci` stays docker-free.
 
 ## Done when
 
-The harness runs pub/sub (min) both directions for all six cells
-({jazzy, iron} × {cyclone, zenoh, xrce}) against live ROS 2 peers — cyclone over
-RTPS, zenoh over a pinned-1.7.2 `rmw_zenohd`, xrce through a micro-XRCE Agent —
-green via `just ros_editions ci <distro>`, with the zenoh lane exercising the
-real RIHS01 keyexpr (closing the phase-41 residual).
+The harness runs pub/sub (min) both directions for the delivered cells
+({jazzy, iron} × {cyclone, xrce}) against live ROS 2 peers — cyclone over RTPS,
+xrce through a host micro-XRCE Agent to `rmw_fastrtps_cpp` — green via
+`just ros_editions ci <distro>`. **Met (2026-07-27).**
+
+The zenoh cells ({jazzy, iron} × zenoh) and the phase-41 RIHS01-keyexpr residual
+they carry stay **deferred on issue #0291** (zpico's zenoh 1.7.2 pin vs a stock
+jazzy `rmw_zenoh_cpp` 1.11.2) — a zpico version bump, tracked separately. They
+land here once #0291 resolves; the harness axis (`Rmw::Zenoh`, `Middleware::Zenoh`,
+the overlay build in W2) is already wired for them.

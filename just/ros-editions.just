@@ -62,22 +62,29 @@ build-fixture distro="jazzy":
     echo "build-fixture {{distro}}: $FIX/target/debug/ros-edition-pose-pub"
 
 # Build the six native example nodes (talker/listener/service-{server,client}/
-# action-{server,client}) with the CycloneDDS RMW into per-edition build dirs
-# (target-ros-edition-<distro>), for the phase-310 rich E2E matrix. The examples
-# build against their committed (host) generated msgs — the interop types
-# (Int32, AddTwoInts, Fibonacci) are edition-stable. Separate target dirs keep
-# the default/host builds untouched.
+# action-{server,client}) with the selected RMW backend into per-(edition, rmw)
+# build dirs (target-ros-edition-<distro>-<rmw>), for the phase-310/311 rich E2E
+# matrix. `rmw` ∈ {cyclone, zenoh, xrce} → the matching `rmw-*` example feature.
+# The examples build against their committed (host) generated msgs — the interop
+# types (Int32, AddTwoInts, Fibonacci) are edition-stable. Separate target dirs
+# keep the default/host builds (and the other RMW builds) untouched.
 [group("test")]
-build-e2e-fixtures distro="jazzy":
+build-e2e-fixtures distro="jazzy" rmw="cyclone":
     #!/usr/bin/env bash
     set -euo pipefail
+    case "{{rmw}}" in
+        cyclone) FEATURE=rmw-cyclonedds ;;
+        zenoh)   FEATURE=rmw-zenoh ;;
+        xrce)    FEATURE=rmw-xrce ;;
+        *) echo "unknown rmw '{{rmw}}' (want cyclone|zenoh|xrce)" >&2; exit 1 ;;
+    esac
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"
-        echo "== $ex (cyclone) → target-ros-edition-{{distro}} =="
-        ( cd "$DIR" && cargo build --no-default-features --features rmw-cyclonedds \
-            --target-dir "target-ros-edition-{{distro}}" )
+        echo "== $ex ({{rmw}}) → target-ros-edition-{{distro}}-{{rmw}} =="
+        ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE" \
+            --target-dir "target-ros-edition-{{distro}}-{{rmw}}" )
     done
-    echo "build-e2e-fixtures {{distro}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}/debug/"
+    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under examples/native/rust/*/target-ros-edition-{{distro}}-{{rmw}}/debug/"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +
@@ -96,12 +103,13 @@ ci distro="jazzy":
         exit 1
     fi
     # Build the nano-ros publisher fixture (bridge lane) + the six example nodes
-    # (rich E2E matrix) against this edition.
+    # (rich E2E matrix) against this edition — cyclone + xrce RMW builds.
     just ros_editions build-fixture {{distro}}
-    just ros_editions build-e2e-fixtures {{distro}}
-    echo "== ros-editions harness lanes ({{distro}}) =="
+    just ros_editions build-e2e-fixtures {{distro}} cyclone
+    just ros_editions build-e2e-fixtures {{distro}} xrce
     export NROS_ROS_EDITION={{distro}}
-    cargo test -p nros-tests \
+    echo "== ros-editions harness lanes ({{distro}}) — codegen/bridge/cyclone =="
+    NROS_RMW=cyclone cargo test -p nros-tests \
         --test ros_editions_smoke \
         --test ros_editions_codegen \
         --test ros_editions_bridge \
@@ -110,4 +118,9 @@ ci distro="jazzy":
         --test ros_editions_e2e_service \
         --test ros_editions_e2e_action \
         -- --nocapture
-    echo "ros_editions ci {{distro}}: PASS"
+    echo "== ros-editions harness lanes ({{distro}}) — XRCE (Agent + fastrtps) =="
+    NROS_RMW=xrce cargo test -p nros-tests \
+        --test ros_editions_xrce \
+        -- --nocapture
+    echo "ros_editions ci {{distro}}: PASS (cyclone + xrce)"
+    echo "note: zenoh lane deferred on issue #0291 (zpico 1.7.2 vs jazzy rmw_zenoh 1.11.2)"
