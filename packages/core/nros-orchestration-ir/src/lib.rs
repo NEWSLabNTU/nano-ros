@@ -35,6 +35,7 @@ use thiserror::Error;
 // AND the `nros::main!` proc-macro) can DERIVE a schedule from the contract
 // layer, not just resolve authored tiers. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
+pub mod cyclonedds_type_sizing;
 pub mod derive;
 // issue 0257 — model-derived executor callback-table sizing, shared by the
 // proc-macro entry bake and the CLI's codegen-system so the two agree on the

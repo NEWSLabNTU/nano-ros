@@ -1,10 +1,43 @@
 ---
 id: 284
 title: "NROS_CYCLONEDDS_MAX_TYPES is a hidden compile-time knob, derivable from source metadata"
-status: open
+status: resolved
 type: enhancement
 area: build
 ---
+
+## RESOLUTION (2026-07-28) — full derive + auto-emit
+
+`codegen-system` now DERIVES `NROS_CYCLONEDDS_MAX_TYPES` from the SystemModel and
+auto-sizes it, so a CycloneDDS image can no longer `RegistryFull` at runtime for
+lack of a hand-set knob.
+
+- **Count** (`nros-orchestration-ir::cyclonedds_type_sizing::count_dds_types`):
+  the DISTINCT DDS type names the entry registers. The model is COMPLETE for
+  types (only pub/sub/service/action register DDS types — timers/guard
+  conditions register none), so no source-metadata union is needed (unlike the
+  0257 callback count). The registry holds EXPANDED types, so the count mirrors
+  `nros-node`'s `register_type` sites: **msg = 1, service = 2** (Request+Response),
+  **action = 8** envelopes **+ 3** shared `action_msgs` types once per entry with
+  any action. `derive_max_types` rounds the count up to the next power of two
+  (heapless' `FnvIndexMap` constraint), never below the default 32.
+- **Emit** (`model_ingest::{resolve,manage}_cyclonedds_max_types`): when the
+  count exceeds the default, write `NROS_CYCLONEDDS_MAX_TYPES = { value = "<pow2>",
+  force = true }` into `<workspace>/.cargo/config.toml [env]` (tagged
+  `# nros-managed`, format-preserving). Cargo's `[env]` reaches the dep crate's
+  `option_env!` — verified end-to-end. A model that shrinks back under the default
+  removes the managed line; a user's own (un-tagged) env line is never clobbered.
+- **Gate**: if the user PINNED `NROS_CYCLONEDDS_MAX_TYPES` smaller than the count,
+  the bake fails loud naming the count + the value to set (0257's
+  `check_executor_capacity` precedent) instead of auto-overriding their intent.
+
+Fragility mitigation (the expansion factors couple to `nros-node`'s register
+sites): a doc-comment cross-references those sites + the unit test
+`expansion_matches_documented_factors` pins the arithmetic, so a drift breaks the
+build. Tests: `cyclonedds_type_sizing` (6, in orchestration-ir) +
+`cyclonedds_type_capacity_tests` (6, in the CLI — resolve policy + emit/remove +
+user-line preservation). `option_env!` reachability of a cargo `[env] force`
+value confirmed with a scratch crate.
 
 ## Finding
 

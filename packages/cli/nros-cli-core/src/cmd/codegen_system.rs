@@ -204,6 +204,22 @@ pub fn run(args: Args) -> Result<()> {
             crate::orchestration::model_ingest::declared_max_callbacks(&bringup.manifest_path),
             &metadata_slots,
         )?;
+        // Issue 0284 — size (or gate) the CycloneDDS type registry from the same
+        // model. Auto-manages `NROS_CYCLONEDDS_MAX_TYPES` in the workspace
+        // `.cargo/config.toml [env]`: emits a derived power-of-two when the
+        // distinct-type count exceeds the build default (so the image can't
+        // RegistryFull at runtime), removes a now-stale managed line when the
+        // model shrinks back under the default, and fails loud (inside `resolve`)
+        // when a user pinned the env too small.
+        let max_types = crate::orchestration::model_ingest::resolve_cyclonedds_max_types(&model)?;
+        if crate::orchestration::model_ingest::manage_cyclonedds_max_types(&workspace, max_types)?
+            && let Some(n) = max_types
+        {
+            eprintln!(
+                "codegen-system: sized NROS_CYCLONEDDS_MAX_TYPES = {n} \
+                 (derived from the SystemModel; issue 0284)"
+            );
+        }
         let mut owned = bringup.clone();
         crate::orchestration::model_ingest::apply_model_execution(
             &mut owned.system,

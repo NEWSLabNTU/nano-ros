@@ -364,6 +364,149 @@ pub fn check_executor_capacity(
     Ok(())
 }
 
+/// Issue 0284 — resolve the CycloneDDS type-registry size for a bake, mirroring
+/// [`check_executor_capacity`]'s "size it or fail loud" shape. Unlike the
+/// callback count the model is COMPLETE for types (only pub/sub/service/action
+/// register DDS types — timers/guard conditions register none), so no sidecar
+/// union is needed.
+///
+/// Returns the value the bake should EMIT as `NROS_CYCLONEDDS_MAX_TYPES` (a power
+/// of two `>=` the distinct-type count), or `None` when nothing needs emitting:
+///
+/// - **env unset** (the common case): auto-size. `Some(derived)` when the derived
+///   size exceeds the build-time default, else `None` (a small system keeps the
+///   default 32 → byte-identical, no config churn).
+/// - **env set by the user**: respect it. `None`, UNLESS the user's value is
+///   smaller than the count — then `bail!` loudly (they explicitly under-sized;
+///   auto-emit would silently override their intent).
+///
+/// A model with no DDS-registering wiring counts zero and returns `None`. On a
+/// non-CycloneDDS image the env is inert (the registry crate isn't linked), so
+/// an emitted value is harmless; the gate half only ever fires on a genuinely
+/// over-`N` type set the user pinned too small.
+pub fn resolve_cyclonedds_max_types(model: &SystemModel) -> Result<Option<usize>> {
+    let user_pin = std::env::var("NROS_CYCLONEDDS_MAX_TYPES")
+        .ok()
+        .map(|raw| raw.parse::<usize>().unwrap_or(0));
+    resolve_cyclonedds_max_types_with(model, user_pin)
+}
+
+/// Pure core of [`resolve_cyclonedds_max_types`] — `user_pin` is the parsed
+/// `NROS_CYCLONEDDS_MAX_TYPES` value (`None` = unset). Split out so the env read
+/// stays at the edge and the policy is deterministically testable.
+pub fn resolve_cyclonedds_max_types_with(
+    model: &SystemModel,
+    user_pin: Option<usize>,
+) -> Result<Option<usize>> {
+    use nros_orchestration_ir::cyclonedds_type_sizing as ty;
+
+    let counted = ty::count_dds_types(model, |_| true);
+    if counted == 0 {
+        return Ok(None);
+    }
+    match user_pin {
+        // User pinned it — respect, but refuse a known-too-small value.
+        Some(user) => {
+            if counted > user {
+                bail!(
+                    "codegen-system: the SystemModel registers {counted} distinct DDS types but \
+                     `NROS_CYCLONEDDS_MAX_TYPES` is pinned to {user}: raise it to at least {} (a \
+                     power of two) in the build env and rebuild, or unset it to let nros size it. \
+                     issue 0284",
+                    ty::derive_max_types(counted)
+                );
+            }
+            Ok(None)
+        }
+        // Unset — auto-size when the model needs more than the default.
+        None => {
+            let derived = ty::derive_max_types(counted);
+            Ok((derived > ty::DEFAULT_MAX_TYPES).then_some(derived))
+        }
+    }
+}
+
+/// Issue 0284 — insert / update / remove the nros-managed
+/// `NROS_CYCLONEDDS_MAX_TYPES` in `<workspace>/.cargo/config.toml`'s `[env]`
+/// table (cargo reads it for the whole build, so the dep crate's `option_env!`
+/// picks it up), format-preserving (`toml_edit`). `value`:
+///
+/// - `Some(n)` — set `NROS_CYCLONEDDS_MAX_TYPES = { value = "n", force = true }`
+///   (`force` overrides a stale ambient env). Tagged `# nros-managed` so re-bake
+///   evicts only its own.
+/// - `None` — remove a previously-managed line (model shrank back under the
+///   default); leave a user's UN-managed hand-set line untouched.
+///
+/// Returns whether the file changed. A user's own `[env]` entry (no
+/// `nros-managed` tag) is never clobbered — the emit is skipped, leaving their
+/// value authoritative.
+pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Result<bool> {
+    use toml_edit::{DocumentMut, Item, Value};
+    const KEY: &str = "NROS_CYCLONEDDS_MAX_TYPES";
+    const TAG: &str = "nros-managed";
+
+    let cfg_dir = workspace.join(".cargo");
+    let cfg = cfg_dir.join("config.toml");
+    let text = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let mut doc: DocumentMut = text
+        .parse()
+        .wrap_err_with(|| format!("codegen-system: parse {}", cfg.display()))?;
+
+    // Is an existing entry ours (tagged) vs a user's hand-set line?
+    let existing = doc.get("env").and_then(|e| e.as_table()).and_then(|t| t.get(KEY));
+    let existing_is_managed = existing
+        .and_then(|it| it.as_value())
+        .and_then(|v| v.decor().suffix())
+        .and_then(|s| s.as_str())
+        .map(|s| s.contains(TAG))
+        .unwrap_or(false);
+
+    match value {
+        Some(_) if existing.is_some() && !existing_is_managed => {
+            // A user pinned it in the config by hand — respect it, don't clobber.
+            return Ok(false);
+        }
+        Some(n) => {
+            let mut inline = toml_edit::InlineTable::new();
+            inline.insert("value", Value::from(n.to_string()));
+            inline.insert("force", Value::from(true));
+            let mut v = Value::InlineTable(inline);
+            v.decor_mut()
+                .set_suffix(format!("  # {TAG} (issue 0284; derived from the SystemModel)"));
+            let env = doc
+                .as_table_mut()
+                .entry("env")
+                .or_insert(Item::Table(toml_edit::Table::new()));
+            let env = env
+                .as_table_mut()
+                .ok_or_else(|| eyre::eyre!("codegen-system: [env] is not a table in {}", cfg.display()))?;
+            env[KEY] = Item::Value(v);
+        }
+        None => {
+            if existing_is_managed
+                && let Some(env) = doc.get_mut("env").and_then(|e| e.as_table_mut())
+            {
+                env.remove(KEY);
+                if env.is_empty() {
+                    doc.as_table_mut().remove("env");
+                }
+            }
+        }
+    }
+
+    let out = doc.to_string();
+    if out == text {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(&cfg_dir)
+        .wrap_err_with(|| format!("codegen-system: mkdir {}", cfg_dir.display()))?;
+    let tmp = cfg.with_file_name(format!(".config.toml.nros-maxtypes-tmp.{}", std::process::id()));
+    std::fs::write(&tmp, out).wrap_err_with(|| format!("codegen-system: write {}", tmp.display()))?;
+    std::fs::rename(&tmp, &cfg)
+        .wrap_err_with(|| format!("codegen-system: rename -> {}", cfg.display()))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod executor_capacity_tests {
     //! Issue 0257 — the CLI twin of the `nros::main!` capacity check.
@@ -1193,5 +1336,113 @@ mod transport_tests {
 
         m.execution.transports[0].kind = "carrier-pigeon".to_string();
         assert!(plan_transports(&m).is_err());
+    }
+}
+
+#[cfg(test)]
+mod cyclonedds_type_capacity_tests {
+    //! Issue 0284 — model-derived CycloneDDS type-registry sizing (resolve + emit).
+    use ros_launch_manifest_model::{ServiceWiring, SystemModel, TopicWiring};
+
+    use super::{manage_cyclonedds_max_types, resolve_cyclonedds_max_types_with};
+
+    /// A model with `msgs` distinct message topics + `actions` distinct actions.
+    fn model(msgs: usize, actions: usize) -> SystemModel {
+        let mut m = SystemModel::default();
+        for i in 0..msgs {
+            m.structure.topics.insert(
+                format!("/t{i}"),
+                TopicWiring {
+                    msg_type: format!("pkg/msg/M{i}"),
+                    publishers: vec![format!("/n/t{i}")],
+                    subscribers: vec![],
+                },
+            );
+        }
+        for i in 0..actions {
+            m.structure.actions.insert(
+                format!("/a{i}"),
+                ServiceWiring {
+                    srv_type: format!("pkg/action/A{i}"),
+                    server: vec![format!("/n/a{i}")],
+                    client: vec![],
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn empty_and_small_models_emit_nothing() {
+        assert_eq!(resolve_cyclonedds_max_types_with(&SystemModel::default(), None).unwrap(), None);
+        // 10 msgs = 10 types <= default 32 → keep default, no emit.
+        assert_eq!(resolve_cyclonedds_max_types_with(&model(10, 0), None).unwrap(), None);
+    }
+
+    #[test]
+    fn large_model_auto_sizes_to_next_power_of_two() {
+        // 40 distinct msgs = 40 types → next_pow2 = 64.
+        assert_eq!(resolve_cyclonedds_max_types_with(&model(40, 0), None).unwrap(), Some(64));
+        // 4 actions = 4*8 + 3 = 35 types → 64.
+        assert_eq!(resolve_cyclonedds_max_types_with(&model(0, 4), None).unwrap(), Some(64));
+    }
+
+    #[test]
+    fn user_pin_too_small_fails_loud() {
+        // 4 actions = 35 types, pinned to 32 → bail naming the derived 64.
+        let err = resolve_cyclonedds_max_types_with(&model(0, 4), Some(32))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("35 distinct DDS types"), "{err}");
+        assert!(err.contains("64"), "{err}");
+        assert!(err.contains("NROS_CYCLONEDDS_MAX_TYPES"), "{err}");
+    }
+
+    #[test]
+    fn user_pin_large_enough_is_respected_no_emit() {
+        assert_eq!(resolve_cyclonedds_max_types_with(&model(0, 4), Some(128)).unwrap(), None);
+    }
+
+    #[test]
+    fn emit_writes_env_with_force_and_tag_then_removes_idempotently() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+
+        // Insert.
+        assert!(manage_cyclonedds_max_types(ws, Some(64)).unwrap());
+        let cfg = std::fs::read_to_string(ws.join(".cargo/config.toml")).unwrap();
+        assert!(cfg.contains("[env]"), "{cfg}");
+        assert!(cfg.contains("NROS_CYCLONEDDS_MAX_TYPES"), "{cfg}");
+        assert!(cfg.contains("value = \"64\""), "{cfg}");
+        assert!(cfg.contains("force = true"), "{cfg}");
+        assert!(cfg.contains("nros-managed"), "{cfg}");
+
+        // Idempotent: same value → no change.
+        assert!(!manage_cyclonedds_max_types(ws, Some(64)).unwrap());
+
+        // Remove managed line when the model shrinks back under the default.
+        assert!(manage_cyclonedds_max_types(ws, None).unwrap());
+        let cfg = std::fs::read_to_string(ws.join(".cargo/config.toml")).unwrap();
+        assert!(!cfg.contains("NROS_CYCLONEDDS_MAX_TYPES"), "{cfg}");
+    }
+
+    #[test]
+    fn a_users_unmanaged_env_line_is_never_clobbered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        std::fs::create_dir_all(ws.join(".cargo")).unwrap();
+        std::fs::write(
+            ws.join(".cargo/config.toml"),
+            "[env]\nNROS_CYCLONEDDS_MAX_TYPES = \"256\"\n",
+        )
+        .unwrap();
+
+        // Emit is skipped (no tag) — the user's value stays authoritative.
+        assert!(!manage_cyclonedds_max_types(ws, Some(64)).unwrap());
+        let cfg = std::fs::read_to_string(ws.join(".cargo/config.toml")).unwrap();
+        assert!(cfg.contains("\"256\""), "{cfg}");
+        // Removal also leaves an unmanaged line alone.
+        assert!(!manage_cyclonedds_max_types(ws, None).unwrap());
+        assert!(std::fs::read_to_string(ws.join(".cargo/config.toml")).unwrap().contains("\"256\""));
     }
 }

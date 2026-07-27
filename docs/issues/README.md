@@ -47,6 +47,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#284** — `NROS_CYCLONEDDS_MAX_TYPES` (the cyclone type-registry size) is now
+DERIVED from the SystemModel + auto-emitted into `.cargo/config.toml [env]` by `codegen-system`, so
+an image can't `RegistryFull` at runtime. Distinct-type count mirrors the backend's expansion
+(msg=1/srv=2/action=8+3 shared), rounded up to a power of two; a user-pinned-too-small value is
+failed loud instead. Verified cargo `[env] force` reaches the dep's `option_env!`. See `0284-*`.
+(2026-07-28)
+
 Recently resolved: **#270** — `nros-rmw-zenoh` forced `zpico-sys` default features
 (`platform-aliases` + `link-ip`) transitively, so `platform-orin-spe` couldn't drop the alias TU →
 double-defined `z_*` clock symbols vs orin-spe's native `system.c`. Fixed: `zpico-sys` dep is now

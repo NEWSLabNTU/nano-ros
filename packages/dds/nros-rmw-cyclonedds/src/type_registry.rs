@@ -41,6 +41,12 @@ use crate::{
 /// cache simultaneously. Compile-time knob:
 /// `NROS_CYCLONEDDS_MAX_TYPES=<N>`. Default `32`.
 ///
+/// Issue 0284: `nros codegen-system` DERIVES this from the SystemModel and
+/// auto-emits it into `<workspace>/.cargo/config.toml [env]` when a bringup's
+/// distinct-type count exceeds the default, so a deployed image is sized
+/// automatically. Setting the env by hand overrides the derivation (and a
+/// hand-set value smaller than the model's count fails the bake loudly).
+///
 /// Cost: `16 bytes × MAX_TYPES` plus the [`heapless::FnvIndexMap`]
 /// overhead (rounded up to the next power of two — heapless'
 /// constraint). Default 32 → 512 bytes static.
