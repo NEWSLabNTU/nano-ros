@@ -2110,6 +2110,25 @@ impl<'s> Executor<'s> {
         super::node::NodeCtx::new(self, id)
     }
 
+    /// Issue #52 — install the baked QoS-override table on one node. Every
+    /// entity created on it AFTERWARDS folds the matching `(topic, role)`
+    /// entries into its QoS, before the backend-compat check — so an override
+    /// the active RMW cannot honour still errors loudly rather than silently
+    /// downgrading.
+    ///
+    /// Called by the generated entry (`nros::main!` → the register seam) right
+    /// after the node is created and before the component declares entities.
+    /// Unknown `node_id` is a no-op.
+    pub fn set_node_qos_overrides(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        overrides: &'static [super::node_record::QosOverrideCode],
+    ) {
+        if let Some(r) = self.nodes.get_mut(node_id.index()) {
+            r.qos_overrides = overrides;
+        }
+    }
+
     /// Phase 104.C.3 — resolve a session-slot index to a mutable
     /// session reference. Slot 0 = the Executor's primary session;
     /// slots 1..=N = the `extra_sessions` vec opened by
@@ -2203,13 +2222,27 @@ impl<'s> Executor<'s> {
         type_hash: &str,
         qos: QosSettings,
     ) -> Result<session::RmwPublisher, NodeError> {
-        let (node_name, ns, session_idx) = {
+        let (node_name, ns, session_idx, overrides) = {
             let r = self
                 .nodes
                 .get(node_id.index())
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
+            (
+                r.name.clone(),
+                r.namespace.clone(),
+                r.session_idx,
+                r.qos_overrides,
+            )
         };
+        // Issue #52 — fold the node's baked overrides for this topic BEFORE
+        // `validate_against`, so an override the backend cannot honour errors
+        // loudly instead of being silently dropped.
+        let qos = super::node_record::apply_qos_override_codes(
+            qos,
+            topic_name,
+            nros_rmw::QosOverrideRole::Publisher,
+            overrides,
+        );
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
@@ -3098,13 +3131,26 @@ impl<'s> Executor<'s> {
         // Pull the Node's identity + session slot out first so the
         // mutable session borrow doesn't conflict with the arena
         // alloc inside `add_arena_subscription_callback`.
-        let (node_name, ns, session_idx) = {
+        let (node_name, ns, session_idx, overrides) = {
             let r = self
                 .nodes
                 .get(node_id.index())
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
-            (r.name.clone(), r.namespace.clone(), r.session_idx)
+            (
+                r.name.clone(),
+                r.namespace.clone(),
+                r.session_idx,
+                r.qos_overrides,
+            )
         };
+        // Issue #52 — fold the node's baked overrides for this topic before the
+        // backend-compat check runs inside `create_subscription`.
+        let qos = super::node_record::apply_qos_override_codes(
+            qos,
+            topic_name,
+            nros_rmw::QosOverrideRole::Subscription,
+            overrides,
+        );
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);

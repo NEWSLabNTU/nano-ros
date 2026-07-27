@@ -495,12 +495,16 @@ fn node_impl(input: TokenStream) -> TokenStream {
             // instead of the `NodeOptions` default (RFC-0046). `None` → backward-compatible.
             // Phase 305 W3 (issue 0255) — `runtime.remaps` carries the launch `<remap>` rules;
             // `ExecutorSink::create_entity` applies them (plus `~`/relative expansion).
+            // Issue #52 — `runtime.qos_overrides` carries the plan's per-topic QoS
+            // overrides; `ExecutorSink::create_node` installs them on the node so
+            // entity creation folds the matching ones in.
             match unsafe {
                 ::nros::install_node_typed_with_launch::<#node_ty>(
                     executor,
                     runtime.params,
                     runtime.node_identity,
                     runtime.remaps,
+                    runtime.qos_overrides,
                 )
             } {
                 0 => ::core::result::Result::Ok(()),

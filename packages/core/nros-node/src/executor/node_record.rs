@@ -73,6 +73,82 @@ pub struct NodeRecord {
     /// `extra_sessions[N-1]`. Each Node may bind to a different
     /// session, enabling multi-RMW bridges in one Executor.
     pub session_idx: u8,
+    /// Issue #52 / phase-296 residue sweep — per-node QoS-override table, in the
+    /// SAME primitive `(topic, role, policy, value)` code form the C and C++
+    /// ABIs use (`nros_qos_override_t` / `nros_cpp_qos_override_t`).
+    ///
+    /// Codes rather than [`nros_rmw::QosOverride`] because the entry codegen
+    /// bakes this through `RuntimeCtx`, and `nros-platform` sits BELOW
+    /// `nros-rmw` in the layer graph — a typed field there would invert it.
+    /// Decoded at entity-create time by [`decode_qos_override`].
+    ///
+    /// Empty by default: a system with no overrides pays nothing.
+    pub qos_overrides: &'static [QosOverrideCode],
+}
+
+/// One baked QoS override: `(topic, role, policy, value)`.
+///
+/// - `role`: `0` publisher, `1` subscription.
+/// - `policy`: `0` reliability, `1` durability, `2` history, `3` depth.
+/// - `value`: reliability `0`=best_effort/`1`=reliable; durability
+///   `0`=volatile/`1`=transient_local; history `0`=keep_last/`1`=keep_all;
+///   depth = the KeepLast depth.
+///
+/// Identical to `nros_cpp_qos_override_t`'s scalar fields — one wire form for
+/// all three languages.
+pub type QosOverrideCode = (&'static str, u8, u8, u32);
+
+/// Decode one [`QosOverrideCode`] into the typed override the QoS folder takes.
+/// Unrecognised role/policy codes yield `None` and are SKIPPED — never applied
+/// as a silently wrong override.
+pub fn decode_qos_override(code: &QosOverrideCode) -> Option<nros_rmw::QosOverride> {
+    use nros_rmw::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosOverride, QosOverrideRole, QosOverrideValue,
+        QosReliabilityPolicy,
+    };
+    let (topic, role, policy, value) = *code;
+    let role = match role {
+        0 => QosOverrideRole::Publisher,
+        1 => QosOverrideRole::Subscription,
+        _ => return None,
+    };
+    let value = match policy {
+        0 => QosOverrideValue::Reliability(if value == 0 {
+            QosReliabilityPolicy::BestEffort
+        } else {
+            QosReliabilityPolicy::Reliable
+        }),
+        1 => QosOverrideValue::Durability(if value == 1 {
+            QosDurabilityPolicy::TransientLocal
+        } else {
+            QosDurabilityPolicy::Volatile
+        }),
+        2 => QosOverrideValue::History(if value == 1 {
+            QosHistoryPolicy::KeepAll
+        } else {
+            QosHistoryPolicy::KeepLast
+        }),
+        3 => QosOverrideValue::Depth(value),
+        _ => return None,
+    };
+    Some(QosOverride { topic, role, value })
+}
+
+/// Fold a node's baked override codes into `qos` for one `(topic, role)`.
+/// A no-op when the table is empty — the common case.
+pub fn apply_qos_override_codes(
+    qos: nros_rmw::QosSettings,
+    topic: &str,
+    role: nros_rmw::QosOverrideRole,
+    codes: &[QosOverrideCode],
+) -> nros_rmw::QosSettings {
+    let mut qos = qos;
+    for code in codes {
+        if let Some(ovr) = decode_qos_override(code) {
+            qos = qos.apply_overrides(topic, role, core::slice::from_ref(&ovr));
+        }
+    }
+    qos
 }
 
 impl NodeRecord {
@@ -90,6 +166,7 @@ impl NodeRecord {
             locator: None,
             default_sched: SchedContextId(0),
             session_idx: 0,
+            qos_overrides: &[],
         }
     }
 }
@@ -346,6 +423,9 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             locator: loc_buf,
             default_sched,
             session_idx,
+            // Installed after creation by `Executor::set_node_qos_overrides`
+            // (the entry codegen's bake) — a builder never carries them.
+            qos_overrides: &[],
         };
 
         self.executor
@@ -358,5 +438,98 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             return Err(NodeError::NodeTableFull);
         }
         Ok(NodeId(idx as u8))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nros_rmw::{
+        QosDurabilityPolicy, QosHistoryPolicy, QosOverrideRole, QosReliabilityPolicy, QosSettings,
+    };
+
+    /// Issue #52 — the primitive codes decode to the same overrides the C and
+    /// C++ ABIs spell, and fold only into the matching `(topic, role)`.
+    #[test]
+    fn codes_fold_into_the_matching_topic_and_role() {
+        const CODES: &[QosOverrideCode] = &[
+            // /chatter publisher reliability = best_effort
+            ("/chatter", 0, 0, 0),
+            // /chatter subscription depth = 7
+            ("/chatter", 1, 3, 7),
+            // /other publisher durability = transient_local
+            ("/other", 0, 1, 1),
+        ];
+
+        let pub_qos = apply_qos_override_codes(
+            QosSettings::default(),
+            "/chatter",
+            QosOverrideRole::Publisher,
+            CODES,
+        );
+        assert_eq!(pub_qos.reliability, QosReliabilityPolicy::BestEffort);
+        // The subscription-side depth entry must NOT leak onto the publisher.
+        assert_eq!(pub_qos.depth, QosSettings::default().depth);
+        // Nor the other topic's durability.
+        assert_eq!(pub_qos.durability, QosSettings::default().durability);
+
+        let sub_qos = apply_qos_override_codes(
+            QosSettings::default(),
+            "/chatter",
+            QosOverrideRole::Subscription,
+            CODES,
+        );
+        assert_eq!(sub_qos.depth, 7);
+        assert_eq!(sub_qos.reliability, QosSettings::default().reliability);
+
+        let other = apply_qos_override_codes(
+            QosSettings::default(),
+            "/other",
+            QosOverrideRole::Publisher,
+            CODES,
+        );
+        assert_eq!(other.durability, QosDurabilityPolicy::TransientLocal);
+    }
+
+    /// An unrecognised role or policy code is SKIPPED, never applied as a
+    /// silently wrong override.
+    #[test]
+    fn unknown_codes_are_skipped_not_guessed() {
+        const BAD: &[QosOverrideCode] = &[("/t", 9, 0, 1), ("/t", 0, 9, 1)];
+        assert!(decode_qos_override(&BAD[0]).is_none());
+        assert!(decode_qos_override(&BAD[1]).is_none());
+        let qos = apply_qos_override_codes(
+            QosSettings::default(),
+            "/t",
+            QosOverrideRole::Publisher,
+            BAD,
+        );
+        assert_eq!(qos, QosSettings::default());
+    }
+
+    /// History `keep_all` and reliability `reliable` are the non-default arms —
+    /// pin them so a code-table renumbering cannot pass silently.
+    #[test]
+    fn history_and_reliability_arms_decode() {
+        let qos = apply_qos_override_codes(
+            QosSettings::default(),
+            "/t",
+            QosOverrideRole::Subscription,
+            &[("/t", 1, 2, 1), ("/t", 1, 0, 1)],
+        );
+        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+    }
+
+    /// An empty table leaves QoS untouched — the common case pays nothing.
+    #[test]
+    fn empty_table_is_a_no_op() {
+        let qos = apply_qos_override_codes(
+            QosSettings::default(),
+            "/t",
+            QosOverrideRole::Publisher,
+            &[],
+        );
+        assert_eq!(qos, QosSettings::default());
     }
 }

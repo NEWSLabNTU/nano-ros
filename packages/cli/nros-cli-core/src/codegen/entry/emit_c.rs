@@ -48,6 +48,50 @@ pub(super) fn emit_declare_remaps(
     }
 }
 
+/// Issue #52 — bake the node's QoS-override table + the
+/// `nros_cpp_node_set_qos_overrides` call. Must run BEFORE the component's
+/// configure registers entities, so `create_publisher`/`create_subscription`
+/// fold the matching overrides in.
+///
+/// C entries create nodes through the same `nros_cpp_*` FFI as C++ ones, so
+/// this is the C++ emitter's table with a function call instead of a method
+/// call. The `(role, policy, value)` lowering is shared
+/// ([`super::emit_cpp::qos_override_codes`]) — two spellings of the same codes
+/// is exactly the drift this codebase keeps paying for.
+pub(super) fn emit_qos_overrides(out: &mut String, n: &super::PlanNode, i: usize, indent: &str) {
+    let coded: Vec<(&super::QosOverrideSpec, (u8, u8, u32))> = n
+        .qos_overrides
+        .iter()
+        .filter_map(|o| super::emit_cpp::qos_override_codes(o).map(|c| (o, c)))
+        .collect();
+    if coded.is_empty() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "{indent}static const nros_cpp_qos_override_t __nros_qos_{i}[] = {{"
+    );
+    for (o, (role, policy, value)) in &coded {
+        let topic = o.topic.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(
+            out,
+            "{indent}    {{ \"{topic}\", {role}, {policy}, {value} }},"
+        );
+    }
+    let _ = writeln!(out, "{indent}}};");
+    let _ = writeln!(out, "{indent}{{");
+    let _ = writeln!(
+        out,
+        "{indent}    nros_cpp_ret_t qrc = nros_cpp_node_set_qos_overrides(&__nros_node_{i}, __nros_qos_{i}, {});",
+        coded.len()
+    );
+    let _ = writeln!(
+        out,
+        "{indent}    if (qrc != NROS_CPP_RET_OK) return (int32_t)qrc;"
+    );
+    let _ = writeln!(out, "{indent}}}");
+}
+
 /// Phase 257 (W0-A, RFC-0043) — emit the **typed** C Entry TU: route each launch
 /// node to the real executor via its `NROS_C_COMPONENT` factory/configure seam,
 /// driven by the C-ABI `nros_board_native_run_components`. The C counterpart of
@@ -180,6 +224,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 );
                 out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
                 emit_declare_remaps(&mut out, n, "        ", "executor");
+                emit_qos_overrides(&mut out, n, i, "        ");
                 let _ = writeln!(
                     out,
                     "        void* self = __nros_c_component_{pkg}_create();"
@@ -362,6 +407,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             );
             out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
             emit_declare_remaps(&mut out, n, "        ", "executor");
+            emit_qos_overrides(&mut out, n, i, "        ");
             let _ = writeln!(
                 out,
                 "        void* self = __nros_c_component_{pkg}_create();"
@@ -468,6 +514,59 @@ mod tests {
             node_overrides: Vec::new(),
             resolved_tiers: None,
         }
+    }
+
+    /// Issue #52 — a C node carrying qos_overrides emits the static
+    /// `nros_cpp_qos_override_t[]` table + the `nros_cpp_node_set_qos_overrides`
+    /// call, BEFORE the component's configure registers entities. Until
+    /// phase-296's residue sweep the C emitter dropped overrides entirely, so a
+    /// model configured QoS on a C++ image and silently did not on a C one.
+    #[test]
+    fn typed_emit_bakes_qos_overrides_before_configure() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.nodes[0].qos_overrides = vec![
+            super::super::QosOverrideSpec {
+                topic: "/chatter".into(),
+                role: "publisher".into(),
+                policy: "reliability".into(),
+                value: "best_effort".into(),
+            },
+            super::super::QosOverrideSpec {
+                topic: "/chatter".into(),
+                role: "subscription".into(),
+                policy: "depth".into(),
+                value: "7".into(),
+            },
+        ];
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(
+            src.contains("static const nros_cpp_qos_override_t __nros_qos_0[] = {"),
+            "{src}"
+        );
+        // (topic, role=0 publisher, policy=0 reliability, value=0 best_effort)
+        assert!(src.contains("{ \"/chatter\", 0, 0, 0 },"), "{src}");
+        // (topic, role=1 subscription, policy=3 depth, value=7)
+        assert!(src.contains("{ \"/chatter\", 1, 3, 7 },"), "{src}");
+        assert!(
+            src.contains("nros_cpp_node_set_qos_overrides(&__nros_node_0, __nros_qos_0, 2)"),
+            "{src}"
+        );
+        let set_at = src.find("nros_cpp_node_set_qos_overrides").unwrap();
+        // The CALL site, not the forward declaration at the top of the TU.
+        let cfg_at = src.find("crc = __nros_c_component").unwrap();
+        assert!(
+            set_at < cfg_at,
+            "overrides must be installed before configure"
+        );
+    }
+
+    /// A C node with no overrides emits no table and no call.
+    #[test]
+    fn typed_emit_no_qos_overrides_no_table() {
+        let plan = fixture_plan(&[("talker_pkg", "talker")]);
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(!src.contains("nros_cpp_qos_override_t"));
+        assert!(!src.contains("set_qos_overrides"));
     }
 
     #[test]

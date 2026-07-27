@@ -211,6 +211,19 @@ pub struct RuntimeCtx<'a> {
     /// component's identity never leaks into the next (RFC-0046).
     pub node_identity: Option<(&'static str, &'static str)>,
 
+    /// Issue #52 — per-node QoS overrides for the NEXT `register()` call, baked
+    /// by `nros::main!` from the model's
+    /// `qos_overrides.<topic>.<role>.<policy>` params. Same reset discipline as
+    /// `params`/`remaps`: `&[]` when the node has none, so a prior component's
+    /// table never leaks into the next.
+    ///
+    /// Primitive `(topic, role, policy, value)` codes — the SAME wire form the
+    /// C and C++ ABIs use — because `nros-platform` sits below `nros-rmw` in the
+    /// layer graph and a typed `QosOverride` field here would invert it. The
+    /// register seam installs them via `Executor::set_node_qos_overrides`, which
+    /// decodes at entity-create time.
+    pub qos_overrides: &'static [(&'static str, u8, u8, u32)],
+
     /// Node runtime sink. `BoardEntry::run` populates this with
     /// the live `ExecutorNodeRuntime`-backed impl before invoking
     /// the user `setup` closure. The codegen-emitted
@@ -230,6 +243,7 @@ impl core::fmt::Debug for RuntimeCtx<'_> {
         f.debug_struct("RuntimeCtx")
             .field("params", &self.params)
             .field("remaps", &self.remaps)
+            .field("qos_overrides", &self.qos_overrides)
             .field("env", &self.env)
             .field("node_identity", &self.node_identity)
             .field("runtime", &"<dyn NodeDispatchRuntime>")
@@ -251,6 +265,7 @@ impl<'a> RuntimeCtx<'a> {
             remaps: &[],
             env: &[],
             node_identity: None,
+            qos_overrides: &[],
             runtime,
         }
     }
@@ -268,6 +283,7 @@ impl<'a> RuntimeCtx<'a> {
             remaps,
             env,
             node_identity: None,
+            qos_overrides: &[],
             runtime,
         }
     }

@@ -36,7 +36,7 @@ use super::{
 /// `(role, policy, value)` scalar codes the `nros_cpp_qos_override_t` struct
 /// uses. Returns `None` for an unrecognised role/policy (skipped — never baked
 /// as a silent wrong override).
-fn qos_override_codes(o: &QosOverrideSpec) -> Option<(u8, u8, u32)> {
+pub(super) fn qos_override_codes(o: &QosOverrideSpec) -> Option<(u8, u8, u32)> {
     let role = match o.role.as_str() {
         "publisher" => 0u8,
         "subscription" => 1u8,

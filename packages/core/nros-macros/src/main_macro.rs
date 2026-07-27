@@ -452,6 +452,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
     // self-bringup arm (no launch file → no `<param>`).
     let mut node_param_bakes: Vec<Vec<(String, String)>> = Vec::new();
+    // Issue #52 — per-node `(topic, role, policy, value)` QoS-override codes,
+    // decomposed from the model's `qos_overrides.<topic>.<role>.<policy>`
+    // params. Same wire form as the C/C++ ABIs.
+    let mut node_qos_bakes: Vec<Vec<(String, u8, u8, u32)>> = Vec::new();
     // Phase 268 W1 — per-node launch `<node name= namespace=>` identity, parallel to
     // `node_param_bakes` (launch arm only). Each entry is the baked `(name, namespace)`
     // pair that `ExecutorSink::create_node` uses instead of the `NodeOptions` default
@@ -641,13 +645,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // Params (resolved values ride the model — the embedded target has
             // no record.json to read them from).
             // #276 — `params_files` YAML projects under the inline values.
+            // `to_bake_string` is the shared rendering (issue-0269-adjacent:
+            // `1.0f64.to_string()` is "1", which the runtime's
+            // infer_param_value re-types as INTEGER).
+            let resolved: Vec<(String, String)> = inst
+                .resolved_params(fqn)
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_bake_string()))
+                .collect();
+            // Issue #52 — `qos_overrides.*` are NOT declared parameters: they
+            // decompose into the node's QoS-override table. Until this, the
+            // Rust path baked them as ordinary params and applied no QoS at
+            // all, while the same model configured QoS on a C/C++ image.
+            node_qos_bakes.push(qos_override_codes_for(&resolved));
             node_param_bakes.push(
-                // `to_bake_string` is the shared rendering (issue-0269-adjacent:
-                // `1.0f64.to_string()` is "1", which the runtime's
-                // infer_param_value re-types as INTEGER).
-                inst.resolved_params(fqn)
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.to_bake_string()))
+                resolved
+                    .into_iter()
+                    .filter(|(k, _)| !k.starts_with(QOS_OVERRIDE_PREFIX))
                     .collect(),
             );
 
@@ -967,9 +981,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 let t = LitStr::new(to, Span::call_site());
                 quote! { (#f, #t) }
             });
+            // Issue #52 — the node's QoS-override table, reset to `&[]` when it
+            // has none so a prior component's overrides never leak into the next
+            // (same discipline as params / remaps).
+            let qos = node_qos_bakes.get(i).cloned().unwrap_or_default();
+            let qos_lits = qos.iter().map(|(topic, role, policy, value)| {
+                let t = LitStr::new(topic, Span::call_site());
+                quote! { (#t, #role, #policy, #value) }
+            });
             quote! {
                 runtime.params = &[ #( #param_lits ),* ];
                 runtime.remaps = &[ #( #remap_lits ),* ];
+                runtime.qos_overrides = &[ #( #qos_lits ),* ];
                 #identity_emit
                 ::#ident::register(runtime)?;
             }
@@ -2956,6 +2979,50 @@ mod custom_tasks_parser_tests {
 /// Phase 305 W3 (issue 0255) — lower one model node's `<remap>` rules into the
 /// `(from, to)` slice `nros::main!` bakes into `runtime.remaps` before that
 /// node's `register` call. Order preserved (first match wins at runtime).
+/// `qos_overrides.<topic>.<role>.<policy>` — QoS travels via the node's
+/// override table, never as a declared parameter.
+const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+
+/// Issue #52 — decompose `qos_overrides.<topic>.<role>.<policy>` params into
+/// the primitive `(topic, role, policy, value)` codes the runtime's
+/// `RuntimeCtx::qos_overrides` carries.
+///
+/// The code assignment mirrors `nros_cpp_qos_override_t` and the CLI's C/C++
+/// emitters exactly — one wire form for all three languages. An unrecognised
+/// role or policy is SKIPPED, never baked as a silently wrong override.
+fn qos_override_codes_for(params: &[(String, String)]) -> Vec<(String, u8, u8, u32)> {
+    let mut out: Vec<(String, u8, u8, u32)> = params
+        .iter()
+        .filter_map(|(name, value)| {
+            let rest = name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
+            // rsplitn(3, '.') → [policy, role, topic]
+            let mut parts = rest.rsplitn(3, '.');
+            let policy_s = parts.next()?;
+            let role_s = parts.next()?;
+            let topic = parts.next()?;
+            if topic.is_empty() {
+                return None;
+            }
+            let role = match role_s {
+                "publisher" => 0u8,
+                "subscription" => 1u8,
+                _ => return None,
+            };
+            let v = value.trim();
+            let (policy, val) = match policy_s {
+                "reliability" => (0u8, u32::from(v != "best_effort")),
+                "durability" => (1u8, u32::from(v == "transient_local")),
+                "history" => (2u8, u32::from(v == "keep_all")),
+                "depth" => (3u8, v.parse::<u32>().ok()?),
+                _ => return None,
+            };
+            Some((topic.to_string(), role, policy, val))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 fn remap_bakes_for(inst: &ros_launch_manifest_model::NodeInstance) -> Vec<(String, String)> {
     inst.remaps
         .iter()
@@ -3151,5 +3218,58 @@ mod derived_sizing_tests {
         assert!(executor_capacity_assert(9, Some("posix"), EntrySizing::Derived(12)).is_empty());
         assert!(executor_capacity_assert(0, Some("zephyr"), EntrySizing::BuildDefault).is_empty());
         assert!(executor_capacity_assert(9, None, EntrySizing::BuildDefault).is_empty());
+    }
+
+    /// Issue #52 — `qos_overrides.<topic>.<role>.<policy>` params decompose into
+    /// the primitive codes `RuntimeCtx::qos_overrides` carries, using the same
+    /// numbering as `nros_cpp_qos_override_t` and the CLI's C/C++ emitters.
+    #[test]
+    fn qos_override_params_decompose_into_codes() {
+        let params = vec![
+            (
+                "qos_overrides./chatter.publisher.reliability".to_string(),
+                "best_effort".to_string(),
+            ),
+            (
+                "qos_overrides./chatter.subscription.depth".to_string(),
+                "7".to_string(),
+            ),
+            (
+                "qos_overrides./img.publisher.durability".to_string(),
+                "transient_local".to_string(),
+            ),
+            ("use_sim_time".to_string(), "true".to_string()),
+        ];
+        let got = super::qos_override_codes_for(&params);
+        assert_eq!(
+            got,
+            vec![
+                ("/chatter".to_string(), 0u8, 0u8, 0u32),
+                ("/chatter".to_string(), 1, 3, 7),
+                ("/img".to_string(), 0, 1, 1),
+            ]
+        );
+    }
+
+    /// An unrecognised role or policy is skipped, never baked as a silently
+    /// wrong override; a non-numeric depth is skipped too.
+    #[test]
+    fn unrecognised_qos_override_params_are_skipped() {
+        let params = vec![
+            (
+                "qos_overrides./t.listener.reliability".to_string(),
+                "reliable".to_string(),
+            ),
+            (
+                "qos_overrides./t.publisher.lifespan".to_string(),
+                "10".to_string(),
+            ),
+            (
+                "qos_overrides./t.publisher.depth".to_string(),
+                "lots".to_string(),
+            ),
+            ("qos_overrides.".to_string(), "x".to_string()),
+        ];
+        assert!(super::qos_override_codes_for(&params).is_empty());
     }
 }

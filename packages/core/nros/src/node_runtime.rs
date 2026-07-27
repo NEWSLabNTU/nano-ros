@@ -356,6 +356,7 @@ impl ExecutorNodeRuntime {
             nodes: Vec::new(),
             node_identity: None, // direct API — no launch injection
             remaps: &[],         // direct API — no launch remaps
+            qos_overrides: &[],  // direct API — no plan overrides
         };
         let sink_dyn: &mut dyn NodeRuntime = &mut sink;
         let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -672,6 +673,11 @@ struct ExecutorSink<'a> {
     /// shared `node_metadata::resolve_name` seam (exact-FQN match, first rule
     /// wins). Empty → names still get ROS 2 expansion, no substitution.
     remaps: &'a [(&'a str, &'a str)],
+    /// Issue #52 — the component's baked QoS-override codes, installed on each
+    /// node this sink creates (`Executor::set_node_qos_overrides`) BEFORE the
+    /// component declares entities, so `create_publisher`/`create_subscription`
+    /// fold the matching ones in. Empty → nothing installed, zero cost.
+    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
 }
 
 struct SinkNode {
@@ -706,6 +712,12 @@ impl NodeRuntime for ExecutorSink<'_> {
             .domain_id(options.domain_id)
             .build()
             .map_err(decl_err_from_node)?;
+        // Issue #52 — install the bake BEFORE the component declares any
+        // entity on this node; entities created earlier could not be folded.
+        if !self.qos_overrides.is_empty() {
+            self.executor
+                .set_node_qos_overrides(node_id, self.qos_overrides);
+        }
         self.nodes.push(SinkNode {
             stable_id: String::from(id.as_str()),
             node_id,
@@ -1419,6 +1431,7 @@ fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     params: &'p [(&'p str, &'p str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &'p [(&'p str, &'p str)],
+    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
@@ -1448,6 +1461,8 @@ where
         node_identity,
         // Phase 305 W3 (issue 0255) — thread the per-component remap bake.
         remaps,
+        // Issue #52 — thread the per-component QoS-override bake.
+        qos_overrides,
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -1546,7 +1561,7 @@ where
     C::State: 'static,
 {
     // SAFETY: forwarded per this fn's contract; no remap rules.
-    unsafe { install_node_typed_with_launch::<C>(executor, params, node_identity, &[]) }
+    unsafe { install_node_typed_with_launch::<C>(executor, params, node_identity, &[], &[]) }
 }
 
 /// Phase 305 W3 (issue 0255) — same as [`install_node_typed_with_node_identity`]
@@ -1562,6 +1577,7 @@ pub unsafe fn install_node_typed_with_launch<C: ExecutableNode + 'static>(
     params: &[(&str, &str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
+    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
 ) -> i32
 where
     C::State: 'static,
@@ -1571,7 +1587,7 @@ where
     }
     // SAFETY: per the fn contract, `executor` is the live `*mut Executor<'static>` handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C>(exec, params, node_identity, remaps) {
+    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro
         // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque
