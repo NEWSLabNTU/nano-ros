@@ -1,11 +1,12 @@
 ---
 id: 285
 title: "`nros ws sync` calls `play_launch resolve`, a subcommand the installed play_launch does not have — every platform's build-examples fails"
-status: open
+status: resolved
 type: bug
 severity: high
 area: cli, build
-related: [issue-0197]
+related: [issue-0197, rfc-0059]
+resolved_in: "issue-0285 (nros-launch-resolve helper)"
 ---
 
 ## Symptom
@@ -100,3 +101,75 @@ Measured while writing that RFC: all **101** tracked launch files under
 the tree are `$(var …)` and `$(env …)`. The entire corpus needs no interpreter,
 yet is blocked today behind a tool that embeds one unconditionally — which is
 why pinning that tool is the weaker answer.
+
+## Resolution (2026-07-27)
+
+Item 1 is done, and not by pinning an external binary — by shipping our own.
+
+### What changed
+
+- **`packages/cli/third-party/play_launch`** — the resolve pipeline is now a
+  pinned submodule, versioned with this repo instead of whatever happens to be
+  installed. Version skew is structurally gone.
+- **`packages/cli/nros-launch-resolve`** — a small, DISTINCTLY NAMED binary
+  over that pipeline. It is its own cargo workspace, because it links
+  play_launch whose vendored `ros-launch-manifest` would otherwise collide
+  with nano-ros's copy in a single cargo graph.
+- **`just setup-launch-resolve`** builds it, mirroring `setup-cli`.
+- **`ws.rs` resolves it from the running `nros` binary's own path** — a
+  sibling, or the in-tree workspace target — and **never** `$PATH`.
+
+### Why the name matters in both directions
+
+Renaming is not just about not being shadowed. Had we shipped our build as
+`play_launch` on PATH, we would have shadowed the user's real `play_launch`
+(the ROS 2 record/replay tool), silently breaking a workflow that has nothing
+to do with nano-ros. That is a worse failure than this issue, because it is
+silent. Hence: distinct name, absolute-path invocation, and deliberately NOT
+added to PATH.
+
+### The Python constraint, unchanged
+
+A separate process is irreducible and always will be: `.launch.py` requires
+executing the *user's* CPython, and pyo3's `auto-initialize` would pin
+libpython into `nros`, ending its libc-only portability (phase-195.A). What
+was removable was the *unpinned, PATH-resolved* dependency — not the process.
+
+Upstream gating (play_launch `8b9ba98` + `d546caf`) makes the helper link with
+`default-features = false`, dropping `rclrs` and the colcon-generated message
+crates. Those are not registry deps — `colcon-cargo-ros2` generates them from
+the ament environment and patches them in, which is why they are pinned `"*"`.
+So without that gating, building our helper would have required play_launch's
+entire colcon setup, forcing ROS onto embedded users who have neither ROS nor
+colcon. Now it needs CPython and nothing else.
+
+### Receipts
+
+- With a hostile `play_launch` on PATH that fails every invocation, `nros sync`
+  runs OURS: the surfaced error traces into
+  `packages/cli/third-party/play_launch/.../resolve.rs` and is a genuine
+  `system.toml` placement error, not a tool-resolution failure.
+- `nros-launch-resolve <launch> -o model.yaml` resolves a real launch file with
+  no ROS environment and no colcon.
+- `just qemu build-fixtures` rc=0 with zero `play_launch` references in the log.
+- 62 cli test binaries green; clippy clean.
+
+### Tests
+
+`launch_resolver_tests` in `cmd/ws.rs` gates the core property — resolution
+never consults `$PATH`. One test places a valid helper on PATH *only* and
+asserts it is NOT found, which is precisely the hijack this issue is about.
+Plus the installed (sibling) layout, the in-tree layout, and absent → `None`
+so the caller degrades to the committed model.
+`native_orchestration_misuse` was asserting the old `play_launch resolve`
+string and now asserts the new name.
+
+### Follow-ups (not blocking)
+
+- `nros::main!` diagnostics and the misuse test now name the helper; docs and
+  comments that still say "play_launch" describe the upstream project or the
+  pipeline's behaviour, not a command to run.
+- RFC-0059's remaining half — linking the Python-FREE XML/YAML path directly so
+  the helper is only spawned for trees that actually contain `.launch.py` or
+  `$(eval …)` (0 of 101 tracked launch files today) — is still worth doing, and
+  is now unblocked by the `runtime` feature gate.

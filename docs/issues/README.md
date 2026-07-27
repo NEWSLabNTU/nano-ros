@@ -99,11 +99,10 @@ Prereqs: WCET fact, board peripheral registry, `SchedCaps` core count. See `0259
 even under `--target <host>`. `probe_blocker()` now degrades such components to the documented
 sidecar-less path; nuttx build-fixtures rc=2 → rc=0, qemu still probing.)
 
-**#285** — `nros ws sync` invokes `play_launch resolve`, a subcommand the installed
-`play_launch` lacks → `build-examples` fails on EVERY platform (cmake-configure time).
-Version skew: the CLI's required `play_launch` is unpinned/uninstalled and
-`~/.local/bin/play_launch` shadows it. Needs a pin + a `[PREREQ]` probe (the #197
-pattern). See `0285-play-launch-resolve-subcommand-skew.md`. (2026-07-26)
+(#285 resolved 2026-07-27 — see `archived/0285-*`: ships `nros-launch-resolve`, a dedicated
+distinctly-named helper built from a pinned play_launch submodule and invoked by ABSOLUTE PATH,
+never $PATH. Kills the version skew and both directions of the name collision — we can't be
+shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
 **#288** — self-contained standalone examples (node + entry in one crate) dep their board
 crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
