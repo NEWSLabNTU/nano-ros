@@ -141,6 +141,38 @@ package's `system.toml` (a `[deploy]` section beside the existing
 `[tiers.*]`), never in the component manifests — the component developer
 declares contracts, the integrator decides placement.
 
+### Semantics ship with the schema, not with each consumer (2026-07-27)
+
+The `model` crate owns the TYPES **and the reading of them**: any rule for
+turning model fields into effective values is a method on the model, never a
+procedure a consumer re-implements. Concretely, parameter resolution —
+`ros__parameters` section matching, node-key globbing, wildcard-vs-specific
+precedence, nested-map flattening, source ordering, and the string rendering a
+compile-time bake needs — is `NodeInstance::resolved_params` +
+`ParamValue::to_bake_string`. A consumer calls them; it does not parse a param
+file.
+
+The reason is not tidiness. Two consumers vendoring one schema but each
+carrying its own reader is two implementations of a spec that is written down
+nowhere, and they diverge silently because both keep passing their own tests.
+That is exactly what happened: nano-ros kept a second parameter matcher for the
+launch path, and when the model path became the only live one the divergence
+inverted — the surviving copy applied a param file's sections in TEXTUAL order,
+so a file writing the node block above `/**` resolved to the wildcard's value,
+while the retired copy had the rule right. The same drift produced three
+hand-copied `ParamValue` → String matches, one of which rendered `1.0` as `"1"`
+and had the runtime re-type a launch double as an integer. Fixed by
+single-sourcing both in the model crate (rlm `48e8d70`, nano-ros `e51492f`).
+
+Consequences for anything added later:
+
+- A field whose meaning needs more than a struct read (precedence, matching,
+  fallback, unit conversion) lands with the method that applies it.
+- A consumer that needs different behavior is a signal the model is missing a
+  distinction — widen the type, do not fork the reader.
+- Rendering counts as semantics. Two consumers that stringify the same value
+  differently have already diverged, whether or not anyone has noticed.
+
 ## nano-ros consumption (sketch — phase doc will detail)
 
 1. **Build side**: `nros` gains a verb to ingest `system_model.yaml` and emit

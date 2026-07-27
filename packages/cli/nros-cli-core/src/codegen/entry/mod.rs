@@ -38,11 +38,7 @@ use nros_orchestration_ir::{
     CallbackGroupDecl, DEFAULT_TIER, ResolvedTierTable, TierResolveError, resolve_tiers,
 };
 
-use crate::{
-    launch_parser::{LaunchDescription, NodeSpec, parse_launch_file},
-    orchestration::cargo_metadata_schema::{NodeOverride, SystemToml, TierDef},
-    pkg_index::build_pkg_index,
-};
+use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
 
 pub mod emit_c;
 pub mod emit_cpp;
@@ -66,26 +62,6 @@ impl Lang {
             other => bail!("unknown --lang `{other}` (expected one of: rust, cpp, c)"),
         }
     }
-}
-
-/// Caller-supplied inputs to [`plan_from_launch`].
-#[derive(Debug)]
-pub struct PlanInput<'a> {
-    /// Workspace root — the directory holding `src/<pkg>/package.xml`
-    /// trees. Typically the dir containing the workspace-root
-    /// `CMakeLists.txt` or `Cargo.toml`.
-    pub workspace: &'a Path,
-    /// `"<bringup_pkg>"` or `"<bringup_pkg>:<file>.launch.xml"`.
-    pub launch_spec: &'a str,
-    /// Board key (`"native"`, `"freertos"`, …) or an explicit C++
-    /// path-like (`"nros::board::NativeBoard"`). For the Rust emitter
-    /// this is treated as the `[package.metadata.nros.entry] deploy =`
-    /// value; the emitter dispatches to the matching board ZST.
-    /// `None` falls back to `"native"` — the only Entry-pkg target
-    /// currently supported by the C/C++ surface (Phase 212.L.2).
-    pub board: Option<String>,
-    /// Caller-supplied launch-arg overrides (forwarded to the parser).
-    pub arg_overrides: Vec<(String, String)>,
 }
 
 /// Resolved plan handed to one of the three emitters.
@@ -192,124 +168,6 @@ pub struct QosOverrideSpec {
     pub policy: String,
     /// Raw launch value (e.g. `"best_effort"`, `"transient_local"`, `"5"`).
     pub value: String,
-}
-
-/// Decompose a node's launch params into [`QosOverrideSpec`]s. Mirrors the
-/// planner's `schema_qos_overrides`: a param named
-/// `qos_overrides.<topic>.<role>.<policy>` splits via `rsplitn(3, '.')` (so a
-/// `/`-bearing topic survives), and the result is sorted `(topic, role, policy)`
-/// for byte-stable codegen. Non-matching params are ignored.
-fn qos_overrides_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<QosOverrideSpec> {
-    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
-    let mut out: Vec<QosOverrideSpec> = params
-        .iter()
-        .filter_map(|p| {
-            let rest = p.name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
-            // rsplitn(3, '.') → [policy, role, topic]
-            let mut parts = rest.rsplitn(3, '.');
-            let policy = parts.next()?;
-            let role = parts.next()?;
-            let topic = parts.next()?;
-            if topic.is_empty() || role.is_empty() || policy.is_empty() {
-                return None;
-            }
-            Some(QosOverrideSpec {
-                topic: topic.to_string(),
-                role: role.to_string(),
-                policy: policy.to_string(),
-                value: p.value.clone(),
-            })
-        })
-        .collect();
-    out.sort_by(|a, b| (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy)));
-    out
-}
-
-/// Collect the non-QoS launch params: everything NOT starting with
-/// `qos_overrides.`, in launch-file order. These become `PlanNode.params`.
-fn non_qos_params_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<(String, String)> {
-    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
-    params
-        .iter()
-        .filter(|p| !p.name.starts_with(QOS_OVERRIDE_PREFIX))
-        .map(|p| (p.name.clone(), p.value.clone()))
-        .collect()
-}
-
-/// Issue 0276 — the node's effective launch params: every `<param from=…>` file
-/// resolved and flattened first, then the inline `<param name= value=>` pairs on
-/// top (ROS precedence — inline wins over file). QoS-override keys are filtered
-/// out of both, since they travel via `qos_overrides`.
-///
-/// Relative `from=` paths resolve against the launch file's own directory. Each
-/// file actually read is pushed to `deps` so it lands in the depfile.
-fn resolve_node_params(
-    n: &NodeSpec,
-    launch_dir: &Path,
-    deps: &mut Vec<PathBuf>,
-) -> eyre::Result<Vec<(String, String)>> {
-    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
-    let mut out: Vec<(String, String)> = Vec::new();
-    let node_name = n.name.clone().unwrap_or_else(|| n.exec.clone());
-    let namespace = n.namespace.clone().unwrap_or_else(|| "/".to_string());
-    let fqn = {
-        let ns = namespace.trim().trim_end_matches('/');
-        if ns.is_empty() {
-            format!("/{node_name}")
-        } else if ns.starts_with('/') {
-            format!("{ns}/{node_name}")
-        } else {
-            format!("/{ns}/{node_name}")
-        }
-    };
-
-    for file in &n.param_files {
-        let path = {
-            let raw = Path::new(file);
-            if raw.is_absolute() {
-                raw.to_path_buf()
-            } else {
-                launch_dir.join(raw)
-            }
-        };
-        if !path.exists() {
-            bail!(
-                "`<param from=\"{file}\"/>` on node `{node_name}` names a file that does not exist: `{}`",
-                path.display()
-            );
-        }
-        deps.push(path.clone());
-        let raw = std::fs::read_to_string(&path)
-            .map_err(|e| eyre::eyre!("read param file `{}`: {e}", path.display()))?;
-        // The resolution algorithm is single-sourced in the shared `model`
-        // crate (section matching, specificity, flattening, stringification) —
-        // this path must not carry a second copy that can drift from the one
-        // every live bake uses.
-        let inst = ros_launch_manifest_model::NodeInstance {
-            params_files: vec![raw],
-            ..Default::default()
-        };
-        for (key, value) in inst.resolved_params(&fqn) {
-            if key.starts_with(QOS_OVERRIDE_PREFIX) {
-                continue;
-            }
-            upsert_param(&mut out, key, value.to_bake_string());
-        }
-    }
-
-    for (key, value) in non_qos_params_from_params(&n.params) {
-        upsert_param(&mut out, key, value);
-    }
-    Ok(out)
-}
-
-/// Last writer wins, in place — a later declaration of the same param name
-/// replaces the earlier value without changing first-declaration order.
-fn upsert_param(out: &mut Vec<(String, String)>, key: String, value: String) {
-    match out.iter_mut().find(|(k, _)| *k == key) {
-        Some(slot) => slot.1 = value,
-        None => out.push((key, value)),
-    }
 }
 
 /// One Node-pkg invocation in launch order.
@@ -467,192 +325,50 @@ pub fn sanitize_pkg(pkg: &str) -> String {
     out
 }
 
-/// Walk the workspace pkg-index, locate the bringup pkg, parse the
-/// launch XML, and lower the result into a [`Plan`].
+/// `qos_overrides.<topic>.<role>.<policy>` — QoS travels via
+/// [`PlanNode::qos_overrides`], never as a declared parameter.
+const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+
+/// Decompose `qos_overrides.<topic>.<role>.<policy>` parameters into typed
+/// [`QosOverrideSpec`]s, sorted for deterministic emission.
 ///
-/// Errors carry enough context that the CLI verb's `eyre::Result`
-/// wrapper passes them through verbatim.
-pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
-    let pkg_index = build_pkg_index(input.workspace)
-        .with_context(|| format!("build pkg-index from `{}`", input.workspace.display()))?;
-
-    let (bringup_name, file_override) = match input.launch_spec.split_once(':') {
-        Some((b, f)) => (b.trim().to_string(), Some(f.trim().to_string())),
-        None => (input.launch_spec.trim().to_string(), None),
-    };
-    if bringup_name.is_empty() {
-        bail!(
-            "empty bringup pkg name in launch spec `{}`",
-            input.launch_spec
-        );
-    }
-
-    let bringup_dir = pkg_index
-        .resolve_pkg(&bringup_name)
-        .with_context(|| format!("resolve bringup pkg `{bringup_name}`"))?
-        .to_path_buf();
-
-    // Pull every package.xml the index walked into the depfile list.
-    let mut depfile_paths: Vec<PathBuf> = Vec::new();
-    for (_, pkg_dir) in pkg_index.pkgs() {
-        depfile_paths.push(pkg_dir.join("package.xml"));
-    }
-
-    // Parse bringup's system.toml when present — provides [lifecycle],
-    // [param_services], [safety], [tiers.*], [[node_overrides]], and
-    // [system].default_launch. Absent → all Plan feature fields stay at defaults.
-    let system_toml_path = bringup_dir.join("system.toml");
-    let parsed_system: Option<SystemToml> = if system_toml_path.exists() {
-        depfile_paths.push(system_toml_path.clone());
-        let raw = std::fs::read_to_string(&system_toml_path)
-            .with_context(|| format!("read `{}`", system_toml_path.display()))?;
-        Some(
-            toml::from_str::<SystemToml>(&raw)
-                .with_context(|| format!("parse `{}`", system_toml_path.display()))?,
-        )
-    } else {
-        None
-    };
-
-    // Resolve the launch filename. With no `:file` override, consult
-    // bringup's `system.toml [system] default_launch`; fall back to
-    // `system.launch.xml` (matches the Rust proc-macro shape).
-    let launch_filename = match file_override {
-        Some(s) => s,
-        None => parsed_system
-            .as_ref()
-            .and_then(|s| s.system.default_launch.as_deref())
-            .map(str::to_string)
-            .unwrap_or_else(|| "system.launch.xml".to_string()),
-    };
-    let launch_path = bringup_dir.join("launch").join(&launch_filename);
-    if !launch_path.exists() {
-        bail!("launch file not found: `{}`", launch_path.display());
-    }
-    depfile_paths.push(launch_path.clone());
-
-    let desc: LaunchDescription = parse_launch_file(&launch_path, &pkg_index, &input.arg_overrides)
-        .with_context(|| format!("parse launch file `{}`", launch_path.display()))?;
-
-    // Walk every `<node>` (top-level + inside groups) and lower to a
-    // PlanNode. Order matches the source XML (top-scope first, then
-    // each group's children).
-    let mut nodes: Vec<PlanNode> = Vec::new();
-    // Issue 0276 — `<param from="…yaml"/>` files are read HERE, at codegen time,
-    // and their values baked into the entry (matching the compile-time domain-id
-    // precedent): embedded targets have no launch-time file loading. Each file
-    // read is recorded as a depfile input so editing the YAML rebuilds.
-    let launch_dir = launch_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
-    let mut param_file_deps: Vec<PathBuf> = Vec::new();
-    let mut push_node = |n: &NodeSpec, out: &mut Vec<PlanNode>| -> eyre::Result<()> {
-        let params = resolve_node_params(n, &launch_dir, &mut param_file_deps)?;
-        out.push(PlanNode {
-            pkg: n.pkg.clone(),
-            exec: n.exec.clone(),
-            name: n.name.clone(),
-            namespace: n.namespace.clone(),
-            // Phase 240.2 — the launch path doesn't carry the C++ class/header
-            // yet (threaded from cmake metadata in 240.2b); the legacy
-            // register-symbol emitters ignore these.
-            class_name: None,
-            class_header: None,
-            lang: None,
-            shape: None,
-            host: n.machine.clone(),
-            qos_overrides: qos_overrides_from_params(&n.params),
-            params,
-            remaps: n
-                .remaps
-                .iter()
-                .map(|r| (r.from.clone(), r.to.clone()))
-                .collect(),
-            callback_groups: Vec::new(),
-            sched_context: None,
-            group_tiers: BTreeMap::new(),
-        });
-        Ok(())
-    };
-    for n in &desc.nodes {
-        push_node(n, &mut nodes)?;
-    }
-    for g in &desc.groups {
-        for n in &g.nodes {
-            push_node(n, &mut nodes)?;
-        }
-    }
-    drop(push_node);
-    depfile_paths.extend(param_file_deps);
-
-    if nodes.is_empty() {
-        bail!(
-            "launch file `{}` has no `<node>` entries — nothing to register",
-            launch_path.display()
-        );
-    }
-
-    // Phase 273 (W2) — populate each PlanNode.group_tiers from the matching
-    // [[component]] entry in system.toml (RFC-0047: group→tier is deployment config).
-    // Matching: PlanNode name (or exec) vs SystemComponentEntry.name.
-    if let Some(ref sys) = parsed_system {
-        let gt_by_name: BTreeMap<&str, &BTreeMap<String, String>> = sys
-            .components
-            .iter()
-            .filter(|c| !c.group_tiers.is_empty())
-            .map(|c| (c.name.as_str(), &c.group_tiers))
-            .collect();
-        if !gt_by_name.is_empty() {
-            for n in &mut nodes {
-                let node_name = n.name.as_deref().unwrap_or(n.exec.as_str());
-                if let Some(gt) = gt_by_name.get(node_name) {
-                    n.group_tiers = (*gt).clone();
-                }
+/// Phase 211.H (issue #52) introduced this on the launch path; phase-296
+/// R-code retired that path and the model path had NOT inherited the split, so
+/// a model carrying `params: {qos_overrides./chatter.publisher.reliability: …}`
+/// baked the override as an ordinary parameter and applied no QoS at all.
+fn qos_overrides_from_params(params: &[(String, String)]) -> Vec<QosOverrideSpec> {
+    let mut out: Vec<QosOverrideSpec> = params
+        .iter()
+        .filter_map(|(name, value)| {
+            let rest = name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
+            // rsplitn(3, '.') → [policy, role, topic]
+            let mut parts = rest.rsplitn(3, '.');
+            let policy = parts.next()?;
+            let role = parts.next()?;
+            let topic = parts.next()?;
+            if topic.is_empty() || role.is_empty() || policy.is_empty() {
+                return None;
             }
-        }
-    }
+            Some(QosOverrideSpec {
+                topic: topic.to_string(),
+                role: role.to_string(),
+                policy: policy.to_string(),
+                value: value.clone(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy)));
+    out
+}
 
-    // Sort + dedup the depfile entries — pkg-index revisits + sibling
-    // `<include>`s can list a single file twice.
-    depfile_paths.sort();
-    depfile_paths.dedup();
-
-    let board = input.board.unwrap_or_else(|| "native".to_string());
-
-    let lifecycle = parsed_system
-        .as_ref()
-        .and_then(|s| s.lifecycle.as_ref())
-        .map(|l| l.autostart.clone());
-    let param_services = parsed_system
-        .as_ref()
-        .is_some_and(|s| s.capability_enabled("param_services"));
-    let safety = parsed_system.as_ref().and_then(|s| {
-        s.capability_enabled("safety")
-            .then(|| s.safety.as_ref().map(|sf| sf.crc).unwrap_or(true))
-    });
-    let tiers = parsed_system
-        .as_ref()
-        .map(|s| s.tiers.clone())
-        .unwrap_or_default();
-    let node_overrides = parsed_system
-        .as_ref()
-        .map(|s| s.node_overrides.clone())
-        .unwrap_or_default();
-
-    Ok(Plan {
-        board,
-        nodes,
-        depfile_paths,
-        bringup: bringup_name,
-        launch_file: launch_path,
-        lifecycle,
-        param_services,
-        safety,
-        tiers,
-        node_overrides,
-        resolved_tiers: None,
-    })
+/// The complement of [`qos_overrides_from_params`]: everything that is NOT a
+/// QoS override, which is what gets baked as declared parameters.
+fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
+    params
+        .iter()
+        .filter(|(name, _)| !name.starts_with(QOS_OVERRIDE_PREFIX))
+        .cloned()
+        .collect()
 }
 
 /// R1-N2 (RFC-0052 / phase-296 W4.1) — build a [`Plan`] from a resolved
@@ -731,11 +447,13 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         // `<param>` values. The launch path has its own projection
         // (`resolve_node_params`), but every live bake now goes through the
         // MODEL, so the projection has to exist here too.
-        let params: Vec<(String, String)> = inst
+        let resolved: Vec<(String, String)> = inst
             .resolved_params(fqn)
             .iter()
             .map(|(k, v)| (k.clone(), v.to_bake_string()))
             .collect();
+        let qos_overrides = qos_overrides_from_params(&resolved);
+        let params = non_qos_params(&resolved);
         // Group→tier from the model's resolved bindings (`<fqn>/<group>`).
         let mut group_tiers: BTreeMap<String, String> = BTreeMap::new();
         let prefix = format!("{fqn}/");
@@ -754,7 +472,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             lang: None,
             shape: None,
             host: model.execution.deploy.get(fqn).and_then(|d| d.host.clone()),
-            qos_overrides: Vec::new(),
+            qos_overrides,
             params,
             remaps: inst
                 .remaps
@@ -1060,6 +778,72 @@ mod tests {
         assert_eq!(plan.for_host("nope").nodes.len(), 1);
     }
 
+    /// Issue 0276 + phase-54 — a model's `params_files` project into
+    /// `PlanNode.params` at codegen time, and `qos_overrides.*` split out into
+    /// typed [`QosOverrideSpec`]s instead of being baked as parameters.
+    ///
+    /// The resolution algorithm itself lives in the shared `model` crate; this
+    /// asserts the WIRING, not a second copy. The param file writes the node
+    /// block ABOVE the wildcard on purpose: section precedence is by
+    /// specificity, not file order, so this fails if that ordering is lost.
+    #[test]
+    fn model_params_project_with_specificity_and_qos_split() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let model = tmp.path().join("system_model.yaml");
+        std::fs::write(
+            &model,
+            r#"
+meta:
+  version: 1
+structure:
+  scopes:
+    /: {}
+  nodes:
+    /talker:
+      scope: /
+      pkg: talker_pkg
+      exec: talker
+      node_name: talker
+      params:
+        rate: "50"
+        qos_overrides./chatter.publisher.reliability: best_effort
+      params_files:
+        - "talker:\n  ros__parameters:\n    use_sim_time: true\n    limits:\n      max_accel: 1.5\n/**:\n  ros__parameters:\n    use_sim_time: false\n    rate: 10\nother_node:\n  ros__parameters:\n    rate: 999\n"
+execution: {}
+contracts: {}
+"#,
+        )
+        .unwrap();
+
+        let plan = plan_from_model(&model, Some("native".into())).expect("plan from model");
+        let node = &plan.nodes[0];
+        let params: BTreeMap<_, _> = node.params.iter().cloned().collect();
+
+        // The node block sets it true and the wildcard false, with the node
+        // block written FIRST — specificity decides, not file order.
+        assert_eq!(params.get("use_sim_time").map(String::as_str), Some("true"));
+        // Nested map flattened to a dotted key; a float keeps its ".0".
+        assert_eq!(
+            params.get("limits.max_accel").map(String::as_str),
+            Some("1.5")
+        );
+        // Inline model params outrank the file.
+        assert_eq!(params.get("rate").map(String::as_str), Some("50"));
+        // A section naming a different node contributes nothing.
+        assert!(!params.values().any(|v| v == "999"));
+        // QoS travels typed, never as a declared parameter.
+        assert!(
+            !params.keys().any(|k| k.starts_with("qos_overrides.")),
+            "qos override leaked into params: {params:?}"
+        );
+        assert_eq!(node.qos_overrides.len(), 1);
+        assert_eq!(node.qos_overrides[0].topic, "/chatter");
+        assert_eq!(node.qos_overrides[0].role, "publisher");
+        assert_eq!(node.qos_overrides[0].policy, "reliability");
+        assert_eq!(node.qos_overrides[0].value, "best_effort");
+    }
+
     /// #236 — an UNPLACED deploy (`target: None`, e.g. a machine-derived
     /// entry from a launch-only resolve) is board-agnostic: every board's
     /// slice keeps the node; only the host filter partitions. An explicit
@@ -1100,20 +884,16 @@ mod tests {
     /// decompose into sorted `QosOverrideSpec`s; non-matching params are ignored.
     #[test]
     fn qos_overrides_decompose_from_params() {
-        use crate::launch_parser::ParamSpec;
         let params = vec![
-            ParamSpec {
-                name: "qos_overrides./chatter.publisher.reliability".into(),
-                value: "best_effort".into(),
-            },
-            ParamSpec {
-                name: "use_sim_time".into(),
-                value: "true".into(),
-            },
-            ParamSpec {
-                name: "qos_overrides./chatter.subscription.durability".into(),
-                value: "transient_local".into(),
-            },
+            (
+                "qos_overrides./chatter.publisher.reliability".to_string(),
+                "best_effort".to_string(),
+            ),
+            ("use_sim_time".to_string(), "true".to_string()),
+            (
+                "qos_overrides./chatter.subscription.durability".to_string(),
+                "transient_local".to_string(),
+            ),
         ];
         let got = qos_overrides_from_params(&params);
         assert_eq!(got.len(), 2);
@@ -1230,256 +1010,18 @@ mod tests {
     /// go to qos_overrides, not to params.
     #[test]
     fn non_qos_params_split_from_qos_params() {
-        use crate::launch_parser::ParamSpec;
         let params = vec![
-            ParamSpec {
-                name: "p".into(),
-                value: "v".into(),
-            },
-            ParamSpec {
-                name: "qos_overrides./chatter.publisher.reliability".into(),
-                value: "best_effort".into(),
-            },
-            ParamSpec {
-                name: "count".into(),
-                value: "42".into(),
-            },
+            ("p".to_string(), "v".to_string()),
+            (
+                "qos_overrides./chatter.publisher.reliability".to_string(),
+                "best_effort".to_string(),
+            ),
+            ("count".to_string(), "42".to_string()),
         ];
-        let non_qos = non_qos_params_from_params(&params);
+        let non_qos = non_qos_params(&params);
         assert_eq!(non_qos.len(), 2);
         assert_eq!(non_qos[0], ("p".into(), "v".into()));
         assert_eq!(non_qos[1], ("count".into(), "42".into()));
-    }
-
-    /// Phase 269 (W0) — a system.toml with [lifecycle], [safety], [param_services],
-    /// and [tiers.*] yields a Plan with the matching feature fields.
-    #[test]
-    fn plan_from_launch_reads_system_toml_feature_fields() {
-        use tempfile::TempDir;
-        let tmp = TempDir::new().unwrap();
-
-        // Build a minimal workspace: src/<pkg>/package.xml trees.
-        let bringup_dir = tmp.path().join("src").join("demo_bringup");
-        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
-        std::fs::write(
-            bringup_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
-        )
-        .unwrap();
-        std::fs::write(
-            bringup_dir.join("launch").join("system.launch.xml"),
-            r#"<launch><node pkg="talker_pkg" exec="talker"/></launch>"#,
-        )
-        .unwrap();
-        let talker_dir = tmp.path().join("src").join("talker_pkg");
-        std::fs::create_dir_all(&talker_dir).unwrap();
-        std::fs::write(
-            talker_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
-        )
-        .unwrap();
-
-        // Write system.toml with all feature fields.
-        std::fs::write(
-            bringup_dir.join("system.toml"),
-            r#"[system]
-name = "demo"
-rmw = "zenoh"
-domain_id = 0
-
-[lifecycle]
-autostart = "active"
-
-[safety]
-
-[param_services]
-
-[tiers.rt]
-"#,
-        )
-        .unwrap();
-
-        let plan = plan_from_launch(PlanInput {
-            workspace: tmp.path(),
-            launch_spec: "demo_bringup",
-            board: None,
-            arg_overrides: vec![],
-        })
-        .expect("plan_from_launch should succeed");
-
-        assert_eq!(plan.lifecycle.as_deref(), Some("active"));
-        assert!(plan.param_services, "param_services should be enabled");
-        assert_eq!(
-            plan.safety,
-            Some(true),
-            "safety should be Some(true) (crc=true default)"
-        );
-        assert!(plan.tiers.contains_key("rt"), "tiers should contain 'rt'");
-    }
-
-    /// Phase 269 (W0) — a launch without system.toml leaves all feature fields at defaults,
-    /// keeping the Plan byte-identical for pre-W0 callers.
-    #[test]
-    fn plan_from_launch_no_system_toml_yields_defaults() {
-        use tempfile::TempDir;
-        let tmp = TempDir::new().unwrap();
-
-        let bringup_dir = tmp.path().join("src").join("demo_bringup");
-        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
-        std::fs::write(
-            bringup_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
-        )
-        .unwrap();
-        std::fs::write(
-            bringup_dir.join("launch").join("system.launch.xml"),
-            r#"<launch><node pkg="talker_pkg" exec="talker"><param name="p" value="v"/></node></launch>"#,
-        )
-        .unwrap();
-        let talker_dir = tmp.path().join("src").join("talker_pkg");
-        std::fs::create_dir_all(&talker_dir).unwrap();
-        std::fs::write(
-            talker_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
-        )
-        .unwrap();
-
-        let plan = plan_from_launch(PlanInput {
-            workspace: tmp.path(),
-            launch_spec: "demo_bringup",
-            board: None,
-            arg_overrides: vec![],
-        })
-        .expect("plan_from_launch should succeed without system.toml");
-
-        assert!(plan.lifecycle.is_none());
-        assert!(!plan.param_services);
-        assert!(plan.safety.is_none());
-        assert!(plan.tiers.is_empty());
-        assert!(plan.node_overrides.is_empty());
-        // Non-QoS params baked into PlanNode.params.
-        assert_eq!(
-            plan.nodes[0].params,
-            vec![("p".to_string(), "v".to_string())]
-        );
-    }
-
-    /// Issue 0276 — `<param from="…yaml"/>` values are projected into
-    /// `PlanNode.params` at codegen time: wildcard `/**` block, then the
-    /// node-specific block (which overrides it), then inline `<param name=
-    /// value=>` on top (ROS precedence). Nested maps flatten to dotted keys.
-    ///
-    /// The projection itself lives in the shared `model` crate — this asserts
-    /// the wiring, not a second copy of the algorithm.
-    #[test]
-    fn plan_from_launch_projects_param_file_values() {
-        use tempfile::TempDir;
-        let tmp = TempDir::new().unwrap();
-
-        let bringup_dir = tmp.path().join("src").join("demo_bringup");
-        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
-        std::fs::write(
-            bringup_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
-        )
-        .unwrap();
-        std::fs::write(
-            bringup_dir.join("launch").join("talker.param.yaml"),
-            // The node block is written ABOVE the wildcard on purpose:
-            // section precedence is by specificity, not file order.
-            "talker:\n  ros__parameters:\n    rate: 25\n    use_sim_time: true\n\
-             \x20   limits:\n      max_accel: 1.5\n\
-             /**:\n  ros__parameters:\n    use_sim_time: false\n    rate: 10\n\
-             other_node:\n  ros__parameters:\n    rate: 999\n",
-        )
-        .unwrap();
-        std::fs::write(
-            bringup_dir.join("launch").join("system.launch.xml"),
-            r#"<launch><node pkg="talker_pkg" exec="talker" name="talker">
-                 <param from="talker.param.yaml"/>
-                 <param name="rate" value="50"/>
-               </node></launch>"#,
-        )
-        .unwrap();
-        let talker_dir = tmp.path().join("src").join("talker_pkg");
-        std::fs::create_dir_all(&talker_dir).unwrap();
-        std::fs::write(
-            talker_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
-        )
-        .unwrap();
-
-        let plan = plan_from_launch(PlanInput {
-            workspace: tmp.path(),
-            launch_spec: "demo_bringup",
-            board: None,
-            arg_overrides: vec![],
-        })
-        .expect("plan_from_launch should succeed with a param file");
-
-        let params: std::collections::BTreeMap<_, _> =
-            plan.nodes[0].params.iter().cloned().collect();
-        // The node block sets it true and the wildcard false, with the node
-        // block written FIRST — specificity decides, not file order.
-        assert_eq!(params.get("use_sim_time").map(String::as_str), Some("true"));
-        // nested map flattened
-        assert_eq!(
-            params.get("limits.max_accel").map(String::as_str),
-            Some("1.5")
-        );
-        // inline `<param name=…>` beats BOTH the wildcard and the node block
-        assert_eq!(params.get("rate").map(String::as_str), Some("50"));
-        // A float keeps its ".0" — the shared `to_bake_string` rendering. Bare
-        // `to_string()` gives "1", which the runtime re-types as an INTEGER.
-        assert_eq!(
-            params.get("limits.max_accel").map(String::as_str),
-            Some("1.5")
-        );
-        // a block naming a different node contributes nothing
-        assert!(!params.values().any(|v| v == "999"));
-    }
-
-    /// Issue 0276 — a `<param from=…>` naming a missing file is a hard error, not
-    /// a silently-empty param set (a silent skip would ship a node whose
-    /// no-default declares fail at boot).
-    #[test]
-    fn plan_from_launch_rejects_missing_param_file() {
-        use tempfile::TempDir;
-        let tmp = TempDir::new().unwrap();
-
-        let bringup_dir = tmp.path().join("src").join("demo_bringup");
-        std::fs::create_dir_all(bringup_dir.join("launch")).unwrap();
-        std::fs::write(
-            bringup_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>demo_bringup</name></package>"#,
-        )
-        .unwrap();
-        std::fs::write(
-            bringup_dir.join("launch").join("system.launch.xml"),
-            r#"<launch><node pkg="talker_pkg" exec="talker">
-                 <param from="nope.param.yaml"/>
-               </node></launch>"#,
-        )
-        .unwrap();
-        let talker_dir = tmp.path().join("src").join("talker_pkg");
-        std::fs::create_dir_all(&talker_dir).unwrap();
-        std::fs::write(
-            talker_dir.join("package.xml"),
-            r#"<?xml version="1.0"?><package format="3"><name>talker_pkg</name></package>"#,
-        )
-        .unwrap();
-
-        let err = plan_from_launch(PlanInput {
-            workspace: tmp.path(),
-            launch_spec: "demo_bringup",
-            board: None,
-            arg_overrides: vec![],
-        })
-        .expect_err("a missing param file must fail the plan");
-        assert!(
-            format!("{err:?}").contains("does not exist"),
-            "error should name the missing file, got: {err:?}"
-        );
     }
 
     /// Phase 269 (W4) — resolve_plan_sched assigns PlanNode.sched_context from tiers +

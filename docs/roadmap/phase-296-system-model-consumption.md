@@ -1004,6 +1004,52 @@ zero callers. `plan_pipeline_e2e` re-targeted to the model pipeline
 neither parses nor synthesises launch XML anywhere; `nros-launch-parser`
 survives only for the separate `nros-build`/`generate_run_plan` build.rs
 compat surface (its own retirement track).
+### R-code residue sweep (2026-07-27) — parameter semantics single-sourced
+
+R-code deleted the launch VERBS but left the launch PLAN LIBRARY behind:
+`entry::plan_from_launch` + `PlanInput` + `resolve_node_params` still parsed
+launch XML, reachable only from tests. Dead code is not neutral when it carries
+domain rules — it drifts from the live copy and nobody notices, because it keeps
+passing its own tests. Three findings, all now fixed:
+
+1. **A second parameter-resolution implementation.**
+   `orchestration::params::param_file_values` (+ `node_fqn`,
+   `flatten_yaml_params`, `yaml_scalar_to_string`) duplicated the model crate's
+   matcher. It had already diverged: it applied a file's wildcard section before
+   the node-specific one — **rcl's actual rule** — while the model, the copy that
+   ships, merged sections in textual order. So a param file writing
+   `/ctrl/planner:` above `/**:` baked the wildcard's value. Fixed IN THE MODEL
+   (rlm `48e8d70`, specificity-ordered merge) and the duplicate deleted. The
+   dead copy also knew fewer node keys (no `/sensing/**`, `/*/planner`) and
+   rendered sequences `[a, b]` where live consumers join with `,`.
+2. **`ParamValue` → String hand-copied three times** (entry codegen,
+   `model_ingest`, `nros::main!`) and drifted: the macro used `{:?}` for floats
+   with a comment explaining that `to_string()` renders `1.0` as `"1"`, which the
+   runtime re-types as an INTEGER; the other two still used `to_string()`. All
+   three now call `ParamValue::to_bake_string()`.
+3. **QoS overrides were dropped on the model path.** `qos_overrides.*` params
+   decompose into typed `QosOverrideSpec`s — implemented on the launch path
+   (211.H / issue #52), never inherited by the model path, where every
+   `PlanNode` was built with `qos_overrides: Vec::new()`. A model carrying
+   `qos_overrides./chatter.publisher.reliability` therefore baked it as an
+   ordinary parameter and applied no QoS at all — and the template model
+   `multi-node-workspace-cpp` carries exactly that param. Ported to
+   `plan_from_model`.
+
+**Landed:** `plan_from_launch` + `PlanInput` + the launch-XML param plumbing
+deleted (−188 lines) and the four launch-path unit tests retired with them;
+`entry_typed_plan` re-targeted to `plan_from_model` against the template's
+committed model (it also dropped an `eprintln!`-and-return skip, which reports
+PASS on a missing fixture — see CLAUDE.md); a new
+`model_params_project_with_specificity_and_qos_split` covers all three findings
+on the live path. Both new guards were mutation-checked: removing the
+specificity sort fails it (`left "false", right "true"`), and reverting the QoS
+split fails it (`qos override leaked into params`).
+
+**Rule going forward** — recorded in RFC-0050 §"Semantics ship with the schema":
+model semantics live in the `model` crate as methods; a consumer calls them and
+implements none of them. Rendering counts as semantics.
+
 - **`play_launch resolve` is now the batch tool for the simple/tiered
   tail (2026-07-18).** play_launch's `system_config` reader was extended
   (ros-launch-manifest `468504a`, play_launch `4a735b0`; nano-ros vendored
