@@ -282,6 +282,26 @@ fn write_cbindgen_header_atomically(output_path: &Path, bindings: cbindgen::Bind
     }
 }
 
+/// # Write policy for generated artifacts
+///
+/// **A shared destination is written atomically; an `OUT_DIR` destination is
+/// not.** The distinction is who else can be writing:
+///
+/// * `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/…`, `$CORROSION_BUILD_DIR/…`
+///   and the committed in-tree headers are reachable by more than one crate's
+///   build script and by parallel fixture lanes sharing a workspace build dir.
+///   These go through [`write_atomic`] (or
+///   [`write_cbindgen_header_atomically`]): temp file in the same directory,
+///   then `rename(2)`. A plain `fs::write` truncates and then fills, and a
+///   reader that lands in the gap sees a spliced file — which is exactly how a
+///   zephyr fixture came to compile a header ending mid-token and fail with
+///   `#endif without #if` (2026-07-26).
+/// * `$OUT_DIR/*.rs` (`nros_c_config.rs`, `nros_cpp_ffi_config.rs`, the
+///   surface anchors) is per-crate and per-build. Exactly one writer exists by
+///   construction, so a plain `fs::write` is correct and cheaper.
+///
+/// Adding a generated artifact? Ask which of the two it is. If a second crate
+/// or a parallel lane could name the same path, it belongs in the first group.
 pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
     if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
         write_to(PathBuf::from(target_dir), relative, contents);
