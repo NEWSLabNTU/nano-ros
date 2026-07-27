@@ -1,6 +1,6 @@
 # Phase 312: Three-layer launch toolchain (RFC-0060)
 
-**Status:** In progress (started 2026-07-28). W1.1–W1.5 done; W1.6 next.
+**Status:** In progress (started 2026-07-28). **W1 complete** — acceptance met. W2 next.
 **Implements:** RFC-0060. **Closes:** the structural half of issue 0293 (one
 implementation per contract); removes the vendoring drift behind issues
 0285/0293.
@@ -110,9 +110,32 @@ compiler once the crate boundary was real:
 That second one is the useful signal: a crate boundary catches layer violations
 that a feature flag cannot.
 
-**Next: W1.6** — trim the CLI's `Options` enum to the four launch-tree verbs
-(it still names Launch/Run/Replay), then the byte-identical-SystemModel
-acceptance check.
+**W1.6 done. W1 ACCEPTANCE MET.** `ros-launch-resolve resolve` produces a
+SystemModel byte-identical to play_launch's for
+`demo_bringup/system.launch.xml` — the only differences are the two provenance
+fields that must differ:
+
+```
+- tool: play_launch      + tool: ros-launch-resolve
+- version: 0.8.2         + version: 0.1.0
+```
+
+Built and run under `env -i`. 274 tests pass.
+
+`Command` is trimmed to the four launch-tree verbs; `launch`, `run`, `replay`,
+`setcap` and `verify` drive processes and stayed in play_launch, as did
+`CleanupGuard` (it reaps spawned nodes via `kill_all_descendants`, and the
+resolver spawns none).
+
+One real bug surfaced by the move: the model's provenance stamp was the literal
+`"play_launch"`, so every model this crate resolved would have misreported
+which tool produced it — the field exists precisely so a consumer can tell.
+Now `env!("CARGO_PKG_NAME")`.
+
+Still owed here: argument-parsing tests for the four remaining verbs. The ones
+that existed covered `launch`/`run`/`replay`/`check` and went with them.
+
+**Next: W2** — re-point nano-ros at the new repo and drop its two old pins.
 
 ## Risks
 
