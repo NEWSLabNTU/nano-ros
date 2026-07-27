@@ -1329,7 +1329,6 @@ dependencies = [
  "ros-launch-manifest-sched",
  "serde",
  "serde_yaml_ng",
- "tempfile",
  "thiserror 2.0.17",
  "toml",
 ]

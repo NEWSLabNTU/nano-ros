@@ -76,6 +76,9 @@ pub fn refresh_stale_sidecars(
     let probe_root = ws_root.join("build").join("nros-metadata");
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
+    // phase-312 — C/C++ components to probe in ONE workspace-scoped project.
+    let mut cpp_batch: Vec<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions> =
+        Vec::new();
 
     for decl in &declarations {
         if decl.deploy_bound {
@@ -101,12 +104,13 @@ pub fn refresh_stale_sidecars(
             continue;
         }
         if decl.config.language != ComponentLanguage::Rust {
-            // phase-308 W1 — C/C++ go through the CMake probe driver. A failure
-            // lands in the unsupported ledger rather than failing the sync:
-            // the fallback is the SystemModel bound, which is what these
-            // components get today.
-            match refresh_cpp_sidecar(decl, nano_ros, &probe_root, verbose) {
-                Ok(Some(path)) => report.rebuilt.push(path),
+            // phase-312 — C/C++ probes are COLLECTED here and run as one
+            // batch below, so the workspace builds the runtime (and the ~1.2 GB
+            // of nested sizes-probe cargo builds) once rather than once per
+            // component.
+            match cpp_probe_options(decl, nano_ros, &probe_root) {
+                Ok(Some(opts)) => cpp_batch.push(opts),
+                // Already current — no probe needed.
                 Ok(None) => report.fresh.push(decl.source_metadata_path()),
                 Err(why) => report.unsupported.push(format!(
                     "{}::{} ({why})",
@@ -142,31 +146,71 @@ pub fn refresh_stale_sidecars(
         stamp_provenance(&sidecar, &digest)?;
         report.rebuilt.push(sidecar);
     }
+
+    // phase-312 — one project, one configure, one runtime build; the BUILD is
+    // still per target so an uncompilable component costs only its own sidecar.
+    if !cpp_batch.is_empty() {
+        let dir = crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root);
+        if verbose {
+            println!(
+                "ws sync: metadata — probing {} C/C++ component(s) in one project",
+                cpp_batch.len()
+            );
+        }
+        match crate::orchestration::metadata_probe_cmake::run_probes(&dir, &cpp_batch) {
+            Ok(outcomes) => {
+                for (o, opts) in outcomes.iter().zip(cpp_batch.iter()) {
+                    match &o.result {
+                        Ok(()) => {
+                            // Stamp only on success; a failed probe leaves the
+                            // previous sidecar (or none) untouched.
+                            if let Ok(digest) = source_digest(&opts.package_dir) {
+                                let _ = stamp_provenance(&opts.output_path, &digest);
+                            }
+                            report.rebuilt.push(opts.output_path.clone());
+                        }
+                        Err(why) => report
+                            .unsupported
+                            .push(format!("{}::{} ({why:#})", o.package, o.component)),
+                    }
+                }
+            }
+            // A configure failure is the whole project, not one component.
+            Err(why) => {
+                for opts in &cpp_batch {
+                    report.unsupported.push(format!(
+                        "{}::{} (probe project configure failed: {why:#})",
+                        opts.package, opts.component
+                    ));
+                }
+            }
+        }
+    }
     Ok(report)
 }
 
-/// phase-308 W1 — probe one C/C++ component.
+/// phase-312 — build the probe options for one C/C++ component, or explain why
+/// it cannot be probed.
 ///
-/// `Ok(None)` = already current. `Err` = cannot be probed, which the caller
-/// records in the unsupported ledger rather than failing the sync: the
-/// fallback is the SystemModel bound, which is what these components get
-/// today, so a probe that cannot run must not take the workspace down with it.
-fn refresh_cpp_sidecar(
+/// `Ok(None)` = the sidecar is already current. `Err` = this component only;
+/// the caller records it in the unsupported ledger and the bake falls back to
+/// the SystemModel bound, which is what these components get today.
+fn cpp_probe_options(
     decl: &ComponentDeclaration,
     nano_ros: Option<&Path>,
     probe_root: &Path,
-    verbose: bool,
-) -> Result<Option<PathBuf>, String> {
+) -> Result<Option<crate::orchestration::metadata_probe_cmake::CmakeProbeOptions>, String> {
     let Some(nano_ros) = nano_ros else {
         return Err("no nano-ros path".into());
     };
     let Some(class) = decl.class.clone() else {
         return Err("no declared CLASS — nothing to construct".into());
     };
-    // `probe_header` returns None only when there is no class to derive from,
-    // which the check above already caught; keep the message specific anyway.
     let Some(header) = decl.probe_header() else {
         return Err("no declared HEADER and none derivable from CLASS".into());
+    };
+    let Some(library_target) = decl.library_target.clone() else {
+        return Err("no CMake library target to link".into());
     };
 
     let sidecar = decl.source_metadata_path();
@@ -174,44 +218,30 @@ fn refresh_cpp_sidecar(
     if sidecar_is_fresh(&sidecar, &digest) {
         return Ok(None);
     }
-    if verbose {
-        println!(
-            "ws sync: metadata {}::{} — sources changed, probing (cmake)",
-            decl.config.package, decl.config.component
-        );
-    }
 
     let language = match decl.config.language {
         ComponentLanguage::C => "c",
         _ => "cpp",
     };
-    let opts = crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
-        package: decl.config.package.clone(),
-        component: decl.config.component.clone(),
-        executable: decl
-            .config
-            .linkage
-            .resolved_executable(&decl.config.component),
-        class,
-        header,
-        language: language.to_string(),
-        shape: decl.probe_shape().to_string(),
-        library_target: decl
-            .library_target
-            .clone()
-            .ok_or_else(|| "no CMake library target to link".to_string())?,
-        package_dir: decl.package_root.clone(),
-        nano_ros_workspace: nano_ros.to_path_buf(),
-        output_path: sidecar.clone(),
-        probe_dir: crate::orchestration::metadata_probe_cmake::probe_dir_for(
-            probe_root,
-            &decl.config.package,
-            &decl.config.component,
-        ),
-    };
-    crate::orchestration::metadata_probe_cmake::run_probe(&opts).map_err(|e| format!("{e:#}"))?;
-    stamp_provenance(&sidecar, &digest).map_err(|e| e.to_string())?;
-    Ok(Some(sidecar))
+    Ok(Some(
+        crate::orchestration::metadata_probe_cmake::CmakeProbeOptions {
+            package: decl.config.package.clone(),
+            component: decl.config.component.clone(),
+            executable: decl
+                .config
+                .linkage
+                .resolved_executable(&decl.config.component),
+            class,
+            header,
+            language: language.to_string(),
+            shape: decl.probe_shape().to_string(),
+            library_target,
+            package_dir: decl.package_root.clone(),
+            nano_ros_workspace: nano_ros.to_path_buf(),
+            output_path: sidecar,
+            probe_dir: probe_root.to_path_buf(),
+        },
+    ))
 }
 
 fn build_options(

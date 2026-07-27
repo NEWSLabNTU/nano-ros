@@ -2512,7 +2512,10 @@ mod config_include_version_tests {
     fn parses_minor_from_cargo_version_line() {
         assert_eq!(parse_cargo_minor("cargo 1.96.0 (abc 2026-01-01)"), Some(96));
         assert_eq!(parse_cargo_minor("cargo 1.93.0"), Some(93));
-        assert_eq!(parse_cargo_minor("cargo 1.90.1 (deadbeef 2025-06-01)"), Some(90));
+        assert_eq!(
+            parse_cargo_minor("cargo 1.90.1 (deadbeef 2025-06-01)"),
+            Some(90)
+        );
     }
 
     #[test]
