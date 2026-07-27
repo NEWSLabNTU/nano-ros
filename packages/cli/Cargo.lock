@@ -1323,7 +1323,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "pretty_assertions",
  "ros-launch-manifest-sched",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_yaml_ng",
@@ -1346,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-types"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",

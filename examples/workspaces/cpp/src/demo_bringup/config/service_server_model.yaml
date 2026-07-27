@@ -6,8 +6,8 @@ meta:
   - path: system.toml
     sha256: 3cd441e084eac7610b2d0b9b2802739d834f951dcc1cf407ade162de967e55d7
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
     service_server.launch.xml:

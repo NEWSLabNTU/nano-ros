@@ -24,11 +24,14 @@ name = "nros-launch-resolve"
 path = "src/main.rs"
 
 [dependencies]
-# `default-features = false` drops `rclrs` + the colcon-generated
-# `play_launch_msgs`, so this builds with plain cargo — no ROS, no ament, no
-# colcon. CPython IS still required (the launch parser embeds it via pyo3),
-# which is the whole reason this stays a separately-built helper rather than
-# being linked into the portable `nros` binary.
-play_launch = { path = "../third-party/play_launch/src/play_launch", default-features = false }
+# Layer 2 (RFC-0060). No feature gymnastics needed any more: the resolver is
+# its own repo, so "no rclrs, no colcon-generated messages" is a property of
+# the package graph rather than of a `default-features = false` flag that one
+# `default = ["runtime"]` could undo. CPython is still required — the launch
+# parser embeds it via pyo3 — which is why this stays a separately built helper
+# instead of being linked into the portable `nros` binary.
+ros-launch-resolve = { path = "../third-party/ros-launch-resolve/resolve" }
 clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
+play_launch_parser = { path = "../third-party/ros-launch-resolve/parser/crates/play_launch_parser" }
+serde_json = "1"

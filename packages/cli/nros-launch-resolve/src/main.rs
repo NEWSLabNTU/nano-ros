@@ -17,9 +17,9 @@
 //!    anything else. We cannot be shadowed, and — just as important — we never
 //!    shadow a user's real `play_launch`, which would silently break their
 //!    workflow.
-//! 2. **A pinned build.** It compiles from the `play_launch` submodule at a
-//!    revision this repo records, versioned alongside `nros-cli`, so the CLI
-//!    and the resolver can no longer drift apart.
+//! 2. **A pinned build.** It compiles from the `ros-launch-resolve` submodule
+//!    at a revision this repo records, versioned alongside `nros-cli`, so the
+//!    CLI and the resolver can no longer drift apart.
 //!
 //! # Why a separate process at all
 //!
@@ -30,13 +30,16 @@
 //! lets `nros` stay a libc-only binary — the constraint recorded in
 //! `nros-cli-core/Cargo.toml` (phase-195.A) and revisited in RFC-0059.
 //!
-//! Linking `play_launch` with `default-features = false` drops `rclrs` and the
-//! colcon-generated `play_launch_msgs`, so this needs no ROS, no ament and no
-//! colcon — only CPython.
+//! Since RFC-0060 the resolver is its own repository (layer 2), so "no rclrs,
+//! no colcon-generated messages" is a property of the package graph rather
+//! than of a `default-features = false` flag. Only CPython is required.
 
 use clap::Parser;
 use eyre::Result;
-use play_launch::cli::options::{ParserBackend, ResolveArgs};
+use ros_launch_resolve::{
+    model::{ModelBuildInputs, build_checked_model},
+    ros::launch_dump::LaunchDump,
+};
 
 #[derive(Parser)]
 #[command(
@@ -91,25 +94,52 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Delegate to the pinned resolve pipeline. Keeping this a thin translation
-    // rather than a reimplementation is deliberate: the resolver is ~8k lines
-    // and a second copy would drift, which is the failure this issue is about.
-    let args = ResolveArgs {
-        package_or_path: cli.package_or_path,
-        launch_file: cli.launch_file,
-        launch_arguments: cli.launch_arguments,
-        contracts: cli.contracts,
-        no_provider_contracts: cli.no_provider_contracts,
-        sched: cli.sched,
-        system: cli.system,
-        target: cli.target,
-        parser: if cli.python_parser {
-            ParserBackend::Python
-        } else {
-            ParserBackend::Rust
-        },
-        out: cli.out,
-        explain: cli.explain,
+    // Delegate to the pinned pipeline. A thin translation rather than a
+    // reimplementation, deliberately: the resolver is ~12k lines and a second
+    // copy would drift — the failure issue 0285 is about.
+    let launch_path = std::path::PathBuf::from(&cli.package_or_path);
+    let record = if cli.python_parser {
+        eyre::bail!(
+            "--python-parser is not wired through the library entry point yet; \
+             use the `ros-launch-resolve` binary from the submodule for now"
+        )
+    } else {
+        play_launch_parser::parse_launch_file(&launch_path, Default::default())
+            .map_err(|e| eyre::eyre!("parsing {}: {e}", launch_path.display()))?
     };
-    play_launch::commands::resolve::handle_resolve(&args)
+    let dump: LaunchDump = serde_json::from_str(&serde_json::to_string(&record)?)?;
+
+    let arg_binding = cli
+        .launch_arguments
+        .iter()
+        .filter_map(|a| a.split_once(":=").map(|(k, v)| (k.to_string(), v.to_string())))
+        .collect();
+
+    let model = build_checked_model(ModelBuildInputs {
+        dump: &dump,
+        launch_path: Some(&launch_path),
+        arg_binding,
+        contracts: cli.contracts.as_deref(),
+        no_provider_contracts: cli.no_provider_contracts,
+        sched: cli.sched.as_deref(),
+        system: cli.system.as_deref(),
+        target: cli.target.as_str(),
+        explain: cli.explain,
+    })?;
+
+    let yaml = model.to_yaml_string()?;
+    if cli.out == "-" {
+        print!("{yaml}");
+    } else {
+        std::fs::write(&cli.out, &yaml)
+            .map_err(|e| eyre::eyre!("writing SystemModel to {}: {e}", cli.out))?;
+        eprintln!(
+            "SystemModel: {} ({} nodes, {} topics, {} tier(s))",
+            cli.out,
+            model.structure.nodes.len(),
+            model.structure.topics.len(),
+            model.execution.tiers.len(),
+        );
+    }
+    Ok(())
 }

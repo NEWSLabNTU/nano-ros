@@ -2191,14 +2191,14 @@ setup-cli:
 # record/replay tool of the same name shadowed it and every platform's
 # fixture build died inside a cmake configure.
 #
-# This builds our own distinctly-named binary from the pinned play_launch
-# submodule, versioned with the CLI, and `nros` invokes it by ABSOLUTE PATH.
+# This builds our own distinctly-named binary from the pinned
+# `ros-launch-resolve` submodule (RFC-0060 layer 2), versioned with the CLI,
+# and `nros` invokes it by ABSOLUTE PATH.
 # Neither tool can shadow the other.
 #
-# Its own cargo workspace: it links play_launch, whose vendored
-# ros-launch-manifest would otherwise collide with nano-ros's copy in one
-# graph. Needs CPython (pyo3) but NOT ROS/ament/colcon — the play_launch
-# `runtime` feature is off.
+# Its own cargo workspace, so its dependency graph stays separate from the
+# main CLI's. Needs CPython (pyo3) but NOT ROS/ament/colcon — that is now a
+# property of the layer-2 package graph, not of a feature flag.
 [group("setup")]
 setup-launch-resolve:
     #!/usr/bin/env bash
@@ -2206,9 +2206,9 @@ setup-launch-resolve:
     root="{{justfile_directory()}}"
     crate="$root/packages/cli/nros-launch-resolve"
     bin="$crate/target/release/nros-launch-resolve"
-    if [ ! -f "$crate/../third-party/play_launch/src/play_launch/Cargo.toml" ]; then
-        echo "[setup-launch-resolve] SKIP: play_launch submodule not initialised"
-        echo "  git submodule update --init packages/cli/third-party/play_launch"
+    if [ ! -f "$crate/../third-party/ros-launch-resolve/resolve/Cargo.toml" ]; then
+        echo "[setup-launch-resolve] SKIP: ros-launch-resolve submodule not initialised"
+        echo "  git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve"
         exit 0
     fi
     # `find -newer` errors when the reference file is absent, and `set -e`
