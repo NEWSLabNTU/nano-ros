@@ -232,6 +232,15 @@ function(nros_synth_runtime_umbrella)
     # NOT hardcoded, so the umbrella's runtime keyexpr format matches the
     # codegen-baked type_hash. Default `humble` → `ros-humble` (byte-identical).
     set(_cpp_features "ros-${_NRR_EDITION}" "${_backend_feat}" ${_plat_feats})
+    # phase-308 — extension point for callers that need an extra nros-cpp
+    # feature in the umbrella. The feature list is otherwise derived entirely
+    # from BACKEND/PLATFORM/EDITION with no user hook, so a consumer setting a
+    # cache variable had NO effect: the metadata probe's `metadata-mode` reached
+    # CMakeCache.txt and never a cargo invocation, and the recording backend was
+    # silently absent from the link.
+    if(NROS_EXTRA_CPP_FEATURES)
+        list(APPEND _cpp_features ${NROS_EXTRA_CPP_FEATURES})
+    endif()
 
     # Phase 241 W11 was inlined here; phase-263 C2c-zephyr factored it into
     # nros_write_runtime_umbrella_crate so the Zephyr/west lane reuses the IDENTICAL synthesis.

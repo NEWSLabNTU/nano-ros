@@ -212,6 +212,7 @@ mod tests {
             deploy_bound: false,
             header: None,
             shape: None,
+            library_target: None,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),
@@ -266,6 +267,7 @@ mod tests {
             deploy_bound: false,
             header: None,
             shape: None,
+            library_target: None,
             config: ComponentConfig {
                 version: 1,
                 package: "demo_pkg".into(),

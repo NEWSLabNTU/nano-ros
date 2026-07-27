@@ -55,6 +55,10 @@ pub struct CmakeProbeOptions {
     pub language: String,
     /// `"configure"` or `"rclcpp"`.
     pub shape: String,
+    /// The CMake library target the component builds into. The probe LINKS it —
+    /// that is what carries the target's PUBLIC include dirs (its own header,
+    /// and any generated message headers it depends on).
+    pub library_target: String,
     /// The component package directory (holds its `CMakeLists.txt`).
     pub package_dir: PathBuf,
     /// nano-ros checkout, for `find_package(nano_ros)`.
@@ -84,8 +88,10 @@ pub fn render_probe_cmakelists(o: &CmakeProbeOptions) -> String {
          set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\
          \n\
          # The recording RMW backend rides in on nros-cpp's `metadata-mode`\n\
-         # cargo feature. Host build only — never reachable from a firmware one.\n\
-         set(NANO_ROS_CARGO_FEATURES \"metadata-mode\" CACHE STRING \"\" FORCE)\n\
+         # cargo feature, appended to the umbrella's feature list. Host build\n\
+         # only — never reachable from a firmware one. NOTE: this must be the\n\
+         # variable NanoRosRuntimeCrate reads; a plain cache var is inert.\n\
+         set(NROS_EXTRA_CPP_FEATURES \"metadata-mode\")\n\
          \n\
          find_package(nano_ros REQUIRED)\n\
          \n\
@@ -94,6 +100,10 @@ pub fn render_probe_cmakelists(o: &CmakeProbeOptions) -> String {
          add_subdirectory({pkg_dir} component_pkg)\n\
          \n\
          add_executable(nros_metadata_probe probe_main.cpp)\n\
+         # Link the component library, not just build it: linking is what\n\
+         # propagates its PUBLIC include dirs, without which the probe cannot\n\
+         # `#include` the component's own header.\n\
+         target_link_libraries(nros_metadata_probe PRIVATE {lib})\n\
          # NanoRosCpp, not NanoRos: the probe TU is C++ even when the component\n\
          # is C (it drives the C ABI seam), and only the Cpp target carries the\n\
          # `nros/*.hpp` include dirs. Linking the C target compiles the probe\n\
@@ -103,6 +113,7 @@ pub fn render_probe_cmakelists(o: &CmakeProbeOptions) -> String {
         pkg = o.package,
         comp = o.component,
         pkg_dir = o.package_dir.display(),
+        lib = o.library_target,
     )
 }
 
@@ -249,6 +260,7 @@ mod tests {
             header: "talker_pkg/Talker.hpp".into(),
             language: "cpp".into(),
             shape: "configure".into(),
+            library_target: "talker_lib".into(),
             package_dir: PathBuf::from("/ws/src/talker_pkg"),
             nano_ros_workspace: PathBuf::from("/nano-ros"),
             output_path: PathBuf::from("/ws/src/talker_pkg/metadata/talker.json"),
@@ -268,7 +280,7 @@ mod tests {
         );
         assert!(txt.contains("find_package(nano_ros REQUIRED)"), "{txt}");
         assert!(
-            txt.contains("set(NANO_ROS_CARGO_FEATURES \"metadata-mode\""),
+            txt.contains("set(NROS_EXTRA_CPP_FEATURES \"metadata-mode\")"),
             "the recording backend rides in on this feature:\n{txt}"
         );
         assert!(
@@ -280,6 +292,11 @@ mod tests {
         assert!(
             txt.contains("NanoRos::NanoRosCpp"),
             "probe needs the C++ include dirs:\n{txt}"
+        );
+        // Linking the component lib is what brings its own header's include dir.
+        assert!(
+            txt.contains("target_link_libraries(nros_metadata_probe PRIVATE talker_lib)"),
+            "{txt}"
         );
     }
 

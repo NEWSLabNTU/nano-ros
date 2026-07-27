@@ -196,6 +196,10 @@ fn refresh_cpp_sidecar(
         header,
         language: language.to_string(),
         shape: decl.probe_shape().to_string(),
+        library_target: decl
+            .library_target
+            .clone()
+            .ok_or_else(|| "no CMake library target to link".to_string())?,
         package_dir: decl.package_root.clone(),
         nano_ros_workspace: nano_ros.to_path_buf(),
         output_path: sidecar.clone(),

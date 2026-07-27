@@ -156,6 +156,14 @@ pub struct CmakeNodeSummary {
     /// the declaration: call `configure(node)` directly, or go through the
     /// rclcpp-compat factory. Defaults to `rclcpp` in the cmake verb.
     pub shape: Option<String>,
+    /// phase-308 W1 — the CMake library target the component's sources build
+    /// into (`nros_components_register_node(<lib> …)`, or the node name for
+    /// the `nano_ros_add_node` spelling).
+    ///
+    /// The metadata probe must LINK it, not merely `add_subdirectory` the
+    /// package: linking is what carries the target's PUBLIC include dirs, so
+    /// without it the probe cannot even `#include` the component's own header.
+    pub library_target: Option<String>,
     /// Absolute path to the `CMakeLists.txt` the summary was derived from.
     pub manifest_path: PathBuf,
 }
@@ -326,6 +334,7 @@ impl Workspace {
                     deploy_bound: false,
                     header: None,
                     shape: None,
+                    library_target: None,
                     config,
                 });
             }
@@ -345,6 +354,7 @@ impl Workspace {
                     deploy_bound: false,
                     header: summary.header.clone(),
                     shape: summary.shape.clone(),
+                    library_target: summary.library_target.clone(),
                     config: cmake_summary_to_component_config(summary),
                 });
             }
@@ -368,6 +378,7 @@ impl Workspace {
                     deploy_bound: summary.deploy_bound,
                     header: None,
                     shape: None,
+                    library_target: None,
                     config: cargo_summary_to_component_config(summary),
                 });
             }
@@ -479,6 +490,8 @@ pub struct ComponentDeclaration {
     /// phase-308 W1 — `rclcpp` | `configure`: how the probe drives the
     /// declaration path. `None` for Rust.
     pub shape: Option<String>,
+    /// phase-308 W1 — the CMake library target the probe links. `None` for Rust.
+    pub library_target: Option<String>,
 }
 
 impl ComponentDeclaration {
@@ -603,12 +616,13 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
         out.push(CmakeNodeSummary {
             package: package_name.to_string(),
             component: name.clone(),
-            executable: name,
             class,
             language,
             deploy_targets: args.multi("DEPLOY"),
             header: args.single("HEADER"),
             shape: args.single("SHAPE"),
+            library_target: args.single("TARGET").or_else(|| Some(name.clone())),
+            executable: name,
             manifest_path: cmakelists.clone(),
         });
     }
@@ -735,6 +749,7 @@ fn parse_register_node_call(
         deploy_targets: deploy,
         header,
         shape,
+        library_target: target,
         manifest_path: cmakelists.to_path_buf(),
     })
 }
@@ -816,12 +831,14 @@ fn parse_add_node_call(
     Some(CmakeNodeSummary {
         package: package_name.to_string(),
         component: name.clone(),
-        executable: name,
         class,
         language,
         deploy_targets: deploy,
         header,
         shape,
+        // `nano_ros_add_node(<name> …)` builds a target of that name.
+        library_target: Some(name.clone()),
+        executable: name,
         manifest_path: cmakelists.to_path_buf(),
     })
 }
@@ -1395,6 +1412,7 @@ mod probe_target_tests {
             deploy_bound: false,
             header: header.map(ToString::to_string),
             shape: shape.map(ToString::to_string),
+            library_target: None,
             config: ComponentConfig {
                 version: 1,
                 package: "talker_pkg".into(),
