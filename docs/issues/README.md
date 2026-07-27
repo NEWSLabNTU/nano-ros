@@ -656,7 +656,7 @@ latency window + action-pkg gate (residual direction = #153).
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#144** —
 [`run_tiers` ≥3-tier setup declare
-race](archived/0144-run-tiers-spawned-tier-declare-race.md): the chained-spawn fix
+race](archived/0301-run-tiers-spawned-tier-declare-race.md): the chained-spawn fix
 (`spawn_next_tier`) landed on BOTH the Zephyr and FreeRTOS `run_tiers` — each tier spawns the next
 only after its own `setup()` returns, so no two entity-declare calls overlap on the shared
 zenoh-pico session (covers any tier count by construction; FreeRTOS's old boot↔tier race closed
@@ -1091,9 +1091,8 @@ the port into `libnros_board_nuttx_qemu_arm.rlib`, which precedes the referencer
 the link line ⇒ single-pass `ld` drops it. Fixed in `nuttx_platform_build.rs` with
 `cargo_metadata(false)` + a hand-emitted
 `static:-bundle,+whole-archive=nros_platform_nuttx` (trailing, order-independent).
-See `archived/0048-nuttx-typed-carrier-link-drops-platform-port.md`. (Note: id 48
-is shared with the earlier resolved FreeRTOS-slirp issue — a pre-existing numbering
-collision.)
+See `archived/0294-nuttx-typed-carrier-link-drops-platform-port.md`. (Renumbered
+from a duplicate id 48; the FreeRTOS-slirp issue keeps 0048.)
 
 Recently resolved (Phase 240.5): **#47** — C/C++ action client now callback-based
 (`nros::bind_action_client` = `set_callbacks` + a poll-timer pump per RFC-0041);

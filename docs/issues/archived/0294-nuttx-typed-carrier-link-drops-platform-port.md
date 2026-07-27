@@ -1,5 +1,5 @@
 ---
-id: 48
+id: 294
 title: NuttX link drops the platform port (undefined nros_platform_*) — bundled-rlib order
 status: resolved
 type: bug

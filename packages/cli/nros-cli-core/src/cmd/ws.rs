@@ -462,13 +462,24 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// Locate `nros-launch-resolve` next to the running `nros` binary (issue 0285).
+/// Locate `nros-launch-resolve` (issue 0285).
 ///
-/// Deliberately NOT a PATH lookup: the whole failure this fixes was a
-/// same-named third-party tool winning PATH. Siblings of the current
-/// executable are the CLI we shipped, so the pairing is exact and unspoofable.
-/// Falls back to the in-tree release path so a developer running
-/// `packages/cli/target/release/nros` from a checkout finds the helper too.
+/// Mirrors `nros_cli_bin()` in `scripts/build/cargo.sh` — the repo's existing
+/// SSoT for finding the CLI — with ONE deliberate omission: no `$PATH` step.
+/// A PATH lookup is precisely the bug this fixes, since an unrelated ROS 2
+/// `play_launch` won that race. Resolution order:
+///
+///   1. `$NROS_LAUNCH_RESOLVE` — explicit override, the twin of `$NROS_CLI`
+///      (packaging, CI, and tests that ship the helper elsewhere);
+///   2. a sibling of the running `nros` — the installed layout;
+///   3. `$NROS_REPO_DIR/packages/cli/nros-launch-resolve/target/release/…`,
+///      then the same path derived by walking up from the running binary —
+///      the per-checkout build, which `cargo.sh` also prefers so each worktree
+///      carries its own tools with no cross-tree skew.
+///
+/// The helper is its OWN cargo workspace, so its binary is under
+/// `nros-launch-resolve/target/release/`, not beside `nros` in
+/// `packages/cli/target/release/`.
 fn launch_resolver_path() -> Option<std::path::PathBuf> {
     resolver_beside(&std::env::current_exe().ok()?)
 }
@@ -483,20 +494,63 @@ fn launch_resolver_path() -> Option<std::path::PathBuf> {
 const LAUNCH_RESOLVER: &str = "nros-launch-resolve";
 
 fn resolver_beside(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    resolver_from(
+        exe,
+        std::env::var_os("NROS_LAUNCH_RESOLVE").map(std::path::PathBuf::from),
+        std::env::var_os("NROS_REPO_DIR").map(std::path::PathBuf::from),
+    )
+}
+
+/// The search itself, pure in its inputs.
+///
+/// Taking the two env values as arguments rather than reading them keeps this
+/// hermetic: the tests below would otherwise race each other through the
+/// process-wide environment, and would also see a real `$NROS_REPO_DIR` from
+/// the developer's shell.
+fn resolver_from(
+    exe: &std::path::Path,
+    explicit: Option<std::path::PathBuf>,
+    repo_dir: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    // 1. Explicit override, mirroring `$NROS_CLI`. A non-existent override
+    //    falls through rather than failing: the caller degrades to the
+    //    committed model, and a stale env var must not be harder to diagnose
+    //    than a missing tool.
+    if let Some(p) = explicit
+        && p.is_file()
+    {
+        return Some(p);
+    }
+
     let dir = exe.parent()?;
 
+    // 2. Installed layout — beside the CLI we shipped.
     let sibling = dir.join(LAUNCH_RESOLVER);
     if sibling.is_file() {
         return Some(sibling);
     }
-    dir.parent()
-        .and_then(|p| p.parent())
-        .map(|cli| {
-            cli.join(LAUNCH_RESOLVER)
-                .join("target")
-                .join("release")
-                .join(LAUNCH_RESOLVER)
-        })
+
+    // 3. Per-checkout build, preferred by cargo.sh for the same reason: each
+    //    worktree carries its own tools, with no cross-tree skew.
+    let in_checkout = |root: &std::path::Path| {
+        root.join("packages")
+            .join("cli")
+            .join(LAUNCH_RESOLVER)
+            .join("target")
+            .join("release")
+            .join(LAUNCH_RESOLVER)
+    };
+    if let Some(root) = repo_dir {
+        let p = in_checkout(&root);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    // `dir` is <repo>/packages/cli/target/release, so <repo> is four
+    // ancestors up (target, cli, packages, repo).
+    dir.ancestors()
+        .nth(4)
+        .map(in_checkout)
         .filter(|p| p.is_file())
 }
 
@@ -2401,76 +2455,107 @@ mod launch_resolver_tests {
     #[test]
     fn finds_the_helper_beside_the_nros_binary() {
         let tmp = tempfile::tempdir().unwrap();
-        let bin = tmp.path().join("bin");
-        let exe = bin.join("nros");
+        let exe = tmp.path().join("bin").join("nros");
         touch(&exe);
-        let helper = bin.join(LAUNCH_RESOLVER);
+        let helper = tmp.path().join("bin").join(LAUNCH_RESOLVER);
         touch(&helper);
 
-        assert_eq!(resolver_beside(&exe), Some(helper));
+        assert_eq!(resolver_from(&exe, None, None), Some(helper));
     }
 
-    /// In-tree layout: `nros` is at `packages/cli/target/release/nros`, but the
-    /// helper is its OWN cargo workspace, so it lands at
-    /// `packages/cli/nros-launch-resolve/target/release/…` instead.
+    /// Per-checkout layout: `nros` is at `packages/cli/target/release/nros`,
+    /// but the helper is its OWN cargo workspace, so it lands under
+    /// `packages/cli/nros-launch-resolve/target/release/` instead. Found via
+    /// `$NROS_REPO_DIR` and via the walk-up, matching `nros_cli_bin()`.
     #[test]
-    fn finds_the_in_tree_helper_from_its_own_workspace_target() {
+    fn finds_the_in_tree_helper_by_repo_dir_and_by_walk_up() {
         let tmp = tempfile::tempdir().unwrap();
-        let cli = tmp.path().join("packages").join("cli");
-        let exe = cli.join("target").join("release").join("nros");
+        let root = tmp.path();
+        let exe = root
+            .join("packages")
+            .join("cli")
+            .join("target")
+            .join("release")
+            .join("nros");
         touch(&exe);
-        let helper = cli
+        let helper = root
+            .join("packages")
+            .join("cli")
             .join(LAUNCH_RESOLVER)
             .join("target")
             .join("release")
             .join(LAUNCH_RESOLVER);
         touch(&helper);
 
-        assert_eq!(resolver_beside(&exe), Some(helper));
+        assert_eq!(
+            resolver_from(&exe, None, Some(root.to_path_buf())),
+            Some(helper.clone()),
+            "$NROS_REPO_DIR should locate the per-checkout helper"
+        );
+        assert_eq!(
+            resolver_from(&exe, None, None),
+            Some(helper),
+            "and the walk-up should find it without the env var"
+        );
+    }
+
+    /// `$NROS_LAUNCH_RESOLVE` wins, mirroring `$NROS_CLI`; a non-existent
+    /// override falls through instead of failing.
+    #[test]
+    fn env_override_wins_and_a_bad_one_falls_through() {
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = tmp.path().join("bin").join("nros");
+        touch(&exe);
+        let sibling = tmp.path().join("bin").join(LAUNCH_RESOLVER);
+        touch(&sibling);
+        let packaged = tmp.path().join("packaged").join(LAUNCH_RESOLVER);
+        touch(&packaged);
+
+        assert_eq!(
+            resolver_from(&exe, Some(packaged.clone()), None),
+            Some(packaged),
+            "the override must win over the sibling"
+        );
+        assert_eq!(
+            resolver_from(&exe, Some(tmp.path().join("nope")), None),
+            Some(sibling),
+            "a bad override must fall through to the normal search"
+        );
     }
 
     /// Issue 0285, the property the whole fix exists for: resolution NEVER
     /// consults `$PATH`. A helper reachable only through PATH must not be
-    /// found — that is precisely how an unrelated `play_launch` hijacked this
+    /// found — that is exactly how an unrelated `play_launch` hijacked this
     /// call and took every platform's fixture build down with it.
     #[test]
     fn a_helper_only_on_path_is_not_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let bin = tmp.path().join("bin");
-        let exe = bin.join("nros");
+        let exe = tmp.path().join("bin").join("nros");
         touch(&exe);
-
-        // The helper exists, but somewhere else entirely — the shape of a
-        // system-installed tool that happens to be on PATH.
-        let elsewhere = tmp.path().join("usr").join("local").join("bin");
-        touch(&elsewhere.join(LAUNCH_RESOLVER));
-        let prev = std::env::var_os("PATH");
-        unsafe {
-            std::env::set_var("PATH", &elsewhere);
-        }
-        let found = resolver_beside(&exe);
-        unsafe {
-            match prev {
-                Some(p) => std::env::set_var("PATH", p),
-                None => std::env::remove_var("PATH"),
-            }
-        }
+        // Exists, but somewhere only PATH would reach.
+        touch(
+            &tmp.path()
+                .join("usr")
+                .join("local")
+                .join("bin")
+                .join(LAUNCH_RESOLVER),
+        );
 
         assert_eq!(
-            found, None,
-            "a helper reachable only via PATH must NOT be used — PATH lookup is \
-             exactly the bug issue 0285 fixes"
+            resolver_from(&exe, None, None),
+            None,
+            "a helper reachable only via PATH must NOT be used"
         );
     }
 
-    /// No helper anywhere is a clean `None` (the caller degrades to the
-    /// committed model rather than failing the build).
+    /// No helper anywhere is a clean `None`, so the caller degrades to the
+    /// committed model rather than failing the build.
     #[test]
     fn absent_helper_is_none() {
         let tmp = tempfile::tempdir().unwrap();
         let exe = tmp.path().join("bin").join("nros");
         touch(&exe);
-        assert_eq!(resolver_beside(&exe), None);
+        assert_eq!(resolver_from(&exe, None, None), None);
     }
 }
 

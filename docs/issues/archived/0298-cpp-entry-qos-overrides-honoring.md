@@ -1,5 +1,5 @@
 ---
-id: 52
+id: 298
 title: C++ typed-entry does not honor per-topic qos_overrides (211.H wave3b)
 status: resolved
 type: tech-debt

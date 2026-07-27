@@ -36,7 +36,7 @@ related: [phase-250, phase-252, rfc-0031, issue-0073]
 > board-crate feature for board-backed/embedded (phase-252 — registry + descriptor gate + every
 > embedded board forwarding `safety-e2e` to its zenoh backend). The hand-written examples +
 > fixture were fixed too; CRC validates end-to-end (`crc=ok`). The C/C++/CMake path
-> (`safety-e2e` is Rust-only) is split out as [issue 0073](0073-safety-e2e-c-cpp-cmake-path-missing.md).
+> (`safety-e2e` is Rust-only) is split out as [issue 0300](0300-safety-e2e-c-cpp-cmake-path-missing.md).
 
 ## Symptom
 

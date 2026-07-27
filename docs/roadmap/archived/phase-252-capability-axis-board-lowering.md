@@ -90,7 +90,7 @@ error (no blind 14-board edit).
   shown to exist, `?`-vs-direct matched to each dep's optionality, and the host `nros-board-native`
   check.
 - **Wave 5 — C/C++ path — FILED (not built).** Tracked as
-  [issue 0073](../issues/0073-safety-e2e-c-cpp-cmake-path-missing.md): a CMake/C
+  [issue 0300](../issues/0300-safety-e2e-c-cpp-cmake-path-missing.md): a CMake/C
   `#define NROS_SYSTEM_SAFETY_E2E` (the registry's `cmake_token` / `c_define` slots, mirroring
   `-DNANO_ROS_RMW`) + a zpico-C safety gate. Deeper, separate.
 

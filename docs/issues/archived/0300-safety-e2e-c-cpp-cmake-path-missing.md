@@ -1,5 +1,5 @@
 ---
-id: 73
+id: 300
 title: safety-e2e is Rust-only — no C/C++/CMake lowering (CRC dead on C/C++ embedded)
 status: resolved
 type: tech-debt

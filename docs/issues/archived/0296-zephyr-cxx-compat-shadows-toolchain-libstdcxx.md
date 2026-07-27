@@ -1,5 +1,5 @@
 ---
-id: 51
+id: 296
 title: Zephyr cxx-compat shims unconditionally shadow the toolchain's real libstdc++ headers
 status: resolved
 type: bug

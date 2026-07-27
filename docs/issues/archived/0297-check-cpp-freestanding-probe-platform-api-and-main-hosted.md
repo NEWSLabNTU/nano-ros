@@ -1,5 +1,5 @@
 ---
-id: 52
+id: 297
 title: check-cpp freestanding C++ probe — missing nros-platform-api include + main.hpp uses hosted std::printf under -ffreestanding
 status: resolved
 type: tech-debt

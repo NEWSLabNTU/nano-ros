@@ -4,7 +4,7 @@ Status: **COMPLETE (Waves 1–3 + 5; Wave 4 no-op — 2026-06-16)** · Implement
 (system.toml is the SSoT; both languages read the same file) + [RFC-0031 §"Generalization"](../design/0031-rmw-selection-and-lowering.md)
 (declared capability axes) · Follows [phase-250](phase-250-safety-params-feature-dimension.md),
 [phase-252](phase-252-capability-axis-board-lowering.md), closes the config-model tail of
-[issue 0072](../issues/0072-safety-e2e-backend-feature-not-lowered.md) / [issue 0073](../issues/0073-safety-e2e-c-cpp-cmake-path-missing.md).
+[issue 0072](../issues/0072-safety-e2e-backend-feature-not-lowered.md) / [issue 0300](../issues/0300-safety-e2e-c-cpp-cmake-path-missing.md).
 
 ## Why
 

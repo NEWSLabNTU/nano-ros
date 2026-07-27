@@ -343,7 +343,7 @@ check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
     check-version-lockstep check-example-fmt \
-    check-codegen-invocation check-string-conventions \
+    check-codegen-invocation check-string-conventions check-issue-ids \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors
     @echo "Fast checks passed!"
@@ -452,6 +452,14 @@ check-codegen-invocation:
 [private]
 check-string-conventions:
     @scripts/ci/string-conventions-check.sh
+
+# Issue-id integrity: ids unique across docs/issues/ + archived/, and each
+# file's `id:` frontmatter matching its filename. Parallel sessions kept
+# picking the same "next free" id — six were duplicated across thirteen files
+# before this gate existed, which made every `See 0051-*` pointer ambiguous.
+[private]
+check-issue-ids:
+    @scripts/ci/issue-ids-check.sh
 
 # Per-platform (board, rmw) dependency-chain resolution — proves each cell's dep
 # chain resolves (nros setup --dry-run + codegen + cargo tree, no compile). The
