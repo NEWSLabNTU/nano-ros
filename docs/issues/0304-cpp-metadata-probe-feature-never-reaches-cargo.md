@@ -1,0 +1,110 @@
+---
+id: 304
+title: "C++ metadata probe fails to link — `NROS_EXTRA_CPP_FEATURES=metadata-mode` never reaches the cargo feature set"
+status: open
+type: bug
+severity: high
+area: cmake, build
+related: [0286]
+---
+
+## Symptom
+
+`nros sync` (and therefore `nros ws sync`) fails for any C++ workspace whose
+components are metadata-probed:
+
+```
+probe_main.cpp:(.text+0x15b): undefined reference to `nros_cpp_metadata_dump'
+collect2: error: ld returned 1 exit status
+gmake[2]: *** [CMakeFiles/nros_metadata_probe.dir/build.make:120: nros_metadata_probe] Error 1
+```
+
+Reproduced 2026-07-28 on `examples/workspaces/cpp` (three components:
+`cpp_add_client_pkg`, `cpp_fib_server_pkg`, …), on a **clean** probe build dir
+(`rm -rf build/nros-metadata` first), so it is not stale build state.
+
+`nros sync` still exits 0 and the launch models resolve — the probe failure is
+reported but does not fail the command, so it is easy to miss.
+
+## Diagnosis
+
+`nros_cpp_metadata_dump` is `#[cfg(feature = "metadata-mode")]`
+(`nros-cpp/src/metadata_hooks.rs`), inside a module gated on `rmw-cffi`
+(`nros-cpp/src/lib.rs:152`). **Both** features must be on for the symbol to
+exist.
+
+The generated probe CMakeLists does the right thing — the variable is set
+before nano-ros is pulled in:
+
+```cmake
+14: set(NROS_EXTRA_CPP_FEATURES "metadata-mode")
+16: find_package(nano_ros REQUIRED)
+20: add_subdirectory(<component pkg> component_pkg)
+```
+
+But the feature never arrives. The cargo fingerprint for the nros-cpp actually
+built by the probe records:
+
+```json
+["alloc","lifecycle-services","param-services","platform-posix",
+ "rmw-cffi","rmw-zenoh-cffi","ros-humble","std"]
+```
+
+`rmw-cffi` IS present, so the module compiles; `metadata-mode` is NOT, so the
+function inside is `cfg`'d away. `nm` on the resulting archive confirms it:
+**137** `nros_cpp_*` symbols are exported and **zero** metadata symbols.
+
+So this is not a missing dependency or a stale artifact — it is the
+`NROS_EXTRA_CPP_FEATURES` hook failing to propagate into the umbrella crate's
+feature list that `NanoRosRuntimeCrate.cmake` assembles.
+
+## Why the obvious "already fixed" answer is wrong
+
+`df81e852e` ("fix(308-W1): the probe's feature var was inert; link the
+component lib") addressed this exact hook, and the comment it left in
+`cmake/NanoRosRuntimeCrate.cmake:238` describes precisely this failure:
+
+> *"a consumer setting a cache variable had NO effect: the metadata probe's
+> `metadata-mode` reached CMakeCache.txt and never a cargo invocation, and the
+> recording backend was silently absent from the link."*
+
+The extension point exists (`if(NROS_EXTRA_CPP_FEATURES) list(APPEND
+_cpp_features ...)`) and the probe sets the variable — yet the feature is still
+absent from the built crate. Something between the probe's directory scope and
+`_nros_runtime_platform_features` is still dropping it. The
+`include()`-inside-a-function scope trap that CLAUDE.md documents for
+`_NROS_ENTRY_DIR` is the shape to check first.
+
+## Impact
+
+Every C++ component silently loses its source-metadata sidecar, so the bake
+falls back to the SystemModel executor bound instead of exact sizing — the
+under-counting failure mode issue 0257 exists to prevent. Because `nros sync`
+exits 0, nothing surfaces this except reading the log.
+
+## Repro
+
+```
+cd examples/workspaces/cpp
+rm -rf build/nros-metadata
+nros sync 2>&1 | grep "undefined reference"
+```
+
+Inspect what cargo actually got:
+
+```
+cd build/nros-metadata/metadata-probe-cmake/<pkg>__<component>
+python3 -c "import json,glob;print(json.load(open(glob.glob(
+  'build/cargo/*/x86_64-unknown-linux-gnu/debug/.fingerprint/nros-cpp-*/lib-nros_cpp.json'
+)[0]))['features'])"
+nm -g --defined-only build/nano_ros/packages/core/nros-cpp/libnros_cpp.a | grep metadata
+```
+
+## Notes
+
+Found while verifying phase-312 W2 (nano-ros re-pointed at the new
+`ros-launch-resolve` layer). Not caused by that work — the failing path is the
+C++ metadata probe, which shares no code with launch resolution, and it
+reproduces independently of the submodule change.
+
+Owned by whoever is landing phase-308's C++ producer.

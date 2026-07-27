@@ -173,6 +173,12 @@ private cargo target dir and rebuilds the whole Rust runtime from scratch: 2.6 G
 build EACH, ~16 GB for a six-component workspace. Runtime config is identical across
 components; one project with N probe executables fixes it. See `0294-*`.
 
+**#304** — the C++ metadata probe fails to link (`undefined reference to
+nros_cpp_metadata_dump`): `NROS_EXTRA_CPP_FEATURES=metadata-mode` is set in the generated probe
+CMakeLists but never reaches the cargo feature set, so the fn is cfg'd away while `rmw-cffi`
+keeps the module compiling. Every C++ component silently loses exact executor sizing, and
+`nros sync` still exits 0. See `0304-*`. (2026-07-28)
+
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.
 The `--exclude` list is manual and duplicated. See `0287-*`.
