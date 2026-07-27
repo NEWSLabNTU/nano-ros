@@ -1,9 +1,10 @@
 # Phase 312 — one probe project per workspace, not per component
 
-**Status (2026-07-28): Draft.** Resolves issue 0294, which blocks phase-308 W1
-from being testable: probing a six-component workspace currently costs ~16 GB
-and six cold Rust builds, so a single wrong hypothesis about the probe takes an
-hour to disprove.
+**Status (2026-07-28): COMPLETE.** W1/W2/W3 landed; issue 0294 closes.
+
+Resolved issue 0294, which had blocked phase-308 W1 from being testable:
+probing a six-component workspace cost ~16 GB and six cold Rust builds, so a
+single wrong hypothesis about the probe took an hour to disprove.
 
 ## The measurement
 
@@ -107,6 +108,23 @@ workspace instead of one pair per component.
 **Done when:** the recorded numbers are in this doc, and a second `nros sync`
 over an unchanged workspace is incremental (the build dir persists).
 
+**Measured on `examples/workspaces/cpp` (six C++ components):**
+
+| | before | after |
+| --- | --- | --- |
+| disk | ~16 GB (2.7 GB × 6, extrapolated) | **2.7 GB** |
+| cold runtime builds | 6 | **1** |
+| `sizes-probe-target-*` pairs | 6 | **1** |
+| wall clock | hours (killed at ~90 min, incomplete) | **59 s** |
+
+A second sync over an unchanged workspace reports `0 rebuilt, 6 already
+current` — the content-addressed provenance stamp short-circuits it, no
+rebuild at all.
+
+The speedup is what made the phase finishable: three further reachability
+defects were found and fixed after this landed, each in one round rather than
+one per hour.
+
 ### W3 — the sidecars phase-308 W1 still owes
 
 With iteration cheap, finish what 0294 was blocking: produce a real C/C++
@@ -116,6 +134,47 @@ actual claim).
 
 **Done when:** `examples/workspaces/cpp` yields six sidecars and the phase-308
 producer-gap ledger drops to zero.
+
+**Done (2026-07-28).** Six sidecars, every field real:
+
+| component | pubs | subs | timers | services |
+| --- | --- | --- | --- | --- |
+| talker | 1 | 0 | 1 | 0 |
+| listener | 0 | 1 | 0 | 0 |
+| add_client | 0 | 0 | 1 | 0 |
+| add_server | 0 | 0 | 0 | 1 |
+| fib_client | 0 | 1 | 1 | 0 |
+| fib_server | 2 | 0 | 1 | 3 |
+
+Both intercepts contributed, which is the design working: subscriptions,
+services and publishers came through the recording RMW backend; the TIMERS on
+four of six components came through the `nros-cpp` executor hooks. Timers never
+reach the RMW, and they are precisely the entity the SystemModel is blind to —
+the whole reason issue 0257 existed.
+
+`language: "cpp"` is populated, the field that was a hardcoded `"rust"` literal
+until phase-308 W2a.
+
+**The consumption side needed ZERO code.**
+`nros_orchestration_ir::sidecar_slots` counts a real C++ sidecar with no
+language branch, because it keys on `(package, executable)` and counts entity
+arrays. Locked in by `counts_a_real_cpp_sidecar_with_no_language_branch`, whose
+fixture is the verbatim shape the probe emitted. Had C++ needed a special case
+there, phase-308's "one mechanism, three front-ends" property would have been
+false.
+
+### Three reachability defects found on the way
+
+All invisible to unit tests, all needing different fixes, all the same lesson —
+"the code exists" is not "the code is in the image":
+
+1. `nros-rmw-metadata` had **no dependents** — nothing linked it at all.
+2. Made a dep, it was **DCE'd out of the rlib** — nothing referenced it.
+3. Force-linked inside `nros-cpp`, it was still **omitted at the final link**: a
+   static archive only contributes objects that resolve an undefined symbol, so
+   the backend sat in `libnros_cpp.a` and never entered the binary. The probe
+   now calls `nros_rmw_metadata_register()` explicitly, which both pulls the
+   object in and registers without depending on `.init_array` ordering.
 
 ## Non-goals
 

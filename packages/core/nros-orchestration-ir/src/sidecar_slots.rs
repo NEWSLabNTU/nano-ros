@@ -103,6 +103,50 @@ mod tests {
         assert!(slots_of_component(&serde_json::json!({ "nodes": [] })).is_none());
     }
 
+    /// phase-308/312 — a REAL C++ sidecar, produced by the CMake probe from
+    /// `examples/workspaces/cpp/src/cpp_fib_server_pkg`. Trimmed to the fields
+    /// this rule reads; every key and shape is verbatim.
+    ///
+    /// The point of this test is that there is NO language branch: the same
+    /// counter that handles Rust sidecars handles this one, because it keys on
+    /// `(package, executable)` and counts entity arrays. If C++ support had
+    /// needed a special case here, the "one mechanism, three front-ends"
+    /// property phase-308 is built on would have been false.
+    #[test]
+    fn counts_a_real_cpp_sidecar_with_no_language_branch() {
+        let doc = serde_json::json!({
+            "version": 1,
+            "package": "cpp_fib_server_pkg",
+            "component": "fib_server",
+            "language": "cpp",
+            "executable": "fib_server",
+            "nodes": [{
+                "id": "fib_server",
+                "declaration_slot": 0,
+                "publishers": [
+                    { "id": "/fibonacci/_action/feedback#4" },
+                    { "id": "/fibonacci/_action/status#5" }
+                ],
+                "subscribers": [],
+                // Recorded by the nros-cpp executor hook — timers never reach
+                // the RMW, and are exactly what the SystemModel cannot see.
+                "timers": [{ "id": "timer0#6", "period_ms": 500, "callback": "timer0" }],
+                // The action server's goal/cancel/result trio, recorded through
+                // the RMW service path.
+                "services": [
+                    { "id": "/fibonacci/_action/send_goal#1" },
+                    { "id": "/fibonacci/_action/cancel_goal#2" },
+                    { "id": "/fibonacci/_action/get_result#3" }
+                ],
+                "actions": []
+            }]
+        });
+        let ((pkg, exec), slots) = slots_of_component(&doc).expect("identified");
+        assert_eq!((pkg.as_str(), exec.as_str()), ("cpp_fib_server_pkg", "fib_server"));
+        // 1 timer + 3 services; the 2 publishers take no callback slot.
+        assert_eq!(slots, 4, "publishers must not count");
+    }
+
     /// Multi-node components contribute every node's slots.
     #[test]
     fn nodes_accumulate() {
