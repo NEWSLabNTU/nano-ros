@@ -11,10 +11,14 @@
 #
 # Usage, from anywhere in the repo checkout:
 #   scripts/build/workspace-fixtures-build.sh <platform> [lang]
+#
+# `NROS_FIXTURE_ID=<id>` narrows the run to ONE manifest row — for iterating on a
+# single fixture without rebuilding its whole lane. Sweeps leave it unset.
 set -euo pipefail
 
 platform="${1:?usage: workspace-fixtures-build.sh <platform> [lang]}"
 lang_filter="${2:-}"
+id_filter="${NROS_FIXTURE_ID:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
@@ -77,7 +81,8 @@ fi
 
 manifest() {
     python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces \
-        --platform "$platform" ${lang_filter:+--lang "$lang_filter"}
+        --platform "$platform" ${lang_filter:+--lang "$lang_filter"} \
+        ${id_filter:+--id "$id_filter"}
 }
 
 profile_dir="$(nros_cargo_target_profile_dir)"
@@ -260,5 +265,5 @@ while IFS= read -r record; do
 done < <(manifest)
 
 if [ "$found" = "0" ]; then
-    echo "No workspace fixtures matched platform=$platform${lang_filter:+ lang=$lang_filter}."
+    echo "No workspace fixtures matched platform=$platform${lang_filter:+ lang=$lang_filter}${id_filter:+ id=$id_filter}."
 fi

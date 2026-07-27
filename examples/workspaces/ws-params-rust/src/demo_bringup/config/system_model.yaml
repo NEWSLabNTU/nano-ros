@@ -1,9 +1,25 @@
 meta:
   version: 1
-# RFC-0052 / phase-296 R4 — resolved model for the params demo. The launch
-# `<param publish_period_ms=250>` rides the node's resolved params (the
-# embedded target has no record.json to read them from); param_services is
-# the capability that registers the ROS 2 parameter services.
+# RFC-0052 / phase-296 R4 — resolved model for the params demo. The node's
+# resolved parameters ride the model (the embedded target has no record.json to
+# read them from); param_services is the capability that registers the ROS 2
+# parameter services.
+#
+# `publish_period_ms` is a deliberate THREE-WAY oracle for the parameter
+# resolution rules, observable on the wire (the node publishes the value it
+# read — see tests/param_live_read_e2e.rs):
+#
+#   * `param_sources` is ORDERED and the file comes after the inline value, so
+#     the file wins — ROS 2's rule (play_launch issue 0007 / phase 54).
+#     Ordering lost => 250 reaches the wire.
+#   * Inside that file the node-specific block beats `/**` even though `/**` is
+#     written LAST: section precedence is by SPECIFICITY, not file order
+#     (rlm 48e8d70). Specificity lost => 999 reaches the wire.
+#   * Both correct => 120.
+#
+# `params` / `params_files` are the legacy split views of the same two sources,
+# kept so a consumer pinned before `param_sources` still resolves something
+# sane. They cannot express the ordering — that is the whole point.
 structure:
   scopes:
     /: {}
@@ -14,6 +30,14 @@ structure:
       exec: param_talker
       params:
         publish_period_ms: 250
+      params_files:
+        - "param_talker:\n  ros__parameters:\n    publish_period_ms: 120\n/**:\n  ros__parameters:\n    publish_period_ms: 999\n"
+      param_sources:
+        - kind: inline
+          name: publish_period_ms
+          value: 250
+        - kind: file
+          content: "param_talker:\n  ros__parameters:\n    publish_period_ms: 120\n/**:\n  ros__parameters:\n    publish_period_ms: 999\n"
 execution:
   features:
     - param_services
