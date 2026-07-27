@@ -74,16 +74,10 @@ pub use runtime::{
 };
 pub use tier::{TierSpec, freertos_priority_for, posix_nice_for, threadx_priority_for};
 
-/// Phase 214.K.1 — backward-compat alias. The board-side dispatch
-/// sink was renamed `NodeRuntime` → `NodeDispatchRuntime` to
-/// disambiguate from the user-facing `nros::NodeRuntime` metadata
-/// trait. This alias stays for one release cycle so external impl
-/// callers (per-board crates outside the tree) get a clear
-/// deprecation arrow rather than a hard break.
-#[deprecated(
-    note = "renamed to NodeDispatchRuntime — Phase 214.K.1. Update imports + impls within one release cycle."
-)]
-pub use runtime::NodeDispatchRuntime as NodeRuntime;
+// Phase 313 W1 (issue #0243) — the phase-214.K.1 `NodeRuntime` →
+// `NodeDispatchRuntime` deprecation alias is removed (its one-release cycle long
+// elapsed; the only consumers were the internal re-exports). Impls use
+// `NodeDispatchRuntime` directly.
 pub use transport::TransportBringup;
 
 /// Super-trait every board impl carries (mirrors

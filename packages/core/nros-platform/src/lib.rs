@@ -41,10 +41,8 @@ pub use board::{
     NullNodeRuntime, RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback, TierSpec,
     TransportBringup, freertos_priority_for, posix_nice_for, threadx_priority_for,
 };
-// Phase 214.K.1 — backward-compat alias at the crate root. See
-// `board::NodeRuntime` for the deprecation note.
-#[allow(deprecated)]
-pub use board::NodeRuntime;
+// Phase 313 W1 (issue #0243) — the deprecated `NodeRuntime` crate-root alias is
+// removed; consumers use `NodeDispatchRuntime`.
 // Phase 212.N.2 — `NetworkError` is the return type any external
 // `NetworkWait` impl carries, so it needs to be reachable at the
 // crate root. The `board` module stays private; this re-export keeps

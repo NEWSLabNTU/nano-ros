@@ -75,9 +75,9 @@ pub struct SignaledCallback<'a> {
 /// different layers (board-side dispatch sink vs user-side metadata
 /// declaration sink) and the previous shared name forced explicit
 /// `nros_platform::` / `nros::` qualification at every use site +
-/// produced confusing `impl NodeRuntime for X` ambiguity. A
-/// `#[deprecated]` `pub use NodeDispatchRuntime as NodeRuntime;`
-/// re-export sits at the crate module level for one release cycle.
+/// produced confusing `impl NodeRuntime for X` ambiguity. The
+/// phase-214.K.1 `NodeRuntime` deprecation alias was removed in phase-313
+/// W1 (issue #0243); use `NodeDispatchRuntime` directly.
 pub trait NodeDispatchRuntime {
     /// Drive the underlying executor for at most `timeout_ms`
     /// milliseconds. `Ok(())` on a clean spin (including timeout);
