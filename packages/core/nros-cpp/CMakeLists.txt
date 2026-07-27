@@ -83,6 +83,18 @@ endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
 
+# phase-312 — extension point for callers needing an extra nros-cpp feature.
+#
+# NOTE: this is the SECOND place a `_cpp_features` list is assembled for the
+# same crate; NanoRosRuntimeCrate.cmake builds another for the workspace
+# umbrella. A consumer that sets the hook only there gets nothing on the
+# direct-import path used here, which is how the metadata probe linked a
+# libnros_cpp.a with no `nros_cpp_metadata_dump` in it. Keep the two in sync,
+# or better, collapse them.
+if(NROS_EXTRA_CPP_FEATURES)
+    list(APPEND _cpp_features ${NROS_EXTRA_CPP_FEATURES})
+endif()
+
 # Phase 241.D3-rev (W9) — enable param / lifecycle on the hosted C++ umbrella (the
 # executor headers expose them; the native `parameters` example uses them). Forwards
 # to nros-c. alloc-gated → hosted only; embedded opt-in.
