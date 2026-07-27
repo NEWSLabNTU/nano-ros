@@ -1,6 +1,7 @@
 # Phase 308 — the C/C++ source-metadata producer
 
-**Status (2026-07-26): W2 (the adapter) COMPLETE. W1/W3/W4 remain.** Split out of phase-307 W3 once the Rust half
+**Status (2026-07-27): W2 IMPLEMENTED BUT NOT YET REACHABLE END-TO-END.
+W1/W3/W4 remain.** Split out of phase-307 W3 once the Rust half
 landed and the C/C++ half proved phase-sized on its own. Phase-307 delivered
 the producer (W1), the trigger (W2), the consumer (W4), the coverage gate (W5)
 and the bake-time regression test (W6 lane 1) for **Rust**. C and C++ node
@@ -179,7 +180,27 @@ carries the C/C++ summaries (`cmake_component_metadata`) and already makes them
 component declarations — phase-307 W5's gate asserts it — so the discovery half
 is done; only the build+run half is missing.
 
-### W2 — the adapter — DONE (2026-07-26)
+### W2 — the adapter — implemented 2026-07-26; reachability corrected 2026-07-27
+
+**Correction (2026-07-27).** This wave was first recorded as DONE. It was not:
+`nros-rmw-metadata` had **no dependents**. Nothing linked it, so its
+`.init_array` self-registration was never in any image and `NROS_RMW=metadata`
+would have resolved to an unknown backend — the probe could not have opened a
+session at all. Fixed by making it an optional dep of `nros-cpp` pulled in only
+by `metadata-mode` (so firmware still never links it).
+
+The wave's unit tests all passed throughout, because they call the backend
+directly. **Linkage is exactly what a unit test cannot see.**
+
+This is the same defect class as W1's original bug: there,
+`[package.metadata.nros.node]` was parsed for years and never turned into a
+declaration; here, a backend was written and never linked. Both are "the piece
+exists" mistaken for "the piece is reachable", and both survived because the
+tests exercised the piece rather than the path. **No C or C++ sidecar has been
+produced yet** — every claim below rests on unit tests until W1's emitter
+exercises the whole path.
+
+
 
 Landed in four commits:
 
@@ -207,6 +228,18 @@ Landed in four commits:
 
 Layer discipline holds: neither `nros-rmw-metadata` nor `nros-cpp`'s hooks
 contain JSON, a schema struct, or slot arithmetic.
+
+**Still unvalidated after W2:**
+
+1. No C/C++ sidecar has ever been produced. The orphan-crate bug is direct
+   evidence that passing unit tests do not establish this.
+2. The probe's cmake link path is untested — it must `find_package(nano_ros)`
+   and link `libnros_cpp.a` built with `metadata-mode`, a feature combination
+   no existing build produces.
+3. Issue 0286's lesson may have a C/C++ analogue. Upstream found Rust probes
+   fail for board-coupled crates because `[unstable] build-std` is not
+   target-scoped; `probe_blocker()` covers the Rust path only. A C/C++ node
+   package whose CMakeLists pulls board configuration could hit the same wall.
 
 **Failure policy throughout:** a refused record fails the create (backend) or
 panics (hooks). A dropped entity is an under-counted sidecar is an under-sized
