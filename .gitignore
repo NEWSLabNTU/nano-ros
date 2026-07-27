@@ -103,3 +103,11 @@ examples/workspaces/**/config/*.record.json
 # build artifacts (one per Node pkg, `<pkg>/metadata/<component>.json`), derived
 # from the pkg's own `Component::register` — never hand-edited, never committed.
 examples/**/metadata/*.json
+
+# Orphaned cbindgen temp headers. `write_cbindgen_header_atomically`
+# (nros-build-helpers) writes `.<header>.tmp.<pid>` NEXT TO the real header,
+# then renames it into place (or removes it when the content is unchanged).
+# A build killed between the write and that rename leaves the temp behind in
+# the SOURCE tree, where a `git add -A` will happily commit it — which is
+# exactly how `.nros_cpp_ffi.h.tmp.229021` reached main.
+packages/core/*/include/nros/.*.tmp.*
