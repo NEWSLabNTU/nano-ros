@@ -1,11 +1,12 @@
 ---
 id: 304
 title: "C++ metadata probe fails to link — `NROS_EXTRA_CPP_FEATURES=metadata-mode` never reaches the cargo feature set"
-status: open
+status: resolved
 type: bug
 severity: high
 area: cmake, build
-related: [0286]
+related: [0286, 0305]
+resolved_in: "issue-0304 (hook added to the second nros-cpp build path)"
 ---
 
 ## Symptom
@@ -108,3 +109,49 @@ C++ metadata probe, which shares no code with launch resolution, and it
 reproduces independently of the submodule change.
 
 Owned by whoever is landing phase-308's C++ producer.
+
+## Resolution (2026-07-28)
+
+There are **two** ways nros-cpp gets built, and the hook was only on one.
+
+- `nros_workspace()` synthesises a runtime umbrella and appends
+  `NROS_EXTRA_CPP_FEATURES` there (`cmake/NanoRosRuntimeCrate.cmake:241`).
+- A plain `find_package(nano_ros)` + `add_subdirectory` — which is exactly what
+  the generated probe project does — builds nros-cpp through
+  `packages/core/nros-cpp/CMakeLists.txt`, which built `_cpp_features` from
+  scratch at line 84 and consulted no hook.
+
+So `df81e852e` added the extension point to the path the probe does not take.
+The probe's `set(NROS_EXTRA_CPP_FEATURES "metadata-mode")` was read by nothing,
+`nros_cpp_metadata_dump` stayed `cfg`'d out, and the link failed.
+
+Fix: the same `if(NROS_EXTRA_CPP_FEATURES) list(APPEND ...)` block now exists on
+the second path too.
+
+Receipt — the probe's nros-cpp feature set before and after:
+
+```
+- ["alloc","lifecycle-services","param-services","platform-posix",
+   "rmw-cffi","rmw-zenoh-cffi","ros-humble","std"]
++ ["alloc","lifecycle-services","metadata-mode","param-services",
+   "platform-posix","rmw-cffi","rmw-zenoh-cffi","ros-humble","std"]
+```
+
+`nm` on the resulting archive now finds the metadata symbol, and the probe
+links and runs.
+
+Also fixed in passing: `packages/testing/nros-tests` still path-dep'd
+`ros-launch-manifest` at its pre-phase-312 location, which broke the probe's
+cargo resolution outright. A W2 miss.
+
+## What this does NOT fix
+
+The probe now **links and runs**, but exits non-zero because nothing was
+recorded — `nros_cpp_metadata_dump` returns -2 for "recorded nothing", which is
+deliberately an error ("a component that declared no entities either failed to
+run its declaration path or has none, and both are bugs the driver must
+surface"). So sidecars still are not produced.
+
+That is a separate defect in the recording path, not in feature propagation,
+and it was previously masked by the link failure. It belongs with phase-308's
+C++ producer work and should be filed or folded there.
