@@ -147,6 +147,31 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
+**#309** — count-based e2e proofs cannot detect a WRONG configuration, only an absent one:
+`Proof::QosMatchedCount` guarded the QoS cells for three phases while issue 0306 made every
+declarative entity run `QosSettings::default()`, because default-to-default delivers exactly as many
+messages as a QoS-matched pair. Same shape produced #307 and #308. The two e2es added this week show
+the fix pattern (observe the VALUE / the advertised profile, and mutation-check it). Audit which
+cells would still pass with their feature removed. See `0309-*`. (2026-07-28)
+
+**#310** — `cargo +nightly fmt --all` reformats vendored submodule sources (they are path-dep
+workspace members), leaving the submodule `-dirty` and blocking `git rebase` with an error that never
+mentions formatting. `.clang-format-ignore` guards this class for C/C++; Rust has no equivalent. See
+`0310-*`. (2026-07-28)
+
+Recently resolved: **#308** — a model's `qos_overrides.*` configured QoS on a C++ image and silently
+nothing on a C or Rust one. `emit_c` had no QoS code at all; the Rust path had no MECHANISM (overrides
+lived on `NodeHandle`, while components install through the executor). `plan_from_model` also built
+every node with an empty table, so even C++ got nothing on the model path. Both halves fixed;
+`qos_override_e2e` now covers it. Filed retroactively — it shipped and was cross-language.
+See `0308-*`. (2026-07-28)
+
+Recently resolved: **#307** — model-path parameter resolution diverged from rcl in two ways: a param
+file's sections merged in TEXTUAL order (so a `/**` block written last beat the node's own), and
+`ParamValue` → String rendered `1.0` as `"1"`, which the runtime re-types as INTEGER. The specificity
+rule HAD been implemented correctly — in the copy phase-296 retired; the copy that shipped never had
+it. Fixed by single-sourcing both in the model crate. Filed retroactively. See `0307-*`. (2026-07-28)
+
 Recently resolved: **#306** — a declarative Rust node's per-entity QoS was DROPPED: `EntityMetadata.qos`
 existed, the declarative API populated it, and `ExecutorSink::create_entity` never read it — every
 publisher/subscription ran `QosSettings::default()`. `ws-qos-rust` had demonstrated "the visible
