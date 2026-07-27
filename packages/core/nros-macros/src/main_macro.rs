@@ -65,7 +65,7 @@ struct MainArgs {
     /// RFC-0052 / phase-296 R2 — `model = "<bringup_pkg>"` or
     /// `model = "<bringup_pkg>:<file.yaml>"` (default file
     /// `config/system_model.yaml`). The CANONICAL path: bake from a
-    /// play_launch-resolved SystemModel committed in the bringup pkg
+    /// resolved SystemModel committed in the bringup pkg
     /// instead of re-parsing launch XML + system.toml. Mutually exclusive
     /// with `launch`.
     model: Option<LitStr>,
@@ -472,7 +472,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = if let Some(model_lit) = &args.model {
         // RFC-0052 / phase-296 R2 — the CANONICAL arm: bake from a
-        // play_launch-resolved SystemModel committed in the bringup pkg. The
+        // resolved SystemModel committed in the bringup pkg. The
         // model's execution layer already carries the resolved tiers +
         // bindings + params, so this arm never touches launch XML or
         // system.toml (the tier resolution reuses the SAME
@@ -516,7 +516,8 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 model_lit.span(),
                 format!(
                     "nros::main!: SystemModel not found: `{}` — resolve it with \
-                     `play_launch resolve <launch> --system <system.toml> -o {}`",
+                     `nros-launch-resolve <launch> --system <system.toml> -o {}` \
+                     (built by `just setup-launch-resolve`)",
                     model_path.display(),
                     model_rel
                 ),
@@ -894,17 +895,17 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
             Some(launch_lit) => {
                 // phase-296 R-code.1 — the launch arm is REMOVED. The canonical
-                // path bakes from a play_launch-resolved SystemModel committed
-                // in the bringup pkg. Resolve one and swap the argument:
-                //   play_launch resolve <bringup>/launch/<file>.launch.xml \
+                // path bakes from a resolved SystemModel committed in the
+                // bringup pkg. Resolve one and swap the argument:
+                //   nros-launch-resolve <bringup>/launch/<file>.launch.xml \
                 //       [--system <bringup>/system.toml] \
                 //       -o <bringup>/config/system_model.yaml
                 //   nros::main!(model = "<bringup>");
                 return Err(syn::Error::new(
                     launch_lit.span(),
                     "nros::main!: the `launch = …` arm was removed (phase-296 R4) — \
-                     the canonical input is a play_launch-resolved SystemModel. \
-                     Resolve one (`play_launch resolve <bringup>/launch/<file> \
+                     the canonical input is a resolved SystemModel. \
+                     Resolve one (`nros-launch-resolve <bringup>/launch/<file> \
                      [--system <bringup>/system.toml] -o \
                      <bringup>/config/system_model.yaml`), commit it, and use \
                      `nros::main!(model = \"<bringup>\")` \

@@ -88,7 +88,7 @@ fn launch_arm_is_a_removal_error() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("removed") && stderr.contains("play_launch resolve"),
+        stderr.contains("removed") && stderr.contains("nros-launch-resolve"),
         "expected the removal diagnostic naming the resolve command, stderr:\n{stderr}",
     );
 }

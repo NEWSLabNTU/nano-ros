@@ -107,9 +107,7 @@
     ),
     all(feature = "ros-iron", feature = "ros-jazzy"),
 ))]
-compile_error!(
-    "`ros-{humble,iron,jazzy}` are mutually exclusive — select one ROS edition."
-);
+compile_error!("`ros-{humble,iron,jazzy}` are mutually exclusive — select one ROS edition.");
 
 #[cfg(feature = "std")]
 extern crate std;

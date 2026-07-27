@@ -470,23 +470,34 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
 /// Falls back to the in-tree release path so a developer running
 /// `packages/cli/target/release/nros` from a checkout finds the helper too.
 fn launch_resolver_path() -> Option<std::path::PathBuf> {
-    const HELPER: &str = "nros-launch-resolve";
-    let exe = std::env::current_exe().ok()?;
+    resolver_beside(&std::env::current_exe().ok()?)
+}
+
+/// The lookup itself, parameterised on the `nros` binary's own path so it can
+/// be tested without spawning anything.
+///
+/// Two locations, both derived from `exe` — never `$PATH`:
+/// 1. a sibling (installed layout: `nros` and the helper side by side);
+/// 2. `../../nros-launch-resolve/target/release/` (in-tree: the helper is its
+///    own cargo workspace, so it does NOT land in `packages/cli/target/`).
+const LAUNCH_RESOLVER: &str = "nros-launch-resolve";
+
+fn resolver_beside(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     let dir = exe.parent()?;
 
-    let sibling = dir.join(HELPER);
+    let sibling = dir.join(LAUNCH_RESOLVER);
     if sibling.is_file() {
         return Some(sibling);
     }
-    // In-tree layout: the helper is its own cargo workspace, so its binary
-    // lands under `packages/cli/nros-launch-resolve/target/release/`, not
-    // beside `nros` in `packages/cli/target/release/`.
-    let in_tree = dir
-        .parent()
+    dir.parent()
         .and_then(|p| p.parent())
-        .map(|cli| cli.join(HELPER).join("target").join("release").join(HELPER))
-        .filter(|p| p.is_file());
-    in_tree
+        .map(|cli| {
+            cli.join(LAUNCH_RESOLVER)
+                .join("target")
+                .join("release")
+                .join(LAUNCH_RESOLVER)
+        })
+        .filter(|p| p.is_file())
 }
 
 fn generate_bridge_configs(
@@ -2360,6 +2371,92 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
 // =============================================================================
 // Phase 210.D.1 regression tests — `[patch.crates-io]` dedup writer.
 // =============================================================================
+
+#[cfg(test)]
+mod launch_resolver_tests {
+    use super::*;
+
+    fn touch(path: &std::path::Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "#!/bin/sh\n").unwrap();
+    }
+
+    /// Installed layout: the helper sits beside the `nros` binary.
+    #[test]
+    fn finds_the_helper_beside_the_nros_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        let exe = bin.join("nros");
+        touch(&exe);
+        let helper = bin.join(LAUNCH_RESOLVER);
+        touch(&helper);
+
+        assert_eq!(resolver_beside(&exe), Some(helper));
+    }
+
+    /// In-tree layout: `nros` is at `packages/cli/target/release/nros`, but the
+    /// helper is its OWN cargo workspace, so it lands at
+    /// `packages/cli/nros-launch-resolve/target/release/…` instead.
+    #[test]
+    fn finds_the_in_tree_helper_from_its_own_workspace_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cli = tmp.path().join("packages").join("cli");
+        let exe = cli.join("target").join("release").join("nros");
+        touch(&exe);
+        let helper = cli
+            .join(LAUNCH_RESOLVER)
+            .join("target")
+            .join("release")
+            .join(LAUNCH_RESOLVER);
+        touch(&helper);
+
+        assert_eq!(resolver_beside(&exe), Some(helper));
+    }
+
+    /// Issue 0285, the property the whole fix exists for: resolution NEVER
+    /// consults `$PATH`. A helper reachable only through PATH must not be
+    /// found — that is precisely how an unrelated `play_launch` hijacked this
+    /// call and took every platform's fixture build down with it.
+    #[test]
+    fn a_helper_only_on_path_is_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        let exe = bin.join("nros");
+        touch(&exe);
+
+        // The helper exists, but somewhere else entirely — the shape of a
+        // system-installed tool that happens to be on PATH.
+        let elsewhere = tmp.path().join("usr").join("local").join("bin");
+        touch(&elsewhere.join(LAUNCH_RESOLVER));
+        let prev = std::env::var_os("PATH");
+        unsafe {
+            std::env::set_var("PATH", &elsewhere);
+        }
+        let found = resolver_beside(&exe);
+        unsafe {
+            match prev {
+                Some(p) => std::env::set_var("PATH", p),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+
+        assert_eq!(
+            found, None,
+            "a helper reachable only via PATH must NOT be used — PATH lookup is \
+             exactly the bug issue 0285 fixes"
+        );
+    }
+
+    /// No helper anywhere is a clean `None` (the caller degrades to the
+    /// committed model rather than failing the build).
+    #[test]
+    fn absent_helper_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = tmp.path().join("bin").join("nros");
+        touch(&exe);
+        assert_eq!(resolver_beside(&exe), None);
+    }
+}
 
 #[cfg(test)]
 mod patch_block_tests {
