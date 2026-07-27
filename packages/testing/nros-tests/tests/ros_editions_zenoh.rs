@@ -159,14 +159,13 @@ fn nano_action_client_to_ros_server_zenoh() {
     );
 }
 
-// KNOWN LIMITATION (issue #0292): a nano-ros zpico ACTION SERVER is not
-// discovered by a `rmw_zenoh_cpp` 0.2.9 client — `ros2 action list`/`info` show
-// zero servers, so `send_goal` finds no server and hangs. The action ENTITY
-// liveliness/graph tokens zpico emits don't match rmw_zenoh 0.2.x's action
-// schema (the send_goal/get_result service + status/feedback tokens). Distinct
-// from #0291 (the type-hash keyexpr, proven for pub/sub + service + the action
-// CLIENT direction, all green). Un-ignore when #0292 lands.
-#[ignore = "issue #0292: nano-ros zenoh action server not discovered by rmw_zenoh_cpp 0.2.9"]
+// Issue #0292 (RESOLVED) — a nano-ros zpico ACTION SERVER now interops with a
+// stock `rmw_zenoh_cpp` client. Two bugs fixed: (1) all entity liveliness tokens
+// shared a hardcoded id `0/11`, so the server's five entities collided and the
+// action never assembled (`ros2 action list` empty); each entity now gets a
+// unique per-session id. (2) the send_goal/get_result services advertised the
+// ACTION hash instead of their own SERVICE hash, so a client's query keyexpr
+// missed; codegen now emits `RosAction::{SEND_GOAL,GET_RESULT}_SERVICE_HASH`.
 #[test]
 fn ros_client_to_nano_action_server_zenoh() {
     let (env, bin, domain, locator) = ros_env::e2e_setup_zenoh("action-server");

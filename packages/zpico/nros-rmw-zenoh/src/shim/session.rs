@@ -114,6 +114,13 @@ pub struct ZenohSession {
     /// wakes from `wake_cv` instead of polling on a deadline.
     wake_cb: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
     wake_ctx: core::sync::atomic::AtomicPtr<core::ffi::c_void>,
+    /// Issue #0292 — monotonic per-session entity id for the `<node_id>/<id>`
+    /// field of an entity liveliness token. rmw_zenoh keys graph entities by
+    /// `(zid, node_id, entity_id)`; a hardcoded id made every entity collide, so
+    /// an action server's five entities (3 services + feedback/status pubs)
+    /// deduped to ONE and the action never assembled (`ros2 action list` empty).
+    /// Starts at 1 (0 is the node's own id, `PROTO_VERSION_NODE = "0/0"`).
+    entity_counter: core::sync::atomic::AtomicU32,
 }
 
 impl ZenohSession {
@@ -254,6 +261,7 @@ impl ZenohSession {
             per_node_liveliness: heapless::Vec::new(),
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            entity_counter: core::sync::atomic::AtomicU32::new(1),
         };
 
         if !config.node_name.is_empty() {
@@ -340,7 +348,7 @@ impl ZenohSession {
             return None;
         }
 
-        self.declare_entity_liveliness(|zid| {
+        self.declare_entity_liveliness(|zid, _entity_id| {
             Ros2Liveliness::node_keyexpr::<256>(domain_id, zid, namespace, node_name)
         })
     }
@@ -361,13 +369,20 @@ impl ZenohSession {
         !cfg!(feature = "no-liveliness")
     }
 
-    /// Helper: build a liveliness keyexpr using a closure and declare it.
+    /// Helper: build a liveliness keyexpr using a closure and declare it. The
+    /// closure receives a freshly-allocated per-session entity id (issue #0292)
+    /// for the `<node_id>/<id>` token field; entity builders embed it so each
+    /// entity is graph-distinct, while the node builder ignores it (nodes use the
+    /// fixed `0/0`).
     fn declare_entity_liveliness(
         &self,
-        build_keyexpr: impl FnOnce(&ZenohId) -> heapless::String<256>,
+        build_keyexpr: impl FnOnce(&ZenohId, u32) -> heapless::String<256>,
     ) -> Option<LivelinessToken> {
         let zid = self.context.zid().ok()?;
-        let keyexpr = build_keyexpr(&zid);
+        let entity_id = self
+            .entity_counter
+            .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        let keyexpr = build_keyexpr(&zid, entity_id);
 
         #[cfg(feature = "std")]
         log::debug!("liveliness keyexpr: {}", keyexpr.as_str());
@@ -460,10 +475,11 @@ impl Session for ZenohSession {
             .then_some(())
             .and_then(|_| {
                 topic.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid| {
+                    self.declare_entity_liveliness(|zid, entity_id| {
                         Ros2Liveliness::publisher_keyexpr::<256>(
                             topic.domain_id,
                             zid,
+                            entity_id,
                             topic.namespace,
                             node_name,
                             topic,
@@ -491,10 +507,11 @@ impl Session for ZenohSession {
             .then_some(())
             .and_then(|_| {
                 topic.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid| {
+                    self.declare_entity_liveliness(|zid, entity_id| {
                         Ros2Liveliness::subscriber_keyexpr::<256>(
                             topic.domain_id,
                             zid,
+                            entity_id,
                             topic.namespace,
                             node_name,
                             topic,
@@ -527,10 +544,11 @@ impl Session for ZenohSession {
             .then_some(())
             .and_then(|_| {
                 service.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid| {
+                    self.declare_entity_liveliness(|zid, entity_id| {
                         Ros2Liveliness::service_server_keyexpr::<256>(
                             service.domain_id,
                             zid,
+                            entity_id,
                             service.namespace,
                             node_name,
                             service,
@@ -561,10 +579,11 @@ impl Session for ZenohSession {
             .then_some(())
             .and_then(|_| {
                 service.node_name.and_then(|node_name| {
-                    self.declare_entity_liveliness(|zid| {
+                    self.declare_entity_liveliness(|zid, entity_id| {
                         Ros2Liveliness::service_client_keyexpr::<256>(
                             service.domain_id,
                             zid,
+                            entity_id,
                             service.namespace,
                             node_name,
                             service,

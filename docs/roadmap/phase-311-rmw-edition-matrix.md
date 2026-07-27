@@ -2,8 +2,7 @@
 
 **Status (2026-07-27): W1/W3/W3.5/W4/W5/W6/W7 landed — XRCE full (jazzy+iron) +
 Zenoh (jazzy) both green.** Delivered matrix: **{jazzy, iron} × {cyclone, xrce}**
-(4 cells, pub/sub+service+action both ways) **+ {jazzy} × zenoh** (5/6 — ROS→nano
-action server is #0292). All via `just ros_editions ci <distro>`.
+(4 cells, pub/sub+service+action both ways) **+ {jazzy} × zenoh** (6/6; #0292 fixed). All via `just ros_editions ci <distro>`.
 
 **W5 (zenoh) resolved the #0291 premise (2026-07-27):** the zenoh version gap
 was a red herring — the wire is proto `0x09` on both sides (zpico 1.7.2 handshakes
@@ -175,8 +174,9 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
   `ROS_DOMAIN_ID`/`NROS_DOMAIN_ID` at runtime (unlike cyclone), and the domain is
   the first keyexpr segment, so the peer runs on domain 0 too. The lane is serial
   (one host router on tcp/7447).
-- **Verified GREEN:** jazzy **5/6** — pub/sub both, service both, action client.
-  ROS→nano action SERVER (`#[ignore]`) is a distinct graph-token gap → **#0292**.
+- **Verified GREEN:** jazzy **6/6** — pub/sub, service, action, both directions.
+  (ROS→nano action SERVER needed the #0292 fix: per-session entity-id + the
+  send_goal/get_result SERVICE hashes — now landed.)
   iron/humble ship no `rmw_zenoh_cpp` → the lane `skip!`s loudly.
 - **Acceptance met** for the pub/sub minimum both ways vs a live `rmw_zenoh_cpp`
   jazzy peer, using the real RIHS01 keyexpr (closes the phase-41 residual on the

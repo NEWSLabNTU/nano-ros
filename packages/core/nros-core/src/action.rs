@@ -81,6 +81,20 @@ pub trait RosAction: Sized {
     /// Type hash for discovery (RIHS format)
     const ACTION_HASH: &'static str;
 
+    /// RIHS hash of the `<Action>_SendGoal` SERVICE — the value a stock
+    /// `rmw_zenoh_cpp` client puts in the send_goal service keyexpr, distinct
+    /// from [`ACTION_HASH`](Self::ACTION_HASH). A nano-ros action server must
+    /// advertise it (not the action hash) or a ROS 2 client's `send_goal` query
+    /// keyexpr won't match the server's queryable (issue #0292). Generated
+    /// `impl RosAction` sets the real per-action value on Iron+; the default
+    /// keeps the historical (action-hash) behavior for hand-written impls and
+    /// Humble (where the placeholder hash makes all channels equal anyway).
+    const SEND_GOAL_SERVICE_HASH: &'static str = Self::ACTION_HASH;
+
+    /// RIHS hash of the `<Action>_GetResult` SERVICE (issue #0292; see
+    /// [`SEND_GOAL_SERVICE_HASH`](Self::SEND_GOAL_SERVICE_HASH)).
+    const GET_RESULT_SERVICE_HASH: &'static str = Self::ACTION_HASH;
+
     /// Register the fixed ROS 2 action-protocol message types this action needs
     /// at runtime beyond its own 8 envelopes — the `action_msgs` types the
     /// cancel/status plumbing serializes (`CancelGoal_{Request,Response}`,

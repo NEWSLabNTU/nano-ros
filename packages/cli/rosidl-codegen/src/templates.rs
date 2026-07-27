@@ -315,6 +315,12 @@ pub struct ActionNrosTemplate<'a> {
     pub get_result_response_type_hash: &'a str,
     pub feedback_message_type_hash: &'a str,
     pub action_hash: &'a str,
+    /// Issue #0292 — the `<Action>_SendGoal` / `<Action>_GetResult` SERVICE
+    /// hashes (distinct from `action_hash`), emitted as `SEND_GOAL_SERVICE_HASH`
+    /// / `GET_RESULT_SERVICE_HASH` so the zenoh service keyexpr matches a stock
+    /// `rmw_zenoh_cpp` peer.
+    pub send_goal_service_hash: &'a str,
+    pub get_result_service_hash: &'a str,
     pub goal_fields: Vec<NrosField>,
     pub goal_constants: Vec<MessageConstant>,
     pub result_fields: Vec<NrosField>,

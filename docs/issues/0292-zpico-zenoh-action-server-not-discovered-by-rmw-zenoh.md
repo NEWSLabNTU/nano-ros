@@ -1,14 +1,48 @@
 ---
 id: 292
 title: "nano-ros zpico action SERVER not discovered by a rmw_zenoh_cpp 0.2.9 client (action liveliness/graph tokens mismatch)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: rmw
 related: [phase-311, phase-41, 291]
 ---
 
-## Summary
+## RESOLUTION (2026-07-27)
+
+TWO independent bugs, both confirmed by capturing zpico's vs a native
+`rmw_zenoh_cpp` server's liveliness tokens:
+
+1. **Entity-id collision.** The `<node_id>/<entity_id>` field of EVERY entity
+   liveliness token was the hardcoded constant `PROTO_VERSION_TOPIC = "0/11"`
+   (`nros-rmw-zenoh/src/shim/mod.rs`). rmw_zenoh's graph_cache keys entities by
+   `(zid, node_id, entity_id)`, so an action server's five entities (3 services
+   + feedback/status pubs) all collided at id 11 and deduped to ONE — the action
+   never assembled (`ros2 action list` empty). Fix: a per-session monotonic
+   `entity_counter` on `ZenohSession`, threaded through `declare_entity_liveliness`
+   into the four entity keyexpr builders (`0/{entity_id}`); the node stays `0/0`.
+
+2. **Wrong service hash.** The send_goal / get_result services advertised
+   `A::ACTION_HASH` (the top action hash) instead of their own SERVICE hash
+   (`<Action>_SendGoal` / `<Action>_GetResult`), so a client's send_goal /
+   get_result query keyexpr `<domain>/<svc>/<type>/<hash>` missed the server's
+   queryable (declared concretely, no hash wildcard). Fix: the RIHS01 engine
+   (`rosidl_codegen::rihs::ActionTypeHashes`) now emits `send_goal_service` /
+   `get_result_service` (verified byte-for-byte vs the live-Jazzy
+   `srv-hashes.txt` LookupTransform fixture); codegen emits them as
+   `RosAction::{SEND_GOAL,GET_RESULT}_SERVICE_HASH` (default = `ACTION_HASH` so
+   hand-written impls + Humble are unchanged); `nros-node`'s action-server paths
+   consume them, and the feedback topic now uses
+   `A::FeedbackMessage::TYPE_HASH`. Only send_goal + get_result are on the
+   goal→result critical path (cancel/status stay `ACTION_HASH` — auxiliary).
+
+Both fixes are backend-agnostic and verified non-regressing: cyclone + xrce
+action lanes (both directions) still green; the zenoh lane is now **6/6**
+(`ros_client_to_nano_action_server_zenoh` un-ignored). Engine hashes locked with
+a unit assertion; the emitted `SEND_GOAL_SERVICE_HASH` reproduces the live-Jazzy
+value byte-for-byte.
+
+## Summary (original)
 
 A nano-ros zpico **action server** does not appear in a stock jazzy
 `rmw_zenoh_cpp` (0.2.9) client's graph: `ros2 action list` is empty and

@@ -156,7 +156,9 @@ fn compute_action_type_hashes(
             get_result_request: p.clone(),
             get_result_response: p.clone(),
             feedback_message: p.clone(),
-            action: p,
+            action: p.clone(),
+            send_goal_service: p.clone(),
+            get_result_service: p,
         });
     }
     rosidl_codegen::rihs::action_type_hashes(

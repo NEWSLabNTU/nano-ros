@@ -200,8 +200,12 @@ impl<'s> Executor<'s> {
         let feedback_type = <A::FeedbackMessage as nros_core::RosMessage>::TYPE_NAME;
 
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, send_goal_type, A::ACTION_HASH).with_domain(0);
+        let send_goal_info = ServiceInfo::new(
+            &send_goal_keyexpr,
+            send_goal_type,
+            A::SEND_GOAL_SERVICE_HASH,
+        )
+        .with_domain(0);
         let send_goal_server = self
             .session
             .create_service(&send_goal_info, QosSettings::services_default())
@@ -220,16 +224,24 @@ impl<'s> Executor<'s> {
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, get_result_type, A::ACTION_HASH).with_domain(0);
+        let get_result_info = ServiceInfo::new(
+            &get_result_keyexpr,
+            get_result_type,
+            A::GET_RESULT_SERVICE_HASH,
+        )
+        .with_domain(0);
         let get_result_server = self
             .session
             .create_service(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, feedback_type, A::ACTION_HASH).with_domain(0);
+        let feedback_topic = TopicInfo::new(
+            &feedback_keyexpr,
+            feedback_type,
+            <A::FeedbackMessage as nros_core::RosMessage>::TYPE_HASH,
+        )
+        .with_domain(0);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)

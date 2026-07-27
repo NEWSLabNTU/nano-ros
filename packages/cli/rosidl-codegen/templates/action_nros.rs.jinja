@@ -861,6 +861,12 @@ impl RosAction for {{ action_name }} {
 
     const ACTION_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_";
     const ACTION_HASH: &'static str = "{{ action_hash }}";
+    // Issue #0292 — the SendGoal / GetResult SERVICE hashes (distinct from the
+    // action hash) that a stock rmw_zenoh_cpp peer matches on in the service
+    // keyexpr. Without these a ROS 2 client's send_goal/get_result queries miss
+    // a nano-ros action server's queryables.
+    const SEND_GOAL_SERVICE_HASH: &'static str = "{{ send_goal_service_hash }}";
+    const GET_RESULT_SERVICE_HASH: &'static str = "{{ get_result_service_hash }}";
 
     // phase-244 E3 (RFC-0044) / issue #234 — register the fixed `action_msgs`
     // protocol types the cancel service + status publisher serialize

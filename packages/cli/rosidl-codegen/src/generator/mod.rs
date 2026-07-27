@@ -294,7 +294,9 @@ mod tests {
             get_result_request: ph.clone(),
             get_result_response: ph.clone(),
             feedback_message: ph.clone(),
-            action: ph,
+            action: ph.clone(),
+            send_goal_service: ph.clone(),
+            get_result_service: ph,
         };
         let result = generate_nros_action_package(
             "example_interfaces",

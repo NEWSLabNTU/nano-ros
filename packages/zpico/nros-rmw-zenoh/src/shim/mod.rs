@@ -428,6 +428,7 @@ impl Ros2Liveliness {
     pub fn publisher_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ZenohId,
+        entity_id: u32,
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
@@ -441,14 +442,16 @@ impl Ros2Liveliness {
         let topic_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(topic.name);
         let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
         let qos_string: heapless::String<QOS_STRING_SIZE> = qos.to_qos_string();
+        // `<node_id>/<entity_id>` — node is 0, entity id is per-session unique
+        // (issue #0292); a hardcoded id collided every entity in a participant.
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/0/{}/{}/%/{}/{}/{}/{}/{}/{}",
                 LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
-                PROTO_VERSION_TOPIC,
+                entity_id,
                 ENTITY_PUBLISHER,
                 ns_mangled.as_str(),
                 node_name,
@@ -468,6 +471,7 @@ impl Ros2Liveliness {
     pub fn subscriber_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ZenohId,
+        entity_id: u32,
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
@@ -483,11 +487,11 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/0/{}/{}/%/{}/{}/{}/{}/{}/{}",
                 LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
-                PROTO_VERSION_TOPIC,
+                entity_id,
                 ENTITY_SUBSCRIBER,
                 ns_mangled.as_str(),
                 node_name,
@@ -507,6 +511,7 @@ impl Ros2Liveliness {
     pub fn service_server_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ZenohId,
+        entity_id: u32,
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
@@ -522,11 +527,11 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/0/{}/{}/%/{}/{}/{}/{}/{}/{}",
                 LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
-                PROTO_VERSION_TOPIC,
+                entity_id,
                 ENTITY_SERVICE_SERVER,
                 ns_mangled.as_str(),
                 node_name,
@@ -546,6 +551,7 @@ impl Ros2Liveliness {
     pub fn service_client_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ZenohId,
+        entity_id: u32,
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
@@ -561,11 +567,11 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/0/{}/{}/%/{}/{}/{}/{}/{}/{}",
                 LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
-                PROTO_VERSION_TOPIC,
+                entity_id,
                 ENTITY_SERVICE_CLIENT,
                 ns_mangled.as_str(),
                 node_name,
@@ -827,7 +833,7 @@ mod tests {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
-            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 11, "/", "my_node", &topic, &qos);
 
         // Format: @ros2_lv/<domain_id>/<zid>/0/11/MP/%/<mangled_ns>/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
@@ -844,7 +850,7 @@ mod tests {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
-            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/demo", "talker", &topic, &qos);
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 11, "/demo", "talker", &topic, &qos);
         assert!(keyexpr.as_str().contains("/0/11/MP/%/%demo/talker/"));
     }
 
@@ -854,7 +860,7 @@ mod tests {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "RIHS01_def456");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
-            Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
+            Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, 11, "/", "my_node", &topic, &qos);
 
         // Format: @ros2_lv/<domain_id>/<zid>/0/11/MS/%/<mangled_ns>/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
@@ -872,8 +878,9 @@ mod tests {
             "RIHS01_abc123",
         );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
-        let keyexpr =
-            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
+        let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
+            0, &zid, 11, "/", "my_node", &service, &qos,
+        );
 
         // Format: @ros2_lv/<domain_id>/<zid>/0/11/SS/%/<mangled_ns>/<node_name>/<mangled_service>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
@@ -892,7 +899,7 @@ mod tests {
         );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
-            0, &zid, "/demo", "my_node", &service, &qos,
+            0, &zid, 11, "/demo", "my_node", &service, &qos,
         );
         assert!(keyexpr.as_str().contains("/0/11/SS/%/%demo/my_node/"));
     }
@@ -906,8 +913,9 @@ mod tests {
             "RIHS01_abc123",
         );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
-        let keyexpr =
-            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
+        let keyexpr = Ros2Liveliness::service_client_keyexpr::<256>(
+            0, &zid, 11, "/", "my_node", &service, &qos,
+        );
 
         // Format: @ros2_lv/<domain_id>/<zid>/0/11/SC/%/<mangled_ns>/<node_name>/<mangled_service>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));

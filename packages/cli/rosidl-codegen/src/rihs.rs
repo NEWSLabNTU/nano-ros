@@ -686,6 +686,12 @@ pub struct ActionTypeHashes {
     pub get_result_response: String,
     pub feedback_message: String,
     pub action: String,
+    /// Hash of the `<Action>_SendGoal` SERVICE (the 3-member request/response/
+    /// event top) — what rmw_zenoh puts in the send_goal service keyexpr, so a
+    /// stock rmw_zenoh_cpp client matches a nano-ros action server (issue #0292).
+    pub send_goal_service: String,
+    /// Hash of the `<Action>_GetResult` SERVICE (issue #0292).
+    pub get_result_service: String,
 }
 
 /// Compute all nine action hashes (§3b) from the parsed goal/result/feedback.
@@ -730,6 +736,10 @@ pub fn action_type_hashes(
         get_result_response: hash_member("_GetResult_Response")?,
         feedback_message: hash_member("_FeedbackMessage")?,
         action: rihs01(&build_type_description(&base, &top, &combined)?),
+        // The `_SendGoal` / `_GetResult` members ARE the 3-member service tops
+        // (`action_members`), so hashing them yields the SERVICE hashes.
+        send_goal_service: hash_member("_SendGoal")?,
+        get_result_service: hash_member("_GetResult")?,
     })
 }
 
@@ -1277,6 +1287,16 @@ mod tests {
         assert_eq!(
             h.action,
             "RIHS01_0b8adf6bc0b5958879e3265b41a457e03558fe523890a81252c70eba97a82c5d"
+        );
+        // Issue #0292 — the two SERVICE hashes rmw_zenoh puts in the send_goal /
+        // get_result keyexprs. Byte-for-byte vs live Jazzy (srv-hashes.txt).
+        assert_eq!(
+            h.send_goal_service,
+            "RIHS01_4646ff5706c86b04d0a1098d329951a9731a7517e16702905de6073cc72c8530"
+        );
+        assert_eq!(
+            h.get_result_service,
+            "RIHS01_3cd1715751899e3167b5aec3e4ac194f7da9e8493a77285f9f6a4c914f5e8b24"
         );
     }
 

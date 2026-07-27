@@ -976,7 +976,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &send_goal_keyexpr,
             send_goal_type,
-            A::ACTION_HASH,
+            A::SEND_GOAL_SERVICE_HASH,
         );
         let send_goal_server = self
             .session
@@ -1004,7 +1004,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &get_result_keyexpr,
             get_result_type,
-            A::ACTION_HASH,
+            A::GET_RESULT_SERVICE_HASH,
         );
         let get_result_server = self
             .session
@@ -1018,7 +1018,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &feedback_keyexpr,
             feedback_type,
-            A::ACTION_HASH,
+            <A::FeedbackMessage as RosMessage>::TYPE_HASH,
         );
         let feedback_publisher = self
             .session

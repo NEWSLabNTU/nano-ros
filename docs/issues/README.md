@@ -47,6 +47,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
+Recently resolved: **#292** — nano-ros zpico ACTION SERVER now interops with a stock jazzy
+`rmw_zenoh_cpp` client. Two bugs: entity liveliness tokens shared a hardcoded id `0/11` (five
+action entities collided → action never assembled), and send_goal/get_result advertised the action
+hash not their SERVICE hash (client query keyexpr missed). Fixed: per-session entity-id counter +
+codegen-emitted `RosAction::{SEND_GOAL,GET_RESULT}_SERVICE_HASH`. Zenoh lane now 6/6; cyclone/xrce
+non-regressing. See `0292-*`. (2026-07-27)
+
 Recently resolved: **#291** — zenoh interop with a stock jazzy peer. The version gap (zpico 1.7.2
 vs jazzy rmw_zenoh 1.11.2) was a RED HERRING — the zenoh wire is proto `0x09` on both sides (frozen
 at 1.0), and a live handshake + delivery works. The real blocker was the RIHS01 keyexpr type-hash
@@ -117,12 +124,6 @@ crate, so they cannot be host-compiled and cannot be metadata-probed. Executor s
 back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
 grows one as a template. See `0288-*`. (renumbered from a duplicate #286)
 
-**#292** — a nano-ros zpico ACTION SERVER is not discovered by a stock jazzy `rmw_zenoh_cpp`
-0.2.9 client (`ros2 action list`/`info` show 0 servers → `send_goal` hangs). The action-entity
-liveliness/graph tokens (send_goal/get_result services + status/feedback) don't match rmw_zenoh
-0.2.x's action schema. Distinct from #0291 (the type-hash keyexpr, fixed): pub/sub + service +
-the action CLIENT direction all interop. Surfaced by the phase-311 zenoh lane (the one `#[ignore]`d
-cell). See `0292-*`. (2026-07-27)
 
 (#293 resolved 2026-07-27 — see `archived/0293-*`: `system.toml` had TWO parsers with different
 schemas, so rlm silently dropped `launch = "…"` on deploy blocks and counted launch-scoped
