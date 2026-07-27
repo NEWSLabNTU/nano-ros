@@ -124,6 +124,12 @@ liveliness/graph tokens (send_goal/get_result services + status/feedback) don't 
 the action CLIENT direction all interop. Surfaced by the phase-311 zenoh lane (the one `#[ignore]`d
 cell). See `0292-*`. (2026-07-27)
 
+(#293 resolved 2026-07-27 — see `archived/0293-*`: `system.toml` had TWO parsers with different
+schemas, so rlm silently dropped `launch = "…"` on deploy blocks and counted launch-scoped
+blocks against every launch file; `<node machine=>` was ignored as a placement too. demo_bringup
+could not be re-resolved at all. Fixed in rlm + play_launch. The SSoT question — one deploy
+schema instead of two mirrors — is recorded there as follow-up.)
+
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.
 The `--exclude` list is manual and duplicated. See `0287-*`.
