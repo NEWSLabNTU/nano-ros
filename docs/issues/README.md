@@ -127,6 +127,20 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
+**#303** — a `qos_overrides.*` policy the bake does not model (deadline, lifespan, liveliness) is
+silently DROPPED — as is a misspelled topic/role/policy. The lowering `filter_map`s the unknown
+away in all three languages, while the type's doc comment claims the typed enum "catches an unknown
+policy at generation time rather than silently no-op-ing". Silence is the wrong failure mode for a
+QoS setting: the image runs different delivery semantics than the model declares. Fail-loud at
+codegen is the independently-shippable half. See `0303-*`. (2026-07-28)
+
+**#302** — `nros codegen entry --lang rust` emits an entry with NO params, remaps, node identity or
+QoS overrides: `emit_rust` writes bare `::<pkg>::register(runtime)?;` calls, while the canonical
+`nros::main!` sets all four on `runtime` first. Four features over four phases each wired the
+proc-macro and left this emitter behind — the same drift the parameter matcher and the
+`ParamValue` renderer showed. No in-tree fixture uses the verb, so nothing is wrong today. Converge
+WITH a both-ways gate, or retire the emitter. See `0302-*`. (2026-07-28)
+
 **#288** — self-contained standalone examples (node + entry in one crate) dep their board
 crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls
 back to the SystemModel bound for them; issue 0257's boot failure stays reachable if a user
