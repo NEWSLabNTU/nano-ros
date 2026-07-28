@@ -366,6 +366,7 @@ check-build: \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
     check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
+    check-no-tracked-file-find \
     native::check
     @echo "Build checks passed!"
 
@@ -394,6 +395,11 @@ check-cli-tests:
 [private]
 check-feature-set-ssot:
     @./scripts/check-feature-set-ssot.sh
+
+# Forbid `find` scans for git-tracked files (7m36s -> 0.8s, measured).
+[group("check")]
+check-no-tracked-file-find:
+    @./scripts/check-no-tracked-file-find.sh
 
 [private]
 check-version-lockstep:
