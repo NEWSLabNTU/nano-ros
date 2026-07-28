@@ -140,8 +140,13 @@ build-c:
         exit 1
     fi
     echo "Building Zephyr C examples in $WORKSPACE..."
-    NROS="$(basename "$(pwd)")"
-    cd "$WORKSPACE"
+    # Delegate each role to the maintained single-example builder, exactly as
+    # build-rust-examples does. `build-one` owns the west invocation and the
+    # workspace setup and must run from the repo root — do NOT cd into the
+    # workspace here.
+    for ex in talker listener service-server service-client action-server action-client; do
+        just zephyr build-one "c/$ex" zenoh
+    done
     echo "Zephyr C examples built successfully!"
 
 # Phase 88.15.e — build the nros-log Zephyr native_sim smoke
@@ -222,13 +227,12 @@ build-cpp:
         exit 1
     fi
     echo "Building Zephyr C++ examples in $WORKSPACE..."
-    NROS="$(basename "$(pwd)")"
-    cd "$WORKSPACE"
     for ex in talker listener service-server service-client action-server action-client; do
+        just zephyr build-one "cpp/$ex" zenoh
     done
     echo "Zephyr C++ examples built successfully!"
 
-# Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
+# Build Zephyr C + C++ examples against the XRCE-DDS backend
 [group("examples")]
 build-xrce:
     #!/usr/bin/env bash
@@ -240,12 +244,20 @@ build-xrce:
         exit 1
     fi
     echo "Building Zephyr XRCE examples in $WORKSPACE..."
-    NROS="$(basename "$(pwd)")"
-    cd "$WORKSPACE"
+    # The XRCE backend is selected by build-one's `rmw` argument, not by a
+    # separate example tree. The old second loop referenced a `cpp/xrce`
+    # 6-example set that does not exist; `examples/zephyr/rust/{xrce,zenoh}/`
+    # look like example dirs but hold zero tracked files — they are stale
+    # `generated/` detritus from a removed set.
+    #
+    # The Rust roles are NOT built here: examples/zephyr/rust/* currently fails
+    # to resolve the `zephyr-build` crate under BOTH backends, so it is a
+    # pre-existing breakage independent of the XRCE selection (issue 0314).
     for ex in talker listener service-server service-client action-server action-client; do
+        just zephyr build-one "c/$ex" xrce
     done
-    # Phase 95.C — cpp/xrce 6-example set
     for ex in talker listener service-server service-client action-server action-client; do
+        just zephyr build-one "cpp/$ex" xrce
     done
     echo "Zephyr XRCE examples built successfully!"
 

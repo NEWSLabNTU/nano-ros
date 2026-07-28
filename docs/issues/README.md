@@ -160,6 +160,13 @@ a peer cannot QoS-check against them. The Rust path advertises both endpoints co
 strengthening the QoS proofs. See `0312-*`. (2026-07-28, renumbered from a duplicate #311 — two
 sessions reached the same renumbering independently)
 
+Recently resolved: **#314** — `just zephyr build-examples` could not have worked in months: all four of
+its dependencies were broken. `build-c` had its loop deleted and reported `built successfully!` at rc=0
+having compiled nothing; `build-cpp`/`build-xrce` had `for ... do` followed straight by `done` (bash
+syntax errors). Found because a 2-second "green" receipt for #316 was implausible for six Zephyr images.
+Restored to delegate to `build-one`: 6 / 6 / 12 ELFs where there were 0. `build-rust-examples` remains
+broken for an unrelated reason (`zephyr-build` unresolvable). See `0314-*`. (2026-07-28)
+
 **#316** — compile-time pool knobs that silently do nothing, two ways. On Zephyr,
 `set(ENV{...})` is unconditional, so 20 of 61 knobs have their environment value overwritten by the
 Kconfig default while the other 41 pass through — opposite precedence, identical spelling, no
