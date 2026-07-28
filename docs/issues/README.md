@@ -160,6 +160,14 @@ a peer cannot QoS-check against them. The Rust path advertises both endpoints co
 strengthening the QoS proofs. See `0312-*`. (2026-07-28, renumbered from a duplicate #311 — two
 sessions reached the same renumbering independently)
 
+**#315** — after #314 swept the abandoned per-RMW trees, the only `<rmw>/` paths left in
+`examples/` are the checker's own carve-outs: `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` (a BOARD
+variant that should be `talker-aemv8r`) and px4's `rust/xrce` + `cpp/uorb`. The zephyr pair is a plain
+RFC-0026 violation whose carve-out was extended by accident; px4's is a deliberate exemption (archived
+#295: uORB/XRCE are PX4's own messaging surfaces, a transport-integration axis, not the retired RMW
+axis) that RFC-0026 does not mention — so the RFC and the checker disagree. Needs a decision, not just
+a move. See `0315-*`. (2026-07-28)
+
 Recently resolved: **#314** — `just zephyr build-examples` could not have worked in months: all four of
 its dependencies were broken. `build-c` had its loop deleted and reported `built successfully!` at rc=0
 having compiled nothing; `build-cpp`/`build-xrce` had `for ... do` followed straight by `done` (bash

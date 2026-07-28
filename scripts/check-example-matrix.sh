@@ -7,15 +7,15 @@ cd "$repo_root"
 rmw_names='^(zenoh|xrce|dds|cyclonedds|uorb)$'
 
 allowed_roots=(
-  # Phase 118.G is still in flight and owns the remaining bare-metal
-  # Rust legacy roots. (phase-277 W7 pruned the lines whose dirs no
-  # longer exist: qemu-arm-baremetal/rust/zenoh,
-  # qemu-esp32-baremetal/rust/zenoh, stm32f4/rust/zenoh.)
-  "examples/qemu-arm-baremetal/rust/dds"
-  "examples/qemu-esp32-baremetal/rust/dds"
+  # (phase-277 W7 pruned the lines whose dirs no longer exist:
+  # qemu-arm-baremetal/rust/zenoh, qemu-esp32-baremetal/rust/zenoh,
+  # stm32f4/rust/zenoh. Issue 0314 then removed the last two bare-metal
+  # `rust/dds` roots along with every other abandoned per-RMW tree — they held
+  # only untracked `generated/` output — so Phase 118.G's carve-outs are gone
+  # too. Nothing outside px4 and the zephyr cyclonedds pair is exempt now.)
 
   # px4 (Phase 118.H) is exempted STRUCTURALLY in is_allowed(), not per-case —
-  # see docs/issues/archived/0051. px4 is the one platform whose `examples/px4/<lang>/<name>`
+  # see docs/issues/archived/0295. px4 is the one platform whose `examples/px4/<lang>/<name>`
   # sub-dir axis is a transport integration CASE (uORB vs XRCE — PX4's two native
   # messaging surfaces), not the retired per-RMW layout. New px4 transport cases
   # therefore need NO carve-out line here.
@@ -29,7 +29,7 @@ allowed_roots=(
 
 is_allowed() {
   local path="$1"
-  # px4 transport-axis exemption (issue #51): `examples/px4/<lang>/<transport>`
+  # px4 transport-axis exemption (issue #295): `examples/px4/<lang>/<transport>`
   # (uORB / XRCE) is px4's legitimate integration-case axis, not the retired
   # per-RMW layout — exempt the whole platform so new transport cases need no
   # per-case carve-out line.
