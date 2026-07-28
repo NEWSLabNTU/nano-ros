@@ -29,6 +29,9 @@
 # The function is deliberately declarative/glue-only; entry generation
 # lives in `NanoRosEntry.cmake`.
 
+# issue 0326 — `_nros_is_zephyr()` lives here.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
 endif()
@@ -249,7 +252,11 @@ function(nano_ros_node_register)
     # nros-c, or on nros-cpp when nros-c isn't built separately), so listing it is
     # always safe; depending on it also transitively orders after the same cargo
     # target that writes the C++ variant, covering C / typed-C / C++ consumers.
-    if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND _NRC_SOURCES)
+    # issue 0326 — NANO_ROS_PLATFORM is directory-scoped, so it is UNSET in an
+    # add_subdirectory'd package and the bare STREQUAL silently took the
+    # non-Zephyr path.
+    _nros_is_zephyr(_nrc_is_zephyr)
+    if(_nrc_is_zephyr AND _NRC_SOURCES)
         set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
             "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_generated.h")
     endif()
@@ -415,7 +422,10 @@ function(nano_ros_node_register)
             # a NON-target name → the component link tries `-l<name>` and fails ("cannot find
             # -lstd_msgs__nano_ros_cpp"). Skip the interface-lib link on Zephyr; the component
             # gets the generated msg headers via the `app` include mirror below.
-            if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+            # issue 0326 — inverted guard: with NANO_ROS_PLATFORM unset this read TRUE
+    # on Zephyr and linked non-target `-lstd_msgs__nano_ros_cpp` names.
+    _nros_is_zephyr(_nrc_is_zephyr_link)
+    if(NOT _nrc_is_zephyr_link)
                 get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
                 if(_nros_iface_libs)
                     list(REMOVE_DUPLICATES _nros_iface_libs)
@@ -433,7 +443,9 @@ function(nano_ros_node_register)
             # `app`'s full include set onto it — it compiles the same TUs `app`
             # would. Genexpr → captured at generate time, so it picks up includes
             # `find_package(<msg pkg>)` adds to `app` after this point too.
-            if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
+            # issue 0326 — the helper already requires TARGET app.
+    _nros_is_zephyr(_nrc_is_zephyr_mirror)
+    if(_nrc_is_zephyr_mirror)
                 target_include_directories(${_lib} PRIVATE
                     $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
                 # phase-263 C2c — HARD file edge for the per-build sizes headers. A C++
@@ -850,10 +862,12 @@ function(nano_ros_node_register)
     # zephyr per `app` (it owns the one `int main`). Multi-node Zephyr uses the
     # `nros codegen entry --typed` multi-node emitter (one entry constructs all
     # nodes) — out of scope here.
+    # issue 0326 — the fused Zephyr carrier guard; the helper subsumes both the
+    # platform test and the `TARGET app` requirement.
+    _nros_is_zephyr(_nrc_is_zephyr_carrier)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "zephyr" IN_LIST _NRC_DEPLOY
-       AND NANO_ROS_PLATFORM STREQUAL "zephyr"
-       AND TARGET app
+       AND _nrc_is_zephyr_carrier
        AND NOT TARGET ${PROJECT_NAME}_nros_zephyr_entry)
         if(NOT _NRC_TYPED)
             message(FATAL_ERROR

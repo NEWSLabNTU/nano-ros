@@ -23,6 +23,9 @@
 
 include_guard(GLOBAL)
 
+# issue 0326 — `_nros_is_zephyr()` lives here.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+
 # `_nros_bootstrap` / `_nros_link` (root resolve + auto-link of the generated
 # interface libs + platform — config internals since W8 retired the public
 # spelling). Imported already by the config, but keep the include so the verbs
@@ -274,7 +277,13 @@ function(nano_ros_auto_add_library name)
     # Generated interface libs (220.G.2 mechanics; per-package FFI crates
     # since phase-306, so any subset links cleanly; zephyr gets headers via
     # the app include mirror instead — non-target lib names there).
-    if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+    # issue 0326 — a SEVENTH instance of the class, not listed in that issue:
+    # same inverted guard as NanoRosNodeRegister.cmake:418. With
+    # NANO_ROS_PLATFORM unset this read TRUE on Zephyr and linked the
+    # non-target `-l<pkg>__nano_ros_cpp` names the comment above says Zephyr
+    # must NOT link. One helper call serves both sites in this function.
+    _nros_is_zephyr(_nrv_is_zephyr)
+    if(NOT _nrv_is_zephyr)
         get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
         if(_nros_iface_libs)
             list(REMOVE_DUPLICATES _nros_iface_libs)
@@ -287,7 +296,9 @@ function(nano_ros_auto_add_library name)
     # and a component TU could compile before the nros-cpp cargo build emitted
     # `nros_cpp_config_generated.h` (reaching the in-tree `#error` stub). The
     # global `app` target + ZEPHYR_BASE is the reliable signal.
-    if(TARGET app AND (DEFINED ZEPHYR_BASE OR NANO_ROS_PLATFORM STREQUAL "zephyr"))
+    # issue 0326 — this site carried the second idiom introduced by #282; it is
+    # now the shared helper (resolved once above) so there is one spelling.
+    if(_nrv_is_zephyr)
         target_include_directories(${name} PRIVATE
             $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
         # APPEND, not set: the Zephyr interface-codegen module also stamps

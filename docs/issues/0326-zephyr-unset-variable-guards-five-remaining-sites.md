@@ -1,7 +1,7 @@
 ---
 id: 326
 title: "Zephyr detection guards keyed on the possibly-unset NANO_ROS_PLATFORM at 5 more sites — #282 fixed one of six, and the fix introduced a second idiom"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: build
@@ -87,3 +87,52 @@ comments describe a Zephyr scenario they cannot serve — worth a note, not a fi
 All 39 `STREQUAL ""` hits elsewhere in `cmake/` were read and killed (each is
 short-circuited by `DEFINED`, quoted-deref, a foreach variable, a function
 parameter, or a preceding `set()` — see the audit findings doc).
+
+## Resolved (2026-07-28)
+
+`_nros_is_zephyr(<out>)` added to `cmake/NanoRosCodegenCore.cmake` — the single
+definition the issue asked for — and every site converted, including the one
+`5a8db2413` had already fixed with the second idiom. Two spellings collapse to
+one.
+
+`cmake/NanoRosVerbs.cmake` and `cmake/NanoRosNodeRegister.cmake` did not
+previously include the core module; they do now, at file scope.
+
+### The class was larger than the issue counted: SEVEN sites, not six
+
+`cmake/NanoRosVerbs.cmake:280` is an eighth-of-an-inch from the site #282
+fixed — ten lines above it, in the same function — and carries the *same
+inverted defect* as `NanoRosNodeRegister.cmake:418`:
+
+```cmake
+# zephyr gets headers via the app include mirror instead — non-target lib names there
+if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+    target_link_libraries(${name} PUBLIC ${_nros_iface_libs})
+```
+
+With `NANO_ROS_PLATFORM` unset the negation reads TRUE on Zephyr, so it linked
+exactly the non-target `-l<pkg>__nano_ros_cpp` names its own comment says
+Zephyr must not link. One helper call now serves both sites in that function.
+
+That is worth noting beyond the fix: this issue exists *because* #282 fixed one
+of a class, and the audit that filed it then undercounted the same class by
+one. A grep for the pattern rather than a reading of the diff is what closes
+these.
+
+### Receipts
+
+- No bare `NANO_ROS_PLATFORM STREQUAL "zephyr"` guard remains under `cmake/`
+  outside the helper itself and `NanoRosGenerateInterfaces.cmake` (which this
+  issue verified is inert — the native generator is not loaded in a Zephyr
+  build).
+- `just zephyr build-one cpp/talker zenoh` → `zephyr.elf`, i.e. the Zephyr
+  carrier, the app include mirror and the interface-lib skip all still work
+  through the rewritten guards.
+- `just check` green.
+
+### Still latent, by design
+
+The issue notes no in-tree example exercises the *fused* `nano_ros_node_register`
+Zephyr branch or a Zephyr `nano_ros_add_executable`, so those two sites remain
+unexercised by any build. They are now correct by construction rather than "by
+timing luck", but nothing would catch a regression in them.

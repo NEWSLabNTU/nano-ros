@@ -283,6 +283,33 @@ endfunction()
 # FATAL when absent unless OPTIONAL (then <out_var> = NOTFOUND). The
 # find_program result is cached (`_NROS_CLI_RESOLVED`); a cached path that no
 # longer exists is dropped and re-detected.
+# _nros_is_zephyr(<out>)
+#
+# ONE answer to "am I configuring inside a Zephyr build?" (issue 0326).
+#
+# The naive `if(NANO_ROS_PLATFORM STREQUAL "zephyr")` is a trap.
+# `nano_rosConfig.cmake` sets `NANO_ROS_PLATFORM` as a PLAIN, directory-scoped
+# variable in whatever scope called `find_package(nano_ros)`, so every
+# `add_subdirectory`'d node/component package that does not itself call
+# `find_package` evaluates it UNSET — cmake then compares the literal string
+# "NANO_ROS_PLATFORM" against "zephyr", the test is false, and the branch
+# silently takes the non-Zephyr path. (`if(X)` truthiness is the safe idiom;
+# a bare STREQUAL against a possibly-unset var is not.)
+#
+# Issue 0282 fixed ONE of six identical guards and, in doing so, introduced a
+# second spelling of the check — so the tree carried two idioms across six
+# sites. This helper is that second idiom, promoted to the single definition,
+# and the `ZEPHYR_BASE` arm is why it is preferred over merely promoting
+# `NANO_ROS_PLATFORM` to a cache var: it also covers a Zephyr build that never
+# routed through nano_rosConfig's platform arm.
+function(_nros_is_zephyr _out)
+    if(TARGET app AND (DEFINED ZEPHYR_BASE OR NANO_ROS_PLATFORM STREQUAL "zephyr"))
+        set(${_out} TRUE PARENT_SCOPE)
+    else()
+        set(${_out} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)

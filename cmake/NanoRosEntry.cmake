@@ -223,7 +223,9 @@ function(nano_ros_entry)
     # zephyr-lang-rust's `rust_cargo_application()`: after find_package it wires the
     # generated entry TU into `app`, rather than building its own executable.
     set(_nra_is_zephyr FALSE)
-    if(NANO_ROS_PLATFORM STREQUAL "zephyr")
+    # issue 0326 — shared predicate.
+    _nros_is_zephyr(_nra_zephyr_detected)
+    if(_nra_zephyr_detected)
         set(_nra_is_zephyr TRUE)
     endif()
 
