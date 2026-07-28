@@ -578,6 +578,90 @@ fn resolver_from(
         .filter(|p| p.is_file())
 }
 
+/// phase-315 W1 — write one selection facade per ENTRY package.
+///
+/// The bringup owns the declaration, the entry consumes it, and the two are
+/// different packages, so this needs both: it finds the workspace's
+/// `system.toml` (the bringup) and then every package carrying
+/// `[package.metadata.nros.entry]`.
+///
+/// A workspace with no `system.toml` has nothing to derive from and is left
+/// alone — that is the STANDALONE shape, where the build command is the
+/// selector (`cargo build --features …`, the twin of C++'s `-DNANO_ROS_RMW=…`)
+/// and a facade would have no input. See phase-315 W3.
+fn generate_facade_crates(
+    scan: &[WsPkg],
+    build_root: &std::path::Path,
+    verbose: bool,
+) -> Result<()> {
+    // The bringup: the package that declares the system. More than one is a
+    // multi-system workspace, which the facade shape does not yet model — say
+    // so rather than silently picking the first.
+    let bringups: Vec<&WsPkg> = scan
+        .iter()
+        .filter(|p| p.dir.join("system.toml").is_file())
+        .collect();
+    let bringup = match bringups.as_slice() {
+        [] => return Ok(()),
+        [one] => *one,
+        many => {
+            eprintln!(
+                "ws sync: {} bringups declare a system ({}); selection facades \
+                 are not generated for multi-system workspaces (phase-315 W1 \
+                 models one declaration per workspace). Entry manifests keep \
+                 their hand-written features.",
+                many.len(),
+                many.iter()
+                    .map(|p| p.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            return Ok(());
+        }
+    };
+
+    let system_toml = bringup.dir.join("system.toml");
+    let raw = std::fs::read_to_string(&system_toml)
+        .wrap_err_with(|| format!("ws sync: read {}", system_toml.display()))?;
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
+        .wrap_err_with(|| format!("ws sync: parse {}", system_toml.display()))?;
+
+    let facade_root = build_root.join("nros-selection");
+    for pkg in scan {
+        if !pkg.is_rust_pkg {
+            continue;
+        }
+        let Some(f) =
+            crate::orchestration::facade::write_facade(
+                &pkg.name,
+                &pkg.dir,
+                // NOT `pkg.manifest` — that is the ament `package.xml`. The
+                // facade reads the CARGO manifest, which `is_rust_pkg` above
+                // already guarantees exists at the package root.
+                &pkg.dir.join("Cargo.toml"),
+                &sys,
+                &facade_root,
+            )
+            .wrap_err_with(|| format!("ws sync: facade for {}", pkg.name))?
+        else {
+            continue;
+        };
+        if f.changed || verbose {
+            println!(
+                "ws sync: selection facade {} → nros[{}] {}",
+                f.entry,
+                f.nros_features.join(", "),
+                if f.board_features.is_empty() {
+                    String::new()
+                } else {
+                    format!("board[{}]", f.board_features.join(", "))
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
 fn generate_bridge_configs(
     ws_root: &std::path::Path,
     scan: &[WsPkg],
@@ -825,6 +909,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // (the canonical input; bridge planning below consumes it).
     resolve_system_models(&scan, args.verbose)?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
+    generate_facade_crates(&scan, &build_root, args.verbose)?;
 
     if rust_consumers.is_empty() {
         println!("ws sync: no Rust consumer pkgs — patch tables not written.");

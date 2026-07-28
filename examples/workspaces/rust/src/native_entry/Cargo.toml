@@ -23,17 +23,14 @@ deploy = "native"
 # Phase 248 C6a (#60 T5) — agnostic `nros`: alloc + rmw-cffi vtable + ROS
 # edition only. Platform (`platform-posix`) AND the concrete RMW backend are
 # brought by the board crate below; the umbrella names neither.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
-    "alloc",
-    "rmw-cffi",
-    "ros-humble",
-] }
+native_entry_nros_selection = { path = "../../generated/nros-selection/native_entry" }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Board crate — supplies the `NativeBoard` ZST the macro-emitted
 # `<NativeBoard as BoardEntry>::run(...)` call resolves (`deploy = "native"` →
 # `nros_board_native::NativeBoard`) AND is the RMW+platform selection point:
 # `features = ["rmw-zenoh"]` self-links+registers the zenoh backend
 # (`RMW_INIT_ENTRIES`) and brings `nros-platform/platform-posix` into the graph.
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
 # Node pkg rlibs (platform/RMW-agnostic) — the launch XML names `talker` +
 # `listener`, so the macro emits both `register` calls; the bin links both.
 talker_pkg = { path = "../talker_pkg", default-features = false }

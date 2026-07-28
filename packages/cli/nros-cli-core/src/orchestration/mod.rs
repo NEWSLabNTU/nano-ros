@@ -10,6 +10,7 @@ pub mod board_metadata;
 pub mod bridge_gen;
 pub mod cargo_metadata_schema;
 pub mod cmake_preset;
+pub mod facade;
 pub mod config;
 pub mod launch_synth;
 pub mod manifest;
