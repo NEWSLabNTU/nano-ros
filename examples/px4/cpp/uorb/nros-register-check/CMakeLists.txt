@@ -44,10 +44,10 @@ px4_add_module(
         ${NROS_RMW_CFFI_INCLUDE_DIR}
     SRCS
         ${CMAKE_CURRENT_LIST_DIR}/nros_register_check.cpp
-        # phase-244 D5 — SITL-only weak `nros_rmw_cffi_register` link stub,
-        # hoisted out of the agnostic module source (real builds override it
-        # with the Rust `nros-rmw-cffi` strong symbol).
-        ${CMAKE_CURRENT_LIST_DIR}/sitl_register_stub.c
+        # Issue 0335 — the weak `nros_rmw_cffi_register` fallback now lives with
+        # the uORB backend (`register_fallback.c`), not in this example. Real
+        # (cargo-linked) builds override it with the Rust strong symbol.
+        ${NROS_RMW_UORB_CPP_DIR}/src/register_fallback.c
         ${NROS_RMW_UORB_CPP_DIR}/src/vtable.cpp
         ${NROS_RMW_UORB_CPP_DIR}/src/session.cpp
         ${NROS_RMW_UORB_CPP_DIR}/src/publisher.cpp
