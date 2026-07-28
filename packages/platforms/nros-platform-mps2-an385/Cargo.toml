@@ -10,7 +10,13 @@ publish = false
 name = "nros_platform_mps2_an385"
 
 [features]
-default = []
+# `libc-stubs` on by default so bare-metal consumers (the mps2-an385 baremetal
+# board + its fixtures) keep the freestanding libc symbols. Issue #0313 — a
+# FreeRTOS consumer that reuses only this crate's Cortex-M timing (DWT) already
+# has picolibc from the board, so it must `default-features = false` here to
+# avoid a `duplicate symbol: strtol` link conflict; PRNG / sleep / timing stay.
+default = ["libc-stubs"]
+libc-stubs = ["nros-baremetal-common/libc-stubs"]
 # TLS support (larger heap: 128 KB instead of 64 KB)
 link-tls = []
 # Phase 97.3.mps2-an385 — DDS / DDS DcpsDomainParticipant + builtin
@@ -52,5 +58,6 @@ mps2-an385-pac = { path = "../../boards/mps2-an385-pac" }
 cortex-m-semihosting = "0.5"
 # smoltcp network provider (TCP/UDP via SmoltcpBridge)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
-# Shared bare-metal helpers (PRNG, sleep, libc stubs)
-nros-baremetal-common = { path = "../../drivers/nros-baremetal-common", features = ["libc-stubs"] }
+# Shared bare-metal helpers (PRNG, sleep). `libc-stubs` is re-exposed as this
+# crate's `libc-stubs` feature (default-on) so a picolibc consumer can drop it.
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }

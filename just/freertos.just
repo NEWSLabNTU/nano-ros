@@ -147,6 +147,15 @@ build-fixture-extras:
     # stable manifest id so `build-examples` stays limited to role examples.
     bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
 
+    # Issue #0313 — the wake-latency-cortex-m3 microbench (Phase 141.D). Off-lane
+    # for a long time, it silently rotted (the `wake_latency_cortex_m3` host
+    # runner just skipped when the binary was missing). Build it at `--release`
+    # (the profile the test locates) so a compile regression is caught here.
+    # NOTE: the runtime test still fails on delivery — embedded builds bake
+    # `Z_FEATURE_LOCAL_SUBSCRIBER 0`, so the bench's same-image pub→sub cannot
+    # self-deliver (tracked on #0313); this lane guards the BUILD only.
+    ( cd packages/testing/nros-bench/wake-latency-cortex-m3 && cargo build --release )
+
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install
     # layout. Cross builds (FreeRTOS) can't build the host codegen

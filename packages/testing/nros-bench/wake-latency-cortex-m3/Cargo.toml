@@ -29,9 +29,12 @@ scenario-burst = []  # 10 messages back-to-back
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
+# Phase 230 (#0313) — the platform layer split out of `nros` / `nros-node`;
+# platform symbols now come from the board dep + `nros-platform-mps2-an385` (below)
+# and the zpico wiring in `nros-rmw-zenoh/platform-freertos`. So `nros` / `nros-node`
+# no longer carry a `platform-freertos` feature.
 nros = { path = "../../../../packages/core/nros", default-features = false, features = [
     "rmw-cffi",
-    "platform-freertos",
     "ros-humble",
 ] }
 # Phase 141.B.2 — wake-latency probe lives behind a feature on
@@ -42,14 +45,20 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 nros-node = { path = "../../../../packages/core/nros-node", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-freertos",
     "wake-latency-probe",
 ] }
-nros-platform-mps2-an385 = { path = "../../../../packages/platforms/nros-platform-mps2-an385" }
+# Issue #0313 — used ONLY for the Cortex-M DWT timing (`CycleCounter`,
+# `clock_cycles`, `cycles_to_ns`). `default-features = false` drops its
+# `libc-stubs` (this is a FreeRTOS/picolibc build — the board already provides
+# libc), avoiding a `duplicate symbol: strtol` link conflict.
+nros-platform-mps2-an385 = { path = "../../../../packages/platforms/nros-platform-mps2-an385", default-features = false }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = [
     "platform-freertos",
     "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
+# Phase 230 (#0313) — was pulled transitively via `nros-node/platform-freertos`;
+# now a direct dep for the semihosting `debug::exit` at scenario end.
+cortex-m-semihosting = "0.5"
 heapless = "0.8"

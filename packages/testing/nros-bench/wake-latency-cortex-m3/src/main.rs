@@ -35,7 +35,7 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385_freertos::{Config, println, run};
+use nros_board_mps2_an385_freertos::{Config, Mps2An385, println};
 use nros_node::executor::wake_probe;
 use nros_platform_mps2_an385::timing::{CycleCounter, clock_cycles, cycles_to_ns};
 use panic_semihosting as _;
@@ -86,8 +86,10 @@ const SCENARIO_NAME: &str = "scenario-burst";
 /// capacity so the host parser sees a non-wrapped snapshot.
 const TARGET_SAMPLES: u32 = 200;
 
+// Issue 0273/0313 — the C startup (`board_mps2.c` `Reset_Handler`) jumps to the
+// Rust `main` symbol; the retired `_start` shape left `undefined symbol: main`.
 #[unsafe(no_mangle)]
-extern "C" fn _start() -> ! {
+extern "C" fn main() -> ! {
     // Phase 141.B.1 — DWT must be enabled before any cycle read.
     CycleCounter::enable();
     // Phase 141.B.2 — install the cycle reader so the probe's
@@ -98,8 +100,12 @@ extern "C" fn _start() -> ! {
     // the pre-212 `Config::from_toml(include_str!(...))` sidecar.
     // Transcribed verbatim from the retired `nros.toml`: ip
     // 10.0.2.21/24 (netmask derived from CIDR /24 → 255.255.255.0),
-    // mac 02:00:00:00:00:01, gateway 10.0.2.2, locator
-    // tcp/10.0.2.2:7451, domain_id 0. The `[node.rt]` block in
+    // mac 02:00:00:00:00:01, gateway 10.0.2.2, domain_id 0. Issue
+    // #0313 — the locator port must match `nros_tests::platform::
+    // FREERTOS.zenohd_port` (= 7000 + FreertosMps2 index 2 * 400 =
+    // 7800); the baked 7451 was a pre-port-renumber stale value that
+    // made `Executor::open` fail `Transport(ConnectionFailed)`. The
+    // `[node.rt]` block in
     // the retired toml set every scheduling field to its board-
     // crate `Default::default()` value (app_priority=12,
     // app_stack_bytes=262144, zenoh_read/lease_priority=16,
@@ -113,11 +119,13 @@ extern "C" fn _start() -> ! {
         ip: [10, 0, 2, 21],
         netmask: [255, 255, 255, 0],
         gateway: [10, 0, 2, 2],
-        zenoh_locator: "tcp/10.0.2.2:7451",
+        zenoh_locator: "tcp/10.0.2.2:7800",
         domain_id: 0,
         ..Config::default()
     };
-    run(config, |config| {
+    // Phase 313 (#0243/#0313) — no-session boot wrapper (scheduler + bringup, no
+    // board `Executor::open`); this bench opens its OWN executor below.
+    let _ = Mps2An385::run_bare(config, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("wake-latency");
@@ -234,5 +242,8 @@ extern "C" fn _start() -> ! {
 
         #[allow(unreachable_code)]
         Ok::<(), NodeError>(())
-    })
+    });
+    // `run_bare` diverges (scheduler start → the app task's semihosting exit);
+    // satisfies the `-> !` entry.
+    unreachable!()
 }

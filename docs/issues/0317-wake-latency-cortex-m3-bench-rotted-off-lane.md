@@ -38,13 +38,42 @@ not build today:
    define them. The bench's dep graph pulls a bare-metal libc-stub crate that
    conflicts with the FreeRTOS board's own libc.
 
-## Direction
+## Progress — BUILD rot FIXED (phase-313, 2026-07-28); one runtime blocker remains
 
-Resurrect the bench end-to-end: apply fixes 1+2 (entry + `run_bare`), modernize
-the Cargo deps to the current freertos link graph (fix 3 — resolve the
-`nros-baremetal-common` vs board-picolibc libc-stub conflict, likely by dropping
-the bare-metal-common path from this freertos bin's graph), then **add it to a
-build lane** (`just freertos` + `examples/fixtures.toml`) so it can't rot again —
-the host acceptance harness `nros-tests::wake_latency_cortex_m3` (Phase 141.C.2)
-already exists. Needs the freertos QEMU + zenohd + host harness to verify the
-histogram output, so it's a scoped embedded task, not a mechanical edit.
+The three filed build-rot items are all fixed and the bench now
+**builds → boots → connects → publishes** under QEMU:
+
+1. **Entry.** `_start` → `#[unsafe(no_mangle)] extern "C" fn main() -> !`.
+2. **`run` → `run_bare`.** `Mps2An385::run_bare(config, |config| …)` (the freertos
+   `run_bare` was widened to pass `&Config` for this).
+3. **platform-freertos drift + libc conflict.** Dropped `platform-freertos` from
+   the `nros`/`nros-node` deps (+ a direct `cortex-m-semihosting`); root-caused
+   the `duplicate symbol: strtol` to `nros-platform-mps2-an385` hardcoding
+   `nros-baremetal-common/libc-stubs`. Fixed by gating that behind a **default-on
+   `libc-stubs` feature** on `nros-platform-mps2-an385`; this freertos bench (has
+   picolibc from the board) sets `default-features = false`. Baremetal consumers
+   keep libc-stubs via default.
+4. **Stale locator port.** The baked `tcp/10.0.2.2:7451` predated the port
+   renumber; corrected to `7800` (= `FREERTOS.zenohd_port` = 7000 + FreertosMps2
+   index 2 * 400). The bench now opens the session + publishes.
+
+Added to a build lane (`just freertos build-fixture-extras` builds it `--release`)
+so the compile can't rot again.
+
+## Remaining (the now-primary blocker) — same-image pub→sub can't self-deliver
+
+`wake_latency_cortex_m3_p99_within_bound` still fails: the bench pub→subs the
+SAME topic in ONE image and expects delivery to fire the wake-cb probe, but no
+sample arrives (0 CSV → 30 s timeout). Root cause: `nros-zpico-build`
+(`src/lib.rs`) bakes `Z_FEATURE_LOCAL_SUBSCRIBER 0` for **embedded** targets (a
+deliberate SRAM-budget call — the loopback + write-filter code is unbudgeted), so
+zenoh-pico does not deliver a session's own publication to its own subscriber;
+and a vanilla zenohd router does not echo a sample back to the publishing
+session. So the bench's "route through zenohd, not local" design (main.rs top
+comment) cannot receive on embedded.
+
+**Direction:** either (a) add a per-fixture override to bake
+`Z_FEATURE_LOCAL_SUBSCRIBER 1` for this bench (accepting the size cost), or
+(b) redesign the bench as TWO images (separate publisher + subscriber) so the
+router genuinely routes between two sessions. This is a zpico-config / bench-
+design decision, distinct from the build rot above.

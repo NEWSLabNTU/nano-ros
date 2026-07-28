@@ -86,10 +86,10 @@ fn wake_latency_cortex_m3_p99_within_bound() {
         );
     }
 
-    // FreeRTOS QEMU port number reservation lives in
-    // `nros_tests::platform::FREERTOS.zenohd_port`. The bench
-    // binary's config.toml currently points at 7451 too;
-    // standalone instances avoid the shared FREERTOS group.
+    // FreeRTOS QEMU port reservation lives in
+    // `nros_tests::platform::FREERTOS.zenohd_port` (7800). The bench binary bakes
+    // the matching locator `tcp/10.0.2.2:7800` (issue #0313 corrected the stale
+    // 7451); they must stay in lockstep.
     let router = ZenohRouter::start(nros_tests::platform::FREERTOS.zenohd_port);
 
     // Spawn the bench under QEMU MPS2-AN385. The bench writes
