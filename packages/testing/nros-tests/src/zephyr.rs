@@ -961,7 +961,7 @@ pub fn get_prebuilt_zephyr_example(
         }
     };
 
-    let binary = crate::fixtures::require_prebuilt_binary(&binary_path)?;
+    let binary = crate::fixtures::require_prebuilt_binary_fresh_zephyr(&binary_path)?;
     // Honor the same bypass the sibling fixture guards do (native/cmake/rust
     // paths all check this) — an mtime-heuristic false-positive (#147) shouldn't
     // block a run the caller knows was built another way. Previously this guard
@@ -1023,13 +1023,14 @@ pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
         "{ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR}/zephyr/zephyr.exe"
     ));
 
-    let binary = crate::fixtures::require_prebuilt_binary(&binary_path).map_err(|_| {
-        TestError::BuildFailed(format!(
-            "Zephyr workspace Entry binary not found: {}\n\
+    let binary =
+        crate::fixtures::require_prebuilt_binary_fresh_zephyr(&binary_path).map_err(|_| {
+            TestError::BuildFailed(format!(
+                "Zephyr workspace Entry binary not found: {}\n\
              Build the workspace fixtures first: `just zephyr build-fixtures`.",
-            binary_path.display()
-        ))
-    })?;
+                binary_path.display()
+            ))
+        })?;
     if is_binary_stale(&binary, ZEPHYR_WORKSPACE_ENTRY_SRC_KEY) {
         return Err(TestError::BuildFailed(format!(
             "Zephyr workspace Entry binary is stale: {}\n\

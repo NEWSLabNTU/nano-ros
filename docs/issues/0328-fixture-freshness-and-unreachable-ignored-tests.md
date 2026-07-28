@@ -1,7 +1,7 @@
 ---
 id: 328
 title: "Test-harness gaps: ~30 fixture resolvers still existence-only (museum-binary trap #222 not propagated), and 24 #[ignore] tests are permanently unreachable"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing
@@ -77,3 +77,72 @@ review the same way a `#[allow(dead_code)]` without a reason does.
 Both are "the harness has the mechanism and doesn't apply it", both live in
 `packages/testing`, and both are the kind of gap that makes a green sweep
 misleading — the audit checklist's E1/E4 pair.
+
+## Resolved (2026-07-28)
+
+### Part 1 — the freshness probe, swept across the class
+
+**30 call sites** moved from existence-only `require_prebuilt_binary` to
+`require_prebuilt_binary_fresh`, leaving only the three wrapper bodies that
+intentionally call the base.
+
+The swap is safe everywhere, which is what made a blanket sweep the right move
+rather than a site-by-site audit: `dep_info_newer_source` reads the sibling
+`.d` through `fs::read_to_string(...).ok()?`, so a fixture with no dep-info
+degrades to exactly the old behaviour. With dep-info, the check engages. There
+is no artifact for which the fresh variant is worse.
+
+Two zephyr sites got `require_prebuilt_binary_fresh_zephyr` instead of the
+generic one. That distinction matters: a `zephyr.exe` has no `zephyr.exe.d`, so
+the generic variant would silently no-op — the zephyr-aware one compares the
+staticlib's `.d` against the linked image, which is where the real drift lives.
+
+**Verified engaged, not just compiled:** touching
+`packages/core/nros-node/src/lib.rs` now makes `native_entry_boot` hard-fail
+`Test fixture is STALE — a source is newer than the built binary … newer:
+…/action_core.rs`. That resolver was existence-only before this change and
+would have run the museum binary.
+
+### Part 2 — the ignored tests are reachable, and mostly PASS
+
+Added `just test-ignored [package]`. Nothing previously passed `--run-ignored`
+anywhere, so 24 tests were dead code that read like coverage.
+
+**The recipe has to span two workspaces**, and that turned out to be the whole
+point: 16 of the 24 live in `packages/cli`, which the root workspace cannot see
+at all. A root-only recipe would have reported success while running none of
+the ones that matter most.
+
+Running it produced the finding the issue could not have known:
+
+| set | result |
+| --- | --- |
+| `packages/cli` (incl. `rosidl-codegen` storage-mode gates) | **13 run, 13 passed** |
+| root workspace, no router | 7 run, 2 passed, 5 failed |
+| root workspace, router on `tcp/127.0.0.1:7447` | 7 run, **6 passed**, 1 failed |
+
+So the heap/borrowed storage-mode codegen the issue calls "zero executing
+coverage" was in fact **fully working** — 12 passing tests nobody ran. That is a
+better outcome than the issue assumed and a worse indictment of the lane gap.
+
+### Correction: the "easiest win" is not available
+
+The issue proposes un-ignoring the 5 `zenoh_integration.rs` tests because
+`ZenohRouter::start_unique` makes the precondition self-provisioning. It does
+not: those tests hardcode `ROUTER_LOCATOR = "tcp/127.0.0.1:7447"` and
+`ZenohRouter` lives in `nros-tests`, which is **not** a dev-dependency of
+`nros-rmw-zenoh` — and cannot comfortably become one, since `nros-tests`
+depends on `nros-rmw-zenoh`. Their `#[ignore]` reason is accurate as written.
+
+Confirmed empirically rather than by reading: with a router on 7447, four of
+the five pass. They were correctly marked, just unreachable.
+
+### Left open deliberately
+
+- `test_pubsub_separate_sessions` **fails even with its precondition met**.
+  That is a real defect this work surfaced, not a harness gap; it needs its own
+  investigation and issue rather than being folded in here.
+- `just test-ignored` is not wired into `just ci`. Several of these need
+  external infrastructure by design, which is why they are ignored; the fix for
+  this issue is that they are runnable and their state is knowable, not that
+  they gate every push.

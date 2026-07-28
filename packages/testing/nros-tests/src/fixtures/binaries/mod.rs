@@ -2377,7 +2377,7 @@ fn require_shared_fixture_binary(
         cargo_target_profile_dir(),
         binary_name
     ));
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 226.D — qemu-arm-baremetal (`thumbv7m-none-eabi`) shared-fixture
@@ -2417,7 +2417,7 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/param-chatter-talker");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/param-chatter-talker"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -2439,7 +2439,7 @@ pub fn build_int32_sink() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/int32-sink");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/int32-sink"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -2474,7 +2474,7 @@ pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
             "{}/{profile}/action-server-concurrent",
             rmw.target_dir()
         ));
-        require_prebuilt_binary(&binary)
+        require_prebuilt_binary_fresh(&binary)
     })
     .map(|p| p.as_path())
 }
@@ -2502,7 +2502,7 @@ pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
             "{}/{profile}/action-client-multigoal",
             rmw.target_dir()
         ));
-        require_prebuilt_binary(&binary)
+        require_prebuilt_binary_fresh(&binary)
     })
     .map(|p| p.as_path())
 }
@@ -2545,7 +2545,7 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
         .join("build/compile-check")
         .join(id)
         .join(".compile-ok");
-    require_prebuilt_binary(&stamp)
+    require_prebuilt_binary_fresh(&stamp)
 }
 
 /// Resolve a build-stage build-fixture's binary (issue 0034). The build entries
@@ -2558,7 +2558,7 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
         .join("build/compile-check")
         .join(id)
         .join(rel);
-    require_prebuilt_binary(&bin)
+    require_prebuilt_binary_fresh(&bin)
 }
 
 /// Resolve a file inside a build-stage **cmake** fixture's persistent build dir
@@ -2574,7 +2574,7 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
         .join("build/cmake-fixtures")
         .join(id)
         .join(rel);
-    require_prebuilt_binary(&p)
+    require_prebuilt_binary_fresh(&p)
 }
 
 /// Resolve a file inside a build-stage **esp-idf** fixture (issue 0041).
@@ -2587,7 +2587,7 @@ pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when idf.py absent);
     // resolves the prebuilt ELF here. Built by `just esp32 build-fixtures`.
     let p = project_root().join("build/idf-fixtures").join(id).join(rel);
-    require_prebuilt_binary(&p)
+    require_prebuilt_binary_fresh(&p)
 }
 
 /// Resolve a file inside a build-stage **zephyr west** fixture (issue 0041).
@@ -2649,7 +2649,7 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
         }
     }
 
-    require_prebuilt_binary(&fixture_dir.join(rel))
+    require_prebuilt_binary_fresh(&fixture_dir.join(rel))
 }
 
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
@@ -2665,7 +2665,7 @@ pub fn build_entry_poc() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/entry-poc");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/entry-poc"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -2761,7 +2761,7 @@ pub fn build_threadx_rv64_rust_example_rmw(
             binary_name
         ))
     };
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 118.B.7 — collapsed-shape threadx-linux Rust example resolver.
@@ -3073,7 +3073,7 @@ pub fn build_freertos_rust_example_rmw(
         cargo_target_profile_dir(),
         binary_name
     ));
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Build native-rs-listener (cached)
@@ -3124,7 +3124,7 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-xrce-fwd"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3143,7 +3143,7 @@ pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-cyclonedds-fwd"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3160,7 +3160,7 @@ pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/qos-override-pubsub");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/qos-override-pubsub"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3177,7 +3177,7 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/declarative-safety-listener");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/declarative-safety-listener"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3194,7 +3194,7 @@ pub fn build_ros2_string_interop() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/ros2-string-interop");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/ros2-string-interop"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3355,7 +3355,7 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
     LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
             let binary = zephyr_build_root().join("build-logging-smoke/zephyr/zephyr.exe");
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3411,7 +3411,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            require_prebuilt_binary_fresh(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -3427,7 +3427,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            require_prebuilt_binary_fresh(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -3480,7 +3480,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-talker");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/safety-chatter-talker"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3497,7 +3497,7 @@ pub fn build_native_talker_header() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/header-chatter-talker");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/header-chatter-talker"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3516,7 +3516,7 @@ fn build_contract_monitor_bin(
             let dir = root.join("packages/testing/nros-tests/bins/contract-monitor");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/{bin_name}"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3553,7 +3553,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/safety-chatter-listener");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/safety-chatter-listener"));
-            require_prebuilt_binary(&binary)
+            require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
 }
@@ -3585,7 +3585,7 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
             let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-zero-copy");
             let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            require_prebuilt_binary_fresh(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -4228,7 +4228,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
             let target_dir = example_dir.join("target-large-buf");
             let binary_path =
                 target_dir.join(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
-            require_prebuilt_binary(&binary_path)
+            require_prebuilt_binary_fresh(&binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -4467,7 +4467,7 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
         cargo_target_profile_dir(),
         binary_name
     ));
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Build esp32-qemu-talker (cached)

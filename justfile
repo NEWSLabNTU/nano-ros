@@ -709,6 +709,52 @@ check-decoupling:
 # Per-platform tests (just <plat> test|test-all|ci) are organized in
 # the matching just/<plat>.just files — see CLAUDE.md for the matrix.
 
+# issue 0328 — RUN the `#[ignore]`d tests. Nothing did before: no recipe, no
+# workflow and no nextest profile passed `--run-ignored`, so 24 ignored tests
+# across six crates were dead code that read like coverage. The worst of them
+# are `rosidl-codegen`'s heap/borrowed storage-mode compile checks, which are
+# that feature's ONLY gate.
+#
+# Not in `just ci`: several genuinely need external infrastructure (a zenohd
+# router on a fixed port, an XRCE agent), which is exactly why they were
+# ignored. The point of this recipe is that they are REACHABLE and their state
+# is knowable — an ignored test with no lane that runs it should fail review
+# the same way `#[allow(dead_code)]` without a reason does.
+#
+#   just test-ignored                  # every ignored test
+#   just test-ignored rosidl-codegen   # one crate
+[group("main")]
+test-ignored package="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    echo "Running #[ignore]d tests (external infra may be required)…"
+    rc=0
+    if [ -n "{{package}}" ]; then
+        # A named package may live in EITHER workspace; try the root first,
+        # then the cli sub-workspace.
+        cargo nextest run "${cargo_nextest_args[@]}" -p "{{package}}" \
+            --run-ignored ignored-only \
+        || cargo nextest run --manifest-path packages/cli/Cargo.toml \
+            -p "{{package}}" --run-ignored ignored-only \
+        || rc=$?
+    else
+        # BOTH workspaces. 16 of the 24 ignored tests live in packages/cli
+        # (rosidl-codegen's storage-mode compile checks among them), which the
+        # root workspace cannot see at all — a root-only recipe would have
+        # reported success while running none of the ones that matter most.
+        #
+        # nros-tests is excluded for the same reason test-unit excludes it: its
+        # fixtures need `just build-test-fixtures` staging first.
+        cargo nextest run "${cargo_nextest_args[@]}" --workspace --exclude nros-tests \
+            --run-ignored ignored-only || rc=$?
+        echo "--- packages/cli sub-workspace ---"
+        cargo nextest run --manifest-path packages/cli/Cargo.toml --workspace \
+            --run-ignored ignored-only || rc=$?
+    fi
+    exit "$rc"
+
 # Workspace lib/bin/unit tests, excluding the integration crate.
 [group("main")]
 test-unit verbose="":
