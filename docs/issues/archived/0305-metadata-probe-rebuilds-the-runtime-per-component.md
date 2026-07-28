@@ -1,11 +1,12 @@
 ---
 id: 305
 title: "The C/C++ metadata probe rebuilds the entire Rust runtime once per component — 2.6 GB and a cold build each"
-status: open
+status: resolved
 type: bug
 severity: high
 area: cli, build
-related: [phase-308]
+related: [phase-308, 0304]
+resolved_in: "phase-313 W1 (4f6482685) — one probe project per workspace"
 ---
 
 ## Measurement (2026-07-28)
@@ -116,3 +117,43 @@ wall-clock share.
 
 The probe build dirs are large and gitignored but never cleaned; a full
 workspace probe leaves ~16 GB behind for six components.
+
+## Resolution (2026-07-28)
+
+Fixed by `4f6482685` ("feat(312-W1): one probe project per workspace, built per
+target") — the restructure this issue proposed, landed by a parallel session.
+`run_probes` now writes ONE `CMakeLists.txt` for the whole batch, configures
+once, and builds each component with `--target probe_<i>` so a component that
+fails to compile still costs only its own sidecar.
+
+### Receipt
+
+Same workspace, six C++ components, from a wiped `build/nros-metadata`:
+
+```
+before:  8.8 GB  and only 3.5 of 6 components reached
+after:   2.9 GB  for all 6, "6 rebuilt, 0 already current"
+```
+
+So roughly a 5x reduction against the extrapolated before-cost (~15 GB for six),
+and — more to the point — one runtime build instead of N.
+
+### A correction to issue 0304
+
+While fixing 0304 I reported that the probe "runs but records nothing (returns
+-2), a separate recording-path defect". **That was wrong.** It was an artifact
+of running a stale `nros` binary built before `4f6482685`. With a current
+binary all six components record real entities — `talker.json` carries its node,
+its `/chatter` publisher and the `std_msgs/msg/Int32` interface. There is no
+recording-path defect; 0304's doc is corrected accordingly.
+
+The lesson is the one this repo already documents for fixtures and repeats
+here: a stale in-tree CLI produces failure signatures that look like code bugs.
+`just setup-cli` before trusting any probe measurement.
+
+### Still adjacent, still worth doing
+
+The `sizes-probe-target-*` nested builds (~615 MB each, one per build tree for
+nros-c and nros-cpp) remain the largest single item inside the now-shared tree.
+Keyed by rustc version + feature hash, so they are cacheable across trees; that
+is a separate optimisation, not this issue.

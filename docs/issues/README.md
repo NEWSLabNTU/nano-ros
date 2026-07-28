@@ -207,14 +207,12 @@ blocks against every launch file; `<node machine=>` was ignored as a placement t
 could not be re-resolved at all. Fixed in rlm + play_launch. The SSoT question — one deploy
 schema instead of two mirrors — is recorded there as follow-up.)
 
-**#305** — the C/C++ metadata probe generates one CMake project per component, so each gets a
-private cargo target dir and rebuilds the whole Rust runtime from scratch: 2.6 GB and a cold
-build EACH, ~16 GB for a six-component workspace. Runtime config is identical across
-components; one project with N probe executables fixes it. See `0294-*`.
+(#305 resolved 2026-07-28 — see `archived/0305-*`: one probe project per workspace instead of
+N. 8.8 GB for 3.5 of 6 components became 2.9 GB for all 6.)
 
 (#304 resolved 2026-07-28 — see `archived/0304-*`: nros-cpp has TWO build paths and the
-`NROS_EXTRA_CPP_FEATURES` hook was only on the umbrella one; the probe takes the other. Probe now
-links and runs — but still records nothing, which is a separate recording-path defect.)
+`NROS_EXTRA_CPP_FEATURES` hook was only on the umbrella one; the probe takes the other. Probe now links, runs, and records:
+all six C++ components produce sidecars.)
 
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.

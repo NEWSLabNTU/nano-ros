@@ -144,14 +144,23 @@ Also fixed in passing: `packages/testing/nros-tests` still path-dep'd
 `ros-launch-manifest` at its pre-phase-312 location, which broke the probe's
 cargo resolution outright. A W2 miss.
 
-## What this does NOT fix
+## Correction (2026-07-28) — the "records nothing" claim was wrong
 
-The probe now **links and runs**, but exits non-zero because nothing was
-recorded — `nros_cpp_metadata_dump` returns -2 for "recorded nothing", which is
-deliberately an error ("a component that declared no entities either failed to
-run its declaration path or has none, and both are bugs the driver must
-surface"). So sidecars still are not produced.
+This document originally ended with a section reporting that the probe now
+linked and ran but recorded nothing (`nros_cpp_metadata_dump` returning -2),
+and called that a separate recording-path defect belonging to phase-308.
 
-That is a separate defect in the recording path, not in feature propagation,
-and it was previously masked by the link failure. It belongs with phase-308's
-C++ producer work and should be filed or folded there.
+**That was an artifact of a stale `nros` binary**, built before
+`4f6482685` (issue 0305's one-project-per-workspace restructure). Re-measured
+with a current CLI, all six C++ components in `examples/workspaces/cpp` record
+real entities: `talker.json` carries its node, its `/chatter` publisher, and
+the `std_msgs/msg/Int32` interface. `nros sync` reports "6 rebuilt, 0 already
+current".
+
+So this issue's fix DOES restore exact executor sizing for C++ components;
+there is no additional recording defect to chase.
+
+The lesson is one this repo already documents for fixtures: a stale in-tree CLI
+produces failure signatures indistinguishable from code bugs. Run
+`just setup-cli` before trusting any probe measurement — I did not, and filed a
+non-existent defect as a result.
