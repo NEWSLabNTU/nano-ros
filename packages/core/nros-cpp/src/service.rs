@@ -121,16 +121,12 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 
     // Phase 104.C.9.b — route through the Node's session when bound
     // to a non-primary RMW backend.
-    let session = if node_ref.node_id != 0 {
-        match ctx
-            .executor
-            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-        {
+    let session = match crate::node_id_opt(node_ref) {
+        Some(id) => match ctx.executor.node_session_mut(id) {
             Some(s) => s,
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
-        }
-    } else {
-        ctx.executor.session_mut()
+        },
+        None => ctx.executor.session_mut(),
     };
 
     // Phase 193.3 — apply the caller's QoS (rclcpp `create_service(name, qos)`).
@@ -211,9 +207,9 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let result = if node_ref.node_id != 0 {
+    let result = if crate::node_id_opt(node_ref).is_some() {
         ctx.executor.register_service_raw_sized_on::<BUF, BUF>(
-            nros_node::executor::NodeId::from_raw(node_ref.node_id),
+            crate::node_id_opt(node_ref).expect("guarded above"),
             svc_str,
             type_str,
             hash_str,
@@ -427,16 +423,12 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
     }
 
     // Phase 104.C.9.b — route through the Node's session.
-    let session = if node_ref.node_id != 0 {
-        match ctx
-            .executor
-            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-        {
+    let session = match crate::node_id_opt(node_ref) {
+        Some(id) => match ctx.executor.node_session_mut(id) {
             Some(s) => s,
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
-        }
-    } else {
-        ctx.executor.session_mut()
+        },
+        None => ctx.executor.session_mut(),
     };
 
     // Phase 193.3 — apply the caller's QoS.
@@ -570,9 +562,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
     let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let result = if node_ref.node_id != 0 {
+    let result = if crate::node_id_opt(node_ref).is_some() {
         ctx.executor.register_service_client_raw_sized_on::<BUF>(
-            nros_node::executor::NodeId::from_raw(node_ref.node_id),
+            crate::node_id_opt(node_ref).expect("guarded above"),
             svc_str,
             type_str,
             hash_str,

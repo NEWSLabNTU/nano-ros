@@ -149,6 +149,11 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
 (#311 resolved — no feature SSoT across languages; one `nros_feature_set()` now serves nros-c, nros-cpp and the umbrella, and 50 Rust nodes stopped naming a ROS edition. See `archived/0311-*`.)
 
+**#313** (resolved) — `nros_cpp_node_t.node_id` used `0` as BOTH "no node" and the FIRST node's id
+(`NodeId` is an index into a table that starts empty), so a single-node C/C++ entry read as node-less
+at eight call sites. Phase 268 fixed the adjacent half and left `0` overloaded. Now stored biased by
+one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (2026-07-28)
+
 **#312** — a C/C++ workspace listener receives fine but `ros2 topic info` reports `Subscription
 count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports our subscriptions and
 a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while

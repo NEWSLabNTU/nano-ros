@@ -816,6 +816,15 @@ pub struct nros_cpp_node_t {
     /// publisher / subscription / service creation through the
     /// per-Node session resolved via
     /// `Executor::node_session_mut(NodeId)`.
+    /// Issue 0312 — the executor `NodeId`, stored BIASED BY ONE: `0` means "no
+    /// node registered", `n` means `NodeId(n - 1)`.
+    ///
+    /// The bias exists because `NodeId` is an INDEX and the executor's node
+    /// table starts empty, so the first node a C/C++ entry creates is
+    /// `NodeId(0)` — indistinguishable from the "unset" sentinel this field used
+    /// to carry. Every `node_id != 0` check then treated a single-node entry's
+    /// only node as absent. Use [`store_node_id`] / [`node_id_opt`]; never read
+    /// this field raw.
     pub node_id: u8,
     /// Reserved for future use; pad to next u64 boundary.
     pub _reserved: [u8; NROS_CPP_NODE_RESERVED],
@@ -1104,7 +1113,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     if !ns_str.is_empty() {
         out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
     }
-    out.node_id = node_id.raw();
+    store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     // phase-308 — open this node in the metadata recorder so the entities
@@ -1113,6 +1122,39 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     crate::metadata_hooks::on_node_create(name_str, ns_str, ctx.domain_id);
 
     NROS_CPP_RET_OK
+}
+
+/// Issue 0312 — encode an executor node index into the handle field, biased by
+/// one so `0` can keep meaning "unset". Pure `u8` (not `NodeId`) so it holds
+/// without the `rmw-cffi` feature and stays unit-testable.
+pub(crate) const fn encode_node_id(raw: u8) -> u8 {
+    raw.saturating_add(1)
+}
+
+/// Issue 0312 — decode the handle field. `None` when no node is registered.
+pub(crate) const fn decode_node_id(field: u8) -> Option<u8> {
+    if field == 0 { None } else { Some(field - 1) }
+}
+
+/// Store an executor [`NodeId`] on a handle.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn store_node_id(out: &mut nros_cpp_node_t, id: nros_node::executor::NodeId) {
+    out.node_id = encode_node_id(id.raw());
+}
+
+/// Issue 0312 — decode [`nros_cpp_node_t::node_id`]. `None` when the handle
+/// carries no registered node (zero-initialised by a caller that never called
+/// `nros_cpp_node_create*`).
+///
+/// Before the bias, this was spelled `if node.node_id != 0` at eight call sites,
+/// and a single-node entry's `NodeId(0)` read as "no node" at every one of them.
+/// The visible symptom was a listener that received fine yet advertised no
+/// subscription to ROS 2 discovery: the arena registration fell back to the
+/// executor's own (empty) node name, so `create_subscription` skipped the
+/// liveliness token that `ros2 topic info` counts.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor::NodeId> {
+    decode_node_id(node.node_id).map(nros_node::executor::NodeId::from_raw)
 }
 
 /// Phase 104.C.9 — create a node with extended options.
@@ -1213,7 +1255,7 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     } else {
         out.namespace[..1].copy_from_slice(b"/");
     }
-    out.node_id = node_id.raw();
+    store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     // phase-308 — open this node in the metadata recorder so the entities
@@ -2366,5 +2408,27 @@ mod qos_override_tests {
         };
         assert_eq!(got.durability, QosDurabilityPolicy::TransientLocal);
         assert_eq!(got.depth, 42);
+    }
+
+    /// Issue 0312-adjacent — `NodeId` is an INDEX, so the first node a C/C++
+    /// entry creates is `NodeId(0)`. The handle field stores it BIASED BY ONE
+    /// so that value stays distinguishable from "no node registered"; before
+    /// the bias, eight `node_id != 0` checks read a single-node entry's only
+    /// node as absent.
+    #[test]
+    fn node_id_zero_survives_the_handle_round_trip() {
+        // Zero-initialised handle = no node registered.
+        assert_eq!(decode_node_id(0), None);
+        // The FIRST node is index 0 — the case that used to vanish.
+        assert_ne!(
+            encode_node_id(0),
+            0,
+            "stored form must not collide with the sentinel"
+        );
+        assert_eq!(decode_node_id(encode_node_id(0)), Some(0));
+        // Later nodes round-trip unchanged.
+        for raw in [1u8, 3, 7, 254] {
+            assert_eq!(decode_node_id(encode_node_id(raw)), Some(raw), "raw={raw}");
+        }
     }
 }

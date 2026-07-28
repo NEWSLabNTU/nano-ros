@@ -225,6 +225,15 @@ typedef struct nros_cpp_node_t {
    * publisher / subscription / service creation through the
    * per-Node session resolved via
    * `Executor::node_session_mut(NodeId)`.
+   * Issue 0312 — the executor `NodeId`, stored BIASED BY ONE: `0` means "no
+   * node registered", `n` means `NodeId(n - 1)`.
+   *
+   * The bias exists because `NodeId` is an INDEX and the executor's node
+   * table starts empty, so the first node a C/C++ entry creates is
+   * `NodeId(0)` — indistinguishable from the "unset" sentinel this field used
+   * to carry. Every `node_id != 0` check then treated a single-node entry's
+   * only node as absent. Use [`store_node_id`] / [`node_id_opt`]; never read
+   * this field raw.
    */
   uint8_t node_id;
   /**

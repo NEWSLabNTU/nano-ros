@@ -37,6 +37,48 @@ The Rust path does not have this gap: `ws-qos-rust`'s entry shows
 `Subscription count: 1` with its declared `TRANSIENT_LOCAL` profile, asserted in
 `qos_override_e2e`.
 
+## Investigated 2026-07-28 — one hypothesis eliminated
+
+Measured with a stock `rmw_zenoh_cpp` peer against the live `ws-qos-c` pair:
+
+```
+=== ros2 node list ===
+/qos_listener
+/qos_talker
+```
+
+So the listener's NODE (`NN`) token IS declared and visible — the process
+advertises. What is missing is specifically the SUBSCRIPTION entity (`MS`)
+token, while the talker's publisher (`MP`) token carries its full QoS profile.
+
+**Eliminated: the `node_id` sentinel collision.** The leading theory was that
+the arena (callback-style) registration path resolves node identity from
+`nros_cpp_node_t.node_id`, where `0` meant both "unset" and the first node's
+`NodeId(0)` — a lost identity yields no `with_node_name`, and
+`session.create_subscription` declares the entity token only when
+`topic.node_name` is `Some`. That collision is REAL and is now fixed (issue
+0313), but after the fix — with `ws-qos-c`'s build directory wiped and rebuilt
+from scratch, so no museum binary — the peer still reports
+`Subscription count: 0`.
+
+Ruled out along the way:
+- not a stale fixture (clean rebuild reproduces);
+- not a missing token declaration in the shim (both `publisher.rs` and
+  `subscriber.rs` declare `LivelinessToken`, symmetrically, in
+  `Session::create_{publisher,subscription}`);
+- not a malformed keyexpr SHAPE (`publisher_keyexpr` and `subscriber_keyexpr`
+  are identical apart from the `MP`/`MS` entity marker);
+- not the process failing to advertise at all (the node token is visible).
+
+## Next step
+
+Instrument or observe what `topic.node_name` actually is when the C listener's
+subscription reaches `Session::create_subscription`, and whether a token is
+declared at all. `eprintln!` is unavailable (`nros-node` is `no_std`) — use the
+`nros_log` facade, or observe the wire directly by subscribing to
+`@ros2_lv/**` with a zenoh client and comparing the listener's declared
+keyexprs against what `rmw_zenoh_cpp` expects to match.
+
 ## Not obviously a missing token
 
 `nros-rmw-zenoh`'s shim declares `LivelinessToken` on BOTH sides

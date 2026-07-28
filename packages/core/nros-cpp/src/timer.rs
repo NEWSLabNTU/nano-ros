@@ -174,11 +174,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
         None
     } else {
         let node_ref = unsafe { &*node };
-        if node_ref.node_id != 0 {
-            Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-        } else {
-            None
-        }
+        crate::node_id_opt(node_ref)
     };
 
     // Extract group name (NULL or empty ⇒ None ⇒ node default).

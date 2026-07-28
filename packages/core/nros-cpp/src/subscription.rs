@@ -98,20 +98,16 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     };
 
     // Phase 104.C.9.b — when the Node was created via
-    // `nros_cpp_node_create_ex` (multi-RMW path), `node.node_id != 0`
+    // `nros_cpp_node_create_ex` (multi-RMW path), the handle carries a node id
     // and the subscriber must land on the Node's bound session, not
     // the executor's primary. `node_session_mut` resolves both cases
     // transparently.
-    let session = if node_ref.node_id != 0 {
-        match ctx
-            .executor
-            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-        {
+    let session = match crate::node_id_opt(node_ref) {
+        Some(id) => match ctx.executor.node_session_mut(id) {
             Some(s) => s,
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
-        }
-    } else {
-        ctx.executor.session_mut()
+        },
+        None => ctx.executor.session_mut(),
     };
 
     match session.create_subscription(&topic_info, qos_settings) {
@@ -205,11 +201,11 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     let topic_str = resolved_topic.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let node_id = if node_ref.node_id != 0 {
-        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-    } else {
-        None
-    };
+    // Issue 0312 — a single-node entry's only node is `NodeId(0)`; reading the
+    // field raw made it indistinguishable from "unset", so the arena
+    // registration below fell back to the executor's own (empty) node name and
+    // the subscription never got a liveliness token.
+    let node_id = crate::node_id_opt(node_ref);
     let result = ctx.executor.add_arena_subscription_c_callback::<BUF>(
         node_id,
         topic_str,
@@ -306,8 +302,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     let topic_str = resolved_topic.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let node_id = if node_ref.node_id != 0 {
-        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+    let node_id = if crate::node_id_opt(node_ref).is_some() {
+        Some(crate::node_id_opt(node_ref).expect("guarded above"))
     } else {
         None
     };
@@ -417,8 +413,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
     let topic_str = resolved_topic.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let node_id = if node_ref.node_id != 0 {
-        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+    let node_id = if crate::node_id_opt(node_ref).is_some() {
+        Some(crate::node_id_opt(node_ref).expect("guarded above"))
     } else {
         None
     };

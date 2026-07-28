@@ -72,7 +72,8 @@ pub(crate) struct CppActionServer {
     cb_ctx: *mut c_void,
     /// Phase 104.C.9.b — NodeId captured at create time, consumed by
     /// `nros_cpp_action_server_register` to pick the `_on(NodeId, ...)`
-    /// multi-Node dispatch variant. `0` = legacy primary-Node path.
+    /// multi-Node dispatch variant. Issue 0312 — BIASED BY ONE, mirroring
+    /// `nros_cpp_node_t::node_id`: `0` = no node, `n` = `NodeId(n - 1)`.
     node_id: u8,
     _reserved: [u8; 7],
     /// Phase 193.4b — create-time QoS, applied to the three underlying
@@ -265,11 +266,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     // Phase 193.4b — `spec.qos` applies the create-time QoS to the three
     // underlying service servers (rclcpp `create_action_server(name, qos)`).
     let qos = server.qos.to_qos_settings();
-    let node_id = if server.node_id != 0 {
-        Some(nros_node::executor::NodeId::from_raw(server.node_id))
-    } else {
-        None
-    };
+    // Issue 0312 — `CppActionServer` mirrors the handle's biased id, so decode
+    // it the same way (a raw `!= 0` here would drop a single-node entry's node).
+    let node_id =
+        (server.node_id != 0).then(|| nros_node::executor::NodeId::from_raw(server.node_id - 1));
     let result = ctx
         .executor
         .register_action_server_raw(nros_node::RawActionServerSpec {
@@ -804,11 +804,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).
     // Phase 104.C.9.b — `spec.node_id` routes multi-Node action clients
     // through the named Node's session; `None` uses the default Node.
-    let node_id = if node_ref.node_id != 0 {
-        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-    } else {
-        None
-    };
+    let node_id = crate::node_id_opt(node_ref);
     let handle = match ctx
         .executor
         .register_action_client_raw(nros_node::RawActionClientSpec {

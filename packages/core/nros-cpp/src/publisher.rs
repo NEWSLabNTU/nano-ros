@@ -103,16 +103,12 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
     // Phase 104.C.9.b — route through the Node's session when the
     // Node was bound to a non-primary RMW backend via
     // `nros_cpp_node_create_ex`.
-    let session = if node_ref.node_id != 0 {
-        match ctx
-            .executor
-            .node_session_mut(nros_node::executor::NodeId::from_raw(node_ref.node_id))
-        {
+    let session = match crate::node_id_opt(node_ref) {
+        Some(id) => match ctx.executor.node_session_mut(id) {
             Some(s) => s,
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
-        }
-    } else {
-        ctx.executor.session_mut()
+        },
+        None => ctx.executor.session_mut(),
     };
 
     match session.create_publisher(&topic_info, qos_settings) {
