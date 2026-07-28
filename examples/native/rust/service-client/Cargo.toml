@@ -15,7 +15,16 @@ deploy = ["native"]
 
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
-default = ["rmw-zenoh", "ros-humble"]
+# The edition is deliberately NOT in `default`. Cargo features are ADDITIVE
+# and `ros-{humble,iron,jazzy}` are `compile_error!`-exclusive, so a default
+# edition makes `--features ros-jazzy` yield BOTH and fail to compile — the
+# user would have to know to pass `--no-default-features` and then re-name
+# every other default they still wanted. The C++ standalone selector
+# (`-DNANO_ROS_ROS_EDITION=jazzy`) simply REPLACES; this is how the cargo side
+# gets the same UX. Naming no edition is legal (only >1 trips the
+# `compile_error!`) and resolves to humble by construction: every edition
+# consumer gates on `cfg(not(any(ros-iron, ros-jazzy)))`. phase-315 W3.
+default = ["rmw-zenoh"]
 # Each `rmw-*` activates the app-owned optional backend dep and forwards to
 # `nros-board-native`, whose `register_linked_rmw()` call in `main.rs`
 # registers the selected backend before the executor opens.
