@@ -218,6 +218,38 @@ crates gave the same call a second failure mode locally. (2) 8 workflow referenc
 `third-party/ros-launch-manifest` submodule (phase-312 fallout; the tree was swept, `.github/` was
 not) — same drift class as #336, which owns the bootstrap/doc surface. See `0337-*`. (2026-07-28)
 
+**#343** — RFC-0033 storage modes incoherent: srv/action templates have ZERO `is_heap`
+branches while `srv.rs`/`action.rs` resolve the mode (heap srv field ⇒ heap type + heapless
+serde body ⇒ **generated code that cannot compile**), and the three emitters disagree on which
+modes they accept for the same config. Needs a heap-field-on-a-`.srv` codegen test — which
+today would land in the `#[ignore]`d set of #328. See `0343-*`. (deep audit C,E 2026-07-28)
+
+**#338** — `spin` means the OPPOSITE thing across surfaces: C++ `Executor::spin(duration_ms)`
+is bounded with no no-arg overload, while C/Rust spin forever and rclcpp's `spin()` blocks
+until shutdown (bounded is `spin_some`); and the C registration family is half-renamed from
+rclc — seven `nros_executor_register_*` but `nros_executor_add_client`. See `0338-*`.
+
+**#339** — `rclcpp_compat::spin_until_future_complete` ignores the future on the timeout path
+(always burns the full timeout) and returns `void`, so the standard
+`== FutureReturnCode::SUCCESS` idiom cannot be written; the correct loop already exists in the
+branch above it. See `0339-*`.
+
+**#340** — #226 recurrence: `ParameterServer` still keeps array storage in a header-side bump
+arena and recovers capacity via `reinterpret_cast<const uint64_t*>(ptr)[-1]` — an undocumented
+pointer-identity contract with the C server that becomes an out-of-bounds read the moment the
+Rust side copies an array. See `0340-*`.
+
+**#341** — the test-matrix SSoT diverges from the supported axes: **uORB cannot be expressed
+at all** (`Rmw` enum lacks it, though ARCHITECTURE §2 claims it and a crate+example exist), and
+the declared `(ZephyrNativeSim, Cpp, Cyclonedds, Qos)` cell is "covered" by a test that boots
+the **Rust/Zenoh** image — so a Cpp/Cyclonedds cell is asserted-covered by nothing and the real
+coverage is unmodelled. See `0341-*`.
+
+**#342** — `orchestration_tiers_freertos.rs` bypasses both harness seams: a hand-rolled
+`qemu-system-arm` command with no bypass rationale (while the next test in the same file uses
+the interpreter) and the only bare `start_slirp(7447)` among 14 call sites, inside the
+allocator's own window. See `0342-*`.
+
 **#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh:189` inits the RETIRED
 `ros-launch-manifest` submodule path, so a **fresh clone cannot build the CLI** (it only works
 here because two retired worktrees remain on disk); 9 doc copies of the dead command,

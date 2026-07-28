@@ -58,3 +58,18 @@ Fix: have the CFFI return a generated envelope type, or already-split
 One rule (C1), one surface (`nros-cpp/include`), and one fix direction (move the
 behavior behind the CFFI, leave the header adapting types only). #226 established
 the precedent for this shape of issue.
+
+## Addendum (deep audit C,E 2026-07-28) — one of the four copies carries a known-fixed bug
+
+`packages/core/nros-cpp/include/nros/nros.hpp:109` — the global
+`nros::spin(duration_ms, poll_ms)` budgets by **iteration count** (`elapsed +=
+timeout`), which is the exact defect `Executor::spin` documents as fixed in Phase
+118.C. An early `nros_cpp_spin_once` return (signalled wake condvar) therefore exits
+the loop long before `duration_ms` of wall time has passed.
+
+So the duplication above is not merely a maintenance cost: the copies have already
+diverged, and one of them still has the bug the other fixed. That makes the fix
+direction non-optional — move the budgeted spin behind ONE CFFI entry point
+(`nros_cpp_spin_for(storage, duration_ms, poll_ms)`) and have the free function, both
+`Executor` overloads, and the `src/lib.rs` copies all forward to it. Naming/semantics
+of the public verb are tracked separately in **#338**.
