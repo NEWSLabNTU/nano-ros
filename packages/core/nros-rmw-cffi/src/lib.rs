@@ -538,7 +538,14 @@ fn registry() -> &'static Registry {
 // consumes it after the vtable call. Pure C/C++ backends never write this table
 // and keep the documented `None` metadata behavior.
 
-const MESSAGE_INFO_SLOTS: usize = 64;
+/// Issue 0271 — build-time configurable via `NROS_RMW_MESSAGE_INFO_SLOTS`
+/// (default 64). Under-sizing costs metadata, not correctness: a subscriber
+/// that finds no free slot reads back `None` for `MessageInfo`, which is the
+/// documented behaviour for backends that never populate the table at all.
+const MESSAGE_INFO_SLOTS: usize = crate::parse_env_usize(
+    env!("NROS_RMW_MESSAGE_INFO_SLOTS"),
+    "NROS_RMW_MESSAGE_INFO_SLOTS must be a decimal integer",
+);
 
 struct MessageInfoSlot {
     key: portable_atomic::AtomicUsize,

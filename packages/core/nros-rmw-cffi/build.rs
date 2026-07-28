@@ -17,6 +17,7 @@
 fn main() {
     emit_max_backends();
     emit_subscriber_slots();
+    emit_message_info_slots();
     maybe_build_c_stub();
 }
 
@@ -67,6 +68,36 @@ fn emit_subscriber_slots() {
     }
 
     println!("cargo:rustc-env=NROS_RMW_SUBSCRIBER_SLOTS={parsed}");
+}
+
+/// Issue 0271 — size the `MESSAGE_INFO_TABLE` pool.
+///
+/// Was hardcoded at 64 while every comparable pool in the tree is env-tunable,
+/// so a 256 KB-class image carried 3.5 KB of `.bss` for message metadata it
+/// never used: measured 3,136 bytes of live BTCM on the Orin SPE at 4
+/// subscribers. The table is keyed by backend handle, so the useful bound is
+/// the session's subscription count, not a fixed 64.
+fn emit_message_info_slots() {
+    println!("cargo:rerun-if-env-changed=NROS_RMW_MESSAGE_INFO_SLOTS");
+
+    let raw = std::env::var("NROS_RMW_MESSAGE_INFO_SLOTS").unwrap_or_else(|_| "64".to_string());
+    let parsed: usize = raw.trim().parse().unwrap_or_else(|err| {
+        panic!(
+            "NROS_RMW_MESSAGE_INFO_SLOTS=\"{raw}\" is not a valid usize: {err}. \
+             Set a positive integer (default 64)."
+        )
+    });
+
+    if !(1..=256).contains(&parsed) {
+        panic!(
+            "NROS_RMW_MESSAGE_INFO_SLOTS={parsed} out of range [1, 256]. The \
+             table is keyed by backend subscriber handle, so sizing it below \
+             the session's subscription count costs metadata, not correctness \
+             — `MessageInfo` simply reads back `None`."
+        );
+    }
+
+    println!("cargo:rustc-env=NROS_RMW_MESSAGE_INFO_SLOTS={parsed}");
 }
 
 fn maybe_build_c_stub() {
