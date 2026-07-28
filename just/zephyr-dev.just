@@ -66,7 +66,14 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # Phase 214.J.2 — wipe `generated/` on trait-surface drift before sync.
         source "$(pwd)/scripts/build/codegen-stamp.sh"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$src"
-        NROS_REPO_DIR="$(pwd)" "$codegen_tool" sync "$src"
+        # issue 0318 — `--no-metadata`. The source-metadata refresh compiles a
+        # host probe that path-deps the example, which drags in the `zephyr`
+        # crate; its build.rs panics `DOTCONFIG must be set by wrapper` because
+        # that variable is produced by the Zephyr cmake configure that has not
+        # run yet (and cannot: this sync is its prerequisite). The probe is
+        # inapplicable to a Zephyr leaf, not merely slow here. Codegen — the
+        # part this step exists for — is unaffected.
+        NROS_REPO_DIR="$(pwd)" "$codegen_tool" sync --no-metadata "$src"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac
