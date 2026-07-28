@@ -190,10 +190,24 @@ rmw-cffi vtable seam the original report suspected, and neither has a
 rightsizing knob today. That is the clearest nano-ros-side action: give them
 the same `env_usize` treatment every other pool has.
 
-## Note for whoever lands the sentinel fix
+## Sentinel-side fixes landed (2026-07-28)
 
-`scripts/spe/apply-patches.sh` guards ALL its Makefile edits behind one
-`ENABLE_NROS_APP already present` check, so adding a new edit does not reach an
-already-patched checkout — the script silently skips and the new flag never
-lands. Verified: re-running after adding the `nano.specs` line changed nothing
-until it was applied directly. The guard should be per-edit.
+Pushed to `NEWSLabNTU/autoware_sentinel` main as `8d099b4`, `1715492`,
+`698e44f`:
+
+1. Rightsize the zenoh-pico large-payload pool (-129,024 bytes).
+2. Link against newlib-nano (-13,244).
+3. **A guard bug in `scripts/spe/apply-patches.sh`** — every Makefile edit sat
+   behind one `grep -q ENABLE_NROS_APP` check. That marker is present as soon
+   as ANY injection has run, so an edit added later never reaches a checkout
+   patched before it existed: the script reports "already present — skipping"
+   and the flag never lands. It cost a debugging cycle here — the rebuild came
+   back at an identical byte count while the script claimed success.
+
+   Now one marker per edit, checking what THAT edit injects. Verified on an
+   already-patched tree: the old edit still skips, the new pass injects, a
+   second run is a no-op.
+
+A patch script that reports success without patching is worse than one that
+fails, and this class is easy to reintroduce — the convention is recorded in
+the script.
