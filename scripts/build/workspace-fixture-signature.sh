@@ -20,7 +20,7 @@ workspace="$repo_root/$dir"
 }
 
 {
-    printf 'nros-workspace-fixture-v2\0%s\0' "$record"
+    printf 'nros-workspace-fixture-v3\0%s\0' "$record"
     # #182 — the fixture is a function of the CODEGEN TOOL, not just the
     # workspace sources: `nros codegen entry` emits the entry TU, `nros ws
     # sync`/`generate-*` shape the msg crates. A signature blind to the tool
@@ -28,11 +28,31 @@ workspace="$repo_root/$dir"
     # (realtime tier lanes ran museum TUs with correct-looking sources).
     # Hash the CLI binary's content into the signature; absent binary hashes
     # as the literal marker (the build script builds it before stamping).
+    # RFC-0061 / phase-318 W1 — key on what the tool EMITS, not on its binary.
+    # Rust binaries are not reproducible across rebuilds, so the old
+    # `sha256(nros)` moved on every `just setup-cli` and invalidated every
+    # workspace fixture: measured 2026-07-28, a codegen change that only ADDED a
+    # rejection path no fixture uses invalidated 40 fixtures / 35 build dirs, a
+    # multi-hour ~100 GB rebuild whose correct answer was zero.
+    #
+    # `nros codegen-fingerprint` hashes the bytes this build's emitters produce
+    # for a compiled-in corpus, so it moves iff generated code would move. Cached
+    # per binary hash: one probe run per rebuild, a file read thereafter.
+    #
+    # Fallback order is deliberate — an OLDER nros without the verb falls back to
+    # the binary hash (today's over-approximation), never to "assume fresh".
     nros_bin="$repo_root/packages/cli/target/release/nros"
     if [ -x "$nros_bin" ]; then
-        printf 'tool:nros\0'
-        sha256sum "$nros_bin" | awk '{printf "%s", $1}'
-        printf '\0'
+        bin_hash="$(sha256sum "$nros_bin" | awk '{print $1}')"
+        cache="$repo_root/.nros-cache/codegen-fingerprint/$bin_hash"
+        if [ -s "$cache" ]; then
+            fp="$(cat "$cache")"
+        elif fp="$("$nros_bin" codegen-fingerprint 2>/dev/null)" && [ -n "$fp" ]; then
+            mkdir -p "$(dirname "$cache")" && printf '%s' "$fp" > "$cache" || true
+        else
+            fp="binary:$bin_hash"
+        fi
+        printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'
     fi

@@ -113,3 +113,6 @@ examples/**/metadata/*.json
 packages/core/*/include/nros/.*.tmp.*
 # Catch-all for the same pattern anywhere else a generated header is staged.
 .*.tmp.[0-9]*
+
+# RFC-0061 / phase-318 W1 — per-binary codegen-fingerprint cache.
+.nros-cache/

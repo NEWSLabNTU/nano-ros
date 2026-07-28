@@ -1,0 +1,8 @@
+# RFC-0033 storage modes — the fingerprint must move when any mode's emitted
+# shape changes, so exercise all three (issues 0343-0346 added heap/borrowed on
+# srv/action payloads; a corpus without them would not notice a regression there).
+[fields]
+"nros_fingerprint_probe/Shapes.seq_prim"   = { cap = 16, mode = "heap" }
+"nros_fingerprint_probe/Shapes.text"       = { cap = 32, mode = "borrowed" }
+"nros_fingerprint_probe/Probe_Request.items" = { cap = 8, mode = "heap" }
+"nros_fingerprint_probe/Probe_Goal.waypoints" = { cap = 8, mode = "borrowed" }

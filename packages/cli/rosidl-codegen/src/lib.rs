@@ -1,4 +1,6 @@
 pub mod config;
+// RFC-0061 / phase-318 W1 — the tool answers "would I emit different bytes?"
+pub mod fingerprint;
 pub mod generator;
 pub mod idl_generator;
 /// phase-304 W1 (RFC-0056) — REP-2011 RIHS01 type-hash engine.
@@ -10,6 +12,7 @@ pub mod utils;
 pub use config::{
     CODEGEN_CONFIG_FILENAME, CapacityResolver, ConfigError, FieldKind, FieldStorage, StorageMode,
 };
+pub use fingerprint::codegen_fingerprint;
 pub use generator::{
     GeneratedActionPackage, GeneratedCActionPackage, GeneratedCPackage, GeneratedCServicePackage,
     GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage, GeneratedFfiRs,

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_fingerprint_probe</name>
+  <version>0.0.0</version>
+  <description>
+    Issue RFC-0061 / phase-318 W1 — the probe corpus whose EMITTED BYTES define
+    the codegen fingerprint. It is not a test package and nothing links it: its
+    only job is to exercise every emitter branch whose output can change, so that
+    `codegen-fingerprint.sh` moves if and only if generated code would move.
+
+    Adding a shape here is cheap and safe. REMOVING one silently narrows what the
+    fingerprint can notice, so treat deletions as you would deleting a test.
+  </description>
+  <maintainer email="dev@nano-ros.invalid">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+</package>

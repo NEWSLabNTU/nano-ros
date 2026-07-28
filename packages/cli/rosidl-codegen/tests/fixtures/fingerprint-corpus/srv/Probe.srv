@@ -1,0 +1,5 @@
+int64[] items
+string note
+---
+int64 sum
+string[] lines

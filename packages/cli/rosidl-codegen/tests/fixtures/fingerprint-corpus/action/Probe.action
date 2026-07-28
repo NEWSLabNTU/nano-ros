@@ -1,0 +1,8 @@
+int64[] waypoints
+string name
+---
+int64 total
+string report
+---
+int64 done
+string stage

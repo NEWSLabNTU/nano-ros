@@ -2354,6 +2354,13 @@ setup-cli:
     # `git ls-files` + an mtime walk, NOT `find`. Same reason as everywhere else
     # (see scripts/check-no-tracked-file-find.sh): these are tracked sources, so
     # the index knows them and no filesystem walk is needed. 0.52s -> 0.022s.
+    # phase-318 W1: `.jinja` is in the set because askama compiles the templates
+    # INTO the binary — a template-only edit changes emitted code while touching
+    # no `.rs`, so the old filter handed back a stale `nros` that still emitted
+    # the previous bytes. Caught by the W1.d acceptance run, which saw the codegen
+    # fingerprint refuse to move after a template edit (a direct `cargo build`
+    # moved it). Same shape as issue 0196: a probe watching fewer inputs than the
+    # thing it gates.
     # `generated`/`target` need no exclusion here — they are gitignored, so the
     # index never had them. `third-party`/`testing_workspaces` still do: they
     # ARE tracked but are not nros build inputs, and a parallel session touching
@@ -2362,7 +2369,7 @@ setup-cli:
     while IFS= read -r _f; do
         if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
     done < <(git ls-files "$root/packages/cli" \
-        | grep -E '\.rs$|Cargo\.(toml|lock)$' \
+        | grep -E '\.rs$|\.jinja$|Cargo\.(toml|lock)$' \
         | grep -vE '/(third-party|testing_workspaces)/')
     if [ -x "$bin" ] && [ -z "$stale_src" ]; then
         # Quiet on no-op — `just setup` invokes us unconditionally.

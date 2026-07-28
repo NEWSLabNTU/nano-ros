@@ -49,6 +49,15 @@ pub enum Cmd {
     #[command(name = "generate-rust")]
     GenerateRust(generate::RustArgs),
 
+    /// Print this binary's CODEGEN FINGERPRINT — a hash of the bytes its
+    /// emitters produce for a compiled-in probe corpus (RFC-0061 / phase-318 W1).
+    ///
+    /// The fixture-freshness signature keys on this instead of the binary's own
+    /// hash, so a rebuild that changes no emitted byte invalidates no fixture.
+    /// Hidden: it is a build-system seam, not a user verb.
+    #[command(name = "codegen-fingerprint", hide = true)]
+    CodegenFingerprint,
+
     /// Sync generated msg bindings + the `[patch.crates-io]` config to the
     /// declared deps (`package.xml` / `Cargo.toml`) — for a standalone pkg
     /// or a workspace (picks single-pkg vs colcon mode by layout). Writes the
