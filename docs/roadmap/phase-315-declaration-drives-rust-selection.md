@@ -256,6 +256,51 @@ it looked dead and was not.
 **Done when:** each item above is either removed or has a recorded reason to
 stay.
 
+### W4 scoping (2026-07-28, read-only — no code changed yet)
+
+Two of the four candidates are **not** dead, and one of them the wave had
+mis-classified:
+
+**`PARAM_SERVICES_ENABLED` stays.** The reasoning for retiring it was "the
+facade makes the hand-sync mistake impossible". True for a WORKSPACE entry, and
+only there. A standalone entry has no `system.toml` and therefore no facade, so
+the assert is still the only thing standing between a declared
+`[param_services]` and an `nros` built without the feature. Only two references
+exist (the const and the assert), which is what made it look dead.
+
+**`NANO_ROS_FEATURES` stays, and is not "purely internal".** It is set by
+GENERATED code for workspaces (`codegen_system.rs` bakes it into
+`system_config.cmake`), which is what suggested it was internal — but it is also
+set by hand in standalone examples:
+
+```cmake
+# examples/native/{c,cpp}/safety-listener/CMakeLists.txt
+set(NANO_ROS_FEATURES "safety")
+```
+
+That is the standalone capability selector: the C/C++ twin of what W3
+established for Rust editions, and the same shape as `-DNANO_ROS_RMW`. A
+standalone package has no declaration to derive from, so the build files ARE the
+declaration. Retiring it would remove the only way a standalone C/C++ example
+can ask for a capability.
+
+**The `posix` always-on special case is a real candidate, but not on
+inspection.** `NanoRosRuntimeCrate.cmake:230` appends `param_services lifecycle`
+for every posix build. Exactly 9 workspaces declare a capability (params /
+lifecycle / safety × c / cpp / rust); the other ~26 get these two features
+without asking. Since the 9 that need them already declare them, the line looks
+removable — but "looks removable" is precisely how the
+`_nros_runtime_platform_features` duplication survived. Removing it must be
+proven by a fixture sweep, not by this reasoning, because the failure mode is a
+capability quietly missing from an image rather than a build error.
+
+Note the near-miss: W2's migration strips `param-services` from entry manifests,
+and `ws-params-rust`'s `system.toml` has no `features =` line — which looks like
+a dropped capability until you notice `capability_enabled()` also honours the
+deprecated typed `[param_services]` block, which is the form these 9 use. The
+facade does carry it. A `grep '^features'` audit of these files reports the
+wrong answer.
+
 ### W5 — gate the target UX
 
 Extend `scripts/check-feature-set-ssot.sh` with two rules:
