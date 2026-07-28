@@ -64,6 +64,31 @@ manifest. **That mechanism already exists on the C++ side**:
 `Cargo.toml` carries `nros-cpp = { features = [...] }`, which is exactly why a
 C++ consumer names no features.
 
+## Two shapes, two correct answers
+
+The target UX is not "everything derives from `system.toml`" — it is "the user
+states each choice once, in the place that owns it".
+
+**Workspace** — a `system.toml` exists, so it owns the selection:
+
+| | user writes |
+| --- | --- |
+| node pkg (C, C++, Rust) | nothing |
+| C / C++ entry | `find_package(nano_ros)` + `nano_ros_add_executable(...)` |
+| Rust entry *(this phase)* | a dep on the generated facade; no features |
+
+**Standalone** — no `system.toml` exists, so the build command owns it, in each
+toolchain's native selector:
+
+```bash
+cmake -S . -B build -DNANO_ROS_RMW=xrce -DNANO_ROS_ROS_EDITION=jazzy   # C/C++
+cargo build --features rmw-xrce,ros-jazzy                              # Rust
+```
+
+Node packages are already correct in every language and both shapes. The gaps
+are exactly two: the Rust workspace ENTRY (W1/W2) and the Rust standalone
+edition default (W3).
+
 ## Design: a generated facade, never a user-manifest edit
 
 `nros sync` generates a small facade crate per entry, carrying every selection
@@ -113,27 +138,69 @@ their `ros-*`.
 **Done when:** no workspace entry names an edition, a capability or an RMW
 feature.
 
-### W3 — standalone examples: decide, then migrate
+### W3 — standalone Rust: make the edition REPLACEABLE, not additive
 
-~50 standalone Rust examples are their own entry with no workspace, and today
-build with a bare `cargo build`. A facade makes `nros sync` a prerequisite for
-them, which is a real UX change — for workspaces it is already true (patch
-tables, generated interface crates); for these it is new.
+Standalone examples were first drafted here as "decide whether to give them a
+facade too". That framing was wrong, and checking what the other languages
+actually do is what showed it.
 
-Two options, to be decided IN this wave rather than assumed:
+**A standalone package has no `system.toml`, so selection is a build-time
+input — and both toolchains already express that idiomatically:**
 
-1. **Facade for them too** — full consistency, at the cost of `cargo build`
-   alone no longer working in an example directory.
-2. **Exempt them** — a standalone example is a single image with no `system.toml`
-   to derive from, so hand-written selection is arguably honest there. Keeps the
-   copy-out-and-build property the examples exist to demonstrate.
+```bash
+# C++ standalone: nothing in the file; the selector is -D
+cmake -S . -B build -DNANO_ROS_RMW=xrce -DNANO_ROS_ROS_EDITION=jazzy
 
-Recommendation: (2). The declaration these examples would derive from does not
-exist for them, and the phase's goal is "declare once", not "generate always".
-But it means the retirement in W4 is scoped to workspaces.
+# Rust standalone: the selector is --features
+cargo build --no-default-features --features rmw-xrce,ros-jazzy
+```
 
-**Done when:** the decision is recorded here with its reasoning, and the chosen
-option is implemented.
+That is the same UX in each toolchain's native selector, not a deviation to
+tolerate. Standalone packages therefore get **no facade** — there is nothing to
+derive from, and the copy-out-and-build property is what these examples exist to
+demonstrate.
+
+**But one thing IS a defect, and it is the same class phase-314 fixed
+elsewhere.** The standalone Rust manifests carry an ADDITIVE edition default:
+
+```toml
+default = ["rmw-zenoh", "ros-humble"]
+```
+
+Cargo features are additive and `ros-{humble,iron,jazzy}` are
+`compile_error!`-exclusive, so `--features ros-jazzy` yields BOTH and fails to
+compile. The user has to know to pass `--no-default-features` and then re-name
+every other default they still wanted. `-DNANO_ROS_ROS_EDITION=jazzy` simply
+replaces the default; the Rust side has no equivalent.
+
+So the C++ and Rust standalone selectors are NOT equivalent today: one is
+replace-by-default, the other is add-and-conflict.
+
+Fix: the edition must not be in `default`. Options, to be chosen with a
+measurement rather than by taste:
+
+1. **Drop `ros-*` from `default` and let no edition mean the default edition.**
+   Zero editions is already legal (only >1 trips the `compile_error!`), which is
+   what made phase-314 W3 safe for node packages. `--features ros-jazzy` then
+   works with no `--no-default-features` dance. Needs confirmation that a
+   zero-edition build really behaves as humble rather than as something
+   undefined.
+2. **Keep a default but make selection replace it** — not expressible in cargo
+   without a `--no-default-features` step, so this is really "document the
+   dance".
+
+(1) is preferred and is the same move phase-314 made for node packages; the only
+open question is what a zero-edition build resolves to, which W3 must verify
+before applying.
+
+Scope: 6 standalone manifests carry `default = [... ros-* ...]`; 95 name an
+edition somewhere. Only the `default` list is in scope here — an explicit
+`ros-humble = ["nros/ros-humble", …]` feature DEFINITION is the selector itself
+and stays.
+
+**Done when:** `cargo build --features ros-jazzy` works in a standalone example
+with no `--no-default-features`, and W5's gate rejects an edition inside a
+`default` list.
 
 ### W4 — retire the old paths
 
@@ -157,9 +224,13 @@ stay.
 
 ### W5 — gate the target UX
 
-Extend `scripts/check-feature-set-ssot.sh`: no migrated entry may name an
-edition, capability or RMW cargo feature. The existing node-package check
-already covers the other half.
+Extend `scripts/check-feature-set-ssot.sh` with two rules:
+
+* no migrated WORKSPACE entry names an edition, capability or RMW cargo feature
+  (the existing node-package check covers the other half);
+* no manifest anywhere puts a `ros-*` feature in its `default` list — that is
+  the additive-default trap from W3, and it is invisible until someone tries a
+  second edition.
 
 **Done when:** the gate fails when an entry restates a declared axis.
 
@@ -177,6 +248,7 @@ already covers the other half.
 - [ ] `nros sync` writes no user-authored file.
 - [ ] Changing `ros_edition` in `system.toml` changes what the Rust entry
       compiles against, with no manifest edit.
-- [ ] The standalone-example decision is recorded with reasoning.
+- [ ] `cargo build --features ros-<edition>` selects an edition in a standalone
+      example without `--no-default-features`.
 - [ ] Retired paths are removed, or their reason to stay is written down.
 - [ ] The gate rejects an entry that restates a declared axis.
