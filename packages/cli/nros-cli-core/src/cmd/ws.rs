@@ -631,18 +631,17 @@ fn generate_facade_crates(
         if !pkg.is_rust_pkg {
             continue;
         }
-        let Some(f) =
-            crate::orchestration::facade::write_facade(
-                &pkg.name,
-                &pkg.dir,
-                // NOT `pkg.manifest` — that is the ament `package.xml`. The
-                // facade reads the CARGO manifest, which `is_rust_pkg` above
-                // already guarantees exists at the package root.
-                &pkg.dir.join("Cargo.toml"),
-                &sys,
-                &facade_root,
-            )
-            .wrap_err_with(|| format!("ws sync: facade for {}", pkg.name))?
+        let Some(f) = crate::orchestration::facade::write_facade(
+            &pkg.name,
+            &pkg.dir,
+            // NOT `pkg.manifest` — that is the ament `package.xml`. The
+            // facade reads the CARGO manifest, which `is_rust_pkg` above
+            // already guarantees exists at the package root.
+            &pkg.dir.join("Cargo.toml"),
+            &sys,
+            &facade_root,
+        )
+        .wrap_err_with(|| format!("ws sync: facade for {}", pkg.name))?
         else {
             continue;
         };
@@ -1679,24 +1678,61 @@ fn write_patch_block(
         nano_ros_path,
         extra_runtime_crates,
     );
-    // W9 option E — crates served by the central file drop out of the per-leaf
-    // emit; the include line below carries them instead.
-    let include_rel: Option<String> = central_patch.map(|cp| {
-        entries.retain(|(name, _)| !CENTRAL_PATCH_CRATES.contains(&name.as_str()));
-        // Cargo resolves a relative `include` against the INCLUDING file's
-        // directory (`<authority_dir>/.cargo/`). Prefer relative — the
-        // in-tree example configs are COMMITTED, so a host-absolute path
-        // there would break every other checkout. #272: cargo ignores a
-        // missing include target WITHOUT warning, so the reachability check
-        // below turns the silent-drop shape into a loud error. Fall back to
-        // absolute only when no relative path exists (different filesystem
-        // root — an out-of-tree consumer on another mount).
-        let cfg_dir = authority_dir.join(".cargo");
-        pathdiff::diff_paths(cp, &cfg_dir)
-            .unwrap_or_else(|| cp.to_path_buf())
-            .display()
-            .to_string()
-    });
+    // #272 — how this leaf reaches the central trio (`nros`/`nros-core`/
+    // `nros-serdes`) depends on whether it lives INSIDE the nano-ros checkout:
+    //
+    // - IN-TREE example leaf: its `.cargo/config.toml` is COMMITTED, so it uses
+    //   the relative `include = ["…/nros-patch.toml"]` line (a host-absolute path
+    //   would break every other checkout). The reachability bail below turns the
+    //   include's silent-drop failure modes into a loud error.
+    // - OUT-OF-TREE consumer (colcon / autoware_sentinel): NOT committed, and the
+    //   `include` has three fragile preconditions (cargo ≥ 1.93, a correct
+    //   relative path, a present central file) — tripping any one fails the build
+    //   with an unexplained `no matching package named 'nros'`. So inline the trio
+    //   with ABSOLUTE paths directly and skip the include entirely — the failure
+    //   class cannot occur.
+    let external = match nano_ros_path {
+        Some(nrp) => {
+            let nrp_c = nrp.canonicalize().unwrap_or_else(|_| nrp.to_path_buf());
+            let auth_c = authority_dir
+                .canonicalize()
+                .unwrap_or_else(|_| authority_dir.to_path_buf());
+            !auth_c.starts_with(&nrp_c)
+        }
+        None => false,
+    };
+
+    let include_rel: Option<String> = if external {
+        // Replace render's RELATIVE trio rows (nros-core/nros-serdes) with the
+        // full ABSOLUTE trio (incl. `nros`, which render never emits). No include.
+        if let Some(nrp) = nano_ros_path {
+            let nrp_c = nrp.canonicalize().unwrap_or_else(|_| nrp.to_path_buf());
+            entries.retain(|(name, _)| !CENTRAL_PATCH_CRATES.contains(&name.as_str()));
+            for name in CENTRAL_PATCH_CRATES {
+                let Some(sub) = nros_crate_subpath(name) else {
+                    continue;
+                };
+                let crate_root = nrp_c.join(&sub);
+                if crate_root.join("Cargo.toml").is_file() {
+                    entries.push((name.to_string(), crate_root.display().to_string()));
+                }
+            }
+        }
+        None
+    } else {
+        // In-tree: crates served by the central file drop out of the per-leaf
+        // emit; the relative `include` line carries them instead.
+        central_patch.map(|cp| {
+            entries.retain(|(name, _)| !CENTRAL_PATCH_CRATES.contains(&name.as_str()));
+            // Cargo resolves a relative `include` against the INCLUDING file's
+            // directory (`<authority_dir>/.cargo/`).
+            let cfg_dir = authority_dir.join(".cargo");
+            pathdiff::diff_paths(cp, &cfg_dir)
+                .unwrap_or_else(|| cp.to_path_buf())
+                .display()
+                .to_string()
+        })
+    };
 
     // 1) Write the managed [patch.crates-io] into `<authority_dir>/.cargo/config.toml`
     //    (phase-265: never the consumer Cargo.toml). Format-preserving toml_edit DOM.
@@ -3124,6 +3160,110 @@ version = "*"
         // Alphabetised: nros-core before std_msgs.
         let keys: Vec<&str> = cio.iter().map(|(k, _)| k).collect();
         assert_eq!(keys, vec!["nros-core", "std_msgs"], "not sorted:\n{out}");
+    }
+
+    /// Build a fake nano-ros checkout with the trio crate manifests present.
+    #[cfg(test)]
+    fn fake_checkout() -> tempfile::TempDir {
+        let nrp = tempfile::tempdir().unwrap();
+        for name in CENTRAL_PATCH_CRATES {
+            let d = nrp
+                .path()
+                .join(nros_crate_subpath(name).expect("trio in lookup table"));
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(
+                d.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\n"),
+            )
+            .unwrap();
+        }
+        nrp
+    }
+
+    /// #272 — an OUT-OF-TREE consumer inlines the trio with ABSOLUTE paths and
+    /// emits NO `include` line (which would otherwise silently drop on cargo
+    /// < 1.93 / a wrong relative path / a missing central file).
+    #[test]
+    fn external_consumer_inlines_absolute_trio_no_include() {
+        let nrp = fake_checkout();
+        let central = write_central_patch_file(nrp.path()).unwrap();
+
+        let ext = tempfile::tempdir().unwrap();
+        let authority = ext.path().join("Cargo.toml");
+        std::fs::write(&authority, "[package]\nname = \"consumer\"\n").unwrap();
+        let build_root = ext.path().join("build");
+        std::fs::create_dir_all(&build_root).unwrap();
+
+        write_patch_block(
+            &authority,
+            &build_root,
+            &[],
+            Some(nrp.path()),
+            &[],
+            Some(&central),
+        )
+        .unwrap();
+
+        let cfg = std::fs::read_to_string(ext.path().join(".cargo/config.toml")).unwrap();
+        assert!(
+            !cfg.contains("include"),
+            "external must not use `include`:\n{cfg}"
+        );
+        let doc: toml_edit::DocumentMut = cfg.parse().unwrap();
+        let cio = doc["patch"]["crates-io"].as_table().unwrap();
+        for name in CENTRAL_PATCH_CRATES {
+            let p = cio
+                .get(*name)
+                .unwrap_or_else(|| panic!("trio `{name}` not inlined:\n{cfg}"))["path"]
+                .as_str()
+                .unwrap();
+            assert!(
+                std::path::Path::new(p).is_absolute(),
+                "`{name}` path not absolute: {p}"
+            );
+        }
+    }
+
+    /// #272 — an IN-TREE example leaf (under the checkout) keeps the relative
+    /// `include` line and does NOT inline the trio (its config is committed).
+    #[test]
+    fn in_tree_leaf_uses_relative_include() {
+        let nrp = fake_checkout();
+        let central = write_central_patch_file(nrp.path()).unwrap();
+
+        let authority = nrp.path().join("examples/foo/Cargo.toml");
+        std::fs::create_dir_all(authority.parent().unwrap()).unwrap();
+        std::fs::write(&authority, "[package]\nname = \"foo\"\n").unwrap();
+        let build_root = nrp.path().join("build");
+        std::fs::create_dir_all(&build_root).unwrap();
+
+        write_patch_block(
+            &authority,
+            &build_root,
+            &[],
+            Some(nrp.path()),
+            &[],
+            Some(&central),
+        )
+        .unwrap();
+
+        let cfg =
+            std::fs::read_to_string(nrp.path().join("examples/foo/.cargo/config.toml")).unwrap();
+        assert!(
+            cfg.contains("include"),
+            "in-tree leaf must use `include`:\n{cfg}"
+        );
+        let doc: toml_edit::DocumentMut = cfg.parse().unwrap();
+        if let Some(cio) = doc
+            .get("patch")
+            .and_then(|p| p.get("crates-io"))
+            .and_then(|c| c.as_table())
+        {
+            assert!(
+                cio.get("nros").is_none(),
+                "trio must be served by the include, not inlined:\n{cfg}"
+            );
+        }
     }
 
     #[test]

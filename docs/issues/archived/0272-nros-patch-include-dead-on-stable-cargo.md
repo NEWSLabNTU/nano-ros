@@ -1,10 +1,34 @@
 ---
 id: 272
 title: "nros sync's `include = [nros-patch.toml]` is silently dead on stable cargo — external consumers get 'no matching package named nros'"
-status: open  # premise disproven — see Verification (2026-07-26); needs reporter repro
+status: resolved
+resolved_in: "phase-313 (nros sync external-consumer inline trio)"
 type: bug
 severity: medium
 area: cli
+---
+
+## Resolution (2026-07-28) — external consumers inline the trio; failure class eliminated
+
+The three diagnosable causes already emit loud diagnostics (below). The robust
+fix removes the fragile `include` dependency for the consumers that actually hit
+it: `write_patch_block` (`cmd/ws.rs`) now branches on whether the leaf lives
+INSIDE the nano-ros checkout.
+
+- **Out-of-tree consumer** (colcon / autoware_sentinel — its `.cargo/config.toml`
+  is generated per-consumer, not committed): inline the `nros`/`nros-core`/
+  `nros-serdes` trio with ABSOLUTE `path =` rows directly and emit NO `include`
+  line. The include's three fragile preconditions (cargo ≥ 1.93, a correct
+  relative path, a present central file) no longer apply — `no matching package
+  named 'nros'` cannot occur.
+- **In-tree example leaf** (config is COMMITTED): unchanged — keeps the relative
+  `include = ["…/nros-patch.toml"]` (a host-absolute path would break every other
+  checkout), guarded by the reachability bail + the cargo-version warning.
+
+Unit-tested: `external_consumer_inlines_absolute_trio_no_include` (absolute trio,
+no include) + `in_tree_leaf_uses_relative_include` (include, trio not inlined).
+The earlier diagnostics stay as the safety net for the in-tree path.
+
 ---
 
 ## Finding (autoware_sentinel phase-14 pin bump, 2026-07-25)

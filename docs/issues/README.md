@@ -288,9 +288,9 @@ residue). See `0200-*`.
 **#271** — Orin SPE BTCM footprint regressed ~+195 KB between `d9af52be` and `21a3a4248`; a
 minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
 
-**#272** — `nros sync`'s `include = [nros-patch.toml]` is silently dead on stable cargo →
-external consumers get "no matching package named nros". Premise contested (see the issue's
-Verification section); needs a reporter repro. See `0272-*`.
+(#272 resolved — `nros sync` now INLINES the nros/nros-core/nros-serdes trio with absolute paths for
+out-of-tree consumers (no fragile `include`); in-tree example leaves keep the committed relative
+include. Failure class `no matching package named 'nros'` eliminated. See `archived/0272-*`.)
 
 (#273 resolved — `nros-board.toml` `[board.entry]` signature `_start`→`main` (matches `board_mps2.c`
 `Reset_Handler`); the scaffold stub fixed too; the off-lane wake-latency bench spun to `#0317`.
