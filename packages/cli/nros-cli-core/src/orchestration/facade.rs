@@ -57,6 +57,8 @@ pub struct Facade {
     pub nros_features: Vec<String>,
     /// The derived board-crate feature list.
     pub board_features: Vec<String>,
+    /// The derived feature list for a direct `nros-rmw-*` backend dep, if any.
+    pub backend_features: Vec<String>,
     /// True iff the on-disk manifest actually changed.
     pub changed: bool,
 }
@@ -74,6 +76,16 @@ struct RuntimeDeps {
     nros: Option<PathBuf>,
     /// Absolute path + package name of the `nros-board-*` crate.
     board: Option<(String, PathBuf)>,
+    /// Absolute path + package name of a DIRECT `nros-rmw-*` backend dep.
+    ///
+    /// Some entries (the Zephyr ones) depend on the backend crate directly
+    /// rather than only through the board. That dep needs the edition too, and
+    /// this is not bookkeeping: the backend's `keyexpr` module cfg-gates the
+    /// RIHS01 type-hash tail on `ros-iron`/`ros-jazzy` itself. Miss the forward
+    /// and a jazzy build keeps the humble `TypeHashNotSupported` placeholder on
+    /// the wire while everything compiles — the precise failure mode this phase
+    /// exists to remove, reintroduced one dep to the left.
+    rmw_backend: Option<(String, PathBuf)>,
 }
 
 /// Derive the selection for one entry and write its facade crate.
@@ -143,6 +155,21 @@ pub fn write_facade(
 
     let board_features = vec![rmw.cargo_feature.to_string()];
 
+    // A direct backend dep gets the edition (and any capability the backend
+    // itself implements, e.g. safety-e2e's CRC path), NOT the `rmw-*` selector
+    // — naming the backend crate already selects it.
+    let mut backend_features = vec![edition.cargo_feature().to_string()];
+    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
+        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(rmw.declared) {
+            continue;
+        }
+        if let Some(bf) = cap.backend_feature {
+            backend_features.push(bf.to_string());
+        }
+    }
+    backend_features.sort();
+    backend_features.dedup();
+
     // ---- render ------------------------------------------------------------
     let crate_name = format!("{entry_name}_nros_selection");
     let dir = facade_root.join(entry_name);
@@ -153,6 +180,8 @@ pub fn write_facade(
         &nros_features,
         deps.board.as_ref(),
         &board_features,
+        deps.rmw_backend.as_ref(),
+        &backend_features,
         entry_name,
         sys,
     );
@@ -178,6 +207,11 @@ pub fn write_facade(
         crate_name,
         nros_features,
         board_features,
+        backend_features: if deps.rmw_backend.is_some() {
+            backend_features
+        } else {
+            Vec::new()
+        },
         changed,
     }))
 }
@@ -200,6 +234,8 @@ fn runtime_deps(manifest: &toml::Value, entry_dir: &Path) -> RuntimeDeps {
             out.nros = Some(abs);
         } else if name.starts_with("nros-board-") {
             out.board = Some((name.clone(), abs));
+        } else if name.starts_with("nros-rmw-") {
+            out.rmw_backend = Some((name.clone(), abs));
         }
     }
     out
@@ -213,6 +249,8 @@ fn render_manifest(
     nros_features: &[String],
     board: Option<&(String, PathBuf)>,
     board_features: &[String],
+    backend: Option<&(String, PathBuf)>,
+    backend_features: &[String],
     entry_name: &str,
     sys: &SystemToml,
 ) -> String {
@@ -265,6 +303,13 @@ fn render_manifest(
             "{name} = {{ path = {:?}, features = [{}] }}\n",
             rel_from(facade_dir, path),
             feat_list(board_features),
+        ));
+    }
+    if let Some((name, path)) = backend {
+        s.push_str(&format!(
+            "{name} = {{ path = {:?}, default-features = false, features = [{}] }}\n",
+            rel_from(facade_dir, path),
+            feat_list(backend_features),
         ));
     }
     s

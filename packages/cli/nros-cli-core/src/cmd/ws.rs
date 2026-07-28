@@ -590,6 +590,7 @@ fn resolver_from(
 /// selector (`cargo build --features …`, the twin of C++'s `-DNANO_ROS_RMW=…`)
 /// and a facade would have no input. See phase-315 W3.
 fn generate_facade_crates(
+    ws_root: &std::path::Path,
     scan: &[WsPkg],
     build_root: &std::path::Path,
     verbose: bool,
@@ -626,22 +627,46 @@ fn generate_facade_crates(
     let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(&raw)
         .wrap_err_with(|| format!("ws sync: parse {}", system_toml.display()))?;
 
+    // Entry packages come from CARGO's member list, not from `scan`.
+    //
+    // `scan` is ament-driven: a package enters it by having a `package.xml`.
+    // Nine workspace entries do not have one — they are cargo workspace members
+    // and nothing else, which is legal (the workspace ROOT is their patch
+    // authority, so the rest of sync works on them). Keying facade generation
+    // off `scan` silently skipped exactly those nine, and the skip was
+    // invisible: sync succeeded, and the entries kept their hand-written
+    // features, which is the state that looks correct.
+    //
+    // Cargo's `members` list is the truth for "what is in this workspace" here,
+    // because the facade's whole mechanism is cargo feature unification.
+    let mut candidates: Vec<(String, PathBuf)> = scan
+        .iter()
+        .filter(|p| p.is_rust_pkg)
+        .map(|p| (p.name.clone(), p.dir.clone()))
+        .collect();
+    for dir in cargo_workspace_members(ws_root) {
+        if !candidates.iter().any(|(_, d)| *d == dir) {
+            let name = dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            candidates.push((name, dir));
+        }
+    }
+
     let facade_root = build_root.join("nros-selection");
-    for pkg in scan {
-        if !pkg.is_rust_pkg {
+    for (pkg_name, pkg_dir) in &candidates {
+        // The CARGO manifest — NOT `WsPkg::manifest`, which is the ament
+        // `package.xml`, and which the cargo-only members do not have at all.
+        let cargo_toml = pkg_dir.join("Cargo.toml");
+        if !cargo_toml.is_file() {
             continue;
         }
         let Some(f) = crate::orchestration::facade::write_facade(
-            &pkg.name,
-            &pkg.dir,
-            // NOT `pkg.manifest` — that is the ament `package.xml`. The
-            // facade reads the CARGO manifest, which `is_rust_pkg` above
-            // already guarantees exists at the package root.
-            &pkg.dir.join("Cargo.toml"),
-            &sys,
-            &facade_root,
+            pkg_name, pkg_dir, &cargo_toml, &sys, &facade_root,
         )
-        .wrap_err_with(|| format!("ws sync: facade for {}", pkg.name))?
+        .wrap_err_with(|| format!("ws sync: facade for {pkg_name}"))?
         else {
             continue;
         };
@@ -659,6 +684,42 @@ fn generate_facade_crates(
         }
     }
     Ok(())
+}
+
+/// Cargo workspace members of `ws_root`, as absolute directories.
+///
+/// Deliberately simple: `members` entries are literal relative paths in every
+/// nano-ros example workspace. Glob members (`src/*`) are expanded, since cargo
+/// allows them and one of these workspaces could grow one; anything else is
+/// skipped rather than guessed at.
+fn cargo_workspace_members(ws_root: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(raw) = std::fs::read_to_string(ws_root.join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(members) = v
+        .get("workspace")
+        .and_then(|w| w.get("members"))
+        .and_then(|m| m.as_array())
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for m in members.iter().filter_map(|m| m.as_str()) {
+        if let Some(prefix) = m.strip_suffix("/*") {
+            if let Ok(rd) = std::fs::read_dir(ws_root.join(prefix)) {
+                out.extend(rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()));
+            }
+        } else {
+            let p = ws_root.join(m);
+            if p.is_dir() {
+                out.push(p);
+            }
+        }
+    }
+    out
 }
 
 fn generate_bridge_configs(
@@ -908,7 +969,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // (the canonical input; bridge planning below consumes it).
     resolve_system_models(&scan, args.verbose)?;
     generate_bridge_configs(&ws_root, &scan, &build_root, args.verbose)?;
-    generate_facade_crates(&scan, &build_root, args.verbose)?;
+    generate_facade_crates(&ws_root, &scan, &build_root, args.verbose)?;
 
     if rust_consumers.is_empty() {
         println!("ws sync: no Rust consumer pkgs — patch tables not written.");
