@@ -1906,13 +1906,40 @@ pub unsafe extern "C" fn nros_executor_spin(executor: *mut nros_executor_t) -> n
 
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
 
-    // Spin until shutdown
+    // Spin until shutdown, or until spin_some fails persistently.
+    //
+    // issue 0324 — this used `let _ = nros_executor_spin_some(...)`, so a
+    // transport that had died kept the loop running forever and the blocking
+    // spin still returned OK on shutdown: the C caller could not distinguish
+    // "ran until you stopped me" from "spun uselessly against a dead session".
+    // A single non-OK code is not conclusive (a spin can fail transiently), so
+    // the loop tolerates a short run of them and then reports the last one.
+    let mut consecutive_err = 0u32;
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        let _ = nros_executor_spin_some(executor, executor_ref.timeout_ns);
+        let ret = nros_executor_spin_some(executor, executor_ref.timeout_ns);
+        if ret == NROS_RET_OK {
+            consecutive_err = 0;
+        } else {
+            consecutive_err += 1;
+            if consecutive_err >= SPIN_ERROR_TOLERANCE {
+                return ret;
+            }
+        }
     }
 
     NROS_RET_OK
 }
+
+/// How many CONSECUTIVE failing `spin_some` calls a blocking spin tolerates
+/// before giving up and returning the last error (issue 0324).
+///
+/// Not 1: a spin can fail transiently (a momentary transport hiccup, or a
+/// backend returning non-OK for a benign poll timeout), and aborting on the
+/// first would turn a blip into a dead node. Not unbounded either — that was
+/// the bug: a `let _ =` let a dead session spin forever while the blocking
+/// call still returned OK on shutdown. Same "a few spins in a row" reasoning
+/// as the Rust-side health counter.
+const SPIN_ERROR_TOLERANCE: u32 = 16;
 
 /// Spin the executor with a fixed period.
 ///
@@ -1939,6 +1966,7 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
+    let mut consecutive_err = 0u32;
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
         // `period_ns` is an upper bound on how long `drive_io` will block.
         // The timer delta credited to spin_once is the *real* wall-clock
@@ -1946,7 +1974,18 @@ pub unsafe extern "C" fn nros_executor_spin_period(
         // available), not `period_ns` itself — transports like zenoh-pico's
         // condvar wake early on data arrival, and treating the requested
         // timeout as the delta would tick timers faster than wall-clock.
-        let _ = nros_executor_spin_some(executor, period_ns);
+        // issue 0324 — same tolerance as the blocking spin above: a dead
+        // transport must eventually reach the C caller instead of looping
+        // forever at the configured period.
+        let ret = nros_executor_spin_some(executor, period_ns);
+        if ret == NROS_RET_OK {
+            consecutive_err = 0;
+        } else {
+            consecutive_err += 1;
+            if consecutive_err >= SPIN_ERROR_TOLERANCE {
+                return ret;
+            }
+        }
 
         // Accumulate next invocation time to prevent drift
         executor_ref.invocation_time_ns += period_ns;

@@ -1173,6 +1173,24 @@ pub struct Executor<'s> {
     /// Optional platform clock hook supplied by `ExecutorConfig`.
     #[cfg(not(feature = "std"))]
     pub(crate) clock_us_fn: Option<fn() -> u64>,
+
+    /// Consecutive `drive_io` failures on the PRIMARY session (issue 0324).
+    ///
+    /// Reset to 0 by any successful drive. A session that has died — router
+    /// gone, lease expired, socket closed — used to keep returning `Ok(())`
+    /// from `spin()` forever: the node looked alive, publishes went nowhere,
+    /// and no callback fired. Nothing in the crate could report it; a
+    /// `git grep` for a health surface found none, so every such
+    /// investigation started from packet captures (issue 0268 burned days
+    /// this way).
+    ///
+    /// A COUNTER rather than propagating the error out of `spin_once`,
+    /// deliberately: `drive_io` returns `Err` for any non-OK backend code, and
+    /// whether a benign poll timeout maps to one is backend-specific. Aborting
+    /// the spin on a single failure would risk turning a transient into a dead
+    /// node. A counter cannot regress behaviour and still makes the condition
+    /// observable via [`Executor::session_io_failures`].
+    pub(crate) consecutive_io_failures: u32,
     /// RFC-0052 W3b.2 — wall-clock (epoch µs) source for age monitors.
     pub(crate) epoch_us_fn: Option<fn() -> u64>,
     /// RFC-0052 W3b.4 — baked contract-monitor table (empty = uncontracted
@@ -1294,6 +1312,7 @@ impl<'s> Executor<'s> {
             last_spin_end_us: None,
             #[cfg(not(feature = "std"))]
             clock_us_fn: None,
+            consecutive_io_failures: 0,
             // RFC-0052 W3b.5 — hosted builds get a wall clock by default so
             // native age monitors activate without extra wiring; embedded
             // builds install `config.epoch_us` from the board in
@@ -4709,6 +4728,29 @@ impl<'s> Executor<'s> {
     /// `timeout_ms: i32` signature had a latent footgun where
     /// `spin_once(-1)` silently froze timers while still polling I/O;
     /// `Duration` has no negative sentinel.
+    /// Consecutive `drive_io` failures on the primary session (issue 0324).
+    ///
+    /// `0` means the last drive succeeded. A value that keeps climbing across
+    /// spins is a session that is no longer doing I/O — router gone, lease
+    /// expired, socket closed — which otherwise presents as a node that spins
+    /// `Ok(())` forever while publishing nowhere and firing no callbacks.
+    ///
+    /// Transient failures happen, so a single non-zero reading is not a fault;
+    /// a threshold (say, "more than a few consecutive spins") is the useful
+    /// signal. Extra (bridge / multi-domain) sessions are best-effort and are
+    /// deliberately NOT counted here.
+    pub fn session_io_failures(&self) -> u32 {
+        self.consecutive_io_failures
+    }
+
+    /// Whether the primary session drove I/O successfully on the last spin.
+    ///
+    /// Convenience over [`Self::session_io_failures`] for the common
+    /// "is my transport alive?" check.
+    pub fn session_io_healthy(&self) -> bool {
+        self.consecutive_io_failures == 0
+    }
+
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
 
@@ -4890,8 +4932,19 @@ impl<'s> Executor<'s> {
         ))]
         let primary_drive_timeout_ms = timeout_ms;
 
-        let _ = self.session.drive_io(primary_drive_timeout_ms);
+        // issue 0324 — the primary session's I/O result is TRACKED, not
+        // discarded. See `consecutive_io_failures` for why this is a counter
+        // rather than an early return.
+        match self.session.drive_io(primary_drive_timeout_ms) {
+            Ok(()) => self.consecutive_io_failures = 0,
+            Err(_) => self.consecutive_io_failures = self.consecutive_io_failures.saturating_add(1),
+        }
         for extra in self.extra_sessions.iter_mut() {
+            // Best-effort BY DESIGN: extra sessions are bridge / multi-domain
+            // attachments, and one of them failing must not stall the primary
+            // spin. The old code expressed this the same way it expressed the
+            // primary's discarded error — identically — so the intent was
+            // invisible. It is now the only `let _ =` of the two.
             let _ = extra.drive_io(0);
         }
 
