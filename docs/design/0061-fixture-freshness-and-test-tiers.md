@@ -198,8 +198,8 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 | tier | name | scope | gate covers | budget | when |
 | --- | --- | --- | --- | --- | --- |
 | 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save |
-| 1 | `ci` | tier 0 + workspace/host build + **codegen golden diff** + native tests | native fixtures only | minutes | every commit, pre-push |
-| 2 | `ci-matrix` | tier 1 + a **pairwise cover** of the declared matrix | that subset's fixtures | ~20 % of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
+| 1 | `ci` | tier 0 + host build + **codegen golden diff** + an 18-cell native selection | native fixtures only | minutes | every commit, pre-push |
+| 2 | `ci-matrix` | tier 1 + a **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | ~20 % of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
 | 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | nightly, pre-release, on demand |
 
 Two rules make the ladder honest:
@@ -213,58 +213,95 @@ Two rules make the ladder honest:
   nobody can afford to do per task, and an instruction that cannot be followed is
   followed selectively.
 
-### Tier 2 is the missing rung, and it is pairwise (decided 2026-07-28)
+### Selection strategy — strength per AXIS, not per tier
 
-The repo already declares the matrix (`packages/testing/nros-tests/src/matrix.rs`),
-so tier 2 must be **computed from it**, never a hand-picked list that rots.
+Uniform t-wise is the wrong frame, because the axes select different KINDS of
+thing and therefore fail in different shapes:
 
-The axes are not independent — an RMW is not available on every platform — so
-"pairwise" here means a **set cover over the DECLARED cells**, not a covering
-array over the cartesian product:
+| axis | selects | defect shape | strength needed |
+| --- | --- | --- | --- |
+| `workload` | which core CODE PATH runs (action/service/param/lifecycle) | single-config logic bug | **1-wise** — pairing it is waste |
+| `lang` × `rmw` | which ABI SEAM PAIR meets (FFI shim × backend vtable) | needs both sides present | **pairwise** |
+| `platform` | toolchain + libc + linker + allocator | only bites combined with a language | **pairwise with lang** (+ rmw for link/DCE) |
+| `kind` | entry vs carrier WIRING path | wiring-specific | **pairwise with platform** |
+
+The table is derived from defects, not from theory:
+
+| defect class | axes that must meet | instances |
+| --- | --- | --- |
+| core logic | none — any single cell | 0322 accept_goal, 0323 param truncation, 0324 spin, 0339 compat shim |
+| codegen output | no cell at all | 0343–0346 (a golden diff catches these) |
+| sizes / `_opaque` ABI | platform × lang | **0268** (freertos × C), **0245** (zephyr × C++) |
+| freestanding headers | platform × lang | 0332 |
+| vtable / transport ABI | rmw × lang | 0331 |
+| force-link / DCE | platform × lang × rmw | archived 0155 / 0163 |
+| entry / carrier wiring | platform × kind | 0097, 0263 |
+| transport config mismatch | platform × rmw | archived 0135 |
+| threshold / timing / emulator | the whole cell | 0269, 0292, QEMU flake |
+
+Nothing in that catalogue requires `workload` × `platform`: an action-path bug
+fails on every platform.
+
+### Per-tier selection (measured against the matrix at 182 Runtime cells)
+
+| tier | selection | cells | why |
+| --- | --- | --- | --- |
+| 0 | none — text invariants only | **0** | Comparisons of committed text: 0336, 0321, 0268's mirror gate, 0320/0334. No build ⇒ no fixture ⇒ no staleness. |
+| 1 | Native only: **1-wise(workload, kind) + pairwise(lang × rmw)** | **18** of 77 native | Every core code path runs once (where most P1s live), and every language meets every RMW — on the host, where a failure costs minutes, not a QEMU boot. |
+| 2 | **pairwise(platform × lang × rmw × kind)** | **37** (20 %) | Exactly the interaction classes above. Deliberately excludes `workload`. |
+| 3 | everything: Runtime + BuildOnly | **182** + build-only | Thresholds, timing, emulator behaviour — irreducible. |
+
+Measured alternatives, for the record:
+
+| selection | cells | share |
+| --- | --- | --- |
+| 1-wise over all axes | 19 | 10 % |
+| pairwise platform × lang | 29 | 16 % |
+| pairwise platform × lang × rmw | 31 | 17 % |
+| **pairwise platform × lang × rmw × kind** | **37** | **20 %** |
+| + 1-wise(workload) | 42 | 23 % |
+| full 5-axis pairwise | 73 | 40 % |
+
+### Two calls that are not obvious
+
+**Tier 2 does not re-cover `workload`.** Adding 1-wise(workload) costs 42 cells
+instead of 37 and buys nothing, because **tier 1 already ran every workload on
+native**. Workload selects platform-INDEPENDENT core logic; what a platform
+changes is build/ABI/link/wiring, which is what the pairwise set targets. Tiers
+compose — a tier should not repeat what a cheaper tier already proved.
+
+**Tier 1 takes `kind` at 1-wise, not pairwise.** Example-vs-Workspace changes the
+entry/carrier wiring and does break on its own (0097, 0263) — but on native it
+breaks the same way for every language. The platform × kind pairing is where the
+variation lives, and that is tier 2.
+
+### What each tier is ALLOWED to miss
+
+Stated explicitly, because a tier believed to catch everything gets trusted wrongly:
+
+- **Tier 0** misses anything needing compilation. It is a lint tier.
+- **Tier 1** misses every platform-specific defect — the whole 0268/0245/0332
+  class. Green tier 1 means "the logic and the seams are sound", never "it builds
+  on the targets".
+- **Tier 2** misses workload × platform interactions (argued empty above),
+  threshold effects (0269 needed 37 pubs / 21 services), and anything timing- or
+  emulator-shaped.
+- **Tier 3** misses nothing in the matrix — but its reds are noise-prone under
+  load (287-W7), so without the concurrency cap it decays into a tier nobody reads.
+
+### Computing the cover
+
+Because the axes are not independent (an RMW is not available on every platform),
+"pairwise" means a **set cover over the DECLARED cells**, not a covering array
+over the cartesian product:
 
 > choose a minimum subset of declared Runtime cells such that every
 > (axis_i = a, axis_j = b) pair occurring in ANY declared cell occurs in the
 > chosen subset.
 
-Greedy set cover is adequate (within a `ln n` factor, and the input is tiny).
-
-**Measured on the matrix as it stands today** — 182 Runtime cells:
-
-| pairing axes | pairs to cover | cover size | share of sweep |
-| --- | --- | --- | --- |
-| platform × lang × rmw | 55 | **31 cells** | 17 % |
-| platform × lang × rmw × kind | 96 | **37 cells** | 20 % |
-| platform × lang × rmw × workload × kind | 227 | 73 cells | 40 % |
-
-**Tier 2 pairs over platform × lang × rmw × kind — 37 cells, ~20 %.** Full 5-axis
-pairwise is 40 % of the sweep, which is not a middle tier; and the evidence says
-`workload` is the axis that does not need pairing. Every interaction defect this
-session found lives in the first three axes:
-
-- sizes-header mirror (0268) and the `#245` recurrence — platform × language;
-- freestanding-header gaps (0332) — platform × language;
-- vtable ABI / transport-ops SSoT (0331) — RMW × language;
-- storage-mode codegen (0343–0346) — language × entity kind.
-
-None was workload-specific: a `Pubsub` cell and an `Action` cell on the same
-(platform, lang, rmw) fail together. Keeping `kind` in the pairing costs 6 cells
-over the three-axis version and buys the Example-vs-Workspace distinction, which
-is where the entry/carrier wiring bugs live (0097, 0263).
-
-The cover must be **recomputed, not stored**: adding a platform to `matrix::CELLS`
-must add it to tier 2 without editing a second list. Cache the computed cover
-keyed on a hash of the cell table so the recompute is free when nothing moved.
-
-### Change-impact routing
-
-Two signals are already computable and should select the tier automatically:
-
-- **Executor storage size.** If `NROS_EXECUTOR_STORAGE_SIZE` changes, every C/C++
-  fixture must rebuild — that is the entire mechanism of issue 0268 and issue
-  0245. If it does not change, none must. The value is emitted by the build; diff
-  it against the previous build's header.
-- **Codegen fingerprint** (proposal 1). Changed ⇒ regenerate consumers. Identical
-  ⇒ skip, no matter how much the CLI source moved.
+Greedy is adequate (within a `ln n` factor; the input is tiny). The cover must be
+**recomputed from `matrix::CELLS`**, never stored as a hand-edited list — adding a
+platform must extend tier 2 without touching a second file.
 
 ## Operational corollaries
 
@@ -294,10 +331,12 @@ These do not depend on proposals 1–2 but bound the same cost:
 - `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
 - The codegen golden corpus is committed, and a deliberate template change fails
   tier 1 with a readable diff.
-- Tier 2's cell list is computed from `matrix::CELLS` as a pairwise set cover
-  over platform × lang × rmw × kind, and adding a platform to the matrix adds it
-  to tier 2 without editing a second list. Regression check: the cover must
-  contain at least one cell for every declared value of each of those four axes.
+- Tier 1's cell list is computed from `matrix::CELLS` as
+  1-wise(workload, kind) + pairwise(lang × rmw) restricted to `Native`, and tier
+  2's as pairwise(platform × lang × rmw × kind) over all Runtime cells. Adding a
+  platform to the matrix extends tier 2 without editing a second list. Regression
+  check: each cover contains at least one cell for every declared value of every
+  axis it pairs or singles.
 - A resolver rebuild that changes emitted SystemModels invalidates the workspace
   fixtures **with a bringup** and no others; a resolver rebuild that does not
   change emitted models invalidates nothing.
