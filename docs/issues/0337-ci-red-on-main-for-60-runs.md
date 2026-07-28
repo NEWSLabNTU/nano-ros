@@ -105,6 +105,35 @@ unchanged.
   packages/cli/third-party/ros-launch-resolve` → rc=0; the path is registered
   in `.gitmodules`. All four workflow YAMLs parse.
 
+## Follow-up: `check-cli-fmt` had the identical defect
+
+Fixing `check-example-fmt` moved the failure one recipe along rather than
+clearing the job. `check-cli-fmt` was `cd packages/cli && cargo fmt --check`,
+and on CI's push lane:
+
+```
+`cargo metadata` exited with an error: failed to load manifest for workspace
+member `packages/cli/nros-cli-core`
+  failed to load manifest for dependency `ros-launch-manifest-model`
+  failed to read `…/ros-launch-resolve/third-party/ros-launch-manifest/model/Cargo.toml`
+```
+
+Same shape: a `check-fast` gate calling `cargo fmt`, needing a dependency graph
+that a source-free lane cannot resolve — here the NESTED rlm submodule inside
+`ros-launch-resolve`. I had looked at this recipe while fixing the first one
+and judged it safe because it is a single resolvable workspace locally. That
+was wrong: locally the submodules are initialised, on the push lane they are
+not.
+
+Converted the same way, with one care: `cargo fmt` covers workspace MEMBERS
+only, so the replacement reads the member list from the manifest and skips
+`tests/fixtures/` — those are separate packages, several deliberately on
+editions 2018/2021, and were never in scope. Per-member edition resolution
+handles `edition.workspace = true` by falling back to the workspace's 2024.
+
+Receipts: 11 members / 143 files, rc=0; mutation-checked (a violation in
+`nros-cli/src/main.rs` gives rc=1 and a reported diff, restored clean).
+
 ## Why it survived 60 runs
 
 Nothing points at remote CI. CLAUDE.md says *"Green CI locally BEFORE pushing —

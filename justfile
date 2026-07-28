@@ -1549,11 +1549,40 @@ format-cli:
     cd packages/cli && cargo +{{NIGHTLY}} fmt
 
 # #310 — gate the in-tree cli sub-workspace's rustfmt-cleanliness (it is outside
-# the root workspace that `check-workspace`'s `cargo fmt --check` covers). Plain
-# `--check` (never `--all`), so it never reaches the vendored submodules.
+# the root workspace that `check-workspace`'s `cargo fmt --check` covers).
+#
+# issue 0337 — `rustfmt` DIRECTLY, not `cargo fmt`, for the same reason as
+# `check-example-fmt`: `cargo fmt` runs `cargo metadata`, which here has to
+# resolve `ros-launch-manifest-model` through the NESTED submodule
+# `third-party/ros-launch-resolve/third-party/ros-launch-manifest`. This gate
+# is in `check-fast`, which is source-free and inits no submodules, so on CI's
+# push lane that manifest is absent and the gate died before formatting
+# anything. Formatting needs no dependency graph.
+#
+# Scope matches what `cargo fmt` covered: the workspace MEMBERS only. Test
+# fixture crates under `tests/fixtures/` are separate packages, not members,
+# and were never formatted by this gate — several are deliberately on older
+# editions.
 [private]
 check-cli-fmt:
-    cd packages/cli && cargo +{{NIGHTLY}} fmt --check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ws_edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' packages/cli/Cargo.toml | head -1)"
+    ws_edition="${ws_edition:-2024}"
+    # Members, read from the manifest rather than duplicated here.
+    members="$(sed -n '/^members = \[/,/^]/p' packages/cli/Cargo.toml \
+        | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p')"
+    for m in $members; do
+        toml="packages/cli/$m/Cargo.toml"
+        [ -f "$toml" ] || continue
+        edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$toml" | head -1)"
+        edition="${edition:-$ws_edition}"   # `edition.workspace = true` inherits
+        mapfile -t files < <(git ls-files "packages/cli/$m/*.rs" "packages/cli/$m/**/*.rs" \
+            | grep -v '/tests/fixtures/' || true)
+        [ "${#files[@]}" -eq 0 ] && continue
+        echo "  fmt $m (edition $edition, ${#files[@]} files)"
+        rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
+    done
 
 # Check workspace: formatting and clippy (no_std, native)
 # nros-c/nros-cpp/standalone RMW staticlib wrappers excluded from no_std
