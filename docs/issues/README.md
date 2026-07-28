@@ -377,9 +377,12 @@ enhancement, not a bug. See `archived/0333-*`. main 8f81d2873 + this. (2026-07-2
 tracked absolute-path leak outside the SystemModels of **#320**; also a second SSoT for both the SDK
 version and the host tuple. Shared `git grep` gate proposed with #320. See `0334-*`.
 
-**#335** — two copy-out examples carry framework gaps: a PX4 weak-symbol link stub (self-labelled
-"NOT application logic") and five raw `extern "C"` lifecycle callbacks the user must write — an
-FFI regression test wearing an example's clothes. See `0335-*`.
+(#335 RESOLVED — two copy-out examples carried framework gaps. The PX4-SITL weak
+`nros_rmw_cffi_register` stub moved out of the example into the uORB backend (b47f3d481). The Rust
+lifecycle example's five raw `extern "C"` callbacks are replaced by a safe `LifecycleCallbacks` trait
++ `Executor::register_lifecycle_node` over monomorphized generic trampolines (phase-317, alloc-free,
+symmetric with the shipped rclcpp-shaped C++ `nros::LifecycleNode`); the raw-FFI exercise is now a
+co-located unit test. See `archived/0335-*`. b47f3d481 + 6b4032395 + 9e9915155. (2026-07-28)
 
 **#316** — compile-time pool knobs that silently do nothing, two ways. On Zephyr,
 `set(ENV{...})` is unconditional, so 20 of 61 knobs have their environment value overwritten by the

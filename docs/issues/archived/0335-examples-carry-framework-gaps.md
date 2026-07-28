@@ -1,7 +1,7 @@
 ---
 id: 335
 title: "Two copy-out examples carry framework gaps: a PX4 weak-symbol link stub and five raw extern \"C\" lifecycle callbacks the user is expected to write"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: examples
@@ -63,57 +63,21 @@ gitignored so `git status` is clean and nothing flags them. A `just clean`-style
 sweep for example dirs with no tracked files would collect them. Recorded in
 `docs/development/audit-findings-2026-07-28.md`.
 
-## Progress
+## Resolution
 
 **Defect 1 — FIXED (b47f3d481).** The PX4-SITL weak `nros_rmw_cffi_register`
 stub moved out of the example into the uORB backend
 (`packages/px4/nros-rmw-uorb/src/register_fallback.c`) + weak-symbols allowlist.
 
-## Design note — defect 2 (Rust lifecycle safe seam)
+**Defect 2 — FIXED (phase-317, 6b4032395 + 9e9915155).** Added the safe
+`nros::lifecycle::LifecycleCallbacks` trait (six defaulted `on_*(&mut self) ->
+TransitionResult` methods, `on_error` → Failure) + `Executor::
+register_lifecycle_node<T>(&mut node)` over monomorphized generic `extern "C"`
+trampolines (alloc-free, `no_std`) — the Rust counterpart to the already-shipped
+rclcpp-shaped C++ `nros::LifecycleNode`. `examples/native/rust/lifecycle-node`
+now implements the trait (no `unsafe`, no `extern "C"`; compile-verified). The
+raw-FFI exercise is preserved as an always-run unit test co-located with
+`LifecyclePollingNodeCtx`. The trait omits rclcpp's `previous` arg — the FFI
+callback boundary carries only the context, and the existing safe fn-pointer API
+is likewise state-less; read `lifecycle_state_machine().state()` if needed.
 
-Approved shape (2026-07-28): a **trait**, symmetric with the shipped C++
-`nros::LifecycleNode` (rclcpp `LifecycleNodeInterface`) and rclrs-recognizable.
-C++ is already rclcpp-shaped (`nros-cpp/include/nros/lifecycle.hpp` — virtual
-`on_*(LifecycleState previous) -> CallbackReturn` overrides + `this` trampolines).
-The Rust side is the only gap; the example is forced into raw
-`unsafe extern "C" fn(ctx) -> u8` because no safe wrapper exists.
-
-Shape:
-
-```rust
-pub trait LifecycleCallbacks {
-    fn on_configure(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_activate(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_deactivate(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_cleanup(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_shutdown(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_error(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Failure }
-}
-
-// binds the five REP-2002 services + the per-slot trampolines
-executor.register_lifecycle_node(&mut my_node)?;
-```
-
-Symmetry with C++: trait methods ↔ virtual overrides; defaulted
-Success/Success…/Failure ↔ the C++ non-pure-virtual defaults; `&mut self` ↔
-`this`. `previous` = `get_state()` at callback entry (the SM invokes the callback
-before committing the new state), exactly as the C++ `tramp_*` do.
-
-Implementation seam (alloc-free, no `Box`): monomorphized generic trampolines.
-`register_lifecycle_node::<T: LifecycleCallbacks>` registers, per slot, a generic
-`extern "C" fn tramp_configure<T>(ctx: *mut c_void) -> u8 { let n = &mut *(ctx as
-*mut T); n.on_configure(current_state()) as u8 }` on the existing
-`LifecyclePollingNodeCtx` (`register(slot, cb)` + `set_context(&mut node as *mut
-c_void)`). rustc monomorphizes one `extern "C"` per `T`, so no closure box is
-needed — this works `no_std`, matching the C++ side's allocation-free posture.
-
-Safety invariant to document: the node must outlive the registration, and the
-trampoline reconstitutes `&mut T` only during a callback. `spin` is
-single-threaded per executor, so no concurrent `&mut` aliasing — the same
-guarantee C++ relies on for `this`.
-
-Then: rewrite `examples/native/rust/lifecycle-node` to the trait shape, and move
-the raw-`extern "C"`-fn exercise (the current example body, which is really an
-FFI regression test) into `packages/testing/nros-tests/`. The low-level
-`LifecyclePollingNodeCtx::register(slot, Option<extern fn>)` stays as the C-parity
-seam the trait wraps.

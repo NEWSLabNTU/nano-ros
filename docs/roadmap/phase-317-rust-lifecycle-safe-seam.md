@@ -1,6 +1,6 @@
 # Phase 317 — Rust lifecycle safe seam (`LifecycleCallbacks` trait)
 
-**Status (2026-07-28): planned.** Implements issue
+**Status (2026-07-28): W1 + W2 LANDED.** Implements issue
 [0335](../issues/archived/0335-examples-carry-framework-gaps.md) defect 2 — give
 the Rust lifecycle surface a safe registration seam symmetric with the C++
 `nros::LifecycleNode` already shipped in phase-270. RFC-0019 (thin C/C++/Rust
