@@ -185,9 +185,10 @@ diagnostic. Six of `autoware_sentinel`'s tuned knobs are dead this way. Separate
 Includes a full audit: five distinct sizing mechanisms, only two of which a build-script hook can
 see. See `0316-*`. (2026-07-28, filed as #313 and renumbered on push — origin already had two)
 
-**#317** — `wake-latency-cortex-m3` bench rotted (off-lane): retired `_start`/`run` entry + phase-230
-`platform-freertos` feature drift + a `nros-baremetal-common`/picolibc libc-stub duplicate-symbol link
-conflict. Needs resurrection + a build lane. See `0317-*`. (phase-313, 2026-07-28, renumbered from a
+(#317 resolved — `wake-latency-cortex-m3` bench resurrected: build rot fixed, redesigned as two images
+(pub + sub so zenohd routes a real transport-arrival wake), async-wake fixed in the zpico shim (fire the
+runtime wake-cb from the read-task arrival hook), CSV emit fixed; test takes its intended CYCCNT skip on
+QEMU, real P99 on hardware. See `archived/0317-*`.) (phase-313, 2026-07-28, renumbered from a
 duplicate #313)
 
 Recently resolved: **#309** (whole matrix audited) — count-based proofs detect an

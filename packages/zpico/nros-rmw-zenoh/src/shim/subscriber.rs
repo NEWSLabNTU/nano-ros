@@ -361,7 +361,15 @@ extern "C" fn subscriber_notify_callback(
     // Wake any async task waiting for data on this subscriber.
     buffer.waker.wake();
 
-    // Wake the executor spin loop (if waiting).
+    // Issue #0317 — fire the nros-node runtime wake callback (→ wake-latency
+    // probe `on_wake` T0 + executor cv-signal) at the real arrival instant. On
+    // the multi-threaded backend THIS callback runs on the zenoh-pico read task,
+    // so it is the only place the transport-arrival wake can be timestamped
+    // (`drive_io`'s poll path returns 0 and never fires it). no_std-safe; a no-op
+    // when no executor installed a wake callback.
+    super::fire_runtime_wake();
+
+    // Wake the (std BasicExecutor) spin loop's own cvar, if waiting.
     #[cfg(feature = "std")]
     signal_executor_wake();
 }

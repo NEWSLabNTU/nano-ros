@@ -147,15 +147,14 @@ build-fixture-extras:
     # stable manifest id so `build-examples` stays limited to role examples.
     bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
 
-    # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), now a
+    # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), a
     # TWO-IMAGE bench (subscriber `wake-latency-cortex-m3` + publisher
     # `wake-latency-pub`) so the zenohd router delivers a real transport-arrival
-    # wake to the subscriber. Off-lane for a long time it silently rotted; build
-    # BOTH images at `--release` (the profile the test locates) so a compile
-    # regression is caught here. NOTE: the runtime `wake_latency_cortex_m3` test
-    # currently SKIPS — delivery works but the wake-cb probe captures 0 on the
-    # multi-threaded zpico backend (async-wake gap, tracked on #0317); this lane
-    # guards the BUILD of both images.
+    # wake to the subscriber. Build BOTH images at `--release` (the profile the
+    # test locates) so a compile regression is caught here. The runtime
+    # `wake_latency_cortex_m3` test takes its intended CYCCNT skip on QEMU
+    # (Cortex-M3 doesn't emulate the DWT cycle counter); the real P99 validates on
+    # hardware. This lane guards the BUILD of both images.
     ( cd packages/testing/nros-bench/wake-latency-cortex-m3 && cargo build --release )
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"

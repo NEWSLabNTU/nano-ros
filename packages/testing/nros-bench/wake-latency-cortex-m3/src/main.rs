@@ -66,11 +66,19 @@ extern "C" fn main() -> ! {
                 .create_subscription::<Int32, _>(topic.as_str(), |_: &Int32| {});
         }
 
+        use core::sync::atomic::{AtomicU32, Ordering};
+        // Count DELIVERED messages so the loop can terminate + emit the CSV even
+        // when the probe records 0 samples (QEMU does not emulate the DWT CYCCNT,
+        // so `on_dispatch`'s `t1 - t0` is 0 and no probe sample lands — the host
+        // runner then takes its "0 samples / CYCCNT not emulated" skip). On real
+        // hardware the probe fills first and the P99 is meaningful.
+        static RX: AtomicU32 = AtomicU32::new(0);
         executor
             .node_mut(nid)
             .create_subscription::<Int32, _>(TOPIC, |_msg: &Int32| {
-                // No-op cb body. The probe's `on_dispatch` hook fires before this
-                // runs and captures `T1 - T0` automatically.
+                // The probe's `on_dispatch` hook fires before this runs and
+                // captures `T1 - T0`; we also count deliveries for loop exit.
+                RX.fetch_add(1, Ordering::Relaxed);
             })?;
 
         println!("scenario={}", SCENARIO_NAME);
@@ -89,11 +97,17 @@ extern "C" fn main() -> ! {
         // (the callback runs) but the transport-wake path the probe measures does
         // not trigger, and this loop collects 0 samples until that executor/zpico
         // wake-signal gap is fixed. See the #0317 issue.
+        // Exit on whichever fills first: the probe ring (real hardware) OR the
+        // delivered-message count (QEMU, where CYCCNT is 0 so the probe never
+        // fills but delivery still works). A long spin timeout lets the executor
+        // cv-wait so the transport arrival WAKES it (firing the probe's `on_wake`
+        // T0 via the read-task wake callback — issue #0317) rather than polling.
         loop {
             executor.spin_once(core::time::Duration::from_millis(1000));
             let mut scratch = [0u64; 1];
-            let (_, total) = wake_probe::drain(&mut scratch);
-            if total >= TARGET_SAMPLES {
+            let (_, probe_total) = wake_probe::drain(&mut scratch);
+            let rx = RX.load(Ordering::Relaxed);
+            if probe_total >= TARGET_SAMPLES || rx >= TARGET_SAMPLES {
                 break;
             }
         }
@@ -106,22 +120,15 @@ extern "C" fn main() -> ! {
             cycles_to_ns(c as u32, SYSTEM_CORE_CLOCK_HZ)
         });
 
-        // The board's `println!` writes through the semihosting UART. Wrap it as
-        // a `core::fmt::Write` adapter so `write_csv` can emit through it without
-        // pulling `std`.
-        struct UartWriter;
-        impl core::fmt::Write for UartWriter {
-            fn write_str(&mut self, s: &str) -> core::fmt::Result {
-                // `println!` adds a trailing newline; strip a trailing `\n` and
-                // re-emit per chunk to preserve the one-record-per-line CSV.
-                for chunk in s.split_inclusive('\n') {
-                    let bare = chunk.strip_suffix('\n').unwrap_or(chunk);
-                    println!("{}", bare);
-                }
-                Ok(())
-            }
+        // Buffer the whole CSV, then emit one line per board `println!`.
+        // `write_csv` does PARTIAL writes (edge, `,`, count as separate
+        // `write_str` calls), so a per-`write_str` println would split each record
+        // across lines; accumulate into a heapless buffer and re-split on `\n`.
+        let mut buf = heapless::String::<1024>::new();
+        let _ = wake_probe::write_csv(&mut buf, &hist);
+        for line in buf.lines() {
+            println!("{}", line);
         }
-        let _ = wake_probe::write_csv(&mut UartWriter, &hist);
 
         // Best-effort exit via `panic-semihosting`'s `EXIT_SUCCESS` route; QEMU
         // sees SYS_EXIT_EXTENDED and drops back to the harness.

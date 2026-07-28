@@ -155,6 +155,56 @@ pub use crate::config::{
 };
 
 // ============================================================================
+// Runtime wake callback — async transport-arrival signal (no_std-safe)
+// ============================================================================
+//
+// Issue #0317 — the nros-node executor installs a runtime wake callback on the
+// session via `Session::set_wake_callback` (→ `nros_rmw_runtime_wake_cb`, which
+// fires the wake-latency probe's `on_wake` T0 + signals the executor cv). The
+// zpico shim fired it only from the main-thread `drive_io` poll path
+// (`if spin_once() saw work`). On the MULTI-THREADED backend the sample is
+// received by the async read task, so `drive_io`'s `spin_once` returns 0 and the
+// wake-cb never fires — even though the sample is enqueued + later dispatched.
+// Mirror the runtime wake-cb into a process-global here so the read-task arrival
+// hook (`subscriber_notify_callback` / service notify) can fire it at the real
+// arrival instant, regardless of `std`. One executor/session per embedded image,
+// so a single global slot is sufficient.
+
+pub(crate) static RUNTIME_WAKE_CB: portable_atomic::AtomicPtr<()> =
+    portable_atomic::AtomicPtr::new(core::ptr::null_mut());
+pub(crate) static RUNTIME_WAKE_CTX: portable_atomic::AtomicPtr<core::ffi::c_void> =
+    portable_atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Record the runtime wake callback so the async arrival path can fire it.
+/// Called from `Session::set_wake_callback`.
+pub(crate) fn set_runtime_wake_cb(
+    cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+    ctx: *mut core::ffi::c_void,
+) {
+    use portable_atomic::Ordering;
+    let cb_ptr = cb.map(|f| f as *mut ()).unwrap_or(core::ptr::null_mut());
+    RUNTIME_WAKE_CB.store(cb_ptr, Ordering::Release);
+    RUNTIME_WAKE_CTX.store(ctx, Ordering::Release);
+}
+
+/// Fire the runtime wake callback (→ probe `on_wake` T0 + executor cv-signal) if
+/// one is installed. Invoked from the read-task arrival hooks so a blocked
+/// executor is woken and the probe timestamps a real transport arrival on the
+/// multi-threaded backend. no_std-safe; a no-op when no callback is installed.
+pub(crate) fn fire_runtime_wake() {
+    use portable_atomic::Ordering;
+    let cb = RUNTIME_WAKE_CB.load(Ordering::Acquire);
+    if !cb.is_null() {
+        let ctx = RUNTIME_WAKE_CTX.load(Ordering::Acquire);
+        // SAFETY: `cb` was installed from `set_wake_callback` as an
+        // `unsafe extern "C" fn(*mut c_void)`; `ctx` is the executor-owned wake
+        // state that outlives the session (cleared to null on executor drop).
+        let f: unsafe extern "C" fn(*mut core::ffi::c_void) = unsafe { core::mem::transmute(cb) };
+        unsafe { f(ctx) };
+    }
+}
+
+// ============================================================================
 // Executor Wake Signal (std only)
 // ============================================================================
 

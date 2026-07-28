@@ -641,6 +641,10 @@ impl Session for ZenohSession {
             .store(cb_ptr, core::sync::atomic::Ordering::Release);
         self.wake_ctx
             .store(ctx, core::sync::atomic::Ordering::Release);
+        // Issue #0317 — also mirror into the process-global so the async read-task
+        // arrival hook (`subscriber_notify_callback`) can fire the wake-cb on the
+        // multi-threaded backend, where `drive_io`'s poll path never sees the work.
+        super::set_runtime_wake_cb(cb, ctx);
     }
 
     /// Phase 110.0 — bound the executor's `drive_io` wait against

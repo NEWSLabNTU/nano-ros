@@ -1,8 +1,9 @@
 //! Phase 141.D — wake-latency P99 microbench host runner.
 //!
-//! Boots the `wake-latency-cortex-m3` bench binary under QEMU
-//! (MPS2-AN385 + zenoh-pico talker/listener pair on the same
-//! Executor), scrapes the `NROS-WAKE-HIST,v1` CSV block off
+//! Boots the TWO wake-latency bench images under QEMU (issue #0317):
+//! a `wake-latency-pub` publisher + the measured `wake-latency-cortex-m3`
+//! subscriber (separate MPS2-AN385 + zenoh-pico sessions, routed by a host
+//! `zenohd`), scrapes the `NROS-WAKE-HIST,v1` CSV block off the subscriber's
 //! semihosting stdout, parses it with
 //! `nros_node::executor::wake_probe::parse_csv`, computes P99
 //! with `percentile_ns`, and asserts the 141 acceptance
@@ -89,97 +90,78 @@ fn wake_latency_cortex_m3_p99_within_bound() {
         }
     }
 
-    // Issue #0317 — the two-image redesign DELIVERS (the subscriber's callback
-    // fires on the publisher's samples through zenohd, verified manually), but the
-    // wake-latency PROBE still collects 0 samples: its `on_wake` T0 fires from the
-    // wake callback, which on the multi-threaded (FreeRTOS) zpico backend is only
-    // invoked from the main-thread `drive_io` poll path — not from the async read
-    // task that actually receives the sample — and the executor does not cv-wait
-    // to be woken. Until that executor/zpico async-wake gap is wired, the P99
-    // measurement is unattainable, so skip rather than time out. The build lane
-    // (`just freertos build-fixture-extras`) still guards that both images COMPILE.
-    nros_tests::skip!(
-        "wake-latency P99 blocked on the multi-threaded-zpico async-wake gap \
-         (delivery works; probe captures 0) — see issue #0317"
-    );
+    // FreeRTOS QEMU port reservation lives in
+    // `nros_tests::platform::FREERTOS.zenohd_port` (7800). Both bench images bake
+    // the matching locator `tcp/10.0.2.2:7800` (issue #0317 corrected the stale
+    // 7451); they must stay in lockstep. `start_slirp` binds the router on
+    // `0.0.0.0` so the slirp-isolated guests reach it via gateway `10.0.2.2`.
+    let router = ZenohRouter::start_slirp(nros_tests::platform::FREERTOS.zenohd_port)
+        .expect("Failed to start zenohd (slirp)");
 
-    // Preserved for when the #0317 async-wake gap is fixed — un-skip above to
-    // re-enable. Unreachable past the skip today.
-    #[allow(unreachable_code)]
-    {
-        // FreeRTOS QEMU port reservation lives in
-        // `nros_tests::platform::FREERTOS.zenohd_port` (7800). Both bench images bake
-        // the matching locator `tcp/10.0.2.2:7800` (issue #0317 corrected the stale
-        // 7451); they must stay in lockstep. `start_slirp` binds the router on
-        // `0.0.0.0` so the slirp-isolated guests reach it via gateway `10.0.2.2`.
-        let router = ZenohRouter::start_slirp(nros_tests::platform::FREERTOS.zenohd_port)
-            .expect("Failed to start zenohd (slirp)");
+    // Issue #0317 — TWO images: the publisher publishes on `/wake-latency`, and
+    // the zenohd router delivers each sample to the SUBSCRIBER image's session as
+    // a real transport-arrival wake (a same-session pub→sub would only loop back
+    // in-process and never exercise the wake-cb path). Start the publisher first +
+    // let it settle so it is connected + publishing by the time the subscriber's
+    // session opens. `_networked` adds `-icount shift=auto` (so the guest clock
+    // tracks wall-clock, keeping zenoh-pico's session/read timing aligned with
+    // slirp network I/O — plain `start_mps2_an385` runs the clock decoupled and
+    // delivery stalls) plus an explicit LAN9118 slirp NIC.
+    let pub_qemu = QemuProcess::start_mps2_an385_networked(&pub_binary)
+        .expect("Failed to start wake-latency PUBLISHER QEMU");
+    std::thread::sleep(Duration::from_secs(5));
+    let mut sub_qemu = QemuProcess::start_mps2_an385_networked(&sub_binary)
+        .expect("Failed to start wake-latency SUBSCRIBER QEMU");
 
-        // Issue #0317 — TWO images: the publisher publishes on `/wake-latency`, and
-        // the zenohd router delivers each sample to the SUBSCRIBER image's session as
-        // a real transport-arrival wake (a same-session pub→sub would only loop back
-        // in-process and never exercise the wake-cb path). Start the publisher first +
-        // let it settle so it is connected + publishing by the time the subscriber's
-        // session opens. `_networked` adds `-icount shift=auto` (so the guest clock
-        // tracks wall-clock, keeping zenoh-pico's session/read timing aligned with
-        // slirp network I/O — plain `start_mps2_an385` runs the clock decoupled and
-        // delivery stalls) plus an explicit LAN9118 slirp NIC.
-        let pub_qemu = QemuProcess::start_mps2_an385_networked(&pub_binary)
-            .expect("Failed to start wake-latency PUBLISHER QEMU");
-        std::thread::sleep(Duration::from_secs(5));
-        let mut sub_qemu = QemuProcess::start_mps2_an385_networked(&sub_binary)
-            .expect("Failed to start wake-latency SUBSCRIBER QEMU");
+    // Read the subscriber's output up to 60 s — `-icount shift=auto` runs the
+    // guests at wall-clock so covers both sessions' zenoh-pico handshake +
+    // 100 Hz * 200 samples (~2 s) + scenario setup. The subscriber
+    // writes its CSV block over semihosting then exits via `panic-semihosting`'s
+    // `EXIT_SUCCESS` route.
+    let output = sub_qemu
+        .wait_for_output_pattern("END", Duration::from_secs(60))
+        .unwrap_or_default();
 
-        // Read the subscriber's output up to 60 s — `-icount shift=auto` runs the
-        // guests at wall-clock so covers both sessions' zenoh-pico handshake +
-        // 100 Hz * 200 samples (~2 s) + scenario setup. The subscriber
-        // writes its CSV block over semihosting then exits via `panic-semihosting`'s
-        // `EXIT_SUCCESS` route.
-        let output = sub_qemu
-            .wait_for_output_pattern("END", Duration::from_secs(60))
-            .unwrap_or_default();
+    drop(sub_qemu);
+    drop(pub_qemu);
+    drop(router);
 
-        drop(sub_qemu);
-        drop(pub_qemu);
-        drop(router);
+    // Locate the CSV block. `write_csv` emits
+    // `NROS-WAKE-HIST,v1` as the first line; the harness's
+    // `println!` may interleave other lines around it, so slice
+    // from the marker to the `END` sentinel.
+    let start = output
+        .find("NROS-WAKE-HIST,v1")
+        .unwrap_or_else(|| panic!("CSV header not found in QEMU output:\n{}", output));
+    let end_offset = output[start..]
+        .find("\nEND")
+        .unwrap_or_else(|| panic!("CSV END sentinel missing in QEMU output:\n{}", output));
+    let csv = &output[start..start + end_offset + "\nEND".len()];
 
-        // Locate the CSV block. `write_csv` emits
-        // `NROS-WAKE-HIST,v1` as the first line; the harness's
-        // `println!` may interleave other lines around it, so slice
-        // from the marker to the `END` sentinel.
-        let start = output
-            .find("NROS-WAKE-HIST,v1")
-            .unwrap_or_else(|| panic!("CSV header not found in QEMU output:\n{}", output));
-        let end_offset = output[start..]
-            .find("\nEND")
-            .unwrap_or_else(|| panic!("CSV END sentinel missing in QEMU output:\n{}", output));
-        let csv = &output[start..start + end_offset + "\nEND".len()];
+    let (buckets, total) =
+        wake_probe::parse_csv(csv).unwrap_or_else(|e| panic!("CSV parse failed: {e}"));
 
-        let (buckets, total) =
-            wake_probe::parse_csv(csv).unwrap_or_else(|e| panic!("CSV parse failed: {e}"));
-
-        if total == 0 {
-            nros_tests::skip!(
-                "wake-latency probe produced 0 samples — likely QEMU CYCCNT not \
+    if total == 0 {
+        nros_tests::skip!(
+            "wake-latency probe produced 0 samples — likely QEMU CYCCNT not \
              emulated (DWT reads return 0). Spec's P99 ≤ 100 µs validates on \
              real hardware (STM32F4). CI gate satisfied by the wake-cb path \
              being wired (Phase 141.A.3); the measurement infra (141.B / .C / \
              .D) compiles + the histogram round-trip works (see \
              `nros-node::executor::wake_probe::tests`)."
-            );
-        }
+        );
+    }
 
-        let p99 = wake_probe::percentile_ns(&buckets, 99)
-            .unwrap_or_else(|| panic!("percentile_ns(99) returned None despite total={total}"));
-        let p99_ms = p99 / 1_000_000;
-        eprintln!(
-            "wake-latency P99 = {} ns ({} ms) across {} samples",
-            p99, p99_ms, total
-        );
-        assert!(
-            p99_ms <= P99_BOUND_MS,
-            "P99 wake-latency {p99_ms} ms exceeds bound {P99_BOUND_MS} ms — wake-cb path \
+    let p99 = wake_probe::percentile_ns(&buckets, 99)
+        .unwrap_or_else(|| panic!("percentile_ns(99) returned None despite total={total}"));
+    let p99_ms = p99 / 1_000_000;
+    eprintln!(
+        "wake-latency P99 = {} ns ({} ms) across {} samples",
+        p99, p99_ms, total
+    );
+    assert!(
+        p99_ms <= P99_BOUND_MS,
+        "P99 wake-latency {p99_ms} ms exceeds bound {P99_BOUND_MS} ms — wake-cb path \
          likely not firing (regression from Phase 141.A.3)"
-        );
-    } // end #[allow(unreachable_code)] block (#0317 — preserved past the skip)
+    );
 }

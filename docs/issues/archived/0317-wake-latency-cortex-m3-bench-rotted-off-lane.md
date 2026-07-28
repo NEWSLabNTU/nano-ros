@@ -1,11 +1,49 @@
 ---
 id: 317
 title: "wake-latency-cortex-m3 bench is rotted (off-lane): retired `_start`/`run` entry + phase-230 platform-freertos feature drift + a libc-stub duplicate-symbol link conflict"
-status: open
+status: resolved
+resolved_in: "phase-313 (wake-latency resurrection)"
 type: tech-debt
 severity: low
 area: embedded
 related: [issue-0273]
+---
+
+## RESOLVED (2026-07-28)
+
+The bench is resurrected end-to-end. Four layers, all fixed:
+
+1. **Build rot** — `_start`→`main`, `run`→`Mps2An385::run_bare`, dropped the
+   phase-230 `platform-freertos` feature drift, and root-caused the
+   `duplicate symbol: strtol` to `nros-platform-mps2-an385` hardcoding
+   `nros-baremetal-common/libc-stubs` (gated behind a default-on `libc-stubs`
+   feature so the picolibc freertos bench opts out).
+2. **Two-image redesign** — publisher + subscriber run as separate QEMU images
+   (distinct sessions) so zenohd routes a real transport-arrival wake; the host
+   runner drives both via `start_mps2_an385_networked` (`-icount shift=auto`) +
+   `ZenohRouter::start_slirp`. Delivery verified.
+3. **Async-wake fix (`nros-rmw-zenoh` shim)** — the probe's `on_wake` T0 fires
+   from the runtime wake callback, which the shim previously invoked only from the
+   main-thread `drive_io` poll path. On the multi-threaded backend the sample
+   arrives on the async read task, so `drive_io` saw `n=0` and never fired it.
+   Mirrored the runtime wake-cb into a process-global (`set_runtime_wake_cb` /
+   `fire_runtime_wake`) and fired it from `subscriber_notify_callback` (the
+   read-task arrival hook), so `on_wake` timestamps the real arrival. Verified no
+   regression (`test_qemu_bsp_pubsub_e2e`, `test_qemu_zenoh_large_publish`,
+   `logging_smoke_freertos_mps2` all green).
+4. **CSV emit** — the subscriber's `write_csv` sink split records across lines
+   (`write_csv` does partial `write!`s + the board `println!` adds a newline per
+   call); buffer the whole CSV into a `heapless::String` and emit per real line.
+   The loop now also exits on delivered-message count so the CSV emits even when
+   the probe is empty.
+
+The `wake_latency_cortex_m3` runtime test now runs the full two-image flow and
+reaches its intended graceful **CYCCNT skip** on QEMU (Cortex-M3 does not emulate
+the DWT CYCCNT → `on_dispatch`'s `t1-t0` is 0 → 0 samples, the documented QEMU
+outcome); the real P99 validates on hardware (STM32F4), where the shim wake-cb
+fix makes `on_wake` fire. Both images are guarded by `just freertos
+build-fixture-extras`.
+
 ---
 
 ## Finding (phase-313 #0273 fix, 2026-07-28)
