@@ -68,12 +68,14 @@
 mod config;
 mod entry;
 mod error;
-mod node;
+
+// Phase 313 W-finalize (#0243) — the legacy generic `node::run<B>` (+ its
+// `nros_board_common::board_init` trait re-exports) is RETIRED. Every FreeRTOS
+// board moved to `run_bare` / the `nros_platform::board::BoardEntry` path
+// (entry.rs), which is independent of `node.rs`; the file is gone.
 
 pub use config::Config;
 pub use entry::{run_bare, run_entry, run_tiers_entry};
-pub use node::run;
-pub use nros_board_common::{BoardExit, BoardInit, BoardPrint};
 
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift

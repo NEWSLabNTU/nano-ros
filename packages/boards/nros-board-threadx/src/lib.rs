@@ -104,11 +104,15 @@ mod sizes {
 }
 
 mod entry;
-mod node;
+
+// Phase 313 W-finalize (#0243) — the legacy generic `node::run<B>` (+ the
+// `nros_board_common::board_init` trait re-exports) is RETIRED. Every ThreadX
+// board moved to `run_bare` / the `nros_platform::board::BoardEntry` path
+// (entry.rs), which is independent of `node.rs`; the file is gone. `ThreadxConfig`
+// (a config trait, not `board_init`) stays.
 
 pub use entry::{run_app_thread, run_bare, run_entry, run_tiers_entry};
-pub use node::run;
-pub use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
+pub use nros_board_common::ThreadxConfig;
 
 // Legacy 152.2.A façade — keep the per-board `Config` +
 // `init_hardware` + `run` re-export accessible behind the

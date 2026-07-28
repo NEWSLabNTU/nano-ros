@@ -341,7 +341,7 @@ check: check-fast check-build
 [group("main")]
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
-    check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
+    check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-c-fmt check-cpp-fmt check-python \
@@ -564,6 +564,12 @@ check-no-direct-kernel-alloc:
 [private]
 check-no-allow-multiple-def:
     @bash scripts/check-no-allow-multiple-def.sh
+
+# Phase 313 W6 — forbid the retired `nros_board_common::board_init` API from
+# creeping back (boards use `nros_platform::board::*` or the C ABI). Buildless.
+[private]
+check-no-board-init:
+    @bash scripts/check-no-board-init.sh
 
 # Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
 # owned C/C++/asm file outside the audited allowlist
