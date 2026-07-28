@@ -4,7 +4,7 @@ title: "Three Zephyr example recipes had empty loop bodies: build-c reported suc
 status: resolved
 type: bug
 area: build
-related: [issue-0313]
+related: [issue-0316]
 ---
 
 ## Finding (2026-07-28)

@@ -1,5 +1,5 @@
 ---
-id: 313
+id: 317
 title: "wake-latency-cortex-m3 bench is rotted (off-lane): retired `_start`/`run` entry + phase-230 platform-freertos feature drift + a libc-stub duplicate-symbol link conflict"
 status: open
 type: tech-debt

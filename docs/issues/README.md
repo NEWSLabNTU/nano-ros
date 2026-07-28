@@ -183,9 +183,10 @@ diagnostic. Six of `autoware_sentinel`'s tuned knobs are dead this way. Separate
 Includes a full audit: five distinct sizing mechanisms, only two of which a build-script hook can
 see. See `0316-*`. (2026-07-28, filed as #313 and renumbered on push — origin already had two)
 
-**#313** — `wake-latency-cortex-m3` bench rotted (off-lane): retired `_start`/`run` entry + phase-230
+**#317** — `wake-latency-cortex-m3` bench rotted (off-lane): retired `_start`/`run` entry + phase-230
 `platform-freertos` feature drift + a `nros-baremetal-common`/picolibc libc-stub duplicate-symbol link
-conflict. Needs resurrection + a build lane. See `0313-*`. (phase-313, 2026-07-28)
+conflict. Needs resurrection + a build lane. See `0317-*`. (phase-313, 2026-07-28, renumbered from a
+duplicate #313)
 
 Recently resolved: **#309** (whole matrix audited) — count-based proofs detect an
 ABSENT configuration, never a WRONG one. `Proof::QosMatchedCount` is now `QosMatchedProfile`, which
@@ -281,7 +282,7 @@ external consumers get "no matching package named nros". Premise contested (see 
 Verification section); needs a reporter repro. See `0272-*`.
 
 (#273 resolved — `nros-board.toml` `[board.entry]` signature `_start`→`main` (matches `board_mps2.c`
-`Reset_Handler`); the scaffold stub fixed too; the off-lane wake-latency bench spun to `#0313`.
+`Reset_Handler`); the scaffold stub fixed too; the off-lane wake-latency bench spun to `#0317`.
 phase-313. See `archived/0273-*`.)
 
 (#284 resolved — `NROS_CYCLONEDDS_MAX_TYPES` hidden compile-time knob, twin of the fixed `NROS_EXECUTOR_MAX_CBS`. See `archived/0284-*`.)
