@@ -1,7 +1,7 @@
 ---
 id: 334
 title: "Hardcoded build-host Zephyr-SDK path in the test harness (the last tracked absolute-path leak outside the SystemModels of #320)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing
@@ -64,3 +64,43 @@ git grep -nE '/home/|/Users/' -- examples/ packages/
 must be empty. The sweep confirms these two groups are the only sources, so the
 gate goes green immediately and then stays honest — a CI grep is what would have
 caught `bb0b08419` at review time.
+
+## Resolved (2026-07-28)
+
+`packages/testing/nros-tests/src/zephyr.rs` now resolves the binary instead of
+naming it. Order mirrors the file's other resolvers: `ZEPHYR_SDK_INSTALL_DIR`,
+else `project_root().join("scripts/zephyr/sdk")` — and inside a root, BOTH the
+SDK version (`zephyr-sdk-*`) and the host tuple (`sysroots/*/usr/bin/`) are
+globbed rather than pinned, since the issue named both as second SSoTs.
+Multiple SDKs sort newest-first. Absence now returns
+`TestError::BuildFailed` naming `QEMU_BIN` and `just zephyr setup`, instead of
+handing a nonexistent path to `Command` for a bare ENOENT.
+
+Verified by probing the resolver on this host: it derives
+`…/zephyr-sdk-0.16.8/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-xilinx-aarch64`
+— byte-identical to the string that was hardcoded, but computed. (The probe was
+scratch, not committed; the fixtures this feeds are cortex_a9 multicast lanes
+that need the SDK to run at all.)
+
+## Correction: the proposed gate does NOT go green immediately
+
+This issue states the sweep found "exactly two groups" and that
+`git grep -nE '/home/|/Users/' -- examples/ packages/` "goes green immediately"
+once both land. Run after this fix, it returns **15 matches**, so the sweep was
+incomplete in two ways:
+
+- **13 hits in `packages/cli/docs/`**, missed entirely. Most are the legitimate
+  placeholder `/home/user/project/...` in `CLI_REFERENCE.md`; the rest are
+  `phase-1-idl-generator.md` pointing at `/home/aeon/repos/cargo-ros2/tmp/...`,
+  a retired repo. A gate over `packages/` catches all of these, so it needs
+  either a docs exclusion or those references cleaned.
+- **2 SystemModels outside `examples/`** —
+  `packages/testing/nros-tests/bins/{entry-poc,qemu-baremetal-main-e2e}/config/system_model.yaml`.
+  This issue scoped #320's group to `examples/**/config/*_model.yaml`; these
+  two live under `packages/testing/.../bins/` and belong to #320's population.
+  Noted there.
+
+What IS true: **zero absolute paths remain in source code** under `examples/`
+or `packages/` — every survivor is a committed model (#320) or documentation
+prose. So the gate is still the right idea; it just needs its scope stated
+accurately before it can be switched on.

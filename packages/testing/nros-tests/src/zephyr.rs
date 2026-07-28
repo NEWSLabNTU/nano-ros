@@ -409,14 +409,29 @@ impl ZephyrProcess {
             )));
         }
 
-        // Locate the SDK-bundled qemu-system-xilinx-aarch64 — same
-        // path the upstream zephyr-lang-rust samples/philosophers
-        // build uses via `west build -t run`. Falling back to the
-        // PATH version is fine for dev hosts.
-        let qemu = std::env::var("QEMU_BIN").unwrap_or_else(|_| {
-            let sdk = "/home/aeon/repos/nano-ros/scripts/zephyr/sdk/zephyr-sdk-0.16.8";
-            format!("{sdk}/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-xilinx-aarch64")
-        });
+        // Locate the SDK-bundled qemu-system-xilinx-aarch64 — same binary the
+        // upstream zephyr-lang-rust samples/philosophers build uses via
+        // `west build -t run`.
+        //
+        // issue 0334 — this used to hardcode one developer's absolute path,
+        // pinning BOTH the SDK version (`zephyr-sdk-0.16.8`, owned by
+        // scripts/zephyr/setup.sh) and the host tuple
+        // (`x86_64-pokysdk-linux`, so it could not work on an aarch64 host
+        // even with the SDK present). On any other machine it handed a
+        // nonexistent path to `Command`, which fails with a bare ENOENT rather
+        // than a diagnosable "SDK not found" — while the dtb lookup four lines
+        // below already resolved properly.
+        let qemu = match std::env::var("QEMU_BIN") {
+            Ok(explicit) => explicit,
+            Err(_) => sdk_qemu_xilinx_aarch64().ok_or_else(|| {
+                TestError::BuildFailed(
+                    "qemu-system-xilinx-aarch64 not found. Set QEMU_BIN, or install the \
+                     Zephyr SDK (`just zephyr setup`) so it can be found under \
+                     $ZEPHYR_SDK_INSTALL_DIR or scripts/zephyr/sdk/zephyr-sdk-*."
+                        .to_string(),
+                )
+            })?,
+        };
         let dtb = std::env::var("ZEPHYR_FDT_ZYNQ7000S").unwrap_or_else(|_| {
             let ws = zephyr_workspace_path()
                 .map(|p| p.join("zephyr/boards/qemu/cortex_a9/fdt-zynq7000s.dtb"))
@@ -582,6 +597,56 @@ impl Drop for ZephyrProcess {
 // =============================================================================
 // Zephyr Availability Checks
 // =============================================================================
+
+/// Resolve the Zephyr-SDK-bundled `qemu-system-xilinx-aarch64` (issue 0334).
+///
+/// Nothing here is pinned: the SDK version and the host tuple are both GLOBBED,
+/// because both were previously hardcoded and both are owned elsewhere — the
+/// version by `scripts/zephyr/setup.sh`, the tuple by whatever host you are on.
+///
+/// Search order mirrors the other resolvers in this file:
+/// 1. `ZEPHYR_SDK_INSTALL_DIR` (the SDK's own variable, set by `west`/`setup.sh`)
+/// 2. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
+///
+/// Returns `None` when absent so the caller can report a diagnosable error
+/// rather than handing a nonexistent path to `Command`.
+fn sdk_qemu_xilinx_aarch64() -> Option<String> {
+    const QEMU: &str = "qemu-system-xilinx-aarch64";
+
+    // Inside one SDK root, find `sysroots/<host-tuple>/usr/bin/<QEMU>`.
+    fn in_sdk_root(root: &Path) -> Option<String> {
+        let entries = std::fs::read_dir(root.join("sysroots")).ok()?;
+        for entry in entries.flatten() {
+            let candidate = entry.path().join("usr/bin").join(QEMU);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+        None
+    }
+
+    if let Ok(dir) = std::env::var("ZEPHYR_SDK_INSTALL_DIR")
+        && let Some(found) = in_sdk_root(Path::new(&dir))
+    {
+        return Some(found);
+    }
+
+    // Newest-first so a host carrying several SDKs picks the latest, matching
+    // what `just zephyr setup` most recently provisioned.
+    let sdk_parent = crate::project_root().join("scripts/zephyr/sdk");
+    let mut roots: Vec<PathBuf> = std::fs::read_dir(&sdk_parent)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("zephyr-sdk-"))
+        })
+        .collect();
+    roots.sort();
+    roots.iter().rev().find_map(|r| in_sdk_root(r))
+}
 
 /// Get the path to the Zephyr workspace
 ///
