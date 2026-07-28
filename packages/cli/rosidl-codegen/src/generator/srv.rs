@@ -275,6 +275,8 @@ pub fn generate_nros_service_package(
     );
 
     let service_template = ServiceNrosTemplate {
+        has_borrowed_request: request_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_response: response_fields.iter().any(|f| f.is_borrowed),
         package_name,
         service_name,
         request_type_hash,
@@ -398,6 +400,8 @@ pub fn generate_nros_inline_service(
     );
 
     let template = ServiceNrosTemplate {
+        has_borrowed_request: request_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_response: response_fields.iter().any(|f| f.is_borrowed),
         package_name,
         service_name,
         request_type_hash,
@@ -594,6 +598,8 @@ pub fn generate_c_service_package(
 
     // Generate header
     let header_template = ServiceCHeaderTemplate {
+        has_borrowed_request: request_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_response: response_fields.iter().any(|f| f.is_borrowed),
         package_name,
         service_name,
         type_hash,
@@ -615,6 +621,8 @@ pub fn generate_c_service_package(
 
     // Generate source
     let source_template = ServiceCSourceTemplate {
+        has_borrowed_request: request_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_response: response_fields.iter().any(|f| f.is_borrowed),
         package_name,
         service_name,
         type_hash,

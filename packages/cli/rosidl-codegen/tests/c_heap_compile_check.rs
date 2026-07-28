@@ -36,6 +36,23 @@ void nros_platform_free(void* ptr);
 #endif
 "#;
 
+const BORROWED_H: &str = r#"
+#ifndef NROS_BORROWED_STUB_H
+#define NROS_BORROWED_STUB_H
+#include <stdint.h>
+#include <stddef.h>
+#include <nros/cdr.h>
+typedef struct { const char* data; size_t size; } nros_borrowed_str_t;
+typedef struct { const uint8_t* data; size_t size; } nros_borrowed_bytes_t;
+static inline int32_t nros_cdr_borrow_string(const uint8_t** p, const uint8_t* e,
+                                             const uint8_t* o, nros_borrowed_str_t* out) {
+    uint32_t n; if (nros_cdr_read_u32(p, e, o, &n) < 0) return -1;
+    if ((size_t)(e - *p) < n) return -1;
+    out->data = (const char*)*p; out->size = n > 0 ? (size_t)(n - 1) : 0; *p += n; return 0;
+}
+#endif
+"#;
+
 const CDR_H: &str = r#"
 #ifndef NROS_CDR_STUB_H
 #define NROS_CDR_STUB_H
@@ -178,6 +195,61 @@ fn generated_heap_c_service_compiles_and_exposes_fini() {
     assert!(
         out.status.success(),
         "generated heap C service failed to compile:\n{}\n--- header ---\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.header,
+        pkg.source,
+    );
+}
+
+/// Issue 0346 — a borrowed SERVICE payload must compile: the view aliases the raw
+/// callback buffer, so there is no malloc and no `_fini` for it, while the OWNED
+/// struct stays for the publish path.
+#[test]
+#[ignore = "spawns gcc -fsyntax-only"]
+fn generated_borrowed_c_service_compiles() {
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_srvs/Peek_Request.name" = { cap = 0, mode = "borrowed" }
+        "#,
+    )
+    .unwrap();
+    let srv = parse_service("string name\nint32 seq\n---\nbool ok\n").unwrap();
+    let pkg = generate_c_service_package("my_srvs", "Peek", &srv, "h", &resolver).unwrap();
+
+    assert!(
+        pkg.header.contains("my_srvs_srv_peek_request_View"),
+        "a borrowed view must be emitted:\n{}",
+        pkg.header
+    );
+    assert!(
+        pkg.header
+            .contains("my_srvs_srv_peek_request_deserialize_borrowed"),
+        "the borrowed deserializer must be declared:\n{}",
+        pkg.header
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let nros = tmp.path().join("nros");
+    fs::create_dir_all(&nros).unwrap();
+    fs::write(nros.join("types.h"), TYPES_H).unwrap();
+    fs::write(nros.join("cdr.h"), CDR_H).unwrap();
+    fs::write(nros.join("platform.h"), PLATFORM_H).unwrap();
+    fs::write(nros.join("borrowed.h"), BORROWED_H).unwrap();
+    fs::write(tmp.path().join(&pkg.header_name), &pkg.header).unwrap();
+    let c_path = tmp.path().join(&pkg.source_name);
+    fs::write(&c_path, &pkg.source).unwrap();
+
+    let out = Command::new("gcc")
+        .args(["-fsyntax-only", "-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg("-I")
+        .arg(tmp.path())
+        .arg(&c_path)
+        .output()
+        .expect("spawn gcc");
+    assert!(
+        out.status.success(),
+        "generated borrowed C service failed to compile:\n{}\n--- header ---\n{}\n--- source ---\n{}",
         String::from_utf8_lossy(&out.stderr),
         pkg.header,
         pkg.source,

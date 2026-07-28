@@ -138,11 +138,7 @@ impl RosMessage for {{ message_name }} {
 /// Borrowed (zero-copy) view of [`{{ message_name }}`].
 pub struct {{ message_name }}View<'a> {
 {%- for field in fields %}
-{%- if field.is_borrowed %}
-    pub {{ field.name }}: {{ field.borrowed_rust_type }},
-{%- else %}
-    pub {{ field.name }}: {{ field.rust_type }},
-{%- endif %}
+{%- call f::view_field_decl(field) %}
 {%- endfor %}
 }
 
@@ -151,11 +147,7 @@ impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
 {%- for field in fields %}
-{%- if field.is_borrowed %}
-            {{ field.name }}: {{ field.borrowed_read_expr }},
-{%- else %}
-{%- call f::deser_field(field, inline_mode) %}
-{%- endif %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
 {%- endfor %}
         };
         reader.end_dheader(__dh)?;

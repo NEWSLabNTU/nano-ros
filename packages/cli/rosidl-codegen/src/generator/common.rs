@@ -325,8 +325,12 @@ pub(super) fn ensure_supported_storage_for_payload(
             // Rust gained heap in 0344 (`_nros_field.jinja`); C gained it in
             // 0345 (`_c_field.jinja` + a generated `_fini` per payload struct).
             (StorageMode::Heap, _) => false,
-            // No view type is emitted for srv/action payloads in either language.
-            (StorageMode::Borrowed, _) => true,
+            // Issue 0346 — srv/action payloads now emit `{Payload}View` /
+            // `{Payload}_View` + `deserialize_borrowed`, so borrowed is supported
+            // in both languages. Both directions read from a raw buffer (the
+            // service callback's `request_data`, the client's `response`), so the
+            // view's lifetime story matches a subscription's.
+            (StorageMode::Borrowed, _) => false,
         };
         if rejected {
             return Err(GeneratorError::UnsupportedStorageModeForPayload {

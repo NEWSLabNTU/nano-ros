@@ -727,3 +727,86 @@ impl RosAction for {{ action_name }} {
         ::core::result::Result::Ok(())
     }
 }
+{%- if has_borrowed_goal %}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the goal payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`{{ action_name }}Goal`].
+pub struct {{ action_name }}GoalView<'a> {
+{%- for field in goal_fields %}
+{%- call f::view_field_decl(field) %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}GoalView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in goal_fields %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+{%- endif %}
+
+{%- if has_borrowed_result %}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the result payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`{{ action_name }}Result`].
+pub struct {{ action_name }}ResultView<'a> {
+{%- for field in result_fields %}
+{%- call f::view_field_decl(field) %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}ResultView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in result_fields %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+{%- endif %}
+
+{%- if has_borrowed_feedback %}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the feedback payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`{{ action_name }}Feedback`].
+pub struct {{ action_name }}FeedbackView<'a> {
+{%- for field in feedback_fields %}
+{%- call f::view_field_decl(field) %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}FeedbackView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in feedback_fields %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+{%- endif %}

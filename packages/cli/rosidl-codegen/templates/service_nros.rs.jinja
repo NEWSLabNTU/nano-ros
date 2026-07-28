@@ -260,3 +260,58 @@ impl RosService for {{ service_name }} {
     const SERVICE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_";
     const SERVICE_HASH: &'static str = "{{ service_hash }}";
 }
+{%- if has_borrowed_request %}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the request payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`{{ service_name }}Request`].
+pub struct {{ service_name }}RequestView<'a> {
+{%- for field in request_fields %}
+{%- call f::view_field_decl(field) %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ service_name }}RequestView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in request_fields %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+{%- endif %}
+
+{%- if has_borrowed_response %}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the response payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`{{ service_name }}Response`].
+pub struct {{ service_name }}ResponseView<'a> {
+{%- for field in response_fields %}
+{%- call f::view_field_decl(field) %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ service_name }}ResponseView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+{%- for field in response_fields %}
+{%- call f::borrowed_deser_field(field, inline_mode) %}
+{%- endfor %}
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+{%- endif %}

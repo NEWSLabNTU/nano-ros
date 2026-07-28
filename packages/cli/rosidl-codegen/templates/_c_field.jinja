@@ -158,3 +158,23 @@
     if ({{ field.nested_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}, &ptr, end, origin) < 0) return -1;
 {%- endif %}
 {%- endmacro -%}
+
+{#- Issue 0346 — C borrowed VIEW field declaration (mirrors the Rust macro). -#}
+{%- macro view_field_decl(field) -%}
+{%- if field.is_borrowed %}
+    {{ field.borrowed_c_type }} {{ field.name }};
+{%- else %}
+    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+{%- endif %}
+{%- endmacro -%}
+
+{#- Issue 0346 — C borrowed deserialize arm: `borrowed_read_fn` sets pointers
+    into `buffer` (no malloc, no fini); other fields copy exactly as owned. -#}
+{%- macro borrowed_deser_field(field, var, sname) -%}
+{%- if field.is_borrowed %}
+    if ({{ field.borrowed_read_fn }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
+{%- else %}
+{%- call deser_field(field, var, sname) %}
+{%- endif %}
+{%- endmacro -%}
+

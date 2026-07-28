@@ -1,3 +1,4 @@
+{%- import "_c_field.jinja" as c -%}
 // nros-c message type - C header for embedded systems
 // Package: {{ package_name }}
 // Message: {{ message_name }}
@@ -46,11 +47,7 @@ typedef struct {{ struct_name }} {
 /// buffer lives (e.g. the subscription callback) — copy out anything retained.
 typedef struct {{ struct_name }}_View {
 {%- for field in fields %}
-{%- if field.is_borrowed %}
-    {{ field.borrowed_c_type }} {{ field.name }};
-{%- else %}
-    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
-{%- endif %}
+{%- call c::view_field_decl(field) %}
 {%- endfor %}
 } {{ struct_name }}_View;
 {%- endif %}

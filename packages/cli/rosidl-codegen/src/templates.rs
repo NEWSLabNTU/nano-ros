@@ -271,6 +271,11 @@ pub struct ServiceNrosTemplate<'a> {
     pub resp_schema_helper_consts: String,
     pub resp_schema_fields_block: String,
     pub resp_schema_type_name: String,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_request: bool,
+    pub has_borrowed_response: bool,
 }
 
 #[derive(Template)]
@@ -381,6 +386,12 @@ pub struct ActionNrosTemplate<'a> {
     pub feedback_message_schema_helper_consts: String,
     pub feedback_message_schema_fields_block: String,
     pub feedback_message_schema_type_name: String,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_goal: bool,
+    pub has_borrowed_result: bool,
+    pub has_borrowed_feedback: bool,
 }
 
 // ============================================================================
@@ -502,6 +513,11 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub type_includes: Vec<String>,
     pub has_request_fields: bool,
     pub has_response_fields: bool,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_request: bool,
+    pub has_borrowed_response: bool,
 }
 
 #[derive(Template)]
@@ -518,6 +534,11 @@ pub struct ServiceCSourceTemplate<'a> {
     pub response_fields: Vec<CField>,
     pub has_request_fields: bool,
     pub has_response_fields: bool,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_request: bool,
+    pub has_borrowed_response: bool,
 }
 
 #[derive(Template)]
@@ -543,6 +564,12 @@ pub struct ActionCHeaderTemplate<'a> {
     pub has_goal_fields: bool,
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_goal: bool,
+    pub has_borrowed_result: bool,
+    pub has_borrowed_feedback: bool,
 }
 
 #[derive(Template)]
@@ -562,6 +589,12 @@ pub struct ActionCSourceTemplate<'a> {
     pub has_goal_fields: bool,
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
+    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// is emitted beside the owned struct.
+    pub has_borrowed_goal: bool,
+    pub has_borrowed_result: bool,
+    pub has_borrowed_feedback: bool,
 }
 
 // ============================================================================

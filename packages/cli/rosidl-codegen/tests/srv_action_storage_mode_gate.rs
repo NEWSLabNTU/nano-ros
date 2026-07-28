@@ -113,18 +113,34 @@ fn the_inline_service_emitter_supports_heap_too() {
 
 // ── still rejected, for stated reasons ──────────────────────────────────────
 
-/// `borrowed` needs a view type that srv/action do not emit; without this gate it
-/// would silently degrade to `owned`.
+/// 0346 — `borrowed` emits a `{Payload}View<'a>` beside the owned struct, so the
+/// owned publish path is untouched and the view aliases the raw callback buffer.
+/// Both directions read from a buffer (the server reads `request_data`, the client
+/// reads `response`), so the lifetime story matches a subscription's.
 #[test]
-fn borrowed_on_a_service_payload_is_rejected_with_the_field_named() {
-    let err = gen_srv(&resolver(
+fn borrowed_service_payload_gets_a_view_type() {
+    let rs = gen_srv(&resolver(
         r#""test_msgs/Adder_Response.summary" = { cap = 8, mode = "borrowed" }"#,
     ))
-    .expect_err("borrowed has no view type on srv/action");
+    .expect("borrowed on a service payload is supported since 0346");
 
-    assert!(err.contains("summary"), "must name the field: {err}");
-    assert!(err.contains("borrowed"), "must name the mode: {err}");
-    assert!(err.contains("service"), "must name the entity: {err}");
+    assert!(
+        rs.contains("pub struct AdderResponseView<'a>"),
+        "a borrowed view must be emitted:\n{rs}"
+    );
+    assert!(
+        rs.contains("pub summary: &'a str"),
+        "the borrowed field must take the view type:\n{rs}"
+    );
+    assert!(
+        rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for AdderResponseView<'a>"),
+        "the view must implement DeserializeBorrowed:\n{rs}"
+    );
+    // The OWNED struct must survive untouched — it is still the publish path.
+    assert!(
+        rs.contains("pub struct AdderResponse {"),
+        "the owned struct must remain for serialization:\n{rs}"
+    );
 }
 
 /// 0345 — C heap works, and the generated `_fini` is what makes the ownership

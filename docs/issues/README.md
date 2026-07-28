@@ -44,10 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#346** — `borrowed` on srv/action payloads needs view types (`{Msg}View<'a>` / `{Msg}_View` +
-`deserialize_borrowed`); without them the mode silently degrades to `owned`, so it is rejected with
-the field named. Worth deciding per-payload first: a borrowed REQUEST is sound (same lifetime story
-as a subscription buffer), a borrowed RESPONSE has nothing to borrow from. See `0346-*`.
+Recently resolved: **#346** — `borrowed` now works on srv/action payloads in both languages, so
+**all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
+#346). The design question this issue raised — "a borrowed response has nothing to borrow from" —
+was wrong: every payload has an owned WRITE side and a raw-buffer READ side, and the client reads
+`response` bytes just as the server reads `request_data`, so the view lifetime matches a
+subscription's in both directions. View macros added to the shared arm files; per-payload
+`has_borrowed_*` flags; a new `gcc -Werror` check that caught a missing `nros/borrowed.h` include
+(same class as #345's missing `platform.h`). Owned output byte-identical.
+See `archived/0346-*`. (2026-07-28)
 
 Recently resolved: **#345** — C `heap` now works on srv/action payloads. **The issue's own premise
 was wrong**: it claimed every C consumer would need teaching to `_fini`, but `nros_service_callback_t`

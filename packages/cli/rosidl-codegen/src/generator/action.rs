@@ -349,6 +349,9 @@ pub fn generate_nros_action_package(
     let envelopes = build_action_envelope_schemas(package_name, action_name);
 
     let action_template = ActionNrosTemplate {
+        has_borrowed_goal: goal_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_result: result_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_feedback: feedback_fields.iter().any(|f| f.is_borrowed),
         package_name,
         action_name,
         goal_type_hash: &hashes.goal,
@@ -545,6 +548,9 @@ pub fn generate_nros_inline_action(
     let envelopes = build_action_envelope_schemas(package_name, action_name);
 
     let template = ActionNrosTemplate {
+        has_borrowed_goal: goal_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_result: result_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_feedback: feedback_fields.iter().any(|f| f.is_borrowed),
         package_name,
         action_name,
         goal_type_hash: &hashes.goal,
@@ -816,6 +822,9 @@ pub fn generate_c_action_package(
 
     // Generate header
     let header_template = ActionCHeaderTemplate {
+        has_borrowed_goal: goal_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_result: result_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_feedback: feedback_fields.iter().any(|f| f.is_borrowed),
         package_name,
         action_name,
         type_hash,
@@ -841,6 +850,9 @@ pub fn generate_c_action_package(
 
     // Generate source
     let source_template = ActionCSourceTemplate {
+        has_borrowed_goal: goal_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_result: result_fields.iter().any(|f| f.is_borrowed),
+        has_borrowed_feedback: feedback_fields.iter().any(|f| f.is_borrowed),
         package_name,
         action_name,
         type_hash,
