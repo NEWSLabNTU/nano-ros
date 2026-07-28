@@ -172,17 +172,24 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     );
 }
 
-/// Producer coverage, stated as a ledger rather than a silence.
+/// phase-308 W4 — every declared component has a producer.
 ///
-/// Rust node packages have a producer (W1/W2). C and C++ ones do not until W3
-/// lands, so they are counted and named here instead of being skipped quietly —
-/// a component with no producer is a component whose entity count no bake can
-/// know. When W3 lands, `unsupported` drops to zero and the assertion below
-/// tightens from "these and only these" to "none".
+/// This test used to be a LEDGER: C and C++ had no producer, so it counted them
+/// and asserted the count had not grown. That premise is gone — phase-308's
+/// CMake probe produces C/C++ sidecars, verified on
+/// `examples/workspaces/cpp` — so the assertion inverts from "no more than N
+/// unsupported" to "every component's language is producible".
+///
+/// What can still put a component out of reach is a PROPERTY of the package,
+/// not its language: it may be deploy-bound (node and entry in one crate, so it
+/// deps a board crate and cannot be host-compiled — issue 0288), or its build
+/// may be un-configurable for the host (issue 0286's `probe_blocker`). Those
+/// are reported by `nros sync` at the time, per component, with a reason. They
+/// are not a language gap and this test is not the place for them.
 #[test]
-fn cpp_producer_gap_is_tracked_not_hidden() {
+fn every_declared_component_language_has_a_producer() {
     let root = repo_root();
-    let mut unsupported = Vec::new();
+    let mut unproducible = Vec::new();
     for pkg in example_packages(&root) {
         if classify(&pkg) == Shape::NotANode {
             continue;
@@ -194,29 +201,24 @@ fn cpp_producer_gap_is_tracked_not_hidden() {
             continue;
         };
         for decl in decls {
-            if decl.config.language != ComponentLanguage::Rust {
-                let rel = pkg
-                    .strip_prefix(&root)
-                    .unwrap_or(&pkg)
-                    .display()
-                    .to_string();
-                unsupported.push(format!("{rel} [{:?}]", decl.config.language));
+            // Rust → the cargo harness; C and C++ → the CMake probe. There is
+            // no third case, and a new one must not land silently.
+            let producible = matches!(
+                decl.config.language,
+                ComponentLanguage::Rust | ComponentLanguage::C | ComponentLanguage::Cpp
+            );
+            if !producible {
+                let rel = pkg.strip_prefix(&root).unwrap_or(&pkg).display().to_string();
+                unproducible.push(format!("{rel} [{:?}]", decl.config.language));
             }
         }
     }
-    unsupported.sort();
-    unsupported.dedup();
-
-    // The C/C++ node packages in the tree today. The number is asserted, not
-    // the names, so adding a C++ example is not a spurious failure — but a
-    // JUMP in the count means a whole family lost its producer coverage
-    // without anyone deciding to accept that.
+    unproducible.sort();
+    unproducible.dedup();
     assert!(
-        unsupported.len() <= 12,
-        "{} example node packages have no metadata producer (phase-307 W3 \
-         covers C/C++); if this grew, C/C++ examples are outpacing the \
-         producer:\n  {}",
-        unsupported.len(),
-        unsupported.join("\n  ")
+        unproducible.is_empty(),
+        "{} component(s) declare a language with no metadata producer:\n  {}",
+        unproducible.len(),
+        unproducible.join("\n  ")
     );
 }

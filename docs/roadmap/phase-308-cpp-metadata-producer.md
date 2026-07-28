@@ -1,17 +1,28 @@
 # Phase 308 — the C/C++ source-metadata producer
 
-**Status (2026-07-27): W2 IMPLEMENTED BUT NOT YET REACHABLE END-TO-END.
-W1/W3/W4 remain.** Split out of phase-307 W3 once the Rust half
-landed and the C/C++ half proved phase-sized on its own. Phase-307 delivered
-the producer (W1), the trigger (W2), the consumer (W4), the coverage gate (W5)
-and the bake-time regression test (W6 lane 1) for **Rust**. C and C++ node
-packages still have no producer, so their entity counts fall back to the
-SystemModel's timer-blind lower bound — the residual half of issue 0257.
+**Status (2026-07-28): COMPLETE.** W1 (probe driver), W2 (adapter), W3 (schema
+parity) and W4 (ledger) all landed. C and C++ node packages now produce
+source-metadata sidecars through the same recorder, schema and slot accounting
+as Rust.
 
-Six example node packages are affected today, named by the phase-307 W5 ledger
-test (`cpp_producer_gap_is_tracked_not_hidden`). That test is the acceptance
-signal: when this phase lands, its `unsupported` list goes empty and the
-assertion tightens from a bound to zero.
+Verified on `examples/workspaces/cpp` (2026-07-28): six sidecars, produced by
+the CMake probe, consumed by `sidecar_slots` with **no language branch and no
+code change** on the consumption side.
+
+| component | pubs | subs | timers | services |
+| --- | --- | --- | --- | --- |
+| talker | 1 | 0 | 1 | 0 |
+| listener | 0 | 1 | 0 | 0 |
+| add_client | 0 | 0 | 1 | 0 |
+| add_server | 0 | 0 | 0 | 1 |
+| fib_client | 0 | 1 | 1 | 0 |
+| fib_server | 2 | 0 | 1 | 3 |
+
+Both intercepts contributed, which is the design working: subscriptions,
+services and publishers came through the recording RMW backend; the TIMERS on
+four of six components came through the `nros-cpp` executor hooks. Timers never
+reach the RMW and are exactly the entity the SystemModel is blind to — the
+whole reason issue 0257 existed.
 
 ## The layering: what is per-language and what must not be
 
@@ -259,10 +270,22 @@ records a count that does not describe the firmware. The rule is *declare
 unconditionally, gate behavior not declaration*, and C++ makes it easier to
 break than Rust does. Detect and fail loud rather than silently skew a count.
 
-### W4 — close the ledger
+### W4 — close the ledger — DONE (2026-07-28)
 
-`nros sync` stops reporting "no producer for …"; phase-307's
-`cpp_producer_gap_is_tracked_not_hidden` asserts zero.
+`nros sync` on `examples/workspaces/cpp` reports `6 rebuilt, 0 already current`
+and no producer gaps.
+
+The coverage gate's ledger test is INVERTED rather than deleted:
+`cpp_producer_gap_is_tracked_not_hidden` counted C/C++ components and asserted
+the count had not grown; it is now
+`every_declared_component_language_has_a_producer`, asserting that every
+declared language is producible (Rust → cargo harness, C/C++ → CMake probe) and
+that a fourth language cannot land silently.
+
+What can still put a component out of reach is a PROPERTY of the package, not
+its language — deploy-bound (issue 0288) or un-configurable for the host (issue
+0286). Those are reported per component with a reason at sync time, and are
+deliberately not folded into this gate.
 
 ## Acceptance
 
