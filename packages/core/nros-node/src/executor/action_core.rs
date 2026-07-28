@@ -275,10 +275,23 @@ impl<
         &self.goal_buffer
     }
 
-    /// Accept a goal: sends the acceptance reply, adds to active goals,
-    /// publishes status.
+    /// Accept a goal: records it, sends the acceptance reply, publishes status.
+    ///
+    /// # Ordering
+    ///
+    /// The goal is recorded in `active_goals` **before** the reply goes out,
+    /// and the recording is rolled back if the reply fails. Issue 0322: this
+    /// used to reply first and then `let _ = self.active_goals.push(...)`, so
+    /// once `MAX_GOALS` (default 4) were active, a 5th `send_goal` was
+    /// answered `accepted=true` and then dropped — no execution, no feedback,
+    /// no result, no terminal status. An rclcpp/rclpy client that saw
+    /// `accepted=true` waited on its result future forever.
+    ///
+    /// A full table is now answered truthfully with `accepted=false` via
+    /// [`Self::reject_goal`], which is a contract the client already handles.
     pub fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
-        // Serialize response: accepted=true + stamp (Time: sec=0, nanosec=0)
+        // Serialize first: a serialization failure here must leave no trace,
+        // and nothing below depends on the table.
         let mut writer =
             crate::tx_writer(&mut self.cancel_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer.write_u8(1).map_err(|_| NodeError::Serialization)?;
@@ -286,15 +299,44 @@ impl<
         writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
         let reply_len = writer.position();
 
-        self.send_goal_server
-            .send_reply(seq, &self.cancel_buffer[..reply_len])
-            .map_err(|_| NodeError::ServiceReplyFailed)?;
+        // Capacity is decided BEFORE anything reaches the wire, so a full
+        // table becomes an honest rejection rather than a lie.
+        if self
+            .active_goals
+            .push(RawActiveGoal {
+                goal_id,
+                status: GoalStatus::Accepted,
+            })
+            .is_err()
+        {
+            return self.reject_goal(seq);
+        }
 
-        let _ = self.active_goals.push(RawActiveGoal {
-            goal_id,
-            status: GoalStatus::Accepted,
-        });
-        let _ = self.publish_status_array();
+        if self
+            .send_goal_server
+            .send_reply(seq, &self.cancel_buffer[..reply_len])
+            .is_err()
+        {
+            // The client never learned it was accepted, so un-record it —
+            // otherwise the slot leaks and lowers the effective capacity for
+            // every later goal. `pop` removes the entry pushed just above:
+            // `&mut self` means nothing else can have touched the table.
+            self.active_goals.pop();
+            return Err(NodeError::ServiceReplyFailed);
+        }
+
+        // Past this point the acceptance is on the wire and irreversible.
+        //
+        // The status-array publish is therefore NOT propagated: both C and C++
+        // callers collapse `Err` to a generic error code
+        // (`nros-c/src/action/server.rs`, `nros-cpp/src/action.rs`), so
+        // returning one here would report "accept failed" for a goal that IS
+        // accepted and running — inviting the caller to reject or retry it.
+        // The client already holds `accepted=true` and will still receive the
+        // result; a missed status sample is degraded, not broken. Issue 0322
+        // proposed propagating this; see that issue for why it is deliberately
+        // not done.
+        let _status = self.publish_status_array();
         Ok(())
     }
 

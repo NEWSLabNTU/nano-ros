@@ -291,9 +291,15 @@ kept the gate's strength (the existing constant was the longer full line). Mutat
 excluded binaries compile. The LANE GAP is untouched and still open: the gate polices sources whose
 binaries never run in `just ci`. See `0321-*`. (2026-07-28)
 
-**#322** — `accept_goal` replies `accepted=true` BEFORE `active_goals.push`, `MAX_GOALS`=4 and no
-caller pre-checks → the 5th concurrent goal is acked then dropped; client waits forever. P1.
-See `0322-*`.
+Recently resolved: **#322** — `accept_goal` replied `accepted=true` BEFORE recording the goal and
+discarded the `push` result, so with `MAX_GOALS` (4) active a 5th goal was acknowledged and then
+dropped — no execution, no result, client waits forever. Capacity is now decided before anything
+reaches the wire (full table → honest `reject_goal`), and a failed `send_reply` rolls the record back
+so a slot cannot leak. Item 2 (propagate `publish_status_array`) deliberately NOT done: past
+`send_reply` the acceptance is irreversible and both C/C++ callers collapse Err to a generic error, so
+propagating would report "accept failed" for a running goal — reasoning recorded in code and issue.
+`MAX_GOALS` as a documented knob stays open. NO TEST covers the 5th goal (`actions.rs:163` — the
+client fixture cannot hold multiple goals in flight); action e2e green. See `0322-*`. (2026-07-28)
 
 **#323** — parameter wire values silently truncated: `from_rcl_value`/`to_rcl_value` discard every
 capacity error and still report success; unknown `type_` → `NotSet`; hosted `unwrap_or_default()`
