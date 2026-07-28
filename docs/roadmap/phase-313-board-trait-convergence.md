@@ -152,10 +152,43 @@ a bounded, per-board-verifiable job. Key findings:
 This supersedes the size-ordered W3–W6 sketch below; the verifiability-ordered
 sequence above is the plan of record.
 
+## W-threadx attempt (2026-07-28) — runtime verification found a REAL gap; reverted
+
+Attempted the first increment host-verified. It EXPOSED a gap the compile-check
+would have missed, exactly why the host-first ordering matters:
+
+- Deleted threadx-linux's legacy `board_init` impls + free `run`, migrated
+  `logging-smoke-threadx-linux` to `<ThreadxLinux as
+  nros_platform::board::BoardEntry>::run(|_rt| …)`. It COMPILED + linked clean.
+- The host smoke test then FAILED: `Executor::open failed:
+  Transport(ConnectionFailed)`, and the closure's log output never appeared.
+
+**Root cause — the legacy `run` and the new `BoardEntry::run` are NOT
+equivalent.** The new family driver's `run_entry`
+(`nros-board-threadx/src/entry.rs:453`) opens a full `Executor::open(&exec_cfg)`
+session BEFORE calling `setup`, and aborts (prints "Executor::open failed") when
+it can't connect. The legacy `nros_board_threadx::run<B>(config, closure)` the
+logging smokes use does NOT open a session — it boots the kernel + runs the
+closure. So the legacy `run(Config, closure)` served TWO roles: full-app boots
+AND **lightweight, no-session logging/init-only fixtures**. `BoardEntry::run`
+only covers the first.
+
+Reverted (the tree is back to green). The finding: **retiring the legacy `run`
+needs a lightweight, no-session new-family entry** for the logging/init-only
+smoke bins (`logging-smoke-*`, `nros-smoke/*-board-bringup`), OR those smokes must
+be migrated to a session-backed setup (with a router). This is a small design
+addition, not a per-board config split — and it BLOCKS every family's migration
+the same way (freertos/nuttx have the identical logging-smoke pattern).
+
 ## Next steps when resumed (verifiability-ordered — see the Fix method above)
-1. **W-threadx (host)** — new-family `BoardEntry::run(setup)` in
-   `nros_board_threadx` + `threadx-linux`; migrate `logging-smoke-threadx-linux`;
-   confirm on the host smoke lane. The proven template.
+0. **PREREQUISITE (new, from the W-threadx attempt):** add a lightweight
+   no-session new-family entry (e.g. `BoardEntry::run_bare(setup)` or a
+   `nros_platform` free `run_init_only`) that boots the kernel + runs `setup`
+   WITHOUT `Executor::open`, and point the `logging-smoke-*` /
+   `*-board-bringup` fixtures at it. Verify on the threadx-linux host lane. This
+   unblocks retiring the legacy `run` on every family.
+1. **W-threadx (host)** — then delete threadx-linux's legacy `board_init` impls +
+   free `run`; confirm the host smoke lane green.
 2. Then per-QEMU-lane families/boards, one at a time, each lane green.
 3. Then direct-exec boards, then `cffi`, then W6 (delete + gate).
 
