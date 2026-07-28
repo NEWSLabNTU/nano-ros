@@ -12,6 +12,17 @@
   was refuted and demoted); P2s are finder-confirmed by read, not adversarially
   refuted (quick-mode contract).
 
+## Filed as
+
+#321–#335 plus **#336** (the bootstrap-drift P1 — filed as #320, renumbered on
+push because origin already had one). The SystemModel absolute-path finding is
+**not** ours: another session filed it concurrently as **#320** with a fuller
+diagnosis (vanished `meta.record` targets, write-only `sha256`es), so this run's
+#334 was narrowed to the remaining leak (`zephyr.rs:417`) and cross-references it.
+Two sessions independently finding the same defect within hours is itself a data
+point for the "gates narrower than their rule" note below — nothing in CI looks
+for tracked absolute paths.
+
 ## Resolved since last run
 
 **All nine P2s from the 07-17 deep audit are fixed and archived** — #219
