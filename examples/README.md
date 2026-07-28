@@ -18,8 +18,8 @@ examples/
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
-**There is no per-RMW directory level.** The path is
-`<platform>/<language>/<example>`, never
+**There is no per-RMW directory level for the standard example set.** The path
+is `<platform>/<language>/<example>`, never
 `<platform>/<language>/<rmw>/<example>`. One example serves every backend, and
 the RMW is selected at build/test time by the mechanisms in [Building](#building)
 below. Phase 168 collapsed the old `rust/{zenoh,xrce,dds}/` trees for this
@@ -28,8 +28,17 @@ something that no longer exists (issue 0314 — a stale `cpp/xrce` reference sat
 in `just zephyr build-xrce` for months, and the abandoned directories lingered
 on disk as untracked `generated/` output that read like real examples).
 
-The one surviving `<rmw>/` level is `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r`,
-which is a *board* variant that happens to be nested under a backend name.
+Three `<rmw>/` paths remain, and none of them is a backend variant of the
+standard roles:
+
+| path | why it is not an RMW split |
+| --- | --- |
+| `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` | a **board** variant (aemv8r) that happens to sit under a backend name |
+| `px4/rust/xrce/{offboard-companion,px4-probe,px4-stub}` | PX4 offboard tooling, not talker/listener |
+| `px4/cpp/uorb/nros-register-check` | the canonical PX4 uORB surface (see the coverage matrix below) |
+
+If you are adding a `talker`/`listener`/`service-*`/`action-*` example, it goes
+at `<platform>/<language>/<role>`. No exceptions.
 
 Each example is a standalone Cargo + CMake package — no walk-up in the manifests, no workspace coupling. The tested copy-out contract (phase-277 W6):
 

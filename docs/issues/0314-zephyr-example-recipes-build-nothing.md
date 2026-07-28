@@ -66,13 +66,32 @@ real example trees to anything that only looked at directory names, which is
 how a `cpp/xrce` loop survived review and how this investigation misread the
 layout twice.
 
-Removed: `examples/zephyr/rust/{xrce,zenoh,dds}`. The surviving
-`zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` is *not* an RMW directory — it is
-a board variant (aemv8r) that happens to be nested under a backend name, and it
-is tracked.
+The zephyr trees were not special. A sweep of every
+`examples/<platform>/<language>/<rmw>/` directory found the same thing on nine
+more platforms:
+
+```
+24 directories, 6,086 files, 0 tracked, 0 non-generated
+```
+
+All removed. Every candidate was checked twice before deletion — zero tracked
+files *and* zero files outside `generated/`/`build/`/`target/` — because an
+untracked directory can also be somebody's uncommitted work, and the two
+conditions distinguish detritus from that. Four directories failed the check
+and were kept:
+
+| kept | why |
+| --- | --- |
+| `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` | board variant (aemv8r), tracked |
+| `px4/rust/xrce/{offboard-companion,px4-probe,px4-stub}` | PX4 offboard tooling, tracked |
+| `px4/cpp/uorb/nros-register-check` | canonical PX4 uORB surface, tracked |
+
+Verified afterwards: `git status` shows no tracked file removed, and
+`cargo metadata` still loads the workspace.
 
 The convention is now stated explicitly in `examples/README.md` under "Tree
-shape", so the next recipe author does not have to infer it.
+shape", including those three exceptions, so the next recipe author does not
+have to infer it.
 
 ## Fix
 
