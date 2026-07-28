@@ -3015,10 +3015,12 @@ mod tests {
     #[test]
     fn qos_infinite_sentinel_passes_through_and_reads_as_unset() {
         use nros_rmw::{DURATION_INFINITE_MS, QosPolicyMask};
-        let mut qos = nros_rmw::QosSettings::default();
-        qos.deadline_ms = DURATION_INFINITE_MS;
-        qos.lifespan_ms = DURATION_INFINITE_MS;
-        qos.liveliness_lease_ms = DURATION_INFINITE_MS;
+        let qos = nros_rmw::QosSettings {
+            deadline_ms: DURATION_INFINITE_MS,
+            lifespan_ms: DURATION_INFINITE_MS,
+            liveliness_lease_ms: DURATION_INFINITE_MS,
+            ..Default::default()
+        };
         // Sentinel behaves like 0 at the check sites: no extra policy demanded.
         let required = qos.required_policies();
         assert!(!required.contains(QosPolicyMask::DEADLINE));
