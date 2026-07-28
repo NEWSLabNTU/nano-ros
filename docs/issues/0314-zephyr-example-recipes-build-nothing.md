@@ -49,11 +49,30 @@ commit too. So the bodies were deleted earlier and the skeletons left behind,
 and nothing noticed because `build-examples` is not part of `just ci`.
 
 `build-xrce`'s second loop was annotated `# Phase 95.C — cpp/xrce 6-example
-set`, and `examples/zephyr/cpp/xrce/` does not exist. Nor do the Rust ones:
-`examples/zephyr/rust/xrce/` and `.../rust/zenoh/` look like example trees and
-hold 258 files between them, but **zero are tracked** — they are stale
-`generated/` output from a removed set. The XRCE backend is selected by
-`build-one`'s `rmw` argument, not by a parallel example tree.
+set`, and `examples/zephyr/cpp/xrce/` does not exist.
+
+### The abandoned directories that made it look plausible
+
+nano-ros does not keep a per-RMW directory level. The path is
+`<platform>/<language>/<example>`, and the backend is chosen at build/test
+time — phase-168 collapsed the old `rust/{zenoh,xrce,dds}/` trees for exactly
+this reason.
+
+But three of those trees were still sitting on disk under
+`examples/zephyr/rust/`, holding **735 files between them and zero tracked
+ones** — pure `generated/` output left behind when the examples were removed.
+Every file was under `generated/`; there was no source at all. They read like
+real example trees to anything that only looked at directory names, which is
+how a `cpp/xrce` loop survived review and how this investigation misread the
+layout twice.
+
+Removed: `examples/zephyr/rust/{xrce,zenoh,dds}`. The surviving
+`zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` is *not* an RMW directory — it is
+a board variant (aemv8r) that happens to be nested under a backend name, and it
+is tracked.
+
+The convention is now stated explicitly in `examples/README.md` under "Tree
+shape", so the next recipe author does not have to infer it.
 
 ## Fix
 

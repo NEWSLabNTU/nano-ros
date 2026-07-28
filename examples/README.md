@@ -18,6 +18,19 @@ examples/
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
+**There is no per-RMW directory level.** The path is
+`<platform>/<language>/<example>`, never
+`<platform>/<language>/<rmw>/<example>`. One example serves every backend, and
+the RMW is selected at build/test time by the mechanisms in [Building](#building)
+below. Phase 168 collapsed the old `rust/{zenoh,xrce,dds}/` trees for this
+reason; a build recipe that reaches for `<lang>/<rmw>/<role>` is reaching for
+something that no longer exists (issue 0314 — a stale `cpp/xrce` reference sat
+in `just zephyr build-xrce` for months, and the abandoned directories lingered
+on disk as untracked `generated/` output that read like real examples).
+
+The one surviving `<rmw>/` level is `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r`,
+which is a *board* variant that happens to be nested under a backend name.
+
 Each example is a standalone Cargo + CMake package — no walk-up in the manifests, no workspace coupling. The tested copy-out contract (phase-277 W6):
 
 - **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`); the tracked `.cargo/config.toml` carries the `# nros-managed` `[patch.crates-io]` block that resolves them into a nano-ros checkout. Copy the directory anywhere, then re-point the patch block at your checkout and build:

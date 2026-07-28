@@ -244,11 +244,10 @@ build-xrce:
         exit 1
     fi
     echo "Building Zephyr XRCE examples in $WORKSPACE..."
-    # The XRCE backend is selected by build-one's `rmw` argument, not by a
-    # separate example tree. The old second loop referenced a `cpp/xrce`
-    # 6-example set that does not exist; `examples/zephyr/rust/{xrce,zenoh}/`
-    # look like example dirs but hold zero tracked files — they are stale
-    # `generated/` detritus from a removed set.
+    # The XRCE backend is selected by build-one's `rmw` argument. nano-ros has
+    # no per-RMW directory level (examples/README.md "Tree shape"); the old
+    # second loop referenced a `cpp/xrce` 6-example set that never existed
+    # post-phase-168.
     #
     # The Rust roles are NOT built here: examples/zephyr/rust/* currently fails
     # to resolve the `zephyr-build` crate under BOTH backends, so it is a
