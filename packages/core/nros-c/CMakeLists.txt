@@ -27,106 +27,27 @@ endif()
 # the install lib name suffix, but feeds NOTHING extra into
 # nros-c's Cargo build. Result: one `libnros_c.a` per target
 # triple.
-if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
-        OR NANO_ROS_RMW STREQUAL "cyclonedds"
-        OR NANO_ROS_RMW STREQUAL "uorb"
-        OR NANO_ROS_RMW STREQUAL "none"))
-    message(FATAL_ERROR
-        "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, cyclonedds, uorb, or none)")
-endif()
-# Phase 156 — `NANO_ROS_RMW=none` = bridge / multi-backend
-# escape hatch. Root CMake skips RMW auto-pull; consumer pulls
-# its own staticlibs + calls explicit `nros_rmw_<x>_register()`.
-# nros-c still builds with `rmw-cffi` so umbrella Rust API
-# surfaces compile; registry stays empty until explicit
-# register() fires.
-# Phase 241.D3-rev — single-runtime umbrella: bundle the selected Rust backend into
-# libnros_c.a so it is the ONE Rust staticlib a C binary links. cyclonedds is a
-# separate C++ lib (linked by the root), so the umbrella carries only the cffi shim.
-if(NANO_ROS_RMW STREQUAL "zenoh")
-    set(_rmw_features cffi-zenoh-cffi)
-elseif(NANO_ROS_RMW STREQUAL "xrce")
-    set(_rmw_features cffi-xrce-c)
-else()
-    set(_rmw_features rmw-cffi)
-endif()
-
-# ---- Map platform to Cargo features ----
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_platform_features std platform-posix)
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-       OR NANO_ROS_PLATFORM STREQUAL "freertos")
-    # FreeRTOS bare-metal: no std, alloc for internal Rust collections,
-    # panic-halt for a minimal panic handler, link-tls/link-custom for zenoh-pico.
-    # Phase 138 canonical "freertos" accepted alongside legacy
-    # "freertos_armcm3" (Phase 138 collapsed board into NANO_ROS_BOARD).
-    set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
-       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
-    # NuttX provides a POSIX-like libc, so std is available.
-    # NOTE: CMake/Corrosion builds for NuttX are disabled — upstream libc
-    # is missing _SC_HOST_NAME_MAX which blocks build-std. Use Rust examples
-    # directly (just nuttx build) until this is upstreamed.
-    # Phase 138 canonical "nuttx" accepted alongside legacy
-    # "nuttx_armv7a" (Phase 138 collapsed board into NANO_ROS_BOARD).
-    set(_platform_features std platform-nuttx)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
-    # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
-    set(_platform_features std platform-threadx)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
-    # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
-    set(_platform_features alloc panic-halt platform-threadx)
-elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
-    # ESP-IDF: Espressif's FreeRTOS port (xtensa-esp* / riscv32-esp*).
-    # IDF supplies its own libc + alloc, but nros-c stays no_std + alloc
-    # to keep the Rust staticlib portable across xtensa / riscv32-esp.
-    set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
-    # Phase 138 canonical "threadx" — board axis disambiguates the
-    # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
-    # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
-    # consumers per Phase 144.7-8.
-    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
-        set(_platform_features std platform-threadx)
-    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
-        set(_platform_features alloc panic-halt platform-threadx)
-    else()
-        message(FATAL_ERROR
-            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
-            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
-    endif()
-else()
-    message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
-            "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
-            "threadx_linux, threadx_riscv64, threadx, or esp_idf)")
-endif()
-
-set(_features ros-humble ${_rmw_features} ${_platform_features})
-
-# Phase 241.D3-rev (W9) — enable the param / lifecycle service surfaces on the hosted
-# umbrella so examples using them (the C++ executor headers call the gated C entry
-# points) link. alloc-gated, so kept to hosted platforms; embedded stays opt-in.
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    list(APPEND _features param-services lifecycle-services)
-endif()
-
-# Phase 252 / issue 0073 — E2E message-integrity (CRC + seq gap/dup). Lowers a
-# declared [safety] axis to the nros-c `safety-e2e` feature, which forwards to the
-# zenoh backend's own safety-e2e (the CRC attach/validate) and surfaces
-# nros_subscription_try_recv_validated + nros_integrity_status_t. zenoh-only (the
-# only backend with the CRC path). Codegen sets NANO_ROS_SAFETY_E2E=ON for a
-# `[safety]` system; default OFF keeps it a compile dimension.
+# ---- Cargo features: ONE computation, shared with nros-cpp + the umbrella ----
+# phase-314 — was ~90 lines of inline rmw/platform mapping that hardcoded
+# `ros-humble` and applied capabilities only on posix. See
+# cmake/NanoRosFeatureSet.cmake and issue 0311 for why the duplication was a
+# defect, not a tidy-up.
+include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
 option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+set(_caps ${NANO_ROS_FEATURES})
 if(NANO_ROS_SAFETY_E2E)
-    if(NANO_ROS_RMW STREQUAL "zenoh")
-        list(APPEND _features safety-e2e)
-    else()
-        message(WARNING
-            "NANO_ROS_SAFETY_E2E=ON ignored: only the zenoh RMW carries the CRC "
-            "path (got NANO_ROS_RMW=${NANO_ROS_RMW}).")
-    endif()
+    list(APPEND _caps safety)
 endif()
+# Hosted keeps param/lifecycle always-on (alloc-gated); embedded opts in.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    list(APPEND _caps param_services lifecycle)
+endif()
+nros_feature_set(_features
+    CRATE        c
+    RMW          "${NANO_ROS_RMW}"
+    PLATFORM     "${NANO_ROS_PLATFORM}"
+    BOARD        "${NANO_ROS_BOARD}"
+    CAPABILITIES "${_caps}")
 
 # ---- Build nros-c via Corrosion ----
 corrosion_import_crate(

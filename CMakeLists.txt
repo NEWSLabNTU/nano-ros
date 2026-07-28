@@ -41,6 +41,10 @@ set(NANO_ROS_FEATURES "" CACHE STRING
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCapabilities.cmake")
 nros_lower_system_features("${NANO_ROS_FEATURES}")
 
+# phase-314 — the ONE cargo feature-set computation, shared by nros-c, nros-cpp
+# and the workspace umbrella. Included here so every consumer path sees it.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosFeatureSet.cmake")
+
 # Phase 140 — CPack block removed alongside the install-local layout
 # (CPack only ever bundled the install tree). Source-distribution
 # consumers vendor the repo + run `add_subdirectory(nano-ros)` from

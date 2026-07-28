@@ -14,107 +14,27 @@ if(NOT DEFINED NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM "posix")
 endif()
 
-# ---- Map RMW to Cargo features ----
-# Phase 128.C.3 — every backend now routes through the same `rmw-cffi`
-# Rust feature; the per-backend `rmw-*-cffi` features were deleted.
-# Selection happens at link time via `target_link_libraries(...
-# NanoRos::Rmw::<name>)`; this block only validates `NANO_ROS_RMW`
-# spelling so configure errors out early when the user picks an
-# unknown name.
-if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
-        OR NANO_ROS_RMW STREQUAL "cyclonedds"
-        OR NANO_ROS_RMW STREQUAL "uorb"
-        OR NANO_ROS_RMW STREQUAL "none"))
-    message(FATAL_ERROR
-        "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, cyclonedds, uorb, or none)")
-endif()
-# Phase 241.D3-rev — single-runtime umbrella: bundle the selected Rust backend into
-# libnros_cpp.a (the ONE Rust staticlib a C++ binary links). cyclonedds is a separate
-# C++ lib (linked by the root), so the umbrella carries only the cffi shim.
-if(NANO_ROS_RMW STREQUAL "zenoh")
-    set(_rmw_features rmw-zenoh-cffi)
-elseif(NANO_ROS_RMW STREQUAL "xrce")
-    set(_rmw_features rmw-xrce-cffi)
-else()
-    set(_rmw_features rmw-cffi)
-endif()
-
-# ---- Map platform to Cargo features ----
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_platform_features std platform-posix)
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-       OR NANO_ROS_PLATFORM STREQUAL "freertos")
-    # Phase 138 canonical "freertos" accepted alongside legacy
-    # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
-    set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
-       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
-    # Phase 138 canonical "nuttx" accepted alongside legacy
-    # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
-    set(_platform_features std platform-nuttx)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
-    set(_platform_features std platform-threadx)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
-    set(_platform_features alloc panic-halt platform-threadx)
-elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
-    # ESP-IDF: Espressif's FreeRTOS port. Same feature set as the
-    # canonical no_std FreeRTOS build (nros-c CMakeLists mirrors this).
-    set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
-    # Phase 138 canonical "threadx" — board axis disambiguates the
-    # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
-    # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
-    # consumers per Phase 144.7-8.
-    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
-        set(_platform_features std platform-threadx)
-    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
-        set(_platform_features alloc panic-halt platform-threadx)
-    else()
-        message(FATAL_ERROR
-            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
-            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
-    endif()
-else()
-    message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
-            "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
-            "threadx_linux, threadx_riscv64, threadx, or esp_idf)")
-endif()
-
-set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
-
-# phase-313 — extension point for callers needing an extra nros-cpp feature.
-#
-# NOTE: this is the SECOND place a `_cpp_features` list is assembled for the
-# same crate; NanoRosRuntimeCrate.cmake builds another for the workspace
-# umbrella. A consumer that sets the hook only there gets nothing on the
-# direct-import path used here, which is how the metadata probe linked a
-# libnros_cpp.a with no `nros_cpp_metadata_dump` in it. Keep the two in sync,
-# or better, collapse them.
-if(NROS_EXTRA_CPP_FEATURES)
-    list(APPEND _cpp_features ${NROS_EXTRA_CPP_FEATURES})
-endif()
-
-# Phase 241.D3-rev (W9) — enable param / lifecycle on the hosted C++ umbrella (the
-# executor headers expose them; the native `parameters` example uses them). Forwards
-# to nros-c. alloc-gated → hosted only; embedded opt-in.
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    list(APPEND _cpp_features param-services lifecycle-services)
-endif()
-
-# Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Mirrors
-# nros-c's NANO_ROS_SAFETY_E2E: zenoh-only (the CRC path); surfaces
-# nros_cpp_subscription_try_recv_validated. Codegen sets it for a `[safety]` system.
+# ---- Cargo features: ONE computation, shared with nros-c + the umbrella ----
+# phase-314 — was ~90 lines of inline rmw/platform mapping that hardcoded
+# `ros-humble` and applied capabilities only on posix. See cmake/NanoRosFeatureSet.cmake
+# and issue 0311 for why the duplication was a defect rather than a tidy-up.
+include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
 option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+set(_caps ${NANO_ROS_FEATURES})
 if(NANO_ROS_SAFETY_E2E)
-    if(NANO_ROS_RMW STREQUAL "zenoh")
-        list(APPEND _cpp_features safety-e2e)
-    else()
-        message(WARNING
-            "NANO_ROS_SAFETY_E2E=ON ignored: only the zenoh RMW carries the CRC "
-            "path (got NANO_ROS_RMW=${NANO_ROS_RMW}).")
-    endif()
+    list(APPEND _caps safety)
 endif()
+# Hosted keeps param/lifecycle always-on (alloc-gated; the C++ executor headers
+# call the gated C entry points, so an example using them must link).
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    list(APPEND _caps param_services lifecycle)
+endif()
+nros_feature_set(_cpp_features
+    CRATE        cpp
+    RMW          "${NANO_ROS_RMW}"
+    PLATFORM     "${NANO_ROS_PLATFORM}"
+    BOARD        "${NANO_ROS_BOARD}"
+    CAPABILITIES "${_caps}")
 
 # ---- Build nros-cpp via Corrosion ----
 corrosion_import_crate(

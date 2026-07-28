@@ -39,19 +39,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # what the board builds plain nros-cpp with: `alloc;panic-halt` (NO `std` — thumbv7m et al.
 # have no std; nros-serdes/nros-params pull `extern crate std` only under the std feature).
 # Hosted / host-sim builds (posix, threadx-linux) keep the `std` host staticlib.
-function(_nros_runtime_platform_features platform out_feats)
-    if(CMAKE_CROSSCOMPILING)
-        # Embedded cross (thumbv7m FreeRTOS, …): no_std + alloc, matching the board's plain
-        # nros-cpp feature tier so nros-serdes/nros-params never pull `std`.
-        set(${out_feats} "alloc;panic-halt;platform-${platform}" PARENT_SCOPE)
-    elseif(platform STREQUAL "posix")
-        set(${out_feats} "std;platform-posix" PARENT_SCOPE)
-    else()
-        # Other hosted platforms (threadx_linux, …) still build a host staticlib; default
-        # to std + the matching platform feature. Extend here as cells are added.
-        set(${out_feats} "std;platform-${platform}" PARENT_SCOPE)
-    endif()
-endfunction()
+# phase-314 — `_nros_runtime_platform_features` is GONE. It was the weaker of
+# the two platform mappings: no BOARD input, so it could not split threadx-linux
+# (std) from riscv64-qemu (no_std). `nros_feature_set` in
+# cmake/NanoRosFeatureSet.cmake is the one computation now.
 
 # Write the synthesised `nros_ws_runtime` crate (Cargo.toml + src/lib.rs) into OUT_DIR.
 # Factored out of nros_synth_runtime_umbrella (phase-263 C2c-zephyr) so BOTH the cmake/
@@ -224,23 +215,28 @@ function(nros_synth_runtime_umbrella)
         message(FATAL_ERROR "nros_synth_runtime_umbrella: NANO_ROS_ROOT not set.")
     endif()
 
-    # W13/R1 — pull the cffi feature from the generated dispatch (SSoT: resolve_rmw).
+    # phase-314 — ONE feature computation, shared with nros-c and nros-cpp.
+    # This site used to build its own list: it honoured the edition (correctly)
+    # but had no BOARD input, so it could not split threadx-linux (std) from
+    # riscv64-qemu (no_std), and it carried no capabilities at all — which meant
+    # a MIXED workspace silently lost param-services while a pure C/C++ one kept
+    # them (issue 0311 / phase-314 W1).
     nros_rmw_dispatch("${_NRR_BACKEND}")
-    set(_backend_feat "${NROS_RMW_UMBRELLA_CFFI_FEATURE}")
-    _nros_runtime_platform_features("${_NRR_PLATFORM}" _plat_feats)
-    # phase-304 W2b (RFC-0056) — the `ros-<edition>` feature is edition-driven,
-    # NOT hardcoded, so the umbrella's runtime keyexpr format matches the
-    # codegen-baked type_hash. Default `humble` → `ros-humble` (byte-identical).
-    set(_cpp_features "ros-${_NRR_EDITION}" "${_backend_feat}" ${_plat_feats})
-    # phase-308 — extension point for callers that need an extra nros-cpp
-    # feature in the umbrella. The feature list is otherwise derived entirely
-    # from BACKEND/PLATFORM/EDITION with no user hook, so a consumer setting a
-    # cache variable had NO effect: the metadata probe's `metadata-mode` reached
-    # CMakeCache.txt and never a cargo invocation, and the recording backend was
-    # silently absent from the link.
-    if(NROS_EXTRA_CPP_FEATURES)
-        list(APPEND _cpp_features ${NROS_EXTRA_CPP_FEATURES})
+    include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+    set(_caps ${NANO_ROS_FEATURES})
+    if(NANO_ROS_SAFETY_E2E)
+        list(APPEND _caps safety)
     endif()
+    if(_NRR_PLATFORM STREQUAL "posix")
+        list(APPEND _caps param_services lifecycle)
+    endif()
+    nros_feature_set(_cpp_features
+        CRATE        cpp
+        EDITION      "${_NRR_EDITION}"
+        RMW          "${_NRR_BACKEND}"
+        PLATFORM     "${_NRR_PLATFORM}"
+        BOARD        "${NANO_ROS_BOARD}"
+        CAPABILITIES "${_caps}")
 
     # Phase 241 W11 was inlined here; phase-263 C2c-zephyr factored it into
     # nros_write_runtime_umbrella_crate so the Zephyr/west lane reuses the IDENTICAL synthesis.
