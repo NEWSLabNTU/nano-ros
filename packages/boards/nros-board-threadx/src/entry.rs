@@ -159,7 +159,8 @@ unsafe extern "C" {
     /// phase-296 #0266 — self-apply the CALLING (boot) thread's round-robin time
     /// slice via `tx_thread_time_slice_change`. `time_slice_us` 0 ⇒ no slice.
     /// Returns 1 when a slice was set, 0 otherwise (unrequested / rejection).
-    fn nros_threadx_apply_current_time_slice(time_slice_us: core::ffi::c_ulong) -> core::ffi::c_int;
+    fn nros_threadx_apply_current_time_slice(time_slice_us: core::ffi::c_ulong)
+    -> core::ffi::c_int;
 
     /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-tier heap
     /// context). Mirrors the FreeRTOS `nros_platform_alloc`. NULL on failure.
@@ -325,7 +326,10 @@ where
         // the round-robin slice at creation (rc == 0; ThreadX honors a
         // per-thread slice unconditionally). Literal mirrors
         // `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
-        B::println(format_args!("nros: time slice set tier=`{}` {}us", tier.name, ts));
+        B::println(format_args!(
+            "nros: time slice set tier=`{}` {}us",
+            tier.name, ts
+        ));
     }
     Ok(())
 }
@@ -992,4 +996,125 @@ where
     // `exit_failure()` is `-> !`, so this satisfies the
     // `Result<(), E>` signature without an explicit `Ok` arm.
     B::exit_failure()
+}
+
+/// Phase 313 W0 (#0243) — LIGHTWEIGHT, NO-SESSION variant of [`run_entry`].
+///
+/// Boots the ThreadX kernel + NetX config (same pre-kernel path as `run_entry`),
+/// then runs `setup` on the app thread WITHOUT opening an `Executor` session. For
+/// logging / init-only fixtures (`logging-smoke-*`, `*-board-bringup`) that must
+/// exercise the board boot + platform log writer but do NOT open a ROS session —
+/// where `run_entry`'s `Executor::open` would fail `Transport(ConnectionFailed)`
+/// with no router and abort before `setup` ever runs.
+///
+/// The closure takes NO `RuntimeCtx` (there is no session to back it); it returns
+/// `Ok`→`exit_success`, `Err`→`exit_failure`. This is the new-family replacement
+/// for the no-session role the legacy `run<B>(config, closure)` also served.
+pub fn run_bare<B, C, F, E>(config: C, setup: F) -> core::result::Result<(), E>
+where
+    B: BoardInit + BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: FnOnce() -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    B::println(format_args!(""));
+    B::println(format_args!("========================================"));
+    B::println(format_args!("  nros ThreadX Platform (bare)"));
+    B::println(format_args!("========================================"));
+    B::println(format_args!(""));
+
+    B::init_hardware();
+
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<AppContext<C, F>>();
+        let align = core::mem::align_of::<AppContext<C, F>>();
+        assert!(
+            size <= CTX_STORAGE_SIZE,
+            "AppContext too large for CTX_STORAGE — bump CTX_STORAGE_SIZE"
+        );
+        let storage_ptr = core::ptr::addr_of_mut!(CTX_STORAGE) as *mut u8;
+        let addr = storage_ptr as usize;
+        let aligned = (addr + align - 1) & !(align - 1);
+        let offset = aligned - addr;
+        assert!(
+            offset + size <= CTX_STORAGE_SIZE,
+            "AppContext alignment + size exceeds CTX_STORAGE"
+        );
+        let ptr = storage_ptr.add(offset) as *mut AppContext<C, F>;
+        core::ptr::write(
+            ptr,
+            AppContext {
+                config,
+                boot_config: None,
+                closure: setup,
+            },
+        );
+        ptr
+    };
+
+    let iface_ptr: *const u8 = unsafe {
+        let cfg = &(*ctx_ptr).config;
+        match cfg.interface() {
+            Some(iface) => {
+                let buf_ptr = core::ptr::addr_of_mut!(IFACE_BUF) as *mut u8;
+                let bytes = iface.as_bytes();
+                let n = bytes.len().min(IFACE_BUF_SIZE - 1);
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_ptr, n);
+                *buf_ptr.add(n) = 0;
+                buf_ptr as *const u8
+            }
+            None => core::ptr::null(),
+        }
+    };
+
+    unsafe {
+        let cfg = &(*ctx_ptr).config;
+        nros_threadx_set_config(
+            cfg.ip().as_ptr(),
+            cfg.netmask().as_ptr(),
+            cfg.gateway().as_ptr(),
+            cfg.mac().as_ptr(),
+            iface_ptr,
+        );
+        nros_threadx_set_app_callback(app_task_entry_bare::<B, C, F, E>, ctx_ptr as *mut c_void);
+        tx_kernel_enter();
+    }
+
+    B::exit_failure()
+}
+
+/// ThreadX task entry for the NO-SESSION [`run_bare`] path — runs the closure
+/// directly (no `Executor`, no `RuntimeCtx`), then exits.
+///
+/// # Safety
+/// `arg` must point to a valid `AppContext<C, F>` written into `CTX_STORAGE` by
+/// [`run_bare`], surviving until the ThreadX kernel terminates.
+unsafe extern "C" fn app_task_entry_bare<B, C, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: FnOnce() -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { &*(arg as *const AppContext<C, F>) };
+    // FnOnce / by-value — this task entry runs once.
+    let closure = unsafe { core::ptr::read(&ctx.closure) };
+    // Mirror the legacy `node::app_task_entry` completion banner so fixtures
+    // that grep for "Application completed successfully." keep passing.
+    match closure() {
+        Ok(()) => {
+            B::println(format_args!(""));
+            B::println(format_args!("Application completed successfully."));
+            B::println(format_args!(""));
+            B::println(format_args!("========================================"));
+            B::println(format_args!("  Done"));
+            B::println(format_args!("========================================"));
+            B::exit_success();
+        }
+        Err(e) => {
+            B::println(format_args!(""));
+            B::println(format_args!("Application error: {:?}", e));
+            B::exit_failure();
+        }
+    }
 }

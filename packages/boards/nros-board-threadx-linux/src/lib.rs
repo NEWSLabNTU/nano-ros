@@ -26,20 +26,18 @@ mod config;
 mod node;
 
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::init_hardware;
 
-use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
+// Phase 313 W-threadx (#0243) — the legacy `nros_board_common::board_init`
+// family (`BoardInit`/`BoardPrint`/`BoardExit` + the free `run`) is RETIRED for
+// this board; the live path is `nros_platform::board::{BoardInit, BoardEntry, …}`
+// below, plus the no-session `run_bare` for logging fixtures. `ThreadxConfig`
+// stays — a config trait the NEW family driver (`nros_board_threadx::run_*`)
+// consumes, not part of `board_init`.
+use nros_board_common::ThreadxConfig;
 
 /// Per-board marker for trait dispatch.
 pub struct ThreadxLinux;
-
-impl BoardInit for ThreadxLinux {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        init_hardware(cfg);
-    }
-}
 
 impl ThreadxConfig for Config {
     fn mac(&self) -> &[u8; 6] {
@@ -65,46 +63,12 @@ impl ThreadxConfig for Config {
     }
 }
 
-impl BoardPrint for ThreadxLinux {
-    fn println(args: core::fmt::Arguments<'_>) {
-        // Stage into a fixed stack buffer + push NUL, then forward
-        // through the shared C-side `nros_board_log` FFI (already
-        // wired to libc `fputs(stdout)` in `c/board_threadx_linux.c`).
-        // Drops the `std` `println!` dependency without adding any
-        // new FFI surface.
-        use core::fmt::Write;
-        let mut buf = NulBuf::<512>::new();
-        let _ = writeln!(buf, "{}", args);
-        unsafe extern "C" {
-            fn nros_board_log(s: *const u8);
-        }
-        unsafe { nros_board_log(buf.as_nul_terminated_ptr()) };
-    }
-}
-
-impl BoardExit for ThreadxLinux {
-    fn exit_success() -> ! {
-        unsafe { libc_exit(0) }
-    }
-
-    fn exit_failure() -> ! {
-        unsafe { libc_exit(1) }
-    }
-}
-
-// ── Phase 212.N.3 — `nros_platform::board` trait impls + `BoardEntry` ────
+// ── `nros_platform::board` trait impls + `BoardEntry` — the LIVE path ────
 //
-// Additive overlay on top of the legacy `nros_board_common::Board*`
-// impls above. The new 212.N.1 trait set lives in
-// `nros_platform::board::*` (`BoardInit` parameterless, `BoardPrint`,
-// `BoardExit`, plus the `BoardEntry` boot driver consumed by user
-// `main.rs`). The legacy traits stay for now (per CLAUDE.md /
-// `nros_platform::board` module docs — Phase 212.N.7 retires them).
-//
-// `BoardEntry::run` body delegates to the family driver in
-// `nros-board-threadx::run_entry::<ThreadxLinux, Config, F, E>`,
-// which mirrors the legacy `run` lifecycle (stash closure, register
-// network config + app callback, `tx_kernel_enter()`).
+// The new 212.N.1 trait set (`BoardInit` parameterless, `BoardPrint`,
+// `BoardExit`, plus the `BoardEntry` boot driver consumed via `nros::main!`).
+// Phase 313 W-threadx (#0243) retired the legacy `nros_board_common::board_init`
+// counterparts that used to sit above these.
 
 impl nros_platform::BoardInit for ThreadxLinux {
     // New 212.N.1 init is parameterless. The threadx-linux overlay's
@@ -119,9 +83,17 @@ impl nros_platform::BoardInit for ThreadxLinux {
 
 impl nros_platform::BoardPrint for ThreadxLinux {
     fn println(args: core::fmt::Arguments<'_>) {
-        // Delegate to the legacy `BoardPrint` impl — same staging
-        // buffer + `nros_board_log` FFI path.
-        <Self as BoardPrint>::println(args);
+        // Stage into a fixed stack buffer + push NUL, then forward through the
+        // shared C-side `nros_board_log` FFI (wired to libc `fputs(stdout)` in
+        // `c/board_threadx_linux.c`). Drops the `std` `println!` dependency
+        // without adding any new FFI surface.
+        use core::fmt::Write;
+        let mut buf = NulBuf::<512>::new();
+        let _ = writeln!(buf, "{}", args);
+        unsafe extern "C" {
+            fn nros_board_log(s: *const u8);
+        }
+        unsafe { nros_board_log(buf.as_nul_terminated_ptr()) };
     }
 }
 
@@ -200,6 +172,22 @@ impl nros_platform::BoardEntry for ThreadxLinux {
 }
 
 impl ThreadxLinux {
+    /// Phase 313 W0 (#0243) — lightweight NO-SESSION entry for logging /
+    /// init-only fixtures. Boots the ThreadX kernel + platform log writer and
+    /// runs `setup` WITHOUT opening an `Executor` session (unlike
+    /// [`nros_platform::board::BoardEntry::run`], which would fail
+    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
+    /// for the no-session role the retired legacy `run(Config, closure)` served.
+    pub fn run_bare<F, E>(setup: F) -> Result<(), E>
+    where
+        F: FnOnce() -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        line_buffer_stdout();
+        crate::node::register_log_writer_public();
+        nros_board_threadx::run_bare::<ThreadxLinux, Config, F, E>(Config::default(), setup)
+    }
+
     /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
     /// emits `<ThreadxLinux>::run_tiers(&overlay, TIERS, setup)` whenever a
     /// system declares more than the synthesized single `default` tier; this

@@ -180,17 +180,40 @@ be migrated to a session-backed setup (with a router). This is a small design
 addition, not a per-board config split — and it BLOCKS every family's migration
 the same way (freertos/nuttx have the identical logging-smoke pattern).
 
+## W0 — lightweight no-session entry — DONE (2026-07-28, host-verified)
+
+Added `nros_board_threadx::run_bare<B, C, F, E>(config, setup)` +
+`app_task_entry_bare` (`nros-board-threadx/src/entry.rs`): the same pre-kernel
+boot as `run_entry` (banner, `init_hardware`, network config, `tx_kernel_enter`)
+but the app-thread callback runs a NULLARY closure (`FnOnce() -> Result`) with
+NO `Executor::open` — for logging/init-only fixtures that open no ROS session.
+`ThreadxLinux::run_bare` wraps it (`Config::default()` + log-writer seed).
+`logging-smoke-threadx-linux` migrated to it. **Verified:** the host smoke test
+`logging_smoke_harness_captures_stderr` is GREEN (every severity + the
+"Application completed successfully." banner), where `BoardEntry::run` failed
+`Transport(ConnectionFailed)`.
+
+## W-threadx (threadx-linux) — DONE (2026-07-28, host-verified)
+
+With `run_bare` in place, deleted threadx-linux's legacy residual: the free
+`node::run`, `impl nros_board_common::{BoardInit, BoardPrint, BoardExit}` (the
+new `nros_platform::board` impls carry the bodies now), and the `pub use
+node::run` / legacy imports. Kept `ThreadxConfig` (a config trait the new family
+driver consumes, not `board_init`). Updated the `nros-board.toml` link-pin
+comment to name the new entries. **threadx-linux now implements ONE board-trait
+family.** Verified: threadx-linux builds, the smoke test stays green, the family
+driver's legacy `run<B>` (still used by threadx-qemu-riscv64) is untouched.
+
 ## Next steps when resumed (verifiability-ordered — see the Fix method above)
-0. **PREREQUISITE (new, from the W-threadx attempt):** add a lightweight
-   no-session new-family entry (e.g. `BoardEntry::run_bare(setup)` or a
-   `nros_platform` free `run_init_only`) that boots the kernel + runs `setup`
-   WITHOUT `Executor::open`, and point the `logging-smoke-*` /
-   `*-board-bringup` fixtures at it. Verify on the threadx-linux host lane. This
-   unblocks retiring the legacy `run` on every family.
-1. **W-threadx (host)** — then delete threadx-linux's legacy `board_init` impls +
-   free `run`; confirm the host smoke lane green.
-2. Then per-QEMU-lane families/boards, one at a time, each lane green.
-3. Then direct-exec boards, then `cffi`, then W6 (delete + gate).
+1. **Per-family run_bare + smoke migration**, one lane at a time: freertos
+   (`nros_board_freertos::run_bare` + `logging-smoke-freertos-mps2`, QEMU lane),
+   nuttx (`logging-smoke-nuttx-qemu-arm`), esp32 (`logging-smoke-esp32-qemu`,
+   `esp32s3-board-bringup`), threadx-qemu-riscv64 (`logging-smoke-threadx-riscv64`).
+   Each: add the family driver's `run_bare`, migrate its smoke/bringup bin, delete
+   that board's legacy `board_init` impls + free `run`, green its lane.
+2. Then direct-exec boards (stm32f4, mps2-an385), then `cffi` (the C-export
+   macro's config-carrying `run(cfg, closure)` → the new form), then W6 (delete
+   `nros-board-common::board_init` + the lint gate).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,

@@ -1,7 +1,7 @@
 //! Phase 152.2.B.4 — thin non-generic `run` + `init_hardware`
 //! wrappers over the generic `nros_board_threadx::run<B>` lift.
 
-use crate::{ThreadxLinux, config::Config};
+use crate::config::Config;
 
 /// Initialize pre-kernel hardware for ThreadX Linux simulation.
 ///
@@ -9,37 +9,11 @@ use crate::{ThreadxLinux, config::Config};
 /// `tx_application_define()` in C code, after the kernel starts.
 pub fn init_hardware(_config: &Config) {}
 
-/// Run an application on Linux with ThreadX + NSOS.
-///
-/// Thin wrapper over `nros_board_threadx::run::<ThreadxLinux, _, _>`
-/// so users do not have to spell the trait turbofish.
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_threadx_linux::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::default(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     Ok::<(), NodeError>(())
-/// })
-/// ```
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
-where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
-{
-    register_log_writer();
-    nros_board_threadx::run::<ThreadxLinux, _, E>(config, move |config| {
-        // The Linux ThreadX kernel bring-up may reset C static state
-        // before the app thread starts, so refresh the platform log
-        // slot in task context immediately before user code can log.
-        register_log_writer();
-        f(config)
-    })
-}
+// Phase 313 W-threadx (#0243) — the legacy free `run(Config, closure)` (a thin
+// wrapper over the legacy `nros_board_threadx::run<B>` family lift) is RETIRED.
+// The live entries are `<ThreadxLinux as nros_platform::board::BoardEntry>::run`
+// (full app, used by `nros::main!`) and `ThreadxLinux::run_bare` (no-session, for
+// logging/init-only fixtures) — both in lib.rs.
 
 /// Phase 212.N.3 — crate-internal accessor for the log-writer
 /// registration so the new `nros_platform::BoardEntry::run` impl can
