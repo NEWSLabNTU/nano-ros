@@ -265,9 +265,15 @@ impl<'a, T: ParameterVariant> MandatoryParameter<'a, T> {
 
     /// Set the value of the parameter
     pub fn set(&mut self, value: T) -> Result<(), ParameterError> {
+        // issue 0323 — reject an over-capacity value here rather than letting
+        // `to_parameter_value`'s `unwrap_or_default()` turn it into `NotSet`
+        // (a TYPE change) or an EMPTY array and then reporting success.
+        let converted = value
+            .try_to_parameter_value()
+            .map_err(|_| ParameterError::StringConversion)?;
         let result = self
             .server
-            .set_parameter_value(self.name.as_str(), value.to_parameter_value());
+            .set_parameter_value(self.name.as_str(), converted);
         if result == SetParameterResult::Success {
             Ok(())
         } else {

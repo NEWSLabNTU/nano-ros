@@ -58,7 +58,35 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert internal ParameterValue to rcl_interfaces ParameterValue
-pub fn to_rcl_value(value: &InternalValue) -> ParameterValue {
+/// Why a parameter value could not be converted between the wire form and the
+/// node's internal form (issue 0323).
+///
+/// Both directions used to discard every `push`/`push_str` result, so an
+/// over-capacity value was silently TRUNCATED and then reported as success: a
+/// ROS 2 client believed it had set a long string or a 40-element array while
+/// the node held a prefix. An unrecognised `type_` became `NotSet`. Same class
+/// as issues 0223/0224 — a swallowed capacity error turning malformed input
+/// into a plausible business value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueConversionError {
+    /// The value exceeds this node's compile-time capacity
+    /// (`NROS_MAX_STRING_VALUE_LEN`, `NROS_MAX_ARRAY_LEN`, …).
+    CapacityExceeded,
+    /// `type_` is not a known rcl_interfaces `ParameterType` code.
+    UnknownType(u8),
+}
+
+impl ValueConversionError {
+    /// Human-readable reason for a `SetParametersResult`.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Self::CapacityExceeded => "Value exceeds this node's parameter capacity",
+            Self::UnknownType(_) => "Unknown parameter type",
+        }
+    }
+}
+
+pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConversionError> {
     let mut result = ParameterValue::default();
 
     match value {
@@ -79,95 +107,121 @@ pub fn to_rcl_value(value: &InternalValue) -> ParameterValue {
         }
         InternalValue::String(v) => {
             result.type_ = 4; // PARAMETER_STRING
-            let _ = result.string_value.push_str(v.as_str());
+            result
+                .string_value
+                .push_str(v.as_str())
+                .map_err(|_| ValueConversionError::CapacityExceeded)?;
         }
         InternalValue::ByteArray(v) => {
             result.type_ = 5; // PARAMETER_BYTE_ARRAY
             for &b in v.iter() {
-                let _ = result.byte_array_value.push(b);
+                result
+                    .byte_array_value
+                    .push(b)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::BoolArray(v) => {
             result.type_ = 6; // PARAMETER_BOOL_ARRAY
             for &b in v.iter() {
-                let _ = result.bool_array_value.push(b);
+                result
+                    .bool_array_value
+                    .push(b)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::IntegerArray(v) => {
             result.type_ = 7; // PARAMETER_INTEGER_ARRAY
             for &i in v.iter() {
-                let _ = result.integer_array_value.push(i);
+                result
+                    .integer_array_value
+                    .push(i)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::DoubleArray(v) => {
             result.type_ = 8; // PARAMETER_DOUBLE_ARRAY
             for &d in v.iter() {
-                let _ = result.double_array_value.push(d);
+                result
+                    .double_array_value
+                    .push(d)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::StringArray(v) => {
             result.type_ = 9; // PARAMETER_STRING_ARRAY
             for s in v.iter() {
                 let mut hs = heapless::String::new();
-                let _ = hs.push_str(s.as_str());
-                let _ = result.string_array_value.push(hs);
+                hs.push_str(s.as_str())
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                result
+                    .string_array_value
+                    .push(hs)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
         }
     }
 
-    result
+    Ok(result)
 }
 
 /// Convert rcl_interfaces ParameterValue to internal ParameterValue
-pub fn from_rcl_value(value: &ParameterValue) -> InternalValue {
+pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConversionError> {
     match value.type_ {
-        0 => InternalValue::NotSet,
-        1 => InternalValue::Bool(value.bool_value),
-        2 => InternalValue::Integer(value.integer_value),
-        3 => InternalValue::Double(value.double_value),
+        0 => Ok(InternalValue::NotSet),
+        1 => Ok(InternalValue::Bool(value.bool_value)),
+        2 => Ok(InternalValue::Integer(value.integer_value)),
+        3 => Ok(InternalValue::Double(value.double_value)),
         4 => {
             let mut s = heapless::String::new();
-            let _ = s.push_str(value.string_value.as_str());
-            InternalValue::String(s)
+            s.push_str(value.string_value.as_str())
+                .map_err(|_| ValueConversionError::CapacityExceeded)?;
+            Ok(InternalValue::String(s))
         }
         5 => {
             let mut v = heapless::Vec::new();
             for &b in value.byte_array_value.iter() {
-                let _ = v.push(b);
+                v.push(b)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
-            InternalValue::ByteArray(v)
+            Ok(InternalValue::ByteArray(v))
         }
         6 => {
             let mut v = heapless::Vec::new();
             for &b in value.bool_array_value.iter() {
-                let _ = v.push(b);
+                v.push(b)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
-            InternalValue::BoolArray(v)
+            Ok(InternalValue::BoolArray(v))
         }
         7 => {
             let mut v = heapless::Vec::new();
             for &i in value.integer_array_value.iter() {
-                let _ = v.push(i);
+                v.push(i)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
-            InternalValue::IntegerArray(v)
+            Ok(InternalValue::IntegerArray(v))
         }
         8 => {
             let mut v = heapless::Vec::new();
             for &d in value.double_array_value.iter() {
-                let _ = v.push(d);
+                v.push(d)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
-            InternalValue::DoubleArray(v)
+            Ok(InternalValue::DoubleArray(v))
         }
         9 => {
             let mut v = heapless::Vec::new();
             for s in value.string_array_value.iter() {
                 let mut hs = heapless::String::new();
-                let _ = hs.push_str(s.as_str());
-                let _ = v.push(hs);
+                hs.push_str(s.as_str())
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                v.push(hs)
+                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
             }
-            InternalValue::StringArray(v)
+            Ok(InternalValue::StringArray(v))
         }
-        _ => InternalValue::NotSet,
+        other => Err(ValueConversionError::UnknownType(other)),
     }
 }
 
@@ -222,6 +276,17 @@ pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
 }
 
 /// Convert SetParameterResult to rcl_interfaces SetParametersResult
+/// Build the `SetParametersResult` for a value that could not be converted
+/// (issue 0323) — `successful = false` with a reason naming the cause.
+pub fn conversion_failure_result(err: ValueConversionError) -> SetParametersResult {
+    let mut reason_str = heapless::String::new();
+    let _ = reason_str.push_str(err.reason());
+    SetParametersResult {
+        successful: false,
+        reason: reason_str,
+    }
+}
+
 pub fn to_rcl_set_result(result: SetParameterResult) -> SetParametersResult {
     let reason = match result {
         SetParameterResult::Success => "",
@@ -254,9 +319,15 @@ pub fn handle_get_parameters(
     let mut response = Box::new(GetParametersResponse::default());
 
     for name in request.names.iter() {
+        // issue 0323 — a stored value that does not fit the RESPONSE message's
+        // capacity replies NOT_SET rather than a silently shortened value.
+        // GetParameters has no per-parameter error channel, so "not set" is
+        // the only in-protocol way to avoid handing back a plausible-looking
+        // truncation; a client can tell that apart from a real value, which it
+        // could not do before.
         let value = server
             .get(name.as_str())
-            .map(to_rcl_value)
+            .and_then(|v| to_rcl_value(&v).ok())
             .unwrap_or_else(|| {
                 // Return NOT_SET for unknown parameters
                 ParameterValue {
@@ -280,7 +351,17 @@ pub fn handle_set_parameters(
     let mut response = Box::new(SetParametersResponse::default());
 
     for param in request.parameters.iter() {
-        let value = from_rcl_value(&param.value);
+        // issue 0323 — an over-capacity or unknown-type value is REJECTED
+        // here. It used to be truncated and then reported as success, so a
+        // client believed it had set a long string or a 40-element array while
+        // the node held a prefix.
+        let value = match from_rcl_value(&param.value) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = response.results.push(conversion_failure_result(e));
+                continue;
+            }
+        };
         let result = if server.has(param.name.as_str()) {
             server.set(param.name.as_str(), value)
         } else {
@@ -309,7 +390,14 @@ pub fn handle_set_parameters_atomically(
     // First, validate all parameters can be set
     let mut can_set_all = true;
     for param in request.parameters.iter() {
-        let value = from_rcl_value(&param.value);
+        // issue 0323 — the truncation used to happen INSIDE this pre-check, so
+        // an over-capacity value passed validation and applied as a shortened
+        // value with `successful = true`. It now fails the batch, which is the
+        // atomic contract.
+        let Ok(value) = from_rcl_value(&param.value) else {
+            can_set_all = false;
+            break;
+        };
 
         // Check if setting would succeed
         if server.has(param.name.as_str()) {
@@ -337,7 +425,11 @@ pub fn handle_set_parameters_atomically(
     if can_set_all {
         // Set all parameters
         for param in request.parameters.iter() {
-            let value = from_rcl_value(&param.value);
+            // The pre-check above already proved every value converts; skip
+            // rather than unwrap so a future divergence cannot panic mid-batch.
+            let Ok(value) = from_rcl_value(&param.value) else {
+                continue;
+            };
             if server.has(param.name.as_str()) {
                 let _ = server.set(param.name.as_str(), value);
             } else {
@@ -621,44 +713,44 @@ mod tests {
     #[test]
     fn test_value_conversion_bool() {
         let internal = InternalValue::Bool(true);
-        let rcl = to_rcl_value(&internal);
+        let rcl = to_rcl_value(&internal).expect("value fits the wire message");
         assert_eq!(rcl.type_, 1);
         assert!(rcl.bool_value);
 
-        let back = from_rcl_value(&rcl);
+        let back = from_rcl_value(&rcl).expect("valid wire value");
         assert_eq!(back.as_bool(), Some(true));
     }
 
     #[test]
     fn test_value_conversion_integer() {
         let internal = InternalValue::Integer(42);
-        let rcl = to_rcl_value(&internal);
+        let rcl = to_rcl_value(&internal).expect("value fits the wire message");
         assert_eq!(rcl.type_, 2);
         assert_eq!(rcl.integer_value, 42);
 
-        let back = from_rcl_value(&rcl);
+        let back = from_rcl_value(&rcl).expect("valid wire value");
         assert_eq!(back.as_integer(), Some(42));
     }
 
     #[test]
     fn test_value_conversion_double() {
         let internal = InternalValue::Double(3.14);
-        let rcl = to_rcl_value(&internal);
+        let rcl = to_rcl_value(&internal).expect("value fits the wire message");
         assert_eq!(rcl.type_, 3);
         assert!((rcl.double_value - 3.14).abs() < 0.001);
 
-        let back = from_rcl_value(&rcl);
+        let back = from_rcl_value(&rcl).expect("valid wire value");
         assert!((back.as_double().unwrap() - 3.14).abs() < 0.001);
     }
 
     #[test]
     fn test_value_conversion_string() {
         let internal = InternalValue::from_string("hello").unwrap();
-        let rcl = to_rcl_value(&internal);
+        let rcl = to_rcl_value(&internal).expect("value fits the wire message");
         assert_eq!(rcl.type_, 4);
         assert_eq!(rcl.string_value.as_str(), "hello");
 
-        let back = from_rcl_value(&rcl);
+        let back = from_rcl_value(&rcl).expect("valid wire value");
         assert_eq!(back.as_string(), Some("hello"));
     }
 
@@ -746,5 +838,57 @@ mod tests {
         assert_eq!(response.types.len(), 2);
         assert_eq!(response.types[0], 3); // DOUBLE
         assert_eq!(response.types[1], 2); // INTEGER
+    }
+
+    /// issue 0323 — a wire array larger than the node's `MAX_ARRAY_LEN` is
+    /// REJECTED, not silently shortened. The rcl_interfaces message holds 64
+    /// integers while the internal value holds `MAX_ARRAY_LEN` (32 by
+    /// default), so a 40-element array — the issue's own example — used to
+    /// arrive as a 32-element prefix reported as success.
+    #[test]
+    fn oversize_integer_array_is_rejected_not_truncated() {
+        let mut wire = ParameterValue {
+            type_: 7,
+            ..Default::default()
+        };
+        for i in 0..40i64 {
+            wire.integer_array_value
+                .push(i)
+                .expect("wire message holds 64");
+        }
+        assert!(
+            matches!(
+                from_rcl_value(&wire),
+                Err(ValueConversionError::CapacityExceeded)
+            ),
+            "a 40-element array must not be accepted as a truncated 32-element one"
+        );
+    }
+
+    /// An unrecognised `type_` used to become `NotSet` — indistinguishable
+    /// from a client deliberately clearing the parameter.
+    #[test]
+    fn unknown_parameter_type_is_an_error_not_notset() {
+        let wire = ParameterValue {
+            type_: 99,
+            ..Default::default()
+        };
+        assert!(matches!(
+            from_rcl_value(&wire),
+            Err(ValueConversionError::UnknownType(99))
+        ));
+    }
+
+    /// The rejection reaches the wire as `successful = false` with a reason,
+    /// which is the half a client actually observes.
+    #[test]
+    fn conversion_failure_replies_unsuccessful_with_a_reason() {
+        let r = conversion_failure_result(ValueConversionError::CapacityExceeded);
+        assert!(!r.successful);
+        assert!(
+            r.reason.as_str().contains("capacity"),
+            "reason should name the cause, got {:?}",
+            r.reason
+        );
     }
 }

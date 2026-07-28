@@ -385,6 +385,14 @@ impl SetParameterResult {
     }
 }
 
+/// A value does not fit the compile-time parameter capacity (issue 0323).
+///
+/// Returned by [`ParameterVariant::try_to_parameter_value`]. A named type
+/// rather than `()` so the failure reads at the call site and clippy's
+/// `result_unit_err` stays satisfied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapacityExceeded;
+
 /// Trait for types that can be used as typed parameters
 ///
 /// This trait provides conversions between Rust types and ParameterValue,
@@ -392,6 +400,21 @@ impl SetParameterResult {
 pub trait ParameterVariant: Clone {
     /// Convert this type to a ParameterValue
     fn to_parameter_value(&self) -> ParameterValue;
+
+    /// Fallible conversion — `Err(())` when `self` does not fit the
+    /// compile-time capacity (issue 0323).
+    ///
+    /// [`Self::to_parameter_value`] cannot report that: the hosted `std`
+    /// impls used `unwrap_or_default()`, so an over-long `String` became
+    /// `ParameterValue::NotSet` (a TYPE change) and an oversized `Vec`
+    /// became an EMPTY array, both indistinguishable from a caller who
+    /// meant it. Callers at the declare/set boundary should prefer this.
+    ///
+    /// Defaults to infallible for impls whose values cannot overflow (the
+    /// scalars); the `std` collection impls override it.
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        Ok(self.to_parameter_value())
+    }
 
     /// Try to extract this type from a ParameterValue
     fn from_parameter_value(value: &ParameterValue) -> Option<Self>;
@@ -471,6 +494,10 @@ impl ParameterVariant for std::string::String {
         ParameterValue::from_string(self.as_str()).unwrap_or_default()
     }
 
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        ParameterValue::from_string(self.as_str()).ok_or(CapacityExceeded)
+    }
+
     fn from_parameter_value(value: &ParameterValue) -> Option<Self> {
         value.as_string().map(|s| s.to_string())
     }
@@ -485,6 +512,12 @@ impl ParameterVariant for std::string::String {
 impl ParameterVariant for std::vec::Vec<i64> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::IntegerArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
+    }
+
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        Vec::from_slice(self.as_slice())
+            .map(ParameterValue::IntegerArray)
+            .map_err(|_| CapacityExceeded)
     }
 
     fn from_parameter_value(value: &ParameterValue) -> Option<Self> {
@@ -503,6 +536,12 @@ impl ParameterVariant for std::vec::Vec<f64> {
         ParameterValue::DoubleArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
     }
 
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        Vec::from_slice(self.as_slice())
+            .map(ParameterValue::DoubleArray)
+            .map_err(|_| CapacityExceeded)
+    }
+
     fn from_parameter_value(value: &ParameterValue) -> Option<Self> {
         value.as_double_array().map(|v| v.to_vec())
     }
@@ -517,6 +556,12 @@ impl ParameterVariant for std::vec::Vec<f64> {
 impl ParameterVariant for std::vec::Vec<bool> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::BoolArray(Vec::from_slice(self.as_slice()).unwrap_or_default())
+    }
+
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        Vec::from_slice(self.as_slice())
+            .map(ParameterValue::BoolArray)
+            .map_err(|_| CapacityExceeded)
     }
 
     fn from_parameter_value(value: &ParameterValue) -> Option<Self> {
@@ -540,6 +585,20 @@ impl ParameterVariant for std::vec::Vec<std::string::String> {
             }
         }
         ParameterValue::StringArray(vec)
+    }
+
+    fn try_to_parameter_value(&self) -> Result<ParameterValue, CapacityExceeded> {
+        // The infallible form above SKIPS any element that does not fit,
+        // so a 3-element vec could arrive as 2 with no signal (issue 0323).
+        let mut vec = Vec::new();
+        for s in self {
+            let mut h_string = String::new();
+            h_string
+                .push_str(s.as_str())
+                .map_err(|_| CapacityExceeded)?;
+            vec.push(h_string).map_err(|_| CapacityExceeded)?;
+        }
+        Ok(ParameterValue::StringArray(vec))
     }
 
     fn from_parameter_value(value: &ParameterValue) -> Option<Self> {
@@ -798,5 +857,47 @@ mod verification {
         assert!(!SetParameterResult::OutOfRange.is_success());
         assert!(!SetParameterResult::NotFound.is_success());
         assert!(!SetParameterResult::StorageFull.is_success());
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod issue_0323_tests {
+    use super::*;
+
+    /// issue 0323 — an over-long hosted `String` used to become
+    /// `ParameterValue::NotSet` via `unwrap_or_default()`: a TYPE change the
+    /// caller could not distinguish from deliberately clearing the parameter.
+    #[test]
+    fn oversize_string_is_rejected_not_silently_notset() {
+        let long = "x".repeat(MAX_STRING_VALUE_LEN + 1);
+        assert!(
+            matches!(long.to_parameter_value(), ParameterValue::NotSet),
+            "documenting the legacy infallible behaviour"
+        );
+        assert!(
+            long.try_to_parameter_value().is_err(),
+            "the fallible path must reject it"
+        );
+    }
+
+    /// The array case: `unwrap_or_default()` yielded an EMPTY array.
+    #[test]
+    fn oversize_integer_array_is_rejected_not_silently_empty() {
+        let big: std::vec::Vec<i64> = (0..(MAX_ARRAY_LEN as i64 + 1)).collect();
+        match big.to_parameter_value() {
+            ParameterValue::IntegerArray(v) => {
+                assert!(v.is_empty(), "documenting the legacy empty-array behaviour")
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert!(big.try_to_parameter_value().is_err());
+    }
+
+    /// `Vec<String>` silently SKIPPED elements that did not fit.
+    #[test]
+    fn oversize_string_array_element_is_rejected_not_skipped() {
+        let big: std::vec::Vec<std::string::String> =
+            (0..(MAX_ARRAY_LEN + 1)).map(|i| i.to_string()).collect();
+        assert!(big.try_to_parameter_value().is_err());
     }
 }
