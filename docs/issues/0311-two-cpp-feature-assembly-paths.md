@@ -1,8 +1,8 @@
 ---
 id: 311
-title: "`_cpp_features` is assembled in two places for one crate — a consumer hook must be added twice or it silently does nothing"
+title: "No SSoT for the cargo feature list: three cmake assemblies + every Rust leaf, two hardcoding `ros-humble` — blocks multi-edition and selectable capabilities"
 status: open
-type: tech-debt
+type: bug
 area: build
 related: [0304, phase-308, phase-313]
 ---
@@ -52,17 +52,96 @@ This is the same shape as two other defects found the same day — two writers o
 without being reachable from any of them. One logical thing, more than one
 source, nothing checking they agree.
 
-## Options
+## Wider than two paths, and wider than C++
 
-1. **One function, two callers.** Factor the assembly into a single cmake
-   function (`nros_cpp_feature_list(out …)`) that both sites call. Smallest
-   change; keeps both entry points.
-2. **One path.** Make the direct-import path go through the umbrella, so there
-   is only one assembly. Cleaner, but the umbrella exists for workspace builds
-   and forcing it on standalone consumers may not be free.
-3. **Assert agreement.** Leave both, add a check that the two produce the same
-   list for the same inputs. Cheapest, but keeps the duplication and only
-   catches drift, not a missing hook.
+Measured 2026-07-28. The feature set is assembled independently in **three**
+cmake sites, and the ROS edition is hardcoded in two of them:
 
-(1) is the recommended fix: it removes the "add it twice" trap, which is the
-part that actually bit.
+| site | edition | rmw | platform | capabilities |
+| --- | --- | --- | --- | --- |
+| `nros-cpp/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain (+ `NANO_ROS_BOARD` threadx split) | param/lifecycle on posix, safety-e2e |
+| `nros-c/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain | — |
+| `NanoRosRuntimeCrate.cmake` | `ros-${_NRR_EDITION}` ✔ | `nros_rmw_dispatch()` SSoT ✔ | `_nros_runtime_platform_features()` | none |
+
+Plus five `cmake/platform/*.cmake` files carrying their own `platform-*`
+knowledge, and every Rust leaf `Cargo.toml` naming `"ros-humble"` by hand.
+
+Only the umbrella honours the configured edition (phase-304 W2b, RFC-0056); the
+other two were never updated. RFC-0056 makes the edition drive the runtime
+keyexpr format so it matches the codegen-baked `type_hash`, so a non-humble
+build through either direct path compiles the runtime as humble while codegen
+bakes iron/jazzy hashes — a WIRE MISMATCH, not a build error.
+
+## The Rust side blocks multi-edition outright
+
+`packages/core/nros/src/lib.rs:110`:
+
+```rust
+compile_error!("`ros-{humble,iron,jazzy}` are mutually exclusive — select one ROS edition.");
+```
+
+Cargo features are additive and unify across a build. A leaf naming
+`nros = { features = ["ros-humble"] }` does not express a default that an entry
+can override — it *adds* `ros-humble` to the unified set. So an entry selecting
+`ros-jazzy` in a workspace whose leaves say `ros-humble` gets both, and the
+build fails the `compile_error!`.
+
+**Every Rust node package in the tree names its edition today.** Multi-edition
+support therefore cannot work by "setting the edition somewhere"; the leaves
+have to stop naming it at all.
+
+That inverts the usual instinct: the edition is not a per-package choice, it is
+a per-IMAGE one. Feature unification already makes it so — the entry (or
+umbrella) is the only place that can hold it consistently.
+
+The same argument applies to selectable capabilities (`param-services`,
+`lifecycle-services`, `safety-e2e`): they are image-level, currently expressed
+as platform-conditional side rules on ONE of the three cmake paths.
+
+## Requirement: one feature SSoT, all languages
+
+The list must be derived once from `(edition, rmw, platform, board,
+capabilities)` and consumed by every front-end — the C path, the C++ path, the
+umbrella, the Zephyr lane, and the Rust bake. Same property phase-308 already
+established for the metadata recorder and the slot accounting: one mechanism,
+several front-ends.
+
+## Reconciliation path
+
+Order matters — collapsing first would change behaviour silently, since the
+three sites do not agree today.
+
+1. **Decide each divergence deliberately**, not by picking a winner:
+   - *edition* — direct paths must honour `NANO_ROS_ROS_EDITION` (it already
+     exists and drives codegen). This is a defect fix, not a preference.
+   - *rmw* — the dispatch SSoT (`nros_rmw_dispatch`) wins over the inline
+     copies; it is already the resolve_rmw single source.
+   - *platform* — the umbrella's helper is WEAKER: it lacks the
+     `NANO_ROS_BOARD` disambiguation for threadx (`threadx-linux` = std,
+     `riscv64-qemu` = no_std). Unifying naively regresses it. The direct
+     chain's logic is the one to keep.
+   - *capabilities* — decide whether the umbrella's omission of
+     `param-services` / `safety-e2e` is intentional or an oversight. This is
+     the one question that needs someone who knows the intent.
+2. **Extract the agreed computation** into one cmake function taking
+   `(edition, rmw, platform, board, capabilities)` and returning the list. The
+   three sites become callers; `NROS_EXTRA_CPP_FEATURES` applies once, by
+   construction, and the "add the hook twice" trap disappears.
+3. **Drop the edition from Rust leaves.** They stop naming `ros-*`; the entry
+   or umbrella supplies it. Until this lands, multi-edition is impossible in a
+   workspace regardless of what cmake does.
+4. **Gate it.** Assert the C, C++ and umbrella paths produce the same list for
+   the same inputs. Without that, they drift again — the failure this issue was
+   filed for was silent, and so is drift.
+
+Steps 1 and 3 are the substance; step 2 is mechanical once they are settled.
+
+## Options considered for step 2
+
+1. **One cmake function, several callers.** Recommended. Smallest change that
+   removes the trap; keeps every entry point working.
+2. **One path** — force direct consumers through the umbrella. Cleaner, but the
+   umbrella exists for workspace builds and imposing it on standalone consumers
+   is not free.
+3. **Assert agreement only.** Cheapest, keeps the duplication, catches drift
+   but not a missing hook — which is what actually bit.
