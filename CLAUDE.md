@@ -47,6 +47,16 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 
 ## Practices
 - **Always `just ci` after a task.** **Never `sudo`** — tell the user.
+- **Fix the CLASS, not the reported site — then prove the sweep.** Every bug here that
+  recurred did so because a fix landed only where the symptom was seen: the sizes-header
+  mirror (0088→0114→0122→0123→0245→0268), the Zephyr unset-variable guard (#282 fixed 1
+  of 6 sites — and added a *second* idiom instead of a shared helper → #326), the fixture
+  freshness probe (#222 fixed 4 RTOS resolvers, left ~30 in `binaries/mod.rs` → #328).
+  So: grep for every sibling of the pattern, fix them together, add ONE shared helper
+  rather than a second spelling, and put the sweep command in the commit message so the
+  next person can re-run it. If a gate exists for the class, check the gate actually
+  covers the new site (issue-0196 rule) — audit 2026-07-28 found four gates whose
+  coverage was narrower than the rule they enforce.
 - **Green CI locally BEFORE pushing — don't iterate on remote CI.** Run `just format`
   then `just ci` (or at least `just check`) locally and fix every failure first, so the
   push passes remote CI on the first try. `just ci` = `check` (fast + build, incl. embedded

@@ -116,6 +116,30 @@ test FILES **2 → 0**.
 - `just/ros-editions.just:145` — the zenoh recipe's comment claims "jazzy runs 5/6 (ROS→nano action server is #0292, ignored)", but `ros_editions_zenoh.rs:170` is a plain `#[test]` with a hard `assert!` (no `#[ignore]`, no skip) and #0292 is archived as fixed. The recipe prints "PASS (cyclone + xrce + zenoh)" on a path that either passes 6/6 or hard-fails — the comment is stale either way.
 - **~5.1 GB of orphaned build output** in husks of moved/deleted examples (`examples/native/rust/entry-poc` 3.4 G, `examples/qemu-arm-baremetal/rust/phase216-rtic-e2e` 1.7 G, plus `examples/zephyr/rust/{xrce,dds}`, `examples/qemu-esp32-baremetal/rust/dds`, …), and the two retired `packages/cli/third-party/{play_launch_parser,ros-launch-manifest}` worktrees — the latter are what mask P1-1.
 
+## Cross-cutting pattern (the most actionable thing in this report)
+
+**Class fixes are landing at the reported site.** Three independent instances,
+all confirmed this run:
+
+| class | fixed | left armed | now |
+| --- | --- | --- | --- |
+| sizes-header mirror | 0088, 0114, 0122, 0123, 0245 | each next build path | 0268 (structural fix + gate) |
+| Zephyr unset-variable guard | #282 — **1 of 6** sites, *and* it added a second idiom instead of a shared helper | 5 sites | **#326** |
+| fixture freshness probe | #222 — **4 of ~34** resolvers | ~30 in `binaries/mod.rs` | **#328** |
+
+The rule that follows: grep for every sibling before fixing, land ONE shared
+helper rather than a second spelling, and record the sweep command in the commit
+message so it can be re-run. Added as a `CLAUDE.md` practice ("Fix the CLASS,
+not the reported site") and cross-linked from both #326 and #328.
+
+**Second-order version of the same problem — gates narrower than their rule.**
+Four found this run: #321 (the marker gate lints sources whose binaries the sweep
+excludes), #328 (24 `#[ignore]` tests no lane runs), #332 (`check-cpp` cannot
+detect the 0112 class because it never passes `-nostdinc++`), #334 (provenance
+fields nothing validates). A gate that cannot fail on the case it names is worse
+than no gate — it reads as coverage. This is the issue-0196 rule ("build-side
+probes must watch the same inputs as test-side gates") generalised.
+
 ## Process finding
 
 **Issue-status hygiene has drifted again.** Six files sit in `docs/issues/`

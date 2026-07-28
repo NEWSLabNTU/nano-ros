@@ -258,6 +258,16 @@ verdict).**
   does".
 - **I3 Silent fallbacks / swallowed errors** — warn-and-continue where it
   should hard-fail; `catch`/`Result` discarded; `|| true`.
+- **I6 Class fixes that landed only at the reported site.** For each issue
+  resolved since the last audit whose defect was *grep-able*, re-run the grep and
+  check the siblings were swept — and that the fix added ONE shared helper rather
+  than a second spelling of the same test. Confirmed instances: the sizes-header
+  mirror lineage (0088→0114→0122→0123→0245→0268), #282 fixing 1 of 6 Zephyr
+  unset-variable guards (→ #326), #222 fixing 4 of ~34 fixture resolvers (→ #328).
+  Related second-order check: **a gate must be able to fail on the case it names**
+  — audit 2026-07-28 found four whose coverage was narrower than their rule (#321,
+  #328, #332, #334). Detect: for a resolved issue's characteristic grep, compare
+  hit count at fix-commit vs HEAD.
 - **I4 Duplicated SSoT.** The same fact configured in N places (issue 0042:
   capability macros across ~10 sites; domain-ID; zephyr-line; board metadata).
   One source, derived everywhere else.

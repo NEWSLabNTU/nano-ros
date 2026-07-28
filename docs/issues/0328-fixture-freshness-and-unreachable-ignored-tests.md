@@ -5,8 +5,17 @@ status: open
 type: bug
 severity: medium
 area: testing
-related: [issue-0222, issue-0196]
+related: [issue-0222, issue-0196, issue-0326]
 ---
+
+> **Shared pattern with #326 — "the fix landed at the site, not the class."**
+> #222 fixed 4 of ~34 identical fixture resolvers; #282 fixed 1 of 6 identical
+> cmake guards (→ #326). Same failure mode, different subsystem: a grep-able
+> class gets fixed where the symptom appeared, so the remaining siblings stay
+> armed and the next incident looks new. Whoever picks up either issue should
+> sweep the whole class and land ONE shared helper — see the "Fix the CLASS"
+> practice in `CLAUDE.md`, and the audit note in
+> `docs/development/audit-findings-2026-07-28.md`.
 
 ## Finding (audit 2026-07-28, P2)
 
