@@ -159,6 +159,10 @@ count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports 
 a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while
 strengthening the QoS proofs. See `0312-*`. (2026-07-28)
 
+**#313** — `wake-latency-cortex-m3` bench rotted (off-lane): retired `_start`/`run` entry + phase-230
+`platform-freertos` feature drift + a `nros-baremetal-common`/picolibc libc-stub duplicate-symbol link
+conflict. Needs resurrection + a build lane. See `0313-*`. (phase-313, 2026-07-28)
+
 Recently resolved: **#309** (whole matrix audited) — count-based proofs detect an
 ABSENT configuration, never a WRONG one. `Proof::QosMatchedCount` is now `QosMatchedProfile`, which
 asserts the per-endpoint ADVERTISED profile via `ros2 topic info --verbose`. Mutation-checked, and
@@ -252,8 +256,9 @@ minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
 external consumers get "no matching package named nros". Premise contested (see the issue's
 Verification section); needs a reporter repro. See `0272-*`.
 
-**#273** — `nros-board-mps2-an385-freertos`'s `nros-board.toml` still advertises the retired
-`_start` entry signature. See `0273-*`.
+(#273 resolved — `nros-board.toml` `[board.entry]` signature `_start`→`main` (matches `board_mps2.c`
+`Reset_Handler`); the scaffold stub fixed too; the off-lane wake-latency bench spun to `#0313`.
+phase-313. See `archived/0273-*`.)
 
 (#284 resolved — `NROS_CYCLONEDDS_MAX_TYPES` hidden compile-time knob, twin of the fixed `NROS_EXECUTOR_MAX_CBS`. See `archived/0284-*`.)
 

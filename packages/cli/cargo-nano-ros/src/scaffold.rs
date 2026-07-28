@@ -747,12 +747,17 @@ codegen-units = 1
 
 use nros::prelude::*;
 // TODO: import your board crate
-// use nros_board_mps2_an385_freertos::{Config, run, println};
+// use nros_board_mps2_an385_freertos::{Config, Mps2An385, println};
 use panic_semihosting as _;
 
+// The board's C startup (`Reset_Handler`) jumps to this `main` symbol.
 #[unsafe(no_mangle)]
-extern "C" fn _start() -> ! {
-    // TODO: replace with your board crate's run()
+extern "C" fn main() -> ! {
+    // TODO: drive your board's entry, e.g.
+    //   Mps2An385::run_bare(Config::default(), |_cfg| {
+    //       // open an Executor, create nodes/pubs/subs, spin…
+    //       Ok::<(), &'static str>(())
+    //   });
     loop {}
 }
 "#
