@@ -518,6 +518,7 @@ dependencies = [
 name = "nros-orchestration-ir"
 version = "0.5.0"
 dependencies = [
+ "nros-rmw",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
  "serde",
@@ -736,7 +737,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "ros-launch-manifest-sched",
  "serde",
@@ -747,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_yaml_ng",
