@@ -147,12 +147,17 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
-**#309** — count-based e2e proofs cannot detect a WRONG configuration, only an absent one:
-`Proof::QosMatchedCount` guarded the QoS cells for three phases while issue 0306 made every
-declarative entity run `QosSettings::default()`, because default-to-default delivers exactly as many
-messages as a QoS-matched pair. Same shape produced #307 and #308. The two e2es added this week show
-the fix pattern (observe the VALUE / the advertised profile, and mutation-check it). Audit which
-cells would still pass with their feature removed. See `0309-*`. (2026-07-28)
+**#311** — a C/C++ workspace listener receives fine but `ros2 topic info` reports `Subscription
+count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports our subscriptions and
+a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while
+strengthening the QoS proofs. See `0311-*`. (2026-07-28)
+
+Recently resolved: **#309** (QoS cells; rest of the matrix noted) — count-based proofs detect an
+ABSENT configuration, never a WRONG one. `Proof::QosMatchedCount` is now `QosMatchedProfile`, which
+asserts the per-endpoint ADVERTISED profile via `ros2 topic info --verbose`. Mutation-checked, and
+the check demonstrated the thesis: flipping the C talker's declared durability, DELIVERY STILL
+PASSED and only the new profile assertion caught it. Audit answer: C/C++/mixed were fine all along —
+but nothing had established that. See `0309-*`. (2026-07-28)
 
 **#310** — `cargo +nightly fmt --all` reformats VENDORED SUBMODULE sources, leaving them `-dirty` and
 blocking a later `git rebase` with an error that never mentions formatting. Measured mechanism (the

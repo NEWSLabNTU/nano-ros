@@ -567,6 +567,52 @@ pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Issue 0309 — run `ros2 topic info --verbose <topic>` and return the report.
+///
+/// The ADVERTISED QoS profile is the only QoS fact observable from outside a
+/// nano-ros process: the zenoh backend encodes the profile into the liveliness
+/// token (`nros-rmw-zenoh`'s `to_qos_string`) and implements no QoS SEMANTICS —
+/// no history cache, no depth-driven drops — so there is no delivery difference
+/// to measure. A stock `rmw_zenoh_cpp` peer reading the token is how a test
+/// distinguishes "the profile I declared" from "whatever default happened to
+/// connect".
+pub fn ros2_topic_info_verbose(locator: &str, distro: &str, topic: &str) -> TestResult<String> {
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
+    let cmd = format!("{env_setup} && timeout 15 ros2 topic info --verbose {topic} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 topic info: {e}")))?;
+
+    Ok(format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    ))
+}
+
+/// Issue 0309 — slice ONE `Endpoint type: <kind>` section out of a
+/// [`ros2_topic_info_verbose`] report (`"PUBLISHER"` / `"SUBSCRIPTION"`).
+///
+/// Assert against this, never against the whole report: the report carries both
+/// endpoints, so a whole-report `contains("TRANSIENT_LOCAL")` passes on the
+/// WRONG endpoint's profile. That is not hypothetical — the first draft of
+/// `qos_override_e2e` did exactly that and passed with the bug it was written
+/// to catch (issue 0306) reverted.
+pub fn topic_endpoint_block(report: &str, kind: &str) -> Option<String> {
+    let marker = format!("Endpoint type: {kind}");
+    let start = report.find(&marker)?;
+    let rest = &report[start..];
+    // An endpoint's QoS block ends where the next endpoint's "Node name:"
+    // begins, or at the end of the report.
+    let end = rest[marker.len()..]
+        .find("Node name:")
+        .map(|i| i + marker.len())
+        .unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+}
+
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);

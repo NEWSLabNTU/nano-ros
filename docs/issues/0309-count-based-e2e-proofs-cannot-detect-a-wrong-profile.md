@@ -1,7 +1,7 @@
 ---
 id: 309
 title: "Count-based e2e proofs cannot detect a wrong configuration — a whole feature stayed dark behind a green suite"
-status: open
+status: resolved
 type: limitation
 area: testing
 related: [issue-0306, issue-0307, issue-0308]
@@ -48,7 +48,58 @@ whole-report `contains("TRANSIENT_LOCAL")` matched the SUBSCRIPTION's profile
 while the publisher's had been dropped. A test nobody has watched fail is a
 test whose discriminating power is unknown.
 
-## Direction
+## Fixed for the QoS cells (2026-07-28)
+
+`Proof::QosMatchedCount` became `Proof::QosMatchedProfile { topic }`. It keeps
+the delivery count and adds, when ROS 2 is present, a per-ENDPOINT assertion on
+what the endpoint ADVERTISES — `Reliability: RELIABLE`,
+`Durability: TRANSIENT_LOCAL`, `History (Depth): KEEP_LAST (10)`, the profile
+the workspaces declare in code. Two of the three differ from
+`QosSettings::default()`, so a defaulted entity cannot satisfy them. The check
+skips (never fails) without ROS 2, so the cells keep their delivery coverage
+everywhere.
+
+The endpoint-block parser and the `ros2 topic info --verbose` runner moved into
+`nros_tests::ros2` (`topic_endpoint_block`, `ros2_topic_info_verbose`) rather
+than being copied out of `qos_override_e2e` — copying a rule is what issues
+0303/0307 were about.
+
+**Mutation-checked, and the result is this issue's own thesis demonstrated.**
+Flipping the C talker's declared durability to `NROS_C_QOS_VOLATILE` and
+rebuilding both fixtures:
+
+```
+[c qos] the PUBLISHER does not advertise its code-declared QoS
+(`Durability: TRANSIENT_LOCAL` missing) — the per-entity profile was dropped
+somewhere between the node and the wire
+```
+
+The test reached that assertion **after** the delivery count had already
+passed. The old proof would have stayed green with the QoS wrong, which is
+precisely the failure this issue describes. Restored, all three cells (c / cpp /
+mixed) pass.
+
+Answering the question that motivated the audit: **the C, C++ and mixed paths
+were fine.** Their publishers advertise exactly the declared profile. Issue 0306
+was Rust-only — but nothing had established that, and the count proof could
+never have.
+
+One new bug fell out of the strengthening: a C-family listener receives fine yet
+`ros2 topic info` reports `Subscription count: 0` — it is invisible to ROS 2
+discovery (issue 0311). The QoS cells therefore assert the PUBLISHER block only,
+with a comment pointing there; turning the subscription assertion on is a
+one-line change once 0311 is fixed.
+
+## Remaining (the rest of the matrix)
+
+The other cells were NOT audited. `CustomMsgFields`, `SafetyCrcCount` and
+`RemapWireName` already observe something specific to their feature (decoded
+field values, CRC-valid climbing counts, the remapped wire name plus silence on
+the unremapped one), so they are not obviously in this class. `LoggingLines` and
+`LifecycleActive` are worth the same question — "would this still pass with the
+feature removed?" — before this issue is considered closed for the whole matrix.
+
+## Direction (as filed)
 
 Not a mass rewrite — most cells are proving delivery, which is what they should
 prove. The work is to identify the cells whose NAMED feature is invisible to a

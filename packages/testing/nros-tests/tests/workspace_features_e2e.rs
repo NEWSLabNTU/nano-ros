@@ -75,7 +75,10 @@ use nros_tests::{
         build_native_workspace_rust_safety_listener_entry,
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
     },
-    ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
+    ros2::{
+        DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator, ros2_topic_info_verbose,
+        topic_endpoint_block,
+    },
 };
 use rstest::rstest;
 use std::{
@@ -101,8 +104,20 @@ enum Proof {
     /// the entry's OWN stdout (process-local — no subscriber).
     LoggingLines(&'static str),
     /// Talker-first pair with the non-default QoS profile in code on both
-    /// endpoints; the late-joining listener must print ≥3 `Received:`.
-    QosMatchedCount,
+    /// endpoints: the late-joining listener must print ≥3 `Received:`, AND
+    /// (when ROS 2 is present) a stock `rmw_zenoh_cpp` peer must report the
+    /// DECLARED profile on both endpoints.
+    ///
+    /// Issue 0309 — the count alone proved nothing about QoS. A default
+    /// publisher talking to a default subscriber delivers exactly as many
+    /// messages as a QoS-matched pair, so this proof stayed green through
+    /// issue 0306, which made every declarative Rust entity run
+    /// `QosSettings::default()`. The profile assertion is what makes the cell
+    /// about QoS rather than about delivery.
+    QosMatchedProfile {
+        /// The topic the pair uses — the C-family demos publish on `/chatter`.
+        topic: &'static str,
+    },
     /// Single autostart entry; `ros2 lifecycle get` on the discovered
     /// managed node must report `active` with no manual transition.
     LifecycleActive,
@@ -309,7 +324,7 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     lang: "c", workload: "qos",
     entry: || build_native_workspace_c_qos_talker_entry().map(|p| p.to_path_buf()),
     peer: Some(|| build_native_workspace_c_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedCount,
+    proof: Proof::QosMatchedProfile { topic: "/chatter" },
     note: "phase-263 B4 C projection: nros_cpp_qos_t by value to nros_cpp_publisher_create \
            (not nros_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
 })]
@@ -317,7 +332,7 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     lang: "cpp", workload: "qos",
     entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
     peer: Some(|| build_native_workspace_cpp_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedCount,
+    proof: Proof::QosMatchedProfile { topic: "/chatter" },
     note: "phase-263 B4 C++ projection: fluent nros::QoS builder \
            (.reliable().transient_local().keep_last(10)) into Node::create_publisher",
 })]
@@ -325,7 +340,7 @@ fn resolve(r: Resolver, cell: &Cell, role: &str) -> PathBuf {
     lang: "mixed", workload: "qos",
     entry: || build_native_workspace_mixed_qos_talker_entry().map(|p| p.to_path_buf()),
     peer: Some(|| build_native_workspace_mixed_qos_listener_entry().map(|p| p.to_path_buf())),
-    proof: Proof::QosMatchedCount,
+    proof: Proof::QosMatchedProfile { topic: "/chatter" },
     note: "phase-263 B4 MIXED projection: the C qos pkgs reused verbatim under a C++ \
            TYPED entry carrier (run_components)",
 })]
@@ -504,7 +519,7 @@ fn workspace_features(#[case] cell: Cell) {
             );
         }
 
-        Proof::QosMatchedCount => {
+        Proof::QosMatchedProfile { topic } => {
             // Talker first (the QoS-tagged publisher boots + keeps
             // publishing at 1 Hz), so the listener joins LATE — proving the
             // QoS-matched endpoints discover + connect across processes.
@@ -521,7 +536,11 @@ fn workspace_features(#[case] cell: Cell) {
                 )
             });
             let peer = peer.expect("qos cells carry a listener entry");
-            let mut lis = spawn_locator_only(&peer, "qos-listener", &locator);
+            // Issue 0309 — a spin budget, not `spawn_locator_only`: the profile
+            // check below reads what BOTH endpoints advertise, and a listener
+            // that has already exited reports `Subscription count: 0`. The
+            // budget only has to outlive the report.
+            let mut lis = spawn_spinning(&peer, "qos-listener", &locator, 30000, None);
 
             let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
             let out = lis
@@ -536,12 +555,68 @@ fn workspace_features(#[case] cell: Cell) {
                         cell.lang, cell.workload, cell.note
                     )
                 });
+            // Issue 0309 — the delivery count above cannot tell the DECLARED
+            // profile from any compatible one, so read what the endpoints
+            // actually advertise while both are still alive. Skips (rather than
+            // fails) without ROS 2, so the cell keeps its delivery coverage
+            // everywhere and gains the profile check where a peer exists.
+            if require_ros2() {
+                let report = ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, topic)
+                    .unwrap_or_else(|e| {
+                        lis.kill();
+                        tlk.kill();
+                        panic!(
+                            "[{} {}] ros2 topic info failed: {e}",
+                            cell.lang, cell.workload
+                        )
+                    });
+                // PUBLISHER only, deliberately. The C-family listener receives
+                // fine but `ros2 topic info` reports `Subscription count: 0`
+                // for it — its subscription is not visible to ROS 2 discovery
+                // (issue 0311). The Rust path does advertise both, and
+                // `qos_override_e2e` asserts both there; asserting the
+                // subscription here would fail on a bug this cell does not own.
+                // When 0311 is fixed, add "SUBSCRIPTION" to this list.
+                let blocks: Vec<(&str, Option<String>)> =
+                    vec![("PUBLISHER", topic_endpoint_block(&report, "PUBLISHER"))];
+                for (kind, block) in blocks {
+                    let block = block.unwrap_or_else(|| {
+                        lis.kill();
+                        tlk.kill();
+                        panic!(
+                            "[{} {}] ros2 discovered no {kind} on {topic} ({}):\n{report}",
+                            cell.lang, cell.workload, cell.note
+                        )
+                    });
+                    // The workspaces declare `reliable + transient_local +
+                    // keep_last(10)` per entity, in code.
+                    // Every one of these differs from `QosSettings::default()`
+                    // except reliability, so together they cannot be satisfied
+                    // by a defaulted entity.
+                    for expect in [
+                        "Reliability: RELIABLE",
+                        "Durability: TRANSIENT_LOCAL",
+                        "History (Depth): KEEP_LAST (10)",
+                    ] {
+                        if !block.contains(expect) {
+                            lis.kill();
+                            tlk.kill();
+                            panic!(
+                                "[{} {}] the {kind} does not advertise its code-declared QoS \
+                                 (`{expect}` missing) — the per-entity profile was dropped \
+                                 somewhere between the node and the wire ({}):\n{block}",
+                                cell.lang, cell.workload, cell.note
+                            );
+                        }
+                    }
+                }
+            }
+
             lis.kill();
             tlk.kill();
 
             // Early pre-discovery samples may be missed, so assert ≥3
-            // receives (proves the non-default profile, declared per-entity
-            // on both endpoints, connects + delivers end-to-end).
+            // receives (the endpoints connect + deliver end-to-end).
             let n = nros_tests::count_pattern(&out, prefix);
             assert!(
                 n >= 3,
