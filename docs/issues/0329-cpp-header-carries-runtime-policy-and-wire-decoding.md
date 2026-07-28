@@ -73,3 +73,34 @@ direction non-optional — move the budgeted spin behind ONE CFFI entry point
 (`nros_cpp_spin_for(storage, duration_ms, poll_ms)`) and have the free function, both
 `Executor` overloads, and the `src/lib.rs` copies all forward to it. Naming/semantics
 of the public verb are tracked separately in **#338**.
+
+## Progress (2026-07-28)
+
+**Addendum bug — FIXED (1a64eeb45).** Added `nros_cpp_spin_for(handle,
+duration_ms, poll_ms)` — the single wall-clock-budgeted spin, Rust-side.
+`nros::spin()` (nros.hpp, the iteration-count-budgeting copy with the latent
+bug) and `Executor::spin()` (executor.hpp) now both forward to it. The two
+duration-spin copies are deduped and the collapse-to-milliseconds bug is gone.
+
+**Defect 3 — FIXED (1e13df52d).** `GoalAccept::ffi_deserialize` no longer
+hand-decodes the 17-byte goal-accept wire layout in the header. Added
+`nros_cpp_action_goal_accept_decode` beside its producer in `action.rs`; the
+header forwards to it. One owner for the layout.
+
+**Defect 1 (bounded env-spin) — REMAINING.** The `NROS_ENTRY_SPIN_MS`-bounded
+loop (`main.hpp::component_spin_loop` + the `src/lib.rs` copies) is a separate
+surface from the duration spin above. Consolidating it entangles two things that
+do not live cleanly Rust-side: the per-tick platform `yield` (`k_yield()` on
+Zephyr, via `entry_tick_yield`) and the `nros::ok()` shutdown check
+(`Node::global_initialized()`, a C++ static the Rust `main!` path does not
+share). A `nros_cpp_spin_bounded` CFFI needs yield + shutdown hooks first. Left
+for a follow-up; no confirmed live-path bug (the `bound_ms==0` shutdown-check
+divergence needs its reachability confirmed before it is worth a targeted fix).
+
+**Defect 2 (init ladder) — REMAINING.** `init()` resolves the baked
+`NROS_ENTRY_LOCATOR`/`NROS_ENTRY_DOMAIN_ID` rungs + the hosted default in the
+header, duplicated across the 2-arg and 3-arg overloads. Moving the precedence
+into `nros_cpp_init` is an ABI signature change (the `-D NROS_ENTRY_*` compile
+macros are only visible in the C++ TU, so the header must still READ them and
+pass them as params — the resolver then applies precedence). A DRY refactor with
+no active bug; deferred.
