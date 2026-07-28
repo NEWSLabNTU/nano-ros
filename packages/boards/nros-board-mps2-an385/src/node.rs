@@ -458,71 +458,37 @@ pub fn init_hardware(config: &Config) {
     hprintln!("");
 }
 
-/// Run an application with the given configuration.
-///
-/// This is the main entry point for QEMU bare-metal applications.
-/// It handles all hardware and network initialization, then calls
-/// your application code with a reference to the config.
-///
-/// Inside the closure, use `Executor::open()` to create an executor
-/// with full API access (publishers, subscriptions, services, actions,
-/// timers, callbacks).
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_mps2_an385::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::default(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     let mut node = executor.create_node("my_node")?;
-///     // Full Executor API: publishers, subscriptions, services, actions...
-///     Ok(())
-/// })
-/// ```
-///
-/// # Returns
-///
-/// Never returns (`-> !`). Calls `exit_success()` on Ok, `exit_failure()` on Err.
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
+/// Phase 313 W-direct-exec (#0243) — no-session boot wrapper for bare-metal
+/// fixtures that manage their OWN executor (e.g. the no-alloc
+/// `Executor::open_in` `large-msg-baremetal` bench, which cannot use the `alloc`
+/// `Executor::open` that the `board-entry` `BoardEntry::run` path performs).
+/// `init_hardware(&config)` → the `FnOnce(&Config)` closure → `exit_*`, with NO
+/// board-level session. Lives here in `node.rs` (always compiled), NOT behind
+/// the `board-entry` feature, so the no-umbrella bench can reach it. The
+/// new-family replacement for the retired legacy `run(Config, closure)` (which
+/// routed through `nros_board_common::run` + the `board_init` traits).
+pub fn run_bare<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    // Phase 173.1 — delegate to the shared direct-exec driver
-    // (`init_hardware` → closure → `exit_*`) via the `Board` trait,
-    // instead of hand-rolling the init/match/exit dance here.
-    nros_board_common::run::<Mps2An385, F, E>(config, f)
+    init_hardware(&config);
+    match f(&config) {
+        Ok(()) => {
+            hprintln!("nros: application complete");
+            crate::exit_success()
+        }
+        Err(e) => {
+            hprintln!("nros: application error: {:?}", e);
+            crate::exit_failure()
+        }
+    }
 }
 
-/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
-/// the generic `nros_board_common::run` can drive this board. The
-/// three impls forward to the board's existing free functions /
-/// semihosting writer.
+/// Board ZST for trait dispatch.
+///
+/// Phase 313 W-direct-exec (#0243) — the legacy `impl nros_board_common::{BoardInit,
+/// BoardPrint, BoardExit}` here + the free `run` that consumed them are RETIRED.
+/// The live entries are `<Mps2An385 as nros_platform::board::BoardEntry>::run`
+/// (full app + session, `entry.rs`, `board-entry` feature) and the no-session
+/// [`run_bare`] above.
 pub struct Mps2An385;
-
-impl nros_board_common::BoardInit for Mps2An385 {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        init_hardware(cfg);
-    }
-}
-
-impl nros_board_common::BoardPrint for Mps2An385 {
-    fn println(args: core::fmt::Arguments<'_>) {
-        hprintln!("{}", args);
-    }
-}
-
-impl nros_board_common::BoardExit for Mps2An385 {
-    fn exit_success() -> ! {
-        crate::exit_success()
-    }
-
-    fn exit_failure() -> ! {
-        crate::exit_failure()
-    }
-}

@@ -69,7 +69,7 @@ pub use nros_platform_mps2_an385;
 
 // Re-export main types
 pub use config::Config;
-pub use node::{Mps2An385, init_hardware, run};
+pub use node::{Mps2An385, init_hardware, run_bare};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 

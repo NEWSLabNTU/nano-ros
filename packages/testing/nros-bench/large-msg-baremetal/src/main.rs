@@ -7,7 +7,7 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385::{Config, println, run};
+use nros_board_mps2_an385::{Config, println, run_bare};
 use panic_semihosting as _;
 
 // phase-271 (issue #110) — this bench is a no-alloc `rmw-cffi` bare-metal target,
@@ -68,7 +68,7 @@ fn main() -> ! {
         zenoh_locator: "tcp/10.0.2.2:10520",
         domain_id: 0,
     };
-    run(config, |config| {
+    run_bare(config, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("large_msg_test");
