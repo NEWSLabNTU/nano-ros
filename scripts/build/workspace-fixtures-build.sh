@@ -158,6 +158,17 @@ build_workspace() {
         # and a no-op for non-NuttX workspace rows.
         NROS_REPO_DIR="$repo_root" nros_nuttx_libc_patch "$repo_root/$dir"
 
+        # The manifest's `env = { … }` applies to the WHOLE row: codegen AND the
+        # compile, in every language. It used to be exported only inside the
+        # `lang = rust` branch, and only AFTER `codegen-system` — so a C/C++
+        # row's `env` was silently ignored, and even a rust row's could not
+        # reach codegen. `NROS_EXECUTOR_MAX_CBS` is read by codegen-system
+        # (issue 0257), so the ignored env surfaced as a hard "table holds 4"
+        # failure on a row that declares 8.
+        if [ -n "$envstr" ]; then
+            export $envstr
+        fi
+
         # BAKE path only: a pure-cargo `nros::main!` entry (no codegen_out)
         # bakes the system in the proc-macro, so it skips codegen-system.
         if [ -n "$codegen_out" ]; then
@@ -188,9 +199,6 @@ build_workspace() {
                 cargo_args+=("${extra_args[@]}")
             fi
             echo "     cargo ${cargo_args[*]}"
-            if [ -n "$envstr" ]; then
-                export $envstr
-            fi
             cargo "${cargo_args[@]}"
 
             local out_root="${target_dir:-target}"

@@ -1054,7 +1054,18 @@ dir = "examples/workspaces/ws-lifecycle-cpp"
 bringup = "src/managed_bringup"
 entry = "native_managed_entry"
 codegen_out = "build-workspace-codegen/managed_bringup"
-build_subdir = "build-workspace-fixtures"
+# issue 0257 — the managed bringup registers 6 callback entities (the REP-2002
+# service surface on top of the node's own), over the default table of 4, and
+# `codegen-system` fail-louds rather than silently truncating. Found by the
+# first full native sweep to reach this row.
+#
+# The bigger table probes a DIFFERENT executor size, and the generated
+# `nros_config_generated.h` is per-build-tree: sharing `build-workspace-fixtures`
+# with the sibling `workspace-cpp-native-lifecycle` row made the two disagree and
+# trip the sizes-mirror guard. Own build tree, same reason the repo gives every
+# feature variant its own `--target-dir`.
+build_subdir = "build-workspace-fixtures-managed"
+env = { NROS_EXECUTOR_MAX_CBS = "8" }
 
 # Phase 269 W3 — E2E-safety C workspace (talker half). `[system].features = ["safety"]`
 # lowers to NANO_ROS_SAFETY_E2E=ON; the C talker publishes CRC-annotated /chatter frames.
