@@ -232,33 +232,59 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
     }
     let _ = writeln!(out);
     let _ = writeln!(out, "[capabilities]");
-    line(
-        &mut out,
-        "safety",
-        &sys.safety
-            .as_ref()
-            .map(|s| format!("enabled={} crc={}", s.enabled, s.crc))
-            .unwrap_or_else(|| "(absent)".to_string()),
-        cap_source(sys.safety.is_some()),
-    );
-    line(
-        &mut out,
-        "param_services",
-        &sys.param_services
-            .as_ref()
-            .map(|p| format!("enabled={}", p.enabled))
-            .unwrap_or_else(|| "(absent)".to_string()),
-        cap_source(sys.param_services.is_some()),
-    );
-    line(
-        &mut out,
-        "lifecycle",
-        &sys.lifecycle
-            .as_ref()
-            .map(|l| l.autostart.clone())
-            .unwrap_or_else(|| "(absent)".to_string()),
-        cap_source(sys.lifecycle.is_some()),
-    );
+    // Report the EFFECTIVE state, via `capability_enabled` — the same accessor
+    // the bake and the phase-315 facade consult.
+    //
+    // This used to read only the typed `[safety]` / `[param_services]` /
+    // `[lifecycle]` blocks, so a system declaring the equivalent generic form
+    //
+    //     [system]
+    //     features = ["safety"]
+    //
+    // was reported as `safety = (absent)  # default` while every consumer built
+    // it as ENABLED. An audit tool that contradicts the build is worse than no
+    // audit tool: it was used to conclude that ws-safety-rust declared nothing,
+    // which briefly looked like phase-315 W2 had dropped a capability.
+    //
+    // Two sources for one axis is precisely the shape issue 0311 / phase-314
+    // spent their length collapsing; this was the reporting path's copy of it.
+    for (name, detail) in [
+        (
+            "safety",
+            sys.safety
+                .as_ref()
+                .map(|s| format!("enabled={} crc={}", s.enabled, s.crc)),
+        ),
+        (
+            "param_services",
+            sys.param_services
+                .as_ref()
+                .map(|p| format!("enabled={}", p.enabled)),
+        ),
+        (
+            "lifecycle",
+            sys.lifecycle.as_ref().map(|l| l.autostart.clone()),
+        ),
+    ] {
+        let typed = detail.is_some();
+        let via_features = sys.system.features.iter().any(|f| f == name);
+        let enabled = sys.capability_enabled(name);
+        // Show the typed block's detail when there is one; the generic form
+        // carries no detail beyond "on", and a disabled typed block that the
+        // features list re-enables must still read as enabled.
+        let value = match (&detail, enabled) {
+            (Some(d), _) => d.clone(),
+            (None, true) => "enabled=true".to_string(),
+            (None, false) => "(absent)".to_string(),
+        };
+        let source = match (typed, via_features) {
+            (true, true) => "system.toml [<axis>] + [system] features",
+            (true, false) => "system.toml [<axis>]",
+            (false, true) => "system.toml [system] features",
+            (false, false) => "default",
+        };
+        line(&mut out, name, &value, source);
+    }
 
     // Legacy overlay audit — a per-package `nros.toml` sitting next to the bringup
     // `system.toml` is the deprecated action-at-a-distance path (RFC-0004 §3.1).
@@ -309,10 +335,6 @@ fn resolved_rmw_display(sys: &SystemToml) -> String {
     }
 }
 
-fn cap_source(present: bool) -> &'static str {
-    if present { "system.toml" } else { "default" }
-}
-
 fn line(out: &mut String, key: &str, value: &str, source: &str) {
     use std::fmt::Write;
     let _ = writeln!(out, "{key:<18} = {value:<28} # {source}");
@@ -322,6 +344,56 @@ fn line(out: &mut String, key: &str, value: &str, source: &str) {
 mod tests {
     use super::*;
     use std::fs;
+
+    /// phase-315 — a capability declared via the GENERIC `[system] features`
+    /// list must report as enabled, not `(absent)`.
+    ///
+    /// `render_resolved` used to read only the typed `[safety]` /
+    /// `[param_services]` / `[lifecycle]` blocks, so a system using the
+    /// equivalent generic form was reported absent while every consumer built it
+    /// as enabled — the audit tool contradicting the build. The bake has had
+    /// `system_config_h_features_list_equivalent_to_typed_blocks` for exactly
+    /// this equivalence since phase-261; the reporting path had no such test,
+    /// which is why it drifted.
+    #[test]
+    fn render_resolved_honours_generic_features_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let bringup = dir.path().join("demo_bringup");
+        fs::create_dir_all(&bringup).unwrap();
+        fs::write(
+            bringup.join("package.xml"),
+            r#"<package format="3"><name>demo_bringup</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname=\"demo\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             features=[\"safety\",\"param_services\"]\n",
+        )
+        .unwrap();
+
+        let out = render_resolved(dir.path(), "demo_bringup").unwrap();
+        for cap in ["safety", "param_services"] {
+            let row = out
+                .lines()
+                .find(|l| l.trim_start().starts_with(cap))
+                .unwrap_or_else(|| panic!("no `{cap}` row in:\n{out}"));
+            assert!(
+                row.contains("enabled=true"),
+                "`{cap}` declared via [system] features but reported absent: {row}"
+            );
+            assert!(
+                row.contains("features"),
+                "`{cap}` provenance should name the generic list: {row}"
+            );
+        }
+        // Undeclared axes stay absent — the fix must not turn everything on.
+        let lifecycle = out
+            .lines()
+            .find(|l| l.trim_start().starts_with("lifecycle"))
+            .unwrap();
+        assert!(lifecycle.contains("(absent)"), "{lifecycle}");
+    }
 
     /// Phase 256 Wave 6 — `render_resolved` prints the resolved SSoT config from
     /// the typed `system.toml` with per-value provenance, and flags a sibling
