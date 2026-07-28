@@ -339,9 +339,13 @@ comment. See `0327-*`.
 freshness fix never propagated), and all **24 `#[ignore]` tests are unreachable** — nothing passes
 `--ignored`, including the only gate on heap/borrowed storage-mode codegen. See `0328-*`.
 
-**#329** — C++ headers carry runtime policy + wire decoding: the bounded-spin loop exists 4× with
-diverged behavior, `init()` re-implements the RFC-0045 ladder, `action_client.hpp` hand-decodes the
-goal-accept payload. #226 class. See `0329-*`.
+(#329 RESOLVED — C++ headers carried runtime policy + wire decoding (#226 class). One
+`nros_cpp_spin_for` CFFI now single-sources the wall-clock budgeted spin — killing nros.hpp's latent
+iteration-count bug (`spin(1000)` collapsed to ms) and deduping the duration + bounded copies (the
+unbounded loop's platform `yield`/`ok()` honestly stays header-side). The 2-arg `init()` forwards raw
+to the 3-arg so the ladder lives once. `GoalAccept::ffi_deserialize` forwards to a Rust
+`nros_cpp_action_goal_accept_decode` that owns the 17-byte layout. See `archived/0329-*`. 1a64eeb45 +
+1e13df52d + e51d216ba. (2026-07-28)
 
 **#330** — backend facts in agnostic layers: the zenoh locator default is hardcoded in 4 places
 (two RMW-blind), `BoardConfig::zenoh_locator` names a backend in a core public trait, and the

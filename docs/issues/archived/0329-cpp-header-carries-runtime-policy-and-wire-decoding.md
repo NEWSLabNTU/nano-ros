@@ -1,7 +1,7 @@
 ---
 id: 329
 title: "C++ headers carry runtime policy and wire decoding: the bounded-spin loop exists 4× with diverged behavior, init() re-implements the RFC-0045 ladder, and action_client hand-decodes the goal-accept payload"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: core
@@ -87,20 +87,23 @@ hand-decodes the 17-byte goal-accept wire layout in the header. Added
 `nros_cpp_action_goal_accept_decode` beside its producer in `action.rs`; the
 header forwards to it. One owner for the layout.
 
-**Defect 1 (bounded env-spin) — REMAINING.** The `NROS_ENTRY_SPIN_MS`-bounded
-loop (`main.hpp::component_spin_loop` + the `src/lib.rs` copies) is a separate
-surface from the duration spin above. Consolidating it entangles two things that
-do not live cleanly Rust-side: the per-tick platform `yield` (`k_yield()` on
-Zephyr, via `entry_tick_yield`) and the `nros::ok()` shutdown check
-(`Node::global_initialized()`, a C++ static the Rust `main!` path does not
-share). A `nros_cpp_spin_bounded` CFFI needs yield + shutdown hooks first. Left
-for a follow-up; no confirmed live-path bug (the `bound_ms==0` shutdown-check
-divergence needs its reachability confirmed before it is worth a targeted fix).
+**Defect 1 (bounded env-spin) — FIXED (e51d216ba).** The `NROS_ENTRY_SPIN_MS`
+bounded loop was hand-rolled in `main.hpp::component_spin_loop` and again in the
+native runtime (`nros_board_native_run_components_named`). The bounded case is
+exactly the shared wall-clock budgeted spin, so both now reuse it —
+`component_spin_loop` forwards to `nros::spin()` (→ the one `nros_cpp_spin_for`
+CFFI) and the native path calls `nros_cpp_spin_for` directly. The UNBOUNDED case
+keeps its `nros::ok()` + per-tick `yield` loop in the header: this is honestly
+platform-coupled (`k_yield()` on Zephyr, the C++-global `ok()`), and there is no
+Rust-side yield or shutdown primitive to move it behind the CFFI — a full
+`nros_cpp_spin_bounded` would need that infrastructure first. The wall-clock
+budgeting — the part that had a divergent bug — is now single-sourced.
 
-**Defect 2 (init ladder) — REMAINING.** `init()` resolves the baked
-`NROS_ENTRY_LOCATOR`/`NROS_ENTRY_DOMAIN_ID` rungs + the hosted default in the
-header, duplicated across the 2-arg and 3-arg overloads. Moving the precedence
-into `nros_cpp_init` is an ABI signature change (the `-D NROS_ENTRY_*` compile
-macros are only visible in the C++ TU, so the header must still READ them and
-pass them as params — the resolver then applies precedence). A DRY refactor with
-no active bug; deferred.
+**Defect 2 (init ladder) — FIXED (e51d216ba).** The 2-arg `init()` overload
+re-resolved the baked-macro / hosted-default ladder that the 3-arg overload
+already resolves (and only partially — it never applied `NROS_ENTRY_DOMAIN_ID`).
+It now forwards its args RAW to the 3-arg overload, so the ladder lives in
+exactly one place. Moving the precedence itself into `nros_cpp_init` (Rust) was
+NOT done: the `-D NROS_ENTRY_*` compile macros are visible only in the C++ TU, so
+the header must read them regardless — an ABI change for no behavior gain. The
+duplication (the defect) is gone.
