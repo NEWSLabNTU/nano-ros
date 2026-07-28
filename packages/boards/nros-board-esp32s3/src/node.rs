@@ -56,58 +56,33 @@ fn init_serial(config: &Config) {
     esp_println::println!("Serial ready.");
 }
 
-/// Run an application with the given configuration. Never returns.
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
+/// Phase 313 W-direct-exec (#0243) — lightweight NO-SESSION direct-exec entry
+/// for the init-only board-bringup fixture. Runs the Config-driven ESP32-S3
+/// bringup (`init_hardware` + esp-println log writer) then a NULLARY closure
+/// WITHOUT opening an `Executor` session, then spins forever (ESP32 has no host
+/// exit). The new-family replacement for the retired legacy `run(Config, closure)`
+/// (which routed through `nros_board_common::run` + the `board_init` traits).
+///
+/// esp32s3 has no session-opening consumer today (only the bringup smoke), so
+/// there is no `nros_platform::BoardEntry` for it yet; a future real app would
+/// add one (mirroring `nros-board-esp32-qemu::Esp32QemuEntry`). The zenoh RMW
+/// register the legacy `init_hardware` folded in is dropped here — the bringup
+/// opens no session; a full-app entry re-adds it before `Executor::open`.
+pub fn run_bare<F, E: core::fmt::Debug>(config: Config, setup: F) -> !
 where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
+    F: FnOnce() -> core::result::Result<(), E>,
 {
-    // Phase 173.1 — delegate to the shared direct-exec driver.
-    nros_board_common::run::<Esp32S3, F, E>(config, f)
-}
-
-/// Phase 173.1 — board ZST carrying the `Board` super-trait impls.
-pub struct Esp32S3;
-
-impl nros_board_common::BoardInit for Esp32S3 {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        init_hardware(cfg);
-        register_log_writer();
-
-        // Phase 248 C5a (#60 T4) — the board owns RMW selection: register the
-        // linked zenoh backend into the CFFI vtable here, before the user closure
-        // opens an executor. Xtensa bare-metal (`target_os = "none"`) is
-        // linkme-blind + runs no `.init_array`, so the auto-register section is a
-        // no-op; this explicit, idempotent call is the registration path (mirrors
-        // `nros-board-esp32-qemu`). Gated on the board's own `rmw-zenoh` feature.
-        #[cfg(feature = "rmw-zenoh")]
-        if let Err(err) = nros_rmw_zenoh::register() {
-            esp_println::println!("zenoh RMW register failed: {:?}", err);
-        }
+    init_hardware(&config);
+    register_log_writer();
+    match setup() {
+        Ok(()) => esp_println::println!("nros: application complete"),
+        Err(e) => esp_println::println!("nros: application error: {e:?}"),
     }
-}
-
-impl nros_board_common::BoardPrint for Esp32S3 {
-    fn println(args: core::fmt::Arguments<'_>) {
-        esp_println::println!("{}", args);
-    }
-}
-
-impl nros_board_common::BoardExit for Esp32S3 {
-    fn exit_success() -> ! {
-        // ESP32 has no process exit — spin forever.
-        #[allow(clippy::empty_loop)]
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    fn exit_failure() -> ! {
-        #[allow(clippy::empty_loop)]
-        loop {
-            core::hint::spin_loop();
-        }
+    // ESP32 has no process exit — spin forever (the harness / operator observes
+    // the console output).
+    #[allow(clippy::empty_loop)]
+    loop {
+        core::hint::spin_loop();
     }
 }
 

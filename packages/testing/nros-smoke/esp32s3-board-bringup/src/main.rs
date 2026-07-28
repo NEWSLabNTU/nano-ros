@@ -22,8 +22,8 @@ nros_board_esp32s3::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run(Config::default(), |_config| {
-        esp_println::println!("esp32s3 board bringup: run() reached, board init OK");
+    run_bare(Config::default(), || {
+        esp_println::println!("esp32s3 board bringup: run_bare() reached, board init OK");
         Ok::<(), core::convert::Infallible>(())
     })
 }

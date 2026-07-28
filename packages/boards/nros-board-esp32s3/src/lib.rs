@@ -16,21 +16,21 @@ mod node;
 
 // Re-export the esp-hal entry macro + support crates the generated /
 // hand-written app needs at the crate root.
+pub use esp_bootloader_esp_idf;
 pub use esp_hal::main as entry;
 pub use esp_println;
-pub use esp_bootloader_esp_idf;
 pub use nros_platform_esp32s3;
 pub use portable_atomic;
 
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::{init_hardware, run_bare};
 pub use nros_platform::BoardConfig;
 
 /// Prelude: `use nros_board_esp32s3::prelude::*;`
 pub mod prelude {
     pub use crate::{
         config::Config,
-        node::{init_hardware, run},
+        node::{init_hardware, run_bare},
     };
     pub use esp_hal::main as entry;
     pub use nros_platform::BoardConfig;
