@@ -278,9 +278,9 @@ phase-289). Release decision: finish or de-advertise. See `0248-*`. (release-pre
 
 (#244 resolved — platform ABI surface asymmetry: PlatformSerial/PlatformIvc had no C header mirror. See `archived/0244-*`.)
 
-**#243** — platform board-trait family duplicated during transition (nros-platform::board vs legacy
-nros-board-common::board_init, both live) with no recorded convergence end-state. See `0243-*`.
-(audit 2026-07-21)
+(#243 resolved — board-trait duplication ended: `board_init` deleted; two canonical board APIs
+(`nros_platform::board` Rust + `<nros/board.h>` C), gated by `check-no-board-init`. phase-313.
+See `archived/0243-*`.)
 
 (#242 resolved — RMW parity gaps vs rmw.h: publisher GID + message-info out-param. See `archived/0242-*`.)
 
