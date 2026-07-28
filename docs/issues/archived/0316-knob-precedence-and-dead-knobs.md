@@ -1,7 +1,7 @@
 ---
 id: 316
 title: "Compile-time pool knobs silently do nothing: Kconfig overwrites the environment, and five XRCE knobs are exported under names nothing reads"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0135, issue-0269, issue-0271]
@@ -270,7 +270,9 @@ workspace exists, `cd` into it, and echo "built successfully" without building
 anything. `build-examples` depends on all three, so it reports success while
 building none of them. This is the CLAUDE.md "tests must fail on unmet
 preconditions" rule in recipe form, and it is why the first green receipt in
-this work was vacuous. Not fixed here — filed separately.
+this work was vacuous. Not fixed here — already repaired independently by
+`01dba8791 fix(#314)`, which restored the six-role `just zephyr build-one`
+loops in all three recipes.
 
 **Stage 3 — enumeration (not in this issue).** Consolidate the seven
 `env_usize` copies onto the shared helper, have it record what it resolved

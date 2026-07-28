@@ -198,13 +198,15 @@ syntax errors). Found because a 2-second "green" receipt for #316 was implausibl
 Restored to delegate to `build-one`: 6 / 6 / 12 ELFs where there were 0. `build-rust-examples` remains
 broken for an unrelated reason (`zephyr-build` unresolvable). See `0314-*`. (2026-07-28)
 
-**#316** — compile-time pool knobs that silently do nothing, two ways. On Zephyr,
-`set(ENV{...})` is unconditional, so 20 of 61 knobs have their environment value overwritten by the
-Kconfig default while the other 41 pass through — opposite precedence, identical spelling, no
-diagnostic. Six of `autoware_sentinel`'s tuned knobs are dead this way. Separately, five
-`CONFIG_NROS_XRCE_*` options are exported as `XRCE_*` while the only reader wants `NROS_XRCE_*`.
-Includes a full audit: five distinct sizing mechanisms, only two of which a build-script hook can
-see. See `0316-*`. (2026-07-28, filed as #313 and renumbered on push — origin already had two)
+(#316 resolved — compile-time pool knobs that silently did nothing, three ways. `nros_resolve_knobs()`
+now resolves each knob once (environment over Kconfig, disagreement prints) and both the cargo env and
+the zenoh C defines read `NROS_RESOLVED_*`, so Rust and C cannot disagree (issue 0135 class). The five
+`CONFIG_NROS_XRCE_*` options export + forward under the `NROS_XRCE_*` names their reader wants, and the
+forwarding list is generated from the resolved set — "resolved but not forwarded" is now
+unrepresentable. Two Kconfig defaults realigned so the repair moves zero bytes (`listener` build
+byte-identical). Stage 3 enumeration deferred (out of scope); the build-c/cpp/xrce stub found on the
+way was already fixed by #314. See `archived/0316-*`. fc6414598. (2026-07-28, filed as #313 and
+renumbered on push — origin already had two))
 
 (#317 resolved — `wake-latency-cortex-m3` bench resurrected: build rot fixed, redesigned as two images
 (pub + sub so zenohd routes a real transport-arrival wake), async-wake fixed in the zpico shim (fire the
