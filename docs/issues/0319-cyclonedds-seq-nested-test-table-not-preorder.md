@@ -163,3 +163,23 @@ been latent since long before #267.
   also failed, but as -1002, which sent the reader looking at field kinds.
 - **Mutation-checked.** With the `validate_kind_table` call disabled, that test
   FAILS; restored, 16/16. So the gate detects the thing it claims to.
+
+## Follow-up: the lane stops being special (2026-07-28)
+
+The remaining half of "why it survived". `cyclonedds-ci` was a named step on
+the top-level `ci` line — the only RMW with one — and `just check` never ran
+it, so a red sat on main for two days.
+
+That slot is gone. The suite is now `check-rmw-cyclonedds`, a private lane in
+`check-build` beside `check-c`, `check-cpp` and `check-cli-tests`, which is
+where one backend's native test suite belongs. `just ci` is back to
+`check rust-rtos-link-check test-all`.
+
+Placement was chosen by measurement, not preference: a warm run is **~22s**,
+which the `check` tier can absorb, and `check` is the recipe people actually
+run. The best-effort skip when the Cyclone submodule is uninitialised is
+carried over unchanged, so contributors who do not touch the DDS backend are
+unaffected.
+
+Receipt: `just check` → rc=0 with `100% tests passed, 0 tests failed out of 16`
+in its output, i.e. the suite really runs there now.

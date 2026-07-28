@@ -50,8 +50,11 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
 - **Green CI locally BEFORE pushing — don't iterate on remote CI.** Run `just format`
   then `just ci` (or at least `just check`) locally and fix every failure first, so the
   push passes remote CI on the first try. `just ci` = `check` (fast + build, incl. embedded
-  clippy + every per-feature/per-example clippy) + `rust-rtos-link-check` + `test-all` +
-  `cyclonedds-ci`. Note: `check` runs clippy with `-D warnings`, so a toolchain bump can
+  clippy + every per-feature/per-example clippy, and the per-component lanes `check-c` /
+  `check-cpp` / `check-rmw-cyclonedds` / `check-cli-tests`) + `rust-rtos-link-check` +
+  `test-all`. A backend's own test suite belongs in a `check-*` lane, never as a named step
+  on the `ci` line — the Cyclone suite had one, and a red sat on main for two days because
+  `just check` never ran it (issue 0319). Note: `check` runs clippy with `-D warnings`, so a toolchain bump can
   surface NEW pre-existing lints (e.g. rust-1.96 `unnecessary_cast` / `drop_non_drop` /
   `not_unsafe_ptr_arg_deref`); fix them locally rather than discovering them remotely. CI
   stops at the first failing step, so one fix can unmask the next — re-run until fully green.

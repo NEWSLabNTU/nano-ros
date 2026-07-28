@@ -359,7 +359,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-cli-tests check-feature-set-ssot \
+    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-feature-set-ssot \
     native::check
     @echo "Build checks passed!"
 
@@ -1288,7 +1288,7 @@ rust-rtos-link-check:
 # gate ahead of `test-all` so the embedded-RTOS link-symbol
 # regression class surfaces immediately on `just ci`.
 [group("ci")]
-ci: check rust-rtos-link-check test-all cyclonedds-ci
+ci: check rust-rtos-link-check test-all
     @echo "CI passed!"
 
 # =============================================================================
@@ -1388,20 +1388,6 @@ acceptance: setup-cli
 ci-fast: check-fast check-no-std
     @echo "ci-fast passed!"
 
-# Cyclone DDS module CI step. Best-effort: skips cleanly when the
-# pinned Cyclone submodule hasn't been initialised (typical for
-# contributors not touching Phase 117). The `cyclonedds::ci` recipe
-# itself fails hard on actual test failures.
-[private]
-cyclonedds-ci:
-    #!/usr/bin/env bash
-    set -e
-    if [ ! -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
-        echo "Cyclone DDS skip: submodule not initialised"
-        echo "  (run \`just cyclonedds setup\` to enable)"
-        exit 0
-    fi
-    just cyclonedds ci
 
 # =============================================================================
 # Test Infrastructure
@@ -1739,6 +1725,30 @@ check-c-fmt:
     echo "  - clang-format (C examples)"
     git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" --dry-run --Werror
     echo "C formatting OK."
+
+# The Cyclone RMW's own CMake/ctest suite (descriptor builder + registry).
+#
+# This used to be a dedicated `cyclonedds-ci` step on the top-level `ci` line —
+# the only RMW with a named slot there. It is not special: it is one backend's
+# native test suite, so it belongs with the other per-component lanes here.
+#
+# Moving it into `check` is also the fix for how issue 0319 survived: that red
+# sat on main for two days because `cyclonedds-ci` ran only in `just ci`, and
+# `just check` is the recipe people actually run. Warm cost is ~22s.
+#
+# Best-effort: skips cleanly when the pinned Cyclone submodule is not
+# initialised (typical for contributors not touching the DDS backend). The
+# `cyclonedds::ci` recipe itself fails hard on real test failures.
+[private]
+check-rmw-cyclonedds:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
+        echo "Cyclone DDS skip: submodule not initialised"
+        echo "  (run \`just cyclonedds setup\` to enable)"
+        exit 0
+    fi
+    just cyclonedds ci
 
 # Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
 # (→ nros-macros → nros-build → nros-cli-core → the ros-launch-manifest submodule;
