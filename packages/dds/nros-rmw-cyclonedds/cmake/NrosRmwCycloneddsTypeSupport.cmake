@@ -49,6 +49,19 @@ if(NOT TARGET CycloneDDS::ddsc AND NOT IDLC_EXECUTABLE)
         "IDLC_EXECUTABLE for direct-compile (embedded) builds.")
 endif()
 
+# Issue 0325 — defined BEFORE its first use: the two calls below run at
+# file scope during include(), so a definition further down the file is not
+# yet parsed and cmake fails with `Unknown CMake command "_nros_find_idlc"`.
+function(_nros_find_idlc _out)
+    find_program(${_out} idlc
+        HINTS
+            "${CycloneDDS_DIR}/../../../bin"
+            "${CMAKE_INSTALL_PREFIX}/bin"
+            "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
+        NO_CMAKE_FIND_ROOT_PATH
+        DOC "Cyclone DDS IDL compiler (host tool)")
+endfunction()
+
 # Locate idlc — Cyclone exports it as `CycloneDDS::idlc` when it's
 # installed alongside ddsc.
 if(NOT TARGET CycloneDDS::idlc)
@@ -228,16 +241,6 @@ endif()
 # descriptors), so search the host even in a cross build —
 # NO_CMAKE_FIND_ROOT_PATH ignores the toolchain's find-root mode (some set
 # MODE_PROGRAM=ONLY, which would otherwise hide host idlc).
-function(_nros_find_idlc _out)
-    find_program(${_out} idlc
-        HINTS
-            "${CycloneDDS_DIR}/../../../bin"
-            "${CMAKE_INSTALL_PREFIX}/bin"
-            "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
-        NO_CMAKE_FIND_ROOT_PATH
-        DOC "Cyclone DDS IDL compiler (host tool)")
-endfunction()
-
 function(nros_rmw_cyclonedds_idlc_compile output_var)
     set(_options "")
     set(_one    IDL_FILE OUTPUT_DIR TYPE_NAME PKG_NAME)
