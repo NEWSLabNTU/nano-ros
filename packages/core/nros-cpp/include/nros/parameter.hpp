@@ -556,6 +556,26 @@ class ParameterServer {
         if (rc != NROS_RET_OK) {
             return Result(rc);
         }
+        /* issue 0340 — the capacity word sits immediately BEFORE the block
+           (see `declare_seq_impl`'s layout comment), and reading it via
+           `cur[-1]` is only valid because `cur` is the very pointer this
+           header handed the C server: `nros_param_declare_*_array` stores the
+           caller's pointer verbatim (borrow semantics, stated in
+           `nros/parameter.h`) and `nros_param_get_*_array` returns it
+           unchanged.
+           That contract is now documented on the C side, but documentation
+           does not stop a future change from copying arrays or returning
+           server-owned storage — at which point `cur[-1]` would read whatever
+           precedes an unrelated buffer. So verify the pointer really is one of
+           our pool blocks first. A violation becomes a loud
+           INVALID_ARGUMENT instead of a silent out-of-bounds read. */
+        const unsigned char* blk = reinterpret_cast<const unsigned char*>(cur);
+        /* Upper bound is INCLUSIVE: a zero-capacity array declared at the end
+           of the pool yields `dst == seq_pool_ + SeqPoolBytes` (base == end),
+           which is a legitimate block whose capacity word still precedes it. */
+        if (blk < seq_pool_ + sizeof(uint64_t) || blk > seq_pool_ + SeqPoolBytes) {
+            return Result(NROS_RET_INVALID_ARGUMENT);
+        }
         const ::size_t cap = static_cast<::size_t>(reinterpret_cast<const uint64_t*>(cur)[-1]);
         if (len > cap) {
             return Result(NROS_RET_INVALID_ARGUMENT);

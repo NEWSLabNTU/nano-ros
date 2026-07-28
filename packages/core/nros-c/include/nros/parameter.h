@@ -258,6 +258,34 @@ NROS_PUBLIC
 nros_ret_t nros_param_declare_string_array(struct nros_param_server_t* server, const char* name,
                                            const char* const* data, size_t len);
 
+/**
+ * @name Array parameter pointer identity (issue 0340)
+ *
+ * The array `declare` / `set` calls above take BORROWED storage: the server
+ * records the caller's `data` pointer verbatim and never copies the elements,
+ * which is why the caller must keep that memory valid for the parameter's
+ * lifetime. The `get` calls below return **that same pointer**, unchanged —
+ * not a copy, not an interior pointer, not server-owned storage.
+ *
+ * That identity is LOAD-BEARING, not incidental. `nros/parameter.hpp`'s
+ * `ParameterServer` allocates array blocks out of a header-side pool with an
+ * out-of-band capacity word written immediately in front of each block, and
+ * recovers the capacity on `set` by reading back from the returned pointer.
+ * If this side ever starts copying arrays, returning an interior pointer, or
+ * handing back storage it owns, that read lands on unrelated memory.
+ *
+ * The C++ side now verifies the returned pointer lies inside its own pool
+ * before trusting it, so a violation surfaces as `NROS_RET_INVALID_ARGUMENT`
+ * rather than an out-of-bounds read — but the guarantee is still part of this
+ * ABI. Changing it requires changing `parameter.hpp` in the same commit.
+ *
+ * The proper fix is to carry the capacity in server-owned state (a field on
+ * `nros_param_array_t`, or a `nros_param_get_*_array_capacity()` accessor).
+ * That is a breaking change to a hand-mirrored FFI struct and a public C ABI,
+ * so it is deferred rather than done silently.
+ * @{
+ */
+
 /** @brief Get a byte array parameter (returns stored pointer + length). */
 NROS_PUBLIC
 nros_ret_t nros_param_get_byte_array(const struct nros_param_server_t* server, const char* name,
@@ -278,6 +306,7 @@ nros_ret_t nros_param_get_double_array(const struct nros_param_server_t* server,
 NROS_PUBLIC
 nros_ret_t nros_param_get_string_array(const struct nros_param_server_t* server, const char* name,
                                        const char* const** data, size_t* len);
+/** @} */
 
 /** @brief Set a byte array parameter (replaces stored pointer + length). */
 NROS_PUBLIC
