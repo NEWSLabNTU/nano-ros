@@ -16,7 +16,7 @@ pub type nros_rmw_event_callback_t = ::core::option::Option<
         user_context: *mut core::ffi::c_void,
     ),
 >;
-#[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n `#[repr(C)]` mirror of the Rust-side `NrosTransportOps`. Same\n layout, same threading contract, same return codes."]
+#[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
 #[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `nros_rmw_publisher_options_t` / `nros_rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
 #[repr(C)]
@@ -155,7 +155,7 @@ pub struct nros_rmw_count_status_t {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
-    #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `nros_rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`."]
+    #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `nros_rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`.\n\n  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`\n              rather than the enum to keep the slot's width fixed\n              across compilers. A backend with no peer/client\n              distinction must IGNORE it, not reject it."]
     pub create_session: ::core::option::Option<
         unsafe extern "C" fn(
             locator: *const core::ffi::c_char,
@@ -401,7 +401,7 @@ pub struct nros_rmw_vtable_t {
         ) -> i32,
     >,
 }
-#[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n `#[repr(C)]` mirror of the Rust-side `NrosTransportOps`. Same\n layout, same threading contract, same return codes."]
+#[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_transport_ops_s {
@@ -492,6 +492,14 @@ pub mod nros_rmw_event_kind_t {
     pub const NROS_RMW_EVENT_LIVELINESS_LOST: Type = 3;
     #[doc = " Publisher: this publisher promised X Hz, fell behind."]
     pub const NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED: Type = 4;
+}
+pub mod nros_rmw_session_mode_t {
+    #[doc = " Session mode for `create_session`'s @p mode parameter (issue 0331).\n\n These values were previously an undocumented bare `uint8_t` with no legal-\n value list — the only slot in the vtable without one — encoded inline as\n `0u8` / `1u8` at the Rust boundary.\n\n Divergence from `rmw.h`, recorded deliberately: `rmw_init_options_t` carries\n domain_id, enclave, security_options and discovery_options, and has NO\n session-mode concept. This parameter is closest to zenoh's `whatami`, and a\n backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it\n rather than fail. Folding it into backend-private config behind the locator\n — so the agnostic vtable stops carrying a backend-shaped field — is the\n structural fix, and is not done here; see issue 0331."]
+    pub type Type = core::ffi::c_uint;
+    #[doc = " Connect to a router/agent as a client. The default."]
+    pub const NROS_RMW_SESSION_MODE_CLIENT: Type = 0;
+    #[doc = " Peer-to-peer, no router. Backends without a peer mode ignore this."]
+    pub const NROS_RMW_SESSION_MODE_PEER: Type = 1;
 }
 unsafe extern "C" {
     #[doc = " Register a custom RMW backend under the implicit name \"default\".\n  Legacy single-arg form retained for source compatibility with\n  backend ctors authored before the named registry (Phase 104.B.2).\n\n  Deprecated (Phase 128.B.5): every in-tree backend now calls\n  `nros_rmw_cffi_register_named` with its canonical name. The\n  unnamed shim will be removed in a follow-up phase.\n  Returns NROS_RMW_RET_OK."]

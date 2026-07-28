@@ -72,7 +72,14 @@ extern "C" {
  * dereferences `user_data`; it's the caller's per-transport
  * context, threaded back into every callback's first argument.
  *
- * `#[repr(C)]` mirror of the Rust-side `NrosTransportOps`. Same
+ * THIS declaration is the ABI single source of truth (RFC-0054): Rust
+ * consumes the committed bindgen output of this header, and
+ * `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in
+ * lockstep with it — not the other way round. The previous wording had that
+ * backwards (issue 0331). Layout equivalence is asserted on both sides: see
+ * `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`
+ * and the `const _` size/align block beside
+ * `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same
  * layout, same threading contract, same return codes.
  */
 typedef struct nros_transport_ops_s {

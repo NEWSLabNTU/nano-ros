@@ -1035,6 +1035,32 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
     }
 }
 
+// issue 0331 — `nros_rmw_cffi_set_custom_transport` takes the GENERATED
+// `nros_transport_ops_t`, not the hand-written `nros_rmw::NrosTransportOps`.
+//
+// Under RFC-0054 the C header is the ABI SSoT and Rust consumes the committed
+// bindgen output. The export used to take the hand-written Rust mirror while
+// `rmw_transport.h` declared the generated type, so the two could drift and a
+// C caller's struct layout was only accidentally correct.
+//
+// The two are still bridged by a `transmute_copy`, because
+// `nros_rmw::set_custom_transport` takes the Rust type — but the bridge is
+// guarded at COMPILE TIME here, so a drift that used to be silent is a build
+// failure.
+const _: () = {
+    assert!(
+        core::mem::size_of::<generated::nros_transport_ops_t>()
+            == core::mem::size_of::<nros_rmw::NrosTransportOps>(),
+        "nros_transport_ops_t and NrosTransportOps must have identical size \
+         (RFC-0054: the header is the SSoT; regenerate with scripts/gen-abi-bindings.sh)"
+    );
+    assert!(
+        core::mem::align_of::<generated::nros_transport_ops_t>()
+            == core::mem::align_of::<nros_rmw::NrosTransportOps>(),
+        "nros_transport_ops_t and NrosTransportOps must have identical alignment"
+    );
+};
+
 /// Phase 115.A.2 — C entry point for installing a custom transport.
 ///
 /// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`
@@ -1054,14 +1080,31 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
 /// install).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
-    ops: *const nros_rmw::NrosTransportOps,
+    ops: *const generated::nros_transport_ops_t,
 ) -> NrosRmwRet {
     if ops.is_null() {
         // Clear: ignore any error (None is always accepted).
         let _ = unsafe { nros_rmw::set_custom_transport(None) };
         return NROS_RMW_RET_OK;
     }
-    let copy = unsafe { *ops };
+    // SAFETY: caller guarantees `ops` is valid for one read.
+    let src = unsafe { &*ops };
+
+    // issue 0331 — the generated type's fn-pointer slots are `Option<fn>`
+    // (C nullability); `NrosTransportOps`' are plain `fn`. The two are
+    // layout-identical via the null-pointer optimization, so a NULL slot
+    // transmutes into a `fn` that is UB the moment the runtime calls it.
+    // Taking the hand-written Rust type at this boundary made that
+    // unrepresentable-looking but not unreachable — a C caller could always
+    // pass NULL. Reject it here, before the copy.
+    if src.open.is_none() || src.close.is_none() || src.write.is_none() || src.read.is_none() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+
+    // SAFETY: layout equivalence of the two representations is asserted
+    // above, and every fn slot is non-NULL per the check just made, so this
+    // reinterpretation can neither silently mismatch nor produce a null `fn`.
+    let copy: nros_rmw::NrosTransportOps = unsafe { core::mem::transmute_copy(src) };
     match unsafe { nros_rmw::set_custom_transport(Some(copy)) } {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
@@ -2705,9 +2748,16 @@ impl nros_rmw::Rmw for CffiRmw {
     type Error = TransportError;
 
     fn open(self, config: &nros_rmw::RmwConfig) -> Result<CffiSession, TransportError> {
+        // issue 0331 — the wire values are specified by
+        // `nros_rmw_session_mode_t` in rmw_vtable.h; keep this match aligned
+        // with it rather than restating bare literals.
         let mode = match config.mode {
-            nros_rmw::SessionMode::Client => 0u8,
-            nros_rmw::SessionMode::Peer => 1u8,
+            nros_rmw::SessionMode::Client => {
+                generated::nros_rmw_session_mode_t::NROS_RMW_SESSION_MODE_CLIENT as u8
+            }
+            nros_rmw::SessionMode::Peer => {
+                generated::nros_rmw_session_mode_t::NROS_RMW_SESSION_MODE_PEER as u8
+            }
         };
         CffiSession::open(config.locator, mode, config.domain_id, config.node_name)
     }

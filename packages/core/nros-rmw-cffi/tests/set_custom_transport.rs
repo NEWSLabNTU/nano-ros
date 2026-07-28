@@ -4,6 +4,8 @@
 //!  - happy path (V1 ops install + clear via NULL)
 //!  - abi_version mismatch -> NROS_RMW_RET_INCOMPATIBLE_ABI
 //!  - install does NOT clobber on rejection
+//!  - a NULL callback slot is rejected, not transmuted into an invalid `fn`
+//!    (issue 0331)
 //!
 //! No backend involved — the test interacts directly with
 //! `nros_rmw_cffi`'s C ABI surface, which is what a non-Rust
@@ -11,12 +13,10 @@
 
 use core::ffi::c_void;
 
-use nros_rmw::{
-    NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, peek_custom_transport,
-    take_custom_transport,
-};
+use nros_rmw::{NROS_TRANSPORT_OPS_ABI_VERSION_V1, peek_custom_transport, take_custom_transport};
 use nros_rmw_cffi::{
-    NROS_RMW_RET_INCOMPATIBLE_ABI, NROS_RMW_RET_OK, nros_rmw_cffi_set_custom_transport,
+    NROS_RMW_RET_INCOMPATIBLE_ABI, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, generated,
+    nros_rmw_cffi_set_custom_transport,
 };
 
 unsafe extern "C" fn stub_open(_user: *mut c_void, _params: *const c_void) -> i32 {
@@ -35,15 +35,19 @@ unsafe extern "C" fn stub_read(
     0
 }
 
-fn make_ops() -> NrosTransportOps {
-    NrosTransportOps {
+/// issue 0331 — build the GENERATED type, which is what a C caller actually
+/// passes. Its fn slots are `Option<fn>` because C pointers are nullable; the
+/// export used to take the hand-written Rust mirror, whose slots are plain
+/// `fn`, so this asymmetry was invisible from the test side.
+fn make_ops() -> generated::nros_transport_ops_t {
+    generated::nros_transport_ops_t {
         abi_version: NROS_TRANSPORT_OPS_ABI_VERSION_V1,
         _reserved: 0,
         user_data: core::ptr::null_mut(),
-        open: stub_open,
-        close: stub_close,
-        write: stub_write,
-        read: stub_read,
+        open: Some(stub_open),
+        close: Some(stub_close),
+        write: Some(stub_write),
+        read: Some(stub_read),
     }
 }
 
@@ -91,5 +95,40 @@ fn rejection_preserves_previous_install() {
     assert!(peek_custom_transport().is_some());
 
     // Clean up.
+    let _ = take_custom_transport();
+}
+
+/// A NULL slot is what the null-pointer optimization would silently turn into
+/// an invalid `fn` — calling it is UB. It must be refused at the boundary, and
+/// like an ABI mismatch it must not clobber an existing install.
+#[test]
+fn null_callback_slot_rejected() {
+    let good = make_ops();
+    let rc = unsafe { nros_rmw_cffi_set_custom_transport(&good) };
+    assert_eq!(rc, NROS_RMW_RET_OK);
+
+    for (name, mut bad) in [
+        ("open", make_ops()),
+        ("close", make_ops()),
+        ("write", make_ops()),
+        ("read", make_ops()),
+    ] {
+        match name {
+            "open" => bad.open = None,
+            "close" => bad.close = None,
+            "write" => bad.write = None,
+            _ => bad.read = None,
+        }
+        let rc = unsafe { nros_rmw_cffi_set_custom_transport(&bad) };
+        assert_eq!(
+            rc, NROS_RMW_RET_INVALID_ARGUMENT,
+            "NULL `{name}` must be refused"
+        );
+        assert!(
+            peek_custom_transport().is_some(),
+            "refusing NULL `{name}` must not clobber the previous install"
+        );
+    }
+
     let _ = take_custom_transport();
 }

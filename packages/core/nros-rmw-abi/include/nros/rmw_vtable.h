@@ -47,7 +47,12 @@ typedef struct nros_rmw_vtable_t {
      *  own `create_*` convention). The runtime supplies a
      *  zero-initialised `nros_rmw_session_t` via @p out with
      *  `node_name` / `namespace_` already filled. The backend writes
-     *  `out->backend_data`. */
+     *  `out->backend_data`.
+     *
+     *  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`
+     *              rather than the enum to keep the slot's width fixed
+     *              across compilers. A backend with no peer/client
+     *              distinction must IGNORE it, not reject it. */
     nros_rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
                            uint32_t domain_id, const char *node_name,
                            nros_rmw_session_t *out);
@@ -400,6 +405,28 @@ typedef struct nros_rmw_vtable_t {
         void                  *ctx,
         void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len));
 } nros_rmw_vtable_t;
+
+/**
+ * Session mode for `create_session`'s @p mode parameter (issue 0331).
+ *
+ * These values were previously an undocumented bare `uint8_t` with no legal-
+ * value list — the only slot in the vtable without one — encoded inline as
+ * `0u8` / `1u8` at the Rust boundary.
+ *
+ * Divergence from `rmw.h`, recorded deliberately: `rmw_init_options_t` carries
+ * domain_id, enclave, security_options and discovery_options, and has NO
+ * session-mode concept. This parameter is closest to zenoh's `whatami`, and a
+ * backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it
+ * rather than fail. Folding it into backend-private config behind the locator
+ * — so the agnostic vtable stops carrying a backend-shaped field — is the
+ * structural fix, and is not done here; see issue 0331.
+ */
+typedef enum nros_rmw_session_mode_t {
+    /** Connect to a router/agent as a client. The default. */
+    NROS_RMW_SESSION_MODE_CLIENT = 0,
+    /** Peer-to-peer, no router. Backends without a peer mode ignore this. */
+    NROS_RMW_SESSION_MODE_PEER = 1,
+} nros_rmw_session_mode_t;
 
 /** Register a custom RMW backend under the implicit name "default".
  *  Legacy single-arg form retained for source compatibility with

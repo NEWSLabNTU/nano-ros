@@ -17,6 +17,7 @@
  */
 
 #include <nros/rmw_entity.h>
+#include <nros/rmw_transport.h>
 #include <nros/rmw_event.h>
 #include <nros/rmw_vtable.h>
 
@@ -46,6 +47,20 @@ _Static_assert(sizeof(nros_rmw_publisher_options_t) == 8,
                "nros_rmw_publisher_options_t size drifted (8)");
 _Static_assert(sizeof(nros_rmw_subscription_options_t) == 8,
                "nros_rmw_subscription_options_t size drifted (8)");
+
+/* issue 0331 — `nros_transport_ops_t` had NO layout assert on either side,
+ * while `nros_rmw_cffi_set_custom_transport` bridged the C type to the Rust
+ * `NrosTransportOps` by reinterpretation. Nothing would have caught an append
+ * to one and not the other.
+ *
+ * Expressed in terms of `sizeof(void*)` rather than a literal so the assert
+ * holds on a 32-bit host too: 2 x uint32_t, then user_data + 4 function
+ * pointers. The Rust half is the size/align `const _` block next to that
+ * export in nros-rmw-cffi/src/lib.rs. */
+_Static_assert(sizeof(nros_transport_ops_t) == 2 * sizeof(uint32_t) + 5 * sizeof(void*),
+               "nros_transport_ops_t size drifted from the Rust mirror");
+_Static_assert(_Alignof(nros_transport_ops_t) >= sizeof(void*),
+               "nros_transport_ops_t under-aligned vs pointer");
 
 /* Opaque handle structs are pointer-aligned (they carry a `void*`
  * backend_data / backend pointer). Rust mirror asserts the same via

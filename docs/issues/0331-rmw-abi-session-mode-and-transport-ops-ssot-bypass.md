@@ -1,7 +1,7 @@
 ---
 id: 331
 title: "RMW ABI seams: create_session carries zenoh's whatami as an undocumented uint8_t mode, and set_custom_transport bypasses the RFC-0054 generated type with no layout assert"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: core
@@ -72,3 +72,50 @@ introspection (`rmw_get_topic_names_and_types`, `rmw_count_publishers`), no
 `nros_rmw_service_t`/`nros_rmw_client_t` (`rmw_entity.h:332,347`) carry no `qos`
 field, unlike their publisher/subscription peers, so a backend cannot read back
 the profile it was created with. → append to 0242.
+
+## Resolution (2026-07-28)
+
+### Part 2 — `set_custom_transport` SSoT bypass: fixed
+
+`nros_rmw_cffi_set_custom_transport` now takes
+`generated::nros_transport_ops_t` — the committed bindgen output of the header
+that RFC-0054 makes the SSoT — instead of the hand-written
+`nros_rmw::NrosTransportOps`. The two are still bridged by a `transmute_copy`
+(the Rust-side setter takes the Rust type), but the bridge is guarded by a
+`const _` block asserting equal size AND alignment, so a drift that used to be
+silent is now a build failure.
+
+Taking the generated type also exposed a latent hole the old signature hid: the
+generated struct's fn slots are `Option<fn>` because C pointers are nullable,
+while `NrosTransportOps`' are plain `fn`. The two are layout-identical via the
+null-pointer optimization, so a C caller passing a NULL callback produced an
+invalid `fn` that was UB the moment the runtime called it. The export now
+rejects a NULL `open`/`close`/`write`/`read` with
+`NROS_RMW_RET_INVALID_ARGUMENT` before the copy, and refusing does not clobber
+a previous install.
+
+Gates: `_Static_assert`s for `nros_transport_ops_t`'s size and alignment added
+to `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`, expressed as
+`2 * sizeof(uint32_t) + 5 * sizeof(void*)` so they hold on 32-bit targets too.
+New test `null_callback_slot_rejected` in `tests/set_custom_transport.rs`;
+mutation-checked (removing the guard makes it FAIL).
+
+The header's own doc had the SSoT relationship written **backwards** — it
+described the C declaration as a "`#[repr(C)]` mirror of the Rust-side
+`NrosTransportOps`", which is exactly inverted post-RFC-0054. Corrected.
+
+### Part 1 — the undocumented `uint8_t mode`: documented, not restructured
+
+The legal values are now specified: `nros_rmw_session_mode_t` in
+`rmw_vtable.h` declares `NROS_RMW_SESSION_MODE_CLIENT = 0` and
+`NROS_RMW_SESSION_MODE_PEER = 1`, and the `create_session` slot documents the
+parameter, states that a backend with no client/peer distinction must IGNORE it
+rather than reject it, and records WHY the seam diverges from
+`rmw_init_options_t`. The Rust boundary in `nros-rmw-cffi` now maps
+`SessionMode` onto those named constants instead of restating bare `0u8`/`1u8`.
+
+The structural half — folding the mode into backend-private config behind the
+locator, so the agnostic vtable stops carrying a backend-shaped field — is NOT
+done. It is the same class as issue 0330 (backend facts in agnostic layers) and
+is better done alongside that issue's part 3 than as an isolated ABI break.
+
