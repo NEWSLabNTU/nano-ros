@@ -208,6 +208,82 @@ byte-identical). Stage 3 enumeration deferred (out of scope); the build-c/cpp/xr
 way was already fixed by #314. See `archived/0316-*`. fc6414598. (2026-07-28, filed as #313 and
 renumbered on push — origin already had two))
 
+**#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh:189` inits the RETIRED
+`ros-launch-manifest` submodule path, so a **fresh clone cannot build the CLI** (it only works
+here because two retired worktrees remain on disk); 9 doc copies of the dead command,
+`AGENTS.md:285` says "NOT `--recursive`" (now required), `just doctor` checks the wrong prereq,
+and the book still teaches the 0285 PATH footgun. P1. See `0320-*`. (audit 2026-07-28)
+
+**#321** — `output_marker_gate` is **RED on main**: six inline marker literals in the
+ros-editions family. Landed unnoticed because `justfile:1174` excludes those binaries from the
+sweep while the gate (not excluded) lints their source from disk — two lanes, neither covering
+the other. The gate also hardcodes its own 9-marker table vs output.rs's ~30. P1. See `0321-*`.
+
+**#322** — `accept_goal` replies `accepted=true` BEFORE `active_goals.push`, `MAX_GOALS`=4 and no
+caller pre-checks → the 5th concurrent goal is acked then dropped; client waits forever. P1.
+See `0322-*`.
+
+**#323** — parameter wire values silently truncated: `from_rcl_value`/`to_rcl_value` discard every
+capacity error and still report success; unknown `type_` → `NotSet`; hosted `unwrap_or_default()`
+turns oversize values into `NotSet`/empty arrays. P1. See `0323-*`.
+
+**#324** — `spin_once` discards `session.drive_io()` errors and NO session-health surface exists →
+a dead session spins `Ok(())` forever (same for the C blocking spins). P1. See `0324-*`.
+
+**#325** — tool-resolver residue after #219: `integrations/nano-ros/CMakeLists.txt:82` uses HINTS
+(stale `~/.nros/bin` CLI shadows the in-tree one) and then fails SOFT; a 5th bespoke `nros`
+resolver caches dead paths; three `idlc` resolvers invert their own documented precedence. P1.
+See `0325-*`.
+
+**#326** — Zephyr guards keyed on the possibly-unset `NANO_ROS_PLATFORM` at 5 more sites (#282
+fixed one of six, and introduced a second idiom). Latent, not live. See `0326-*`.
+
+**#327** — the ROS-edition axis is outside the test matrix: `Cell` has no edition field, five
+per-cell `ros_editions_*` files bypass RFC-0051, ARCHITECTURE §2 still calls jazzy "planned"
+though it is the delivered default, and the humble/iron zenoh carve-out lives only in a code
+comment. See `0327-*`.
+
+**#328** — harness gaps: ~30 fixture resolvers in `binaries/mod.rs` still existence-only (#222's
+freshness fix never propagated), and all **24 `#[ignore]` tests are unreachable** — nothing passes
+`--ignored`, including the only gate on heap/borrowed storage-mode codegen. See `0328-*`.
+
+**#329** — C++ headers carry runtime policy + wire decoding: the bounded-spin loop exists 4× with
+diverged behavior, `init()` re-implements the RFC-0045 ladder, `action_client.hpp` hand-decodes the
+goal-accept payload. #226 class. See `0329-*`.
+
+**#330** — backend facts in agnostic layers: the zenoh locator default is hardcoded in 4 places
+(two RMW-blind), `BoardConfig::zenoh_locator` names a backend in a core public trait, and the
+façade macro hardcodes two `register()` calls. #225 class. See `0330-*`.
+
+**#331** — RMW ABI seams: `create_session` carries zenoh's `whatami` as an undocumented `uint8_t
+mode` with no rmw.h counterpart; `set_custom_transport` bypasses the RFC-0054 generated type with
+no layout assert. Further rmw.h gaps appended to #0242. See `0331-*`.
+
+**#332** — freestanding contract asserted but not enforced: `bridge.hpp` includes
+`<string>`/`<vector>` ungated (new 0112 instance) and the `check-cpp` probe can't catch it (no
+`-nostdinc++`); `check.h` printf's from a public C header; 21 vtable slots `.expect()` on the
+embedded path while registration never checks completeness. See `0332-*`.
+
+**#333** — `nros new` emits projects that don't run: for 4 of 8 documented platforms the board dep
+is interpolated as a TOML **comment** and vanishes silently; the template is the retired
+hand-rolled `no_mangle` entry shape instead of `nros::main!`. See `0333-*`.
+
+**#334** — hardcoded build-host Zephyr-SDK path in the test harness (`zephyr.rs:417`), the last
+tracked absolute-path leak outside the SystemModels of **#320**; also a second SSoT for both the SDK
+version and the host tuple. Shared `git grep` gate proposed with #320. See `0334-*`.
+
+**#335** — two copy-out examples carry framework gaps: a PX4 weak-symbol link stub (self-labelled
+"NOT application logic") and five raw `extern "C"` lifecycle callbacks the user must write — an
+FFI regression test wearing an example's clothes. See `0335-*`.
+
+**#316** — compile-time pool knobs that silently do nothing, two ways. On Zephyr,
+`set(ENV{...})` is unconditional, so 20 of 61 knobs have their environment value overwritten by the
+Kconfig default while the other 41 pass through — opposite precedence, identical spelling, no
+diagnostic. Six of `autoware_sentinel`'s tuned knobs are dead this way. Separately, five
+`CONFIG_NROS_XRCE_*` options are exported as `XRCE_*` while the only reader wants `NROS_XRCE_*`.
+Includes a full audit: five distinct sizing mechanisms, only two of which a build-script hook can
+see. See `0316-*`. (2026-07-28, filed as #313 and renumbered on push — origin already had two)
+
 (#317 resolved — `wake-latency-cortex-m3` bench resurrected: build rot fixed, redesigned as two images
 (pub + sub so zenohd routes a real transport-arrival wake), async-wake fixed in the zpico shim (fire the
 runtime wake-cb from the read-task arrival hook), CSV emit fixed; test takes its intended CYCCNT skip on
