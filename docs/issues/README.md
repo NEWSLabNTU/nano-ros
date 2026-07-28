@@ -154,10 +154,12 @@ messages as a QoS-matched pair. Same shape produced #307 and #308. The two e2es 
 the fix pattern (observe the VALUE / the advertised profile, and mutation-check it). Audit which
 cells would still pass with their feature removed. See `0309-*`. (2026-07-28)
 
-**#310** — `cargo +nightly fmt --all` reformats vendored submodule sources (they are path-dep
-workspace members), leaving the submodule `-dirty` and blocking `git rebase` with an error that never
-mentions formatting. `.clang-format-ignore` guards this class for C/C++; Rust has no equivalent. See
-`0310-*`. (2026-07-28)
+**#310** — `cargo +nightly fmt --all` reformats VENDORED SUBMODULE sources, leaving them `-dirty` and
+blocking a later `git rebase` with an error that never mentions formatting. Measured mechanism (the
+first draft guessed wrong): not workspace membership — both workspaces exclude the vendored trees —
+but PATH DEPENDENCIES, which `--all` follows across workspace and directory boundaries. `just format`
+runs plain `cargo fmt` and is safe; the hazard is reaching for `--all` by hand. Latent: only bites
+when the pinned submodule is not already rustfmt-clean. See `0310-*`. (2026-07-28)
 
 Recently resolved: **#308** — a model's `qos_overrides.*` configured QoS on a C++ image and silently
 nothing on a C or Rust one. `emit_c` had no QoS code at all; the Rust path had no MECHANISM (overrides
