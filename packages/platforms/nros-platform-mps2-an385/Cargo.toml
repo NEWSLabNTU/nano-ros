@@ -11,7 +11,7 @@ name = "nros_platform_mps2_an385"
 
 [features]
 # `libc-stubs` on by default so bare-metal consumers (the mps2-an385 baremetal
-# board + its fixtures) keep the freestanding libc symbols. Issue #0313 — a
+# board + its fixtures) keep the freestanding libc symbols. Issue #0317 — a
 # FreeRTOS consumer that reuses only this crate's Cortex-M timing (DWT) already
 # has picolibc from the board, so it must `default-features = false` here to
 # avoid a `duplicate symbol: strtol` link conflict; PRNG / sleep / timing stay.

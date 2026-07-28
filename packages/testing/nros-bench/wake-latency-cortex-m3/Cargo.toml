@@ -8,8 +8,20 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "Phase 141.D wake-latency microbench on FreeRTOS + Cortex-M3 + zenoh-pico"
 
+# Issue #0317 — two-image bench: the shared config/scenario consts live in the
+# crate lib; the SUBSCRIBER (measured) and PUBLISHER run as separate QEMU images
+# so the zenohd router delivers a real transport-arrival wake to the subscriber.
+[lib]
+
 [[bin]]
 name = "wake-latency-cortex-m3"
+path = "src/main.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "wake-latency-pub"
+path = "src/publisher.rs"
 test = false
 bench = false
 
@@ -29,7 +41,7 @@ scenario-burst = []  # 10 messages back-to-back
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
-# Phase 230 (#0313) — the platform layer split out of `nros` / `nros-node`;
+# Phase 230 (#0317) — the platform layer split out of `nros` / `nros-node`;
 # platform symbols now come from the board dep + `nros-platform-mps2-an385` (below)
 # and the zpico wiring in `nros-rmw-zenoh/platform-freertos`. So `nros` / `nros-node`
 # no longer carry a `platform-freertos` feature.
@@ -47,7 +59,7 @@ nros-node = { path = "../../../../packages/core/nros-node", default-features = f
     "rmw-cffi",
     "wake-latency-probe",
 ] }
-# Issue #0313 — used ONLY for the Cortex-M DWT timing (`CycleCounter`,
+# Issue #0317 — used ONLY for the Cortex-M DWT timing (`CycleCounter`,
 # `clock_cycles`, `cycles_to_ns`). `default-features = false` drops its
 # `libc-stubs` (this is a FreeRTOS/picolibc build — the board already provides
 # libc), avoiding a `duplicate symbol: strtol` link conflict.
@@ -58,7 +70,7 @@ nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features 
 ] }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
-# Phase 230 (#0313) — was pulled transitively via `nros-node/platform-freertos`;
+# Phase 230 (#0317) — was pulled transitively via `nros-node/platform-freertos`;
 # now a direct dep for the semihosting `debug::exit` at scenario end.
 cortex-m-semihosting = "0.5"
 heapless = "0.8"

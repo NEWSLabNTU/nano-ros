@@ -82,11 +82,39 @@ samples. The bench's own top comment says it deliberately wants transport-arriva
 "not a local short-circuit" — local delivery defeats the measurement. The env
 override was reverted (no valid consumer).
 
-**Direction: redesign the bench as TWO images** — a separate publisher image and
-the subscriber-under-test image — so the zenohd router genuinely routes the
-sample between two distinct sessions, giving a real transport-arrival wake that
-fires the probe. (A single-session pub→sub through a vanilla router does not
-echo back to the publishing session.) That is a Phase-141-class bench rework,
-distinct from the build rot resolved above; the host runner
-`nros-tests::wake_latency_cortex_m3` + `QemuProcess` harness can drive two QEMU
-instances the way the freertos talker/listener interop tests already do.
+## Two-image redesign — DONE + delivery VERIFIED (2026-07-28)
+
+Redesigned the bench as TWO images (`src/lib.rs` shared config/scenario consts +
+two bins): the **publisher** (`wake-latency-pub`, distinct IP/MAC/session) pubs
+`Int32` on `/wake-latency` at 100 Hz, and the **subscriber**
+(`wake-latency-cortex-m3`) subscribes + runs the wake-probe. The host runner
+starts both QEMUs (`start_mps2_an385_networked` — `-icount shift=auto` +
+LAN9118 slirp) against a `ZenohRouter::start_slirp` on `0.0.0.0:7800`, mirroring
+the passing `test_qemu_bsp_pubsub_e2e`. Both images build (added to `just freertos
+build-fixture-extras`).
+
+**Delivery works** (verified with a temporary rx counter): the subscriber's
+callback fires on the publisher's samples routed through zenohd (`rx≈2500` over a
+25 s run) — the original same-image self-delivery blocker is GONE.
+
+## Remaining — the wake-cb async-wake gap (multi-threaded zpico)
+
+The `wake_latency_cortex_m3` runtime test now **skips**: delivery works but the
+probe still captures 0 samples. Root cause (isolated): the probe's `on_wake` (T0)
+fires only from the RMW **wake callback**, which the zpico shim invokes solely
+from the **main-thread `drive_io` poll path** (`nros-rmw-zenoh/src/shim/session.rs`
+`drive_io`: `if spin_once() saw work { fire wake_cb }`). On the multi-threaded
+FreeRTOS backend the sample is received by the **async read task**, not
+`drive_io`, so `drive_io` returns `n=0`, the wake_cb never fires, and the executor
+does not cv-wait to be woken — yet the sample is still queued + dispatched
+(`on_dispatch`/callback run). So `on_dispatch` (T1) has no paired `on_wake` (T0)
+→ 0 probe samples.
+
+**Direction (a distinct executor/zpico fix, NOT a bench change):** have the zpico
+read task invoke the session wake callback on subscription-sample arrival (thread
+`wake_cb`/`wake_ctx` to the subscriber data handler), and make the embedded
+executor's `spin_once` cv-wait on the async-wake signal (`has_async_wake`) so the
+wake actually fires `on_wake` before dispatch. Affects the multi-threaded hot
+path + every embedded async subscriber, so it needs its own scope + an embedded
+regression sweep. Until then the test skips with this reference and the build lane
+guards both images compiling.
