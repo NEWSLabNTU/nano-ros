@@ -44,10 +44,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#344** — feature: implement heap/borrowed storage modes for srv/action payloads. The six
-srv/action templates have ZERO `is_heap` branches (messages have 12 in Rust, 6 in C); #343 made
-that fail loudly, this makes it work. Fix shape: factor the message templates' serde arms into
-shared jinja macros — six more hand-written copies is what caused the divergence. See `0344-*`.
+**#345** — C heap on srv/action payloads needs a `_fini` surface AND an ownership convention:
+`service_c.*`/`action_c.*` emit no fini at all, so supporting heap there means new fini functions,
+header decls, and every C consumer taught to call them — a C-API contract change, not codegen
+(allocating structs nobody frees would leak per request). Also covers `borrowed`, which would
+silently degrade to `owned` for lack of a view type. See `0345-*`.
+
+Recently resolved: **#344** — RFC-0033 `heap` now works on **Rust** srv/action payloads. The
+divergence turned out to be only the DESERIALIZE arm (Rust serialization is already container
+agnostic), so one shared macro — `templates/_nros_field.jinja`, imported by the message, service
+and action templates — was the whole fix. Proven output-preserving against a 10-file golden corpus
+(byte-identical but for an intended string-seq convergence no committed file carries). The blanket
+#343 rejection became a per-language policy table; 8 tests, including the defect inverted into a
+gate: struct type and deserialize body must agree. C heap and `borrowed` stay rejected with reasons
+→ #345. See `archived/0344-*`. (2026-07-28)
 
 Recently resolved: **#343** — RFC-0033 storage modes were resolved for srv/action but implemented
 only in the MESSAGE templates, so a heap-configured `.srv` field emitted the heap TYPE with an

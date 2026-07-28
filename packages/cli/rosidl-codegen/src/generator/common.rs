@@ -274,34 +274,38 @@ pub(super) fn primitive_to_cdr_method(prim: &rosidl_parser::PrimitiveType) -> St
     }
 }
 
-/// Reject non-`owned` storage modes on a service/action payload struct.
+/// Storage-mode policy for a service/action payload struct.
 ///
-/// Issue 0343 — RFC-0033 modes are resolved for **every** entity
-/// (`srv.rs`/`action.rs` call [`field_to_nros_field_with_mode`] and
-/// [`build_c_field`] exactly like `msg.rs` does), but only the MESSAGE templates
-/// implement them:
+/// Issue 0343 discovered that RFC-0033 modes were resolved for srv/action but
+/// implemented only in the MESSAGE templates, so a heap-configured `.srv` field
+/// got the heap TYPE with an owned serde body — code that does not compile.
+/// Issue 0344 then implemented what is implementable, which is not everything:
 ///
-/// | template | `is_heap` branches |
-/// | --- | --- |
-/// | `message_nros.rs.jinja` | 12 |
-/// | `message_c.c.jinja` | 6 |
-/// | `service_{nros.rs,c.c,c.h}.jinja` | 0 |
-/// | `action_{nros.rs,c.c,c.h}.jinja` | 0 |
+/// | mode | Rust srv/action | C srv/action | C++ srv/action |
+/// | --- | --- | --- | --- |
+/// | `owned` | yes | yes | yes |
+/// | `heap` | **yes** (0344) | rejected — see below | n/a (FFI-delegated) |
+/// | `borrowed` | rejected — see below | rejected | n/a |
 ///
-/// So a `.srv` field configured `mode = "heap"` used to get the heap TYPE in the
-/// struct (`nros_core::heap::Vec<T>` / `{ T* data; size_t size, capacity; }`)
-/// with an owned-mode serde body (`heapless::Vec::new()`, plain
-/// `nros_cdr_write_string` on a `char*`) — generated code that does not compile,
-/// with the failure surfacing as a confusing rustc/cc error in generated output
-/// rather than at config time.
+/// **Why C stays rejected.** The C message emitter frees heap fields in a
+/// generated `{Struct}_fini()`, and the C service/action templates emit no
+/// `_fini` at all. Supporting heap there is not a template change: it needs the
+/// fini functions, their header declarations, AND every C consumer (nros-c, the
+/// executor request/response paths, examples) taught to call them. Generating
+/// allocating structs that nobody frees would be a leak, so the honest state is
+/// a diagnostic.
 ///
-/// Until the srv/action templates gain the same branches, the honest behaviour is
-/// the one the C field builder already has for shapes it cannot bridge: fail
-/// loudly, naming the file and field. C++ needs no guard — its templates delegate
-/// serialization across the FFI to the Rust core (nano-ros C++ codegen wraps
-/// Rust, it never reimplements CDR), so the container type is all that changes.
-pub(super) fn ensure_owned_storage_for_payload(
+/// **Why `borrowed` stays rejected everywhere.** `borrowed` works by emitting a
+/// `{Msg}View<'a>` / `{Msg}_View` alongside the owned struct; the srv/action
+/// templates emit no view type. The mode would therefore silently degrade to
+/// `owned` — the field builder keeps the owned container for the publish path —
+/// which is a wrong answer rather than an error.
+///
+/// C++ needs no policy here: its templates delegate serialization across the FFI
+/// to the Rust core, so the container type is all that changes.
+pub(super) fn ensure_supported_storage_for_payload(
     entity: &str,
+    lang: PayloadLang,
     package_name: &str,
     message_name: &str,
     fields: &[rosidl_parser::Field],
@@ -316,7 +320,16 @@ pub(super) fn ensure_owned_storage_for_payload(
             continue;
         };
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
-        if storage.mode != StorageMode::Owned {
+        let rejected = match (storage.mode, lang) {
+            (StorageMode::Owned, _) => false,
+            // Rust srv/action gained heap in 0344 (shared `_nros_field.jinja`
+            // deserialize macro); C has no fini surface to free it with.
+            (StorageMode::Heap, PayloadLang::Rust) => false,
+            (StorageMode::Heap, PayloadLang::C) => true,
+            // No view type is emitted for srv/action payloads in either language.
+            (StorageMode::Borrowed, _) => true,
+        };
+        if rejected {
             return Err(GeneratorError::UnsupportedStorageModeForPayload {
                 entity: entity.to_string(),
                 package: package_name.to_string(),
@@ -327,6 +340,13 @@ pub(super) fn ensure_owned_storage_for_payload(
         }
     }
     Ok(())
+}
+
+/// Which emitter is asking — see [`ensure_supported_storage_for_payload`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PayloadLang {
+    Rust,
+    C,
 }
 
 /// Convert a Message field to NrosField with explicit codegen mode.

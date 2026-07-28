@@ -1,7 +1,7 @@
 use super::common::{
-    GeneratorError, build_action_envelope_schemas, build_c_field, build_nros_schema_for_struct,
-    determine_field_kind, ensure_owned_storage_for_payload, field_to_nros_field,
-    field_to_nros_field_with_mode,
+    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_field,
+    build_nros_schema_for_struct, determine_field_kind, ensure_supported_storage_for_payload,
+    field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
     config::CapacityResolver,
@@ -222,25 +222,29 @@ pub fn generate_nros_action_package(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
-    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
-    // so a non-owned mode would emit the heap TYPE with an owned serde body.
-    // Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &goal_msg,
         &action.spec.goal.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &result_msg,
         &action.spec.result.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &feedback_msg,
         &action.spec.feedback.fields,
@@ -417,25 +421,29 @@ pub fn generate_nros_inline_action(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
-    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
-    // so a non-owned mode would emit the heap TYPE with an owned serde body.
-    // Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &goal_msg,
         &action.spec.goal.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &result_msg,
         &action.spec.result.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::Rust,
         package_name,
         &feedback_msg,
         &action.spec.feedback.fields,
@@ -686,25 +694,29 @@ pub fn generate_c_action_package(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
-    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
-    // so a non-owned mode would emit the heap TYPE with an owned serde body.
-    // Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::C,
         package_name,
         &goal_msg,
         &action.spec.goal.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::C,
         package_name,
         &result_msg,
         &action.spec.result.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "action",
+        PayloadLang::C,
         package_name,
         &feedback_msg,
         &action.spec.feedback.fields,

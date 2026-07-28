@@ -1,6 +1,6 @@
 use super::common::{
-    GeneratorError, build_c_field, build_nros_schema_for_struct, determine_field_kind,
-    ensure_owned_storage_for_payload, field_to_nros_field, field_to_nros_field_with_mode,
+    GeneratorError, PayloadLang, build_c_field, build_nros_schema_for_struct, determine_field_kind,
+    ensure_supported_storage_for_payload, field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
     config::CapacityResolver,
@@ -194,18 +194,21 @@ pub fn generate_nros_service_package(
 
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
-    // Issue 0343 — the service templates have no `is_heap`/`is_borrowed`
-    // branches, so a non-owned mode would emit the heap TYPE with an owned serde
-    // body. Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::Rust,
         package_name,
         &request_msg,
         &service.request.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::Rust,
         package_name,
         &response_msg,
         &service.response.fields,
@@ -315,18 +318,21 @@ pub fn generate_nros_inline_service(
     let mode = NrosCodegenMode::Inline;
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
-    // Issue 0343 — the service templates have no `is_heap`/`is_borrowed`
-    // branches, so a non-owned mode would emit the heap TYPE with an owned serde
-    // body. Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::Rust,
         package_name,
         &request_msg,
         &service.request.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::Rust,
         package_name,
         &response_msg,
         &service.response.fields,
@@ -508,18 +514,21 @@ pub fn generate_c_service_package(
 
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
-    // Issue 0343 — the service templates have no `is_heap`/`is_borrowed`
-    // branches, so a non-owned mode would emit the heap TYPE with an owned serde
-    // body. Fail at config time instead of emitting code that cannot compile.
-    ensure_owned_storage_for_payload(
+    // Issues 0343/0344 — Rust srv/action share the message deserialize macro
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::C,
         package_name,
         &request_msg,
         &service.request.fields,
         resolver,
     )?;
-    ensure_owned_storage_for_payload(
+    ensure_supported_storage_for_payload(
         "service",
+        PayloadLang::C,
         package_name,
         &response_msg,
         &service.response.fields,
