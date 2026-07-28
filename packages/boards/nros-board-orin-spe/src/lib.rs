@@ -49,35 +49,19 @@ mod config;
 mod node;
 
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::init_hardware;
 
-/// Phase 152.3 — `BoardInit` impl for the AGX Orin SPE.
+/// Per-board marker for trait dispatch.
 ///
-/// Canonical overlay-on-overlay precedent (the SPE is a FreeRTOS
-/// fork that runs prebuilt FSP V10.4.3 — no kernel rebuild — and
-/// replaces lwIP with IVC). Fits the `nros_board_common::BoardInit`
-/// contract documented in `book/src/porting/vendor-overlay.md`
-/// so future generic-FreeRTOS overlays (STM32 / NXP / stock-FreeRTOS
-/// + lwIP boards) share the same trait shape.
+/// Phase 313 W-finalize (#0243) — the legacy `impl nros_board_common::BoardInit`
+/// + the free `node::run` are RETIRED; the live path is the `nros_platform::board`
+/// trait set (`BoardInit`/`BoardPrint`/`BoardExit`/`BoardEntry`) below.
 pub struct OrinSpe;
-
-impl nros_board_common::BoardInit for OrinSpe {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        // Delegate to existing `node::init_hardware` (TCU init +
-        // FSP-side bring-up). The IVC channel registration lives
-        // inside `run()` since it must follow `tcu_init` ordering
-        // — the trait method only handles the pre-run wakes.
-        init_hardware(cfg);
-    }
-}
 
 // ─── Phase 212.N.3 — nros_platform::board trait impls ────────────────────
 //
-// Additive shim over the new 212.N.1 trait surface. The legacy
-// `nros_board_common::BoardInit` impl above stays untouched during
-// the transition.
+// The `nros_platform::board` trait surface — the LIVE path (phase-313 retired
+// the legacy `nros_board_common::BoardInit` counterpart).
 //
 // Orin SPE is a kernel-spawn board but with a twist: the FSP boots
 // the FreeRTOS scheduler **before** user code runs. `app_init` (the
@@ -153,10 +137,9 @@ impl nros_platform::BoardEntry for OrinSpe {
     /// 4. Invoke `setup(&mut runtime)`.
     /// 5. Diverge via `exit_success` / `exit_failure`.
     ///
-    /// The legacy [`run`] free fn (which `xTaskCreate`s a fresh
-    /// task and returns into `app_init`) coexists during the
-    /// 212.N transition; existing firmware that calls `run()`
-    /// keeps working.
+    /// Phase 313 (#0243) retired the legacy `node::run` free fn (which
+    /// `xTaskCreate`d a fresh task and returned into `app_init`); this
+    /// `BoardEntry::run` is the sole entry now.
     fn run<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
