@@ -1,6 +1,6 @@
 # Phase 314 — one feature-set SSoT for every language
 
-**Status (2026-07-28): Draft.** Fixes issue 0311. Unblocks multi-edition ROS
+**Status (2026-07-28): W1 done (decisions recorded); W2–W5 open.** Fixes issue 0311. Unblocks multi-edition ROS
 support and image-level selectable capabilities (`param-services`,
 `lifecycle-services`, `safety-e2e`).
 
@@ -74,6 +74,42 @@ behaviour silently. Each difference is decided on its merits:
 
 **Done when:** each row above has a decision recorded in this doc, including the
 capabilities answer.
+
+#### W1 decisions (2026-07-28) — DONE
+
+| divergence | decision | basis |
+| --- | --- | --- |
+| **edition** | direct paths honour `NANO_ROS_ROS_EDITION`; no `ros-humble` literal survives | defect fix — RFC-0056 ties the edition to the keyexpr format that must match the codegen-baked `type_hash` |
+| **rmw** | `nros_rmw_dispatch()` wins; the inline copies go | it is already declared the resolve_rmw SSoT |
+| **platform** | keep the DIRECT chain's logic; the umbrella helper is replaced by it, not the reverse | `_nros_runtime_platform_features()` has no `NANO_ROS_BOARD` input, so it cannot split `threadx-linux` (std) from `riscv64-qemu` (no_std). Unifying onto it regresses threadx |
+| **capabilities** | the umbrella's omission is a GAP, not intent — the unified function carries them | see below |
+
+**The capabilities answer, from the code rather than from intent.**
+`nros_synth_runtime_umbrella` returns early when a workspace has no Rust node
+dirs (`cmake/NanoRosRuntimeCrate.cmake`: *"pure-C / pure-C++ workspace — keep
+nros_cpp-static as the umbrella"*). So:
+
+* **pure C/C++ workspace** → direct path → gets `param-services` /
+  `lifecycle-services` / `safety-e2e`;
+* **mixed workspace** (Rust + C/C++) → umbrella path → does NOT.
+
+A mixed workspace declaring `[param_services]` with a C++ node would therefore
+build a runtime without the feature. That is a gap, not a decision — the two
+paths serve different workspace SHAPES, and a capability is a property of the
+system, not of whether a Rust node happens to be present.
+
+It is latent today only because `examples/workspaces/mixed` declares no
+capabilities. That is a coverage hole, not evidence of correctness, and W5's
+gate is what turns it into a caught error.
+
+**Also found: a capability SSoT already exists**, and W4 should extend it rather
+than invent one. `cargo-nano-ros`'s `capability_resolver` is the registry of
+`(declared, cmake_token)` pairs; `cmake/NanoRosCapabilities.cmake` mirrors it and
+a drift test (`cmake_capability_map_matches_registry`) already asserts the two
+never skew. Today `safety` → `NANO_ROS_SAFETY_E2E`, while `param_services` and
+`lifecycle` carry no cmake token because the direct path hardcodes them
+always-on for hosted. W4 becomes: give them real tokens and let the one feature
+function read them, which also removes the posix-only special case.
 
 ### W2 — one computation, several callers
 
