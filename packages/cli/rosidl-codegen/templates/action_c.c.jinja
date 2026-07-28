@@ -1,3 +1,4 @@
+{%- import "_c_field.jinja" as c -%}
 // nros-c action type - C implementation
 // Package: {{ package_name }}
 // Action: {{ action_name }}
@@ -6,6 +7,10 @@
 #include "{{ header_name }}"
 #include <nros/types.h>
 #include <nros/cdr.h>
+// Issue 0345 — heap payload fields (RFC-0033 `mode = "heap"`) malloc on
+// deserialize and are freed by the generated `_fini`, so the platform
+// allocator seam is needed here exactly as in message_c.c.
+#include <nros/platform.h>
 #include <string.h>
 
 // Type support structure
@@ -27,6 +32,18 @@ void {{ goal_struct_name }}_init({{ goal_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ goal_struct_name }}));
 }
 
+// Release heap-backed (`mode = "heap"`, RFC-0033) fields. Safe on a zero-inited
+// or already-fini'd struct (frees NULL, re-zeroes). No-op when the payload has
+// no heap fields. Issue 0345 — the caller owns the payload struct (it rides the
+// raw `(data, len)` service/action callbacks), so the caller `_fini`s it, the
+// same contract messages have used since RFC-0033.
+void {{ goal_struct_name }}_fini({{ goal_struct_name }}* msg) {
+    if (msg == NULL) return;
+{%- for field in goal_fields %}
+{%- call c::fini_field(field, "msg", goal_struct_name) %}
+{%- endfor %}
+}
+
 int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
@@ -41,34 +58,7 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
 
 {%- if has_goal_fields %}
 {%- for field in goal_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->{{ field.name }}.size) < 0) return -1;
-    for (size_t i = 0; i < msg->{{ field.name }}.size; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_serialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::ser_field(field, "msg") %}
 {%- endfor %}
 {%- endif %}
 
@@ -96,39 +86,7 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
 
 {%- if has_goal_fields %}
 {%- for field in goal_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}, sizeof(msg->{{ field.name }})) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}[i], sizeof(msg->{{ field.name }}[i])) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    {
-        uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
-        msg->{{ field.name }}.size = len;
-        if (len > {{ field.sequence_capacity }}) return -1;
-        for (size_t i = 0; i < len; ++i) {
-{%- if field.is_primitive_element %}
-            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-            if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}.data[i], sizeof(msg->{{ field.name }}.data[i])) < 0) return -1;
-{%- else %}
-            if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-        }
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_deserialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::deser_field(field, "msg", goal_struct_name) %}
 {%- endfor %}
 {%- endif %}
 
@@ -145,6 +103,18 @@ void {{ result_struct_name }}_init({{ result_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ result_struct_name }}));
 }
 
+// Release heap-backed (`mode = "heap"`, RFC-0033) fields. Safe on a zero-inited
+// or already-fini'd struct (frees NULL, re-zeroes). No-op when the payload has
+// no heap fields. Issue 0345 — the caller owns the payload struct (it rides the
+// raw `(data, len)` service/action callbacks), so the caller `_fini`s it, the
+// same contract messages have used since RFC-0033.
+void {{ result_struct_name }}_fini({{ result_struct_name }}* msg) {
+    if (msg == NULL) return;
+{%- for field in result_fields %}
+{%- call c::fini_field(field, "msg", result_struct_name) %}
+{%- endfor %}
+}
+
 int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
@@ -159,34 +129,7 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
 
 {%- if has_result_fields %}
 {%- for field in result_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->{{ field.name }}.size) < 0) return -1;
-    for (size_t i = 0; i < msg->{{ field.name }}.size; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_serialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::ser_field(field, "msg") %}
 {%- endfor %}
 {%- endif %}
 
@@ -214,39 +157,7 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
 
 {%- if has_result_fields %}
 {%- for field in result_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}, sizeof(msg->{{ field.name }})) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}[i], sizeof(msg->{{ field.name }}[i])) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    {
-        uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
-        msg->{{ field.name }}.size = len;
-        if (len > {{ field.sequence_capacity }}) return -1;
-        for (size_t i = 0; i < len; ++i) {
-{%- if field.is_primitive_element %}
-            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-            if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}.data[i], sizeof(msg->{{ field.name }}.data[i])) < 0) return -1;
-{%- else %}
-            if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-        }
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_deserialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::deser_field(field, "msg", result_struct_name) %}
 {%- endfor %}
 {%- endif %}
 
@@ -263,6 +174,18 @@ void {{ feedback_struct_name }}_init({{ feedback_struct_name }}* msg) {
     memset(msg, 0, sizeof({{ feedback_struct_name }}));
 }
 
+// Release heap-backed (`mode = "heap"`, RFC-0033) fields. Safe on a zero-inited
+// or already-fini'd struct (frees NULL, re-zeroes). No-op when the payload has
+// no heap fields. Issue 0345 — the caller owns the payload struct (it rides the
+// raw `(data, len)` service/action callbacks), so the caller `_fini`s it, the
+// same contract messages have used since RFC-0033.
+void {{ feedback_struct_name }}_fini({{ feedback_struct_name }}* msg) {
+    if (msg == NULL) return;
+{%- for field in feedback_fields %}
+{%- call c::fini_field(field, "msg", feedback_struct_name) %}
+{%- endfor %}
+}
+
 int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
     if (msg == NULL || buffer == NULL) return -1;
 
@@ -277,34 +200,7 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
 
 {%- if has_feedback_fields %}
 {%- for field in feedback_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->{{ field.name }}.size) < 0) return -1;
-    for (size_t i = 0; i < msg->{{ field.name }}.size; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_serialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::ser_field(field, "msg") %}
 {%- endfor %}
 {%- endif %}
 
@@ -332,39 +228,7 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
 
 {%- if has_feedback_fields %}
 {%- for field in feedback_fields %}
-{%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}) < 0) return -1;
-{%- else if field.is_string %}
-    if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}, sizeof(msg->{{ field.name }})) < 0) return -1;
-{%- else if field.is_array %}
-    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
-{%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-        if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}[i], sizeof(msg->{{ field.name }}[i])) < 0) return -1;
-{%- else %}
-        if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-    }
-{%- else if field.is_sequence %}
-    {
-        uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
-        msg->{{ field.name }}.size = len;
-        if (len > {{ field.sequence_capacity }}) return -1;
-        for (size_t i = 0; i < len; ++i) {
-{%- if field.is_primitive_element %}
-            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) return -1;
-{%- else if field.is_string_element %}
-            if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}.data[i], sizeof(msg->{{ field.name }}.data[i])) < 0) return -1;
-{%- else %}
-            if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
-{%- endif %}
-        }
-    }
-{%- else %}
-    if ({{ field.nested_struct_name }}_deserialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
-{%- endif %}
+{%- call c::deser_field(field, "msg", feedback_struct_name) %}
 {%- endfor %}
 {%- endif %}
 

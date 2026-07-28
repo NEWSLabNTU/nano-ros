@@ -9,10 +9,12 @@
 //! (`templates/_nros_field.jinja`), so `heap` works. Two rejections remain, and
 //! each is a real capability gap rather than an oversight:
 //!
-//! * **C `heap`** — the C message emitter frees heap fields in a generated
-//!   `{Struct}_fini()`; the C service/action templates emit no `_fini` at all,
-//!   and every C consumer would have to learn to call it. Allocating structs
-//!   nobody frees would be a leak.
+//! 0345: C `heap` also works now. The blocker recorded in 0343/0344 — "every C
+//! consumer must be taught to free" — was a wrong model: `nros_service_callback_t`
+//! hands the callback `request_data`/`request_len`, so nros-c never builds a typed
+//! payload struct. The CALLER declares it and calls `_deserialize`, so the caller
+//! `_fini`s it, exactly as for messages. The fix was the shared C arms
+//! (`_c_field.jinja`) plus a generated `_fini` per payload struct.
 //! * **`borrowed`** — works by emitting a `{Msg}View<'a>` alongside the owned
 //!   struct; srv/action emit no view type, so the mode would silently degrade to
 //!   `owned` (a wrong answer, not an error).
@@ -125,32 +127,56 @@ fn borrowed_on_a_service_payload_is_rejected_with_the_field_named() {
     assert!(err.contains("service"), "must name the entity: {err}");
 }
 
-/// C has no `_fini` on service/action payloads, so heap there would leak.
+/// 0345 — C heap works, and the generated `_fini` is what makes the ownership
+/// expressible. Without the fini the struct would allocate with no way to free.
 #[test]
-fn heap_on_a_c_service_payload_is_rejected() {
+fn heap_on_a_c_service_payload_generates_with_a_fini() {
     let r = resolver(r#""test_msgs/Adder_Request.values" = { cap = 8, mode = "heap" }"#);
-    assert!(
+    let pkg =
         generate_c_service_package("test_msgs", "Adder", &parse_service(SRV).unwrap(), "h", &r)
-            .is_err(),
-        "C service payloads have no _fini to free heap fields with"
+            .expect("C heap on service payloads is supported since 0345");
+
+    assert!(
+        pkg.header
+            .contains("void test_msgs_srv_adder_request_fini("),
+        "header must declare the payload fini:\n{}",
+        pkg.header
+    );
+    assert!(
+        pkg.source.contains("nros_platform_free(msg->values.data)"),
+        "fini must free the heap sequence:\n{}",
+        pkg.source
+    );
+    assert!(
+        pkg.source.contains("nros_platform_malloc"),
+        "deserialize must allocate the heap sequence:\n{}",
+        pkg.source
+    );
+    // The allocator seam must be included, or the TU fails with an implicit
+    // declaration (that was the one real bug this change introduced).
+    assert!(
+        pkg.source.contains("#include <nros/platform.h>"),
+        "the platform allocator header must be included:\n{}",
+        pkg.source
     );
 }
 
 #[test]
-fn heap_on_a_c_action_payload_is_rejected() {
+fn heap_on_a_c_action_payload_generates_with_a_fini() {
     let r = resolver(r#""test_msgs/Move_Goal.waypoints" = { cap = 8, mode = "heap" }"#);
-    let err = match generate_c_action_package(
-        "test_msgs",
-        "Move",
-        &parse_action(ACT).unwrap(),
-        "h",
-        &r,
-    ) {
-        Err(e) => e.to_string(),
-        Ok(_) => panic!("C action payloads have no _fini to free heap fields with"),
-    };
-    assert!(err.contains("waypoints"), "{err}");
-    assert!(err.contains("action"), "{err}");
+    let pkg = generate_c_action_package("test_msgs", "Move", &parse_action(ACT).unwrap(), "h", &r)
+        .expect("C heap on action payloads is supported since 0345");
+    assert!(
+        pkg.header.contains("void test_msgs_action_move_goal_fini("),
+        "header must declare the goal fini:\n{}",
+        pkg.header
+    );
+    assert!(
+        pkg.source
+            .contains("nros_platform_free(msg->waypoints.data)"),
+        "goal fini must free the heap sequence:\n{}",
+        pkg.source
+    );
 }
 
 // ── the untouched paths ─────────────────────────────────────────────────────

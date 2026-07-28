@@ -44,11 +44,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#345** — C heap on srv/action payloads needs a `_fini` surface AND an ownership convention:
-`service_c.*`/`action_c.*` emit no fini at all, so supporting heap there means new fini functions,
-header decls, and every C consumer taught to call them — a C-API contract change, not codegen
-(allocating structs nobody frees would leak per request). Also covers `borrowed`, which would
-silently degrade to `owned` for lack of a view type. See `0345-*`.
+**#346** — `borrowed` on srv/action payloads needs view types (`{Msg}View<'a>` / `{Msg}_View` +
+`deserialize_borrowed`); without them the mode silently degrades to `owned`, so it is rejected with
+the field named. Worth deciding per-payload first: a borrowed REQUEST is sound (same lifetime story
+as a subscription buffer), a borrowed RESPONSE has nothing to borrow from. See `0346-*`.
+
+Recently resolved: **#345** — C `heap` now works on srv/action payloads. **The issue's own premise
+was wrong**: it claimed every C consumer would need teaching to `_fini`, but `nros_service_callback_t`
+hands the callback RAW BYTES — nros-c never builds a typed payload struct, so the caller already owns
+it exactly as for messages. No framework, consumer, or RFC change needed: shared C arms
+(`_c_field.jinja`) + a generated `_fini` per payload + the `nros/platform.h` include the change
+initially missed (caught by a new `gcc -Werror` check). Owned output purely additive. Bonus: the
+pre-existing `generated_heap_c_message_compiles` failed the first time it was ever run — its stub
+`cdr.h` predated phase-303's DHEADER seam and nothing runs `--ignored` (#328); repaired, so message
+heap is now verified too. See `archived/0345-*`. (2026-07-28)
 
 Recently resolved: **#344** — RFC-0033 `heap` now works on **Rust** srv/action payloads. The
 divergence turned out to be only the DESERIALIZE arm (Rust serialization is already container

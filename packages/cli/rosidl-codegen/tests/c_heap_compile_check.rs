@@ -5,8 +5,8 @@
 //! default; run with:
 //!   cargo test -p rosidl-codegen --test c_heap_compile_check -- --ignored
 
-use rosidl_codegen::{CapacityResolver, generate_c_message_package};
-use rosidl_parser::parse_message;
+use rosidl_codegen::{CapacityResolver, generate_c_message_package, generate_c_service_package};
+use rosidl_parser::{parse_message, parse_service};
 use std::{fs, process::Command};
 
 const TYPES_H: &str = r#"
@@ -15,6 +15,12 @@ const TYPES_H: &str = r#"
 #include <stdint.h>
 #include <stddef.h>
 typedef struct { const char* type_name; const char* type_hash; size_t serialized_size_max; } nros_message_type_t;
+// Issue 0345 — the service emitter defines a `struct nros_service_type_t`
+// type-support object (mirrors nros_generated.h:2312).
+typedef struct nros_service_type_t {
+    const char* type_name;
+    const char* type_hash;
+} nros_service_type_t;
 typedef int32_t nros_ret_t;
 struct nros_publisher_t;
 nros_ret_t nros_publish_raw(struct nros_publisher_t* p, const uint8_t* buf, size_t n);
@@ -34,10 +40,20 @@ const CDR_H: &str = r#"
 #ifndef NROS_CDR_STUB_H
 #define NROS_CDR_STUB_H
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 #define W(name, ty) int nros_cdr_write_##name(uint8_t** p, const uint8_t* e, const uint8_t* o, ty v);
 #define R(name, ty) int nros_cdr_read_##name(const uint8_t** p, const uint8_t* e, const uint8_t* o, ty* v);
 W(u8, uint8_t) R(u8, uint8_t)
+// Issue 0345: phase-303 W4 added the XCDR2 DHEADER/encapsulation seam to every
+// generated TU. This stub predated it, so `generated_heap_c_message_compiles`
+// had been failing since — invisibly, because it is `#[ignore]`d and no lane
+// runs `--ignored` (issue 0328).
+int32_t nros_cdr_write_encaps_header(uint8_t** p, const uint8_t* e);
+int64_t nros_cdr_begin_dheader(uint8_t** p, const uint8_t* e, const uint8_t* o);
+int nros_cdr_end_dheader(int64_t mark, uint8_t** p, const uint8_t* e, const uint8_t* o);
+int64_t nros_cdr_begin_dheader_read(const uint8_t** p, const uint8_t* e, const uint8_t* o);
+int nros_cdr_end_dheader_read(int64_t scope, const uint8_t** p, const uint8_t* e, const uint8_t* o);
 W(i8, int8_t) R(i8, int8_t)
 W(u16, uint16_t) R(u16, uint16_t)
 W(i16, int16_t) R(i16, int16_t)
@@ -47,7 +63,7 @@ W(u64, uint64_t) R(u64, uint64_t)
 W(i64, int64_t) R(i64, int64_t)
 W(f32, float) R(f32, float)
 W(f64, double) R(f64, double)
-W(bool, uint8_t) R(bool, uint8_t)
+W(bool, bool) R(bool, bool)   // cdr.h:227 uses bool*, not uint8_t*
 int nros_cdr_write_string(uint8_t** p, const uint8_t* e, const uint8_t* o, const char* s);
 int nros_cdr_read_string(const uint8_t** p, const uint8_t* e, const uint8_t* o, char* d, size_t n);
 #undef W
@@ -95,6 +111,73 @@ fn generated_heap_c_message_compiles() {
     assert!(
         out.status.success(),
         "generated heap C failed to compile:\n{}\n--- header ---\n{}\n--- source ---\n{}",
+        String::from_utf8_lossy(&out.stderr),
+        pkg.header,
+        pkg.source,
+    );
+}
+
+/// Issue 0345 — the same check for a SERVICE payload. Before 0345 the C service
+/// templates had no `is_heap` branches and emitted no `_fini`, so a heap-configured
+/// `.srv` field produced the heap struct type with an owned serde body: this test
+/// would not have compiled. It also exercises the generated
+/// `{request,response}_fini`, which is the piece that makes heap ownership
+/// expressible in C at all.
+#[test]
+#[ignore = "spawns gcc -fsyntax-only"]
+fn generated_heap_c_service_compiles_and_exposes_fini() {
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_srvs/Blob_Request.data" = { cap = 0, mode = "heap" }
+        "my_srvs/Blob_Request.label" = { cap = 0, mode = "heap" }
+        "my_srvs/Blob_Response.vals" = { cap = 0, mode = "heap" }
+        "#,
+    )
+    .unwrap();
+    let srv =
+        parse_service("uint8[] data\nstring label\nint32 seq\n---\nfloat32[] vals\nbool ok\n")
+            .unwrap();
+    let pkg = generate_c_service_package("my_srvs", "Blob", &srv, "h", &resolver).unwrap();
+
+    // The fini surface must exist for both payloads — heap without it is a leak.
+    for sym in [
+        "my_srvs_srv_blob_request_fini",
+        "my_srvs_srv_blob_response_fini",
+    ] {
+        assert!(
+            pkg.header.contains(sym),
+            "header must declare {sym}:\n{}",
+            pkg.header
+        );
+        assert!(pkg.source.contains(sym), "source must define {sym}");
+    }
+    assert!(
+        pkg.source.contains("nros_platform_free(msg->data.data)"),
+        "request fini must free the heap sequence:\n{}",
+        pkg.source
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let nros = tmp.path().join("nros");
+    fs::create_dir_all(&nros).unwrap();
+    fs::write(nros.join("types.h"), TYPES_H).unwrap();
+    fs::write(nros.join("cdr.h"), CDR_H).unwrap();
+    fs::write(nros.join("platform.h"), PLATFORM_H).unwrap();
+    fs::write(tmp.path().join(&pkg.header_name), &pkg.header).unwrap();
+    let c_path = tmp.path().join(&pkg.source_name);
+    fs::write(&c_path, &pkg.source).unwrap();
+
+    let out = Command::new("gcc")
+        .args(["-fsyntax-only", "-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg("-I")
+        .arg(tmp.path())
+        .arg(&c_path)
+        .output()
+        .expect("spawn gcc");
+    assert!(
+        out.status.success(),
+        "generated heap C service failed to compile:\n{}\n--- header ---\n{}\n--- source ---\n{}",
         String::from_utf8_lossy(&out.stderr),
         pkg.header,
         pkg.source,

@@ -41,6 +41,9 @@ typedef struct {{ goal_struct_name }} {
 
 /// Initialize a {{ action_name }} goal to default values
 void {{ goal_struct_name }}_init({{ goal_struct_name }}* msg);
+/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
+void {{ goal_struct_name }}_fini({{ goal_struct_name }}* msg);
+
 
 /// Serialize a {{ action_name }} goal to CDR format
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains
@@ -72,6 +75,9 @@ typedef struct {{ result_struct_name }} {
 
 /// Initialize a {{ action_name }} result to default values
 void {{ result_struct_name }}_init({{ result_struct_name }}* msg);
+/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
+void {{ result_struct_name }}_fini({{ result_struct_name }}* msg);
+
 
 /// Serialize a {{ action_name }} result to CDR format
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains
@@ -103,6 +109,9 @@ typedef struct {{ feedback_struct_name }} {
 
 /// Initialize a {{ action_name }} feedback to default values
 void {{ feedback_struct_name }}_init({{ feedback_struct_name }}* msg);
+/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
+void {{ feedback_struct_name }}_fini({{ feedback_struct_name }}* msg);
+
 
 /// Serialize a {{ action_name }} feedback to CDR format
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains

@@ -284,16 +284,16 @@ pub(super) fn primitive_to_cdr_method(prim: &rosidl_parser::PrimitiveType) -> St
 /// | mode | Rust srv/action | C srv/action | C++ srv/action |
 /// | --- | --- | --- | --- |
 /// | `owned` | yes | yes | yes |
-/// | `heap` | **yes** (0344) | rejected — see below | n/a (FFI-delegated) |
+/// | `heap` | **yes** (0344) | **yes** (0345) | n/a (FFI-delegated) |
 /// | `borrowed` | rejected — see below | rejected | n/a |
 ///
-/// **Why C stays rejected.** The C message emitter frees heap fields in a
-/// generated `{Struct}_fini()`, and the C service/action templates emit no
-/// `_fini` at all. Supporting heap there is not a template change: it needs the
-/// fini functions, their header declarations, AND every C consumer (nros-c, the
-/// executor request/response paths, examples) taught to call them. Generating
-/// allocating structs that nobody frees would be a leak, so the honest state is
-/// a diagnostic.
+/// **C heap (0345).** The premise 0343/0344 recorded — that supporting heap in C
+/// would need every consumer taught to free — was wrong: `nros_service_callback_t`
+/// hands the callback `request_data`/`request_len`, so nros-c never builds a typed
+/// payload struct at all. The CALLER declares it and calls `_deserialize`, exactly
+/// as for messages, so the caller `_fini`s it — the RFC-0033 contract, unchanged.
+/// The fix was therefore the shared arms (`_c_field.jinja`) plus a generated
+/// `_fini` per payload struct, with no framework or ownership change.
 ///
 /// **Why `borrowed` stays rejected everywhere.** `borrowed` works by emitting a
 /// `{Msg}View<'a>` / `{Msg}_View` alongside the owned struct; the srv/action
@@ -322,10 +322,9 @@ pub(super) fn ensure_supported_storage_for_payload(
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
         let rejected = match (storage.mode, lang) {
             (StorageMode::Owned, _) => false,
-            // Rust srv/action gained heap in 0344 (shared `_nros_field.jinja`
-            // deserialize macro); C has no fini surface to free it with.
-            (StorageMode::Heap, PayloadLang::Rust) => false,
-            (StorageMode::Heap, PayloadLang::C) => true,
+            // Rust gained heap in 0344 (`_nros_field.jinja`); C gained it in
+            // 0345 (`_c_field.jinja` + a generated `_fini` per payload struct).
+            (StorageMode::Heap, _) => false,
             // No view type is emitted for srv/action payloads in either language.
             (StorageMode::Borrowed, _) => true,
         };

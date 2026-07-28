@@ -41,6 +41,9 @@ typedef struct {{ request_struct_name }} {
 
 /// Initialize a {{ service_name }} request to default values
 void {{ request_struct_name }}_init({{ request_struct_name }}* msg);
+/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
+void {{ request_struct_name }}_fini({{ request_struct_name }}* msg);
+
 
 /// Serialize a {{ service_name }} request to CDR format
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains
@@ -72,6 +75,9 @@ typedef struct {{ response_struct_name }} {
 
 /// Initialize a {{ service_name }} response to default values
 void {{ response_struct_name }}_init({{ response_struct_name }}* msg);
+/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
+void {{ response_struct_name }}_fini({{ response_struct_name }}* msg);
+
 
 /// Serialize a {{ service_name }} response to CDR format
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains
