@@ -1,7 +1,7 @@
 //! Phase 152.2.B.4 — thin non-generic `run` + `init_hardware`
 //! wrappers over the generic `nros_board_threadx::run<B>` lift.
 
-use crate::{ThreadxQemuRiscv64, config::Config};
+use crate::config::Config;
 
 /// Initialize pre-kernel hardware for ThreadX QEMU RISC-V.
 ///
@@ -10,33 +10,21 @@ use crate::{ThreadxQemuRiscv64, config::Config};
 /// the kernel starts.
 pub fn init_hardware(_config: &Config) {}
 
-/// Run an application on QEMU RISC-V with ThreadX + NetX Duo + virtio-net.
-///
-/// Thin wrapper over `nros_board_threadx::run::<ThreadxQemuRiscv64, _, _>`.
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_threadx_qemu_riscv64::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::default(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     Ok::<(), NodeError>(())
-/// })
-/// ```
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
-where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
-{
+// Phase 313 W-threadx (#0243) — the legacy free `run(Config, closure)` (a thin
+// wrapper over the retired generic `nros_board_threadx::run<B>` lift) is GONE.
+// The live entries are `<ThreadxQemuRiscv64 as nros_platform::board::BoardEntry>::run`
+// (full app, used by `nros::main!`) and `ThreadxQemuRiscv64::run_bare` (no-session,
+// for logging/init-only fixtures) — both in lib.rs.
+
+/// Phase 313 W-threadx — crate-internal accessor so `ThreadxQemuRiscv64::run_bare`
+/// can seed the UART log writer before kernel entry (same shape the retired `run`
+/// wrapper used).
+pub(crate) fn register_log_writer_public() {
     register_log_writer();
-    nros_board_threadx::run::<ThreadxQemuRiscv64, F, E>(config, f)
 }
 
 /// Phase 88 — register a UART writer with `nros-platform-threadx`'s
-/// log fn-ptr slot. Called once from `run()` before any thread spawns.
+/// log fn-ptr slot. Called once before any thread spawns.
 fn register_log_writer() {
     use core::fmt::Write as _;
     unsafe extern "C" fn writer(

@@ -92,22 +92,18 @@ _start:
 );
 
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::init_hardware;
 
-// Phase 152.2.B — canonical overlay trait impls. Generic-crate
-// `run<B>` lift deferred; trait surface lands now.
-use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
+// Phase 313 W-threadx (#0243) — the legacy `nros_board_common::board_init` family
+// (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) is RETIRED for
+// this board; the live path is `nros_platform::board::{BoardInit, BoardEntry, …}`
+// below, plus the no-session `run_bare` for logging fixtures. `ThreadxConfig`
+// stays — a config trait the NEW family driver (`nros_board_threadx::run_*`)
+// consumes, not part of `board_init`.
+use nros_board_common::ThreadxConfig;
 
 /// Per-board marker for trait dispatch.
 pub struct ThreadxQemuRiscv64;
-
-impl BoardInit for ThreadxQemuRiscv64 {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        init_hardware(cfg);
-    }
-}
 
 impl ThreadxConfig for Config {
     fn mac(&self) -> &[u8; 6] {
@@ -129,24 +125,6 @@ impl ThreadxConfig for Config {
     }
     fn domain_id(&self) -> u32 {
         self.domain_id
-    }
-}
-
-impl BoardPrint for ThreadxQemuRiscv64 {
-    fn println(args: core::fmt::Arguments<'_>) {
-        use core::fmt::Write;
-        let mut w = UartWriter;
-        let _ = writeln!(w, "{}", args);
-    }
-}
-
-impl BoardExit for ThreadxQemuRiscv64 {
-    fn exit_success() -> ! {
-        exit_success()
-    }
-
-    fn exit_failure() -> ! {
-        exit_failure()
     }
 }
 
@@ -220,6 +198,23 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
 }
 
 impl ThreadxQemuRiscv64 {
+    /// Phase 313 W-threadx (#0243) — lightweight NO-SESSION entry for logging /
+    /// init-only fixtures. Boots the ThreadX kernel + UART log writer and runs
+    /// `setup` WITHOUT opening an `Executor` session (unlike
+    /// [`nros_platform::board::BoardEntry::run`], which would fail
+    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
+    /// for the no-session role the retired legacy `node::run(Config, closure)`
+    /// served. Diverges internally (kernel entry → `exit_success`/`exit_failure`);
+    /// the `Result` return mirrors the family driver signature.
+    pub fn run_bare<F, E>(config: Config, setup: F) -> Result<(), E>
+    where
+        F: FnOnce() -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        node::register_log_writer_public();
+        nros_board_threadx::run_bare::<ThreadxQemuRiscv64, Config, F, E>(config, setup)
+    }
+
     /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
     /// emits `<ThreadxQemuRiscv64>::run_tiers(&overlay, TIERS, setup)` for a
     /// system with more than the synthesized single `default` tier; routes to

@@ -9,10 +9,10 @@
 #![no_std]
 #![no_main]
 
-use nros_board_threadx_qemu_riscv64::{exit_success, Config, run};
+use nros_board_threadx_qemu_riscv64::{Config, ThreadxQemuRiscv64};
 use nros_log::{
-    init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger,
-    sinks, Logger, Severity,
+    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
+    register_logger, sinks,
 };
 
 static LOGGER: Logger = Logger::new("smoke");
@@ -24,7 +24,10 @@ const CONFIG: &str = include_str!("../config.toml");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
-    run(Config::from_toml(CONFIG), |_config| {
+    // Phase 313 W-threadx (#0243) — no-session `run_bare` (kernel + UART writer,
+    // no `Executor::open`). Ok → the family driver prints the completion banner
+    // and exits via the QEMU test-finisher (`exit_success`).
+    let _ = ThreadxQemuRiscv64::run_bare(Config::from_toml(CONFIG), || {
         register_logger(&LOGGER);
         init(sinks::default());
         let logger = &LOGGER;
@@ -38,11 +41,10 @@ extern "C" fn main() -> ! {
         nros_fatal!(logger, "fatal payload");
         nros_log::flush();
 
-        exit_success();
-
-        #[allow(unreachable_code)]
         Ok::<(), &'static str>(())
-    })
+    });
+    // `run_bare` diverges internally (kernel entry → exit_success/failure).
+    unreachable!()
 }
 
 // Panic handler ships with the board crate — no local definition.
