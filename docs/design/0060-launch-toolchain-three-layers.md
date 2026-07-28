@@ -245,6 +245,28 @@ dropped in a later release once the downstream recipe has moved.
 
 ## Open questions
 
-1. **When to publish rlm to crates.io.** Trigger recorded above; the deciding
-   input is whether nano-ros's nested path-dep proves painful enough to pull it
-   forward.
+None. The publishing question is decided below.
+
+## Decision — rlm stays vendored; no crates.io publish (2026-07-28)
+
+Both triggers recorded above have now fired (W4 closed, the 0293 SSoT work
+landed), and the answer is still **no**: rlm remains a submodule.
+
+Publishing buys one thing — it would remove the nested path-dep
+`third-party/ros-launch-resolve/third-party/ros-launch-manifest` that
+`nros-cli-core`, `nros-macros` and `nros-orchestration-ir` currently spell. That
+path is ugly, but it is ONE copy and it cannot drift, which was the actual
+problem this RFC set out to solve.
+
+What publishing costs is release cadence. Every spec change would need a
+version bump and a publish before any consumer could move, and the schema is
+still moving: `DeployBlock` gained `launch`, then `machine=` placement
+semantics, then `Serialize` + `deny_unknown_fields`, all within a week. Paying
+a publish round-trip for each of those would have slowed the very work that
+made the schema correct.
+
+The metadata added for publishing (license, description, workspace-inherited
+version/repository) stays — it is correct regardless, and it means the decision
+is reversible with one `cargo publish` when the cadence justifies it. Revisit
+when rlm's schema has been stable for a release cycle, or when a consumer
+outside this org needs it.

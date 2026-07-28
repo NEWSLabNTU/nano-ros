@@ -3,12 +3,17 @@
 //! host's nodes (plus any unhosted/shared node).
 //!
 //! Drives `nros codegen entry --lang rust --host <id>` over the
-//! `examples/workspaces/rust` workspace + `demo_bringup/launch/multihost.launch.xml`
+//! `examples/workspaces/rust` workspace + `demo_bringup/config/multihost_model.yaml`
 //! (talker on `robot1`, listener on `robot2`) and asserts the emitted `main.rs`
-//! source registers ONLY that host's node. Complements the unit-level
-//! `Plan::for_host` test (nros-cli-core) by exercising the full CLI pipeline:
-//! launch parse (`machine=` attr) → `PlanNode.host` → `for_host` filter →
+//! source registers ONLY that host's node. Exercises the full CLI pipeline:
+//! resolved model (`deploy.<fqn>.host`) → `PlanNode.host` → `for_host` filter →
 //! `emit_rust`.
+//!
+//! This is the ONLY end-to-end exercise of `Plan::for_host` — there is no
+//! unit-level test for it, despite an earlier version of this comment claiming
+//! to complement one. It drove the `--launch` flag until phase-296 R4 removed
+//! it in favour of `--model`, and then failed silently for weeks; that gap is
+//! why issue 0302's four-feature drift in `emit_rust` went uncaught.
 //!
 //! Cross-process *delivery* between hosts is already proven by
 //! `deployed_native_system_e2e` (a planned deploy publishes to the ROS graph; a
@@ -24,7 +29,11 @@ fn codegen_entry_host(host: &str, out: &std::path::Path) -> String {
         .args(["codegen", "entry", "--lang", "rust"])
         .arg("--workspace")
         .arg(&workspace)
-        .args(["--launch", "demo_bringup:multihost.launch.xml"])
+        .arg("--model")
+        .arg(
+            nros_tests::project_root()
+                .join("examples/workspaces/rust/src/demo_bringup/config/multihost_model.yaml"),
+        )
         .args(["--host", host])
         .arg("--out")
         .arg(out)
