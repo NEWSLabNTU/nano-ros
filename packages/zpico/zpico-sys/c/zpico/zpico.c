@@ -808,6 +808,22 @@ int32_t zpico_init(const char* locator) {
 
 int32_t zpico_init_with_config(const char* locator, const char* mode,
                                const zpico_property_t* properties, size_t num_properties) {
+    /* issue 0347 — zpico is SINGLE-SESSION per process by construction:
+       `g_session` is one static handle and every registration table below is a
+       process global. A second init while a session is open used to succeed,
+       memset `g_subscribers`/`g_publishers`/... and replace `g_session`, so the
+       first session's registrations were silently destroyed: its subscribers
+       stopped receiving while `open()` had returned Ok. That presented as
+       "two sessions never exchange data" and cost a day to localise.
+
+       Refuse instead. The condition is "a session is currently OPEN", not "init
+       ran before", so the retry path stays intact: a FAILED `zpico_open()`
+       leaves `g_session_open == false` and re-inits normally (issue #64's
+       esp32-c3 backoff depends on that). */
+    if (g_session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+
     // Initialize storage
     memset(g_publishers, 0, sizeof(g_publishers));
     memset(g_subscribers, 0, sizeof(g_subscribers));

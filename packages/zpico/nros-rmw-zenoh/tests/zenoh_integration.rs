@@ -193,22 +193,32 @@ fn test_pubsub_loopback() {
     session.close().expect("Failed to close session");
 }
 
-/// Test pub/sub with separate sessions (more realistic scenario)
+/// zpico is SINGLE-SESSION per process — a second open must FAIL, not corrupt
+/// the first session (issue 0347).
 ///
-/// issue 0347 — the only test in this file still ignored, and for a REAL
-/// defect rather than a missing router: two independent client sessions on the
-/// same zenohd never exchange data. Verified while un-ignoring the rest
-/// (issue 0328): it fails identically with a router already running, and with
-/// the publisher republishing every 100 ms for TEN SECONDS — so it is not the
-/// pre-match best-effort drop it looks like. Same-session pub/sub
-/// (`test_pubsub_loopback`) passes against the same router, which narrows it
-/// to inter-session routing.
+/// This was `test_pubsub_separate_sessions`, ignored for "requires zenohd
+/// router". Un-ignoring it (issue 0328) showed it failing against a live
+/// router, and localisation found the cause: `zpico.c` holds one static
+/// `g_session` and process-global registration tables, and
+/// `zpico_init_with_config` used to memset those tables and replace the
+/// session on a SECOND open — silently destroying the first session's
+/// subscribers while returning Ok. The old test was therefore asserting
+/// delivery through a configuration the shim does not implement.
+///
+/// The evidence, for anyone tempted to "fix" the routing instead:
+/// - two processes, one session each, via a router: WORKS (verified with the
+///   stock talker/listener, 11 published / 11 received);
+/// - same-session pub/sub: works via the local loopback
+///   (`Z_FEATURE_LOCAL_SUBSCRIBER=1` on host builds), not the router;
+/// - cross-session in one process: delivered only when the subscriber was
+///   declared AFTER the second open — i.e. after the memset that erased it.
+///
+/// Multi-session support would mean moving `g_session` and every `g_*` table
+/// into a per-session context; until then the honest contract is to refuse.
 #[test]
-#[ignore = "issue 0347 — inter-session routing through zenohd never delivers"]
-fn test_pubsub_separate_sessions() {
+fn second_session_open_in_one_process_is_refused() {
     let Some(_router) = router() else { return };
     let router_locator = _router.locator();
-    // Connect to router as client
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
@@ -218,62 +228,16 @@ fn test_pubsub_separate_sessions() {
         domain_id: 0,
     };
 
-    // Open subscriber session
-    let mut sub_session = match ZenohTransport::open(&config) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Could not open session: {:?}", e);
-            panic!("Failed to connect to zenoh router");
-        }
-    };
+    let _first = ZenohTransport::open(&config).expect("first session should open");
 
-    let topic = TopicInfo::new("test/separate-sessions", "Int32", "hash456");
-
-    // Create subscriber
-    let mut subscriber = sub_session
-        .create_subscription(&topic, QosSettings::BEST_EFFORT)
-        .expect("Failed to create subscriber");
-
-    // Wait for subscriber to be discovered
-    thread::sleep(Duration::from_secs(1));
-
-    // Open publisher session
-    let mut pub_session = ZenohTransport::open(&config).expect("Failed to open publisher session");
-
-    let publisher = pub_session
-        .create_publisher(&topic, QosSettings::BEST_EFFORT)
-        .expect("Failed to create publisher");
-
-    // Wait for publisher to be discovered
-    thread::sleep(Duration::from_millis(500));
-
-    // Publish
-    let test_data = b"Hello from transport!";
-    publisher.publish_raw(test_data).expect("Failed to publish");
-
-    // Try to receive with retries (distributed systems can have timing issues)
-    let mut recv_buf = [0u8; 64];
-    let mut received = false;
-    for _ in 0..20 {
-        thread::sleep(Duration::from_millis(100));
-        match subscriber.try_recv_raw(&mut recv_buf) {
-            Ok(Some(len)) => {
-                assert_eq!(&recv_buf[..len], test_data);
-                println!("Successfully received: {:?}", &recv_buf[..len]);
-                received = true;
-                break;
-            }
-            Ok(None) => continue,
-            Err(e) => {
-                panic!("Error receiving: {:?}", e);
-            }
-        }
-    }
-
-    assert!(received, "Should have received message within 2 seconds");
-
-    sub_session.close().expect("Failed to close sub session");
-    pub_session.close().expect("Failed to close pub session");
+    // The second open must report failure rather than quietly re-initialising
+    // the global state out from under `_first`.
+    let second = ZenohTransport::open(&config);
+    assert!(
+        second.is_err(),
+        "a second zpico session in one process must be refused — before issue \
+         0347 this returned Ok and wiped the first session's registrations"
+    );
 }
 
 /// Test multiple publishers on same session
