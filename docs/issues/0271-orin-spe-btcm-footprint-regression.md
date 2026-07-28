@@ -121,3 +121,79 @@ zenoh-pico's C build.
 
 Next step is a link-map audit (`-Wl,-Map`) rather than more archive `nm`, since
 this issue has now produced one false lead from exactly that confusion.
+
+## Link-map audit (2026-07-28) — 142 KB of the ~195 KB recovered
+
+`nm` on the archive was the wrong instrument (it produced the false lead
+above). The map the BSP already emits (`out/t23x/spe.map`, via
+`-Xlinker -Map`) is the right one, filtered to ALLOCATED sections
+(`.text`/`.rodata`/`.data`/`.bss`) — debug sections dominate it otherwise
+(`.debug_str` alone is 40 MB and occupies no BTCM).
+
+Top allocated contributors, pre-gc:
+
+```
+137,584  sentinel_spe_firmware …rcgu.o
+109,076  compiler_builtins
+ 21,250  zpico.o
+ 15,409  tasks.o          (FreeRTOS)
+ 14,137  libc_a-jp2uc.o        <- newlib Japanese/Unicode tables
+ 13,884  libc_a-categories.o   <- newlib locale categories
+  6,094  libc_a-svfiscanf.o    <- newlib scanf
+```
+
+### Cause 2 — full newlib instead of newlib-nano
+
+`--specs=nano.specs` appears nowhere in the BSP Makefile, so the image links
+FULL newlib. The sentinel's own LDFLAGS force `-u printf -u vprintf
+-u vsnprintf` (to override newlib's float-aware `vsnprintf` with the local
+shim), and that forcing pulls newlib's formatted-output machinery, which brings
+its locale/Unicode tables along: ~34 KB of jp2uc + categories + scanf in a
+256 KB image that never formats a locale.
+
+Adding `--specs=nano.specs` swaps in the reduced implementations.
+
+**Receipt: 39,736 → 26,492 bytes.** The failing section also moves from `.data`
+to `.bss`, which is the honest signal that the remaining problem is now
+statically-allocated state rather than code/rodata.
+
+### Cumulative
+
+```
+168,760  as found
+ 39,736  after rightsizing LARGE_PAYLOADS   (-129,024)
+ 26,492  after newlib-nano                  (-13,244)
+```
+
+142,268 recovered — about 73% of the regression, and both causes are
+consumer-side configuration of nano-ros features, not nano-ros defects.
+
+## Remaining: 26,492 bytes, all `.bss`
+
+Five symbols account for essentially all of it:
+
+```
+8,688  g_pending_gets                (zenoh-pico)
+8,192  nros_rmw_cffi …static_subscriber_storage::SLOTS
+4,096  SMALL_PAYLOADS                (already rightsized to 256 B buffers)
+3,584  nros_rmw_cffi::MESSAGE_INFO_TABLE
+2,736  SERVICE_BUFFERS
+```
+
+`g_pending_gets` is NOT an env-plumbing failure — I checked, the knob reaches
+the C define (`nros-zpico-build/src/lib.rs`), and `ZPICO_MAX_PENDING_GETS=2` is
+already set. The slot STRUCT is simply ~4.3 KB each. Shrinking it needs either
+one slot or a smaller per-slot reply buffer.
+
+`nros_rmw_cffi`'s `SLOTS` (8 KB) and `MESSAGE_INFO_TABLE` (3.5 KB) are the
+rmw-cffi vtable seam the original report suspected, and neither has a
+rightsizing knob today. That is the clearest nano-ros-side action: give them
+the same `env_usize` treatment every other pool has.
+
+## Note for whoever lands the sentinel fix
+
+`scripts/spe/apply-patches.sh` guards ALL its Makefile edits behind one
+`ENABLE_NROS_APP already present` check, so adding a new edit does not reach an
+already-patched checkout — the script silently skips and the new flag never
+lands. Verified: re-running after adding the `nano.specs` line changed nothing
+until it was applied directly. The guard should be per-edit.
