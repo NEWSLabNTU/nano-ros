@@ -10,12 +10,31 @@ use nros_rmw::{
     TransportConfig,
 };
 use nros_rmw_zenoh::{ZenohTransport, keyexpr::TopicKeyExpr};
+use nros_tests::fixtures::ZenohRouter;
 use std::{thread, time::Duration};
 
-/// Locator for the zenohd router that the `#[ignore]`d tests below connect to.
-/// Tests requiring this router must be invoked manually after starting:
-/// `zenohd --listen tcp/127.0.0.1:7447`
-const ROUTER_LOCATOR: &str = "tcp/127.0.0.1:7447";
+/// Start a private zenohd on an EPHEMERAL port for one test (issue 0328).
+///
+/// These tests used to hardcode `tcp/127.0.0.1:7447` and carry
+/// `#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]`, so they never
+/// ran in any lane. The precondition is self-provisioning:
+/// `ZenohRouter::start_unique()` picks a free port, reaps an orphaned router
+/// from a previous run, and shuts down on `Drop`.
+///
+/// An ephemeral port is also the CORRECT choice here rather than a slot from
+/// `nros_tests::alloc` — that allocator is for baked-isolation cells, whose
+/// images compile a locator in. Its own docs say native host tests should take
+/// runtime-ephemeral ports instead, which are parallel-safe by construction.
+///
+/// Returns `None` when zenohd is absent so the test can skip rather than fail
+/// on a machine that never provisioned it.
+fn router() -> Option<ZenohRouter> {
+    if !nros_tests::fixtures::require_zenohd() {
+        eprintln!("[SKIP] zenohd not found — run `just build-zenohd`");
+        return None;
+    }
+    Some(ZenohRouter::start_unique().expect("failed to start zenohd"))
+}
 
 /// Test that we can open and close a session in peer mode
 /// (doesn't require a router).
@@ -85,11 +104,12 @@ fn test_cdr_int32_format() {
 /// Test full pub/sub cycle (requires working zenoh network)
 /// This test requires a zenoh router running: zenohd --listen tcp/127.0.0.1:7447
 #[test]
-#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_pubsub_loopback() {
+    let Some(_router) = router() else { return };
+    let router_locator = _router.locator();
     // Connect to router as client
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
         properties: &[],
         node_name: "",
@@ -101,7 +121,7 @@ fn test_pubsub_loopback() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen {}", ROUTER_LOCATOR);
+            eprintln!("Start a router with: zenohd --listen {}", router_locator);
             panic!("Failed to connect to zenoh router");
         }
     };
@@ -174,12 +194,23 @@ fn test_pubsub_loopback() {
 }
 
 /// Test pub/sub with separate sessions (more realistic scenario)
+///
+/// issue 0347 — the only test in this file still ignored, and for a REAL
+/// defect rather than a missing router: two independent client sessions on the
+/// same zenohd never exchange data. Verified while un-ignoring the rest
+/// (issue 0328): it fails identically with a router already running, and with
+/// the publisher republishing every 100 ms for TEN SECONDS — so it is not the
+/// pre-match best-effort drop it looks like. Same-session pub/sub
+/// (`test_pubsub_loopback`) passes against the same router, which narrows it
+/// to inter-session routing.
 #[test]
-#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
+#[ignore = "issue 0347 — inter-session routing through zenohd never delivers"]
 fn test_pubsub_separate_sessions() {
+    let Some(_router) = router() else { return };
+    let router_locator = _router.locator();
     // Connect to router as client
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
         properties: &[],
         node_name: "",
@@ -247,10 +278,11 @@ fn test_pubsub_separate_sessions() {
 
 /// Test multiple publishers on same session
 #[test]
-#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_multiple_publishers() {
+    let Some(_router) = router() else { return };
+    let router_locator = _router.locator();
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
         properties: &[],
         node_name: "",
@@ -282,10 +314,11 @@ fn test_multiple_publishers() {
 
 /// Test multiple subscribers on same session
 #[test]
-#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_multiple_subscribers() {
+    let Some(_router) = router() else { return };
+    let router_locator = _router.locator();
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
         properties: &[],
         node_name: "",
@@ -328,7 +361,9 @@ fn test_transport_config_with_properties() {
     ];
 
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        // Never connected — this test only asserts the struct's fields, so a
+        // literal locator is right and no router is needed.
+        locator: Some("tcp/127.0.0.1:7447"),
         mode: SessionMode::Client,
         properties: props,
         node_name: "",
@@ -463,10 +498,11 @@ fn test_session_explicit_props_override_env() {
 /// specified router (no multicast discovery). Communication still works
 /// because we explicitly provide the router locator.
 #[test]
-#[ignore = "requires zenohd router on tcp/127.0.0.1:7447"]
 fn test_pubsub_loopback_with_scouting_disabled() {
+    let Some(_router) = router() else { return };
+    let router_locator = _router.locator();
     let config = TransportConfig {
-        locator: Some(ROUTER_LOCATOR),
+        locator: Some(router_locator.as_str()),
         mode: SessionMode::Client,
         properties: &[("multicast_scouting", "false")],
         node_name: "",
@@ -478,7 +514,7 @@ fn test_pubsub_loopback_with_scouting_disabled() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen {}", ROUTER_LOCATOR);
+            eprintln!("Start a router with: zenohd --listen {}", router_locator);
             panic!("Failed to connect to zenoh router");
         }
     };

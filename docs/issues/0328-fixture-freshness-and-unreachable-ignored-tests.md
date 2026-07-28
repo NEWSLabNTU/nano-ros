@@ -125,23 +125,44 @@ So the heap/borrowed storage-mode codegen the issue calls "zero executing
 coverage" was in fact **fully working** — 12 passing tests nobody ran. That is a
 better outcome than the issue assumed and a worse indictment of the lane gap.
 
-### Correction: the "easiest win" is not available
+### The "easiest win" IS available after all — corrected twice
 
-The issue proposes un-ignoring the 5 `zenoh_integration.rs` tests because
-`ZenohRouter::start_unique` makes the precondition self-provisioning. It does
-not: those tests hardcode `ROUTER_LOCATOR = "tcp/127.0.0.1:7447"` and
-`ZenohRouter` lives in `nros-tests`, which is **not** a dev-dependency of
-`nros-rmw-zenoh` — and cannot comfortably become one, since `nros-tests`
-depends on `nros-rmw-zenoh`. Their `#[ignore]` reason is accurate as written.
+My first pass concluded the 5 `zenoh_integration.rs` tests could not be
+un-ignored because `ZenohRouter` lives in `nros-tests`, which is not a
+dev-dependency of `nros-rmw-zenoh` and (I assumed) could not become one, since
+`nros-tests` depends on `nros-rmw-zenoh`.
 
-Confirmed empirically rather than by reading: with a router on 7447, four of
-the five pass. They were correctly marked, just unreachable.
+**That assumption was wrong.** Cargo permits dev-dependency cycles: a crate's
+dev-deps may depend back on it. Verified by adding the dev-dep and building —
+`cargo metadata` resolves and the test target compiles.
+
+So the tests were rewritten to self-provision: each starts its own
+`ZenohRouter::start_unique()` on an ephemeral port, which reaps orphans and
+shuts down on `Drop`. The hardcoded `tcp/127.0.0.1:7447` const is gone.
+
+An ephemeral port is also the *correct* mechanism rather than a slot from
+`nros_tests::alloc`. That allocator serves baked-isolation cells, whose images
+compile a locator in; its own module docs say native host tests should take
+runtime-ephemeral ports, which are parallel-safe by construction.
+
+Result: **12 of 13 pass with no external setup**, where previously 5 never ran
+at all.
+
+### Superseded: the original reachability claim
+
+(Kept for the record.) The intermediate finding — that with a router on 7447
+four of the five pass — was correct and is what made the dev-dep experiment
+worth running.
 
 ### Left open deliberately
 
-- `test_pubsub_separate_sessions` **fails even with its precondition met**.
-  That is a real defect this work surfaced, not a harness gap; it needs its own
-  investigation and issue rather than being folded in here.
+- `test_pubsub_separate_sessions` **fails even with its precondition met** —
+  now filed as **issue 0347**. Two independent client sessions on the same
+  zenohd never exchange data, while same-session pub/sub passes against that
+  same router. Ruled out as a timing race: it also fails with the publisher
+  republishing every 100 ms for ten seconds. It is the only remaining
+  `#[ignore]` in the file, and its reason now names that issue instead of the
+  router precondition it no longer has.
 - `just test-ignored` is not wired into `just ci`. Several of these need
   external infrastructure by design, which is why they are ignored; the fix for
   this issue is that they are runnable and their state is knowable, not that

@@ -134,6 +134,7 @@ log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
+nros-tests = { path = "../../testing/nros-tests" }
 nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
 # Workspace-context builds get this via feature unification from a board
