@@ -84,7 +84,7 @@ fn ros_pub_to_nano_listener_zenoh() {
         .wait_for_output(Duration::from_secs(45))
         .unwrap_or_default();
     assert!(
-        out.contains("I heard: [42]"),
+        out.contains(&format!("{} [42]", nros_tests::output::LISTENER_LOG_PREFIX)),
         "nano-ros listener did not receive ROS Int32 42 via rmw_zenoh_cpp:\n{out}"
     );
 }
@@ -108,7 +108,7 @@ fn nano_service_client_to_ros_server_zenoh() {
         .wait_for_output(Duration::from_secs(45))
         .unwrap_or_default();
     assert!(
-        out.contains("Result of add_two_ints: 5"),
+        out.contains(&nros_tests::output::service_result_line(5)),
         "nano-ros service-client did not get sum 5 via rmw_zenoh_cpp:\n{out}"
     );
 }

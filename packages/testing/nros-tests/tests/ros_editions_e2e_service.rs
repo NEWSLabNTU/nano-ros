@@ -29,7 +29,7 @@ fn nano_service_client_to_ros_server() {
         .wait_for_output(Duration::from_secs(45))
         .unwrap_or_default();
     assert!(
-        out.contains("Result of add_two_ints: 5"),
+        out.contains(&nros_tests::output::service_result_line(5)),
         "nano-ros service-client did not get sum 5 from the ROS server:\n{out}"
     );
 }

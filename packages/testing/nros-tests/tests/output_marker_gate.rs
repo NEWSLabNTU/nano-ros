@@ -12,16 +12,25 @@
 
 use std::path::PathBuf;
 
+use nros_tests::output;
+
+/// The markers this gate polices, taken FROM the SSoT rather than restated.
+///
+/// issue 0321 — this list used to be nine inline literals, so the gate that
+/// exists to stop marker strings being duplicated was itself a duplicate of
+/// the table it guards: renaming or retiring a marker in `output.rs` left the
+/// gate policing a string nothing emits, silently and forever. Referencing the
+/// constants means the two cannot drift.
 const MARKERS: &[&str] = &[
-    "Received:",
-    "I heard:",
-    "Publishing:",
-    "Published:",
-    "Result of add_two_ints:",
-    "Waiting for service requests",
-    "Waiting for action goals",
-    "Goal accepted by server",
-    "Next number in sequence received:",
+    output::INT32_LISTENER_LOG_PREFIX,
+    output::LISTENER_LOG_PREFIX,
+    output::TALKER_LOG_PREFIX,
+    output::INT32_TALKER_LOG_PREFIX,
+    output::SERVICE_RESULT_PREFIX,
+    output::SERVICE_SERVER_READY_MARKER,
+    output::ACTION_SERVER_READY_MARKER,
+    output::ACTION_GOAL_ACCEPTED_PREFIX,
+    output::ACTION_FEEDBACK_PREFIX,
 ];
 
 fn tests_dir() -> PathBuf {

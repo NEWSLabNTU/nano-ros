@@ -58,7 +58,7 @@ fn ros_pub_to_nano_listener() {
         .wait_for_output(Duration::from_secs(45))
         .unwrap_or_default();
     assert!(
-        out.contains("I heard: [42]"),
+        out.contains(&format!("{} [42]", nros_tests::output::LISTENER_LOG_PREFIX)),
         "nano-ros listener did not receive ROS Int32 42 on /chatter:\n{out}"
     );
 }

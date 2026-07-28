@@ -258,10 +258,20 @@ coverage is unmodelled. See `0341-*`.
 the interpreter) and the only bare `start_slirp(7447)` among 14 call sites, inside the
 allocator's own window. See `0342-*`.
 
-**#321** — `output_marker_gate` is **RED on main**: six inline marker literals in the
-ros-editions family. Landed unnoticed because `justfile:1174` excludes those binaries from the
-sweep while the gate (not excluded) lints their source from disk — two lanes, neither covering
-the other. The gate also hardcodes its own 9-marker table vs output.rs's ~30. P1. See `0321-*`.
+**#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh:189` inits the RETIRED
+`ros-launch-manifest` submodule path, so a **fresh clone cannot build the CLI** (it only works
+here because two retired worktrees remain on disk); 9 doc copies of the dead command,
+`AGENTS.md:285` says "NOT `--recursive`" (now required), `just doctor` checks the wrong prereq,
+and the book still teaches the 0285 PATH footgun. P1. See `0320-*`. (audit 2026-07-28)
+
+Recently resolved: **#321** — `output_marker_gate` was RED on main: six inline marker literals in
+the ros-editions family, now the `output::*` constants (the service one via `service_result_line(5)`,
+so it still pins the value). The gate also restated the table it guards; `MARKERS` now REFERENCES
+`output::*`, which closes the direction the issue did not name — a marker renamed in output.rs used
+to leave the gate policing a string nothing emits, green forever. Adding `ACTION_GOAL_ACCEPTED_PREFIX`
+kept the gate's strength (the existing constant was the longer full line). Mutation-checked; all four
+excluded binaries compile. The LANE GAP is untouched and still open: the gate polices sources whose
+binaries never run in `just ci`. See `0321-*`. (2026-07-28)
 
 **#322** — `accept_goal` replies `accepted=true` BEFORE `active_goals.push`, `MAX_GOALS`=4 and no
 caller pre-checks → the 5th concurrent goal is acked then dropped; client waits forever. P1.

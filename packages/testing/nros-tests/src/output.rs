@@ -220,8 +220,17 @@ pub const ACTION_SERVER_READY_MARKER: &str = "Waiting for action goals";
 /// Action client log line before sending the goal (`"Sending goal"`).
 pub const ACTION_SENDING_GOAL_MARKER: &str = "Sending goal";
 
+/// Action client log PREFIX once the server accepts the goal
+/// (`"Goal accepted by server"`). The stock demo continues
+/// `", waiting for result"` — see [`ACTION_GOAL_ACCEPTED_MARKER`] for the full
+/// line. The prefix exists separately because `output_marker_gate` scans for
+/// the shortest form a test might spell; matching only the full line would let
+/// a bare `"Goal accepted by server"` literal through.
+pub const ACTION_GOAL_ACCEPTED_PREFIX: &str = "Goal accepted by server";
+
 /// Action client log line once the server accepts the goal
-/// (`"Goal accepted by server, waiting for result"`).
+/// (`"Goal accepted by server, waiting for result"`) —
+/// [`ACTION_GOAL_ACCEPTED_PREFIX`] plus `", waiting for result"`.
 pub const ACTION_GOAL_ACCEPTED_MARKER: &str = "Goal accepted by server, waiting for result";
 
 /// Action client log prefix for each feedback sample
