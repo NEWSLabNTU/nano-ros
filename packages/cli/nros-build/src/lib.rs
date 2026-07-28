@@ -179,7 +179,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         eyre::bail!(
             "nros-build: `{}` has no committed SystemModel at `{}` — the \
              launch-XML parse path was removed (phase-296 R4). Resolve one \
-             and commit it:\n  play_launch resolve {} [--system \
+             and commit it:\n  nros-launch-resolve {} [--system \
              {}/system.toml] -o {}",
             opts.launch_file.display(),
             model_path.display(),

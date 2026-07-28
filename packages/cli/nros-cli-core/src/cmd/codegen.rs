@@ -223,7 +223,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     if args.args.is_some() {
         bail!(
             "codegen entry: `--args` was removed with the launch bake (phase-296 \
-             R4) — a SystemModel is early-bound; re-run `play_launch resolve` \
+             R4) — a SystemModel is early-bound; re-run `nros-launch-resolve` \
              with the desired `KEY:=VALUE` bindings instead"
         );
     }
@@ -235,7 +235,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // canonical input is a play_launch-resolved SystemModel.
         bail!(
             "codegen entry: `--launch` was removed (phase-296 R4) — resolve a \
-             SystemModel and pass `--model`:\n  play_launch resolve \
+             SystemModel and pass `--model`:\n  nros-launch-resolve \
              <bringup>/launch/<file>.launch.xml [--system <bringup>/system.toml] \
              -o <bringup>/config/system_model.yaml\n  nros codegen entry --model \
              <bringup>/config/system_model.yaml …"

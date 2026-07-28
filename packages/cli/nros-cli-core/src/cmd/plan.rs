@@ -210,7 +210,7 @@ pub fn run(args: Args) -> Result<()> {
         eyre::bail!(
             "`{}` has no committed SystemModel and the launch-XML parse path \
              was removed (phase-296 R4). Resolve one and commit it:\n  \
-             play_launch resolve <bringup>/launch/<file>.launch.xml \
+             nros-launch-resolve <bringup>/launch/<file>.launch.xml \
              [--system <bringup>/system.toml] -o \
              <bringup>/config/system_model.yaml\n(convention discovery plans \
              it; `--model <path>` overrides; a pre-baked record via --record \

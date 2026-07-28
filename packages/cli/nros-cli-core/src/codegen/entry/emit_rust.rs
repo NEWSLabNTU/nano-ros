@@ -53,6 +53,7 @@ pub fn emit(plan: &Plan) -> String {
     // launch-XML node, in source order.
     let mut register_calls = String::new();
     for n in &plan.nodes {
+        emit_node_state(&mut register_calls, n);
         let _ = writeln!(
             register_calls,
             "            ::{}::register(runtime)?;",
@@ -101,6 +102,68 @@ pub fn emit(plan: &Plan) -> String {
     out
 }
 
+/// Bake the per-node runtime state the `nros::main!` proc-macro sets before
+/// each `register` call (issue 0302).
+///
+/// Four features arrived over four phases — params (264 W4a), identity
+/// (268 W1), remaps (305 W3 / issue 0255), QoS overrides (issue #52) — and
+/// each wired the proc-macro while leaving this emitter behind, so a CLI-baked
+/// entry ran every node with default parameters, no remaps, its own hardcoded
+/// name and no QoS overrides. From the same plan.
+///
+/// EVERY field is written unconditionally, including the empty case. That
+/// reset discipline is the macro's and it is load-bearing: `runtime` is reused
+/// across nodes, so a node with no params must clear the previous node's
+/// rather than inherit them.
+fn emit_node_state(out: &mut String, n: &super::PlanNode) {
+    let pairs = |items: &[(String, String)]| -> String {
+        items
+            .iter()
+            .map(|(a, b)| format!("({}, {})", lit_str(a), lit_str(b)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let _ = writeln!(out, "            runtime.params = &[{}];", pairs(&n.params));
+    let _ = writeln!(out, "            runtime.remaps = &[{}];", pairs(&n.remaps));
+
+    // The plan carries LOWERED codes: `nros_orchestration_ir::qos_override`
+    // already rejected anything unusable (issue 0303), so nothing is decoded
+    // or silently dropped here.
+    let qos = n
+        .qos_overrides
+        .iter()
+        .map(|o| {
+            format!(
+                "({}, {}, {}, {})",
+                lit_str(&o.topic),
+                o.role,
+                o.policy,
+                o.value
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let _ = writeln!(out, "            runtime.qos_overrides = &[{qos}];");
+
+    match (&n.name, &n.namespace) {
+        (Some(name), ns) => {
+            let _ = writeln!(
+                out,
+                "            runtime.node_identity = ::core::option::Option::Some(({}, {}));",
+                lit_str(name),
+                lit_str(ns.as_deref().unwrap_or(""))
+            );
+        }
+        (None, _) => {
+            let _ = writeln!(
+                out,
+                "            runtime.node_identity = ::core::option::Option::None;"
+            );
+        }
+    }
+}
+
 fn write_header(out: &mut String, plan: &Plan) {
     let _ = writeln!(
         out,
@@ -130,6 +193,17 @@ fn board_path_for(board: &str) -> Option<&'static str> {
 /// Quote a string into a valid Rust string literal (raw form when
 /// possible so backslashes in path components survive on Windows
 /// hosts).
+/// Quote a value as a PLAIN Rust string literal, escaping as needed.
+///
+/// The `nros::main!` proc-macro emits these through `LitStr`, i.e. plain
+/// quoted form. This emitter exists to be byte-diffable against that output
+/// (issue 0302), so it matches rather than using the raw-string form
+/// [`quote_str`] uses for paths.
+fn lit_str(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
+}
+
 fn quote_str(s: &str) -> String {
     // Pick a raw-string hash count that doesn't collide with the
     // string's own quote sequences. For paths the input is overwhelm-
@@ -151,6 +225,76 @@ mod tests {
     use super::*;
     use crate::codegen::entry::PlanNode;
     use std::path::PathBuf;
+
+    /// Issue 0302 — every per-node field the `nros::main!` proc-macro sets must
+    /// be baked here too, INCLUDING the empty case.
+    ///
+    /// The reset is the point: `runtime` is reused across nodes, so a node with
+    /// no params must clear the previous node's rather than inherit them.
+    /// Emitting the four assignments only when non-empty would leak state
+    /// between nodes and pass a naive "does it contain the value" test.
+    #[test]
+    fn every_node_gets_the_full_runtime_state_reset() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+        plan.nodes[0].params = vec![("rate".into(), "25".into())];
+        plan.nodes[0].remaps = vec![("chatter".into(), "/ns/chatter".into())];
+        plan.nodes[0].name = Some("talker".into());
+        plan.nodes[0].namespace = Some("/ns".into());
+        // node 1 deliberately left bare — it must still be RESET.
+
+        let out = emit(&plan);
+
+        assert!(
+            out.contains(r#"runtime.params = &[("rate", "25")];"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"runtime.remaps = &[("chatter", "/ns/chatter")];"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                r#"runtime.node_identity = ::core::option::Option::Some(("talker", "/ns"));"#
+            ),
+            "{out}"
+        );
+
+        // Both nodes reset all four; the bare one gets empties, not omissions.
+        assert_eq!(out.matches("runtime.params = &[").count(), 2, "{out}");
+        assert_eq!(out.matches("runtime.remaps = &[").count(), 2, "{out}");
+        assert_eq!(
+            out.matches("runtime.qos_overrides = &[").count(),
+            2,
+            "{out}"
+        );
+        assert_eq!(out.matches("runtime.node_identity = ").count(), 2, "{out}");
+        assert!(
+            out.contains("runtime.params = &[];"),
+            "bare node must reset:\n{out}"
+        );
+        assert!(
+            out.contains("runtime.node_identity = ::core::option::Option::None;"),
+            "a node with no launch name must clear the previous identity:\n{out}"
+        );
+    }
+
+    /// The state must be written BEFORE the register call it configures —
+    /// after it would configure the next node, or nothing.
+    #[test]
+    fn state_is_emitted_before_the_register_call() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.nodes[0].params = vec![("rate".into(), "25".into())];
+        let out = emit(&plan);
+
+        let params_at = out.find("runtime.params").expect("params emitted");
+        let register_at = out
+            .find("::talker_pkg::register")
+            .expect("register emitted");
+        assert!(
+            params_at < register_at,
+            "params must precede the register call:\n{out}"
+        );
+    }
 
     fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         Plan {

@@ -453,7 +453,10 @@ pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Re
         .wrap_err_with(|| format!("codegen-system: parse {}", cfg.display()))?;
 
     // Is an existing entry ours (tagged) vs a user's hand-set line?
-    let existing = doc.get("env").and_then(|e| e.as_table()).and_then(|t| t.get(KEY));
+    let existing = doc
+        .get("env")
+        .and_then(|e| e.as_table())
+        .and_then(|t| t.get(KEY));
     let existing_is_managed = existing
         .and_then(|it| it.as_value())
         .and_then(|v| v.decor().suffix())
@@ -471,15 +474,16 @@ pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Re
             inline.insert("value", Value::from(n.to_string()));
             inline.insert("force", Value::from(true));
             let mut v = Value::InlineTable(inline);
-            v.decor_mut()
-                .set_suffix(format!("  # {TAG} (issue 0284; derived from the SystemModel)"));
+            v.decor_mut().set_suffix(format!(
+                "  # {TAG} (issue 0284; derived from the SystemModel)"
+            ));
             let env = doc
                 .as_table_mut()
                 .entry("env")
                 .or_insert(Item::Table(toml_edit::Table::new()));
-            let env = env
-                .as_table_mut()
-                .ok_or_else(|| eyre::eyre!("codegen-system: [env] is not a table in {}", cfg.display()))?;
+            let env = env.as_table_mut().ok_or_else(|| {
+                eyre::eyre!("codegen-system: [env] is not a table in {}", cfg.display())
+            })?;
             env[KEY] = Item::Value(v);
         }
         None => {
@@ -500,8 +504,12 @@ pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Re
     }
     std::fs::create_dir_all(&cfg_dir)
         .wrap_err_with(|| format!("codegen-system: mkdir {}", cfg_dir.display()))?;
-    let tmp = cfg.with_file_name(format!(".config.toml.nros-maxtypes-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, out).wrap_err_with(|| format!("codegen-system: write {}", tmp.display()))?;
+    let tmp = cfg.with_file_name(format!(
+        ".config.toml.nros-maxtypes-tmp.{}",
+        std::process::id()
+    ));
+    std::fs::write(&tmp, out)
+        .wrap_err_with(|| format!("codegen-system: write {}", tmp.display()))?;
     std::fs::rename(&tmp, &cfg)
         .wrap_err_with(|| format!("codegen-system: rename -> {}", cfg.display()))?;
     Ok(true)
@@ -1374,17 +1382,29 @@ mod cyclonedds_type_capacity_tests {
 
     #[test]
     fn empty_and_small_models_emit_nothing() {
-        assert_eq!(resolve_cyclonedds_max_types_with(&SystemModel::default(), None).unwrap(), None);
+        assert_eq!(
+            resolve_cyclonedds_max_types_with(&SystemModel::default(), None).unwrap(),
+            None
+        );
         // 10 msgs = 10 types <= default 32 → keep default, no emit.
-        assert_eq!(resolve_cyclonedds_max_types_with(&model(10, 0), None).unwrap(), None);
+        assert_eq!(
+            resolve_cyclonedds_max_types_with(&model(10, 0), None).unwrap(),
+            None
+        );
     }
 
     #[test]
     fn large_model_auto_sizes_to_next_power_of_two() {
         // 40 distinct msgs = 40 types → next_pow2 = 64.
-        assert_eq!(resolve_cyclonedds_max_types_with(&model(40, 0), None).unwrap(), Some(64));
+        assert_eq!(
+            resolve_cyclonedds_max_types_with(&model(40, 0), None).unwrap(),
+            Some(64)
+        );
         // 4 actions = 4*8 + 3 = 35 types → 64.
-        assert_eq!(resolve_cyclonedds_max_types_with(&model(0, 4), None).unwrap(), Some(64));
+        assert_eq!(
+            resolve_cyclonedds_max_types_with(&model(0, 4), None).unwrap(),
+            Some(64)
+        );
     }
 
     #[test]
@@ -1400,7 +1420,10 @@ mod cyclonedds_type_capacity_tests {
 
     #[test]
     fn user_pin_large_enough_is_respected_no_emit() {
-        assert_eq!(resolve_cyclonedds_max_types_with(&model(0, 4), Some(128)).unwrap(), None);
+        assert_eq!(
+            resolve_cyclonedds_max_types_with(&model(0, 4), Some(128)).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -1443,6 +1466,10 @@ mod cyclonedds_type_capacity_tests {
         assert!(cfg.contains("\"256\""), "{cfg}");
         // Removal also leaves an unmanaged line alone.
         assert!(!manage_cyclonedds_max_types(ws, None).unwrap());
-        assert!(std::fs::read_to_string(ws.join(".cargo/config.toml")).unwrap().contains("\"256\""));
+        assert!(
+            std::fs::read_to_string(ws.join(".cargo/config.toml"))
+                .unwrap()
+                .contains("\"256\"")
+        );
     }
 }

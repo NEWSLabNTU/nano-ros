@@ -190,12 +190,9 @@ the runtime decoder into `nros_rmw::decode_qos_override*` and BOTH bake-time low
 parameter and the accepted spellings. A stale test had documented the gap as intended behaviour
 (`lifespan` was its example of an "unrecognised policy"). See `0303-*`. (2026-07-28)
 
-**#302** — `nros codegen entry --lang rust` emits an entry with NO params, remaps, node identity or
-QoS overrides: `emit_rust` writes bare `::<pkg>::register(runtime)?;` calls, while the canonical
-`nros::main!` sets all four on `runtime` first. Four features over four phases each wired the
-proc-macro and left this emitter behind — the same drift the parameter matcher and the
-`ParamValue` renderer showed. No in-tree fixture uses the verb, so nothing is wrong today. Converge
-WITH a both-ways gate, or retire the emitter. See `0302-*`. (2026-07-28)
+(#302 resolved 2026-07-28 — see `archived/0302-*`: `emit_rust` now bakes params, remaps,
+identity and QoS overrides like `nros::main!`, with a parity gate so the fifth feature cannot
+drift the same way. Its only consumer test has been stale since phase-296.)
 
 **#288** — self-contained standalone examples (node + entry in one crate) dep their board
 crate, so they cannot be host-compiled and cannot be metadata-probed. Executor sizing falls

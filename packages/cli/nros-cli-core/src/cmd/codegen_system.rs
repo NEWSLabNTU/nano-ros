@@ -269,7 +269,7 @@ pub fn run(args: Args) -> Result<()> {
                 "codegen-system: `{}` declares system semantics but the bringup \
                  has no committed SystemModel — the direct system.toml bake was \
                  removed (phase-296 R4). Resolve one and commit it:\n  \
-                 play_launch resolve <bringup>/launch/<file>.launch.xml \
+                 nros-launch-resolve <bringup>/launch/<file>.launch.xml \
                  --system {} -o <bringup>/config/system_model.yaml\n\
                  (convention discovery picks it up; `--model <path>` overrides)",
                 toml.display(),
