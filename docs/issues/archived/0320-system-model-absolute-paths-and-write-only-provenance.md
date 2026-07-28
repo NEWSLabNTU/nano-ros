@@ -1,7 +1,7 @@
 ---
 id: 320
 title: "Committed SystemModels are not self-contained: absolute host paths silently defeat the `system.toml` recording, `meta.record` points at files that no longer exist, and the recorded `sha256`es are write-only"
-status: open
+status: resolved
 type: bug
 area: orchestration
 related: [phase-315, rfc-0060, issue-0293, issue-0274, issue-0196]
@@ -178,10 +178,24 @@ already travels as a unit; inlining a slice of `system.toml` into the generated
 model would duplicate state and add a new drift surface. `meta.inputs` stays a
 relative pointer into the package.
 
-**Still open — steps 1 + 2 (submodule, recurrence-stopper).** The resolver still
-infers the bringup root as the launch file's grandparent, so a relative or
-non-standard launch path can still emit absolute paths (the gate now *catches*
-that, but nothing prevents it structurally). Step 1 (explicit `--bringup-root`
-in `ros-launch-resolve`) + step 2 (drop `meta.record` from the schema) live in
-the vendored `packages/cli/third-party/ros-launch-resolve` submodule and are a
-separate follow-up.
+**Steps 1 + 2 — submodule recurrence-stopper. DONE.** In the vendored resolver
+(`ros-launch-resolve` ff90416, nested `ros-launch-manifest` 8452532):
+
+- **Step 1** — `ModelBuildInputs` gained a `bringup_root: Option<&Path>` and a
+  `--bringup-root <PATH>` CLI flag (`resolve/src/model.rs`, `cli/src/options.rs`,
+  threaded through `cli/src/resolve.rs` + the `nros-launch-resolve` wrapper).
+  When given it is the relativity base directly; the launch-file-grandparent
+  inference is now only a fallback. A residual absolute input embeds a
+  checker-style provenance warning instead of leaking silently. `nros ws sync`
+  passes `--bringup-root <pkg.dir>` (`cmd/ws.rs`), so relativity is structural.
+  Proven: a relative launch path emitted 3 absolute `/home/...` paths without the
+  flag and 0 with it.
+- **Step 2** — `Meta.record` removed from the schema (producer only ever wrote
+  `None`, no `*.record.json` was committed, sole reader was a golden test).
+  Backward-compatible on read (no `deny_unknown_fields`, so old `record:` keys
+  deserialize and drop).
+
+Not done: `SystemModel` still has no `deny_unknown_fields` (the "schema leniency"
+subsection) — deliberately left, since removing `meta.record` relies on that
+leniency to stay backward-compatible with committed old-schema models. Tightening
+it would need a schema-version bump and is out of this issue's scope.

@@ -162,16 +162,16 @@ user-facing TEMPLATES. Fixed at the seam: nros-cpp normalizes an empty hash to t
 `TypeHashNotSupported`. The QoS cells now assert both endpoints (serialized — discovery is a shared
 resource). See `0312-*`. (2026-07-28)
 
-**#320** — 43 of 64 committed `config/*_model.yaml` bake ABSOLUTE host paths
-(`/home/aeon/repos/...`), so a committed artifact resolves on exactly one checkout. Not cosmetic:
-`main_macro.rs:878` uses `meta.inputs` to find the `system.toml` the model was resolved against
-(#0274/#0293), and off the generating machine `candidate.exists()` fails and it SILENTLY falls back
-to `bringup_dir/system.toml` — the per-target leak the recording exists to prevent. Three structural
-gaps let it recur: relativity is inferred from the launch path's grandparent rather than given
-(a relative launch arg re-emits absolute paths); `meta.record` is dead on both ends and names
-`.record.json` files that no longer exist anywhere; and the recorded `sha256`es are WRITE-ONLY while
-mtime staleness watches a smaller input set than the hashes cover (#0196 class) — which is why
-phase-315's refresh-or-fail does not clear the 43. See `0320-*`. (2026-07-28)
+(#320 resolved — committed `config/*_model.yaml` baked absolute host paths, so a model resolved on
+exactly one checkout and `main_macro`'s `meta.inputs` `system.toml` lookup silently fell back to the
+per-target leak elsewhere. Fixed in four steps. Step 3: content-addressed staleness in `cmd/ws.rs`
+(re-hash `meta.inputs` vs disk, absolute path = stale) so the legacy models — never mtime-stale —
+self-heal. Step 4: `nros ws sync` regenerated 67 models portable (43 under workspaces/ + 24 standalone
+examples outside the original count) + `check-no-absolute-model-paths` gate. Step 1: `--bringup-root`
+in the resolver (ff90416) makes relativity structural, not grandparent-inferred — proven to turn 3
+absolute leaks into 0; `ws sync` passes it. Step 2: dead `meta.record` retired from the schema
+(8452532). Step 5 decided: keep the relative pointer. Left open by design: no `deny_unknown_fields`
+(step 2's back-compat relies on it). See `archived/0320-*`. main 07650d0a1 + this. (2026-07-28)
 
 Recently resolved: **#319** — `cyclonedds-ci` was red on main for two days, so `just ci` could not
 pass. `dynamic_bridge_seq_nested` failed `-1002 UnsupportedFieldType`. The #267 fix is CORRECT; its

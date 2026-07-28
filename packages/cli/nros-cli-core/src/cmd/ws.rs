@@ -486,6 +486,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 .wrap_err_with(|| format!("ws sync: create {}", cfg_dir.display()))?;
             let mut cmd = std::process::Command::new(pl);
             cmd.arg(&launch);
+            // Issue 0320 — state the bringup package root explicitly so
+            // `meta.inputs[].path` are recorded relative to it structurally,
+            // rather than the resolver inferring it as the launch file's
+            // grandparent (which emits absolute paths for a non-standard layout).
+            cmd.arg("--bringup-root").arg(&pkg.dir);
             if system_toml.is_file() {
                 cmd.arg("--system").arg(&system_toml);
             }

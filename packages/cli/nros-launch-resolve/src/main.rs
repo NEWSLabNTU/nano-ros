@@ -57,6 +57,12 @@ struct Cli {
     /// Launch arguments, `KEY:=VALUE`.
     launch_arguments: Vec<String>,
 
+    /// Issue 0320 — the bringup package root that `meta.inputs[].path` are
+    /// recorded relative to. When omitted, falls back to the launch file's
+    /// grandparent. Pass it to make model portability structural.
+    #[arg(long, value_name = "PATH")]
+    bringup_root: Option<std::path::PathBuf>,
+
     /// The integrator `system.toml` (deploy placement, transports, domain).
     #[arg(long, value_name = "system.toml")]
     system: Option<std::path::PathBuf>,
@@ -118,6 +124,7 @@ fn main() -> Result<()> {
     let model = build_checked_model(ModelBuildInputs {
         dump: &dump,
         launch_path: Some(&launch_path),
+        bringup_root: cli.bringup_root.as_deref(),
         arg_binding,
         contracts: cli.contracts.as_deref(),
         no_provider_contracts: cli.no_provider_contracts,
