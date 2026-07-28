@@ -97,8 +97,21 @@ incomplete in two ways:
 - **2 SystemModels outside `examples/`** —
   `packages/testing/nros-tests/bins/{entry-poc,qemu-baremetal-main-e2e}/config/system_model.yaml`.
   This issue scoped #320's group to `examples/**/config/*_model.yaml`; these
-  two live under `packages/testing/.../bins/` and belong to #320's population.
-  Noted there.
+  two live under `packages/testing/.../bins/`.
+
+  **#320 has since landed and archived without covering them.** Its fix adds an
+  explicit `--bringup-root` for structural path relativity, and the two files
+  above still read:
+
+  ```
+  packages/testing/nros-tests/bins/entry-poc/config/system_model.yaml:4:
+    - path: /home/aeon/repos/nano-ros/packages/testing/.../system.launch.xml
+  ```
+
+  Verified after rebasing onto the #320 commit. They need regenerating with
+  `--bringup-root` (or the same treatment applied to whatever emits them), and
+  until then the grep gate this issue proposes cannot go green. Filing that as
+  follow-up rather than reopening a closed issue.
 
 What IS true: **zero absolute paths remain in source code** under `examples/`
 or `packages/` — every survivor is a committed model (#320) or documentation
