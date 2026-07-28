@@ -162,6 +162,17 @@ user-facing TEMPLATES. Fixed at the seam: nros-cpp normalizes an empty hash to t
 `TypeHashNotSupported`. The QoS cells now assert both endpoints (serialized — discovery is a shared
 resource). See `0312-*`. (2026-07-28)
 
+**#320** — 43 of 64 committed `config/*_model.yaml` bake ABSOLUTE host paths
+(`/home/aeon/repos/...`), so a committed artifact resolves on exactly one checkout. Not cosmetic:
+`main_macro.rs:878` uses `meta.inputs` to find the `system.toml` the model was resolved against
+(#0274/#0293), and off the generating machine `candidate.exists()` fails and it SILENTLY falls back
+to `bringup_dir/system.toml` — the per-target leak the recording exists to prevent. Three structural
+gaps let it recur: relativity is inferred from the launch path's grandparent rather than given
+(a relative launch arg re-emits absolute paths); `meta.record` is dead on both ends and names
+`.record.json` files that no longer exist anywhere; and the recorded `sha256`es are WRITE-ONLY while
+mtime staleness watches a smaller input set than the hashes cover (#0196 class) — which is why
+phase-315's refresh-or-fail does not clear the 43. See `0320-*`. (2026-07-28)
+
 Recently resolved: **#319** — `cyclonedds-ci` was red on main for two days, so `just ci` could not
 pass. `dynamic_bridge_seq_nested` failed `-1002 UnsupportedFieldType`. The #267 fix is CORRECT; its
 regression test hand-built the `kinds[]` table in the pre-#267 flat layout (top-level fields at
