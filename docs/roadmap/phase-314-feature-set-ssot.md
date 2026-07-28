@@ -246,8 +246,12 @@ recording: a gate whose heuristics are wrong teaches people to ignore it.
       a correctly-configured entry for exactly that reason.)
 
       Deriving the entry's feature list from the declared capabilities — so the
-      two cannot disagree at all — remains open, and is a `nros sync` change
-      rather than a macro one.
+      two cannot disagree at all — moves to
+      [phase-315](phase-315-declaration-drives-rust-selection.md), which widens
+      it correctly: the capability list is only one of FOUR axes a Rust entry
+      restates by hand (edition, capabilities, RMW, transport tier), and the
+      derivation belongs in a generated facade crate rather than an edit to the
+      user's `Cargo.toml`.
 - [x] A gate in `just check` fails when the paths disagree.
 - [x] Issue 0311 closes.
 
