@@ -126,62 +126,8 @@ fn apply_ip_config(config: &Config) {
     }
 }
 
-/// Run an nros application on NuttX.
-///
-/// This is the main entry point for NuttX applications. Call this from `main()`
-/// with a configuration and a closure that sets up your nros executor.
-///
-/// NuttX handles all hardware and network initialization before `main()` runs.
-/// Inside the closure, use `Executor::open()` to create an executor with full
-/// API access (publishers, subscriptions, services, actions, timers, callbacks).
-///
-/// # Example
-///
-/// ```ignore
-/// use nros::prelude::*;
-/// use nros_board_nuttx_qemu_riscv::{Config, run};
-///
-/// fn main() {
-///     run(Config::default(), |config| {
-///         let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///             .domain_id(config.domain_id);
-///         let mut executor = Executor::open(&exec_config)?;
-///         let mut node = executor.create_node("my_node")?;
-///         // Full Executor API: publishers, subscriptions, services, actions...
-///         Ok(())
-///     })
-/// }
-/// ```
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
-where
-    F: FnOnce(&Config) -> Result<(), E>,
-{
-    init_hardware(&config);
-
-    println!(
-        "nros NuttX platform starting (IP: {}.{}.{}.{}, zenoh: {})",
-        config.ip[0], config.ip[1], config.ip[2], config.ip[3], config.zenoh_locator
-    );
-
-    // Wait for NuttX networking to become ready.
-    // NuttX's poll()/select() don't work correctly with Rust's connect_timeout,
-    // so we use a fixed delay. With QEMU -icount shift=auto, this is real time.
-    std::thread::sleep(std::time::Duration::from_secs(5));
-
-    // Flush stdout before calling user closure
-    use std::io::Write as _;
-    let _ = std::io::stdout().flush();
-
-    match f(&config) {
-        Ok(()) => {
-            println!("Application completed successfully.");
-            let _ = std::io::stdout().flush();
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Application error: {:?}", e);
-            let _ = std::io::stdout().flush();
-            std::process::exit(1);
-        }
-    }
-}
+// Phase 313 W-nuttx (#0243) — the legacy free `run(Config, closure)` (a session
+// opener over the retired `nros_board_common::board_init` traits) is GONE. The
+// live entry is `<QemuRvVirt as nros_platform::board::BoardEntry>::run`
+// (entry_212n.rs), used by `nros::main!`; NuttX dispatches logging/init-only
+// fixtures' plain `fn main` directly via `nsh_main`, so they need no board entry.

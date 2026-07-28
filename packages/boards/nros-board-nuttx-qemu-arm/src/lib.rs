@@ -47,44 +47,16 @@ mod node;
 
 pub use config::Config;
 
-/// Phase 152.4.B — `BoardInit` impl for the QEMU ARM virt board.
+/// Per-board marker for trait dispatch.
 ///
-/// Provides `Config` + `init_hardware` per the kernel-agnostic
-/// contract `nros_board_common::BoardInit`. The
-/// `nros_board_nuttx::run_generic<B>` shim consumes this so future
-/// NuttX overlays plug into the same boot path.
+/// Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init`
+/// impls (`BoardInit`/`BoardPrint`/`BoardExit` + the free `node::run`) are
+/// RETIRED for this board; the live path is the `nros_platform::board`
+/// trait set in [`mod entry_212n`] (`BoardInit`, `BoardPrint`, `BoardExit`,
+/// `BoardEntry`).
 pub struct QemuArmVirt;
 
-impl nros_board_common::BoardInit for QemuArmVirt {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        // Mirrors `node::init_hardware`: re-seed /dev/urandom +
-        // override defconfig-baked IP via ioctl.
-        node::init_hardware(cfg);
-    }
-}
-
-/// Phase 173.1 — complete the `Board` super-trait. NuttX targets ship
-/// `std`, so printing + exit route through the hosted stdlib (same
-/// primitives `node::run` already uses).
-impl nros_board_common::BoardPrint for QemuArmVirt {
-    fn println(args: core::fmt::Arguments<'_>) {
-        println!("{args}");
-    }
-}
-
-impl nros_board_common::BoardExit for QemuArmVirt {
-    fn exit_success() -> ! {
-        std::process::exit(0)
-    }
-
-    fn exit_failure() -> ! {
-        std::process::exit(1)
-    }
-}
-
-pub use node::{init_hardware, run};
+pub use node::init_hardware;
 
 // Issue #130 — the shared public eth0-config entry point + slirp defaults, so
 // the C `nros-nuttx-ffi` entry can push the guest IP into `eth0` before

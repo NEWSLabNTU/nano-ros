@@ -86,68 +86,12 @@
 // this crate as no_std while its `std::` bodies are active → build errors.
 #![cfg_attr(not(any(feature = "reference-qemu-arm", target_os = "nuttx")), no_std)]
 
-// Phase 152.4.B — re-export the kernel-agnostic BoardInit trait so
-// overlays can `use nros_board_nuttx::BoardInit` without naming
-// nros-board-common directly. Once 152.4.B.2's overlay refactor
-// lands, the per-board crate impls this trait and the generic
-// `run::<B>` shim below consumes it.
-pub use nros_board_common::BoardInit;
-
-#[cfg(feature = "reference-qemu-arm")]
-pub use nros_board_nuttx_qemu_arm::{Config, init_hardware, run};
-
-/// Phase 152.4.B — generic NuttX entry point.
-///
-/// Drives every NuttX overlay's boot: invokes the board's
-/// `BoardInit::init_hardware`, sleeps briefly for NuttX
-/// networking to settle (the kernel runs `NETINIT_*` synchronously
-/// before `main`, but virtio-net link-up isn't atomic), then
-/// hands control to the user closure. Closure return code maps to
-/// `std::process::exit(0)` / `(1)`.
-///
-/// Per-board overlay's `run` calls into this with the matching
-/// `BoardInit` impl:
-/// ```ignore
-/// pub fn run<F, E>(cfg: Config, f: F) -> !
-/// where
-///     F: FnOnce(&Config) -> Result<(), E>,
-///     E: std::fmt::Debug,
-/// {
-///     nros_board_nuttx::run_generic::<QemuArmVirt, _, _>(cfg, f)
-/// }
-/// ```
-///
-/// Available only when `std` is reachable (NuttX targets bring
-/// their own `std`). Bare `cargo check` without a NuttX target +
-/// without `reference-qemu-arm` skips the impl.
-#[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
-pub fn run_generic<B, F, E>(cfg: B::Config, f: F) -> !
-where
-    B: BoardInit,
-    F: FnOnce(&B::Config) -> std::result::Result<(), E>,
-    E: std::fmt::Debug,
-{
-    B::init_hardware(&cfg);
-
-    // NuttX virtio-net needs a brief warm-up after kernel
-    // `NETINIT_*` before `connect()` succeeds.
-    std::thread::sleep(std::time::Duration::from_secs(5));
-
-    use std::io::Write as _;
-    let _ = std::io::stdout().flush();
-
-    match f(&cfg) {
-        Ok(()) => {
-            let _ = std::io::stdout().flush();
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Application error: {:?}", e);
-            let _ = std::io::stdout().flush();
-            std::process::exit(1);
-        }
-    }
-}
+// Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init` path is
+// RETIRED for the NuttX family: the generic `run_generic<B>` shim, the
+// `nros_board_common::BoardInit` re-export it consumed, and the `reference-qemu-arm`
+// scaffolding re-export of the per-board free `run` are all gone. The live entries
+// are the `nros_platform`-shaped `run_entry` / `run_tiers` below (consumed by
+// `nros::main!` via each board's `impl nros_platform::BoardEntry`).
 
 /// Phase 212.N.2 — `BoardEntry`-shaped NuttX entry point.
 ///
