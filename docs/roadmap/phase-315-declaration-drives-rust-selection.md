@@ -1,6 +1,6 @@
 # Phase 315 — `system.toml` drives Rust selection too
 
-**Status (2026-07-28): Draft.** Finishes what phase-314 started: the RMW, the
+**Status (2026-07-28): W1, W2, W3, W5 landed; W4 open.** Finishes what phase-314 started: the RMW, the
 ROS edition and the capability list are declared once, in `system.toml`, for
 **every** language. Closes phase-314's last open acceptance item and retires the
 hand-written Rust selection it was working around.
@@ -127,7 +127,27 @@ existing `resolve_rmw` SSoT for the backend. Mirrors
 `nros_write_runtime_umbrella_crate`, which already does this for C++.
 
 **Done when:** a workspace entry builds with the edition, capabilities and RMW
-coming only from `system.toml`.
+coming only from `system.toml`. — **DONE.** Setting `ros_edition = "jazzy"` and
+re-running sync changes what the entry compiles against with no manifest edit;
+`cargo tree` confirms `FEATS=alloc,rmw-cffi,ros-jazzy,std` reaches `nros`.
+
+Two things implementation found that the design had assumed away:
+
+**Entries come from cargo's `members`, not from the ament scan.** Nine entries
+have no `package.xml`, so `nros sync`'s scan never saw them — they are cargo
+workspace members and nothing else, which is legal (the workspace root is their
+patch authority). Keying facade generation off the scan skipped exactly those
+nine, and the skip was invisible: sync succeeded and they kept their
+hand-written features, which is the state that looks correct. Cargo's member
+list is the right truth here, since the mechanism IS cargo feature unification.
+
+**A direct `nros-rmw-*` dep needs the edition too.** Some entries depend on the
+backend crate directly rather than only through the board, and the backend's
+own `keyexpr` module cfg-gates the RIHS01 type-hash tail on `ros-iron` /
+`ros-jazzy`. Miss that forward and a jazzy build keeps the humble
+`TypeHashNotSupported` placeholder on the wire while compiling clean — this
+phase's exact failure mode, reintroduced one dependency to the left. The
+facade emits `nros-rmw-*` alongside `nros` and the board crate.
 
 ### W2 — migrate the workspace examples
 
@@ -136,7 +156,16 @@ add the facade dep. The node packages need no change — phase-314 already remov
 their `ros-*`.
 
 **Done when:** no workspace entry names an edition, a capability or an RMW
-feature.
+feature on a dep the facade owns. — **DONE**, 35 manifests.
+
+Two restatements survive migration and are W4's, not W2's:
+
+* the zephyr entries keep a local `[features] default = ["rmw-zenoh"]` — the
+  entry's own feature namespace, but still a second RMW selection;
+* node packages forward capabilities (`safe_listener_pkg/safety-e2e`), which
+  duplicates `system.toml`'s `features`. Node-level capability derivation is
+  its own design question — a node package is linked into someone else's image
+  and cannot see the bringup.
 
 ### W3 — standalone Rust: make the edition REPLACEABLE, not additive
 
@@ -200,7 +229,12 @@ and stays.
 
 **Done when:** `cargo build --features ros-jazzy` works in a standalone example
 with no `--no-default-features`, and W5's gate rejects an edition inside a
-`default` list.
+`default` list. — **DONE.** Option (1) taken; the open question resolved in its
+favour. Zero editions is not undefined: every consumer gates on
+`cfg(not(any(ros-iron, ros-jazzy)))` — `keyexpr.rs` does so in five places — so
+no edition IS humble by construction. Verified in both directions: restoring the
+old default reproduces the `compile_error!`, dropping it makes
+`--features ros-jazzy` build.
 
 ### W4 — retire the old paths
 
@@ -232,7 +266,14 @@ Extend `scripts/check-feature-set-ssot.sh` with two rules:
   the additive-default trap from W3, and it is invisible until someone tries a
   second edition.
 
-**Done when:** the gate fails when an entry restates a declared axis.
+**Done when:** the gate fails when an entry restates a declared axis. — **DONE.**
+
+Rule 5 needed a parser rather than a grep. A line-wise match cannot tell "the
+entry sets `nros/ros-humble`" from "a node package forwards its own
+`safety-e2e`", and only the first is this phase's to fix; it also flagged every
+entry for its own PROSE, since these manifests explain the axes at length right
+where they used to set them. The rule now walks brace-balanced dep specs,
+scoped to the deps the facade owns, with comments stripped.
 
 ## Non-goals
 

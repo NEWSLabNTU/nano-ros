@@ -76,7 +76,99 @@ if [ -n "${leaf_hits//[$'\n']/}" ]; then
     fail=1
 fi
 
+# 4. phase-315 W3 — no manifest anywhere puts a ROS edition in its `default`
+#    list. Cargo features are additive and the editions are compile_error!-
+#    exclusive, so a default edition means `--features ros-jazzy` yields BOTH
+#    and fails to compile: the user must discover `--no-default-features` and
+#    then re-name every other default they wanted. The C++ selector
+#    (-DNANO_ROS_ROS_EDITION) replaces; this keeps the cargo selector
+#    equivalent. Invisible until someone tries a second edition, which is
+#    exactly why it needs a gate rather than a convention.
+default_hits=$(git grep -n '^default = \[.*ros-\(humble\|iron\|jazzy\)' \
+    -- '*/Cargo.toml' 2>/dev/null | cut -d: -f1 | sort -u || true)
+if [ -n "$default_hits" ]; then
+    echo "FAIL: a ROS edition inside a \`default\` feature list:"
+    echo "$default_hits" | while read -r f; do note "$f"; done
+    note "Drop it. Naming no edition is legal and resolves to humble"
+    note "(consumers gate on cfg(not(any(ros-iron, ros-jazzy))))."
+    fail=1
+fi
+
+# 5. phase-315 W1/W2 — a WORKSPACE entry declares none of the three axes.
+#    A workspace has a system.toml, which is the SSoT; `nros sync` generates a
+#    selection facade crate carrying the derived features and the entry depends
+#    on that. An entry that also names them by hand is a second copy free to
+#    contradict the declaration — and the edition copy fails on the WIRE, not
+#    at build time (RFC-0056), so nothing catches it.
+#
+#    Standalone examples are deliberately NOT covered: they have no system.toml,
+#    so `--features` IS their selector (rule 4 keeps it replace-shaped).
+entry_hits=$(python3 - <<'PY'
+import re, subprocess, sys
+
+# Brace-balanced, because a dep spec spans lines when its features array does.
+# A line-wise grep cannot tell "the entry sets nros/ros-humble" from "a node
+# package forwards its own safety-e2e" — those are different findings and only
+# the first is W1/W2's to fix.
+DECLARED = re.compile(
+    r'"(ros-(?:humble|iron|jazzy)|rmw-(?:zenoh|xrce|cyclonedds|uorb)'
+    r'|param-services|lifecycle-services|safety-e2e)"'
+)
+OWNED = lambda n: n == "nros" or n.startswith("nros-board-") or n.startswith("nros-rmw-")
+
+files = subprocess.run(
+    ["git", "ls-files", "examples/workspaces/*/Cargo.toml"],
+    capture_output=True, text=True).stdout.split()
+bad = []
+for f in files:
+    try:
+        text = open(f).read()
+    except OSError:
+        continue
+    if "[package.metadata.nros.entry]" not in text:
+        continue
+    hdr = re.search(r"^\[dependencies\]\s*$", text, re.M)
+    if not hdr:
+        continue
+    body_start = hdr.end()
+    nxt = re.search(r"^\[", text[body_start:], re.M)
+    body_end = body_start + (nxt.start() if nxt else len(text) - body_start)
+    for m in re.finditer(r"^([A-Za-z0-9_-]+)\s*=\s*", text[body_start:body_end], re.M):
+        if not OWNED(m.group(1)):
+            continue
+        i = body_start + m.end()
+        if text[i] != "{":
+            continue
+        depth, j = 0, i
+        while j < body_end:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        spec = text[i:j + 1]
+        # Strip comments inside the spec before matching — these manifests
+        # explain the axes in prose right where they used to set them.
+        spec = re.sub(r"#[^\n]*", "", spec)
+        hit = DECLARED.search(spec)
+        if hit:
+            bad.append(f"  {f} — {m.group(1)} names {hit.group(0)}")
+            break
+print("\n".join(bad))
+PY
+)
+if [ -n "${entry_hits//[$'\n']/}" ]; then
+    echo "FAIL: workspace entry package(s) restate a declared axis:"
+    echo "$entry_hits" | while read -r f; do [ -n "$f" ] && note "$f"; done
+    note "Depend on the generated <entry>_nros_selection facade instead;"
+    note "\`nros sync\` derives edition/RMW/capabilities from system.toml."
+    fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
-    echo "feature-set SSoT OK — one edition source, one platform mapping, no node-level editions."
+    echo "feature-set SSoT OK — one edition source, one platform mapping, no node-level"
+    echo "editions, no default-list editions, no entry-level axis restatements."
 fi
 exit "$fail"
