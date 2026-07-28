@@ -690,34 +690,13 @@ template <int N> bool Node::GlobalStorageHolder<N>::initialized = false;
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-    // Phase 123.B.3 — on hosted builds, fall through to env vars
-    // ($NROS_LOCATOR / $ROS_DOMAIN_ID) so the no-arg `nros::init()`
-    // call works without `getenv()` boilerplate in user code.
-    // Explicit non-null `locator` / non-zero `domain_id` still win.
-    // Phase-287 W6 — the hard "tcp/127.0.0.1:7447" fallback moved BELOW the
-    // baked-macro check: threadx-linux is a HOSTED embedded target, and the
-    // eager default here shadowed its baked `NROS_ENTRY_LOCATOR` port.
-    // RFC-0045 / issue #206 — the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
-    // NROS_NODE_NAME) moved into the shared Rust resolver behind
-    // nros_cpp_init (precedence model A: hosted env > this baked chain >
-    // compiled default; malformed or >232 ROS_DOMAIN_ID is an init ERROR,
-    // never a silent domain 0). This header only assembles the baked rung.
-#endif
-    // Baked compile-time locator (embedded gate) beats the local default but
-    // loses to an explicit arg; the hosted env rung (in the Rust resolver)
-    // overrides all of these (phase-287 W6 + #206; see the 3-arg overload).
-#ifdef NROS_ENTRY_LOCATOR
-    if (locator == nullptr) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-#endif
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-    if (locator == nullptr) {
-        locator = "tcp/127.0.0.1:7447";
-    }
-#endif
-    // Phase 266 (W6) — unified default session name "node" across C, C++, and Rust.
+    // Issue 0329 — forward RAW to the 3-arg overload, which resolves the whole
+    // ladder (baked `NROS_ENTRY_LOCATOR`/`NROS_ENTRY_DOMAIN_ID` rungs, hosted
+    // default, then the env overlay in the Rust resolver behind `nros_cpp_init`).
+    // This overload previously re-resolved the locator rung itself — a second,
+    // partial copy of the same ladder (it never applied `NROS_ENTRY_DOMAIN_ID`),
+    // duplicating what the 3-arg already does. Phase 266: unified default session
+    // name "node".
     return init(locator, domain_id, "node");
 }
 

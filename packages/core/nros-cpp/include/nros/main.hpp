@@ -108,16 +108,22 @@ inline int32_t component_spin_loop() {
         bound_ms = entry_parse_u32(env);
     }
 #endif
-    const uint64_t start_ns = nros_cpp_time_ns();
+    // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
+    // exactly the shared wall-clock budgeted spin; reuse `nros::spin()` (which
+    // forwards to the single `nros_cpp_spin_for` CFFI) instead of a fourth
+    // hand-rolled budget loop.
+    if (bound_ms != 0) {
+        return static_cast<int32_t>(::nros::spin(bound_ms).raw());
+    }
+    // Unbounded (production): run until `nros::shutdown()` flips `ok()` false,
+    // yielding to the network stack / peer threads per tick. This loop stays in
+    // the header because the per-tick yield (`k_yield()` on Zephyr) and the
+    // `nros::ok()` check are platform / C++-global coupled — there is no
+    // Rust-side yield or shutdown primitive to move it behind the CFFI.
     for (;;) {
-        if (bound_ms == 0 && !::nros::ok()) break;
+        if (!::nros::ok()) break;
         ::nros::Result last = ::nros::spin_once(10);
         if (!last.ok()) return static_cast<int32_t>(last.raw());
-        if (bound_ms != 0) {
-            const uint64_t elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1000000ull;
-            if (elapsed_ms >= bound_ms) break;
-            if (!::nros::ok()) break;
-        }
         entry_tick_yield();
     }
     return 0;

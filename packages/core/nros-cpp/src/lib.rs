@@ -751,25 +751,25 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
         return setup_rc;
     }
 
-    let bound_ms: u64 = std::env::var("NROS_ENTRY_SPIN_MS")
+    // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
+    // the shared wall-clock budgeted spin; reuse `nros_cpp_spin_for` instead of a
+    // second hand-rolled budget loop. Unbounded, a native entry runs until the
+    // process is signalled, so a plain `spin_once` loop suffices (no per-tick
+    // yield — native is preemptively scheduled).
+    let bound_ms: u32 = std::env::var("NROS_ENTRY_SPIN_MS")
         .ok()
-        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
-    let start_ns = nros_cpp_time_ns();
-    let mut ret = 0;
-    loop {
-        let last = unsafe { nros_cpp_spin_once(sptr, 10) };
-        if last != NROS_CPP_RET_OK {
-            ret = last as i32;
-            break;
-        }
-        if bound_ms != 0 {
-            let elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1_000_000;
-            if elapsed_ms >= bound_ms {
-                break;
+    let ret = if bound_ms != 0 {
+        unsafe { nros_cpp_spin_for(sptr, bound_ms, 10) as i32 }
+    } else {
+        loop {
+            let last = unsafe { nros_cpp_spin_once(sptr, 10) };
+            if last != NROS_CPP_RET_OK {
+                break last as i32;
             }
         }
-    }
+    };
 
     unsafe { nros_cpp_fini(sptr) };
     ret
