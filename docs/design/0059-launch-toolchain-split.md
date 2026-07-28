@@ -1,9 +1,48 @@
 # RFC-0059 — Split the launch toolchain: Python-linked front-end, in-tree compiler
 
-**Status:** Draft (2026-07-26)
+**Status:** Superseded by [RFC-0060](0060-launch-toolchain-three-layers.md)
+(2026-07-28). Kept for the measurement and the boundary analysis, both of which
+carried over; the *structure* it proposed did not.
 **Supersedes nothing. Amends:** RFC-0050 (SystemModel) §ownership table.
 **Motivated by:** issue 0285 (version skew broke every platform's fixture build),
 and the standing phase-195.A constraint recorded in `nros-cli-core/Cargo.toml`.
+
+## What happened to this RFC
+
+RFC-0060 solved the same problem one level up. This RFC framed the split at
+**crate** level — feature-gate `pyo3` inside `play_launch_parser` so nano-ros
+could link a Python-free build. RFC-0060 split at **repository** level instead:
+three repos (`ros-launch-manifest` → `ros-launch-resolve` → `play_launch`) with
+a strictly linear dependency, and nano-ros pinning layers 1–2 and never layer 3.
+
+The repository split is the better answer, for a reason this RFC did not weigh:
+the failures were not only about linking. Issue 0285 was a PATH-resolved binary
+of the wrong provenance, and issue 0293 was two parsers for one file — both are
+*ownership* problems, which a feature flag inside one crate cannot fix. Phase
+312 implemented RFC-0060; `ros-launch-resolve` exists and nano-ros pins it.
+
+**What carried over:**
+
+* The measurement. All 101 tracked launch files under `examples/` are XML and
+  none uses `$(eval …)`, so the in-tree corpus needs no interpreter. That is
+  what makes a Python-free layer worth having at all.
+* The boundary analysis. `.launch.py` is cleanly extension-dispatched, but
+  `$(eval …)` reaches CPython from XML and YAML equally, and
+  `From<pyo3::PyErr> for ParseError` leaks pyo3 into the core error type. Any
+  Python-free build still has to answer those.
+* "The interface should be a data artifact, not a CLI verb" — the skew in 0285
+  was a subcommand-set mismatch, the narrowest symptom of the widest contract.
+
+**What did not:**
+
+* The proposed crate-level `--no-default-features` build of
+  `play_launch_parser`.
+* Three of the four open decisions below are now answered by the layering:
+  where the resolver lives (its own repo, layer 2), the fate of the duplicate
+  in-tree parser (issue 0293), and whether the z3-bearing `check` follows (it
+  stays in layer 1, which nano-ros links selectively). The `$(eval)` policy
+  question is deferred rather than settled — layer 2 carries CPython, so
+  nothing forces the choice yet.
 
 ## Summary
 
