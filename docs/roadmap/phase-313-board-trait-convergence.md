@@ -228,20 +228,37 @@ green its lane.
   `logging_smoke_nuttx_qemu_arm_emits_every_severity` PASS; qemu-riscv reaches the
   unchanged `QemuRvVirt::run_tiers` via the ws-realtime-rust lane.
 
-## Next steps when resumed (verifiability-ordered — see the Fix method above)
-1. **Direct-exec boards** (`nros_board_common::run<B>` consumers: esp32-qemu,
-   esp32s3, stm32f4, mps2-an385-baremetal). Each takes `Config` by value and its
-   hardware bringup is Config-driven, so the per-board `run_bare(config, setup)`
-   calls the board's own `node::init_hardware(&config)` directly (like
-   threadx-qemu-riscv64) rather than the parameterless new-family `BoardInit`.
-   NB esp32 carries TWO board ZSTs (legacy `node::Esp32Qemu` + new
-   `Esp32QemuEntry`, the latter gated on `rmw-zenoh`) — put `run_bare` where the
-   no-RMW logging smoke can reach it (a free fn using `node::init_hardware` +
-   `node::register_log_writer` + a non-rmw exit primitive, NOT on the rmw-gated
-   `Esp32QemuEntry`). Fixtures: `logging-smoke-esp32-qemu`,
-   `nros-smoke/esp32s3-board-bringup`, `logging-smoke-mps2-baremetal`, stm32f4.
+## Direct-exec (esp-hal) — DONE for the no-session boards (2026-07-28)
+
+The esp32 boards used `nros_board_common::run<B>` for INIT-ONLY fixtures (no
+session), so a free `run_bare(config, setup)` — Config-driven `node::init_hardware`
++ log writer + nullary closure + no-exit spin, mirroring the kernel `run_bare` —
+replaces the legacy path cleanly.
+
+- **esp32-qemu** — added free `run_bare` (a free fn, NOT a method on the
+  `rmw-zenoh`-gated `Esp32QemuEntry`, so the no-RMW logging smoke reaches it);
+  deleted legacy `run` + `node::Esp32Qemu` ZST + its `board_init` impls; migrated
+  `logging-smoke-esp32-qemu`. Also fixed a latent #292 riscv32imc bug
+  (`entity_counter` → `portable_atomic::AtomicU32`; `core`'s has no `fetch_add`
+  on no-CAS ISA). `logging_smoke_esp32_qemu_emits_every_severity` PASS.
+- **esp32s3** — same shape; only consumer is the init-only bringup smoke.
+  **UNVERIFIED on this host** (no Xtensa `esp` toolchain; bringup is a manual /
+  physical-HW fixture in no CI lane). Mechanically identical to esp32-qemu.
+
+## Remaining (the harder tail — SESSION path, not run_bare)
+1. **mps2-an385 + stm32f4 direct-exec `run`** still exists, consumed by
+   **session-opening** binaries: `nros-bench/large-msg-baremetal` (uses
+   `nros_board_mps2_an385::run` then `Executor::open`) and
+   `examples/stm32f4/rust/talker` (verify). These are NOT init-only, so they do
+   not map to `run_bare` — migrate them to the boards' existing
+   `<Board as nros_platform::BoardEntry>::run` (the RuntimeCtx session path;
+   both boards already impl it, entry.rs), restructuring each closure from
+   manual `Executor::open` to `register()`-against-`RuntimeCtx`. THEN delete the
+   legacy `run` + `node::{Stm32F4,Mps2An385}` ZSTs + `board_init` impls.
+   NB `logging-smoke-mps2-baremetal` needs NO migration — it boots via
+   `cortex_m_rt::entry` + direct `nros_log`, never the board `run`.
 2. Then `cffi` (the C-export macro's config-carrying `run(cfg, closure)` → the new
-   form), then W6 (delete `nros-board-common::board_init` + the lint gate).
+   form; 7 refs), then W6 (delete `nros-board-common::board_init` + the lint gate).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
