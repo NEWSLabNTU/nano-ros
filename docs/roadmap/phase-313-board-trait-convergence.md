@@ -104,14 +104,60 @@ effort — not completable in one turn.** Resuming needs: the per-kernel QEMU
 lanes (`just {freertos,threadx,nuttx,esp32} …`) run per migrated board, and a
 decision per board on the Config field split.
 
-## Next steps when resumed
-1. Rework the shared `nros_board_common::run<B>` boot path → the `RuntimeCtx`
-   model behind a NEW-family `run(setup)` in the family-driver crates, keeping
-   the legacy `run` alive until every caller moves (parallel, not big-bang).
-2. Migrate one kernel family end-to-end WITH its QEMU lane green, as the real
-   template (freertos → mps2-an385-freertos is the smallest).
-3. Then the direct-exec boards, then cffi (the C-export macro API change), then
-   the delete + lint gate (W6).
+## Fix method (explored 2026-07-28) — the blocker dissolves into verifiable increments
+
+Investigation of the actual coupling turned the "unverifiable big-bang" fear into
+a bounded, per-board-verifiable job. Key findings:
+
+- **The LIVE framework boot path is ALREADY migrated + verified.** `nros::main!`
+  emits `<Board as nros_platform::board::BoardEntry>::run(...)` / `run_tiers`
+  (`nros-macros/src/lib.rs:35`, `main_macro.rs`) — the NEW family. Every existing
+  QEMU/e2e fixture already exercises it. The migration does NOT move this path.
+- **What retires is a PARALLEL legacy entry surface**, not shared boot infra: the
+  boards' standalone `pub fn run(Config, closure)` (→ `nros_board_common::run<B>`)
+  + the ~5 smoke/logging bins that call it
+  (`packages/testing/nros-tests/bins/logging-smoke-*`,
+  `nros-smoke/esp32s3-board-bringup`) + the `nros-board-cffi` C-export macro.
+- **Config is BUILD-TIME**, not live runtime input: consumers pass
+  `Config::default()` or `Config::from_toml(<const CONFIG>)`. So the `type Config`
+  split is faithful — hardware defaults become board-crate `const`s, the few
+  runtime knobs flow through `RuntimeCtx`; no behavior invented.
+- **`threadx-linux` is HOST-runtime-verifiable** (runs as a Linux process; has a
+  host smoke test), so its family-driver rework can be fully confirmed WITHOUT
+  QEMU — the ideal first fully-verified increment.
+
+**Method — parallel, incremental, verifiability-ordered, host-first:**
+
+1. Keep legacy alive per-crate; migrate ONE board/family at a time.
+2. **Order by how it is verified**, not by size:
+   - **threadx-linux + the `nros_board_threadx` family driver** FIRST — the
+     `run<B>` rework is host-runtime-confirmable (no QEMU). Proves the recipe
+     end-to-end with full verification.
+   - then each QEMU-lane board/family one at a time, gated on its own lane
+     (`freertos`→mps2-an385-freertos, `nuttx`→qemu-arm/riscv, `threadx`→qemu-riscv64,
+     esp32-qemu).
+   - then direct-exec boards (stm32f4, esp32s3), then `cffi` (the one real API
+     change — the C-export macro moves from config-carrying `run(cfg, closure)` to
+     `run(setup)`), then W6 (delete `board_init` + lint gate).
+3. Per board: delete `pub fn run(Config, closure)` + `impl
+   nros_board_common::BoardInit { type Config; init_hardware(&cfg) }`; fold the
+   init logic into the new `nros_platform::board::BoardInit::init_hardware()`
+   reading the board's baked `Config` internally; migrate that board's smoke bin
+   to `<Board>::run(|runtime| …)`.
+4. Verification per step: per-manifest `cargo check` for the target + a
+   runtime confirm on the board's own lane (host for threadx-linux; QEMU
+   otherwise). The live `nros::main!` path never moves, so regression risk is
+   contained to the parallel API being retired.
+
+This supersedes the size-ordered W3–W6 sketch below; the verifiability-ordered
+sequence above is the plan of record.
+
+## Next steps when resumed (verifiability-ordered — see the Fix method above)
+1. **W-threadx (host)** — new-family `BoardEntry::run(setup)` in
+   `nros_board_threadx` + `threadx-linux`; migrate `logging-smoke-threadx-linux`;
+   confirm on the host smoke lane. The proven template.
+2. Then per-QEMU-lane families/boards, one at a time, each lane green.
+3. Then direct-exec boards, then `cffi`, then W6 (delete + gate).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
