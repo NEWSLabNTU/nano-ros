@@ -60,6 +60,13 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   stable produces different output. Run `cargo +nightly fmt`.
 - **C/C++ style:** `.clang-format` LLVM-based, 4-space indent, 100-col.
 - **Linear history:** `git pull --rebase` or `git fetch` + `git rebase`. Never merge unless asked.
+- **Never `git add -A` / `git add .`** — stage the paths you actually changed
+  (`git add <path>…`, or `git add -u <dir>` for tracked-only edits). A blanket add
+  scoops up build output, leftover dirs and stray artifacts. Twice in one session it
+  re-added a submodule dir that upstream had MOVED, as an embedded git repo — a
+  gitlink with no `.gitmodules` entry, which clones as an empty directory nobody can
+  populate. git prints a warning; a blanket add buries it in noise. Read `git status`
+  before staging, and when a warning does appear, stop rather than push.
 - **Submodule rebase on superproject pull:** if a pull advances a submodule pointer AND local work
   exists in the submodule → enter it, fetch, rebase local onto upstream, check out the
   superproject’s expected commit, record the result in the parent. Never leave a submodule at an
