@@ -186,90 +186,39 @@ pub fn init_hardware(
     syst
 }
 
-/// Run an application with the given configuration.
+/// Board ZST for trait dispatch.
 ///
-/// This is the main entry point for STM32F4 applications.
-/// It handles all hardware and network initialization, then calls
-/// your application code with a reference to the config.
-///
-/// Inside the closure, use `Executor::open()` to create an executor
-/// with full API access (publishers, subscriptions, services, actions,
-/// timers, callbacks).
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_stm32f4::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::nucleo_f429zi(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     let mut node = executor.create_node("my_node")?;
-///     // Full Executor API: publishers, subscriptions, services, actions...
-///     Ok(())
-/// })
-/// ```
-///
-/// # Returns
-///
-/// Never returns (`-> !`). Enters idle loop on completion or error.
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
-where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
-{
-    // Phase 173.1 — delegate to the shared direct-exec driver via the
-    // `Board` trait. `Stm32F4::init_hardware` takes the PAC + core
-    // peripherals internally; `exit_*` is the `wfi` idle loop.
-    nros_board_common::run::<Stm32F4, F, E>(config, f)
-}
-
-/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
-/// `nros_board_common::run` drives STM32F4 boot.
+/// Phase 313 W-direct-exec (#0243) — the legacy free `run(Config, closure)` +
+/// the `impl nros_board_common::{BoardInit, BoardPrint, BoardExit}` for this ZST
+/// are RETIRED. stm32f4 had no legacy-`run` consumer — every example uses
+/// `nros::main!` → `<Stm32F4 as nros_platform::board::BoardEntry>::run` (entry.rs,
+/// `board-entry` feature). The ZST stays (entry.rs impls the new traits on it).
 pub struct Stm32F4;
 
-impl nros_board_common::BoardInit for Stm32F4 {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        let dp = pac::Peripherals::take().unwrap_or_else(|| {
-            defmt::error!("Device peripherals already taken");
-            loop {
-                cortex_m::asm::wfi();
-            }
-        });
-        let cp = cortex_m::Peripherals::take().unwrap_or_else(|| {
-            defmt::error!("Core peripherals already taken");
-            loop {
-                cortex_m::asm::wfi();
-            }
-        });
-        // SysTick returned by the free `init_hardware` is unused by the
-        // run path (it was `let _syst`); drop it here unchanged.
-        let _syst = init_hardware(cfg, dp, cp);
-    }
-}
-
-impl nros_board_common::BoardPrint for Stm32F4 {
-    fn println(args: core::fmt::Arguments<'_>) {
-        defmt::info!("{}", defmt::Display2Format(&args));
-    }
-}
-
-impl nros_board_common::BoardExit for Stm32F4 {
-    fn exit_success() -> ! {
-        defmt::info!("Entering idle loop");
+/// Phase 313 W-direct-exec (#0243) — take the PAC + core peripherals and run the
+/// full [`init_hardware`] (clock + DWT + ethernet/serial) bring-up. Formerly the
+/// body of the retired `impl nros_board_common::BoardInit::init_hardware(&Config)`;
+/// the new-family `entry.rs::boot` calls this directly (the `nros_platform::
+/// BoardInit::init_hardware()` hook is parameterless, so the Config-driven init
+/// cannot live there). The returned `SysTick` is unused by the boot path.
+///
+/// Only the `board-entry` boot path (`entry.rs`) calls this; gated so a plain
+/// BSP build (no `board-entry`) does not trip `dead_code`.
+#[cfg(feature = "board-entry")]
+pub(crate) fn init_hardware_take_peripherals(cfg: &Config) {
+    let dp = pac::Peripherals::take().unwrap_or_else(|| {
+        defmt::error!("Device peripherals already taken");
         loop {
             cortex_m::asm::wfi();
         }
-    }
-
-    fn exit_failure() -> ! {
+    });
+    let cp = cortex_m::Peripherals::take().unwrap_or_else(|| {
+        defmt::error!("Core peripherals already taken");
         loop {
             cortex_m::asm::wfi();
         }
-    }
+    });
+    let _syst = init_hardware(cfg, dp, cp);
 }
 
 // ============================================================================

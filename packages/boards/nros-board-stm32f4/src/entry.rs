@@ -23,10 +23,9 @@ use nros_platform::{
 use crate::{Config, node::Stm32F4};
 
 // Parameterless `nros_platform::board` trait set that `BoardEntry: Board`
-// requires. The legacy `nros_board_common::{BoardInit,BoardPrint,BoardExit}`
-// impls in `node.rs` stay for the `run(Config, closure)` path; these mirror
-// their bodies. Real hardware init runs in `boot()` via the
-// `nros_board_common::BoardInit::init_hardware(&cfg)` (it takes the PAC + core
+// requires (phase-313 W-direct-exec retired the legacy `nros_board_common`
+// counterparts). Real Config-driven hardware init runs in `boot()` via
+// `crate::node::init_hardware_take_peripherals(&cfg)` (it takes the PAC + core
 // peripherals internally), so the parameterless method here is a no-op.
 impl BoardInit for Stm32F4 {
     fn init_hardware() {}
@@ -94,7 +93,7 @@ where
 {
     // Clock + ethernet/serial bring-up (takes the PAC + core peripherals
     // internally). Must precede any executor / socket op.
-    <Stm32F4 as nros_board_common::BoardInit>::init_hardware(&cfg);
+    crate::node::init_hardware_take_peripherals(&cfg);
 
     // Agnostic `nros_log` dispatcher so declarative nodes can `nros_info!`
     // without a per-example boot closure (the stm32f4 defmt `PlatformLog` ships

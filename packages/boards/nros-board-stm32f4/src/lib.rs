@@ -46,7 +46,7 @@ pub use nros_platform_stm32f4;
 
 // Re-export main types
 pub use config::Config;
-pub use node::{Stm32F4, init_hardware, run};
+pub use node::{Stm32F4, init_hardware};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_stm32f4::timing::{CycleCounter, MonotonicClock};
 
@@ -59,10 +59,7 @@ pub use nros_platform_stm32f4::pins;
 ///
 /// Use with: `use nros_board_stm32f4::prelude::*;`
 pub mod prelude {
-    pub use crate::{
-        config::Config,
-        node::{init_hardware, run},
-    };
+    pub use crate::{config::Config, node::init_hardware};
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
     pub use nros_platform::BoardConfig;
