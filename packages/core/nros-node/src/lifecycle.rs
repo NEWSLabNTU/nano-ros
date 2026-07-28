@@ -375,9 +375,163 @@ pub enum LifecycleCallbackSlot {
     Error,
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SAFE LIFECYCLE-CALLBACK TRAIT (issue 0335 / phase-317)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Safe lifecycle-callback surface, symmetric with the C++ `nros::LifecycleNode`
+/// (rclcpp `LifecycleNodeInterface`). Implement the transitions you need; the
+/// rest default to `Success` (`on_error` to `Failure`), matching rclcpp's
+/// non-pure-virtual defaults. Register the node with
+/// [`Executor::register_lifecycle_node`](crate::Executor::register_lifecycle_node),
+/// which binds the five REP-2002 services and wires each transition here — no
+/// `unsafe` in user code.
+///
+/// # Example
+/// ```ignore
+/// struct MyNode { configured: bool }
+/// impl LifecycleCallbacks for MyNode {
+///     fn on_configure(&mut self) -> TransitionResult {
+///         self.configured = true;
+///         TransitionResult::Success
+///     }
+/// }
+/// executor.register_lifecycle_node(&mut my_node)?;
+/// ```
+///
+/// Unlike rclcpp's `on_*(const State& previous)`, the callbacks take no
+/// `previous` argument: the FFI callback boundary ([`LifecycleCallbackFnCtx`])
+/// carries only the user context, and the [`LifecyclePollingNode`] fn-pointer
+/// API is likewise state-less. Read the current state via
+/// [`Executor::lifecycle_state_machine`](crate::Executor::lifecycle_state_machine)
+/// `.state()` if a transition needs it.
+pub trait LifecycleCallbacks {
+    /// `Unconfigured -> Inactive`. Default: `Success`.
+    fn on_configure(&mut self) -> TransitionResult {
+        TransitionResult::Success
+    }
+    /// `Inactive -> Active`. Default: `Success`.
+    fn on_activate(&mut self) -> TransitionResult {
+        TransitionResult::Success
+    }
+    /// `Active -> Inactive`. Default: `Success`.
+    fn on_deactivate(&mut self) -> TransitionResult {
+        TransitionResult::Success
+    }
+    /// `Inactive -> Unconfigured`. Default: `Success`.
+    fn on_cleanup(&mut self) -> TransitionResult {
+        TransitionResult::Success
+    }
+    /// any state `-> Finalized`. Default: `Success`.
+    fn on_shutdown(&mut self) -> TransitionResult {
+        TransitionResult::Success
+    }
+    /// `ErrorProcessing -> Unconfigured`. Default: `Failure` (matching rclcpp).
+    fn on_error(&mut self) -> TransitionResult {
+        TransitionResult::Failure
+    }
+}
+
+/// Monomorphized `extern "C"` trampolines that recover `&mut T` from the FFI
+/// context pointer and dispatch to the [`LifecycleCallbacks`] method. rustc
+/// emits one per `T`, so there is no closure box — `no_std`-safe. Registered by
+/// [`Executor::register_lifecycle_node`](crate::Executor::register_lifecycle_node);
+/// not meant to be called directly.
+pub mod trampolines {
+    use super::{LifecycleCallbacks, TransitionResult};
+    use core::ffi::c_void;
+
+    macro_rules! trampoline {
+        ($name:ident, $method:ident) => {
+            /// # Safety
+            /// `ctx` must be a `*mut T` that outlives the registration and is not
+            /// aliased for the duration of the call (the executor spins
+            /// single-threaded, so no concurrent `&mut T` exists).
+            pub unsafe extern "C" fn $name<T: LifecycleCallbacks>(ctx: *mut c_void) -> u8 {
+                if ctx.is_null() {
+                    return TransitionResult::Error as u8;
+                }
+                // SAFETY: caller (`register_lifecycle_node`) set `ctx` to a live
+                // `&mut T`; the spin loop invokes this synchronously, so the
+                // reference is unique for the call.
+                let node = unsafe { &mut *(ctx as *mut T) };
+                node.$method() as u8
+            }
+        };
+    }
+
+    trampoline!(on_configure, on_configure);
+    trampoline!(on_activate, on_activate);
+    trampoline!(on_deactivate, on_deactivate);
+    trampoline!(on_cleanup, on_cleanup);
+    trampoline!(on_shutdown, on_shutdown);
+    trampoline!(on_error, on_error);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Safe LifecycleCallbacks trait (issue 0335 / phase-317)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    struct DemoNode {
+        configured: bool,
+    }
+    impl LifecycleCallbacks for DemoNode {
+        fn on_configure(&mut self) -> TransitionResult {
+            self.configured = true;
+            TransitionResult::Success
+        }
+        fn on_error(&mut self) -> TransitionResult {
+            TransitionResult::Error
+        }
+        // on_activate / on_deactivate / on_cleanup / on_shutdown use the defaults.
+    }
+
+    #[test]
+    fn trampoline_dispatches_to_trait_impl_and_defaults() {
+        let mut n = DemoNode { configured: false };
+        let ctx = &mut n as *mut DemoNode as *mut c_void;
+
+        // Overridden method runs and mutates through the recovered &mut.
+        let rc = unsafe { trampolines::on_configure::<DemoNode>(ctx) };
+        assert_eq!(rc, TransitionResult::Success as u8);
+        assert!(n.configured);
+
+        // Defaulted method returns Success without an override.
+        let rc = unsafe { trampolines::on_activate::<DemoNode>(&mut n as *mut _ as *mut c_void) };
+        assert_eq!(rc, TransitionResult::Success as u8);
+
+        // Overridden on_error returns Error.
+        let rc = unsafe { trampolines::on_error::<DemoNode>(&mut n as *mut _ as *mut c_void) };
+        assert_eq!(rc, TransitionResult::Error as u8);
+
+        // Null ctx is Error, never a deref.
+        let rc = unsafe { trampolines::on_configure::<DemoNode>(core::ptr::null_mut()) };
+        assert_eq!(rc, TransitionResult::Error as u8);
+    }
+
+    #[test]
+    fn ctx_state_machine_drives_trait_through_a_transition() {
+        // The seam `register_lifecycle_node` builds on: set_context + register a
+        // monomorphized trampoline, then a transition dispatches to the trait.
+        let mut n = DemoNode { configured: false };
+        let mut sm = LifecyclePollingNodeCtx::new();
+        sm.set_context(&mut n as *mut DemoNode as *mut c_void);
+        sm.register(
+            LifecycleCallbackSlot::Configure,
+            Some(trampolines::on_configure::<DemoNode>),
+        );
+
+        // SAFETY: `n` outlives `sm`; the transition runs synchronously here.
+        let new_state =
+            unsafe { sm.trigger_transition(LifecycleTransition::Configure) }.expect("configure");
+
+        assert!(n.configured, "the trait's on_configure ran");
+        assert_eq!(new_state, LifecycleState::Inactive);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // LifecyclePollingNode tests (no_std, always available)

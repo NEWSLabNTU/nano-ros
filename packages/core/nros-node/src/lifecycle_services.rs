@@ -546,7 +546,7 @@ mod tests {
     // where the encoder and decoder fall out of sync — any field rename,
     // re-ordering, or missing variant trips the round-trip comparison.
 
-    use nros_core::{CdrReader, CdrWriter, Deserialize, Serialize};
+    use nros_core::{CdrReader, Deserialize, Serialize};
 
     /// Encode `value` to CDR, decode it back, and assert equality.
     fn round_trip<T: Serialize + Deserialize + PartialEq + core::fmt::Debug>(value: T) {

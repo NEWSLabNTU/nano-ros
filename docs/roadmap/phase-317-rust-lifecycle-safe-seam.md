@@ -32,21 +32,29 @@ A **trait**, symmetric with the C++ virtual-override shape and rclrs-recognizabl
 
 ```rust
 pub trait LifecycleCallbacks {
-    fn on_configure(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_activate(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_deactivate(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_cleanup(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_shutdown(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Success }
-    fn on_error(&mut self, previous: LifecycleState) -> TransitionResult { TransitionResult::Failure }
+    fn on_configure(&mut self) -> TransitionResult { TransitionResult::Success }
+    fn on_activate(&mut self) -> TransitionResult { TransitionResult::Success }
+    fn on_deactivate(&mut self) -> TransitionResult { TransitionResult::Success }
+    fn on_cleanup(&mut self) -> TransitionResult { TransitionResult::Success }
+    fn on_shutdown(&mut self) -> TransitionResult { TransitionResult::Success }
+    fn on_error(&mut self) -> TransitionResult { TransitionResult::Failure }
 }
 
 executor.register_lifecycle_node(&mut my_node)?; // binds the 5 REP-2002 services + trampolines
 ```
 
 Symmetry: trait methods ↔ virtual overrides; defaulted Success…/Failure ↔ the
-C++ non-pure-virtual defaults; `&mut self` ↔ `this`; `previous = get_state()` at
-callback entry (the SM invokes the callback before committing the new state),
-exactly as the C++ `tramp_*` do.
+C++ non-pure-virtual defaults; `&mut self` ↔ `this`.
+
+**No `previous` argument** (unlike rclcpp's `on_*(const State& previous)`): the
+nano-ros FFI callback boundary (`LifecycleCallbackFnCtx = extern "C" fn(ctx) ->
+u8`) carries only the user context, not the transition state — the C++ side
+recovers `previous` because its trampoline holds `this`, which holds the executor
+handle, but the Rust ctx is a bare `&mut T`. The existing safe
+`LifecyclePollingNode` fn-pointer API is likewise state-less. A node that needs
+the current state reads `Executor::lifecycle_state_machine().state()`. (Threading
+state through would need a wrapper ctx carrying the executor — a later refinement
+if a consumer needs it.)
 
 **Alloc-free seam — monomorphized generic trampolines, no `Box`.**
 `register_lifecycle_node::<T: LifecycleCallbacks>` registers, per slot, a generic

@@ -6034,6 +6034,37 @@ impl<'s> Executor<'s> {
     pub fn lifecycle_state_machine(&self) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
         self.lifecycle.as_ref().map(|lc| &lc.state_machine)
     }
+
+    /// Register a safe lifecycle node (issue 0335 / phase-317).
+    ///
+    /// Binds the five REP-2002 lifecycle services and wires each transition to
+    /// the [`LifecycleCallbacks`](crate::lifecycle::LifecycleCallbacks) trait
+    /// impl — the safe Rust counterpart to the C++ `nros::LifecycleNode`. No
+    /// `unsafe` in user code; alloc-free (monomorphized trampolines).
+    ///
+    /// `node` must outlive this executor's lifecycle registration: the context
+    /// pointer stored here is dereferenced on every transition until the
+    /// executor is finalized. The executor spins single-threaded, so the
+    /// `&mut node` reconstituted inside a callback is never aliased.
+    pub fn register_lifecycle_node<T: crate::lifecycle::LifecycleCallbacks>(
+        &mut self,
+        node: &mut T,
+    ) -> Result<(), NodeError> {
+        use crate::lifecycle::{LifecycleCallbackSlot as Slot, trampolines};
+
+        self.register_lifecycle_services()?;
+        let sm = self
+            .lifecycle_state_machine_mut()
+            .ok_or(NodeError::NotInitialized)?;
+        sm.set_context(node as *mut T as *mut core::ffi::c_void);
+        sm.register(Slot::Configure, Some(trampolines::on_configure::<T>));
+        sm.register(Slot::Activate, Some(trampolines::on_activate::<T>));
+        sm.register(Slot::Deactivate, Some(trampolines::on_deactivate::<T>));
+        sm.register(Slot::Cleanup, Some(trampolines::on_cleanup::<T>));
+        sm.register(Slot::Shutdown, Some(trampolines::on_shutdown::<T>));
+        sm.register(Slot::Error, Some(trampolines::on_error::<T>));
+        Ok(())
+    }
 }
 
 // ============================================================================
