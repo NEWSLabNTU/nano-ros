@@ -315,7 +315,7 @@ pub fn source_digest(package_root: &Path) -> Result<String> {
     collect_sources(package_root, package_root, &mut files)?;
     files.sort();
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut mix = |bytes: &[u8], hash: &mut u64| {
+    let mix = |bytes: &[u8], hash: &mut u64| {
         for b in bytes {
             *hash ^= u64::from(*b);
             *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);

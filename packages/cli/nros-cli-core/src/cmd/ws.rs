@@ -297,9 +297,9 @@ impl WsPkg {
 /// sync`, so the user's canonical flow (sync → west/cargo/cmake) never
 /// hand-runs the resolver. For every pkg with a `launch/` dir: resolve
 /// `config/system_model.yaml` when it is missing or older than any input
-/// (launch XMLs, system.toml). When the helper is absent, models that already
-/// exist are used as-is and missing ones warn with the manual recipe (the bake
-/// later fail-louds the same way).
+/// (launch XMLs, system.toml). When the helper is absent, a model that needs no
+/// refresh is used as-is; a model that DOES need one is a hard error, never a
+/// silent staleness.
 /// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
 /// siblings that were previously committed (variant models stay opt-in:
 /// only refreshed, never created, for non-default launches).
@@ -320,18 +320,24 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     // equally deliberate, we never put it ON PATH, so we cannot shadow a
     // user's real `play_launch` either.
     //
-    // Absent (a partial checkout, or `just setup-launch-resolve` not run) stays
-    // a degrade, not an error: committed models are used as-is, because the
-    // model is checked in and usually current.
-    let resolver = launch_resolver_path();
-    if resolver.is_none() {
-        eprintln!(
-            "ws sync: `nros-launch-resolve` not found next to the nros binary; \
-             committed SystemModels are used as-is and will NOT be refreshed. \
-             Build it with `just setup-launch-resolve`."
-        );
-    }
-    let play_launch = resolver;
+    // Absent used to be a DEGRADE: warn once, use whatever models are committed,
+    // carry on. That is wrong, and it cost a full fixture sweep to notice. The
+    // helper is a setup step (`just setup-launch-resolve`, now reached from
+    // `just setup` and `just build-test-fixtures`), so absent means the tree is
+    // mis-provisioned — not that the user chose to skip refreshing.
+    //
+    // Worse, the degrade was silent in the only way that matters: it printed
+    // per-workspace noise whether or not anything was actually stale, so the
+    // message carried no signal, and a genuinely stale model sailed through it
+    // into a build. Museum SystemModels are exactly the fixture-mtime treadmill
+    // this repo keeps getting bitten by.
+    //
+    // The rule is now: refresh, or fail. Absence is only tolerated when nothing
+    // needs refreshing, in which case it is not a degrade at all and says
+    // nothing. `blocked` collects everything that DID need the helper so one
+    // error names them all rather than the user fixing them one run at a time.
+    let play_launch = launch_resolver_path();
+    let mut blocked: Vec<String> = Vec::new();
     for pkg in scan {
         let launch_dir = pkg.dir.join("launch");
         if !launch_dir.is_dir() {
@@ -413,17 +419,22 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 continue;
             }
             let Some(pl) = &play_launch else {
-                if !model.exists() {
-                    eprintln!(
-                        "ws sync: warning — `{}` has no committed SystemModel and \
-                         `nros-launch-resolve` is unavailable; the bake will refuse. \
-                         Resolve manually: nros-launch-resolve {} [--system {}] -o {}",
-                        pkg.name,
-                        launch.display(),
-                        system_toml.display(),
-                        model.display(),
-                    );
-                }
+                // Reached only when this model is stale or missing — `stale()`
+                // already let the current ones through above.
+                blocked.push(format!(
+                    "  {} — {} is {} ({})",
+                    pkg.name,
+                    model.strip_prefix(&pkg.dir).unwrap_or(&model).display(),
+                    if model.exists() {
+                        "older than its inputs"
+                    } else {
+                        "missing"
+                    },
+                    launch
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("launch"),
+                ));
                 continue;
             };
             std::fs::create_dir_all(&cfg_dir)
@@ -458,6 +469,19 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                 );
             }
         }
+    }
+    if !blocked.is_empty() {
+        eyre::bail!(
+            "ws sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
+             is not next to the `nros` binary:\n{}\n\n\
+             Build it:  just setup-launch-resolve\n\
+             (If the submodule is missing:  git submodule update --init --recursive \
+             packages/cli/third-party/ros-launch-resolve)\n\n\
+             Refusing to continue with stale models — a museum SystemModel builds \
+             clean and then places nodes wrong at runtime.",
+            blocked.len(),
+            blocked.join("\n"),
+        );
     }
     Ok(())
 }

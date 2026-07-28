@@ -908,7 +908,7 @@ test verbose="": build-zenohd
 # explicit so `just build-test-fixtures` (and `just test-all` via
 # the bench fixtures it consumes) is self-contained.
 [group("full-matrix")]
-build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixtures-leaves
+build-test-fixtures: generate-bindings setup-launch-resolve build-zenoh-posix-fixture build-test-fixtures-leaves
     #!/usr/bin/env bash
     set -e
     # Compile-check fixtures (issue 0034): build-stage `cargo check` of small
@@ -2428,6 +2428,12 @@ setup target="" tier="":
     # check-{c,cpp}-fmt drift across clang-format major versions, so a consistent
     # pinned binary (`.clang-format-version`) is part of base dev setup. Idempotent.
     just setup-clang-format || echo "  (clang-format provisioning skipped — python3 venv unavailable)"
+    # `nros ws sync` REQUIRES this helper to refresh a stale SystemModel, and
+    # since it now errors instead of degrading, a tree without it cannot sync a
+    # workspace whose launch files moved. It was never in any tier — the fixture
+    # sweep hit the absent-helper path and used museum models. Idempotent; SKIPs
+    # cleanly when the submodule is not initialised.
+    just setup-launch-resolve
     just _orchestrate setup "$chosen_tier"
     echo ""
     echo "✅ nano-ros setup complete."
