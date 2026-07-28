@@ -752,6 +752,45 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
 /// * `vtable` must remain valid for the program's lifetime.
+/// Issue 0332 — every vtable slot the runtime dispatches through is mandatory:
+/// the CFFI session/publisher/subscriber/service impls `.expect()` these slots
+/// on the hot path, so a `None` slot is a panic mid-spin — on a no_std target,
+/// the worst place to discover an incomplete backend. Returns the name of the
+/// first missing slot so registration can reject the vtable loudly and early
+/// instead. (Supporting genuinely-partial backends — an optional slot as a typed
+/// error when *used* — is a deliberate future refinement, not the current
+/// contract: a registered backend must be complete.)
+fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
+    macro_rules! require {
+        ($($slot:ident),+ $(,)?) => {
+            $( if v.$slot.is_none() { return Some(stringify!($slot)); } )+
+        };
+    }
+    require!(
+        create_session,
+        destroy_session,
+        create_publisher,
+        destroy_publisher,
+        create_subscription,
+        destroy_subscription,
+        publish_raw,
+        drive_io,
+        has_data,
+        try_recv_raw,
+        create_service,
+        destroy_service,
+        create_client,
+        destroy_client,
+        send_reply,
+        has_request,
+        try_recv_request,
+        register_publisher_event,
+        register_subscription_event,
+        assert_publisher_liveliness,
+    );
+    None
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     name: *const core::ffi::c_char,
@@ -760,6 +799,15 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     if name.is_null() || vtable.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+
+    // Issue 0332 — reject an incomplete vtable at registration rather than
+    // panicking mid-spin. SAFETY: `vtable` is non-null (checked) and the caller
+    // guarantees it is valid for the program's lifetime (see `# Safety`).
+    if let Some(missing) = first_missing_vtable_slot(unsafe { &*vtable }) {
+        let _ = missing; // named for debuggers; INVALID_ARGUMENT is the ABI signal
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+
     let name_u8 = name.cast::<u8>();
 
     // Length-check the input. We scan up to BACKEND_NAME_MAX + 1
@@ -3078,5 +3126,21 @@ mod tests {
         use nros_rmw::Publisher as _;
         publisher.publish_raw(&[1u8, 2, 3]).expect("publish");
         assert!(unsafe { STUB_PUBLISH_CALLED });
+    }
+
+    // Issue 0332 — an incomplete vtable must be rejected at registration, not
+    // panic mid-spin. (The stub tests above register a COMPLETE vtable, so they
+    // are the "complete → accepted" guard: if the required-slot list ever
+    // over-rejected, those tests would fail at registration.)
+    #[test]
+    fn register_rejects_incomplete_vtable() {
+        // SAFETY: `NrosRmwVtable` is a plain struct of `Option<extern fn>` +
+        // POD fields; an all-zero bit pattern is every slot `None` (null-ptr
+        // niche) — a valid, empty vtable.
+        let empty: NrosRmwVtable = unsafe { core::mem::zeroed() };
+        assert_eq!(first_missing_vtable_slot(&empty), Some("create_session"));
+
+        let rc = unsafe { nros_rmw_cffi_register_named(c"incomplete_0332".as_ptr(), &empty) };
+        assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
     }
 }
