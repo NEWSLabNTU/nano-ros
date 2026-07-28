@@ -50,7 +50,7 @@ pub use nros_platform_esp32_qemu;
 
 // Re-export main types
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::{init_hardware, run_bare};
 // Phase 225.O — workspace Entry board ZST (real-runtime `BoardEntry`).
 #[cfg(feature = "rmw-zenoh")]
 pub use board_entry::Esp32QemuEntry;
@@ -72,7 +72,7 @@ pub use nros_smoltcp;
 pub mod prelude {
     pub use crate::{
         config::Config,
-        node::{init_hardware, run},
+        node::{init_hardware, run_bare},
     };
     pub use esp_hal::main as entry;
     pub use nros_platform::BoardConfig;

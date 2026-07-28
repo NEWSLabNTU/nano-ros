@@ -293,80 +293,32 @@ pub fn init_hardware(config: &Config) {
     esp_println::println!("");
 }
 
-/// Run an application with the given configuration.
+/// Phase 313 W-direct-exec (#0243) — lightweight NO-SESSION direct-exec entry
+/// for logging / init-only fixtures. Runs the Config-driven ESP32-C3 bringup
+/// (`init_hardware` + esp-println log writer) then a NULLARY closure WITHOUT
+/// opening an `Executor` session, then spins forever (ESP32 has no host exit;
+/// the harness kills QEMU once it sees the output). The new-family replacement
+/// for the retired legacy `run(Config, closure)` (which routed through
+/// `nros_board_common::run` + the `nros_board_common::board_init` traits).
 ///
-/// This is the main entry point for ESP32-C3 QEMU applications.
-/// It handles all hardware and network initialization, then calls
-/// your application code with a reference to the config.
-///
-/// Inside the closure, use `Executor::open()` to create an executor
-/// with full API access (publishers, subscriptions, services, actions,
-/// timers, callbacks).
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_esp32_qemu::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::default(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     let mut node = executor.create_node("my_node")?;
-///     // Full Executor API: publishers, subscriptions, services, actions...
-///     Ok(())
-/// })
-/// ```
-///
-/// # Returns
-///
-/// Never returns (`-> !`). Loops forever after the application function completes
-/// or on error.
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
+/// This is a free fn — NOT a method on the `rmw-zenoh`-gated
+/// [`crate::Esp32QemuEntry`] — so the no-RMW logging smoke can reach it.
+/// Firmware that opens a session uses `nros::main!` → `Esp32QemuEntry` instead.
+pub fn run_bare<F, E: core::fmt::Debug>(config: Config, setup: F) -> !
 where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
+    F: FnOnce() -> core::result::Result<(), E>,
 {
-    // Phase 173.1 — delegate to the shared direct-exec driver via the
-    // `Board` trait. `Esp32Qemu::init_hardware` folds in the log-writer
-    // registration; `exit_*` is the ESP32 no-exit spin loop.
-    nros_board_common::run::<Esp32Qemu, F, E>(config, f)
-}
-
-/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
-/// `nros_board_common::run` drives ESP32-C3 QEMU boot.
-pub struct Esp32Qemu;
-
-impl nros_board_common::BoardInit for Esp32Qemu {
-    type Config = Config;
-
-    fn init_hardware(cfg: &Config) {
-        init_hardware(cfg);
-        register_log_writer();
+    init_hardware(&config);
+    register_log_writer();
+    match setup() {
+        Ok(()) => esp_println::println!("nros: application complete"),
+        Err(e) => esp_println::println!("nros: application error: {e:?}"),
     }
-}
-
-impl nros_board_common::BoardPrint for Esp32Qemu {
-    fn println(args: core::fmt::Arguments<'_>) {
-        esp_println::println!("{}", args);
-    }
-}
-
-impl nros_board_common::BoardExit for Esp32Qemu {
-    fn exit_success() -> ! {
-        // ESP32 has no process exit — spin forever (the test harness
-        // kills QEMU once it sees the completion banner).
-        #[allow(clippy::empty_loop)]
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    fn exit_failure() -> ! {
-        #[allow(clippy::empty_loop)]
-        loop {
-            core::hint::spin_loop();
-        }
+    // ESP32 has no process exit — spin forever (the harness kills QEMU once it
+    // sees the completion / severity lines).
+    #[allow(clippy::empty_loop)]
+    loop {
+        core::hint::spin_loop();
     }
 }
 

@@ -12,10 +12,10 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nros_board_esp32_qemu::{entry, run, Config};
+use nros_board_esp32_qemu::{Config, entry, run_bare};
 use nros_log::{
-    init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger,
-    sinks, Logger, Severity,
+    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
+    register_logger, sinks,
 };
 
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
@@ -29,7 +29,7 @@ const CONFIG: &str = include_str!("../config.toml");
 
 #[entry]
 fn main() -> ! {
-    run(Config::from_toml(CONFIG), |_config| {
+    run_bare(Config::from_toml(CONFIG), || {
         register_logger(&LOGGER);
         init(sinks::default());
         let logger = &LOGGER;
