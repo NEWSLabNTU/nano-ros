@@ -213,6 +213,11 @@ N. 8.8 GB for 3.5 of 6 components became 2.9 GB for all 6.)
 `NROS_EXTRA_CPP_FEATURES` hook was only on the umbrella one; the probe takes the other. Probe now links, runs, and records:
 all six C++ components produce sidecars.)
 
+**#311** — `_cpp_features` for `nros-cpp` is assembled in TWO places (the workspace umbrella in
+`NanoRosRuntimeCrate.cmake` and the direct-import path in `nros-cpp/CMakeLists.txt`). A consumer
+hook added to one silently does nothing on the other — which is how the phase-308 probe linked a
+library with no `nros_cpp_metadata_dump` in it. Collapse to one assembly. See `0311-*`.
+
 **#287** — a host-only workspace member breaks `check-workspace-embedded` through cargo
 feature unification, and the error names `nros-serdes` rather than the crate that caused it.
 The `--exclude` list is manual and duplicated. See `0287-*`.
