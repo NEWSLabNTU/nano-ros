@@ -17,8 +17,9 @@ name = "nros_board_cffi"
 # `nros-platform-cffi`. Declares the canonical `nros_board_*` C ABI
 # (header `<nros/board.h>`) as an `unsafe extern "C"` block (Rust
 # knows the signatures) plus the `nros_board_export!` macro that
-# re-emits a Rust `Board` impl as `#[unsafe(no_mangle)] extern "C"`
-# symbols. `no_std`, zero runtime deps beyond the trait surface.
+# emits the `nros_board_*` symbols from a board's own plain functions
+# (`#[unsafe(no_mangle)] extern "C"`). `no_std`, zero deps — a thin 1:1
+# mirror of the `<nros/board.h>` C ABI (phase-313: dropped the
+# `nros-board-common::board_init` trait dependency).
 
 [dependencies]
-nros-board-common = { path = "../nros-board-common", default-features = false }

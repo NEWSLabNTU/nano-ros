@@ -11,19 +11,19 @@
 //! 1. The [`unsafe extern "C"`](self) block below declares the
 //!    `nros_board_*` symbols so a Rust runtime can call a board
 //!    supplied from C (or a static lib).
-//! 2. [`nros_board_export!`] re-emits a Rust [`Board`] impl as
-//!    `#[unsafe(no_mangle)] extern "C"` symbols matching the header,
-//!    so a C / C++ application can call into a Rust board.
+//! 2. [`nros_board_export!`] emits those `nros_board_*` symbols from a Rust
+//!    board's own plain functions (`#[unsafe(no_mangle)] extern "C"`), so a
+//!    C / C++ application can call into a Rust board. It is a thin 1:1 mirror
+//!    of the C ABI with NO trait dependency — the header is the SSoT, and the
+//!    canonical *Rust* board API (session / executor sizing / tiers) is the
+//!    separate, Rust-rich `nros_platform::board` surface.
 //!
 //! # The config pointer
 //!
-//! `cfg` is an opaque `*const c_void` the board implementation casts
-//! back to its concrete [`BoardInit::Config`]. The generic ABI never
-//! inspects it. Board crates expose their own C constructor for the
+//! `cfg` is an opaque `*const c_void` the board implementation casts back to
+//! its concrete config type (the `config = …` arg to the macro). The generic
+//! ABI never inspects it. Board crates expose their own C constructor for the
 //! config object; building it is out of scope for this crate.
-//!
-//! [`Board`]: nros_board_common::Board
-//! [`BoardInit::Config`]: nros_board_common::BoardInit::Config
 
 #![no_std]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -49,60 +49,86 @@ pub use generated::*;
 // Export macro
 // ============================================================================
 
-/// Emit every `nros_board_*` symbol declared in `<nros/board.h>` by
-/// delegating to the [`Board`] trait impl on `$ty`.
+/// Emit every `nros_board_*` symbol declared in `<nros/board.h>` from a
+/// board's own plain functions — the Rust author's ergonomic binding to the
+/// board C ABI, mirroring `nros_platform_export!` for the platform ABI.
 ///
-/// `$ty` is the board ZST (`pub struct MyBoard;` +
-/// `impl BoardInit/BoardPrint/BoardExit for MyBoard`) that also
-/// implements [`BoardEntry`] — directly for kernel-spawn families, or
-/// for free via the [`DirectExec`] marker for bare-metal / esp-hal
-/// boards. The emitted `nros_board_run` calls `<$ty as BoardEntry>::run`,
-/// so the macro serves **both** entry shapes; the four primitives
-/// (`init_hardware` / `println` / `exit_*`) delegate to the split
-/// traits.
+/// The board C ABI header `<nros/board.h>` is the cross-language SSoT
+/// (RFC-0054): a C / C++ / any-language board implements the `nros_board_*`
+/// symbols directly. This macro is the Rust convenience path — a thin **1:1
+/// mirror** of those symbols over functions the board already has, with **no
+/// trait dependency** (the canonical *Rust* board API — session, executor
+/// sizing, tiers — is [`nros_platform::board`]; that is a distinct, Rust-rich
+/// surface, not this flat C ABI).
 ///
-/// The opaque `cfg: *const c_void` is read out as `<$ty>::Config`
-/// (`ptr::read`). The caller (C / C++ app) passes a pointer to a live
-/// config object of the board's concrete type and must not reuse it
-/// after the call (ownership transfers into `run`).
+/// # Arguments (named)
 ///
-/// [`Board`]: nros_board_common::Board
-/// [`BoardEntry`]: nros_board_common::BoardEntry
-/// [`DirectExec`]: nros_board_common::DirectExec
+/// - `config = $C:ty` — the board's concrete config type. The opaque
+///   `cfg: *const c_void` is cast (`init_hardware`) / `ptr::read` (`run`) back
+///   to `$C`; the generic ABI never inspects it.
+/// - `init = <fn(&$C)>` — pre-run hardware bring-up.
+/// - `println = <fn(&str)>` — status output (the C `msg`/`len` are decoded to a
+///   `&str` first; non-UTF-8 collapses to `"<non-utf8>"`).
+/// - `exit_success` / `exit_failure = <fn() -> !>` — process / firmware exit.
+/// - `run = <fn($C, F) -> !  where F: FnOnce() -> Result<(), i32>>` — the full
+///   entry driver. **This one function encodes the family**: a direct-exec
+///   board runs `app` inline (`init → app → exit`); a kernel-spawn board
+///   spawns the app task + starts the scheduler. The C `app` fn's non-zero
+///   return maps to `Err(rc)`. There is no macro-side family split.
+///
+/// # Example
+/// ```ignore
+/// nros_board_export! {
+///     config       = MyConfig,
+///     init         = my_board::init_hardware,
+///     println      = my_board::board_print,
+///     exit_success = my_board::exit_success,
+///     exit_failure = my_board::exit_failure,
+///     run          = my_board::run_bare,
+/// }
+/// ```
+///
+/// [`nros_platform::board`]: https://docs.rs/nros-platform
 #[macro_export]
 macro_rules! nros_board_export {
-    ($ty:ty) => {
+    (
+        config = $C:ty,
+        init = $init:path,
+        println = $println:path,
+        exit_success = $exit_success:path,
+        exit_failure = $exit_failure:path,
+        run = $run:path $(,)?
+    ) => {
         #[unsafe(no_mangle)]
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn nros_board_init_hardware(cfg: *const ::core::ffi::c_void) {
-            // SAFETY: caller passes a pointer to a live config of the
-            // board's concrete `Config` type (see `<nros/board.h>`).
-            let cfg = unsafe { &*(cfg as *const <$ty as ::nros_board_common::BoardInit>::Config) };
-            <$ty as ::nros_board_common::BoardInit>::init_hardware(cfg);
+            // SAFETY: caller passes a pointer to a live config of type `$C`
+            // (see `<nros/board.h>`); it outlives this call.
+            let cfg: &$C = unsafe { &*(cfg as *const $C) };
+            $init(cfg);
         }
 
         #[unsafe(no_mangle)]
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn nros_board_println(msg: *const u8, len: usize) {
-            // SAFETY: caller passes a valid UTF-8 byte slice of `len`
-            // bytes that outlives the call; empty case collapses to "".
             let bytes: &[u8] = if msg.is_null() || len == 0 {
                 &[]
             } else {
+                // SAFETY: caller passes a valid `len`-byte slice outliving the call.
                 unsafe { ::core::slice::from_raw_parts(msg, len) }
             };
             let s = ::core::str::from_utf8(bytes).unwrap_or("<non-utf8>");
-            <$ty as ::nros_board_common::BoardPrint>::println(::core::format_args!("{}", s));
+            $println(s);
         }
 
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_board_exit_success() -> ! {
-            <$ty as ::nros_board_common::BoardExit>::exit_success()
+            $exit_success()
         }
 
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_board_exit_failure() -> ! {
-            <$ty as ::nros_board_common::BoardExit>::exit_failure()
+            $exit_failure()
         }
 
         #[unsafe(no_mangle)]
@@ -112,17 +138,13 @@ macro_rules! nros_board_export {
             app: $crate::NrosBoardAppFn,
             user: *mut ::core::ffi::c_void,
         ) -> ! {
-            // SAFETY: caller passes a pointer to a live, owned config of
-            // the board's concrete type and does not reuse it after this
-            // call (ownership transfers into `run`).
-            let cfg = unsafe {
-                ::core::ptr::read(cfg as *const <$ty as ::nros_board_common::BoardInit>::Config)
-            };
-            // `BoardEntry::run` is family-agnostic: direct-exec boards
-            // route through `nros_board_common::run`; kernel-spawn boards
-            // route through their family `run`. The C `app` fn becomes
-            // the user closure; its non-zero return maps to `Err`.
-            <$ty as ::nros_board_common::BoardEntry>::run(cfg, move |_cfg| match app(user) {
+            // SAFETY: caller passes a pointer to a live, owned `$C` and does not
+            // reuse it after this call (ownership transfers into `run`).
+            let cfg: $C = unsafe { ::core::ptr::read(cfg as *const $C) };
+            // The C `app` fn becomes the user closure; its non-zero return maps
+            // to `Err`. The board's own `run` fn owns the family shape
+            // (inline vs task-spawn) — the macro is family-agnostic.
+            $run(cfg, move || match app(user) {
                 0 => ::core::result::Result::Ok(()),
                 rc => ::core::result::Result::Err(rc),
             })
