@@ -245,20 +245,48 @@ replaces the legacy path cleanly.
   **UNVERIFIED on this host** (no Xtensa `esp` toolchain; bringup is a manual /
   physical-HW fixture in no CI lane). Mechanically identical to esp32-qemu.
 
-## Remaining (the harder tail — SESSION path, not run_bare)
-1. **mps2-an385 + stm32f4 direct-exec `run`** still exists, consumed by
-   **session-opening** binaries: `nros-bench/large-msg-baremetal` (uses
-   `nros_board_mps2_an385::run` then `Executor::open`) and
-   `examples/stm32f4/rust/talker` (verify). These are NOT init-only, so they do
-   not map to `run_bare` — migrate them to the boards' existing
-   `<Board as nros_platform::BoardEntry>::run` (the RuntimeCtx session path;
-   both boards already impl it, entry.rs), restructuring each closure from
-   manual `Executor::open` to `register()`-against-`RuntimeCtx`. THEN delete the
-   legacy `run` + `node::{Stm32F4,Mps2An385}` ZSTs + `board_init` impls.
-   NB `logging-smoke-mps2-baremetal` needs NO migration — it boots via
-   `cortex_m_rt::entry` + direct `nros_log`, never the board `run`.
-2. Then `cffi` (the C-export macro's config-carrying `run(cfg, closure)` → the new
-   form; 7 refs), then W6 (delete `nros-board-common::board_init` + the lint gate).
+## Direct-exec — mps2-an385 + stm32f4 DONE (2026-07-28)
+
+Both turned out to be `run_bare`-shaped, NOT the session path: the direct-exec
+`run` is a boot wrapper (init + `FnOnce(&Config)` closure + exit) with NO
+board-level session — the app opens its own executor.
+
+- **mps2-an385** — the `large-msg-baremetal` bench opens its OWN no-alloc
+  `Executor::open_in`, so it cannot use the `board-entry` `BoardEntry::run`
+  (which does `alloc` `Executor::open`). Added a free `run_bare(config,
+  FnOnce(&Config))` in `node.rs` (NOT behind the `board-entry` feature, so the
+  no-umbrella bench reaches it); deleted legacy `run` + `board_init` impls;
+  migrated the bench. `test_qemu_zenoh_large_publish` PASS on the QEMU lane.
+  `logging-smoke-mps2-baremetal` needed NO change (cortex_m_rt entry).
+- **stm32f4** — no legacy-`run` consumer (every example uses `nros::main!` →
+  `BoardEntry`). Deletion + one decoupling: `entry.rs::boot` had reused the
+  legacy `BoardInit::init_hardware` for the PAC-consuming init; extracted that
+  into `node::init_hardware_take_peripherals` (gated on `board-entry`) and call
+  it directly. `examples/stm32f4/rust/talker` compiles clean on
+  thumbv7em-none-eabihf (physical-HW board, no QEMU lane).
+
+**All 9 boards across the kernel + direct-exec families are migrated** (threadx×2,
+freertos, nuttx×2, esp32×2, mps2-an385, stm32f4). Plus a latent #292 fix
+(entity_counter → portable_atomic for riscv32imc).
+
+## Remaining — the finalization unit (cffi + orin-spe + dead-legacy sweep + W6)
+1. **cffi** — `nros-board-cffi` (the `nros_board_export!` C-ABI macro) + its two
+   tests still ride the legacy `Board`/`BoardEntry`/`DirectExec` traits to
+   dispatch kernel-spawn vs direct-exec behind the `nros_board_run` C symbol.
+   This is the one real API-surface change (config-carrying `run(cfg, closure)` →
+   the new form) — needs its own design pass, not a mechanical swap.
+2. **orin-spe** — vestigial: has the new `BoardEntry` already; the legacy
+   `impl nros_board_common::BoardInit` + the unused kernel-spawn free `run`
+   (node.rs, doc-only consumer) are dead. Deletion touches interlinked helpers
+   (`app_task_entry`, `AppContext`); **UNVERIFIABLE on this host** (Cortex-R5F /
+   NVIDIA FSP toolchain absent).
+3. **Dead family generic `run<B>`** in `nros-board-{freertos,threadx}/src/node.rs`
+   + the `pub use nros_board_common::{BoardExit,BoardInit,BoardPrint}` re-exports
+   — now UNCALLED (all boards moved to `run_bare`/`BoardEntry`; nuttx's
+   `run_generic` already gone). Delete with W6.
+4. **W6** — delete `nros-board-common::board_init` + add the `just ci` grep/lint
+   gate. Gated on 1–3 above (board_init cannot be removed while cffi/orin-spe
+   still impl its traits).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
