@@ -406,8 +406,27 @@ check-source-gates:
     cargo test -p nros-tests --test cross_libc_precedence_gate
     cargo test -p nros-tests --test zephyr_prjconf_requirements
 
-# Per-example `cargo +nightly fmt --check` (AST-only, no codegen/deps). The
-# `check.yml` per-example-fmt step as a recipe (SSoT).
+# Per-example rustfmt --check (AST-only, no codegen/deps). The `check.yml`
+# per-example-fmt step as a recipe (SSoT).
+#
+# issue 0320 — this invokes `rustfmt` DIRECTLY, not `cargo fmt`. `cargo fmt`
+# shells out to `cargo metadata`, which loads the leaf's `.cargo/config.toml`,
+# which does `include = ["…/nros-patch.toml"]` — a file `nros sync` GENERATES
+# and `.gitignore` excludes. A fresh checkout does not have it, so on CI every
+# leaf died with:
+#
+#   error: could not load Cargo configuration
+#     failed to load config include `../../../../../nros-patch.toml`
+#
+# That held `pr-checks` red on main for 60+ consecutive runs. Since phase-315
+# the same call also needs the generated `nros-selection` facade crates,
+# because a workspace member's `[dependencies]` path-dep must exist for
+# `cargo metadata` to resolve at all.
+#
+# The deeper problem was placement: this gate lives in `check-fast`, whose
+# contract is "BUILDLESS, SOURCE-FREE … no cargo tree/metadata". `cargo fmt`
+# violated that. Formatting needs no dependency graph, so calling `rustfmt`
+# per file honours the tier and cannot regress this way again.
 [private]
 check-example-fmt:
     #!/usr/bin/env bash
@@ -420,8 +439,17 @@ check-example-fmt:
         | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|qemu-esp32-baremetal/rust/dds/|examples/qemu-arm-freertos/|examples/qemu-arm-nuttx/|examples/threadx-linux/|examples/qemu-riscv64-threadx/|examples/px4/' \
         | sort | while read -r toml; do
         dir="$(dirname "$toml")"
-        echo "  fmt $dir"
-        ( cd "$dir" && cargo "+{{NIGHTLY}}" fmt --check )
+        # Read the edition from the manifest rather than assuming one: rustfmt
+        # needs it explicitly (cargo fmt used to supply it), and the tree is
+        # not uniform — the zephyr leaves are not 2024.
+        edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$toml" | head -1)"
+        edition="${edition:-2024}"
+        # Tracked .rs files only — the same index-driven discipline as above,
+        # so generated/ and build trees cannot leak in.
+        mapfile -t files < <(git ls-files "$dir/*.rs" "$dir/**/*.rs")
+        [ "${#files[@]}" -eq 0 ] && continue
+        echo "  fmt $dir (edition $edition, ${#files[@]} files)"
+        rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
     done
 
 # Link-determinism gate (RFC-0042 D3) — build the host staticlib pair, then assert

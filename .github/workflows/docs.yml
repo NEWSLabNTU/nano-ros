@@ -43,7 +43,7 @@ jobs:
         # book deploy fail before docs build starts.
         # phase-262: the rustdoc-driver no longer pulls nros-cli-core (nros-macros
         # now deps the nros-pkg-index / nros-launch-parser leaf crates, not the
-        # whole CLI), so no ros-launch-manifest submodule init is needed here.
+        # whole CLI), so no ros-launch-resolve submodule init is needed here.
 
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v2

@@ -208,6 +208,16 @@ byte-identical). Stage 3 enumeration deferred (out of scope); the build-c/cpp/xr
 way was already fixed by #314. See `archived/0316-*`. fc6414598. (2026-07-28, filed as #313 and
 renumbered on push — origin already had two))
 
+Recently resolved: **#337** — `pr-checks` was RED ON MAIN for 60+ consecutive runs (back to
+2026-07-27T17:17), unnoticed because everyone validates with `just check` locally. Two causes, both in
+the `check` job: (1) `check-example-fmt` called `cargo fmt`, which runs `cargo metadata`, which loads
+the leaf `.cargo/config.toml`'s `include` of the GENERATED, gitignored `nros-patch.toml` — a fresh
+checkout never has it. The gate sits in `check-fast`, whose contract forbids exactly that ("no cargo
+tree/metadata"); now calls `rustfmt` directly, which needs no dep graph. Phase-315's generated facade
+crates gave the same call a second failure mode locally. (2) 8 workflow references to the retired
+`third-party/ros-launch-manifest` submodule (phase-312 fallout; the tree was swept, `.github/` was
+not) — same drift class as #336, which owns the bootstrap/doc surface. See `0337-*`. (2026-07-28)
+
 **#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh:189` inits the RETIRED
 `ros-launch-manifest` submodule path, so a **fresh clone cannot build the CLI** (it only works
 here because two retired worktrees remain on disk); 9 doc copies of the dead command,
