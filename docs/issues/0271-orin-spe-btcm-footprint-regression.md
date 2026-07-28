@@ -51,3 +51,73 @@ just build-spe-image
   `clock_gettime`, which newlib does not back on the SPE; the sentinel
   shims it off `nros_platform_time_now_ms`. Consider gating that seed
   branch off for `ZENOH_ORIN_SPE` builds.
+
+## Audit (2026-07-28) — 129 KB of the ~195 KB found and fixed
+
+Reproduced first, on current pins: `just build-spe-image` overflows BTCM by
+**168,760 bytes** (the issue recorded 164,464, so it had drifted slightly
+worse).
+
+### Cause 1 — a new static pool the consumer's rightsizing never covered
+
+`nm --size-sort` on the firmware staticlib put two symbols far ahead of
+everything else:
+
+```
+154,432  __NROS_SIZE_EXECUTOR_SIZE
+131,072  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
+```
+
+`LARGE_PAYLOADS` is `MAX_LARGE_SUBSCRIBERS(2) × RING_DEPTH(4) ×
+SUBSCRIBER_LARGE_SIZE(16384)` = exactly 131,072 — every knob at its default.
+
+`6f32fb7e4` ("zenoh-pico size-class receive buffers", RFC-0038) introduced this
+pool, and `git merge-base --is-ancestor` confirms it landed **inside** the
+regression window. The sentinel's SPE build sets nine tuning envs, including
+`ZPICO_SUBSCRIBER_BUFFER_SIZE=256` for the SMALL pool — whose 4 KB matches
+exactly — but the size-class feature added three knobs
+(`ZPICO_MAX_LARGE_SUBSCRIBERS`, `ZPICO_SUBSCRIBER_LARGE_SIZE`,
+`ZPICO_SUBSCRIBER_RING_DEPTH`) that no consumer knew to set. So a
+correctly-rightsized image silently grew a 128 KB pool.
+
+Fix, in the sentinel's SPE env: `ZPICO_MAX_LARGE_SUBSCRIBERS=1` +
+`ZPICO_SUBSCRIBER_LARGE_SIZE=512`.
+
+**Receipt: overflow 168,760 → 39,736 bytes.** 129,024 recovered, matching the
+pool exactly.
+
+### A false lead worth recording
+
+`__NROS_SIZE_EXECUTOR_SIZE` (154,432) looks like the biggest item and is
+tempting. Its arena IS oversized in principle — the formula provisions EVERY
+callback slot as a worst-case action client (`3 × 4480 + 3 × rx_buf + 1536`
+≈ 15.7 KB per slot, so 8 slots ≈ 128 KB) on an image with no action clients.
+
+But setting `NROS_EXECUTOR_ARENA_SIZE=32768` shrank the symbol
+(154,432 → 59,200) and moved the overflow **not at all** — still 39,736. It is
+a size-EXPORT blob (`export_size!`, for the C header) that `--gc-sections`
+drops, not live footprint. Do not chase it; measure the link, not the archive.
+
+That said, the arena formula's action-client worst-casing is worth revisiting
+on its own merits for RAM, just not for this overflow.
+
+## Still open: the remaining 39,736 bytes
+
+Largest live `.bss` contributors in the staticlib after the fix:
+
+```
+8,688  g_pending_gets                     (zenoh-pico, ZPICO_MAX_PENDING_GETS=2 already set)
+8,192  nros_rmw_cffi …static_subscriber_storage::SLOTS
+4,096  SMALL_PAYLOADS                     (already rightsized)
+3,584  nros_rmw_cffi::MESSAGE_INFO_TABLE
+2,736  SERVICE_BUFFERS
+```
+
+`nros_rmw_cffi`'s `SLOTS` (8 KB) and `MESSAGE_INFO_TABLE` (3.5 KB) are on the
+rmw-cffi vtable seam the original report suspected, and neither appears to have
+a rightsizing knob. `g_pending_gets` at 8.7 KB despite
+`ZPICO_MAX_PENDING_GETS=2` deserves a check that the env actually reaches
+zenoh-pico's C build.
+
+Next step is a link-map audit (`-Wl,-Map`) rather than more archive `nm`, since
+this issue has now produced one false lead from exactly that confusion.
