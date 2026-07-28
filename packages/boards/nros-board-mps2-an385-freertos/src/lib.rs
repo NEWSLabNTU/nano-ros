@@ -48,79 +48,16 @@ extern crate zpico_sys;
 // implements the three `BoardInit` / `BoardPrint` / `BoardExit`
 // traits + provides a thin non-generic `run()` wrapper.
 pub use nros_board_freertos::Config;
-use nros_board_freertos::{BoardExit, BoardInit, BoardPrint};
 
-/// Per-board marker for trait dispatch into
-/// `nros_board_freertos::run::<Mps2An385, _, _>`.
+// Phase 313 W-freertos (#0243) — the legacy `nros_board_common::board_init`
+// family (`BoardInit`/`BoardPrint`/`BoardExit` + the free `run`/`init_hardware`)
+// is RETIRED for this board; the live path is
+// `nros_platform::board::{BoardInit, BoardEntry, …}` below, plus the no-session
+// `Mps2An385::run_bare` for logging/init-only fixtures.
+
+/// Per-board marker for trait dispatch into the `nros_board_freertos::run_*`
+/// family driver.
 pub struct Mps2An385;
-
-impl BoardInit for Mps2An385 {
-    type Config = Config;
-
-    fn init_hardware(_cfg: &Config) {
-        // FreeRTOS network init requires the scheduler to be
-        // running (tcpip_init creates tcpip_thread). All
-        // meaningful init happens inside the app task created
-        // by the generic `run`.
-    }
-}
-
-impl BoardPrint for Mps2An385 {
-    fn println(args: core::fmt::Arguments<'_>) {
-        // `hprintln!` only takes a format string + args, not a
-        // pre-built `Arguments`. Use `hio::hstdout` + `writeln!`
-        // so we can forward `Arguments` straight through.
-        use core::fmt::Write;
-        if let Ok(mut stdout) = cortex_m_semihosting::hio::hstdout() {
-            let _ = writeln!(stdout, "{}", args);
-        }
-    }
-}
-
-impl BoardExit for Mps2An385 {
-    fn exit_success() -> ! {
-        exit_success()
-    }
-
-    fn exit_failure() -> ! {
-        exit_failure()
-    }
-}
-
-/// Initialise pre-scheduler hardware. Delegates through the
-/// trait so the overlay's `init_hardware` is reachable both
-/// from `run()` (via the generic `nros_board_freertos::run<B>`)
-/// and standalone (e.g. board-side bring-up tests).
-pub fn init_hardware(cfg: &Config) {
-    <Mps2An385 as BoardInit>::init_hardware(cfg);
-}
-
-/// Run an application on QEMU MPS2-AN385 with FreeRTOS + lwIP.
-///
-/// Thin wrapper over `nros_board_freertos::run::<Mps2An385, _, _>`
-/// so users do not have to spell the trait turbofish themselves.
-///
-/// # Example
-///
-/// ```ignore
-/// use nros_board_mps2_an385_freertos::{Config, run};
-/// use nros::prelude::*;
-///
-/// run(Config::default(), |config| {
-///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
-///         .domain_id(config.domain_id);
-///     let mut executor = Executor::open(&exec_config)?;
-///     // ...
-///     Ok::<(), NodeError>(())
-/// })
-/// ```
-pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
-where
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
-{
-    register_log_writer();
-    nros_board_freertos::run::<Mps2An385, F, E>(config, f)
-}
 
 /// Phase 88 — register a semihosting writer with `nros-platform-freertos`'s
 /// log fn-ptr slot. Called once from `run()` before any task spawns.
@@ -314,6 +251,21 @@ fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
 }
 
 impl Mps2An385 {
+    /// Phase 313 W-freertos (#0243) — lightweight NO-SESSION entry for logging /
+    /// init-only fixtures. Boots the FreeRTOS scheduler + UART writer and runs
+    /// `setup` WITHOUT opening an `Executor` session (unlike
+    /// [`nros_platform::board::BoardEntry::run`], which would fail
+    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
+    /// for the no-session role the retired legacy `run(Config, closure)` served.
+    pub fn run_bare<F, E>(config: Config, setup: F) -> Result<(), E>
+    where
+        F: FnOnce() -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        register_log_writer();
+        nros_board_freertos::run_bare::<Mps2An385, F, E>(config, setup)
+    }
+
     /// Phase 228.E.2 — per-tier multi-task entry; delegates to
     /// [`nros_board_freertos::run_tiers_entry`]. The `nros::main!()` macro emits
     /// `<Mps2An385>::run_tiers(&DEPLOY, TIERS, run_plan)` for multi-tier systems

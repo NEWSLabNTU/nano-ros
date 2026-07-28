@@ -864,3 +864,107 @@ where
     // signature without an explicit `Ok` arm.
     B::exit_failure()
 }
+
+/// Phase 313 W-freertos (#0243) — lightweight NO-SESSION FreeRTOS entry for
+/// logging / init-only fixtures. Boots the scheduler + shared bringup (network,
+/// RNG, poll task, netif wait) then runs a NULLARY `setup` closure WITHOUT
+/// opening an `Executor` session (unlike [`run_entry`], which would fail
+/// `Transport(ConnectionFailed)` with no router). The new-family replacement for
+/// the no-session role the retired legacy `node::run(Config, closure)` served.
+/// Mirrors `nros_board_threadx::run_bare`.
+pub fn run_bare<B, F, E>(config: Config, setup: F) -> core::result::Result<(), E>
+where
+    B: BoardInit + BoardPrint + BoardExit,
+    F: FnOnce() -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    B::println(format_args!(""));
+    B::println(format_args!("========================================"));
+    B::println(format_args!("  nros FreeRTOS Platform (bare)"));
+    B::println(format_args!("========================================"));
+    B::println(format_args!(""));
+
+    B::init_hardware();
+
+    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_stack_words = config.app_stack_bytes / 4;
+
+    // Heap-allocate the app context (same MSP-reclaim rationale as `run_entry`).
+    // `boot_config` is unused on the no-session path.
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<AppContext<F>>();
+        let ptr = nros_platform_alloc(size) as *mut AppContext<F>;
+        assert!(!ptr.is_null(), "Failed to allocate AppContext");
+        core::ptr::write(
+            ptr,
+            AppContext {
+                config,
+                boot_config: None,
+                closure: setup,
+            },
+        );
+        ptr
+    };
+
+    let ret = unsafe {
+        nros_freertos_create_task(
+            app_task_entry_bare::<B, F, E>,
+            b"nros_app\0".as_ptr(),
+            app_stack_words,
+            ctx_ptr as *mut c_void,
+            app_pri,
+        )
+    };
+    if ret != 0 {
+        B::println(format_args!("Error creating application task"));
+        B::exit_failure();
+    }
+
+    unsafe {
+        nros_freertos_start_scheduler();
+    }
+
+    B::exit_failure()
+}
+
+/// FreeRTOS task entry for the NO-SESSION [`run_bare`] path — runs the shared
+/// boot bringup then the nullary closure with NO `Executor::open`. The `Ok` arm
+/// prints "Application completed successfully." (the completion banner logging
+/// fixtures grep for) before `exit_success`.
+///
+/// # Safety
+/// `arg` must point to a valid `AppContext<F>` allocated on the FreeRTOS heap by
+/// [`run_bare`], surviving until the scheduler exits.
+unsafe extern "C" fn app_task_entry_bare<B, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    F: FnOnce() -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
+
+    unsafe { freertos_boot_bringup::<B>(&ctx.config) };
+    install_uart_logger::<B>();
+
+    // FnOnce — `core::ptr::read` because this task entry runs once.
+    let closure = unsafe { core::ptr::read(&ctx.closure) };
+
+    match closure() {
+        Ok(()) => {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!(""));
+            B::println(format_args!("Application completed successfully."));
+            B::exit_success();
+        }
+        Err(e) => {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!(""));
+            B::println(format_args!("Application error: {:?}", e));
+            B::exit_failure();
+        }
+    }
+}

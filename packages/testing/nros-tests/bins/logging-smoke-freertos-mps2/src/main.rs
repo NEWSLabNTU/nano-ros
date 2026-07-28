@@ -11,10 +11,10 @@
 #![no_std]
 #![no_main]
 
-use nros_board_mps2_an385_freertos::{Config, run};
+use nros_board_mps2_an385_freertos::{Config, Mps2An385};
 use nros_log::{
-    init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger,
-    sinks, Logger, Severity,
+    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
+    register_logger, sinks,
 };
 use panic_semihosting as _;
 
@@ -31,7 +31,10 @@ const CONFIG: &str = include_str!("../config.toml");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
-    run(Config::from_toml(CONFIG), |_config| {
+    // Phase 313 W-freertos (#0243) — no-session `run_bare` (scheduler + boot
+    // bringup + UART writer, no `Executor::open`). The closure exits via
+    // semihosting itself, so the family Ok/exit arms are never reached.
+    let _ = Mps2An385::run_bare(Config::from_toml(CONFIG), || {
         register_logger(&LOGGER);
         init(sinks::default());
         let logger = &LOGGER;
@@ -49,5 +52,8 @@ extern "C" fn main() -> ! {
 
         #[allow(unreachable_code)]
         Ok::<(), &'static str>(())
-    })
+    });
+    // `run_bare` diverges internally (scheduler start → exit_success/failure);
+    // the closure's semihosting exit fires first for this fixture.
+    unreachable!()
 }

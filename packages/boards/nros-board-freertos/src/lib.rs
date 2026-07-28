@@ -71,7 +71,7 @@ mod error;
 mod node;
 
 pub use config::Config;
-pub use entry::{run_entry, run_tiers_entry};
+pub use entry::{run_bare, run_entry, run_tiers_entry};
 pub use node::run;
 pub use nros_board_common::{BoardExit, BoardInit, BoardPrint};
 
@@ -86,10 +86,6 @@ pub mod __internal {
     pub use crate::error::{Error, Result};
 }
 
-// 152.1.A scaffolding re-export — kept for downstream consumers
-// that switched to `nros-board-freertos = { features = ["reference-mps2"] }`
-// during the .A → .B transition. The `Config` re-export now wins
-// (both crates export the same type via this crate's `pub use
-// config::Config`).
-#[cfg(feature = "reference-mps2")]
-pub use nros_board_mps2_an385_freertos::run;
+// Phase 313 W-freertos (#0243) — the 152.1.A `reference-mps2` scaffolding
+// re-export of the per-board free `run` is retired along with that free `run`.
+// The `reference-mps2` feature still pulls the board crate as an optional dep.
