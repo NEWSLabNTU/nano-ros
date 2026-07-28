@@ -1,7 +1,7 @@
 ---
 id: 332
 title: "Freestanding-header gaps the gate cannot catch: bridge.hpp includes <string>/<vector> ungated, check.h printf's from a public C header, and 21 vtable slots .expect() on the embedded path"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: core
@@ -69,3 +69,34 @@ error rather than a panic.
 All three are "the embedded/freestanding contract is asserted but not enforced",
 all in `packages/core`, and the first one's fix includes repairing the gate that
 should have caught it.
+
+## Resolution (2026-07-28)
+
+**Defect 1 — DONE.** `bridge.hpp`'s whole body is wrapped in `#ifdef
+NROS_CPP_STD` (the multi-RMW bridge is hosted-only). Since the `-ffreestanding`
+compile probe runs against the host's full libstdc++ and structurally cannot see
+the 0112 class, added `scripts/check-cpp-freestanding-includes.sh` (wired into
+`check-fast`): a source gate that flags any hosted STL include outside an
+`NROS_CPP_STD` region in nros-cpp headers. Verified it catches the pre-fix
+ungated bridge and passes the gated one. c61abe897.
+
+**Defect 2 — DONE.** `check.h`'s default `NROS_CHECK_LOG` now gates the `printf`
+form on `__STDC_HOSTED__` or an explicit `NROS_CHECK_STDIO`; freestanding
+defaults to a `(void)`-cast no-op. Verified: a freestanding TU preprocesses to
+zero `stdio` references; hosted still prints. c61abe897.
+
+**Defect 3 — DONE (the bug); the refactor is deferred by design.**
+`nros_rmw_cffi_register_named` now rejects an incomplete vtable at registration
+(`first_missing_vtable_slot` → `NROS_RMW_RET_INVALID_ARGUMENT`), so "passes
+registration and panics mid-spin on a no_std target" is fixed — the failure is
+now loud and early. The required set is exactly the 20 slots the code already
+`.expect()`s (the same set the working `STUB_VTABLE` fills). df66f7bff.
+
+The issue also suggested downgrading the 21 `.expect()` call sites to
+`ok_or(TransportError::Unsupported)?`. That is a *different* design — it would
+support genuinely-partial backends (an optional slot as a typed error when
+*used*). The call sites do not uniformly permit it (some return `bool`, not
+`Result`), and it changes the backend contract. Deliberately NOT done: the
+current contract is that a registered backend must be complete, now enforced at
+registration. Partial-backend support can be filed separately if a real
+consumer needs it.

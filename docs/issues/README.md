@@ -346,10 +346,13 @@ façade macro hardcodes two `register()` calls. #225 class. See `0330-*`.
 mode` with no rmw.h counterpart; `set_custom_transport` bypasses the RFC-0054 generated type with
 no layout assert. Further rmw.h gaps appended to #0242. See `0331-*`.
 
-**#332** — freestanding contract asserted but not enforced: `bridge.hpp` includes
-`<string>`/`<vector>` ungated (new 0112 instance) and the `check-cpp` probe can't catch it (no
-`-nostdinc++`); `check.h` printf's from a public C header; 21 vtable slots `.expect()` on the
-embedded path while registration never checks completeness. See `0332-*`.
+(#332 RESOLVED — freestanding contract asserted but not enforced. `bridge.hpp` `<string>`/`<vector>`
+gated on `NROS_CPP_STD` + new `check-cpp-freestanding-includes` source gate (the `-ffreestanding`
+probe runs vs host libstdc++ and can't see the 0112 class); `check.h` printf now gated on
+`__STDC_HOSTED__`/`NROS_CHECK_STDIO`, freestanding = no-op; `nros_rmw_cffi_register_named` rejects an
+incomplete vtable at registration (`NROS_RMW_RET_INVALID_ARGUMENT`) so a partial backend fails loud
+early instead of panicking mid-spin. Optional-slot typed-error downgrade deferred by design (contract
+= complete vtable). See `archived/0332-*`. c61abe897 + df66f7bff. (2026-07-28)
 
 (#333 RESOLVED — `nros new` emitted projects that don't run: the board dep vanished into a TOML
 comment for 4/8 platforms, and the template was the retired `no_mangle` stub. Defect 1: one validated
