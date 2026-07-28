@@ -1,6 +1,7 @@
 use super::common::{
     GeneratorError, build_action_envelope_schemas, build_c_field, build_nros_schema_for_struct,
-    determine_field_kind, field_to_nros_field, field_to_nros_field_with_mode,
+    determine_field_kind, ensure_owned_storage_for_payload, field_to_nros_field,
+    field_to_nros_field_with_mode,
 };
 use crate::{
     config::CapacityResolver,
@@ -221,6 +222,30 @@ pub fn generate_nros_action_package(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
+    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
+    // so a non-owned mode would emit the heap TYPE with an owned serde body.
+    // Fail at config time instead of emitting code that cannot compile.
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &goal_msg,
+        &action.spec.goal.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &result_msg,
+        &action.spec.result.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &feedback_msg,
+        &action.spec.feedback.fields,
+        resolver,
+    )?;
 
     // Generate goal fields
     let goal_fields: Vec<NrosField> = action
@@ -392,6 +417,30 @@ pub fn generate_nros_inline_action(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
+    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
+    // so a non-owned mode would emit the heap TYPE with an owned serde body.
+    // Fail at config time instead of emitting code that cannot compile.
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &goal_msg,
+        &action.spec.goal.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &result_msg,
+        &action.spec.result.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &feedback_msg,
+        &action.spec.feedback.fields,
+        resolver,
+    )?;
 
     let goal_fields: Vec<NrosField> = action
         .spec
@@ -637,6 +686,30 @@ pub fn generate_c_action_package(
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
+    // Issue 0343 — the action templates have no `is_heap`/`is_borrowed` branches,
+    // so a non-owned mode would emit the heap TYPE with an owned serde body.
+    // Fail at config time instead of emitting code that cannot compile.
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &goal_msg,
+        &action.spec.goal.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &result_msg,
+        &action.spec.result.fields,
+        resolver,
+    )?;
+    ensure_owned_storage_for_payload(
+        "action",
+        package_name,
+        &feedback_msg,
+        &action.spec.feedback.fields,
+        resolver,
+    )?;
 
     // Build C fields for goal
     let goal_fields: Vec<CField> = action

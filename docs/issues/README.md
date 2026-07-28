@@ -44,6 +44,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#344** — feature: implement heap/borrowed storage modes for srv/action payloads. The six
+srv/action templates have ZERO `is_heap` branches (messages have 12 in Rust, 6 in C); #343 made
+that fail loudly, this makes it work. Fix shape: factor the message templates' serde arms into
+shared jinja macros — six more hand-written copies is what caused the divergence. See `0344-*`.
+
+Recently resolved: **#343** — RFC-0033 storage modes were resolved for srv/action but implemented
+only in the MESSAGE templates, so a heap-configured `.srv` field emitted the heap TYPE with an
+owned serde body: generated code that could not compile. Found wider than filed — C had the
+identical hole (C++ does not: it delegates serde across the FFI). Now rejected at config time by
+`ensure_owned_storage_for_payload()` at all six entry points, with a diagnostic naming the field;
+the dead `is_phase1_supported()` (no callers, and its claim had become false) is replaced by the
+real support matrix. 7 new toolchain-free tests. Support itself deferred to #344.
+See `archived/0343-*`. (2026-07-28)
+
 Recently resolved: **#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh` targeted the
 RETIRED `ros-launch-manifest` path and guarded on a file that can never appear, so it silently did
 nothing and a fresh clone could not build the CLI. Fixed at all six surfaces (bootstrap, 12 doc
@@ -225,12 +239,6 @@ tree/metadata"); now calls `rustfmt` directly, which needs no dep graph. Phase-3
 crates gave the same call a second failure mode locally. (2) 8 workflow references to the retired
 `third-party/ros-launch-manifest` submodule (phase-312 fallout; the tree was swept, `.github/` was
 not) — same drift class as #336, which owns the bootstrap/doc surface. See `0337-*`. (2026-07-28)
-
-**#343** — RFC-0033 storage modes incoherent: srv/action templates have ZERO `is_heap`
-branches while `srv.rs`/`action.rs` resolve the mode (heap srv field ⇒ heap type + heapless
-serde body ⇒ **generated code that cannot compile**), and the three emitters disagree on which
-modes they accept for the same config. Needs a heap-field-on-a-`.srv` codegen test — which
-today would land in the `#[ignore]`d set of #328. See `0343-*`. (deep audit C,E 2026-07-28)
 
 **#338** — `spin` means the OPPOSITE thing across surfaces: C++ `Executor::spin(duration_ms)`
 is bounded with no no-arg overload, while C/Rust spin forever and rclcpp's `spin()` blocks

@@ -38,10 +38,26 @@ pub enum StorageMode {
 }
 
 impl StorageMode {
-    /// Phase-1 supports only `owned`; `heap`/`borrowed` land in 229.5 / 229.6.
-    pub fn is_phase1_supported(self) -> bool {
-        matches!(self, StorageMode::Owned)
-    }
+    // Issue 0343 — `is_phase1_supported()` used to live here, claiming only
+    // `owned` was supported. It had NO production callers (only its own unit
+    // test asserted on it), and its claim had become false: messages DO
+    // implement heap and borrowed. A predicate nobody calls, asserting
+    // something untrue, is worse than no predicate — it reads as a gate.
+    //
+    // The real support matrix, enforced where it can actually be honoured:
+    //
+    // | mode       | message (Rust) | message (C) | message (C++) | srv/action |
+    // | ---------- | -------------- | ----------- | ------------- | ---------- |
+    // | `owned`    | yes            | yes         | yes           | yes        |
+    // | `heap`     | yes            | bridgeable shapes | primitive seqs | NO   |
+    // | `borrowed` | yes            | yes         | yes           | NO         |
+    //
+    // Enforced by: `field_to_nros_field_with_mode` / `build_c_field` /
+    // `cpp_storage_for_field` (per-language shape support, `UnsupportedStorageMode`)
+    // and `ensure_owned_storage_for_payload` (srv/action, which have no
+    // `is_heap` branches in their templates —
+    // `UnsupportedStorageModeForPayload`). Covered by
+    // `tests/srv_action_storage_mode_gate.rs`.
 
     /// Token used in config + diagnostics.
     pub fn as_str(self) -> &'static str {
@@ -449,13 +465,6 @@ mod tests {
         assert_eq!(r.resolve("a", "B", "c", SEQ).cap, 99);
         // workspace-only field entry survives
         assert_eq!(r.resolve("a", "B", "d", SEQ).cap, 20);
-    }
-
-    #[test]
-    fn mode_phase1_gate() {
-        assert!(StorageMode::Owned.is_phase1_supported());
-        assert!(!StorageMode::Heap.is_phase1_supported());
-        assert!(!StorageMode::Borrowed.is_phase1_supported());
     }
 
     #[test]

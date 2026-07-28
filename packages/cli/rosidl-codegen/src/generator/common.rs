@@ -35,6 +35,19 @@ pub enum GeneratorError {
     },
 
     #[error(
+        "{package}/{message}.{field}: storage mode '{mode}' is not supported on {entity} \
+         payloads — only messages implement it today (issue 0343). Set this field to \
+         'owned' in nros-codegen.toml, or move the payload into a .msg."
+    )]
+    UnsupportedStorageModeForPayload {
+        entity: String,
+        package: String,
+        message: String,
+        field: String,
+        mode: &'static str,
+    },
+
+    #[error(
         "{package}/{message}.{field}: `borrowed` mode does not support element \
          type `{element}` — only fixed-width primitive sequences (`uint8[]`, \
          `int8[]`, `bool[]`, `float32[]`, `uint16[]`, …) and strings can borrow \
@@ -259,6 +272,61 @@ pub(super) fn primitive_to_cdr_method(prim: &rosidl_parser::PrimitiveType) -> St
         PrimitiveType::Float32 => "f32".to_string(),
         PrimitiveType::Float64 => "f64".to_string(),
     }
+}
+
+/// Reject non-`owned` storage modes on a service/action payload struct.
+///
+/// Issue 0343 — RFC-0033 modes are resolved for **every** entity
+/// (`srv.rs`/`action.rs` call [`field_to_nros_field_with_mode`] and
+/// [`build_c_field`] exactly like `msg.rs` does), but only the MESSAGE templates
+/// implement them:
+///
+/// | template | `is_heap` branches |
+/// | --- | --- |
+/// | `message_nros.rs.jinja` | 12 |
+/// | `message_c.c.jinja` | 6 |
+/// | `service_{nros.rs,c.c,c.h}.jinja` | 0 |
+/// | `action_{nros.rs,c.c,c.h}.jinja` | 0 |
+///
+/// So a `.srv` field configured `mode = "heap"` used to get the heap TYPE in the
+/// struct (`nros_core::heap::Vec<T>` / `{ T* data; size_t size, capacity; }`)
+/// with an owned-mode serde body (`heapless::Vec::new()`, plain
+/// `nros_cdr_write_string` on a `char*`) — generated code that does not compile,
+/// with the failure surfacing as a confusing rustc/cc error in generated output
+/// rather than at config time.
+///
+/// Until the srv/action templates gain the same branches, the honest behaviour is
+/// the one the C field builder already has for shapes it cannot bridge: fail
+/// loudly, naming the file and field. C++ needs no guard — its templates delegate
+/// serialization across the FFI to the Rust core (nano-ros C++ codegen wraps
+/// Rust, it never reimplements CDR), so the container type is all that changes.
+pub(super) fn ensure_owned_storage_for_payload(
+    entity: &str,
+    package_name: &str,
+    message_name: &str,
+    fields: &[rosidl_parser::Field],
+    resolver: &CapacityResolver,
+) -> Result<(), GeneratorError> {
+    for field in fields {
+        let Some(kind) = (match &field.field_type {
+            FieldType::String | FieldType::WString => Some(CapFieldKind::String),
+            FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
+            _ => None,
+        }) else {
+            continue;
+        };
+        let storage = resolver.resolve(package_name, message_name, &field.name, kind);
+        if storage.mode != StorageMode::Owned {
+            return Err(GeneratorError::UnsupportedStorageModeForPayload {
+                entity: entity.to_string(),
+                package: package_name.to_string(),
+                message: message_name.to_string(),
+                field: field.name.clone(),
+                mode: storage.mode.as_str(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Convert a Message field to NrosField with explicit codegen mode.
