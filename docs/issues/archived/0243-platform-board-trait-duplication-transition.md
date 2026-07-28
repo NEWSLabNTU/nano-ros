@@ -1,11 +1,32 @@
 ---
 id: 243
 title: "Platform board-trait family duplicated during transition: nros-platform::board::{Board,BoardInit,BoardEntry} vs legacy nros-board-common::board_init::{…} both live"
-status: open
+status: resolved
+resolved_in: "phase-313 (archived)"
 type: tech-debt
 severity: low
 area: platform
 related: [rfc-0034]
+---
+
+## Resolution (phase-313, 2026-07-28)
+
+Chose direction 1 (**finish**). Deleted `nros-board-common::board_init` entirely.
+The board API is now TWO canonical, non-overlapping surfaces:
+- **Rust** — `nros_platform::board` (`BoardInit`/`BoardPrint`/`BoardExit`/`BoardEntry`
+  + friends), what `nros::main!` consumes. Canonical because board entry owns
+  control-flow + compile-time executor sizing + tiers — not a flat leaf-primitive
+  ABI, so a Rust trait home is honest (unlike platform/RMW's C-ABI-leaf surfaces).
+- **C** — `<nros/board.h>` (`nros-board-cffi`, RFC-0054 drift-gated), the flat
+  cross-language SSoT for C/C++/any-language boards; emitted from a Rust board's
+  plain fns by `nros_board_export!` (rewritten fn-param, no trait dependency).
+
+All ~13 real-legacy board crates + cffi + orin-spe migrated; the dead generic
+`nros-board-{freertos,threadx}/src/node.rs` `run<B>` deleted; the `NodeRuntime`
+alias dropped (phase-313 W1). A `check-no-board-init` grep gate (`just check`)
+keeps board_init from creeping back. Full detail: `docs/roadmap/archived/
+phase-313-board-trait-convergence.md`.
+
 ---
 
 ## Finding (RMW/platform API audit, 2026-07-21)
