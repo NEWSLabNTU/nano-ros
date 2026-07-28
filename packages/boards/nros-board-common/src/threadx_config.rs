@@ -45,11 +45,28 @@ pub trait ThreadxConfig {
     /// `zenoh_locator = "tcp/127.0.0.1:7447"` / `domain_id = 0`
     /// the per-board overlays carry. Override on a per-overlay
     /// `Config` when the values come from a different source.
-    fn zenoh_locator(&self) -> &'static str {
+    ///
+    /// Named `locator` (not `zenoh_locator`) to match
+    /// `nros_platform::BoardConfig::locator`, the RMW vtable's own
+    /// `locator` parameter and `ExecutorConfig::new` — this trait is
+    /// RMW-agnostic and must not name a concrete backend (issue 0330).
+    fn locator(&self) -> &'static str {
         "tcp/127.0.0.1:7447"
     }
 
     fn domain_id(&self) -> u32 {
         0
+    }
+
+    /// Deprecated alias for [`locator`](ThreadxConfig::locator).
+    ///
+    /// Note: an overlay that still *overrides* the old name is no longer
+    /// consulted by the family driver — rename the override to `locator`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `locator()` — the trait must not name a backend (issue 0330)"
+    )]
+    fn zenoh_locator(&self) -> &'static str {
+        self.locator()
     }
 }

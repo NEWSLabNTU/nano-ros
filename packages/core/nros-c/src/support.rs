@@ -188,19 +188,15 @@ pub unsafe extern "C" fn nros_support_init_named(
             Err(_) => return NROS_RET_INVALID_ARGUMENT,
         }
     } else {
-        // Phase 115.K.2.5.2: rmw-cffi covers the C/C++-API XRCE C backend.
-        // Default agent locator for consumers that omit the locator —
-        // points at a local agent on `:2019`. Other cffi-* sub-backends
-        // (dds, zenoh, cyclonedds) ignore the locator and use their own
-        // discovery mechanisms.
-        #[cfg(feature = "rmw-cffi")]
-        {
-            Some("127.0.0.1:2019")
-        }
-        #[cfg(not(feature = "rmw-cffi"))]
-        {
-            None
-        }
+        // Issue 0330 — NO backend default here. This layer is RMW-blind, and
+        // the substitution that used to live here (`127.0.0.1:2019`) is
+        // exactly why: it was an XRCE fact whose port had DRIFTED away from
+        // the xrce backend's own `XRCE_DEFAULT_AGENT_PORT` (2018), and it was
+        // applied to zenoh / dds / cyclonedds builds too. The locator stays
+        // absent and the linked backend applies its own default
+        // (`nros-rmw-xrce/session.c` for xrce, `nros_rmw_zenoh::DEFAULT_LOCATOR`
+        // for zenoh; cyclonedds ignores the locator).
+        None
     };
     let baked = nros_node::BootConfig {
         node_name: None,

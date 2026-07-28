@@ -76,7 +76,7 @@ The 16 KB app stack is half of the MPS2 board crate's 64 KB —
 deliberately tighter to fit the SPE's 256 KB BTCM. If your closure
 needs more, raise `app_stack_bytes` and shrink something else.
 
-`Config::with_zenoh_locator` panics at boot if the locator is not
+`Config::with_locator` panics at boot if the locator is not
 `ivc/...`. Phase 100 design §9 calls out the visual collision between
 `serial/N` and `ivc/N` (small integer after a 5–6-character prefix);
 the assertion turns the silent-disconnect failure mode into a loud

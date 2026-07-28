@@ -120,7 +120,7 @@ impl ThreadxConfig for Config {
     }
     // No host interface — bare-metal NetX-Duo + virtio-net.
 
-    fn zenoh_locator(&self) -> &'static str {
+    fn locator(&self) -> &'static str {
         self.zenoh_locator
     }
     fn domain_id(&self) -> u32 {

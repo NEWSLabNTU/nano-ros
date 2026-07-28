@@ -713,8 +713,8 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // 0. This makes `init_with_launch_auto()` (which delegates here with a
     // null locator) honor the env overlay instead of passing a null locator
     // to the backend → TransportError / degraded session.
-    // Phase-287 W6 — the hard local default moved BELOW the baked-macro check
-    // (threadx-linux is hosted; the eager default shadowed its baked port).
+    // Issue 0330 — the hard local default is GONE entirely (it was a zenoh
+    // fact in an RMW-blind header); the backend now supplies it.
     // RFC-0045 / issue #206 — the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
     // NROS_NODE_NAME) moved into the shared Rust resolver behind
     // nros_cpp_init (precedence model A: hosted env > this baked chain >
@@ -740,22 +740,24 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
         domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
     }
 #endif
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
-    // Hosted local-router default — LAST, after env + baked macro.
-    if (locator == nullptr) {
-        locator = "tcp/127.0.0.1:7447";
-    }
-#endif
-    // Phase 128.C.1 — RMW-blind init. Every backend (cyclonedds,
-    // xrce, dds, zenoh, uorb, …) contributes its registration entry
-    // to the `RMW_INIT_ENTRIES` linker section via the
-    // `NROS_RMW_REGISTER_BACKEND` macro (C/C++) or
-    // `#[linkme::distributed_slice]` (Rust). The cffi runtime's
-    // section walker fires inside `nros_cpp_init` and dispatches to
-    // whichever backends were linked into this binary. No
-    // `#ifdef NROS_RMW_*` chain here, no CMake-driven fan-out — the
-    // user's `target_link_libraries(... NanoRos::Rmw::<name>)` is
-    // the only selector.
+    // Issue 0330 — there is deliberately NO hosted "tcp/127.0.0.1:7447"
+    // fallback here. That value is a *zenoh* fact and this header is
+    // RMW-blind; a cyclonedds or xrce build must not carry it. A null
+    // locator flows through `nros_cpp_init` (→ `None` → the RFC-0045
+    // resolver's empty bottom rung) to whichever backend is linked, and
+    // that backend applies its own default (zenoh:
+    // `nros_rmw_zenoh::DEFAULT_LOCATOR`; xrce: its agent default;
+    // cyclonedds: ignores the locator). Precedence is otherwise unchanged:
+    // hosted env > explicit arg > baked macro > backend default.
+
+    // Phase 128.C.1 / phase-241.D3-rev — RMW-blind init. The selected
+    // backend registers itself before `main` via its `.init_array` ctor
+    // (RFC-0042 §D3.3), and `nros_cpp_init` additionally calls the weak
+    // `nros_app_register_backends()` board-override hook for RTOS targets
+    // where `.init_array` ctors do not run. No `#ifdef NROS_RMW_*` chain
+    // here, no CMake-driven fan-out — the user's
+    // `target_link_libraries(... NanoRos::Rmw::<name>)` is the only
+    // selector.
     nros_cpp_ret_t ret =
         nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {

@@ -12,6 +12,37 @@ use super::{
     subscriber::ZenohSubscriber,
 };
 
+/// Issue 0330 — normalize an incoming locator to "supplied" vs "absent".
+///
+/// RMW-agnostic layers no longer carry a zenoh default; they hand this
+/// backend either `None` or the empty string when the user supplied
+/// nothing (the C/C++ ABI edges cannot express `None`, so `""` is the
+/// wire form of "absent" — `NROS_ENTRY_LOCATOR` defaults to `""`, and
+/// `ExecutorConfig::try_resolve`'s bottom rung yields `""`).
+///
+/// Both spellings collapse to `None` here. That matters: `zpico_init_with_config`
+/// (`zpico-sys/c/zpico/zpico.c`) inserts whatever non-NULL locator it is given
+/// as the zenoh CONNECT endpoint, so a bare `""` would be configured as a real
+/// (broken) endpoint rather than meaning "no endpoint".
+pub fn normalize_locator(locator: Option<&str>) -> Option<&str> {
+    match locator {
+        Some(l) if !l.is_empty() => Some(l),
+        _ => None,
+    }
+}
+
+/// Issue 0330 — the client-mode locator this backend will actually dial:
+/// the caller's value when they supplied one, else [`crate::DEFAULT_LOCATOR`].
+///
+/// This is the ONLY place the zenoh default is applied. Agnostic layers must
+/// not pre-substitute it.
+pub fn effective_client_locator(locator: Option<&str>) -> &str {
+    match normalize_locator(locator) {
+        Some(l) => l,
+        None => crate::DEFAULT_LOCATOR,
+    }
+}
+
 #[cfg(feature = "std")]
 fn append_locator_param(
     buf: &mut [u8; LOCATOR_BUFFER_SIZE],
@@ -139,9 +170,14 @@ impl ZenohSession {
     ///
     /// A new session or error if connection fails
     pub fn new(config: &TransportConfig) -> Result<Self, TransportError> {
+        // Issue 0330 — `None` and `""` both mean "caller supplied nothing";
+        // the backend (not any agnostic layer) owns the default.
+        let supplied_locator = normalize_locator(config.locator);
+
         // Build the locator string with null terminator
-        let locator = match (&config.mode, config.locator) {
-            (SessionMode::Client, Some(loc)) => {
+        let locator = match &config.mode {
+            SessionMode::Client => {
+                let loc = effective_client_locator(supplied_locator);
                 // Create null-terminated locator
                 let mut buf = [0u8; LOCATOR_BUFFER_SIZE];
                 let bytes = loc.as_bytes();
@@ -160,10 +196,7 @@ impl ZenohSession {
                 buf[len] = 0; // Null terminator
                 buf
             }
-            (SessionMode::Client, None) => {
-                return Err(TransportError::InvalidArgument);
-            }
-            (SessionMode::Peer, _) => {
+            SessionMode::Peer => {
                 // Peer mode - pass null locator
                 [0u8; LOCATOR_BUFFER_SIZE]
             }
@@ -242,7 +275,7 @@ impl ZenohSession {
             }
         }
 
-        let locator_opt = if config.mode == SessionMode::Peer && config.locator.is_none() {
+        let locator_opt = if config.mode == SessionMode::Peer && supplied_locator.is_none() {
             None
         } else {
             Some(locator.as_slice())

@@ -5,7 +5,7 @@
 //! sense is `ivc/<channel-id>`, defaulting to channel 2 (`aon_echo`).
 //!
 //! Defense-in-depth (Phase 100 design Q1 mitigation): [`Config::run_or_panic_on_serial`]
-//! wraps `with_zenoh_locator` to **reject `serial/...` URIs** at boot.
+//! wraps `with_locator` to **reject `serial/...` URIs** at boot.
 //! `serial/2` and `ivc/2` are visually identical, and the SPE has no
 //! UART transport — silently accepting a `serial/` locator would
 //! disconnect cleanly with no diagnostic. We make the failure loud.
@@ -22,8 +22,8 @@
 /// - Zenoh-pico read/lease tasks priority 16, stack 4 KB each.
 #[derive(Clone)]
 pub struct Config {
-    /// Zenoh locator string. **Must start with `ivc/`** —
-    /// [`with_zenoh_locator`](Self::with_zenoh_locator) panics if not.
+    /// Transport locator string. **Must start with `ivc/`** —
+    /// [`with_locator`](Self::with_locator) panics if not.
     pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (default: 0).
     pub domain_id: u32,
@@ -52,7 +52,7 @@ impl Default for Config {
             // Channel 2 is `aon_echo` per NVIDIA's L4T 36.4 device tree
             // (the canonical IVC bring-up channel). Other carveouts
             // would be configured by the firmware's NVIDIA Makefile;
-            // in that case override via `with_zenoh_locator("ivc/N")`.
+            // in that case override via `with_locator("ivc/N")`.
             zenoh_locator: "ivc/2",
             domain_id: 0,
             app_priority: 12,
@@ -66,8 +66,8 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Builder: set zenoh locator. Panics at boot if the locator does
-    /// not start with `ivc/` — the SPE has no UART or Ethernet
+    /// Builder: set the transport locator. Panics at boot if the locator
+    /// does not start with `ivc/` — the SPE has no UART or Ethernet
     /// transport, so any other scheme is misconfiguration.
     ///
     /// This catches the visual collision between `serial/N` and
@@ -76,15 +76,24 @@ impl Config {
     /// templates can land on the wrong scheme silently. Asserting at
     /// boot turns the failure mode "no peer ever shows up" into
     /// "panic with a clear message".
-    pub fn with_zenoh_locator(mut self, locator: &'static str) -> Self {
+    pub fn with_locator(mut self, locator: &'static str) -> Self {
         assert!(
             locator.starts_with("ivc/"),
-            "nros-board-orin-spe: zenoh locator must use the `ivc/` scheme. \
+            "nros-board-orin-spe: locator must use the `ivc/` scheme. \
              The SPE has no UART or Ethernet — `serial/...` and `tcp/...` \
              would parse but find no transport. Got: {locator}"
         );
         self.zenoh_locator = locator;
         self
+    }
+
+    /// Deprecated alias for [`with_locator`](Self::with_locator).
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `with_locator()` — the config API must not name a backend (issue 0330)"
+    )]
+    pub fn with_zenoh_locator(self, locator: &'static str) -> Self {
+        self.with_locator(locator)
     }
 
     /// Builder: set ROS 2 domain ID.

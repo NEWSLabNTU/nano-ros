@@ -83,7 +83,7 @@
 //!   IP / MAC defaults) and overlays the locator / domain id / node
 //!   name from build-time env vars `NROS_LOCATOR` / `NROS_DOMAIN_ID`
 //!   / `NROS_NODE_NAME` (resolved via [`option_env!`]) — values flow
-//!   through [`nros_platform::BoardConfig::zenoh_locator`] /
+//!   through [`nros_platform::BoardConfig::locator`] /
 //!   [`nros_platform::BoardConfig::domain_id`] so a future
 //!   `nros.toml` reader can swap in without touching the call shape.
 //!   A follow-up threads the full `nros.toml` `[[transport]]` /
@@ -384,7 +384,7 @@ fn rtic_stm32f4_init(
     //   - `NROS_DOMAIN_ID` — overrides `config.domain_id` (parsed decimal)
     let mut config = nros_board_stm32f4::Config::nucleo_f429zi();
     if let Some(loc) = option_env!("NROS_LOCATOR") {
-        config = config.zenoh_locator(loc);
+        config = config.locator(loc);
     }
     if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_decimal_u32) {
         config = config.domain_id(d);
@@ -431,7 +431,7 @@ fn rtic_stm32f4_init(
     // transport params in a `Boot` carrier; `open_executor` (run task) opens it.
     // `config.zenoh_locator` is a `pub &'static str` field (option_env / baked
     // literal) — read it directly, not through the lifetime-erased
-    // `BoardConfig::zenoh_locator(&config)` accessor.
+    // `BoardConfig::locator(&config)` accessor.
     let boot = RticBoot {
         locator: config.zenoh_locator,
         domain_id: config.domain_id,

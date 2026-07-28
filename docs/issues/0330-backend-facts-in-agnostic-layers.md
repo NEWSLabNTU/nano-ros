@@ -30,6 +30,51 @@ carries a zenoh default it never uses.
 Fix: one default owned by the registration seam / backend, consumed through the
 RFC-0045 ladder; delete the other three.
 
+#### Resolved (part 1)
+
+`nros_rmw_zenoh::DEFAULT_LOCATOR` is now the SSoT. Every agnostic layer supplies
+NOTHING and the backend substitutes:
+
+- the "absent" spelling is the **empty string** (`""`) — already the value
+  `ExecutorConfig::try_resolve`'s embedded path and `<nros/main.hpp>`'s own
+  `NROS_ENTRY_LOCATOR` fallback used, and the only spelling the C/C++ macro edges
+  can express (a `#define` expanding to a *value*, not a nullable pointer);
+- `nros_rmw_zenoh::shim::session::{normalize_locator, effective_client_locator}`
+  collapse `None` **and** `""` to "absent" and apply the default — inside
+  `ZenohSession::new`, so both the Rust `Rmw::open` path and the cffi vtable path
+  are covered. This matters because `zpico_init_with_config` inserts any non-NULL
+  locator as the zenoh CONNECT endpoint, so a bare `""` would be configured as a
+  real (broken) endpoint;
+- deleted: `nros-node/src/executor/types.rs`'s `DEFAULT_LOCATOR` (+ its env-cache
+  and `try_resolve` uses), `nros/src/init.rs`'s separate env ladder,
+  `nros-cpp/include/nros/node.hpp`'s hosted local-router default (a null locator
+  now flows through `nros_cpp_init` → `None` → the resolver's empty bottom rung);
+- `nros-c/include/nros/app_main.h`'s `NROS_ENTRY_LOCATOR` fallback is now `""`.
+
+Precedence is unchanged (hosted env > explicit arg > baked macro > **backend
+default** — only the last rung moved).
+
+#### A FIFTH site, and proof the duplication had already drifted
+
+`nros-c/src/support.rs:193` held an *XRCE* default, `"127.0.0.1:2019"`,
+substituted in the RMW-blind C layer whenever the caller passed a NULL locator —
+and applied to zenoh / dds / cyclonedds builds too, not just xrce. Its port had
+already **drifted** from the xrce backend's own `XRCE_DEFAULT_AGENT_PORT` = 2018
+(`nros-rmw-xrce/src/internal.h`), which the backend self-applies at
+`nros-rmw-xrce/src/session.c`. That is this issue's thesis demonstrated: a
+backend fact restated in an agnostic layer does not stay in sync. The
+substitution is deleted; the xrce backend's own default applies, and its
+"absent locator" test now accepts `""` as well as NULL.
+
+Regression coverage: `nros-rmw-zenoh` `tests/zenoh_integration.rs`
+`client_session_with_absent_locator_dials_backend_default` starts a router on the
+DEFAULT port and opens a client session with no locator and no
+`NROS_LOCATOR`/`ZENOH_LOCATOR` — every other hosted test pins a locator, so
+nothing else exercised this rung. Mutation-checked: removing the substitution
+turns it red (`ConnectionFailed`).
+
+Part 2 is also resolved (below). Part 3 remains open.
+
 ### 2. A backend name in a core public trait
 
 `packages/core/nros-platform/src/board/config.rs:36` — the core platform crate's
@@ -43,6 +88,33 @@ The same leak appears in a public C header's contract text:
 
 Fix: rename to `locator()` — matching the vtable's own `locator` parameter and
 `ExecutorConfig::new` — keeping a deprecated alias for the board crates.
+
+#### Resolved (part 2)
+
+`BoardConfig::locator()` is the required method; `zenoh_locator()` survives as a
+defaulted `#[deprecated]` alias delegating to it, so out-of-tree board crates
+keep compiling. Every in-tree `impl` and caller moved to the new name, and each
+board's inherent `with_zenoh_locator()` builder gained a `with_locator()`, the
+old name kept as a deprecated delegating wrapper.
+
+Two things the audit did not anticipate:
+
+- `nros-board-common`'s **`ThreadxConfig`** trait carries the same
+  `zenoh_locator()` accessor. Renamed the same way — but the alias cannot
+  preserve behaviour for an out-of-tree overlay that *overrides* the old name,
+  because a defaulted method's override is simply no longer consulted. Called
+  out in that file's docs.
+- The public struct FIELDS (`pub zenoh_locator: &'static str`) across the board
+  crates are deliberately NOT renamed — a much larger blast radius through
+  struct literals, and the board layer is where naming a backend is legitimate.
+  Remaining work, not a leak of the core API.
+
+Verified on the lanes CI actually runs (`check-workspace`, embedded thumbv7em
+clippy, nightly rustfmt) plus per-crate builds of the out-of-workspace board
+crates. Five board families (esp32s3, both nuttx, threadx-qemu-riscv64,
+orin-spe, freertos) could not be compile-verified locally for want of their
+SDKs/toolchains; their edits are the identical builder-pair pattern verified
+compiling elsewhere.
 
 ### 3. The façade macro hardcodes two of three backends
 

@@ -357,7 +357,16 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
 #endif
     } else {
-        const char* addr_locator = locator != NULL ? locator : "127.0.0.1";
+        /* Issue 0330 — the backend owns its default agent endpoint. Agnostic
+         * layers (nros-c's `nros_support_init`, the `NROS_ENTRY_LOCATOR`
+         * macro, the RFC-0045 resolver's bottom rung) now hand us an ABSENT
+         * locator instead of restating an XRCE fact — and absent is spelled
+         * either NULL (Rust `None`) or `""` (the C/C++ ABI edges, which
+         * cannot express NULL through a string-literal macro). Treat both the
+         * same: fall back to the local agent host, with the port defaulting
+         * to XRCE_DEFAULT_AGENT_PORT just below. */
+        const char* addr_locator =
+            (locator != NULL && locator[0] != '\0') ? locator : "127.0.0.1";
         (void)locator_strip_udp_prefix(&addr_locator);
 
         char host[64];

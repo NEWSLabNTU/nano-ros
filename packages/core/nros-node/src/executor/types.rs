@@ -155,9 +155,12 @@ impl SpinOptions {
 // Configuration constants and defaults
 // ============================================================================
 
-/// Default middleware locator for hosted environments.
-#[cfg(feature = "std")]
-const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
+// Issue 0330 — there is deliberately NO `DEFAULT_LOCATOR` here. This crate is
+// RMW-blind: a router endpoint is a backend fact (the zenoh default lives in
+// `nros_rmw_zenoh::DEFAULT_LOCATOR`, the XRCE agent default in the xrce
+// backend, and cyclonedds ignores the locator entirely). The bottom rung of
+// the RFC-0045 ladder therefore resolves to the empty string, which every
+// backend reads as "absent — apply your own default".
 
 /// RFC-0045 / issue #206 — maximum valid ROS 2 domain ID. The ROS 2 / DDS
 /// convention (RTPS port arithmetic) caps usable domains at 232; values
@@ -358,7 +361,9 @@ fn env_cache() -> &'static EnvCache {
                     std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
                 })
             })
-            .unwrap_or_else(|_| std::string::String::from(DEFAULT_LOCATOR));
+            // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
+            // active backend substitutes its own default.
+            .unwrap_or_default();
         let domain_id = std::env::var("ROS_DOMAIN_ID")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -389,7 +394,9 @@ impl ExecutorConfig<'static> {
     /// Create a configuration from environment variables.
     ///
     /// Reads:
-    /// - `NROS_LOCATOR` — Middleware locator (default: `"tcp/127.0.0.1:7447"`).
+    /// - `NROS_LOCATOR` — Middleware locator. Unset ⇒ empty (issue 0330: the
+    ///   active RMW backend applies its own default; e.g. zenoh dials
+    ///   `nros_rmw_zenoh::DEFAULT_LOCATOR`).
     ///   Legacy name `ZENOH_LOCATOR` is accepted with a deprecation warning.
     /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`).
     /// - `NROS_SESSION_MODE` — Session mode: `"client"` or `"peer"` (default:
@@ -535,11 +542,15 @@ impl<'a> ExecutorConfig<'a> {
                 locator: if locator_from_env {
                     // String value from cache (same source as from_env()).
                     env.locator.as_str()
-                } else if let Some(l) = baked.locator {
-                    l
                 } else {
-                    // Hosted compiled default matches from_env()'s fallback.
-                    DEFAULT_LOCATOR
+                    // Issue 0330 — bottom rung: leave it ABSENT (`""`). A
+                    // router endpoint is a backend fact; this crate is
+                    // RMW-blind, so the empty string travels to whichever
+                    // backend is linked and THAT backend applies its own
+                    // default (e.g. `nros_rmw_zenoh::DEFAULT_LOCATOR`).
+                    // Matches the embedded path below, which has always
+                    // resolved to `""`.
+                    baked.locator.unwrap_or_default()
                 },
                 mode: env.mode,
                 domain_id,

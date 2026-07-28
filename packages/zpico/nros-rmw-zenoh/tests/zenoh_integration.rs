@@ -9,7 +9,10 @@ use nros_rmw::{
     Publisher, QosSettings, Session, SessionMode, Subscription, TopicInfo, Transport,
     TransportConfig,
 };
-use nros_rmw_zenoh::{ZenohTransport, keyexpr::TopicKeyExpr};
+use nros_rmw_zenoh::{
+    DEFAULT_LOCATOR, ZenohTransport, effective_client_locator, keyexpr::TopicKeyExpr,
+    normalize_locator,
+};
 use nros_tests::fixtures::ZenohRouter;
 use std::{thread, time::Duration};
 
@@ -536,6 +539,117 @@ fn test_pubsub_loopback_with_scouting_disabled() {
             panic!("Error receiving message: {:?}", e);
         }
     }
+
+    session.close().expect("Failed to close session");
+}
+
+// =============================================================================
+// Issue 0330 — the backend owns the default locator
+// =============================================================================
+
+/// Pure unit coverage of the normalization contract: `None` and `""` are the
+/// SAME thing ("caller supplied nothing"), and only this crate turns that into
+/// a concrete endpoint.
+///
+/// These do NOT prove the session path applies it — that is what
+/// `client_session_with_absent_locator_dials_backend_default` below is for.
+#[test]
+fn absent_locator_normalizes_to_the_backend_default() {
+    assert_eq!(normalize_locator(None), None);
+    assert_eq!(normalize_locator(Some("")), None, "empty string == absent");
+    assert_eq!(
+        normalize_locator(Some("tcp/1.2.3.4:1234")),
+        Some("tcp/1.2.3.4:1234")
+    );
+
+    assert_eq!(effective_client_locator(None), DEFAULT_LOCATOR);
+    assert_eq!(effective_client_locator(Some("")), DEFAULT_LOCATOR);
+    assert_eq!(
+        effective_client_locator(Some("tcp/1.2.3.4:1234")),
+        "tcp/1.2.3.4:1234",
+        "an explicitly supplied locator must never be overridden"
+    );
+}
+
+/// Parse the TCP port out of [`DEFAULT_LOCATOR`] (`tcp/<host>:<port>`), so the
+/// test tracks the const instead of restating the literal it is guarding.
+fn default_locator_port() -> u16 {
+    DEFAULT_LOCATOR
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or_else(|| panic!("DEFAULT_LOCATOR {DEFAULT_LOCATOR:?} has no `:<port>` suffix"))
+}
+
+/// Issue 0330 — **the** regression test for the rung this issue moved.
+///
+/// Every other hosted test in the tree pins `NROS_LOCATOR` or passes an
+/// explicit router locator, so none of them touch the bottom rung. Here the
+/// caller supplies NOTHING (`locator: None`, and the two locator env vars are
+/// removed) and a router is started on the DEFAULT port. The session must
+/// still open — which can only happen if the zenoh backend substituted
+/// [`DEFAULT_LOCATOR`] itself.
+///
+/// Why "session opened" is the right assertion and delivery is not: same-session
+/// pub/sub is served by zenoh-pico's local loopback
+/// (`Z_FEATURE_LOCAL_SUBSCRIBER=1` on host builds), so a delivery check would
+/// pass even with a dead endpoint (see the note on
+/// `second_session_open_in_one_process_is_refused`). `ZenohTransport::open`, by
+/// contrast, only returns `Ok` after zenoh-pico completed a TCP connect +
+/// session handshake against the endpoint it was configured with. Remove the
+/// substitution and this test fails: `zpico_init_with_config` gets no connect
+/// endpoint (or a bare `""` one) and the open errors out.
+///
+/// Unlike the rest of this file, this test cannot use an ephemeral port — the
+/// value under test IS the default port. It probes first and skips (rather than
+/// stomping) if something else on this host already holds it.
+#[test]
+fn client_session_with_absent_locator_dials_backend_default() {
+    if !nros_tests::fixtures::require_zenohd() {
+        nros_tests::skip!("zenohd not found — run `just build-zenohd`");
+    }
+
+    let port = default_locator_port();
+
+    // The default port is shared-host territory. Confirm it is free before
+    // `ZenohRouter::start` (which reaps whatever is listening) so this test
+    // never kills an unrelated router.
+    match std::net::TcpListener::bind(("127.0.0.1", port)) {
+        Ok(probe) => drop(probe),
+        Err(e) => nros_tests::skip!(
+            "default locator port {port} (from {DEFAULT_LOCATOR}) is already in use \
+             by something else on this host: {e}"
+        ),
+    }
+
+    // The rung under test is "nothing supplied anywhere" — make sure the env
+    // overlay really is absent (this process only; nextest gives each test its
+    // own process).
+    // SAFETY: single-threaded test setup, before any session or extra thread
+    // is created.
+    unsafe {
+        std::env::remove_var("NROS_LOCATOR");
+        std::env::remove_var("ZENOH_LOCATOR");
+    }
+
+    let _router = ZenohRouter::start(port).expect("failed to start zenohd on the default port");
+
+    let config = TransportConfig {
+        // Nothing supplied. The backend — and ONLY the backend — decides.
+        locator: None,
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+
+    let mut session = ZenohTransport::open(&config).unwrap_or_else(|e| {
+        panic!(
+            "client session with NO locator must fall back to the backend default \
+             ({DEFAULT_LOCATOR}) and connect to the router on port {port}; got {e:?}"
+        )
+    });
 
     session.close().expect("Failed to close session");
 }

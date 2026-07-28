@@ -25,7 +25,7 @@
 ///
 /// ```ignore
 /// let config = Config::default()
-///     .with_zenoh_locator("tcp/10.0.0.1:7448");
+///     .with_locator("tcp/10.0.0.1:7448");
 /// ```
 #[derive(Clone)]
 pub struct Config {
@@ -115,10 +115,21 @@ impl Config {
         }
     }
 
-    /// Builder: set zenoh router locator
-    pub fn with_zenoh_locator(mut self, locator: &'static str) -> Self {
+    /// Builder: set the transport locator the RMW backend connects
+    /// through (e.g. `"tcp/192.0.3.1:7447"`,
+    /// `"serial/UART_0#baudrate=115200"`).
+    pub fn with_locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
+    }
+
+    /// Deprecated alias for [`with_locator`](Self::with_locator).
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `with_locator()` — the config API must not name a backend (issue 0330)"
+    )]
+    pub fn with_zenoh_locator(self, locator: &'static str) -> Self {
+        self.with_locator(locator)
     }
 
     /// Builder: set MAC address
@@ -358,7 +369,7 @@ fn parse_u32(s: &str) -> Option<u32> {
 }
 
 impl nros_platform::BoardConfig for Config {
-    fn zenoh_locator(&self) -> &str {
+    fn locator(&self) -> &str {
         self.zenoh_locator
     }
 

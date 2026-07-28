@@ -161,12 +161,21 @@ impl Config {
         self
     }
 
-    /// Set zenoh router locator
+    /// Set the transport locator the RMW backend connects through
     ///
     /// e.g., `"tcp/192.168.1.1:7447"` or `"serial/UART_0#baudrate=115200"`
-    pub fn zenoh_locator(mut self, locator: &'static str) -> Self {
+    pub fn locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
+    }
+
+    /// Deprecated alias for [`locator`](Self::locator).
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `locator()` — the config API must not name a backend (issue 0330)"
+    )]
+    pub fn zenoh_locator(self, locator: &'static str) -> Self {
+        self.locator(locator)
     }
 
     /// Set external oscillator frequency in MHz
@@ -423,7 +432,7 @@ fn parse_u32(s: &str) -> Option<u32> {
 }
 
 impl nros_platform::BoardConfig for Config {
-    fn zenoh_locator(&self) -> &str {
+    fn locator(&self) -> &str {
         self.zenoh_locator
     }
 

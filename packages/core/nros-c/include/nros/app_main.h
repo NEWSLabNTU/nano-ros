@@ -52,13 +52,24 @@ int nros_app_main(int argc, char** argv);
 /* ---- Portable connect defaults (phase-287 W6) ----
  *
  * One example source builds native AND embedded: on the host these fall back
- * to the local router / domain 0 (with `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env
- * overrides applied by the example before consulting them); on an embedded
- * board the build bakes both as target compile definitions
- * (NanoRosEntry.cmake board gate — e.g. `tcp/10.0.2.2:7447` for QEMU slirp),
- * so the `#ifndef` defaults below never fire there. */
+ * to "let the backend decide" / domain 0 (with `$NROS_LOCATOR` /
+ * `$ROS_DOMAIN_ID` env overrides applied by the example before consulting
+ * them); on an embedded board the build bakes both as target compile
+ * definitions (NanoRosEntry.cmake board gate — e.g. `tcp/10.0.2.2:7447` for
+ * QEMU slirp), so the `#ifndef` defaults below never fire there.
+ *
+ * Issue 0330 — the fallback is the EMPTY STRING, not a zenoh router
+ * endpoint. This header is RMW-blind, so it must not restate a backend fact;
+ * `""` is the established "absent — let the backend discover" value (same as
+ * `<nros/main.hpp>`'s own `NROS_ENTRY_LOCATOR` fallback). It is consumed as a
+ * VALUE (not a nullable pointer) by main.hpp's `run_components` /
+ * `run_tiers` overloads and by the CLI entry codegen, so the macro must keep
+ * expanding to a string literal. `""` travels through
+ * `nros_support_init` / `nros_cpp_init` → the RFC-0045 resolver's empty
+ * bottom rung → the linked backend, which substitutes its own default
+ * (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`). */
 #ifndef NROS_ENTRY_LOCATOR
-#define NROS_ENTRY_LOCATOR "tcp/127.0.0.1:7447"
+#define NROS_ENTRY_LOCATOR ""
 #endif
 #ifndef NROS_ENTRY_DOMAIN_ID
 #define NROS_ENTRY_DOMAIN_ID 0

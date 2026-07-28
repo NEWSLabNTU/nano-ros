@@ -25,6 +25,19 @@ pub(crate) mod config;
 pub mod keyexpr;
 pub mod zpico;
 
+/// Issue 0330 — **the** default zenoh router endpoint, owned by the zenoh
+/// backend.
+///
+/// This is the single source of truth for the value. RMW-agnostic layers
+/// (`nros-node`'s boot-config resolver, `nros`'s env ladder, the C
+/// `nros_support_init` edge, the C++ `nros::init` header, the
+/// `NROS_ENTRY_LOCATOR` macro) must NOT restate it: they hand the backend an
+/// *absent* locator (`None`, or the empty string — see
+/// [`shim::session::effective_client_locator`]) and the backend substitutes
+/// this const. That keeps a cyclonedds- or xrce-only build free of a zenoh
+/// fact it never uses, and leaves exactly one place to change the value.
+pub const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
+
 pub mod shim;
 
 // Re-export zpico types (always available)
@@ -73,7 +86,8 @@ pub use zpico::{
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
     SUBSCRIBER_BUFFER_SIZE, ZenohPublisher, ZenohRmw, ZenohServiceClient, ZenohServiceServer,
-    ZenohSession, ZenohSubscriber, ZenohTransport, overflow_drops_total,
+    ZenohSession, ZenohSubscriber, ZenohTransport, effective_client_locator, normalize_locator,
+    overflow_drops_total,
 };
 
 // Re-export std-only executor wake functions

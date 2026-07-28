@@ -438,7 +438,7 @@ where
     let exec_cfg = ::nros::ExecutorConfig::resolve(
         ::nros::BootConfig {
             node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(config.zenoh_locator()),
+            locator: Some(config.locator()),
             domain_id: Some(config.domain_id()),
             namespace: None,
         },
@@ -769,7 +769,7 @@ where
     let exec_cfg = ::nros::ExecutorConfig::resolve(
         ::nros::BootConfig {
             node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(config.zenoh_locator()),
+            locator: Some(config.locator()),
             domain_id: Some(config.domain_id()),
             namespace: None,
         },

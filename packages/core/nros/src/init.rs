@@ -123,9 +123,13 @@ impl Context {
 
 #[cfg(feature = "std")]
 fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
+    // Issue 0330 — no backend default here: `nros` is RMW-agnostic. Unset env
+    // leaves the locator EMPTY (= absent) and the linked backend substitutes
+    // its own default (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`; xrce: its
+    // agent default; cyclonedds ignores the locator entirely).
     let locator = std::env::var("NROS_LOCATOR")
         .or_else(|_| std::env::var("ZENOH_LOCATOR"))
-        .unwrap_or_else(|_| std::string::String::from("tcp/127.0.0.1:7447"));
+        .unwrap_or_default();
     let domain_id = match std::env::var("ROS_DOMAIN_ID") {
         Ok(s) if !s.is_empty() => s.parse::<u32>().map_err(|_| InitError::EnvParseFailed)?,
         _ => 0,

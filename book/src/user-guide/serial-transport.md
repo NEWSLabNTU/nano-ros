@@ -140,7 +140,7 @@ run(config, |config| {
 ```rust
 let config = Config::serial_default()
     .with_baudrate(921600)
-    .with_zenoh_locator("serial/UART_0#baudrate=921600");
+    .with_locator("serial/UART_0#baudrate=921600");
 ```
 
 ### Locator Format
