@@ -1,17 +1,30 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/c/src/demo_bringup/launch/action_client.launch.xml
+  - path: launch/action_client.launch.xml
     sha256: 27c8a0725b4ada39067574ca661db9c937423924a6f064eaf46d86c8bcbbac00
+  - path: system.toml
+    sha256: 1bbe619b8faaa76594e5dd1c5aece9f22453b42bb6468cb7acdeda9f0034572c
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    action_client.launch.xml:
+      file: action_client.launch.xml
   nodes:
     /fib_client:
-      scope: /
+      scope: action_client.launch.xml
       pkg: c_fib_client_pkg
       exec: fib_client
       node_name: fib_client
+execution:
+  deploy:
+    /fib_client:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

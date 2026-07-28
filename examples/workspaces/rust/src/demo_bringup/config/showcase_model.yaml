@@ -1,41 +1,95 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/showcase_model.record.json
-    sha256: ed53c9be66be8489154197a9a43775fbbbbf5478cac37c6eae3d2bf3aa581c52
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/launch/showcase.launch.xml
+  - path: launch/showcase.launch.xml
     sha256: a2ccfccfab771fd2533a1ca160b23e633df564c16b7a8253e297f87b9b750147
+  - path: system.toml
+    sha256: 286e04021bbfb0c22273497f8a30500287707d5a5f5d9b9684f3807ea425cb6d
   resolver:
-    tool: play_launch
-    version: 0.8.2
-  record:
-    path: /home/aeon/repos/nano-ros/examples/workspaces/rust/src/demo_bringup/config/showcase_model.record.json
-    sha256: ed53c9be66be8489154197a9a43775fbbbbf5478cac37c6eae3d2bf3aa581c52
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    showcase.launch.xml:
+      file: showcase.launch.xml
   nodes:
     /add_client:
-      scope: /
+      scope: showcase.launch.xml
       pkg: service_client_pkg
       exec: add_client
+      node_name: add_client
     /add_server:
-      scope: /
+      scope: showcase.launch.xml
       pkg: service_server_pkg
       exec: add_server
+      node_name: add_server
     /fibonacci_client:
-      scope: /
+      scope: showcase.launch.xml
       pkg: action_client_pkg
       exec: fibonacci_client
+      node_name: fibonacci_client
     /fibonacci_server:
-      scope: /
+      scope: showcase.launch.xml
       pkg: action_server_pkg
       exec: fibonacci_server
+      node_name: fibonacci_server
     /listener:
-      scope: /
+      scope: showcase.launch.xml
       pkg: listener_pkg
       exec: listener
+      node_name: listener
     /talker:
-      scope: /
+      scope: showcase.launch.xml
       pkg: talker_pkg
       exec: talker
+      node_name: talker
+execution:
+  deploy:
+    /add_client:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /add_server:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /fibonacci_client:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /fibonacci_server:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
