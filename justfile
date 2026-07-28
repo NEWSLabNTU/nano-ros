@@ -359,7 +359,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-cli-tests \
+    check-c check-cpp check-cli-tests check-feature-set-ssot \
     native::check
     @echo "Build checks passed!"
 
@@ -381,6 +381,14 @@ check-cli-tests:
 # version (the bump script edits them atomically). Mirrors the `check.yml`
 # version-lockstep step so `just check` ⊇ the CI fast gate (single source of
 # truth). Buildless.
+# phase-314 W5 — one feature-set SSoT. Every failure this phase fixed was
+# SILENT (a hook that applied on one path, an edition hardcoded so a non-humble
+# build failed on the wire, capabilities a mixed workspace lost), so drift here
+# needs a check rather than a convention. Buildless.
+[private]
+check-feature-set-ssot:
+    @./scripts/check-feature-set-ssot.sh
+
 [private]
 check-version-lockstep:
     @./scripts/check-version-lockstep.sh

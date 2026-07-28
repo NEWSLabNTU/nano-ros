@@ -26,7 +26,7 @@ rmw-xrce = []
 rmw-cyclonedds = []
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 std_msgs = { version = "*", default-features = false }

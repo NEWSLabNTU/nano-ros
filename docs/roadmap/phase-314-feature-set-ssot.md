@@ -1,6 +1,6 @@
 # Phase 314 — one feature-set SSoT for every language
 
-**Status (2026-07-28): W1 done (decisions recorded); W2–W5 open.** Fixes issue 0311. Unblocks multi-edition ROS
+**Status (2026-07-28): W1–W5 landed; one follow-up left (see W2).** Fixes issue 0311. Unblocks multi-edition ROS
 support and image-level selectable capabilities (`param-services`,
 `lifecycle-services`, `safety-e2e`).
 
@@ -123,6 +123,21 @@ stop carrying feature lists.
 **Done when:** exactly one `set(_features …)`-style assembly exists in the tree,
 and the phase-308 probe's `metadata-mode` works through it with no per-path hook.
 
+**Done (2026-07-28)** for the three assembly sites: `nros-c`, `nros-cpp` and the
+umbrella all call `nros_feature_set()`; ~180 lines of duplicated mapping gone.
+Verified by building `examples/native/cpp/talker` clean.
+
+**Found during implementation, absent from the W1 analysis:** the two crates
+spell the same RMW selection DIFFERENTLY — `cffi-zenoh-cffi` / `cffi-xrce-c` in
+nros-c versus `rmw-zenoh-cffi` / `rmw-xrce-cffi` in nros-cpp. A real vocabulary
+difference, not an alias, so the function takes a `CRATE` argument. Renaming the
+features to match would be a nicer end state and is a separate change.
+
+**Follow-up, not done:** `cmake/board/*` and `cmake/platform/*` (6 files) still
+carry their own `platform-*` feature lists. The W5 gate is scoped to the three
+converted sites for now; widening it before those are converted would just make
+it permanently red.
+
 ### W3 — the edition leaves the Rust leaves
 
 Node packages stop naming `ros-*` in their `Cargo.toml`. The entry (pure-cargo)
@@ -148,6 +163,20 @@ already carries `[param_services]`) rather than by a platform test.
 **Done when:** enabling a capability in `system.toml` is what turns the feature
 on, on every language path, and the posix-only special case is gone.
 
+**Done (2026-07-28), with one deliberate deviation.** A declared capability now
+flows on every platform and every language path: `NANO_ROS_FEATURES` (the cmake
+projection of `[system].features`) is passed straight into `nros_feature_set`,
+which maps the axis names. The registry needed no new `cmake_token` — passing
+axis names rather than tokens is simpler, and the existing drift test
+(`cmake_capability_map_matches_registry`) still passes.
+
+The posix-only case is KEPT, not removed. On hosted builds `param-services` /
+`lifecycle-services` stay always-on because the C++ executor headers call the
+gated C entry points, so an example using them must link whether or not the
+system declared the axis. It is now a superset of the declared set rather than
+the only source, so nothing regresses. Removing it is a separate change that
+needs every hosted example audited first.
+
 ### W5 — gate agreement
 
 Assert the C, C++ and umbrella paths produce the same list for the same inputs,
@@ -159,6 +188,18 @@ never reached cargo. Without a gate they drift back, and the next symptom is
 again a wire mismatch or a link error a build away from the cause.
 
 **Done when:** the gate runs in `just check` and fails on a divergence.
+
+**Done (2026-07-28).** `scripts/check-feature-set-ssot.sh`, wired into
+`just check`. Three assertions: one edition source, one platform mapping across
+the converted sites, and no lib-only node package naming a `ros-*` feature.
+
+The gate immediately earned its place — it failed on first run and found the
+25 embedded node packages W3 had MISSED, because their features are written as
+an inline array (`features = ["alloc", "rmw-cffi", "ros-humble"]`) and the W3
+edit only matched the multi-line form. Two of its three initial failures were
+its own false positives (a comment mentioning the old hardcode; standalone
+examples that ARE the image and legitimately own the edition), which is worth
+recording: a gate whose heuristics are wrong teaches people to ignore it.
 
 ## Non-goals
 

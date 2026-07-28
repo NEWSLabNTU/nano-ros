@@ -14,7 +14,7 @@ description = "NuttX QEMU ARM talker — Phase 212.L Component pkg"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 std_msgs = { version = "*", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through

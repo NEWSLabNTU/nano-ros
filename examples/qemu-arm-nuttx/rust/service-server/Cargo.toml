@@ -10,7 +10,7 @@ description = "NuttX QEMU ARM AddTwoInts service server — Component pkg"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { version = "*", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
