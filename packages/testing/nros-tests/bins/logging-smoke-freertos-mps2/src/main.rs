@@ -34,7 +34,7 @@ extern "C" fn main() -> ! {
     // Phase 313 W-freertos (#0243) — no-session `run_bare` (scheduler + boot
     // bringup + UART writer, no `Executor::open`). The closure exits via
     // semihosting itself, so the family Ok/exit arms are never reached.
-    let _ = Mps2An385::run_bare(Config::from_toml(CONFIG), || {
+    let _ = Mps2An385::run_bare(Config::from_toml(CONFIG), |_config| {
         register_logger(&LOGGER);
         init(sinks::default());
         let logger = &LOGGER;

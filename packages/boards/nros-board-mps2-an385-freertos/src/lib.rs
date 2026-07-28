@@ -252,14 +252,16 @@ fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
 
 impl Mps2An385 {
     /// Phase 313 W-freertos (#0243) — lightweight NO-SESSION entry for logging /
-    /// init-only fixtures. Boots the FreeRTOS scheduler + UART writer and runs
-    /// `setup` WITHOUT opening an `Executor` session (unlike
-    /// [`nros_platform::board::BoardEntry::run`], which would fail
-    /// `Transport(ConnectionFailed)` with no router). The new-family replacement
-    /// for the no-session role the retired legacy `run(Config, closure)` served.
+    /// init-only fixtures AND no-session apps that manage their own executor
+    /// (e.g. the `wake-latency-cortex-m3` bench). Boots the FreeRTOS scheduler +
+    /// UART writer and runs `setup(&Config)` WITHOUT the board opening an
+    /// `Executor` session (unlike [`nros_platform::board::BoardEntry::run`], which
+    /// would fail `Transport(ConnectionFailed)` with no router). The `&Config`
+    /// mirrors the retired legacy `run(Config, closure)`; logging fixtures that
+    /// don't need it take `|_cfg|`.
     pub fn run_bare<F, E>(config: Config, setup: F) -> Result<(), E>
     where
-        F: FnOnce() -> Result<(), E>,
+        F: FnOnce(&Config) -> Result<(), E>,
         E: core::fmt::Debug,
     {
         register_log_writer();

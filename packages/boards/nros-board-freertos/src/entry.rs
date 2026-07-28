@@ -866,16 +866,19 @@ where
 }
 
 /// Phase 313 W-freertos (#0243) — lightweight NO-SESSION FreeRTOS entry for
-/// logging / init-only fixtures. Boots the scheduler + shared bringup (network,
-/// RNG, poll task, netif wait) then runs a NULLARY `setup` closure WITHOUT
-/// opening an `Executor` session (unlike [`run_entry`], which would fail
-/// `Transport(ConnectionFailed)` with no router). The new-family replacement for
-/// the no-session role the retired legacy `node::run(Config, closure)` served.
-/// Mirrors `nros_board_threadx::run_bare`.
+/// logging / init-only fixtures AND no-session apps that manage their own
+/// executor (e.g. the `wake-latency-cortex-m3` bench, which opens its own
+/// `Executor::open`). Boots the scheduler + shared bringup (network, RNG, poll
+/// task, netif wait) then runs `setup(&Config)` WITHOUT the board opening an
+/// `Executor` session (unlike [`run_entry`], which would fail
+/// `Transport(ConnectionFailed)` with no router). The `&Config` mirrors the
+/// legacy `node::run(Config, closure)` this replaces (and the direct-exec
+/// `run_bare`), so config-reading apps keep working; logging fixtures that don't
+/// need it take `|_cfg|`.
 pub fn run_bare<B, F, E>(config: Config, setup: F) -> core::result::Result<(), E>
 where
     B: BoardInit + BoardPrint + BoardExit,
-    F: FnOnce() -> core::result::Result<(), E>,
+    F: FnOnce(&Config) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
     B::println(format_args!(""));
@@ -938,7 +941,7 @@ where
 unsafe extern "C" fn app_task_entry_bare<B, F, E>(arg: *mut c_void)
 where
     B: BoardPrint + BoardExit,
-    F: FnOnce() -> core::result::Result<(), E>,
+    F: FnOnce(&Config) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
     let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
@@ -949,7 +952,7 @@ where
     // FnOnce — `core::ptr::read` because this task entry runs once.
     let closure = unsafe { core::ptr::read(&ctx.closure) };
 
-    match closure() {
+    match closure(&ctx.config) {
         Ok(()) => {
             unsafe {
                 nros_trace_trigger_and_dump();
