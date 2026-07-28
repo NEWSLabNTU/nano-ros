@@ -1,6 +1,6 @@
 # Phase 314 — one feature-set SSoT for every language
 
-**Status (2026-07-28): W1–W5 landed; one follow-up left (see W2).** Fixes issue 0311. Unblocks multi-edition ROS
+**Status (2026-07-28): COMPLETE.** W1–W5 landed; issue 0311 closes. Fixes issue 0311. Unblocks multi-edition ROS
 support and image-level selectable capabilities (`param-services`,
 `lifecycle-services`, `safety-e2e`).
 
@@ -133,10 +133,17 @@ nros-c versus `rmw-zenoh-cffi` / `rmw-xrce-cffi` in nros-cpp. A real vocabulary
 difference, not an alias, so the function takes a `CRATE` argument. Renaming the
 features to match would be a nicer end state and is a separate change.
 
-**Follow-up, not done:** `cmake/board/*` and `cmake/platform/*` (6 files) still
-carry their own `platform-*` feature lists. The W5 gate is scoped to the three
-converted sites for now; widening it before those are converted would just make
-it permanently red.
+**A follow-up I claimed and then disproved.** I recorded `cmake/board/*` and
+`cmake/platform/*` (6 files) as still carrying their own `platform-*` feature
+lists. They do not. The matches were directory paths
+(`packages/core/nros-platform-freertos`) and `NROS_PLATFORM_LINK_FEATURES`, a
+TRANSPORT axis (tcp / udp_unicast / udp_multicast) unrelated to cargo features.
+
+The three assembly sites were the only ones. The bad claim came from grepping a
+feature NAME instead of an assignment, and the W5 gate inherited the same
+mistake — it reported six files that were not duplication at all. Both are
+corrected: the gate now matches `set(_platform_features` / `set(_rmw_features`
+and covers `cmake/**` rather than being scoped to three files.
 
 ### W3 — the edition leaves the Rust leaves
 

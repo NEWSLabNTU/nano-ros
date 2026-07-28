@@ -34,18 +34,20 @@ if [ -n "$edition_hits" ]; then
     fail=1
 fi
 
-# 2. Exactly one platform→feature mapping. The duplicates disagreed: only one
-#    had a BOARD input, so only one could split threadx-linux (std) from
-#    riscv64-qemu (no_std).
-# Scoped to the three former assembly sites. `cmake/board/*` and
-# `cmake/platform/*` still carry their own platform→feature lists; converting
-# them is phase-314 follow-up, tracked in the phase doc, and widening this
-# check before that lands would only produce a permanently-red gate.
-plat_hits=$(git grep -n 'platform-freertos\|platform-threadx' -- 'cmake/NanoRosRuntimeCrate.cmake' \
-    'packages/core/nros-c/CMakeLists.txt' 'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
+# 2. Exactly one platform→cargo-feature mapping.
+#
+#    Matched on the ASSIGNMENT, not on a feature name: `platform-freertos` also
+#    appears as a directory (`packages/core/nros-platform-freertos`) in the
+#    board/platform wiring files, and `NROS_PLATFORM_LINK_FEATURES` is a
+#    transport axis (tcp/udp) with nothing to do with cargo. An earlier version
+#    of this check matched the bare substring and reported six files that were
+#    not duplication at all — which is how a gate loses its credibility.
+plat_hits=$(git grep -n 'set(_platform_features\|set(_rmw_features' -- 'cmake/*.cmake' \
+    'cmake/*/*.cmake' 'packages/core/nros-c/CMakeLists.txt' \
+    'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$plat_hits" ]; then
-    echo "FAIL: a platform→cargo-feature mapping outside cmake/NanoRosFeatureSet.cmake:"
+    echo "FAIL: a platform/rmw→cargo-feature assembly outside cmake/NanoRosFeatureSet.cmake:"
     echo "$plat_hits" | while read -r f; do note "$f"; done
     note "Call nros_feature_set() instead of re-deriving the list."
     fail=1

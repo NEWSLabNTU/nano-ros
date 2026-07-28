@@ -147,12 +147,9 @@ distinctly-named helper built from a pinned play_launch submodule and invoked by
 never $PATH. Kills the version skew and both directions of the name collision — we can't be
 shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 
-**#311** — a C/C++ workspace listener receives fine but `ros2 topic info` reports `Subscription
-count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports our subscriptions and
-a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while
-strengthening the QoS proofs. See `0311-*`. (2026-07-28)
+(#311 resolved — no feature SSoT across languages; one `nros_feature_set()` now serves nros-c, nros-cpp and the umbrella, and 50 Rust nodes stopped naming a ROS edition. See `archived/0311-*`.)
 
-Recently resolved: **#309** (QoS cells; rest of the matrix noted) — count-based proofs detect an
+**#309** (QoS cells; rest of the matrix noted) — count-based proofs detect an
 ABSENT configuration, never a WRONG one. `Proof::QosMatchedCount` is now `QosMatchedProfile`, which
 asserts the per-endpoint ADVERTISED profile via `ros2 topic info --verbose`. Mutation-checked, and
 the check demonstrated the thesis: flipping the C talker's declared durability, DELIVERY STILL

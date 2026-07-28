@@ -1,7 +1,7 @@
 ---
 id: 311
 title: "No SSoT for the cargo feature list: three cmake assemblies + every Rust leaf, two hardcoding `ros-humble` — blocks multi-edition and selectable capabilities"
-status: open
+status: resolved
 type: bug
 area: build
 related: [0304, phase-308, phase-313]
@@ -149,3 +149,39 @@ Steps 1 and 3 are the substance; step 2 is mechanical once they are settled.
    is not free.
 3. **Assert agreement only.** Cheapest, keeps the duplication, catches drift
    but not a missing hook — which is what actually bit.
+
+## Resolved (2026-07-28) — phase-314
+
+`cmake/NanoRosFeatureSet.cmake` is the single computation; `nros-c`, `nros-cpp`
+and the workspace umbrella call it. ~180 lines of duplicated mapping removed.
+
+What changed behaviourally, all of it deliberate:
+
+* the direct paths honour `NANO_ROS_ROS_EDITION` instead of hardcoding
+  `ros-humble`, so a non-humble build no longer compiles the runtime as humble
+  while codegen bakes other type_hashes;
+* the umbrella gained the `NANO_ROS_BOARD` threadx split it never had — the
+  direct chain's logic won, because unifying onto the umbrella's helper would
+  have REGRESSED it;
+* the umbrella gained capabilities, closing the gap where a mixed workspace
+  lost `param-services` that a pure C/C++ workspace kept;
+* `NROS_EXTRA_CPP_FEATURES` applies once, so the add-it-twice trap behind issue
+  0304 cannot recur;
+* 50 Rust node packages stopped naming a ROS edition — cargo features are
+  additive and the editions are `compile_error!`-exclusive, so a leaf naming one
+  made every other edition unbuildable in that workspace.
+
+Two things the analysis got wrong and the implementation corrected:
+
+* **nros-c and nros-cpp spell the RMW selection differently**
+  (`cffi-zenoh-cffi` / `cffi-xrce-c` vs `rmw-zenoh-cffi` / `rmw-xrce-cffi`). The
+  shared function takes a `CRATE` argument rather than callers post-processing.
+  Renaming the features to match is a separate change.
+* **`cmake/board/*` and `cmake/platform/*` were NOT a fourth duplication.** The
+  matches were directory names and `NROS_PLATFORM_LINK_FEATURES` (a transport
+  axis). Grepping a feature name instead of an assignment produced the false
+  claim.
+
+Gated by `scripts/check-feature-set-ssot.sh` in `just check`, which found 25
+packages the manual sweep had missed (inline feature arrays the edit's regex did
+not match).
