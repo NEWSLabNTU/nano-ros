@@ -99,16 +99,12 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
     if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
-    uint32_t elapsed = 0;
-    Result last = Result::success();
-    while (elapsed < duration_ms) {
-        int32_t remaining = static_cast<int32_t>(duration_ms - elapsed);
-        int32_t timeout = remaining < poll_ms ? remaining : poll_ms;
-        last = Result(nros_cpp_spin_once(Node::global_storage(), timeout));
-        if (!last.ok()) return last;
-        elapsed += static_cast<uint32_t>(timeout);
-    }
-    return last;
+    // Issue 0329 — forward to the single budgeted-spin CFFI entry point. This
+    // loop previously budgeted by ITERATION count (`elapsed += timeout`), which
+    // collapsed to milliseconds when `spin_once` returned early on a signaled
+    // wake — the exact bug `Executor::spin` fixed in Phase 118.C. The correct
+    // wall-clock budget now lives once, Rust-side, in `nros_cpp_spin_for`.
+    return Result(nros_cpp_spin_for(Node::global_storage(), duration_ms, poll_ms));
 }
 
 } // namespace nros

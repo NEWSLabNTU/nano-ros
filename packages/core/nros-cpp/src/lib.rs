@@ -1412,6 +1412,44 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     NROS_CPP_RET_OK
 }
 
+/// Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
+///
+/// Issue 0329 — the single budgeted-spin entry point. `nros::spin()` and
+/// `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
+/// (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
+/// exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
+/// `spin_once` return on a signaled wake collapsed the loop into milliseconds.
+/// Consolidating the loop here (identical to `Future::wait`'s wall-clock budget)
+/// gives every caller the correct behavior with one implementation.
+///
+/// Runs at least one `spin_once(poll_ms)`; returns the first non-OK code, else
+/// the last. `duration_ms == 0` spins exactly once.
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_spin_for(
+    handle: *mut c_void,
+    duration_ms: u32,
+    poll_ms: i32,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let start_ns = nros_cpp_time_ns();
+    let budget_ns = (duration_ms as u64) * 1_000_000;
+    loop {
+        let last = unsafe { nros_cpp_spin_once(handle, poll_ms) };
+        if last != NROS_CPP_RET_OK {
+            return last;
+        }
+        if nros_cpp_time_ns() - start_ns >= budget_ns {
+            return last;
+        }
+    }
+}
+
 /// Phase 124.F.3 — session-level connectivity probe.
 ///
 /// Wire-level round-trip ("is the peer / agent / router reachable?")

@@ -765,6 +765,25 @@ const void *nros_cpp_node_get_logger(const struct nros_cpp_node_t *node);
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
 /**
+ * Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
+ *
+ * Issue 0329 — the single budgeted-spin entry point. `nros::spin()` and
+ * `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
+ * (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
+ * exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
+ * `spin_once` return on a signaled wake collapsed the loop into milliseconds.
+ * Consolidating the loop here (identical to `Future::wait`'s wall-clock budget)
+ * gives every caller the correct behavior with one implementation.
+ *
+ * Runs at least one `spin_once(poll_ms)`; returns the first non-OK code, else
+ * the last. `duration_ms == 0` spins exactly once.
+ *
+ * # Safety
+ * `handle` must be a valid handle returned by `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t poll_ms);
+
+/**
  * Phase 124.F.3 — session-level connectivity probe.
  *
  * Wire-level round-trip ("is the peer / agent / router reachable?")

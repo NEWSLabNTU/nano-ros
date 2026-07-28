@@ -138,20 +138,11 @@ class Executor {
     /// @return Result from the last spin_once call.
     Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        // Phase 118.C: budget by wall-clock. Iteration-count budgeting
-        // (`elapsed += timeout`) breaks when `nros_cpp_spin_once` returns
-        // early on a signaled condvar — the loop collapses into
-        // milliseconds. Same fix Future::wait() got in Phase 89.2.
-        const uint64_t start_ns = nros_cpp_time_ns();
-        const uint64_t budget_ns = static_cast<uint64_t>(duration_ms) * 1000000ULL;
-        Result last = Result::success();
-        while (true) {
-            last = Result(nros_cpp_spin_once(storage_, poll_ms));
-            if (!last.ok()) return last;
-            const uint64_t now_ns = nros_cpp_time_ns();
-            if (now_ns - start_ns >= budget_ns) break;
-        }
-        return last;
+        // Issue 0329 — the wall-clock budgeted loop (Phase 118.C: iteration-count
+        // budgeting collapses when `spin_once` returns early on a signaled
+        // condvar) now lives once, Rust-side, in `nros_cpp_spin_for`; forward to
+        // it so this and `nros::spin()` share one implementation.
+        return Result(nros_cpp_spin_for(storage_, duration_ms, poll_ms));
     }
 
     /// Check if the executor is initialized.
