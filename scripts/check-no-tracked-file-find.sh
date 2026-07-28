@@ -90,14 +90,22 @@ for f in FILES:
             head = buf.split("|")[0]
             m = re.search(r"find\s+" + ROOT + r".*?(?:-name|-path)\s+'?\"?(" + TRACKED + ")", head)
             if m and not any(re.search(o, head) for o in NO_INDEX):
-                bad.append(f"  {f}:{start+1}: searches for {m.group(1)}")
+                bad.append(f"  {f}:{start+1}: find searches for {m.group(1)}")
+
+            # Recursive grep is the same defect wearing a different name: it
+            # walks every build tree under the root to rediscover files the
+            # index already names. `git grep -- <pathspec>` is the fix, and it
+            # takes the same regex, so the conversion is mechanical.
+            g = re.search(r"(?<!git )\bgrep\s+-[a-zA-Z]*[rR]", head)
+            if g and not any(re.search(o, head) for o in NO_INDEX):
+                bad.append(f"  {f}:{start+1}: recursive grep — use `git grep -- <pathspec>`")
         i += 1
 
 if bad:
-    print("FAIL: `find` used to locate git-tracked files:")
+    print("FAIL: filesystem walk used to locate git-tracked files:")
     print("\n".join(bad))
     print()
-    print("  Use `git ls-files` — an index lookup, not a filesystem walk.")
+    print("  Use `git ls-files` / `git grep` — an index lookup, not a walk.")
     print("  Measured: 7m36s -> 0.8s for the same 232 paths. Pruning does NOT")
     print("  fix it; find still stats every directory it considers pruning.")
     print()

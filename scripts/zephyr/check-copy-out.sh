@@ -106,7 +106,9 @@ rm -rf "$copied"/build* "$copied"/generated
 # Sanity: the copied dir must not reach back into the repo tree. The
 # copy-out contract is that nano-ros is consumed ONLY via the Zephyr
 # module — so the example CMake must not walk up to the repo root.
-if grep -RInE 'add_subdirectory\([^)]*(\.\./){2,}|NANO_ROS_ROOT|\$\{CMAKE_SOURCE_DIR\}/\.\.' "$copied/CMakeLists.txt" >/dev/null 2>&1; then
+# Plain `grep`, no `-R`: the target is ONE file, and it is an untracked copy
+# under the staging dir, so neither recursion nor `git grep` applies here.
+if grep -InE 'add_subdirectory\([^)]*(\.\./){2,}|NANO_ROS_ROOT|\$\{CMAKE_SOURCE_DIR\}/\.\.' "$copied/CMakeLists.txt" >/dev/null 2>&1; then
     echo "FAIL: copied example CMakeLists walks up the repo tree — not copy-out clean"
     exit 1
 fi

@@ -59,7 +59,12 @@ for rel in "${BOARD_PATHS[@]}"; do
     fi
     # Board entry: a direct `fn run` / `fn run_generic`, or a re-export
     # of one (`pub use ...::{... run ...}` / `pub use ...run;`).
-    if ! grep -rqE 'pub fn run\b|pub fn run_generic\b|pub use[^;]*\brun\b' "$dir/src" 2>/dev/null; then
+    # `git grep`, not `grep -r`. These are tracked Rust sources; the index knows
+    # them. A board crate's `src/` is small today, so this is not the 7-minute
+    # case the `find` sweep hit — it is here for the same reason the rule exists
+    # at all: a walk that is cheap because a directory happens to be small is
+    # cheap by luck, and this one runs once per board crate.
+    if ! git grep -qE 'pub fn run\b|pub fn run_generic\b|pub use[^;]*\brun\b' -- "$dir/src" 2>/dev/null; then
         echo "drift: $rel exposes no board entry (pub fn run / run_generic / re-export)" >&2
         fail=1
         continue
@@ -73,13 +78,13 @@ for rel in "${BOARD_PATHS[@]}"; do
     # Board impl" — catches "added a board + its `run`, forgot the impls".
     # Base/common crates (run_generic / trait def) are exempt.
     if [[ "$rel" != *nros-board-common ]] \
-       && grep -rqE 'pub fn run\b' "$dir/src" 2>/dev/null \
-       && ! grep -rqE 'pub fn run_generic\b' "$dir/src" 2>/dev/null; then
+       && git grep -qE 'pub fn run\b' -- "$dir/src" 2>/dev/null \
+       && ! git grep -qE 'pub fn run_generic\b' -- "$dir/src" 2>/dev/null; then
         # Match the trait-impl head `… <Trait> for …` (covers both
         # `impl BoardExit for X` and `impl nros_board_common::BoardExit
         # for X`). The `<Trait> for` adjacency is the robust signal.
         for tr in BoardInit BoardPrint BoardExit; do
-            if ! grep -rqE "\b${tr}[[:space:]]+for\b" "$dir/src" 2>/dev/null; then
+            if ! git grep -qE "\b${tr}[[:space:]]+for\b" -- "$dir/src" 2>/dev/null; then
                 echo "drift: $rel has a concrete board entry but no \`${tr}\` impl (Board super-trait incomplete)" >&2
                 fail=1
             fi

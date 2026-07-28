@@ -18,13 +18,18 @@ cd "$(dirname "$0")/.."
 # structure/execution layers key on `file:`/`scope:`/`to:`, never `path:`, so
 # this targets provenance only and will not trip on a ROS topic like
 # `to: /remapped_out`.
-abs_paths=$(grep -rnE '^[[:space:]]*(- )?(record[[:space:]]*)?path:[[:space:]]*/' \
-  examples --include='*_model.yaml' 2>/dev/null || true)
+# `git grep`, not `grep -r`. Committed models are TRACKED, so the index already
+# knows every one of them; `grep -r examples` instead walks each example's
+# `target/` and `build/` output to rediscover files git could have named for
+# free. Same defect as the `find` scans (scripts/check-no-tracked-file-find.sh):
+# a pruned walk of `examples/` measured 7m36s against 0.8s for the index.
+abs_paths=$(git grep -nE '^[[:space:]]*(- )?(record[[:space:]]*)?path:[[:space:]]*/' \
+  -- 'examples/**/*_model.yaml' 2>/dev/null || true)
 
 # Belt-and-suspenders: a machine home directory anywhere in a model is always a
 # non-portable leak, whatever key it hangs off.
-home_dirs=$(grep -rnE '/home/|/Users/|/root/' \
-  examples --include='*_model.yaml' 2>/dev/null || true)
+home_dirs=$(git grep -nE '/home/|/Users/|/root/' \
+  -- 'examples/**/*_model.yaml' 2>/dev/null || true)
 
 if [ -n "${abs_paths}${home_dirs}" ]; then
   echo "check-no-absolute-model-paths: committed SystemModel(s) carry absolute host paths (issue 0320):" >&2
