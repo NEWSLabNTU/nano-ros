@@ -204,16 +204,44 @@ comment to name the new entries. **threadx-linux now implements ONE board-trait
 family.** Verified: threadx-linux builds, the smoke test stays green, the family
 driver's legacy `run<B>` (still used by threadx-qemu-riscv64) is untouched.
 
+## Kernel families — DONE (2026-07-28, per-lane verified)
+
+The three kernel-spawn families are fully off legacy `board_init`, following the
+W0 `run_bare` template. Each: add the family driver's no-session `run_bare` (or
+delete dead legacy for the boards that never consumed it), migrate its
+smoke/bringup bin, delete the board's legacy `board_init` impls + free `run`,
+green its lane.
+
+- **threadx** — threadx-linux (W0), threadx-qemu-riscv64 (`run_bare` reused the
+  family driver; `logging_smoke_threadx_riscv64_emits_every_severity` PASS on the
+  riscv64 QEMU lane). Family fully migrated.
+- **freertos** — added `nros_board_freertos::run_bare` + `app_task_entry_bare`
+  (shared boot bringup, nullary closure, no `Executor::open`) + `Mps2An385::run_bare`;
+  deleted mps2-an385's legacy impls + free `run`/`init_hardware` + the dead
+  `reference-mps2` re-export. `logging_smoke_freertos_mps2_emits_every_severity`
+  PASS on the MPS2-AN385 QEMU lane.
+- **nuttx** — deletion-only (NuttX is shell-dispatched POSIX; the `logging-smoke-*`
+  fixtures run their plain `fn main` via `nsh_main`, never consumed the family
+  `run`; `reference-qemu-arm` was never enabled). Dropped `run_generic<B>` + the
+  `nros_board_common::BoardInit` re-export + the `reference-qemu-arm` re-export;
+  deleted qemu-arm/qemu-riscv legacy impls + free `node::run`.
+  `logging_smoke_nuttx_qemu_arm_emits_every_severity` PASS; qemu-riscv reaches the
+  unchanged `QemuRvVirt::run_tiers` via the ws-realtime-rust lane.
+
 ## Next steps when resumed (verifiability-ordered — see the Fix method above)
-1. **Per-family run_bare + smoke migration**, one lane at a time: freertos
-   (`nros_board_freertos::run_bare` + `logging-smoke-freertos-mps2`, QEMU lane),
-   nuttx (`logging-smoke-nuttx-qemu-arm`), esp32 (`logging-smoke-esp32-qemu`,
-   `esp32s3-board-bringup`), threadx-qemu-riscv64 (`logging-smoke-threadx-riscv64`).
-   Each: add the family driver's `run_bare`, migrate its smoke/bringup bin, delete
-   that board's legacy `board_init` impls + free `run`, green its lane.
-2. Then direct-exec boards (stm32f4, mps2-an385), then `cffi` (the C-export
-   macro's config-carrying `run(cfg, closure)` → the new form), then W6 (delete
-   `nros-board-common::board_init` + the lint gate).
+1. **Direct-exec boards** (`nros_board_common::run<B>` consumers: esp32-qemu,
+   esp32s3, stm32f4, mps2-an385-baremetal). Each takes `Config` by value and its
+   hardware bringup is Config-driven, so the per-board `run_bare(config, setup)`
+   calls the board's own `node::init_hardware(&config)` directly (like
+   threadx-qemu-riscv64) rather than the parameterless new-family `BoardInit`.
+   NB esp32 carries TWO board ZSTs (legacy `node::Esp32Qemu` + new
+   `Esp32QemuEntry`, the latter gated on `rmw-zenoh`) — put `run_bare` where the
+   no-RMW logging smoke can reach it (a free fn using `node::init_hardware` +
+   `node::register_log_writer` + a non-rmw exit primitive, NOT on the rmw-gated
+   `Esp32QemuEntry`). Fixtures: `logging-smoke-esp32-qemu`,
+   `nros-smoke/esp32s3-board-bringup`, `logging-smoke-mps2-baremetal`, stm32f4.
+2. Then `cffi` (the C-export macro's config-carrying `run(cfg, closure)` → the new
+   form), then W6 (delete `nros-board-common::board_init` + the lint gate).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
