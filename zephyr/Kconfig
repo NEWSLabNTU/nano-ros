@@ -446,11 +446,18 @@ config NROS_XRCE_BUFFER_SIZE
 
 config NROS_XRCE_STREAM_HISTORY
     int "Reliable stream history depth"
-    default 4
+    default 16
     range 2 16
     help
       Reliable stream history depth for XRCE-DDS. Must be >= 2.
-      Maps to XRCE_STREAM_HISTORY.
+      Maps to NROS_XRCE_STREAM_HISTORY, read by nros-rmw-xrce-cffi/build.rs.
+
+      Defaults to 16 to match XRCE_STREAM_HISTORY in
+      packages/xrce/nros-rmw-xrce/src/internal.h. This option was inert until
+      issue 0316 (exported under a name nothing read), so the C default of 16
+      is what Zephyr XRCE images have always compiled; a default of 4 here
+      would have shrunk every reliable stream buffer 4x the moment the knob
+      started working. Raise or lower deliberately, not as a side effect.
 
 config NROS_XRCE_AGENT_ADDR
     string "XRCE-DDS Agent address"
@@ -475,12 +482,20 @@ endif # NROS_RMW_XRCE
 
 config NROS_EXECUTOR_MAX_CBS
     int "Maximum executor callback slots"
-    default 16
+    default 4
     help
       Maximum number of callback slots in the executor
       (subscriptions + timers + services). Controls both Rust and C APIs.
       Arena size is derived automatically from this value and the
       subscription buffer size.
+
+      Defaults to 4 to match nros-node/build.rs. This option was never
+      forwarded to Cargo before issue 0316, so every Zephyr C image compiled
+      the crate default of 4 regardless of what was configured here; the old
+      default of 16 had therefore never been built. Honouring it as-is would
+      have grown a native_sim listener's .bss by 219 KB (+35%) as a side
+      effect of repairing the plumbing. Raise it deliberately — the arena
+      scales with it.
 
 # =============================================================================
 # Common Platform Configuration

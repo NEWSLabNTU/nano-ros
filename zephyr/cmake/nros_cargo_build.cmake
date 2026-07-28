@@ -68,69 +68,159 @@ function(nros_detect_rust_target)
 endfunction()
 
 # =============================================================================
-# nros_set_cargo_env_from_kconfig()
+# Knob resolution (issue 0316)
 #
-# Bridges Kconfig values to environment variables so that Cargo build.rs
-# scripts pick them up. Works for both nros_cargo_build() (C path) and
-# rust_cargo_application() (Rust path).
+# A "knob" is a compile-time static pool size. TWO consumers read the same
+# value: the cargo build (an environment variable read by some build.rs) and,
+# for the zpico C sources, a preprocessor define emitted by
+# nros_rmw_zenoh.cmake. They MUST agree — a Rust/C size disagreement is a
+# silent ABI break (issue 0135). That is why resolution happens exactly once,
+# here, and both consumers read `NROS_RESOLVED_<KNOB>` instead of reading
+# `CONFIG_*` separately.
+#
+# Precedence is uniform: an explicit environment value WINS over Kconfig, and a
+# disagreement is REPORTED rather than silently resolved. Before this the
+# `set(ENV{X} ...)` calls were unconditional, so a value exported by a shell or
+# justfile was overwritten by the Kconfig default with no diagnostic — six of
+# autoware_sentinel's tuned knobs were dead that way, and the two knob classes
+# (overwritten vs passed through) were indistinguishable at the call site.
 # =============================================================================
-function(nros_set_cargo_env_from_kconfig)
-    # Zenoh-specific transport tuning (zpico-sys build.rs)
-    if(CONFIG_NROS_RMW_ZENOH)
-        set(ENV{ZPICO_MAX_PUBLISHERS} "${CONFIG_NROS_MAX_PUBLISHERS}")
-        set(ENV{ZPICO_MAX_SUBSCRIBERS} "${CONFIG_NROS_MAX_SUBSCRIBERS}")
-        set(ENV{ZPICO_MAX_QUERYABLES} "${CONFIG_NROS_MAX_QUERYABLES}")
-        set(ENV{ZPICO_MAX_LIVELINESS} "${CONFIG_NROS_MAX_LIVELINESS}")
-        set(ENV{ZPICO_MAX_PENDING_GETS} "${CONFIG_NROS_MAX_PENDING_GETS}")
-        set(ENV{ZPICO_GET_REPLY_BUF_SIZE} "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
-        set(ENV{ZPICO_GET_POLL_INTERVAL_MS} "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
-        set(ENV{ZPICO_FRAG_MAX_SIZE} "${CONFIG_NROS_FRAG_MAX_SIZE}")
-        set(ENV{ZPICO_BATCH_UNICAST_SIZE} "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 
-        # phase-290 (RFC-0049) — tx knob trio, tri-state: always exported
-        # (0|1) so the cargo-built zpico config header agrees with the
-        # zephyr cmake TUs (issue-0135) and an explicit Kconfig `n`
-        # overrides the zephyr platform toml's on-default.
+# Resolve one knob. `kconfig_value` is the Kconfig-derived value, used only when
+# the environment does not already carry an explicit one.
+function(_nros_resolve_knob env_name kconfig_value)
+    if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+        set(_resolved "$ENV{${env_name}}")
+        if(NOT "${_resolved}" STREQUAL "${kconfig_value}")
+            message(STATUS
+                "nros: ${env_name}=${_resolved} from environment "
+                "(Kconfig says ${kconfig_value}) — environment wins")
+        endif()
+    else()
+        set(_resolved "${kconfig_value}")
+    endif()
+
+    # CACHE INTERNAL, not PARENT_SCOPE: the readers are other functions in other
+    # included files, and a normal var would not survive the frame pop
+    # (the `_NROS_ENTRY_DIR` pattern — see AGENTS.md CMake Pitfalls).
+    set(NROS_RESOLVED_${env_name} "${_resolved}" CACHE INTERNAL
+        "nros knob ${env_name}, resolved from environment or Kconfig")
+
+    list(APPEND NROS_RESOLVED_KNOBS "${env_name}")
+    list(REMOVE_DUPLICATES NROS_RESOLVED_KNOBS)
+    set(NROS_RESOLVED_KNOBS "${NROS_RESOLVED_KNOBS}" CACHE INTERNAL
+        "every nros knob resolved during this configure")
+endfunction()
+
+# =============================================================================
+# nros_resolve_knobs()
+#
+# Resolve every knob for the selected backend. Must run BEFORE any consumer —
+# zephyr/CMakeLists.txt calls it ahead of the backend modules, because
+# nros_rmw_zenoh.cmake emits its compile definitions at include time.
+# =============================================================================
+function(nros_resolve_knobs)
+    # Drop last configure's list so a backend switch cannot leave stale knobs
+    # behind (the per-knob values are overwritten, but the list would grow).
+    unset(NROS_RESOLVED_KNOBS CACHE)
+
+    # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines)
+    if(CONFIG_NROS_RMW_ZENOH)
+        _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${CONFIG_NROS_MAX_PUBLISHERS}")
+        _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${CONFIG_NROS_MAX_SUBSCRIBERS}")
+        _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${CONFIG_NROS_MAX_QUERYABLES}")
+        _nros_resolve_knob(ZPICO_MAX_LIVELINESS "${CONFIG_NROS_MAX_LIVELINESS}")
+        _nros_resolve_knob(ZPICO_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
+        _nros_resolve_knob(ZPICO_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
+        _nros_resolve_knob(ZPICO_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
+        _nros_resolve_knob(ZPICO_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
+        _nros_resolve_knob(ZPICO_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
+
+        # phase-290 (RFC-0049) — tx knob trio, tri-state: always resolved to
+        # (0|1) so the cargo-built zpico config header agrees with the zephyr
+        # cmake TUs (issue-0135) and an explicit Kconfig `n` overrides the
+        # zephyr platform toml's on-default.
         if(CONFIG_NROS_ZENOH_TX_BATCH)
-            set(ENV{ZPICO_TX_BATCH} "1")
+            _nros_resolve_knob(ZPICO_TX_BATCH "1")
         else()
-            set(ENV{ZPICO_TX_BATCH} "0")
+            _nros_resolve_knob(ZPICO_TX_BATCH "0")
         endif()
         if(CONFIG_NROS_ZENOH_TX_SPLIT_LOCK)
-            set(ENV{ZPICO_TX_SPLIT_LOCK} "1")
+            _nros_resolve_knob(ZPICO_TX_SPLIT_LOCK "1")
         else()
-            set(ENV{ZPICO_TX_SPLIT_LOCK} "0")
+            _nros_resolve_knob(ZPICO_TX_SPLIT_LOCK "0")
         endif()
         if(CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS)
-            set(ENV{ZPICO_TX_BATCH_FLUSH_MS} "${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS}")
+            _nros_resolve_knob(ZPICO_TX_BATCH_FLUSH_MS
+                "${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS}")
         endif()
 
         # Buffer sizing (nros-rmw-zenoh build.rs)
-        set(ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE} "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
-        set(ENV{ZPICO_SERVICE_BUFFER_SIZE} "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
-
-        # zpico-sys build.rs needs the nros-platform-cffi header dir. In-tree dev
-        # gets it from .env/direnv; set it from the known module path so a
-        # module-consumer / BYO `west build` (no .env) is self-contained
-        # (Phase 202.7). CMAKE_CURRENT_FUNCTION_LIST_DIR = this cmake's dir
-        # (<repo>/zephyr/cmake) → ../.. = the nano-ros module root.
-        set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-api/include")
+        _nros_resolve_knob(ZPICO_SUBSCRIBER_BUFFER_SIZE
+            "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
+        _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE
+            "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
     endif()
 
-    # XRCE-specific transport tuning (xrce-sys build.rs, nros-rmw-xrce build.rs)
+    # XRCE transport tuning.
+    #
+    # `XRCE_TRANSPORT_MTU` is read unprefixed by xrce-sys/build.rs. The pool
+    # knobs below are read by nros-rmw-xrce-cffi/build.rs, which spells them
+    # `NROS_XRCE_*` — this bridge previously exported the UNPREFIXED names, so
+    # nothing read them and five menuconfig options were inert (issue 0316
+    # defect 2). The C defaults in nros-rmw-xrce/src/internal.h always won.
     if(CONFIG_NROS_RMW_XRCE)
-        set(ENV{XRCE_TRANSPORT_MTU} "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
-        set(ENV{XRCE_MAX_SUBSCRIBERS} "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
-        set(ENV{XRCE_MAX_SERVICE_SERVERS} "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}")
-        set(ENV{XRCE_MAX_SERVICE_CLIENTS} "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}")
-        set(ENV{XRCE_BUFFER_SIZE} "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
-        set(ENV{XRCE_STREAM_HISTORY} "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
+        _nros_resolve_knob(XRCE_TRANSPORT_MTU "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
+        _nros_resolve_knob(NROS_XRCE_MAX_SUBSCRIBERS
+            "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
+        _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_SERVERS
+            "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}")
+        _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_CLIENTS
+            "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}")
+        _nros_resolve_knob(NROS_XRCE_BUFFER_SIZE "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
+        _nros_resolve_knob(NROS_XRCE_STREAM_HISTORY
+            "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
     endif()
 
     # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
     # C API limits are derived from MAX_CBS via Cargo `links` metadata.
-    set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+    _nros_resolve_knob(NROS_EXECUTOR_MAX_CBS "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+endfunction()
+
+# =============================================================================
+# nros_set_cargo_env_from_kconfig()
+#
+# Export the resolved knobs so Cargo build.rs scripts pick them up. Works for
+# both nros_cargo_build() (C path) and rust_cargo_application() (Rust path).
+#
+# This function no longer resolves anything — it only exports what
+# nros_resolve_knobs() decided, so calling it from several places cannot
+# produce different values in different cargo invocations.
+# =============================================================================
+function(nros_set_cargo_env_from_kconfig)
+    if(NOT DEFINED NROS_RESOLVED_KNOBS)
+        message(FATAL_ERROR
+            "nros: nros_set_cargo_env_from_kconfig() ran before "
+            "nros_resolve_knobs() — knob values are unresolved. Call "
+            "nros_resolve_knobs() early in the top-level CMakeLists.")
+    endif()
+
+    foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
+        set(ENV{${_knob}} "${NROS_RESOLVED_${_knob}}")
+    endforeach()
+
+    if(CONFIG_NROS_RMW_ZENOH)
+        # zpico-sys build.rs needs the nros-platform-cffi header dir. In-tree dev
+        # gets it from .env/direnv; set it from the known module path so a
+        # module-consumer / BYO `west build` (no .env) is self-contained
+        # (Phase 202.7). CMAKE_CURRENT_FUNCTION_LIST_DIR = this cmake's dir
+        # (<repo>/zephyr/cmake) → ../.. = the nano-ros module root. Guarded so
+        # the .env value wins, which is what the fallback framing above intends.
+        if(NOT DEFINED ENV{NROS_PLATFORM_CFFI_INCLUDE})
+            set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-api/include")
+        endif()
+    endif()
 endfunction()
 
 # =============================================================================
@@ -297,28 +387,31 @@ function(nros_cargo_build)
         endif()
     endif()
 
+    # Forward every resolved knob to the cargo invocation (issue 0316).
+    #
+    # This matters more than it looks: `set(ENV{X})` only changes the CONFIGURE
+    # -time environment, and cargo runs at BUILD time under ninja. The only
+    # values that reach a build.rs are the ones named here, whose `$ENV{}` is
+    # expanded at configure time and baked into the build command. A knob that
+    # is resolved but not listed is silently unreachable from Kconfig.
+    #
+    # The list used to be hand-maintained and had drifted three ways: the XRCE
+    # entries used the unprefixed spelling that no build.rs reads (the readers
+    # in nros-rmw-xrce-cffi/build.rs want `NROS_XRCE_*`), while
+    # NROS_EXECUTOR_MAX_CBS and the RFC-0049 tx trio were resolved into the
+    # environment but never forwarded at all. Generating the list from
+    # NROS_RESOLVED_KNOBS makes "resolved but not forwarded" unrepresentable.
+    set(_nros_knob_env "")
+    foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
+        list(APPEND _nros_knob_env "${_knob}=${NROS_RESOLVED_${_knob}}")
+    endforeach()
+
     add_custom_target(${_target_name}_build
         COMMAND ${CMAKE_COMMAND} -E env
             ${_rustup_override}
             ${_cc_env}
-            ZPICO_MAX_PUBLISHERS=$ENV{ZPICO_MAX_PUBLISHERS}
-            ZPICO_MAX_SUBSCRIBERS=$ENV{ZPICO_MAX_SUBSCRIBERS}
-            ZPICO_MAX_QUERYABLES=$ENV{ZPICO_MAX_QUERYABLES}
-            ZPICO_MAX_LIVELINESS=$ENV{ZPICO_MAX_LIVELINESS}
-            ZPICO_MAX_PENDING_GETS=$ENV{ZPICO_MAX_PENDING_GETS}
-            ZPICO_GET_REPLY_BUF_SIZE=$ENV{ZPICO_GET_REPLY_BUF_SIZE}
-            ZPICO_GET_POLL_INTERVAL_MS=$ENV{ZPICO_GET_POLL_INTERVAL_MS}
-            ZPICO_FRAG_MAX_SIZE=$ENV{ZPICO_FRAG_MAX_SIZE}
-            ZPICO_BATCH_UNICAST_SIZE=$ENV{ZPICO_BATCH_UNICAST_SIZE}
-            ZPICO_SUBSCRIBER_BUFFER_SIZE=$ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE}
-            ZPICO_SERVICE_BUFFER_SIZE=$ENV{ZPICO_SERVICE_BUFFER_SIZE}
+            ${_nros_knob_env}
             NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
-            XRCE_TRANSPORT_MTU=$ENV{XRCE_TRANSPORT_MTU}
-            XRCE_MAX_SUBSCRIBERS=$ENV{XRCE_MAX_SUBSCRIBERS}
-            XRCE_MAX_SERVICE_SERVERS=$ENV{XRCE_MAX_SERVICE_SERVERS}
-            XRCE_MAX_SERVICE_CLIENTS=$ENV{XRCE_MAX_SERVICE_CLIENTS}
-            XRCE_BUFFER_SIZE=$ENV{XRCE_BUFFER_SIZE}
-            XRCE_STREAM_HISTORY=$ENV{XRCE_STREAM_HISTORY}
             cargo ${CARGO_ARGS}
         BYPRODUCTS ${_cargo_byproducts}
         COMMENT "Building ${ARG_PACKAGE} via Cargo"

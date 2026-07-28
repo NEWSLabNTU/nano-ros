@@ -78,6 +78,13 @@ endif()
 # =============================================================================
 
 set(NROS_ZEPHYR_DIR ${CMAKE_CURRENT_LIST_DIR})
+
+# Resolve every pool knob (environment over Kconfig) BEFORE the backend modules
+# run — nros_zephyr_configure_rmw_zenoh() emits compile definitions from the
+# resolved values, and the cargo builds later export the same ones. One
+# resolution, both consumers (issue 0316).
+nros_resolve_knobs()
+
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_zenoh.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_xrce.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_cyclonedds.cmake)

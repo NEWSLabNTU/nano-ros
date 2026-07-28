@@ -157,7 +157,16 @@ one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (
 **#312** — a C/C++ workspace listener receives fine but `ros2 topic info` reports `Subscription
 count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports our subscriptions and
 a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while
-strengthening the QoS proofs. See `0312-*`. (2026-07-28)
+strengthening the QoS proofs. See `0312-*`. (2026-07-28, renumbered from a duplicate #311 — two
+sessions reached the same renumbering independently)
+
+**#316** — compile-time pool knobs that silently do nothing, two ways. On Zephyr,
+`set(ENV{...})` is unconditional, so 20 of 61 knobs have their environment value overwritten by the
+Kconfig default while the other 41 pass through — opposite precedence, identical spelling, no
+diagnostic. Six of `autoware_sentinel`'s tuned knobs are dead this way. Separately, five
+`CONFIG_NROS_XRCE_*` options are exported as `XRCE_*` while the only reader wants `NROS_XRCE_*`.
+Includes a full audit: five distinct sizing mechanisms, only two of which a build-script hook can
+see. See `0316-*`. (2026-07-28, filed as #313 and renumbered on push — origin already had two)
 
 **#313** — `wake-latency-cortex-m3` bench rotted (off-lane): retired `_start`/`run` entry + phase-230
 `platform-freertos` feature drift + a `nros-baremetal-common`/picolibc libc-stub duplicate-symbol link

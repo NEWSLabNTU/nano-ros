@@ -149,17 +149,22 @@ zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include)
 # Transport tuning: Kconfig → C preprocessor flags
 # -------------------------------------------------------------------------
 
-# Map Kconfig transport tuning to ZPICO_* defines consumed by zpico.c
+# Map transport tuning to ZPICO_* defines consumed by zpico.c.
+#
+# These read NROS_RESOLVED_* rather than CONFIG_* so the C TUs get exactly the
+# value the cargo build got. Reading CONFIG_* here would reintroduce issue 0135:
+# an environment override would reach the Rust side only, and the two would
+# disagree about a struct's size with no diagnostic (issue 0316).
 zephyr_compile_definitions(
-    ZPICO_MAX_PUBLISHERS=${CONFIG_NROS_MAX_PUBLISHERS}
-    ZPICO_MAX_SUBSCRIBERS=${CONFIG_NROS_MAX_SUBSCRIBERS}
-    ZPICO_MAX_QUERYABLES=${CONFIG_NROS_MAX_QUERYABLES}
-    ZPICO_MAX_LIVELINESS=${CONFIG_NROS_MAX_LIVELINESS}
-    ZPICO_MAX_PENDING_GETS=${CONFIG_NROS_MAX_PENDING_GETS}
-    ZPICO_GET_REPLY_BUF_SIZE=${CONFIG_NROS_GET_REPLY_BUF_SIZE}
-    ZPICO_GET_POLL_INTERVAL_MS=${CONFIG_NROS_GET_POLL_INTERVAL_MS}
-    ZPICO_FRAG_MAX_SIZE=${CONFIG_NROS_FRAG_MAX_SIZE}
-    ZPICO_BATCH_UNICAST_SIZE=${CONFIG_NROS_BATCH_UNICAST_SIZE}
+    ZPICO_MAX_PUBLISHERS=${NROS_RESOLVED_ZPICO_MAX_PUBLISHERS}
+    ZPICO_MAX_SUBSCRIBERS=${NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS}
+    ZPICO_MAX_QUERYABLES=${NROS_RESOLVED_ZPICO_MAX_QUERYABLES}
+    ZPICO_MAX_LIVELINESS=${NROS_RESOLVED_ZPICO_MAX_LIVELINESS}
+    ZPICO_MAX_PENDING_GETS=${NROS_RESOLVED_ZPICO_MAX_PENDING_GETS}
+    ZPICO_GET_REPLY_BUF_SIZE=${NROS_RESOLVED_ZPICO_GET_REPLY_BUF_SIZE}
+    ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_ZPICO_GET_POLL_INTERVAL_MS}
+    ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}
+    ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}
 )
 
 endfunction()
