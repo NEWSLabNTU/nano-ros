@@ -37,6 +37,40 @@ fn maintainer_xml() -> String {
     }
 }
 
+/// Issue 0333 — the single platform → board-crate table. Every `--platform`
+/// value the CLI advertises (`nros-cli-core/src/cmd/new.rs`) MUST resolve here,
+/// or scaffolding `bail!`s loudly instead of silently emitting a board dep that
+/// is really a TOML comment (`# TODO … = { … }` — a whole commented line, so the
+/// board dep vanished with no diagnostic). The crate names are the ones the
+/// tracked entry examples declare as their `deploy =` board target.
+struct PlatformSpec {
+    /// Board crate the generated embedded project depends on. `None` for the
+    /// host (`native`) build, which links no board crate.
+    board_crate: Option<&'static str>,
+}
+
+/// Resolve a `--platform` token to its board crate, or `bail!` with the full
+/// supported set. Called once up front in [`scaffold_package`] so an
+/// unsupported platform fails before any file is written, and reused by
+/// [`scaffold_rust`] so the board dep can never degrade to a comment.
+fn platform_spec(platform: &str) -> Result<PlatformSpec> {
+    let board_crate = match platform {
+        "native" => None,
+        "posix" => Some("nros-board-posix"),
+        "freertos" => Some("nros-board-mps2-an385-freertos"),
+        "baremetal" => Some("nros-board-mps2-an385"),
+        "nuttx" => Some("nros-board-nuttx-qemu-arm"),
+        "threadx" => Some("nros-board-threadx-linux"),
+        "zephyr" => Some("nros-board-zephyr"),
+        "esp32" => Some("nros-board-esp32-qemu"),
+        other => bail!(
+            "nros new: unsupported --platform '{other}'. Supported: \
+             native, posix, freertos, baremetal, nuttx, threadx, zephyr, esp32."
+        ),
+    };
+    Ok(PlatformSpec { board_crate })
+}
+
 #[derive(Debug, Clone)]
 pub struct ScaffoldConfig {
     pub name: String,
@@ -76,6 +110,12 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
             )
         })?
         .cargo_feature();
+
+    // Issue 0333 — validate the platform up front (like `--rmw`/`--ros-edition`
+    // above) so an unsupported value fails loud before any file is written,
+    // rather than silently degrading into a commented-out board dep or a
+    // `deploy=` string nothing recognizes.
+    platform_spec(&cfg.platform)?;
 
     // RFC-0048 (phase-287) — a C/C++ package is written in the ament shape:
     // `build_type` is `ament_cmake` and the platform delta lives in the
@@ -677,12 +717,13 @@ fn scaffold_rust(
         deps.push_str(&format!(
             "nros = {{ version = \"*\", default-features = false, features = [\"{edition_feature}\"] }}\n",
         ));
-        let board_crate = match platform {
-            "freertos" => "nros-board-mps2-an385-freertos",
-            "baremetal" => "nros-board-mps2-an385",
-            "nuttx" => "nros-board-nuttx-qemu-arm",
-            _ => "# TODO: add board crate for this platform",
-        };
+        // Issue 0333 — the board dep comes from the validated table, never a
+        // fallthrough string. `is_embedded` guarantees a non-`native` platform,
+        // and every such platform has `Some(board_crate)`, so this cannot emit a
+        // commented-out dependency.
+        let board_crate = platform_spec(platform)?
+            .board_crate
+            .expect("non-native platform must carry a board crate (issue 0333)");
         deps.push_str(&format!(
             "{board_crate} = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
         ));
@@ -742,26 +783,32 @@ codegen-units = 1
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
     let main_rs = if is_embedded {
-        r#"#![no_std]
+        // Issue 0333 — name the board crate this project actually depends on
+        // (resolved above), instead of a hardcoded example crate the generated
+        // Cargo.toml may not carry.
+        let board_mod = platform_spec(platform)?
+            .board_crate
+            .expect("non-native platform must carry a board crate (issue 0333)")
+            .replace('-', "_");
+        format!(
+            r#"#![no_std]
 #![no_main]
 
 use nros::prelude::*;
-// TODO: import your board crate
-// use nros_board_mps2_an385_freertos::{Config, Mps2An385, println};
+// TODO: import your board crate ({board_mod}) and drive its entry.
+// use {board_mod}::*;
 use panic_semihosting as _;
 
 // The board's C startup (`Reset_Handler`) jumps to this `main` symbol.
 #[unsafe(no_mangle)]
-extern "C" fn main() -> ! {
-    // TODO: drive your board's entry, e.g.
-    //   Mps2An385::run_bare(Config::default(), |_cfg| {
-    //       // open an Executor, create nodes/pubs/subs, spin…
-    //       Ok::<(), &'static str>(())
-    //   });
-    loop {}
-}
+extern "C" fn main() -> ! {{
+    // TODO: drive your board's entry, e.g. `<Board>::run_bare(Config::default(),
+    //   |_cfg| {{ /* open an Executor, create nodes/pubs/subs, spin… */
+    //   Ok::<(), &'static str>(()) }});
+    loop {{}}
+}}
 "#
-        .to_string()
+        )
     } else {
         format!(
             r#"fn main() {{
@@ -1099,5 +1146,55 @@ mod tests {
             !PathBuf::from(&cfg.name).exists(),
             "no package dir on rejected rmw"
         );
+    }
+
+    // Issue 0333 — every platform the CLI advertises must resolve to a board
+    // crate (or None for the host build); an unknown one bails.
+    #[test]
+    fn platform_spec_covers_every_advertised_platform() {
+        for p in [
+            "native",
+            "posix",
+            "freertos",
+            "baremetal",
+            "nuttx",
+            "threadx",
+            "zephyr",
+            "esp32",
+        ] {
+            platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
+        }
+        assert!(platform_spec("native").unwrap().board_crate.is_none());
+        assert_eq!(
+            platform_spec("threadx").unwrap().board_crate,
+            Some("nros-board-threadx-linux")
+        );
+        assert!(platform_spec("bogus").is_err());
+    }
+
+    // Issue 0333 — a platform with no board arm used to emit
+    // `# TODO … = { … }`, a commented-out (vanished) board dep. Every embedded
+    // platform must now write a real dependency line.
+    #[test]
+    fn scaffold_rust_emits_a_real_board_dep_never_a_comment() {
+        for (platform, crate_name) in [
+            ("threadx", "nros-board-threadx-linux"),
+            ("zephyr", "nros-board-zephyr"),
+            ("esp32", "nros-board-esp32-qemu"),
+            ("freertos", "nros-board-mps2-an385-freertos"),
+        ] {
+            let d = tmp();
+            fs::create_dir_all(d.path().join("src")).unwrap();
+            scaffold_rust("app", platform, "rmw-zenoh", "ros-humble", d.path()).unwrap();
+            let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
+            assert!(
+                toml.contains(&format!("{crate_name} = {{")),
+                "{platform}: board dep missing:\n{toml}"
+            );
+            assert!(
+                !toml.contains("# TODO: add board crate"),
+                "{platform}: still emits a commented-out board dep:\n{toml}"
+            );
+        }
     }
 }
