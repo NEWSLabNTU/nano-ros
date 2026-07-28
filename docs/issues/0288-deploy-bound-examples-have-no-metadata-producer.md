@@ -50,3 +50,39 @@ the examples demonstrate the shape we actually recommend.
 
 * `docs/roadmap/phase-308-cpp-metadata-producer.md`
 * `docs/issues/archived/0257-executor-max-cbs-not-derived-from-model.md`
+
+## Update: the detection predicate was incomplete (2026-07-28)
+
+The mechanism described above — detect deploy-bound packages, report them as
+having no producer, degrade to the SystemModel bound — was correct but keyed on
+`[package.metadata.nros.entry]` alone:
+
+```rust
+let deploy_bound = nros.entry.is_some();
+```
+
+`[deploy.<target>]` says the same thing, and **27** standalone examples spell it
+that way instead (freertos, nuttx, threadx-linux, zephyr). They fell through to
+the host probe and hit a hard build failure rather than this issue's graceful
+degrade — issue 0318 is one instance, which presented as
+`DOTCONFIG must be set by wrapper` on a Zephyr leaf.
+
+Fixed in 0318 by accepting both spellings. That does **not** change this
+issue's substance: those 27 packages still get the SystemModel's timer-blind
+lower bound rather than an exact count. It only means they now degrade quietly,
+as this issue always intended, instead of failing.
+
+So the affected population is larger than "every `examples/*/rust/*` standalone
+example that carries both tables" — measured today: **24** carry `[entry]` +
+`[node]`, **27** carry `[deploy.*]` without `[entry]`. Both classes are
+un-probeable and both now report as unsupported.
+
+The choice between this issue's options (1) accept + document and (2) split the
+shape is unchanged by that, but option (2)'s cost is ~51 examples, not ~40.
+
+Worth noting the underlying smell for whoever takes this: **two spellings for
+one fact**. `[entry]` and `[deploy.<target>]` both mean "bound to a deploy
+target", and the predicate knowing only one is exactly the drift class this
+repo has been closing elsewhere (two `system.toml` parsers, two entry emitters,
+issue 0316's knob spellings, issue 0319's child-indexing rule). Collapsing them
+to one declaration would prevent the next instance rather than fixing it.

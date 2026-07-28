@@ -48,3 +48,50 @@ adds the next one.
 
 (1) is preferred: the information belongs on the crate, and the check that
 needs it can then never be out of date.
+
+## Re-check (2026-07-28): still live, and option 1 is under-specified
+
+Verified against the tree while scoping issue 0288. Three corrections.
+
+**The surface is bigger than "two recipes".** Seven recipes in `justfile` carry
+`--exclude` lists (`build-workspace`, `build-workspace-embedded`,
+`check-workspace`, `check-workspace-embedded`, `check-workspace-features`,
+`check-stack-all`, `test-unit`). `nros-rmw-metadata` sits in two of them —
+`build-workspace-embedded` and `check-workspace-embedded`.
+
+**The predicted drift has NOT happened.** Those two embedded lanes carry **21
+excludes each, identical, zero divergence**. So this is a maintenance surface
+(42 entries that must stay in lockstep), not yet a live bug. Worth stating
+plainly rather than leaving the impression of a fire.
+
+**Option 1's `host_only = true` is under-specified**, and this is the real
+finding. The 21 exclusions encode at least *four different reasons*, three of
+them already documented in the justfile itself:
+
+| reason | crates |
+| --- | --- |
+| needs native system headers for the CMake build | `zpico-sys`, `xrce-sys`, `cyclonedds-sys`, `nros-rmw-cyclonedds-sys` |
+| requires `std` (test framework) | `nros-tests` |
+| staticlib/cdylib needs platform-specific panic + runtime setup | `nros-c`, `nros-cpp`, the `*-staticlib` wrappers |
+| host-only tooling | build helpers, `nros-orchestration-ir`, `nros-rmw-metadata`, `nros-board-{native,posix}` |
+
+A single boolean flattens all four into one bit and discards the *why* — which
+is this issue's actual complaint, that the diagnostic "names the victim, never
+the culprit". If the property is made declarative it has to carry the reason so
+the generated exclusion (and any failure message) can cite it:
+
+```toml
+[package.metadata.nros]
+embedded = false
+embedded-reason = "requires native system headers for the CMake build"
+```
+
+**Not the same fix as issue 0288**, despite the resemblance. The two axes are
+opposite: this issue excludes a crate from the *embedded* build; 0288 excludes
+one from the *host* probe. A crate can be in either set, both, or neither, so a
+single key cannot express both.
+
+Note also that option 2 (a separate workspace for host-only crates) only covers
+the fourth row above. The `-sys` crates and `nros-c`/`nros-cpp` are genuinely
+embedded crates excluded for build-shape reasons, and would stay on a manual
+list regardless.

@@ -1068,7 +1068,19 @@ fn discover_cargo_component_metadata(
     // phase-308: a package that declares an ENTRY as well as a node is the
     // self-contained standalone shape (issue 0100) — deploy-bound by
     // definition, so not host-probeable.
-    let deploy_bound = nros.entry.is_some();
+    //
+    // issue 0318 — `[deploy.<target>]` says the same thing, and 27 standalone
+    // examples (freertos / nuttx / threadx-linux / zephyr) spell it that way
+    // instead of with an `[entry]` table. Keying on `entry` alone let them
+    // through to the host probe, which cannot compile them: they dep a board
+    // crate directly (`nros-board-mps2-an385-freertos`) or, on zephyr, the
+    // `zephyr` crate whose build script needs `DOTCONFIG` from a cmake
+    // configure that has not run yet. Both spellings mean deploy-bound.
+    //
+    // Safe against over-triggering: no colcon-workspace Node pkg (`src/<pkg>`,
+    // the probeable shape) carries a `[deploy.*]` table — deploy lives on the
+    // Entry pkg there. Verified across the tree when this landed.
+    let deploy_bound = nros.entry.is_some() || !nros.deploy.is_empty();
     let single = nros.node.as_ref().or(nros.component.as_ref());
     let multi: Vec<(String, &ComponentMetadata)> = if !nros.nodes.is_empty() {
         nros.nodes.iter().map(|(k, v)| (k.clone(), v)).collect()
@@ -1478,6 +1490,68 @@ mod probe_target_tests {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// issue 0318 — `[deploy.<target>]` marks a package deploy-bound just as
+    /// `[entry]` does. Keying only on `entry` let 27 standalone examples
+    /// (freertos / nuttx / threadx-linux / zephyr) reach the host metadata
+    /// probe, which cannot compile them: they dep a board crate directly, or
+    /// on zephyr the `zephyr` crate whose build script needs `DOTCONFIG` from
+    /// a cmake configure that has not run yet.
+    fn summary_for(manifest: &str) -> Vec<CargoComponentSummary> {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Cargo.toml"), manifest).unwrap();
+        discover_cargo_component_metadata(dir.path(), "demo_pkg").unwrap()
+    }
+
+    const NODE_TABLE: &str = r#"
+[package]
+name = "demo_pkg"
+version = "0.1.0"
+
+[package.metadata.nros.node]
+class = "demo_pkg::Demo"
+name = "demo"
+"#;
+
+    #[test]
+    fn deploy_table_alone_marks_the_package_deploy_bound() {
+        let manifest = format!(
+            "{NODE_TABLE}\n[package.metadata.nros.deploy.zephyr]\nboard = \"native_sim/native/64\"\n"
+        );
+        let got = summary_for(&manifest);
+        assert_eq!(got.len(), 1, "expected one component summary");
+        assert!(
+            got[0].deploy_bound,
+            "a package carrying [deploy.<target>] is bound to that target and is \
+             NOT host-probeable, exactly like one carrying [entry]"
+        );
+    }
+
+    /// The over-trigger guard. A colcon-workspace Node pkg declares a node and
+    /// NO deploy target (deploy lives on the Entry pkg), so it stays probeable
+    /// — losing that would silently drop exact executor sizing, which is the
+    /// regression issue 0288 warns about.
+    #[test]
+    fn a_plain_node_package_stays_probeable() {
+        let got = summary_for(NODE_TABLE);
+        assert_eq!(got.len(), 1, "expected one component summary");
+        assert!(
+            !got[0].deploy_bound,
+            "a node pkg with no deploy target must remain host-probeable"
+        );
+    }
+
+    #[test]
+    fn entry_table_still_marks_the_package_deploy_bound() {
+        let manifest =
+            format!("{NODE_TABLE}\n[package.metadata.nros.entry]\ndeploy = \"zephyr\"\n");
+        let got = summary_for(&manifest);
+        assert_eq!(got.len(), 1, "expected one component summary");
+        assert!(
+            got[0].deploy_bound,
+            "the pre-0318 [entry] behaviour must be preserved"
+        );
+    }
 
     /// phase-267 W1c/C3 — a node's declared `publishes` lower into the SYNTHETIC
     /// metadata as a flat `publishers` array in the exact shape the planner's

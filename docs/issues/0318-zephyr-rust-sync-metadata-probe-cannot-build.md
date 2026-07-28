@@ -96,3 +96,54 @@ leaf's own declarations. That is the right input for a standalone leaf, but it
 has not been verified at RUNTIME here — these six fixtures were checked for
 link, not behaviour. If a Zephyr Rust example later shows a too-small executor
 arena or a dropped callback slot, this is the first thing to re-examine.
+
+## Follow-up: the flag is gone; this was a detection gap (2026-07-28)
+
+`--no-metadata` worked but was blunt — it suppressed probing for *every*
+component in the workspace, not just the Zephyr leaf. The real defect was one
+predicate, and it lived in issue 0288's own mechanism.
+
+`orchestration/workspace.rs` decided deploy-boundness with:
+
+```rust
+let deploy_bound = nros.entry.is_some();
+```
+
+`[entry]` and `[deploy.<target>]` both mean "this package is bound to a deploy
+target", but only the first spelling was checked:
+
+| package | tables | outcome |
+| --- | --- | --- |
+| `qemu-arm-baremetal/rust/action-client-rtic` | `[entry]` + `[node]` | deploy-bound → probe skipped, degrades |
+| `zephyr/rust/talker` | `[node]` + `[deploy.zephyr]` | fell through → probe ran → `DOTCONFIG` failure |
+
+So the Zephyr leaf was never a special case. It was one of **27** standalone
+examples (freertos, nuttx, threadx-linux, zephyr) that spell deploy-boundness
+with `[deploy.*]` and were all reachable by the host probe that cannot compile
+them — they dep a board crate directly, or the SDK's `zephyr` crate.
+
+Fix:
+
+```rust
+let deploy_bound = nros.entry.is_some() || !nros.deploy.is_empty();
+```
+
+**Over-triggering was the risk worth checking, and it does not occur.** Losing
+exact executor sizing for a package that *is* probeable is precisely the
+regression issue 0288 warns about, so: no colcon-workspace Node pkg
+(`src/<pkg>`, the probeable shape) carries a `[deploy.*]` table — deploy lives
+on the Entry pkg there. Verified across the whole tree; all 27 affected
+packages are standalone examples. A unit test pins the guard.
+
+The degrade message also said "node + entry in one crate", which stopped being
+true; it now says "node + deploy target in one crate".
+
+### Receipts
+
+- `just zephyr build-one rust/talker zenoh` → green with the flag REMOVED, and
+  the log shows the skip rather than a failure:
+  `ws sync: source metadata — no producer for zephyr_talker::talker
+  (deploy-bound: node + deploy target in one crate)`.
+- `just zephyr build-rust-examples` → rc=0, 6 ELFs, 6 skip lines.
+- Three unit tests: `[deploy.*]` alone marks deploy-bound; `[entry]` still
+  does; a plain node pkg stays probeable (the over-trigger guard).

@@ -83,11 +83,13 @@ pub fn refresh_stale_sidecars(
     for decl in &declarations {
         if decl.deploy_bound {
             // phase-308 — a self-contained standalone example (issue 0100)
-            // declares its node AND its entry in one crate, so the crate deps
-            // a board crate and cannot compile for the host. Probing it fails
-            // on the board's inline asm; reported, never silently skipped.
+            // declares its node AND its deploy target in one crate, so it deps
+            // a board crate (or, on zephyr, the SDK's own `zephyr` crate) and
+            // cannot compile for the host. Probing it fails on the board's
+            // inline asm, or on `DOTCONFIG must be set by wrapper` (issue
+            // 0318); reported, never silently skipped.
             report.unsupported.push(format!(
-                "{}::{} (deploy-bound: node + entry in one crate)",
+                "{}::{} (deploy-bound: node + deploy target in one crate)",
                 decl.config.package, decl.config.component
             ));
             continue;

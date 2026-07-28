@@ -664,7 +664,11 @@ fn generate_facade_crates(
             continue;
         }
         let Some(f) = crate::orchestration::facade::write_facade(
-            pkg_name, pkg_dir, &cargo_toml, &sys, &facade_root,
+            pkg_name,
+            pkg_dir,
+            &cargo_toml,
+            &sys,
+            &facade_root,
         )
         .wrap_err_with(|| format!("ws sync: facade for {pkg_name}"))?
         else {
