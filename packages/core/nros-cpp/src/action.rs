@@ -1266,6 +1266,35 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
     }
 }
 
+/// Decode the goal-acceptance payload into split out-params.
+///
+/// Issue 0329 — the goal-accept wire layout (16-byte goal_id, then one
+/// `accepted` byte) is produced by
+/// `nros_cpp_action_client_try_recv_goal_response` above. It was ALSO decoded by
+/// hand in the C++ `action_client.hpp` header (`GoalAccept::ffi_deserialize`) —
+/// the same 17-byte layout in two places, a drift no ABI assert covers. This
+/// owns the read Rust-side so the header only adapts types.
+///
+/// # Safety
+/// `data` must point to at least `len` readable bytes; `out_goal_id` /
+/// `out_accepted` must be valid writable pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_goal_accept_decode(
+    data: *const u8,
+    len: usize,
+    out_goal_id: *mut [u8; 16],
+    out_accepted: *mut bool,
+) -> nros_cpp_ret_t {
+    if data.is_null() || out_goal_id.is_null() || out_accepted.is_null() || len < 17 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(data, (*out_goal_id).as_mut_ptr(), 16);
+        *out_accepted = *data.add(16) != 0;
+    }
+    NROS_CPP_RET_OK
+}
+
 /// Try to receive the result for a pending get_result request (non-blocking).
 ///
 /// Returns `NROS_CPP_RET_OK` with result data if ready,

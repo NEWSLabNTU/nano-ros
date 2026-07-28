@@ -78,13 +78,19 @@ template <typename A> class ActionClient {
         uint8_t goal_id[16];
         bool accepted;
 
+        // Receive-buffer size for `Future<GoalAccept>`; the payload is 17 bytes
+        // (16-byte goal_id + 1 accepted byte), rounded up.
         static const size_t SERIALIZED_SIZE_MAX = 32;
+
+        // Issue 0329 — the 17-byte wire layout is owned Rust-side
+        // (`nros_cpp_action_goal_accept_decode`, beside its producer); the header
+        // no longer hand-decodes it, so the two cannot drift.
         static int ffi_deserialize(const uint8_t* data, size_t len, GoalAccept* out) {
-            if (!out || len < 17) return -1;
-            for (int i = 0; i < 16; ++i)
-                out->goal_id[i] = data[i];
-            out->accepted = data[16] != 0;
-            return 0;
+            if (!out) return -1;
+            return nros_cpp_action_goal_accept_decode(data, len, &out->goal_id, &out->accepted) ==
+                           NROS_CPP_RET_OK
+                       ? 0
+                       : -1;
         }
     };
 
