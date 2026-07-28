@@ -1,7 +1,7 @@
 ---
 id: 333
 title: "`nros new` emits projects that don't run: the board dep becomes a TOML comment for 4 of 8 documented platforms, and the template is the retired hand-rolled entry shape"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: cli, ux
@@ -61,8 +61,8 @@ platform → board-crate SSoT — covering all advertised platforms:
 
 | `--platform` | board crate |
 | --- | --- |
-| native | (none — host build) |
-| posix | nros-board-posix |
+| native | nros-board-native |
+| posix | nros-board-native (posix's deploy token → NativeBoard; nros-board-posix is unreachable via any deploy token) |
 | freertos | nros-board-mps2-an385-freertos |
 | baremetal | nros-board-mps2-an385 |
 | nuttx | nros-board-nuttx-qemu-arm |
@@ -86,16 +86,40 @@ package sets, carries no board-crate field, and `cargo-nano-ros` does not depend
 on `nros-pkg-index`. A local const table is the pragmatic SSoT; extending the
 index would be a larger change of its own.
 
-## Still open — defect 2 (the template shape)
+## Defect 2 fixed — runnable templates, deferred platforms bail (2026-07-28)
 
-**Confirmed finding (the issue predicted it):** the blessed
-`nros::main!(model = "…")` shape **cannot serve a scaffolded-from-nothing
-project** — the macro reads the system model at *compile* time, and a fresh
-scaffold has no `demo_bringup` / `config/system_model.yaml`, so it would not
-build. Emitting it verbatim would trade one broken template for another.
-Additionally the per-platform shape genuinely diverges (native/nuttx/threadx-linux
-are hosted `std`; freertos/baremetal/esp32 are freestanding `no_std`; zephyr
-builds via `west`), so a correct runnable template is per-platform, not one
-string. Fixing this properly means either scaffolding a minimal bringup +
-system model alongside the entry, or a macro mode that serves a modelless
-project — a design task, tracked as the remaining half of this issue.
+The retired `no_mangle` `loop {}` template is gone. `scaffold_rust` now
+dispatches on a `PlatformKind`, emitting the *current* blessed shape per
+platform:
+
+- **Hosted (native, posix)** — a real `fn main()` that calls
+  `nros_board_native::register_linked_rmw()`, `nros::init_with_launch_auto()`,
+  `Executor::open`, and `spin_blocking`, publishing a `std_msgs/String` talker.
+  Modeled on `examples/native/rust/talker`. **Compile-verified**: `nros new x
+  --platform native` + `nros sync` + `cargo check` builds clean.
+- **Self-bringup (baremetal, esp32)** — `main.rs` is the one-line
+  `#![no_std] nros::main!();` Form-1 entry, `lib.rs` is the node
+  (`Node` + `ExecutableNode` + `nros::node!(Talker)`, copied from the tracked
+  baremetal talker), and `[package.metadata.nros.entry] deploy = "<token>"`
+  names the board (`board_path_for` SSoT). CortexM carries the cortex-m trio +
+  direct `nros-rmw-zenoh`; Esp32 carries `esp-hal`/`esp-backtrace`. Modeled on
+  the single-package baremetal / esp32 talkers (not locally cross-compiled).
+
+The blessed `nros::main!(model = …)` shape is **not** used from-nothing:
+confirmed the macro reads the model at *compile* time, so it cannot serve a
+scaffold with no bringup. Form-1 `nros::main!()` (no model) is the correct
+from-nothing entry, which is what the self-bringup templates emit.
+
+**Deferred platforms — freertos, nuttx, threadx, zephyr — now `bail!` loud**
+(before writing any file) instead of emitting a project that cannot run: their
+tracked shape is a split node-lib + `*-entry` bin pair (freertos/nuttx/threadx)
+or a west/Kconfig build (zephyr), neither of which a single-package `nros new`
+can produce yet. The error points at the current runnable example. So no
+platform emits a broken project anymore — the headline bug is closed.
+
+## Remaining enhancement (not a bug)
+
+Single-package `nros new` scaffolding for the split-package platforms
+(freertos/nuttx/threadx) and a west-workspace flow for zephyr. These need their
+own design (a single-package merge, or a `--split` mode, or west workspace
+generation); tracked as a future enhancement, not a broken-output bug.

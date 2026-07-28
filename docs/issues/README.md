@@ -342,12 +342,15 @@ no layout assert. Further rmw.h gaps appended to #0242. See `0331-*`.
 `-nostdinc++`); `check.h` printf's from a public C header; 21 vtable slots `.expect()` on the
 embedded path while registration never checks completeness. See `0332-*`.
 
-**#333** — `nros new` emits projects that don't run: for 4 of 8 documented platforms the board dep
-is interpolated as a TOML **comment** and vanishes silently; the template is the retired
-hand-rolled `no_mangle` entry shape instead of `nros::main!`. Defect 1 FIXED (8f81d2873): one
-validated `platform_spec` board-crate table, esp32 reconciled into the clap parser, real board dep
-for every platform. Defect 2 (runnable template) stays open — `nros::main!` reads the model at
-compile time so it cannot serve a from-nothing scaffold; needs its own design. See `0333-*`.
+(#333 RESOLVED — `nros new` emitted projects that don't run: the board dep vanished into a TOML
+comment for 4/8 platforms, and the template was the retired `no_mangle` stub. Defect 1: one validated
+`platform_spec` SSoT (esp32 reconciled into the clap parser), real board dep for every platform.
+Defect 2: `scaffold_rust` dispatches on `PlatformKind` — hosted native/posix emit a runnable
+`fn main()` (compile-verified via `nros sync` + `cargo check`); baremetal/esp32 emit `nros::main!()`
+Form-1 + a `nros::node!` lib.rs; the split-package (freertos/nuttx/threadx) and west (zephyr)
+platforms `bail!` loud before writing rather than emit a broken project. No platform emits a
+non-running project anymore. Single-package scaffolding for the deferred platforms is a future
+enhancement, not a bug. See `archived/0333-*`. main 8f81d2873 + this. (2026-07-28)
 
 **#334** — hardcoded build-host Zephyr-SDK path in the test harness (`zephyr.rs:417`), the last
 tracked absolute-path leak outside the SystemModels of **#320**; also a second SSoT for both the SDK

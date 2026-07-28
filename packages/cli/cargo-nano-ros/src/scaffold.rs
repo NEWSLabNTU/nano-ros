@@ -37,38 +37,127 @@ fn maintainer_xml() -> String {
     }
 }
 
-/// Issue 0333 — the single platform → board-crate table. Every `--platform`
-/// value the CLI advertises (`nros-cli-core/src/cmd/new.rs`) MUST resolve here,
-/// or scaffolding `bail!`s loudly instead of silently emitting a board dep that
-/// is really a TOML comment (`# TODO … = { … }` — a whole commented line, so the
-/// board dep vanished with no diagnostic). The crate names are the ones the
-/// tracked entry examples declare as their `deploy =` board target.
-struct PlatformSpec {
-    /// Board crate the generated embedded project depends on. `None` for the
-    /// host (`native`) build, which links no board crate.
-    board_crate: Option<&'static str>,
+/// Issue 0333 — how a `--platform` scaffolds a *runnable* Rust project. The
+/// blessed shapes are genuinely different per platform (a hosted std binary vs
+/// a `#![no_std]` `nros::main!()` self-bringup vs a west/Kconfig build), so this
+/// is not one template. Each variant is modeled on a tracked, compiling example.
+enum PlatformKind {
+    /// Hosted std binary: explicit `register_linked_rmw()` +
+    /// `nros::init_with_launch_auto()` + `Executor::open` + `spin_blocking`.
+    /// Models `examples/native/rust/talker`. (native, posix)
+    Hosted,
+    /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
+    /// one-line entry, `lib.rs` is the node (`nros::node!`), and
+    /// `[package.metadata.nros.entry] deploy` names the board. The runtime dep
+    /// profile differs: `CortexM` carries the cortex-m trio + a direct
+    /// `nros-rmw-zenoh`; `Esp32` carries `esp-hal`/`esp-backtrace` and lets the
+    /// board crate own the RMW. Models the baremetal / esp32 single-package
+    /// talkers.
+    SelfBringup { runtime: SelfBringupRuntime },
+    /// Not yet scaffoldable as a single package — `nros new` bails with a
+    /// pointer rather than emit a project that cannot run. The #333 follow-up.
+    Deferred {
+        /// Why, and where the current runnable example lives.
+        reason: &'static str,
+    },
 }
 
-/// Resolve a `--platform` token to its board crate, or `bail!` with the full
-/// supported set. Called once up front in [`scaffold_package`] so an
-/// unsupported platform fails before any file is written, and reused by
-/// [`scaffold_rust`] so the board dep can never degrade to a comment.
+#[derive(PartialEq)]
+enum SelfBringupRuntime {
+    /// cortex-m target: `cortex-m` + `cortex-m-rt` + `panic-semihosting`, plus a
+    /// direct `nros-rmw-zenoh = { features = ["platform-bare-metal", …] }`.
+    CortexM,
+    /// esp32c3: `esp-hal` + `esp-backtrace` (panic handler); the board crate's
+    /// default features own the RMW.
+    Esp32,
+}
+
+/// The platform → board-crate + entry-shape SSoT (issue 0333). Every
+/// `--platform` value the CLI advertises (`nros-cli-core/src/cmd/new.rs`) MUST
+/// resolve here, or scaffolding `bail!`s loudly instead of silently emitting a
+/// board dep that is really a TOML comment. `board_crate` / `deploy_token` are
+/// the values the tracked entry examples declare; `deploy_token` is what bare
+/// `nros::main!()` reads (`nros-orchestration-ir::board_path_for`).
+struct PlatformSpec {
+    board_crate: &'static str,
+    /// `[package.metadata.nros.*] deploy = "…"` token. For `Hosted` it is the
+    /// `application` deploy; for `SelfBringup` it is the `entry` deploy the
+    /// macro resolves to a board.
+    deploy_token: &'static str,
+    kind: PlatformKind,
+}
+
+/// Resolve a `--platform` token, or `bail!` with the full supported set. Called
+/// once up front in [`scaffold_package`] so an unsupported platform fails before
+/// any file is written, and reused by [`scaffold_rust`].
 fn platform_spec(platform: &str) -> Result<PlatformSpec> {
-    let board_crate = match platform {
-        "native" => None,
-        "posix" => Some("nros-board-posix"),
-        "freertos" => Some("nros-board-mps2-an385-freertos"),
-        "baremetal" => Some("nros-board-mps2-an385"),
-        "nuttx" => Some("nros-board-nuttx-qemu-arm"),
-        "threadx" => Some("nros-board-threadx-linux"),
-        "zephyr" => Some("nros-board-zephyr"),
-        "esp32" => Some("nros-board-esp32-qemu"),
+    let spec = match platform {
+        // native + posix both resolve to `nros_board_native::NativeBoard`
+        // (`board_path_for`); `nros-board-posix` is not reachable via any deploy
+        // token, so the hosted template uses `nros-board-native` for both.
+        "native" => PlatformSpec {
+            board_crate: "nros-board-native",
+            deploy_token: "native",
+            kind: PlatformKind::Hosted,
+        },
+        "posix" => PlatformSpec {
+            board_crate: "nros-board-native",
+            deploy_token: "posix",
+            kind: PlatformKind::Hosted,
+        },
+        "baremetal" => PlatformSpec {
+            board_crate: "nros-board-mps2-an385",
+            deploy_token: "mps2-an385",
+            kind: PlatformKind::SelfBringup {
+                runtime: SelfBringupRuntime::CortexM,
+            },
+        },
+        "esp32" => PlatformSpec {
+            board_crate: "nros-board-esp32-qemu",
+            deploy_token: "esp32-qemu",
+            kind: PlatformKind::SelfBringup {
+                runtime: SelfBringupRuntime::Esp32,
+            },
+        },
+        "freertos" => PlatformSpec {
+            board_crate: "nros-board-mps2-an385-freertos",
+            deploy_token: "freertos",
+            kind: PlatformKind::Deferred {
+                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
+                         see examples/qemu-arm-freertos/rust/ (issue 0333 follow-up)",
+            },
+        },
+        "nuttx" => PlatformSpec {
+            board_crate: "nros-board-nuttx-qemu-arm",
+            deploy_token: "nuttx",
+            kind: PlatformKind::Deferred {
+                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
+                         see examples/qemu-arm-nuttx/rust/ (issue 0333 follow-up)",
+            },
+        },
+        "threadx" => PlatformSpec {
+            board_crate: "nros-board-threadx-linux",
+            deploy_token: "threadx-linux",
+            kind: PlatformKind::Deferred {
+                reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
+                         see examples/threadx-linux/rust/ (issue 0333 follow-up)",
+            },
+        },
+        "zephyr" => PlatformSpec {
+            board_crate: "nros-board-zephyr",
+            deploy_token: "zephyr",
+            kind: PlatformKind::Deferred {
+                reason: "Zephyr builds through west/Kconfig with \
+                         `nros::zephyr_component_main!` in a lib-only crate, not a plain \
+                         cargo binary; see examples/zephyr/rust/ (issue 0333 follow-up)",
+            },
+        },
         other => bail!(
             "nros new: unsupported --platform '{other}'. Supported: \
              native, posix, freertos, baremetal, nuttx, threadx, zephyr, esp32."
         ),
     };
-    Ok(PlatformSpec { board_crate })
+    Ok(spec)
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +204,24 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // above) so an unsupported value fails loud before any file is written,
     // rather than silently degrading into a commented-out board dep or a
     // `deploy=` string nothing recognizes.
-    platform_spec(&cfg.platform)?;
+    let spec = platform_spec(&cfg.platform)?;
+
+    // Issue 0333 defect 2 — the Rust runnable-template rewrite covers the
+    // single-package platforms (native/posix hosted, baremetal/esp32
+    // `nros::main!()` self-bringup). The split-package (freertos/nuttx/threadx)
+    // and west/Kconfig (zephyr) shapes are a follow-up; bail before writing any
+    // file rather than emit a project that cannot run. C/C++ are unaffected —
+    // their platform delta rides `package.xml`, no per-platform cargo shape.
+    if cfg.lang == "rust"
+        && let PlatformKind::Deferred { reason } = spec.kind
+    {
+        bail!(
+            "nros new: single-package Rust scaffolding for --platform {} is not available \
+             yet — {reason}. Use native, posix, baremetal, or esp32 for a runnable Rust \
+             starter today.",
+            cfg.platform
+        );
+    }
 
     // RFC-0048 (phase-287) — a C/C++ package is written in the ament shape:
     // `build_type` is `ament_cmake` and the platform delta lives in the
@@ -699,6 +805,10 @@ fn use_case_to_pascal(s: &str) -> String {
         .collect()
 }
 
+/// Issue 0333 defect 2 — emit a *runnable* Rust starter in the current blessed
+/// idiom, dispatched by platform kind. Deferred platforms are rejected earlier
+/// in [`scaffold_package`], so only [`PlatformKind::Hosted`] and
+/// [`PlatformKind::SelfBringup`] reach here.
 fn scaffold_rust(
     name: &str,
     platform: &str,
@@ -706,66 +816,30 @@ fn scaffold_rust(
     edition_feature: &str,
     dir: &Path,
 ) -> Result<()> {
-    let mut deps = String::new();
-    let is_embedded = platform != "native";
-
-    if is_embedded {
-        // Phase 248 C5b + C5c-platform (RFC-0031) — BOTH axes lower to the BOARD
-        // crate (the board dep below carries `rmw-X` and brings the concrete
-        // `nros-platform/platform-X` impl), so the umbrella `nros` dep stays
-        // agnostic — no `platform-*`/`rmw-*`, vtable-only.
-        deps.push_str(&format!(
-            "nros = {{ version = \"*\", default-features = false, features = [\"{edition_feature}\"] }}\n",
-        ));
-        // Issue 0333 — the board dep comes from the validated table, never a
-        // fallthrough string. `is_embedded` guarantees a non-`native` platform,
-        // and every such platform has `Some(board_crate)`, so this cannot emit a
-        // commented-out dependency.
-        let board_crate = platform_spec(platform)?
-            .board_crate
-            .expect("non-native platform must carry a board crate (issue 0333)");
-        deps.push_str(&format!(
-            "{board_crate} = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
-        ));
-        deps.push_str("panic-semihosting = \"0.6\"\n");
-    } else {
-        // Phase 248 C5b + C5c-platform (RFC-0031) — native: both axes lower to
-        // `nros-board-native` (its `rmw-X` feature self-links the backend, and it
-        // brings `nros-platform/platform-posix`); `nros` stays agnostic.
-        deps.push_str(&format!(
-            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"{edition_feature}\"] }}\n\
-             # nros-board-native = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
-        ));
+    let spec = platform_spec(platform)?;
+    match &spec.kind {
+        PlatformKind::Hosted => {
+            scaffold_rust_hosted(name, &spec, rmw_feature, edition_feature, dir)
+        }
+        PlatformKind::SelfBringup { runtime } => {
+            scaffold_rust_self_bringup(name, &spec, runtime, edition_feature, platform, dir)
+        }
+        // Rejected before any file is written (see `scaffold_package`).
+        PlatformKind::Deferred { .. } => {
+            unreachable!("Deferred platforms bail in scaffold_package")
+        }
     }
+}
 
-    let cargo_toml = format!(
-        r#"[package]
-name = "{name}"
-version = "0.1.0"
-edition = "2024"
-
-[workspace]
-
-[[bin]]
-name = "{name}"
-path = "src/main.rs"
-
-[dependencies]
-{deps}
+/// Shared size/speed profiles + the `nros ws sync` note appended to every
+/// generated `Cargo.toml`.
+const CARGO_PROFILES: &str = r#"
 # nano-ros crates are not published to crates.io (RFC-0040) — the `version = "*"`
 # requirements above are patched, not resolved from crates.io. Run `nros ws sync`
 # (with NROS_REPO_DIR set) to write the nros-managed [patch.crates-io] block here
 # (path deps into your nano-ros checkout + any generated msg crates), then build.
 
-# Phase 204.15 inc 3 — named size/speed profiles so the plain-cargo path honours
-# the same intent as `[build].optimize` (`cargo build --profile
-# size|speed`), no hand-editing. (panic is left to the target/profile — embedded
-# triples are already abort; host keeps its default.)
-#
-# Phase 204.3 — `opt-level = "s"`, NOT `"z"`: on smoltcp/IP examples `-Oz`'s
-# weaker DCE keeps a non-inlined socket-buffer accessor that defeats opt-3's
-# per-socket dead-buffer elimination (grew `.bss` +24 KB on a measured talker);
-# `"s"` shrinks `.text` *more* and preserves the DCE.
+# Named size/speed profiles (Phase 204.15): `cargo build --profile size|speed`.
 [profile.size]
 inherits = "release"
 opt-level = "s"
@@ -778,53 +852,267 @@ inherits = "release"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-"#
+"#;
+
+/// Hosted (native/posix) — a plain `fn main()` that registers the linked RMW,
+/// opens an executor, and spins a String talker. Models
+/// `examples/native/rust/talker`.
+fn scaffold_rust_hosted(
+    name: &str,
+    spec: &PlatformSpec,
+    rmw_feature: &str,
+    edition_feature: &str,
+    dir: &Path,
+) -> Result<()> {
+    let deploy = spec.deploy_token;
+    let cargo_toml = format!(
+        r#"[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[[bin]]
+name = "{name}"
+path = "src/main.rs"
+
+# RFC-0048 — hosted application; the deploy target is the host.
+[package.metadata.nros.application]
+deploy = ["{deploy}"]
+
+[features]
+# RMW is a build-time choice (never source). The default is the backend you
+# passed to `nros new`; switch with `--no-default-features --features rmw-<x>`.
+default = ["{rmw_feature}"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-native/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-native/rmw-xrce"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-native/rmw-cyclonedds"]
+
+[dependencies]
+nros = {{ version = "*", default-features = false, features = ["std", "rmw-cffi", "{edition_feature}"] }}
+nros-platform-cffi = {{ version = "*", features = ["posix-c-port"] }}
+nros-board-native = {{ version = "*", default-features = false }}
+nros-rmw-zenoh = {{ version = "*", default-features = false, features = ["std", "platform-posix", "{edition_feature}"], optional = true }}
+nros-rmw-xrce-cffi = {{ version = "*", default-features = false, features = ["std"], optional = true }}
+nros-rmw-cyclonedds-sys = {{ version = "*", features = ["platform-posix"], optional = true }}
+std_msgs = {{ version = "*", default-features = false }}
+log = "0.4"
+env_logger = "0.11"
+{CARGO_PROFILES}"#
     );
     fs::write(dir.join("Cargo.toml"), cargo_toml)?;
 
-    let main_rs = if is_embedded {
-        // Issue 0333 — name the board crate this project actually depends on
-        // (resolved above), instead of a hardcoded example crate the generated
-        // Cargo.toml may not carry.
-        let board_mod = platform_spec(platform)?
-            .board_crate
-            .expect("non-native platform must carry a board crate (issue 0333)")
-            .replace('-', "_");
-        format!(
-            r#"#![no_std]
-#![no_main]
+    let main_rs = format!(
+        r#"//! Generated by `nros new {name}` — a hosted nano-ros talker.
+//!
+//! Publishes `std_msgs/String` ("Hello World: N") on `/chatter` once a second.
+//! The RMW backend is linked at build time (feature-selected) and registered
+//! here before the executor opens — selection is build/config, never source.
 
+use core::fmt::Write as _;
+
+use log::{{error, info}};
 use nros::prelude::*;
-// TODO: import your board crate ({board_mod}) and drive its entry.
-// use {board_mod}::*;
-use panic_semihosting as _;
+use std_msgs::msg::String as StringMsg;
 
-// The board's C startup (`Reset_Handler`) jumps to this `main` symbol.
-#[unsafe(no_mangle)]
-extern "C" fn main() -> ! {{
-    // TODO: drive your board's entry, e.g. `<Board>::run_bare(Config::default(),
-    //   |_cfg| {{ /* open an Executor, create nodes/pubs/subs, spin… */
-    //   Ok::<(), &'static str>(()) }});
-    loop {{}}
+fn main() {{
+    // Register the RMW backend the build linked (idempotent; before the executor).
+    nros_board_native::register_linked_rmw();
+    env_logger::init();
+
+    // Launch-aware init: picks up ROS_DOMAIN_ID / NROS_LOCATOR / RMW_IMPLEMENTATION
+    // from the environment, else the standard defaults.
+    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let cfg = ctx.config("{name}");
+    let mut executor: Executor = Executor::open(&cfg).expect("failed to open session");
+
+    let publisher = {{
+        let mut node = executor.create_node("{name}").expect("failed to create node");
+        node.create_publisher::<StringMsg>("/chatter")
+            .expect("failed to create publisher")
+    }};
+
+    let mut count: i32 = 0;
+    executor
+        .register_timer(nros::TimerDuration::from_millis(1000), move || {{
+            count = count.wrapping_add(1);
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {{count}}");
+            match publisher.publish(&msg) {{
+                Ok(()) => info!("Publishing: '{{}}'", msg.data),
+                Err(e) => error!("Publish error: {{:?}}", e),
+            }}
+        }})
+        .expect("failed to register publish timer");
+
+    executor
+        .spin_blocking(SpinOptions::default())
+        .expect("spin_blocking error");
 }}
 "#
-        )
-    } else {
-        format!(
-            r#"fn main() {{
-    println!("Hello from {name}!");
-}}
-"#
-        )
-    };
+    );
     fs::write(dir.join("src/main.rs"), main_rs)?;
-
-    if is_embedded {
-        write_default_config_toml(dir)?;
-        write_cargo_config(dir, platform)?;
-    }
-
     Ok(())
+}
+
+/// Self-bringup (baremetal/esp32) — `main.rs` is the one-line `nros::main!()`
+/// Form-1 entry, `lib.rs` is the node. The macro reads
+/// `[package.metadata.nros.entry] deploy` to resolve the board. Models the
+/// single-package `examples/qemu-arm-baremetal/rust/talker` / esp32 talker.
+fn scaffold_rust_self_bringup(
+    name: &str,
+    spec: &PlatformSpec,
+    runtime: &SelfBringupRuntime,
+    edition_feature: &str,
+    platform: &str,
+    dir: &Path,
+) -> Result<()> {
+    let name_snake = name.replace('-', "_");
+    let board_crate = spec.board_crate;
+    let deploy = spec.deploy_token;
+
+    // Per-runtime dependency + entry deltas.
+    let (runtime_deps, main_rs) = match runtime {
+        SelfBringupRuntime::CortexM => (
+            format!(
+                r#"{board_crate} = {{ version = "*", features = ["board-entry"] }}
+nros-rmw-zenoh = {{ version = "*", features = ["platform-bare-metal", "{edition_feature}"] }}
+cortex-m = {{ version = "0.7", features = ["critical-section-single-core"] }}
+cortex-m-rt = "0.7"
+panic-semihosting = {{ version = "0.6", features = ["exit"] }}
+"#
+            ),
+            // The macro emits `#[cortex_m_rt::entry]` for this deploy.
+            "#![no_std]\n#![no_main]\nuse panic_semihosting as _;\nnros::main!();\n".to_string(),
+        ),
+        SelfBringupRuntime::Esp32 => (
+            // The esp32 board crate's default features own the RMW backend.
+            format!(
+                r#"{board_crate} = {{ version = "*" }}
+esp-hal = {{ version = "~1.0.0", features = ["esp32c3", "unstable"] }}
+esp-backtrace = {{ version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }}
+"#
+            ),
+            // esp-backtrace is the panic handler; the macro emits `#[esp_hal::main]`.
+            "#![no_std]\n#![no_main]\nuse esp_backtrace as _;\nesp_hal::esp_app_desc!();\nnros::main!();\n"
+                .to_string(),
+        ),
+    };
+
+    let cargo_toml = format!(
+        r#"[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "{name}"
+path = "src/main.rs"
+test = false
+bench = false
+
+# Self-bringup shape (issue 0100): `lib.rs` IS the node (`nros::node!(Talker)`
+# emits `register`); `main.rs` is the one-line `nros::main!()` Form-1 entry that
+# dispatches to this same crate's `register`.
+[lib]
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+# `nros::main!()` reads this key to resolve the board (nros-orchestration-ir
+# board_path_for). Every dep below is what that board needs to link + boot.
+[package.metadata.nros.entry]
+deploy = "{deploy}"
+
+[package.metadata.nros.node]
+class = "{name_snake}::Talker"
+name = "{name}"
+default_namespace = "/"
+dispatch = "deferred"
+
+[dependencies]
+nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "{edition_feature}"] }}
+{runtime_deps}nros-log = {{ version = "*", default-features = false }}
+std_msgs = {{ version = "*", default-features = false }}
+{CARGO_PROFILES}"#
+    );
+    fs::write(dir.join("Cargo.toml"), cargo_toml)?;
+    fs::write(dir.join("src/main.rs"), main_rs)?;
+    fs::write(dir.join("src/lib.rs"), self_bringup_node_lib(name))?;
+
+    write_default_config_toml(dir)?;
+    write_cargo_config(dir, platform)?;
+    Ok(())
+}
+
+/// The shared `lib.rs` node for the self-bringup shape — a `std_msgs/String`
+/// talker (`Node` + `ExecutableNode` + `nros::node!`), copied from the tracked
+/// `examples/qemu-arm-baremetal/rust/talker/src/lib.rs`. RMW/platform-agnostic:
+/// the same node compiles under every board.
+fn self_bringup_node_lib(name: &str) -> String {
+    format!(
+        r#"//! Declarative talker node — RMW/platform-agnostic application logic.
+//!
+//! `nros::node!(Talker)` emits the `register` fn that `nros::main!()` (in
+//! `main.rs`) dispatches to. The boot scaffold (reset -> BoardEntry -> executor
+//! -> spin) is owned by `nros::main!()` + the board crate; none of it is here.
+//!
+//! Publishes `std_msgs/String` ("Hello World: N") on `/chatter` once a second.
+
+#![no_std]
+
+use core::fmt::Write as _;
+
+use nros::{{
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
+    TickCtx, TimerDuration,
+}};
+use nros_log::{{Logger, nros_error, nros_info}};
+use std_msgs::msg::String as StringMsg;
+
+static LOGGER: Logger = Logger::new("{name}");
+
+pub struct Talker;
+
+impl Node for Talker {{
+    const NAME: &'static str = "{name}";
+    const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
+
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
+        nros_log::register_logger(&LOGGER);
+        let mut node = ctx.create_node(nros::NodeOptions::new("{name}"))?;
+        node.create_publisher_for_topic::<StringMsg>("/chatter")?;
+        node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        Ok(())
+    }}
+}}
+
+impl ExecutableNode for Talker {{
+    type State = i32;
+
+    fn init() -> Self::State {{
+        0
+    }}
+
+    fn on_callback(state: &mut i32, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {{
+        if callback.as_str() == "on_tick" {{
+            *state = state.wrapping_add(1);
+            let mut msg = StringMsg::default();
+            let _ = write!(msg.data, "Hello World: {{}}", *state);
+            match ctx.publish_to_topic::<StringMsg, 64>("/chatter", &msg) {{
+                Ok(()) => nros_info!(&LOGGER, "Publishing: '{{}}'", msg.data),
+                Err(e) => nros_error!(&LOGGER, "Publish failed: {{:?}}", e),
+            }}
+        }}
+    }}
+
+    fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {{}}
+}}
+
+nros::node!(Talker);
+"#
+    )
 }
 
 /// Scaffold `.cargo/config.toml` for the cortex-m cargo-built platforms
@@ -1076,21 +1364,40 @@ mod tests {
     }
 
     #[test]
-    fn rust_scaffold_uses_declared_rmw_feature() {
-        // Phase 227.4 — `--rmw xrce` must produce an xrce-wired Cargo.toml, not zenoh.
+    fn rust_scaffold_hosted_defaults_to_declared_rmw() {
+        // Phase 227.4 / issue 0333 — `--rmw xrce` makes the hosted feature set
+        // default to rmw-xrce (all three backends are wired, one is the default).
         let d = tmp();
-        scaffold_rust("foo", "freertos", "rmw-xrce", "ros-humble", d.path()).unwrap();
+        scaffold_rust("foo", "native", "rmw-xrce", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
-        assert!(toml.contains("rmw-xrce"), "expected rmw-xrce in:\n{toml}");
-        assert!(!toml.contains("rmw-zenoh"), "stray rmw-zenoh in:\n{toml}");
+        assert!(
+            toml.contains(r#"default = ["rmw-xrce"]"#),
+            "expected rmw-xrce default in:\n{toml}"
+        );
     }
 
     #[test]
-    fn rust_scaffold_native_comments_declared_rmw() {
+    fn rust_scaffold_hosted_emits_a_runnable_manual_main() {
+        // Issue 0333 defect 2 — native is the hosted shape: a real `fn main()`
+        // that registers the linked RMW and spins, NOT the retired no_mangle stub.
         let d = tmp();
         scaffold_rust("foo", "native", "rmw-cyclonedds", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
-        assert!(toml.contains("rmw-cyclonedds"), "{toml}");
+        assert!(toml.contains(r#"default = ["rmw-cyclonedds"]"#), "{toml}");
+        assert!(toml.contains("nros-board-native = {"), "{toml}");
+        let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
+        assert!(
+            main.contains("register_linked_rmw()") && main.contains("spin_blocking"),
+            "hosted main must be the runnable shape:\n{main}"
+        );
+        assert!(
+            !main.contains("no_mangle"),
+            "retired stub still emitted:\n{main}"
+        );
+        assert!(
+            !d.path().join("src/lib.rs").exists(),
+            "hosted needs no lib.rs"
+        );
     }
 
     #[test]
@@ -1148,8 +1455,8 @@ mod tests {
         );
     }
 
-    // Issue 0333 — every platform the CLI advertises must resolve to a board
-    // crate (or None for the host build); an unknown one bails.
+    // Issue 0333 — every platform the CLI advertises must resolve; an unknown
+    // one bails.
     #[test]
     fn platform_spec_covers_every_advertised_platform() {
         for p in [
@@ -1164,27 +1471,37 @@ mod tests {
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
         }
-        assert!(platform_spec("native").unwrap().board_crate.is_none());
+        // native/posix are hosted against nros-board-native (posix's deploy token
+        // resolves to NativeBoard, not nros-board-posix).
+        assert!(matches!(
+            platform_spec("posix").unwrap().kind,
+            PlatformKind::Hosted
+        ));
         assert_eq!(
-            platform_spec("threadx").unwrap().board_crate,
-            Some("nros-board-threadx-linux")
+            platform_spec("posix").unwrap().board_crate,
+            "nros-board-native"
         );
+        assert!(matches!(
+            platform_spec("baremetal").unwrap().kind,
+            PlatformKind::SelfBringup { .. }
+        ));
+        assert!(matches!(
+            platform_spec("threadx").unwrap().kind,
+            PlatformKind::Deferred { .. }
+        ));
         assert!(platform_spec("bogus").is_err());
     }
 
-    // Issue 0333 — a platform with no board arm used to emit
-    // `# TODO … = { … }`, a commented-out (vanished) board dep. Every embedded
-    // platform must now write a real dependency line.
+    // Issue 0333 defect 2 — the self-bringup shape writes a real board dep, a
+    // `[lib]`, a `nros::node!` lib.rs, and a one-line `nros::main!()` entry —
+    // never the retired commented-out dep or `no_mangle` stub.
     #[test]
-    fn scaffold_rust_emits_a_real_board_dep_never_a_comment() {
+    fn scaffold_rust_self_bringup_emits_node_lib_and_entry() {
         for (platform, crate_name) in [
-            ("threadx", "nros-board-threadx-linux"),
-            ("zephyr", "nros-board-zephyr"),
+            ("baremetal", "nros-board-mps2-an385"),
             ("esp32", "nros-board-esp32-qemu"),
-            ("freertos", "nros-board-mps2-an385-freertos"),
         ] {
             let d = tmp();
-            fs::create_dir_all(d.path().join("src")).unwrap();
             scaffold_rust("app", platform, "rmw-zenoh", "ros-humble", d.path()).unwrap();
             let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
             assert!(
@@ -1193,7 +1510,53 @@ mod tests {
             );
             assert!(
                 !toml.contains("# TODO: add board crate"),
-                "{platform}: still emits a commented-out board dep:\n{toml}"
+                "{platform}:\n{toml}"
+            );
+            assert!(toml.contains("[lib]"), "{platform}: missing [lib]:\n{toml}");
+            assert!(
+                toml.contains(r#"deploy = ""#),
+                "{platform}: missing entry deploy token:\n{toml}"
+            );
+            let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
+            assert!(main.contains("nros::main!();"), "{platform}:\n{main}");
+            assert!(
+                !main.contains("no_mangle"),
+                "{platform}: retired stub:\n{main}"
+            );
+            let lib = fs::read_to_string(d.path().join("src/lib.rs")).unwrap();
+            assert!(
+                lib.contains("nros::node!(Talker)"),
+                "{platform}: node lib missing:\n{lib}"
+            );
+        }
+    }
+
+    // Issue 0333 defect 2 — split-package (freertos/nuttx/threadx) and west
+    // (zephyr) platforms have no single-package template yet; `nros new` must
+    // bail before writing any file, not emit a project that cannot run.
+    #[test]
+    fn scaffold_package_rust_defers_split_and_zephyr_platforms() {
+        for (i, platform) in ["freertos", "nuttx", "threadx", "zephyr"]
+            .into_iter()
+            .enumerate()
+        {
+            let cfg = ScaffoldConfig {
+                name: format!("pkg_deferred_0333_fixture_{i}"),
+                lang: "rust".to_string(),
+                platform: platform.to_string(),
+                rmw: "zenoh".to_string(),
+                ros_edition: "humble".to_string(),
+                use_case: "talker".to_string(),
+                force: false,
+            };
+            let err = scaffold_package(&cfg).expect_err("deferred platform must bail");
+            assert!(
+                err.to_string().contains("not available yet"),
+                "{platform}: {err}"
+            );
+            assert!(
+                !PathBuf::from(&cfg.name).exists(),
+                "{platform}: no package dir on deferred platform"
             );
         }
     }
