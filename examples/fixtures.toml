@@ -1607,6 +1607,20 @@ no_default_features = true
 features = ["rmw-xrce"]
 target_dir = "target-xrce"
 
+# issue 0322 — the client half of the MAX_GOALS stress pair. Sends more
+# concurrent goals than the server's `active_goals` table holds so a full table
+# can be shown to REJECT rather than acknowledge-and-drop. Zenoh only: the
+# assertion is about the server's goal table, which is backend-independent, so
+# a second RMW build would add sweep time without adding coverage.
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/action-client-multigoal"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
 # TLS variant (isolated target dir).
 [[fixture]]
 platform = "native"

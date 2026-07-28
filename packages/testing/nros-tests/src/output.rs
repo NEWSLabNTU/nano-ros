@@ -220,6 +220,20 @@ pub const ACTION_SERVER_READY_MARKER: &str = "Waiting for action goals";
 /// Action client log line before sending the goal (`"Sending goal"`).
 pub const ACTION_SENDING_GOAL_MARKER: &str = "Sending goal";
 
+/// Multi-goal stress fixture (`bins/action-client-multigoal`, issue 0322) —
+/// the one summary line it prints after sending every goal.
+///
+/// The whole regression lives in this line's numbers: with a server whose
+/// `active_goals` table holds `MAX_GOALS` (4), a 6-goal run must report
+/// `accepted=4 rejected=2`. Before the fix it reported `accepted=6 rejected=0`
+/// — the overflow goals were acknowledged and then dropped.
+pub const MULTIGOAL_SUMMARY_PREFIX: &str = "multigoal: summary accepted=";
+
+/// The exact summary line for a completed multi-goal run.
+pub fn multigoal_summary_line(accepted: usize, rejected: usize, total: usize) -> String {
+    format!("{MULTIGOAL_SUMMARY_PREFIX}{accepted} rejected={rejected} of {total}")
+}
+
 /// Action client log PREFIX once the server accepts the goal
 /// (`"Goal accepted by server"`). The stock demo continues
 /// `", waiting for result"` — see [`ACTION_GOAL_ACCEPTED_MARKER`] for the full

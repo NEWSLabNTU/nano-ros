@@ -2479,6 +2479,42 @@ pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
     .map(|p| p.as_path())
 }
 
+/// issue 0322 — the multi-goal client half of the `MAX_GOALS` stress pair.
+/// Sends more concurrent goals than the server's `active_goals` table holds
+/// and reports each acceptance verdict, so "full table rejects" can be
+/// distinguished from "full table acknowledges and drops". Pair with
+/// [`build_action_server_concurrent`], which holds goals across spins.
+pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_BIN,
+        other => {
+            return Err(TestError::BuildFailed(format!(
+                "action-client-multigoal has no {other:?} fixture build"
+            )));
+        }
+    };
+    cell.get_or_try_init(|| {
+        let root = project_root();
+        let dir = root.join("packages/testing/nros-tests/bins/action-client-multigoal");
+        let profile = cargo_target_profile_dir();
+        let binary = dir.join(format!(
+            "{}/{profile}/action-client-multigoal",
+            rmw.target_dir()
+        ));
+        require_prebuilt_binary(&binary)
+    })
+    .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the multi-goal action-client binary (Zenoh).
+#[rstest::fixture]
+pub fn action_client_multigoal_binary() -> PathBuf {
+    build_action_client_multigoal(Rmw::Zenoh)
+        .expect("Failed to build action-client-multigoal (zenoh)")
+        .to_path_buf()
+}
+
 /// rstest fixture that provides the concurrent action-server fixture binary
 /// (Zenoh build).
 #[rstest::fixture]

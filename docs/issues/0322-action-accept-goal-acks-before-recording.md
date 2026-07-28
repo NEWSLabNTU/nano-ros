@@ -100,9 +100,50 @@ clean rejection instead of a silent drop. It is a const generic on
 touches the C and C++ opaque-size mirrors (`nros-c/src/opaque_sizes.rs:56`
 already hardcodes the assumption). Left open as follow-up.
 
-## Coverage gap (honest)
+## Coverage gap — CLOSED (2026-07-28)
 
-**No test exercises the 5th goal**, and none can today. `ActionServerCore`
+The gap below was closed by building the missing fixture; kept for the record
+of what was missing and why.
+
+### `bins/action-client-multigoal` + `tests/action_multigoal.rs`
+
+The client half of a stress pair. It sends 6 goals (`MAX_GOALS` + 2) at
+`order = 40` — large enough that earlier goals are still executing while the
+later ones are sent — and prints one summary line with the acceptance verdicts.
+
+`send_goal` is single-in-flight per client, so the handshakes are sequential;
+the goals still overlap **on the server**, which is what fills the table. The
+server half already existed: `bins/action-server-concurrent` advances every
+tracked goal one step per spin rather than running one to completion inline.
+(The stock example server does the latter, which is why goals never accumulate
+against it — that is the reason `tests/actions.rs:163` recorded multi-goal as
+untestable.)
+
+### Mutation-verified, through the harness
+
+The pair distinguishes the two behaviours directly:
+
+| | accepted | rejected |
+| --- | --- | --- |
+| fix reverted | **6** | 0 |
+| fix restored | **4** | 2 |
+
+Both observed via `cargo nextest run -p nros-tests --test action_multigoal`:
+the test FAILS on the buggy build with
+`expected exactly MAX_GOALS (4) goals accepted, got 6`, and PASSES on the fixed
+one. So it is a regression gate, not a smoke test that happens to pass.
+
+An incidental confirmation: the first run after restoring the fix still failed,
+because the fixture binary was stale from the reverted build — the test caught
+a museum binary exactly as the fixture-staleness discipline predicts.
+
+Wired into `examples/fixtures.toml` (zenoh only — the assertion is about the
+server's goal table, which is backend-independent, so a second RMW build would
+cost sweep time without adding coverage).
+
+### Historical note
+
+**No test exercised the 5th goal** before this, and none could. `ActionServerCore`
 needs live RMW server handles, so there is no unit-test seam; and
 `tests/actions.rs:163` states the e2e limitation directly:
 
