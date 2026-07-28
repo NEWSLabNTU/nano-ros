@@ -211,3 +211,55 @@ Pushed to `NEWSLabNTU/autoware_sentinel` main as `8d099b4`, `1715492`,
 A patch script that reports success without patching is worse than one that
 fails, and this class is easy to reintroduce — the convention is recorded in
 the script.
+
+## Round 2 (2026-07-28) — 91% recovered; the pattern named
+
+Every figure below is a measured LINK, not an archive estimate.
+
+| change | bytes | side | status |
+| --- | --- | --- | --- |
+| `LARGE_PAYLOADS` rightsize | 129,024 | consumer | landed `8d099b4` |
+| newlib-nano (`--specs=nano.specs`) | 13,244 | consumer | landed `1715492` |
+| `NROS_RMW_SUBSCRIBER_SLOTS=4` | 4,056 | consumer | landed `3b37942` |
+| `ZPICO_MAX_PENDING_GETS=1` + `RING_DEPTH=2` | 8,032 | consumer | landed `3b37942` |
+| `NROS_RMW_MESSAGE_INFO_SLOTS` knob | 3,136 | **nano-ros** | landed `1570c17e7`, not yet applied |
+
+```
+168,760  as found
+ 14,404  now
+```
+
+### A correction
+
+An earlier note here said `nros_rmw_cffi`'s `SLOTS` had "no rightsizing knob".
+Wrong — `NROS_RMW_SUBSCRIBER_SLOTS` has existed since issue 0269 (default
+8 × 1 KiB = exactly the 8,192 measured). The consumer simply did not set it.
+
+### The actual finding
+
+Four of the five wins are the SAME shape: **the knob already existed and the
+consumer did not know.** This build tunes nine environment knobs with a comment
+explaining each, and still inherited ~145 KB of defaults across four separate
+features — because each feature that added a static pool added its knob
+silently.
+
+Only ONE item needed nano-ros code (`MESSAGE_INFO_SLOTS`, hardcoded at 64 while
+every neighbour was env-tunable). The rest was a discoverability failure, not a
+defaults failure.
+
+So the durable fix is not more knobs — it is making the existing ones
+enumerable: a generated table of every static pool with its env var, default,
+per-unit cost and bytes-at-default. That would have surfaced all four at once,
+and would keep surfacing them as features land. Worth more than any individual
+knob, and it is the thing this issue most argues for.
+
+## Remaining: 14,404 bytes
+
+Applying `NROS_RMW_MESSAGE_INFO_SLOTS=8` at the sentinel's next nano-ros pin
+bump takes it to ~11,268. The original good pin had 31 KB headroom, so the
+last ~11 KB is one more map round, not an architectural problem.
+
+The sentinel's firmware builds against a PINNED nano-ros checkout
+(`~/repos/nano-ros-sentinel`, at `54175c040`) that predates the knob; bumping
+it pulls in the phase-312 launch-toolchain restructure, which is too broad to
+fold into a footprint fix.
