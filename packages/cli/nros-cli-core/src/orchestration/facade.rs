@@ -304,7 +304,11 @@ fn rel_from(base: &Path, target: &Path) -> String {
     let t: Vec<_> = target.components().collect();
     let common = b.iter().zip(&t).take_while(|(x, y)| x == y).count();
     let mut out: Vec<String> = std::iter::repeat_n("..".to_string(), b.len() - common).collect();
-    out.extend(t[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
+    out.extend(
+        t[common..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().to_string()),
+    );
     if out.is_empty() {
         ".".into()
     } else {
@@ -351,7 +355,9 @@ mod tests {
         // The exact shape a real entry produces: its `nros` dep is written
         // relative to itself, and joining leaves the hops embedded.
         assert_eq!(
-            lexical_normalize(Path::new("/ws/src/native_entry/../../../packages/core/nros")),
+            lexical_normalize(Path::new(
+                "/ws/src/native_entry/../../../packages/core/nros"
+            )),
             Path::new("/packages/core/nros")
         );
         assert_eq!(

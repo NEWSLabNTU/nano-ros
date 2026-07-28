@@ -208,7 +208,11 @@ fn every_declared_component_language_has_a_producer() {
                 ComponentLanguage::Rust | ComponentLanguage::C | ComponentLanguage::Cpp
             );
             if !producible {
-                let rel = pkg.strip_prefix(&root).unwrap_or(&pkg).display().to_string();
+                let rel = pkg
+                    .strip_prefix(&root)
+                    .unwrap_or(&pkg)
+                    .display()
+                    .to_string();
                 unproducible.push(format!("{rel} [{:?}]", decl.config.language));
             }
         }

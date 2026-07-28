@@ -342,7 +342,7 @@ check: check-fast check-build
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-version-lockstep check-example-fmt \
+    check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors
@@ -1508,10 +1508,32 @@ build-workspace-embedded:
         --exclude nros-rmw-cyclonedds-sys \
         --exclude nros-rmw-cyclonedds
 
-# Format workspace code
+# Format workspace code.
+# #310 — PLAIN `cargo fmt` (never `--all`). Plain fmt stays inside the invoked
+# workspace's members; `--all` follows path-deps across workspace boundaries into
+# the vendored SUBMODULES under `packages/cli/third-party/` (nros-macros →
+# ros-launch-manifest-model, nros-orchestration-ir → …-sched), reformatting
+# another repo and leaving it `-dirty` (which then surfaces as a baffling
+# `git rebase` error). Submodules are formatted separately in their own forks.
 [private]
-format-workspace:
+format-workspace: format-cli
     cargo +{{NIGHTLY}} fmt
+
+# #310 — the in-tree `packages/cli` sub-workspace is EXCLUDED from the root
+# workspace, so plain `cargo fmt` at the repo root never reaches it; without this
+# its sources silently drift out of rustfmt-clean. Plain `cargo fmt` here formats
+# only the cli members (NOT `--all`), so the vendored submodule path-deps stay
+# untouched.
+[private]
+format-cli:
+    cd packages/cli && cargo +{{NIGHTLY}} fmt
+
+# #310 — gate the in-tree cli sub-workspace's rustfmt-cleanliness (it is outside
+# the root workspace that `check-workspace`'s `cargo fmt --check` covers). Plain
+# `--check` (never `--all`), so it never reaches the vendored submodules.
+[private]
+check-cli-fmt:
+    cd packages/cli && cargo +{{NIGHTLY}} fmt --check
 
 # Check workspace: formatting and clippy (no_std, native)
 # nros-c/nros-cpp/standalone RMW staticlib wrappers excluded from no_std

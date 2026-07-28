@@ -1,11 +1,44 @@
 ---
 id: 310
 title: "`cargo +nightly fmt --all` reformats vendored submodule sources, producing drive-by diffs in another repo"
-status: open
+status: resolved
+resolved_in: "phase-313"
 type: limitation
 severity: low
 area: build, tooling
 related: []
+---
+
+## Resolution (2026-07-28)
+
+The recipes now cover every nano-ros source with PLAIN `cargo fmt` (never
+`--all`), so formatting stays inside the invoked workspace and cannot cross
+path-deps into the vendored submodules — which are formatted separately in their
+own forks.
+
+- **Closed the coverage gap** that made agents reach for `--all` / a per-crate
+  `--manifest-path` by hand: the in-tree `packages/cli` sub-workspace is EXCLUDED
+  from the root workspace, so plain root `cargo fmt` never reached it and its
+  sources silently drifted out of rustfmt-clean. Added `format-cli` (plain
+  `cargo fmt` in `packages/cli`, a dep of `format-workspace`) + a `check-cli-fmt`
+  gate in `just check` (`cargo fmt --check` there). Both are plain, so they format
+  only cli members and never the submodule path-deps. Committed the baseline
+  normalization the drift had accumulated (`orchestration/{facade,mod}.rs`,
+  `tests/example_metadata_coverage.rs`).
+- **Documented the `--all` hazard** in the `format-workspace` recipe comment:
+  `--all` follows path-deps across workspace boundaries into
+  `packages/cli/third-party/` (nros-macros → ros-launch-manifest-model,
+  nros-orchestration-ir → …-sched), so it is NOT the project's format command.
+
+Direction (2) — a root `rustfmt.toml ignore` — does NOT work here: those
+submodules carry their OWN `rustfmt.toml`, so rustfmt uses the nearest config and
+never consults the root's `ignore`. Direction (1) — a dirty-submodule `just check`
+gate — was not taken: it would also fire on legitimate in-progress fork edits (the
+agent commits fork changes inside the submodule before the maintainer pushes), so
+it conflicts with that workflow. Keeping every recipe plain-`cargo fmt` is the
+structural fix; `git ls-files` naturally excludes submodule contents, so any
+future file-list-driven fmt is safe by construction too.
+
 ---
 
 ## Finding (2026-07-28)
