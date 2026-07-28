@@ -533,6 +533,27 @@ mod tests {
         assert_eq!(new_state, LifecycleState::Inactive);
     }
 
+    #[test]
+    fn raw_extern_c_callbacks_drive_the_ctx_state_machine() {
+        // Issue 0335 — the raw-FFI shape the `native/rust/lifecycle-node` example
+        // used to demonstrate (a user hand-writing `extern "C"` callbacks against
+        // the C-parity seam). Relocated here as automated coverage so the example
+        // can show the safe `LifecycleCallbacks` trait instead of an FFI test.
+        unsafe extern "C" fn cb_success(_ctx: *mut c_void) -> u8 {
+            TransitionResult::Success as u8
+        }
+        let mut sm = LifecyclePollingNodeCtx::new();
+        sm.register(LifecycleCallbackSlot::Configure, Some(cb_success));
+        sm.register(LifecycleCallbackSlot::Activate, Some(cb_success));
+
+        // SAFETY: the callbacks ignore the (null) context.
+        let s =
+            unsafe { sm.trigger_transition(LifecycleTransition::Configure) }.expect("configure");
+        assert_eq!(s, LifecycleState::Inactive);
+        let s = unsafe { sm.trigger_transition(LifecycleTransition::Activate) }.expect("activate");
+        assert_eq!(s, LifecycleState::Active);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // LifecyclePollingNode tests (no_std, always available)
     // ═══════════════════════════════════════════════════════════════════════

@@ -1,9 +1,10 @@
 //! Native Lifecycle Node Example (REP-2002)
 //!
-//! Demonstrates the `lifecycle-services` feature: registers the five ROS 2
-//! lifecycle services on a node, wires up transition callbacks, and then
-//! spins indefinitely so `ros2 lifecycle set|get` can drive the state
-//! machine from another terminal.
+//! Implements the safe `nros::lifecycle::LifecycleCallbacks` trait — the Rust
+//! counterpart to rclcpp's `LifecycleNode` override shape. Registers the five
+//! ROS 2 lifecycle services on a node, wires up the transition callbacks, and
+//! spins indefinitely so `ros2 lifecycle set|get` can drive the state machine
+//! from another terminal.
 //!
 //! # Usage
 //!
@@ -23,16 +24,12 @@
 //! ros2 lifecycle set /lifecycle_demo cleanup
 //! ros2 lifecycle list /lifecycle_demo
 //! ```
-//!
-//! The transition callbacks log their invocation and return success; they
-//! are written as `extern "C" fn` so this path exercises exactly the same
-//! FFI surface the C API uses.
 
-use core::{ffi::c_void, time::Duration};
+use core::time::Duration;
 
 use nros::{
     Executor, ExecutorConfig,
-    lifecycle::{LifecycleCallbackSlot, TransitionResult},
+    lifecycle::{LifecycleCallbacks, TransitionResult},
 };
 use nros_log::{Logger, nros_info};
 
@@ -41,29 +38,36 @@ static LOGGER: Logger = Logger::new("lifecycle-node");
 
 extern crate nros_platform_cffi as _;
 
-unsafe extern "C" fn on_configure(_ctx: *mut c_void) -> u8 {
-    nros_info!(&LOGGER, "[callback] on_configure — allocating resources");
-    TransitionResult::Success as u8
-}
+/// The managed node. Implement the transitions you care about; the rest default
+/// to `Success` (`on_error` to `Failure`), exactly like rclcpp's
+/// `LifecycleNodeInterface` and the C++ `nros::LifecycleNode`.
+struct LifecycleDemo;
 
-unsafe extern "C" fn on_activate(_ctx: *mut c_void) -> u8 {
-    nros_info!(&LOGGER, "[callback] on_activate — starting work");
-    TransitionResult::Success as u8
-}
+impl LifecycleCallbacks for LifecycleDemo {
+    fn on_configure(&mut self) -> TransitionResult {
+        nros_info!(&LOGGER, "[callback] on_configure — allocating resources");
+        TransitionResult::Success
+    }
 
-unsafe extern "C" fn on_deactivate(_ctx: *mut c_void) -> u8 {
-    nros_info!(&LOGGER, "[callback] on_deactivate — pausing work");
-    TransitionResult::Success as u8
-}
+    fn on_activate(&mut self) -> TransitionResult {
+        nros_info!(&LOGGER, "[callback] on_activate — starting work");
+        TransitionResult::Success
+    }
 
-unsafe extern "C" fn on_cleanup(_ctx: *mut c_void) -> u8 {
-    nros_info!(&LOGGER, "[callback] on_cleanup — releasing resources");
-    TransitionResult::Success as u8
-}
+    fn on_deactivate(&mut self) -> TransitionResult {
+        nros_info!(&LOGGER, "[callback] on_deactivate — pausing work");
+        TransitionResult::Success
+    }
 
-unsafe extern "C" fn on_shutdown(_ctx: *mut c_void) -> u8 {
-    nros_info!(&LOGGER, "[callback] on_shutdown — finalizing");
-    TransitionResult::Success as u8
+    fn on_cleanup(&mut self) -> TransitionResult {
+        nros_info!(&LOGGER, "[callback] on_cleanup — releasing resources");
+        TransitionResult::Success
+    }
+
+    fn on_shutdown(&mut self) -> TransitionResult {
+        nros_info!(&LOGGER, "[callback] on_shutdown — finalizing");
+        TransitionResult::Success
+    }
 }
 
 fn main() {
@@ -75,23 +79,18 @@ fn main() {
     nros_log::init(nros_log::sinks::default());
     nros_info!(&LOGGER, "Lifecycle demo starting…");
 
+    // `node` is declared before `executor` so it outlives the lifecycle
+    // registration (the executor holds a context pointer to it for the run).
+    let mut node = LifecycleDemo;
+
     let config = ExecutorConfig::from_env().node_name("lifecycle_demo");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
+    // Binds the five REP-2002 services and wires each transition to the trait
+    // impl above — no `unsafe`, no `extern "C"`.
     executor
-        .register_lifecycle_services()
-        .expect("Failed to register lifecycle services");
-    nros_info!(&LOGGER, "Lifecycle services registered on /lifecycle_demo");
-
-    // Register transition callbacks on the executor-owned state machine.
-    let sm = executor
-        .lifecycle_state_machine_mut()
-        .expect("services were registered above");
-    sm.register(LifecycleCallbackSlot::Configure, Some(on_configure));
-    sm.register(LifecycleCallbackSlot::Activate, Some(on_activate));
-    sm.register(LifecycleCallbackSlot::Deactivate, Some(on_deactivate));
-    sm.register(LifecycleCallbackSlot::Cleanup, Some(on_cleanup));
-    sm.register(LifecycleCallbackSlot::Shutdown, Some(on_shutdown));
+        .register_lifecycle_node(&mut node)
+        .expect("Failed to register lifecycle node");
 
     nros_info!(
         &LOGGER,
