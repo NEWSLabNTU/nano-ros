@@ -46,12 +46,30 @@ while IFS= read -r member_pxml; do
     root="$(dirname "$src_dir")"             # <root>
     [ -f "$root/Cargo.toml" ] || continue
     ws_roots+=("$(cd "$root" && pwd)")
-# PRUNE the heavy build trees (`target/`, `generated/`, `build*/` incl the
-# vendored `_deps/` under cmake build dirs) — `-not -path` only FILTERS, find still
-# descends into them, which over a built example tree takes many minutes.
-done < <(find examples \
-    \( -name target -o -name generated -o -name 'build*' \) -prune -o \
-    -path '*/src/*/package.xml' -print 2>/dev/null)
+# `git ls-files`, NOT `find`. A `package.xml` is tracked, so this is an index
+# lookup rather than a filesystem walk, and the difference is not marginal:
+# measured on a built tree, the pruned `find` this replaces took **7m36s** to
+# return the same 232 paths `git ls-files` returns in **0.8s**. It burned 0%
+# CPU the whole time — pure I/O starvation, and this script ran that scan three
+# times, which was the bulk of a two-hour fixture build.
+#
+# Pruning did not save it. `find` must still stat every directory on the way to
+# deciding whether to prune it, so `-prune` cuts the descent but not the walk.
+# The comment that used to sit here claimed pruning made the scan fast; it did
+# not, and that claim is why the cost went unexamined for so long.
+#
+# Rule: never `find` for a file git tracks. Artifact scans (*.o, built ELFs,
+# `target/` dirs being deleted) still need `find` — git cannot see untracked
+# files — but those must be scoped to a build dir, not to `examples/`.
+#
+# ONE behaviour change, deliberate: a brand-new example whose `package.xml` is
+# not yet `git add`ed is no longer discovered. That is a visible failure (its
+# bindings simply do not generate) rather than a silent one, and staging a new
+# file before building it is already how everything else in this repo behaves.
+# It also drops the untracked `package.xml` COPIES that live under staged
+# fixture dirs, which the old scan reached whenever a `build*` prune missed
+# them.
+done < <(git ls-files 'examples/*/src/*/package.xml')
 # de-duplicate (one entry per workspace, not per member)
 if [ "${#ws_roots[@]}" -gt 0 ]; then
     mapfile -t ws_roots < <(printf '%s\n' "${ws_roots[@]}" | sort -u)
@@ -73,8 +91,10 @@ for root in "${ws_roots[@]}"; do
     # Only sync a workspace that actually declares message deps; a deps-less
     # workspace (e.g. the topic-forward bridge examples) has nothing to
     # materialise and `nros ws sync` would error on it.
-    member_deps="$(find "$root" \( -name target -o -name generated -o -name 'build*' \) -prune -o \
-        -name package.xml -print 2>/dev/null \
+    # `$root` is absolute (set via `cd && pwd`); git pathspecs are repo-relative.
+    rel_root="${root#"$PWD"/}"
+    member_deps="$(git ls-files "$rel_root" \
+        | grep '/package\.xml$' \
         | xargs -r grep -lE '<(depend|exec_depend|build_depend)>' 2>/dev/null | wc -l)"
     [ "$member_deps" -gt 0 ] || continue
     # Drop any stale PER-MEMBER `generated/` left by an older per-pkg pass; it is
@@ -87,18 +107,17 @@ for root in "${ws_roots[@]}"; do
 done
 
 # --- 2. standalone examples: per-package `generated/` (skip workspace members) ---
-for pkg in $(find examples \
-        \( -name target -o -name generated -o -name 'build*' \) -prune -o \
-        -name package.xml -print 2>/dev/null | sort); do
+for pkg in $(git ls-files 'examples/**/package.xml' | sort); do
     dir="$(dirname "$pkg")"
     is_workspace_member "$dir" && continue
     nros_generate_rust_if_needed "$dir" "$NROS"
 done
 
 # --- 3. standalone test-bin pkgs (nros-bench / nros-tests/bins / nros-smoke) ---
-for pkg in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
-                 \( -name target -o -name generated -o -name 'build*' \) -prune -o \
-                 -name package.xml -print 2>/dev/null | sort); do
+for pkg in $(git ls-files \
+        'packages/testing/nros-bench/**/package.xml' \
+        'packages/testing/nros-tests/bins/**/package.xml' \
+        'packages/testing/nros-smoke/**/package.xml' | sort); do
     dir="$(dirname "$pkg")"
     nros_generate_rust_if_needed "$dir" "$NROS"
 done

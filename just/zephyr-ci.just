@@ -126,11 +126,23 @@ build-fixtures:
         if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ] || [ ! -d "$dir/generated" ]; then
             echo "    ws sync: $dir"
             mkdir -p "$dir/build"
-            NROS_REPO_DIR="$(pwd)" "$nros_cli" sync "$dir"
+            # issue 0318 — `--no-metadata`, same reason as the `build-one`
+            # rust/* branch in zephyr-dev.just, which is where that fix landed.
+            # This second call site was missed, so the fixture lane still hit
+            # it: the source-metadata refresh compiles a host probe that
+            # path-deps the example, dragging in the `zephyr` crate, whose
+            # build.rs needs `DOTCONFIG` from a Zephyr cmake configure that has
+            # not run and cannot (this sync is its prerequisite). The probe is
+            # INAPPLICABLE to a Zephyr leaf, not merely slow. Codegen — the
+            # reason this preflight exists — is unaffected.
+            NROS_REPO_DIR="$(pwd)" "$nros_cli" sync --no-metadata "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             touch "$stamp"
         fi
-    done < <(find examples/zephyr/rust -mindepth 2 -maxdepth 2 -name package.xml | sort)
+    # `git ls-files`, not `find` — a package.xml is tracked, so this is an index
+    # lookup. See scripts/regenerate-bindings.sh for the measurement that motivated
+    # the rule (a pruned scan of examples/ cost 7m36s for what git returns in 0.8s).
+    done < <(git ls-files 'examples/zephyr/rust/*/package.xml' | sort)
     # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
     # which needs nros-codegen on the host. Cross builds (every Zephyr
     # board target) can't build it with the cross toolchain, so build

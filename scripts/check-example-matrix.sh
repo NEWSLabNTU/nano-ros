@@ -62,9 +62,11 @@ while IFS= read -r dir; do
   fi
   failures+=("$dir")
 done < <(
-  find examples -mindepth 3 -maxdepth 3 -type d |
-    awk -F/ -v re="$rmw_names" '$4 ~ re { print }' |
-    sort
+  # Derived from tracked paths rather than walked: `find` over examples/ stats
+  # every build tree on the way down (7m36s vs 0.8s, measured).
+  git ls-files examples |
+    awk -F/ -v re="$rmw_names" 'NF>=5 && $4 ~ re { print $1"/"$2"/"$3"/"$4 }' |
+    sort -u
 )
 
 if (( ${#failures[@]} > 0 )); then
@@ -96,13 +98,13 @@ require_readme() {
 # dir under examples/).
 while IFS= read -r dir; do
   require_readme "$dir"
-done < <(find examples -mindepth 1 -maxdepth 1 -type d | sort)
+done < <(git ls-files examples | awk -F/ 'NF>=3 { print $1"/"$2 }' | sort -u)
 
 # Tier 3: every workspace (base <lang> + ws-*), bridge and template.
 while IFS= read -r dir; do
   require_readme "$dir"
-done < <(find examples/workspaces examples/bridges examples/templates \
-           -mindepth 1 -maxdepth 1 -type d | sort)
+done < <(git ls-files examples/workspaces examples/bridges examples/templates \
+           | awk -F/ 'NF>=4 { print $1"/"$2"/"$3 }' | sort -u)
 
 if (( ${#readme_failures[@]} > 0 )); then
   echo "Missing README.md (RFC-0026 README tiers):" >&2

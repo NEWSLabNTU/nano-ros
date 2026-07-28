@@ -137,11 +137,20 @@ _nros_cli_assert_fresh() {
     # First cli source newer than the binary → a rebuild is owed. Prune the
     # non-input trees (matches `setup-cli`): target/generated build output,
     # testing_workspaces cli-test fixtures, vendored third-party submodules.
-    local src_newer
-    src_newer="$(find "$co_root/packages/cli" \
-        \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
-        \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
-        -newer "$co_bin" -print -quit 2>/dev/null)"
+    local src_newer _f
+    # `git ls-files` + an mtime walk, NOT `find`. Same reason as everywhere else
+    # (see scripts/check-no-tracked-file-find.sh): these are tracked sources, so
+    # the index knows them and no filesystem walk is needed. 0.52s -> 0.022s.
+    # `generated`/`target` need no exclusion here — they are gitignored, so the
+    # index never had them. `third-party`/`testing_workspaces` still do: they
+    # ARE tracked but are not nros build inputs, and a parallel session touching
+    # them must not force a rebuild.
+    src_newer=""
+    while IFS= read -r _f; do
+        if [ "$_f" -nt "$co_bin" ]; then src_newer="$_f"; break; fi
+    done < <(git ls-files "$co_root/packages/cli" \
+        | grep -E '\.rs$|Cargo\.(toml|lock)$' \
+        | grep -vE '/(third-party|testing_workspaces)/')
     [ -z "$src_newer" ] && return 0
     echo "[ERROR] in-tree nros CLI is STALE — source '$src_newer' is newer than '$co_bin'." >&2
     echo "        A stale CLI silently breaks workspace planning + codegen (issue #197: it can" >&2

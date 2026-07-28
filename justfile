@@ -275,12 +275,16 @@ _cmake-cargo-stale-guard build_dir:
     set -e
     BUILD_DIR="{{build_dir}}"
     [ -d "$BUILD_DIR" ] || exit 0
-    SRC_HASH=$(find \
+    # `git ls-files`, not `find` — these are tracked sources, so the index
+    # already knows them and no walk is needed. `target/` needs no pruning
+    # either: it is gitignored, so it was never in the index.
+    SRC_HASH=$(git ls-files \
         packages/core \
         packages/xrce/nros-rmw-xrce \
         packages/zpico/nros-rmw-zenoh \
-        -name '*.rs' -type f -print0 2>/dev/null \
-        | sort -z \
+        | grep '\.rs$' \
+        | sort \
+        | tr '\n' '\0' \
         | xargs -0 sha1sum 2>/dev/null \
         | sha1sum | cut -d' ' -f1)
     STAMP="$BUILD_DIR/.shared-cores-hash"
@@ -2295,9 +2299,19 @@ setup-cli:
     # `testing_workspaces`/`third-party` pruned too — cli-test fixtures and the
     # vendored submodules are NOT nros build inputs, and a parallel session
     # touching them shouldn't force a rebuild (or trip the cargo.sh #197 guard).
-    stale_src="$(find "$root/packages/cli" \
-        \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
-        \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) -newer "$bin" -print -quit 2>/dev/null)"
+    # `git ls-files` + an mtime walk, NOT `find`. Same reason as everywhere else
+    # (see scripts/check-no-tracked-file-find.sh): these are tracked sources, so
+    # the index knows them and no filesystem walk is needed. 0.52s -> 0.022s.
+    # `generated`/`target` need no exclusion here — they are gitignored, so the
+    # index never had them. `third-party`/`testing_workspaces` still do: they
+    # ARE tracked but are not nros build inputs, and a parallel session touching
+    # them must not force a rebuild.
+    stale_src=""
+    while IFS= read -r _f; do
+        if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
+    done < <(git ls-files "$root/packages/cli" \
+        | grep -E '\.rs$|Cargo\.(toml|lock)$' \
+        | grep -vE '/(third-party|testing_workspaces)/')
     if [ -x "$bin" ] && [ -z "$stale_src" ]; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow
@@ -2356,9 +2370,19 @@ setup-launch-resolve:
     # main rather than a museum binary. Same class as issue 0196: a build-side
     # probe that misses an input the build consumes.
     if [ -x "$bin" ]; then
-        stale_src="$(find "$crate" "$root/packages/cli/third-party/ros-launch-resolve" \
-            -name target -prune -o \
-            \( -name '*.rs' -o -name 'Cargo.toml' \) -newer "$bin" -print -quit 2>/dev/null)"
+        # `git ls-files` + mtime walk, not `find`. The vendored resolver tree
+        # is a SUBMODULE, so `git ls-files` must be run inside it — from the
+        # superproject the index holds only the gitlink, which would silently
+        # match nothing and make every pin bump look current. That is the exact
+        # museum-binary failure this probe exists to catch, so it is checked
+        # explicitly rather than assumed.
+        _res="$root/packages/cli/third-party/ros-launch-resolve"
+        stale_src=""
+        while IFS= read -r _f; do
+            if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
+        done < <( { git ls-files "$crate" | grep -E '\.rs$|Cargo\.toml$'
+                    git -C "$_res" ls-files | grep -E '\.rs$|Cargo\.toml$' \
+                        | sed "s|^|$_res/|" ; } )
         if [ -z "$stale_src" ]; then
             exit 0
         fi
