@@ -1,6 +1,7 @@
 # Phase 314 — one feature-set SSoT for every language
 
-**Status (2026-07-28): COMPLETE.** W1–W5 landed; issue 0311 closes. Fixes issue 0311. Unblocks multi-edition ROS
+**Status (2026-07-28): W1–W5 landed; issue 0311 closes. ONE acceptance item
+open** — the Rust path still hand-lists capability features (see Acceptance). Fixes issue 0311. Unblocks multi-edition ROS
 support and image-level selectable capabilities (`param-services`,
 `lifecycle-services`, `safety-e2e`).
 
@@ -218,11 +219,29 @@ recording: a gate whose heuristics are wrong teaches people to ignore it.
 
 ## Acceptance
 
-- [ ] `nros-c` and `nros-cpp` honour the configured ROS edition; no `ros-humble`
-      literal survives in cmake.
-- [ ] Exactly one feature-list computation, with the threadx board split intact.
-- [ ] No Rust leaf names a `ros-*` feature; the scaffold does not emit one.
+- [x] `nros-c` and `nros-cpp` honour the configured ROS edition; no `ros-humble`
+      literal survives in cmake. *(gate-enforced)*
+- [x] Exactly one feature-list computation, with the threadx board split intact.
+- [x] No Rust leaf names a `ros-*` feature; the scaffold does not emit one
+      (`scaffold_rust` already takes the edition as a parameter). *(gate-enforced)*
 - [ ] A capability declared in `system.toml` enables its feature on the C, C++
-      and Rust paths alike.
-- [ ] A gate in `just check` fails when the paths disagree.
-- [ ] Issue 0311 closes.
+      **and Rust** paths alike.
+      **C and C++ done; RUST NOT DONE.** A Rust entry still hand-lists
+      `param-services` in its own `Cargo.toml`
+      (`examples/workspaces/ws-params-rust/src/native_entry`), so declaring
+      `[param_services]` in `system.toml` does not enable the cargo feature —
+      the two are kept in sync by hand. Closing this means `nros sync` (or the
+      `nros::main!` bake) deriving the entry's feature list from the declared
+      capabilities, which is a Rust-side change this phase did not attempt.
+- [x] A gate in `just check` fails when the paths disagree.
+- [x] Issue 0311 closes.
+
+## Known deviation
+
+The `posix` special case is KEPT rather than removed. On hosted builds
+`param-services` / `lifecycle-services` stay always-on, because the C++ executor
+headers call the gated C entry points and an example using them must link
+whether or not the system declared the axis. It is now a SUPERSET of the
+declared set rather than the only source, so nothing regresses — but the
+original acceptance wording ("the posix-only special case is gone") is not met.
+Removing it needs every hosted example audited first.
