@@ -329,31 +329,48 @@ int test_ext_three_word_emission() {
 // placeholder, so std_msgs/Header never tripped it — only nested members
 // LARGER than 16 do.) The fix uses the real `compute_nested_size`.
 int test_nested_msize_covers_large_member() {
+    // `kinds[]` is a PREORDER table: a node's children occupy the entries
+    // immediately after it, and a sibling is reached by skipping the previous
+    // sibling's whole subtree (`kind_span`). `inner` therefore always equals
+    // `idx + 1` — that is what `push_field_type` emits, and `kind_span`
+    // assumes it. #0267 introduced the span-stepping walk; this table was
+    // written in the older flat layout (both top-level fields at [0],[1] with
+    // children appended afterwards and the two `Small` subtrees ALIASED onto
+    // one another), which the walker cannot express: stepping from `inner=4`
+    // by `kind_span(4)=5` lands on [9] and then runs off the end, so the
+    // build failed `UnsupportedFieldType` (-1002). See issue 0319.
     NrosFieldKindDescriptor kinds[] = {
-        // [0] Small (top field "a")  — 2 int32 children at [2],[3]
-        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
-        // [1] Large (top field "big") — 6 children at [4]..[9]
+        // [0] Small (top field "a") — children [1],[2]
+        {kKindNested, {0, 0, 0}, 2, 1, "test_msgs/msg/Small"},
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [1] Small.x
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [2] Small.y
+        // [3] Large (top field "big") — 6 children: [4], [7], [10]..[13]
         {kKindNested, {0, 0, 0}, 6, 4, "test_msgs/msg/Large"},
-        // [2],[3] Small.{x,y}
-        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
-        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
-        // [4],[5] Large.{a,b} — each a Small (children at [2],[3])
-        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
-        {kKindNested, {0, 0, 0}, 2, 2, "test_msgs/msg/Small"},
-        // [6]..[9] Large's 4 float32 members
+        // [4] Large.a : Small — children [5],[6]
+        {kKindNested, {0, 0, 0}, 2, 5, "test_msgs/msg/Small"},
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [5]
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [6]
+        // [7] Large.b : Small — children [8],[9]. A SECOND copy: a preorder
+        // table cannot share a subtree, so the two `Small` members are spelled
+        // out separately rather than both pointing at [1],[2].
+        {kKindNested, {0, 0, 0}, 2, 8, "test_msgs/msg/Small"},
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [8]
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},   // [9]
+        // [10]..[13] Large's 4 float32 members
         {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
         {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
         {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
         {kKindFloat32, {0, 0, 0}, 0, 0, nullptr},
     };
+    // "big"'s kind index is 3, NOT 1: [1],[2] are "a"'s children.
     NrosFieldDescriptor fields[] = {
         {"a", 0, 0},
-        {"big", 16, 1},
+        {"big", 16, 3},
     };
 
     int err = 0;
     const void* raw = nros_cyclonedds_build_descriptor_from_schema("test_msgs/msg/Repro", fields, 2,
-                                                                   kinds, 10, 0u, &err);
+                                                                   kinds, 14, 0u, &err);
     EXPECT(raw != nullptr, "bridge returned NULL, err=%d", err);
     const auto* desc = static_cast<const dds_topic_descriptor_t*>(raw);
 

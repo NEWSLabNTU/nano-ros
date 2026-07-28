@@ -162,6 +162,14 @@ user-facing TEMPLATES. Fixed at the seam: nros-cpp normalizes an empty hash to t
 `TypeHashNotSupported`. The QoS cells now assert both endpoints (serialized — discovery is a shared
 resource). See `0312-*`. (2026-07-28)
 
+Recently resolved: **#319** — `cyclonedds-ci` was red on main for two days, so `just ci` could not
+pass. `dynamic_bridge_seq_nested` failed `-1002 UnsupportedFieldType`. The #267 fix is CORRECT; its
+regression test hand-built the `kinds[]` table in the pre-#267 flat layout (top-level fields at
+[0],[1], children appended, the two `Small` subtrees ALIASED), which the preorder walker cannot
+express — `emit_nested_body` starts at `k.inner` but `kind_span` assumes `idx+1`. Table rewritten in
+preorder; production code untouched; `m_size >= 48` passes. 16/16. Landed red with the fix it guards
+and was never filed — `cyclonedds-ci` is in `just ci` but not `just check`. See `0319-*`. (2026-07-28)
+
 **#315** — after #314 swept the abandoned per-RMW trees, the only `<rmw>/` paths left in
 `examples/` are the checker's own carve-outs: `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` (a BOARD
 variant that should be `talker-aemv8r`) and px4's `rust/xrce` + `cpp/uorb`. The zephyr pair is a plain
