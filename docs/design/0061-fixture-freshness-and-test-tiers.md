@@ -12,12 +12,13 @@ everyone validated locally with `just check`).
 
 Two changes, independent but mutually reinforcing:
 
-1. **Signature on tool OUTPUT, not tool BINARY.** The workspace-fixture
+1. **Signature on toolchain OUTPUT, not tool BINARY.** The workspace-fixture
    signature currently hashes `sha256(packages/cli/target/release/nros)`. Every
    rebuild of the CLI therefore invalidates every workspace fixture, including
    rebuilds whose codegen output is byte-identical. Replace the binary hash with
-   a **codegen fingerprint** — a hash of what the tool emits — cached per binary
-   so it costs one probe run per rebuild, not one per fixture.
+   a **toolchain fingerprint** — a hash of what the tools emit, covering BOTH
+   `nros` and `nros-launch-resolve` — cached per binary so it costs one probe run
+   per rebuild, not one per fixture.
 
 2. **A tier ladder with scoped gates.** `just ci` is documented and used as the
    everyday lane but is defined as `check rust-rtos-link-check test-all`, where
@@ -88,15 +89,44 @@ skipping is how the real reds hide:
 
 ## Proposal 1 — fingerprint the output
 
-Replace `tool:nros = sha256(binary)` with `tool:nros = codegen_fingerprint`,
-defined as **the hash of what the tool emits over a fixed probe corpus**.
+Replace `tool:nros = sha256(binary)` with `toolchain = fingerprint`, defined as
+**the hash of what the toolchain emits over a fixed probe corpus**:
 
 ```
-fingerprint(nros) = sha256(
-    for each input in probe_corpus (sorted):
-        emit(nros, input)          # generate-rust / generate-c / codegen entry / ws sync
-)
+codegen_fp(nros)   = sha256( for input in msg_srv_action_corpus: emit(nros, input) )
+resolve_fp(nlr)    = sha256( for tree  in launch_corpus:         emit(nlr,  tree)  )
+
+toolchain_fp       = sha256(codegen_fp || resolve_fp)   # resolve_fp only where used
 ```
+
+### Both tools, because both emit fixture inputs (decided 2026-07-28)
+
+`nros ws sync` shells out to `nros-launch-resolve` by absolute path (RFC-0060),
+and the SystemModel that comes back **is** a fixture input — it is committed,
+consumed by `nros::main!(model = …)`, and its contents change what gets built.
+A fingerprint blind to the resolver would repeat, one layer down, exactly the
+`#182` bug it exists to prevent: a fixture built by a museum resolver verifying
+as fresh.
+
+Two failures on 2026-07-28 make this concrete:
+
+- the rebuilt `nros` passed `--bringup-root` and the installed resolver rejected
+  it (`unexpected argument '--bringup-root'`) — a skew the signature could not
+  see, because the resolver is not in it;
+- upstream's `--bringup-root` fix changed emitted models from absolute to
+  **repo-relative** paths (issue 0320) — an output change, in fixture inputs,
+  from a tool the signature does not hash.
+
+**Scope it to records that use it.** The manifest record already carries a
+bringup field, so `resolve_fp` enters the signature only for fixtures whose build
+actually runs `ws sync`. A resolver rebuild then invalidates workspace fixtures
+with a bringup and nothing else — correct, and much narrower than hashing it into
+everything.
+
+**CPython caveat.** The resolver embeds CPython, so computing `resolve_fp`
+requires a working Python environment. Where it cannot be computed, fall back to
+`sha256(resolver binary)` — degrading to today's over-approximation, never to
+"assume fresh". Fail-safe beats the optimisation.
 
 Properties that make this the right key:
 
@@ -107,15 +137,17 @@ Properties that make this the right key:
   would drift the first time someone forgets to bump it — the same class as the
   `is_phase1_supported()` predicate that issue 0343 found had gone false while
   nobody called it. Measuring the output cannot go stale.
-- **Cheap, via caching.** Key the fingerprint on the binary's hash:
+- **Cheap, via caching.** Key each fingerprint on its binary's hash:
 
   ```
-  .nros-cache/codegen-fingerprint/<sha256-of-nros-binary> -> <fingerprint>
+  .nros-cache/codegen-fingerprint/<sha256-of-nros-binary>     -> <codegen_fp>
+  .nros-cache/resolve-fingerprint/<sha256-of-resolver-binary> -> <resolve_fp>
   ```
 
   One probe run per new binary; every subsequent signature computation is a file
-  read. The probe corpus is small (one msg with each configurable shape, one srv,
-  one action — the corpus this session used ad hoc for golden diffing).
+  read. The corpora are small — one msg with each configurable shape, one srv, one
+  action (the corpus this session used ad hoc for golden diffing), and one launch
+  tree with a bringup for the resolver.
 
 ### The probe corpus doubles as a codegen golden test
 
@@ -167,7 +199,7 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 | --- | --- | --- | --- | --- | --- |
 | 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save |
 | 1 | `ci` | tier 0 + workspace/host build + **codegen golden diff** + native tests | native fixtures only | minutes | every commit, pre-push |
-| 2 | `ci-matrix` | tier 1 + one representative cell **per axis value** | that subset's fixtures | tens of minutes | diff touches `packages/core`, codegen, `cmake/` |
+| 2 | `ci-matrix` | tier 1 + a **pairwise cover** of the declared matrix | that subset's fixtures | ~20 % of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
 | 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | nightly, pre-release, on demand |
 
 Two rules make the ladder honest:
@@ -181,16 +213,47 @@ Two rules make the ladder honest:
   nobody can afford to do per task, and an instruction that cannot be followed is
   followed selectively.
 
-### Tier 2 is the missing rung, and it should be derived
+### Tier 2 is the missing rung, and it is pairwise (decided 2026-07-28)
 
-The repo already declares the matrix (`packages/testing/nros-tests/src/matrix.rs`).
-Tier 2 should be a **minimum covering set computed from it** — every platform at
-least once, every RMW at least once, every language at least once — not a
-hand-picked list that rots. Roughly 6–8 cells covers the axes.
+The repo already declares the matrix (`packages/testing/nros-tests/src/matrix.rs`),
+so tier 2 must be **computed from it**, never a hand-picked list that rots.
 
-This is the tier that would have caught most of this session's real breakage:
-the sizes-header mirror (issue 0268, C/C++ on any RTOS), the freestanding-header
-gaps (0332), the vtable ABI issues (0331).
+The axes are not independent — an RMW is not available on every platform — so
+"pairwise" here means a **set cover over the DECLARED cells**, not a covering
+array over the cartesian product:
+
+> choose a minimum subset of declared Runtime cells such that every
+> (axis_i = a, axis_j = b) pair occurring in ANY declared cell occurs in the
+> chosen subset.
+
+Greedy set cover is adequate (within a `ln n` factor, and the input is tiny).
+
+**Measured on the matrix as it stands today** — 182 Runtime cells:
+
+| pairing axes | pairs to cover | cover size | share of sweep |
+| --- | --- | --- | --- |
+| platform × lang × rmw | 55 | **31 cells** | 17 % |
+| platform × lang × rmw × kind | 96 | **37 cells** | 20 % |
+| platform × lang × rmw × workload × kind | 227 | 73 cells | 40 % |
+
+**Tier 2 pairs over platform × lang × rmw × kind — 37 cells, ~20 %.** Full 5-axis
+pairwise is 40 % of the sweep, which is not a middle tier; and the evidence says
+`workload` is the axis that does not need pairing. Every interaction defect this
+session found lives in the first three axes:
+
+- sizes-header mirror (0268) and the `#245` recurrence — platform × language;
+- freestanding-header gaps (0332) — platform × language;
+- vtable ABI / transport-ops SSoT (0331) — RMW × language;
+- storage-mode codegen (0343–0346) — language × entity kind.
+
+None was workload-specific: a `Pubsub` cell and an `Action` cell on the same
+(platform, lang, rmw) fail together. Keeping `kind` in the pairing costs 6 cells
+over the three-axis version and buys the Example-vs-Workspace distinction, which
+is where the entry/carrier wiring bugs live (0097, 0263).
+
+The cover must be **recomputed, not stored**: adding a platform to `matrix::CELLS`
+must add it to tier 2 without editing a second list. Cache the computed cover
+keyed on a hash of the cell table so the recompute is free when nothing moved.
 
 ### Change-impact routing
 
@@ -231,8 +294,15 @@ These do not depend on proposals 1–2 but bound the same cost:
 - `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
 - The codegen golden corpus is committed, and a deliberate template change fails
   tier 1 with a readable diff.
-- Tier 2's cell list is computed from `matrix::CELLS`, and adding a platform to
-  the matrix adds it to tier 2 without editing a second list.
+- Tier 2's cell list is computed from `matrix::CELLS` as a pairwise set cover
+  over platform × lang × rmw × kind, and adding a platform to the matrix adds it
+  to tier 2 without editing a second list. Regression check: the cover must
+  contain at least one cell for every declared value of each of those four axes.
+- A resolver rebuild that changes emitted SystemModels invalidates the workspace
+  fixtures **with a bringup** and no others; a resolver rebuild that does not
+  change emitted models invalidates nothing.
+- With no Python available, `resolve_fp` falls back to the resolver's binary hash
+  and the gate still refuses to call a stale fixture fresh.
 
 ## Non-goals
 
@@ -241,17 +311,30 @@ These do not depend on proposals 1–2 but bound the same cost:
 - Removing `NROS_SKIP_FIXTURE_CHECK=1`. It stays as an escape hatch; the aim is
   that it stops being routine.
 
+## Decisions
+
+**Decided 2026-07-28 (maintainer):**
+
+1. **The fingerprint covers the resolver as well as the codegen tool.** Scoped to
+   records that declare a bringup, with a binary-hash fallback where CPython is
+   unavailable. Rationale and the two 2026-07-28 failures it would have caught are
+   in Proposal 1.
+2. **Tier 2 is pairwise, over platform × lang × rmw × kind** — 37 cells, ~20 % of
+   the runtime sweep on today's matrix. Full 5-axis pairwise (adding `workload`)
+   was measured at 73 cells / 40 % and rejected as too heavy for a middle tier;
+   no interaction defect found this session was workload-specific. Numbers and
+   method in Proposal 2.
+
 ## Open questions
 
 1. **Where does the probe corpus live?** `packages/cli/rosidl-codegen/tests/fixtures/`
-   is the natural home, but the fingerprint is consumed by shell scripts in
-   `scripts/build/`. A committed corpus + a thin CLI verb is probably right;
-   worth deciding before implementation.
-2. **Does the fingerprint need to cover `nros ws sync` end-to-end**, or only the
-   emitters? Sync also shells out to `nros-launch-resolve`, whose version skew
-   caused a separate failure on 2026-07-28. Including the resolver's fingerprint
-   would catch that class too, at the cost of coupling the two tools' identities.
-3. **Tier 2's covering set** — minimum covering (fastest, ~6 cells) versus
-   pairwise (catches interaction bugs, ~15–20 cells). Pairwise is the textbook
-   answer for a 4-axis matrix; the cost difference is roughly one order of
-   magnitude in wall clock.
+   is the natural home for the codegen half, but the fingerprint is consumed by
+   shell scripts in `scripts/build/`, and the resolver half needs a launch tree
+   (a natural fit for `packages/cli/testing_workspaces/`). A committed corpus plus
+   a thin CLI verb per tool is probably right; worth settling before implementation.
+2. **Does tier 2's cover need stability across runs?** Greedy set cover is
+   deterministic for a fixed cell order, but adding one cell can reshuffle the
+   chosen set, which makes "why did this lane change?" harder to answer. A
+   lexicographic tie-break plus committing the computed cover as a reviewable
+   artifact (recomputed and diffed, not hand-edited) would fix it — at the cost of
+   a file that must not be edited by hand.
