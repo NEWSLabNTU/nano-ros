@@ -44,6 +44,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#349** — the issue-0332 vtable completeness gate refuses the **xrce backend outright**:
+`register_publisher_event`, `register_subscription_event` and `assert_publisher_liveliness` are on the
+required list, and xrce's vtable sets all three to NULL deliberately, so `nros_rmw_xrce_register()`
+returns INVALID_ARGUMENT and `register_smoke` is red on `main`. These are optional QoS/liveliness
+CAPABILITY slots — their `Option<fn>` type says so — not core transport. See `0349-*`. (2026-07-28)
+
 Recently resolved: **#348** — zpico supports only ONE zenoh session per process: `g_session` plus 51 file-scope
 statics (every registration table) are process globals, and the ~38 `zpico_*` entry points take no
 session handle, so multi-session means a breaking ABI change across 51 consuming files. Split out of
