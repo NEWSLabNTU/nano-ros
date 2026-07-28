@@ -460,22 +460,62 @@ inline void spin_some(const Node::SharedPtr& node) {
     (void)node->nros_executor().spin_once(0);
 }
 
+/// Mirror of `rclcpp::FutureReturnCode` (issue 0339).
+///
+/// `spin_until_future_complete` used to return `void`, so a caller could not
+/// tell success from timeout and the standard idiom
+///
+/// ```cpp
+/// if (rclcpp::spin_until_future_complete(node, fut) == rclcpp::FutureReturnCode::SUCCESS) { … }
+/// ```
+///
+/// could not be written against the shim at all.
+enum class FutureReturnCode {
+    SUCCESS,
+    /// The deadline passed with the future still pending.
+    TIMEOUT,
+    /// `::nros::ok()` went false (shutdown) before the future was ready.
+    INTERRUPTED,
+};
+
 // Future type is templated rather than `const auto& future` so the header
 // stays parseable under `-std=c++14` (the C++20 abbreviated-function-template
 // syntax breaks `just check-cpp`'s freestanding probe).
+//
+// issue 0339 — the bounded branch used to call `Executor::spin(timeout_ms)`
+// and never consult the future, so it BURNED THE WHOLE TIMEOUT even when the
+// future completed on the first spin: a `wait_for_service` / `send_request`
+// sequence ported from rclcpp paid the full timeout on every SUCCESSFUL call.
+// The unbounded branch directly below already had the right shape; both now
+// share it, differing only in whether a deadline exists.
 template <typename Future>
-inline void spin_until_future_complete(const Node::SharedPtr& node, const Future& future,
-                                       int32_t timeout_ms = -1) {
+inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
+                                                   const Future& future, int32_t timeout_ms = -1) {
     if (!node || !node->initialized()) {
-        return;
+        return FutureReturnCode::INTERRUPTED;
     }
-    if (timeout_ms < 0) {
-        while (::nros::ok() && !future.is_ready()) {
-            (void)node->nros_executor().spin_once(10);
+    // Poll slice: same 10 ms the unbounded loop always used.
+    constexpr int32_t kPollMs = 10;
+    const bool bounded = timeout_ms >= 0;
+    const uint64_t start_ns = nros_cpp_time_ns();
+    const uint64_t budget_ns = bounded ? static_cast<uint64_t>(timeout_ms) * 1000000ull : 0ull;
+
+    while (::nros::ok()) {
+        if (future.is_ready()) {
+            return FutureReturnCode::SUCCESS;
         }
-    } else {
-        (void)node->nros_executor().spin(static_cast<uint32_t>(timeout_ms), 10);
+        (void)node->nros_executor().spin_once(kPollMs);
+        // Re-check before the deadline test: a future that became ready on the
+        // spin just above must report SUCCESS even if the budget expired in
+        // the same slice.
+        if (future.is_ready()) {
+            return FutureReturnCode::SUCCESS;
+        }
+        if (bounded && nros_cpp_time_ns() - start_ns >= budget_ns) {
+            return FutureReturnCode::TIMEOUT;
+        }
     }
+    return FutureReturnCode::INTERRUPTED;
 }
 
 } // namespace rclcpp

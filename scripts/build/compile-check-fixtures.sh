@@ -285,6 +285,10 @@ CXX_SYNTAX_FIXTURES=(
     # phase-277 W5 — create_subscription_with_info template instantiation
     # (was an `if (false)` block inside examples/native/cpp/listener).
     "subscription_with_info"
+    # issue 0339 — the canonical rclcpp service-client idiom
+    # (`spin_until_future_complete(...) == FutureReturnCode::SUCCESS`). It did
+    # not compile at all while the shim returned void.
+    "spin_until_future_complete"
 )
 snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
 
