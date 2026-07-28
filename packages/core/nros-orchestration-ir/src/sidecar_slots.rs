@@ -142,7 +142,10 @@ mod tests {
             }]
         });
         let ((pkg, exec), slots) = slots_of_component(&doc).expect("identified");
-        assert_eq!((pkg.as_str(), exec.as_str()), ("cpp_fib_server_pkg", "fib_server"));
+        assert_eq!(
+            (pkg.as_str(), exec.as_str()),
+            ("cpp_fib_server_pkg", "fib_server")
+        );
         // 1 timer + 3 services; the 2 publishers take no callback slot.
         assert_eq!(slots, 4, "publishers must not count");
     }

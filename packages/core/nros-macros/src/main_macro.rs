@@ -3029,7 +3029,6 @@ mod custom_tasks_parser_tests {
 /// Phase 305 W3 (issue 0255) — lower one model node's `<remap>` rules into the
 /// `(from, to)` slice `nros::main!` bakes into `runtime.remaps` before that
 /// node's `register` call. Order preserved (first match wins at runtime).
-
 fn remap_bakes_for(inst: &ros_launch_manifest_model::NodeInstance) -> Vec<(String, String)> {
     inst.remaps
         .iter()
