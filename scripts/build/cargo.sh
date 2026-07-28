@@ -109,6 +109,48 @@ nros_cargo_fetch_root() {
     cargo fetch --locked
 }
 
+# #197 / codegen-transparency — assert the resolved CLI is FRESH when it is the
+# per-checkout binary (`packages/cli/target/release/nros`). A stale in-tree CLI
+# silently breaks workspace planning (a binary built before a codegen/parser edit
+# lacks the new verb, so `nros plan`/`sync` fails deep in a build with an opaque
+# error). We deliberately do NOT auto-rebuild — that would compile inside the
+# build/test path (CLAUDE.md: no compilation at run time). Instead fail LOUD +
+# immediate, at the FIRST resolution, pointing at `just setup-cli`. Centralised
+# here so EVERY `nros_cli_bin` caller gets the guard, not just the fixture lanes.
+# Args: $1 = resolved binary path. Returns 0 (fresh / not the per-checkout
+# binary / cannot reason), or 3 (stale) after emitting the loud error.
+_nros_cli_assert_fresh() {
+    local resolved="$1"
+    local co_root="${NROS_REPO_DIR:-}"
+    if [ -z "$co_root" ]; then
+        local _self="${BASH_SOURCE[0]:-$0}"
+        co_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || co_root=""
+    fi
+    [ -n "$co_root" ] || return 0
+    local co_bin="$co_root/packages/cli/target/release/nros"
+    [ -x "$co_bin" ] || return 0
+    # Only the per-checkout binary's sources are ours to reason about.
+    local res_real co_real
+    res_real="$(readlink -f "$resolved" 2>/dev/null || printf '%s' "$resolved")"
+    co_real="$(readlink -f "$co_bin" 2>/dev/null || printf '%s' "$co_bin")"
+    [ "$res_real" = "$co_real" ] || return 0
+    # First cli source newer than the binary → a rebuild is owed. Prune the
+    # non-input trees (matches `setup-cli`): target/generated build output,
+    # testing_workspaces cli-test fixtures, vendored third-party submodules.
+    local src_newer
+    src_newer="$(find "$co_root/packages/cli" \
+        \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
+        \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
+        -newer "$co_bin" -print -quit 2>/dev/null)"
+    [ -z "$src_newer" ] && return 0
+    echo "[ERROR] in-tree nros CLI is STALE — source '$src_newer' is newer than '$co_bin'." >&2
+    echo "        A stale CLI silently breaks workspace planning + codegen (issue #197: it can" >&2
+    echo "        lack parsers for newer verbs, so \`nros plan\`/\`sync\` fails deep in a build)." >&2
+    echo "        Rebuild it (NOT auto-done — compiling at build/test time is forbidden):" >&2
+    echo "            just setup-cli" >&2
+    return 3
+}
+
 nros_cli_bin() {
     # Phase 218.D.3 — resolution order:
     #   1. $NROS_CLI                                — explicit override
@@ -126,7 +168,10 @@ nros_cli_bin() {
         return 2
     fi
     if command -v nros >/dev/null 2>&1; then
-        command -v nros
+        local _path_nros
+        _path_nros="$(command -v nros)"
+        _nros_cli_assert_fresh "$_path_nros" || return 3
+        printf '%s\n' "$_path_nros"
         return 0
     fi
     # Per-checkout binary at packages/cli/target/release/nros. Use
@@ -143,6 +188,7 @@ nros_cli_bin() {
         fi
     fi
     if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
+        _nros_cli_assert_fresh "$repo_root/packages/cli/target/release/nros" || return 3
         printf '%s\n' "$repo_root/packages/cli/target/release/nros"
         return 0
     fi
@@ -203,43 +249,11 @@ nros_cli_ws_sync_available() {
 nros_require_ws_sync() {
     local bin="${1:-}"
     if [ -z "$bin" ]; then
-        bin="$(nros_cli_bin 2>/dev/null)" || true
-    fi
-    # issue #197 — a STALE in-tree CLI silently breaks WORKSPACE planning. The
-    # 287-W6 ament migration spells a component `nano_ros_add_node(...)`, which
-    # needs a matching CLI-side parser (`parse_add_node_call`); a binary built
-    # before the migration lacks it, so `nros plan` fails `missing-source-
-    # metadata` for the workspace's C nodes mid-cmake-configure (an opaque
-    # error two layers down from the real cause). The `ws sync` probe below
-    # does NOT catch this — `ws sync` is older, so a stale binary passes it.
-    # Guard staleness explicitly, fail LOUD pointing at setup-cli. Same
-    # rationale as the #181 ws-sync guard: a stale/wrong CLI is an actionable
-    # setup error, not something to let cascade into a downstream fixture death.
-    local _co_root _co_bin _bin_real _co_real _src_newer
-    _co_root="${NROS_REPO_DIR:-}"
-    if [ -z "$_co_root" ]; then
-        local _self="${BASH_SOURCE[0]:-$0}"
-        _co_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || _co_root=""
-    fi
-    _co_bin="$_co_root/packages/cli/target/release/nros"
-    _bin_real="$(readlink -f "$bin" 2>/dev/null || printf '%s' "$bin")"
-    _co_real="$(readlink -f "$_co_bin" 2>/dev/null || printf '%s' "$_co_bin")"
-    # Only assess staleness when the resolved CLI IS the per-checkout binary
-    # (we can't reason about an external/overridden binary's sources).
-    if [ -n "$_co_root" ] && [ -x "$_co_bin" ] && [ "$_bin_real" = "$_co_real" ]; then
-        # Same prune+quit scan setup-cli uses: first cli source newer than the
-        # binary means a rebuild is owed (a new subcommand/parser, or the
-        # post-rebase mtime treadmill — either way `just setup-cli` fixes it).
-        # `testing_workspaces`/`third-party` pruned (matches setup-cli): cli-test
-        # fixtures + vendored submodules are not nros build inputs.
-        _src_newer="$(find "$_co_root/packages/cli" \
-            \( -name target -o -name generated -o -name testing_workspaces -o -name third-party \) -prune -o \
-            \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
-            -newer "$_co_bin" -print -quit 2>/dev/null)"
-        if [ -n "$_src_newer" ]; then
-            echo "[ERROR] in-tree nros CLI is STALE — source '$_src_newer' is newer than '$_co_bin'. A stale CLI silently breaks workspace planning (issue #197: it can lack parsers for newer cmake verbs like nano_ros_add_node, so \`nros plan\` fails missing-source-metadata at cmake-configure). Rebuild via 'just setup-cli' before building fixtures." >&2
-            exit 1
-        fi
+        # No arg: resolve fresh. `nros_cli_bin` now runs the STALE guard itself
+        # (see `_nros_cli_assert_fresh`) and fails loud + non-zero on a stale
+        # in-tree CLI — do NOT suppress it here (issue #197). A pre-resolved `$1`
+        # was already fresh-checked by the caller's own `nros_cli_bin`.
+        bin="$(nros_cli_bin)" || exit 3
     fi
     if nros_cli_ws_sync_available "$bin"; then
         return 0
