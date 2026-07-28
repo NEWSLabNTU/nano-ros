@@ -1,128 +1,113 @@
 ---
 id: 315
-title: "Three `<rmw>/` path levels survive in examples/ behind checker carve-outs; consolidate them into `<platform>/<language>/`"
+title: "Three `<rmw>/` path levels survive in examples/ behind checker carve-outs; two of them encode deployment location, not RMW"
 status: open
 type: tech-debt
 area: build
-related: [issue-0314, issue-0295, rfc-0026]
+related: [issue-0314, issue-0295, issue-0319, rfc-0026, phase-316]
 ---
 
 ## Finding (2026-07-28)
 
-RFC-0026 already states the rule, and states it unconditionally:
+RFC-0026 states the rule unconditionally:
 
 > Phase 118 + 168 **collapsed the RMW dimension out of the path** … So one
 > `examples/zephyr/rust/talker/` builds against zenoh, xrce, or cyclonedds —
 > there are no `<rmw>/` siblings.
 
-`scripts/check-example-matrix.sh` enforces it, rejecting any
-`examples/<plat>/<lang>/<name>/` whose `<name>` matches
-`zenoh|xrce|dds|cyclonedds|uorb`. But it enforces it *with carve-outs*, and
-after issue 0314 removed every abandoned per-RMW tree, the carve-outs are the
-only `<rmw>/` paths left in the repo:
+`scripts/check-example-matrix.sh` enforces it, but *with carve-outs*. After
+issue 0314 removed every abandoned per-RMW tree, those carve-outs are the only
+`<rmw>/` paths left in the repo:
 
-| path | tracked files | live refs | status |
+| path | tracked | live refs | exemption |
 | --- | --- | --- | --- |
-| `zephyr/rust/cyclonedds/talker-aemv8r` | 12 | 10 | allowlisted |
-| `zephyr/cpp/cyclonedds/talker-aemv8r` | 9 | 18 | allowlisted |
-| `px4/rust/xrce/{offboard-companion,px4-probe,px4-stub}` | 16 | 13 | structural exemption |
-| `px4/cpp/uorb/nros-register-check` | 9 | 16 | structural exemption |
+| `zephyr/rust/cyclonedds/talker-aemv8r` | 12 | 10 | allowlist line |
+| `zephyr/cpp/cyclonedds/talker-aemv8r` | 9 | 18 | allowlist line |
+| `px4/rust/xrce/{offboard-companion,px4-probe,px4-stub}` | 16 | 13 | structural (whole platform) |
+| `px4/cpp/uorb/nros-register-check` | 9 | 16 | structural (whole platform) |
 
 ("live refs" excludes `docs/roadmap/archived/`.)
 
-The goal is to consolidate these into `<platform>/<language>/<example>` so the
-rule holds without exceptions and the checker needs no allowlist at all. The
-two groups are **not** equally settled, and the second is contested.
+## The px4 pair does not encode an RMW at all
 
-## Group 1 — zephyr cyclonedds: a plain layout violation
+The original defence (archived issue 0295) called px4's axis a "transport
+integration case". That is close, but the repo's own docs say something
+sharper. From `examples/px4/rust/xrce/README.md`:
 
-`zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` is a single-board CycloneDDS
-reference for aemv8r. The backend is not what makes it distinct — the *board*
-is. Under the current rule it should be `zephyr/{rust,cpp}/talker-aemv8r`,
-matching the existing `-aemv8r` variant-suffix convention that
-`examples/README.md` already documents (`-rtic`, `-async`, `-embassy`,
-`-aemv8r`, …).
+> *"Unlike the `px4/.../uorb/` examples (in-firmware uORB), these run on the
+> host or a peer MCU **beside** PX4."*
 
-The allowlist comment concedes the shape is accidental:
+The axis is **where the code runs** — in-firmware versus companion — and the
+backend follows from that rather than being chosen:
+
+- **In-firmware** modules share PX4's own uORB bus. uORB skips serialization
+  entirely, and that is the point: they demonstrate interop with existing PX4
+  apps. They cannot be RMW-agnostic by construction.
+- **Companion** nodes are ordinary nano-ros nodes. Their RMW is pinned to XRCE
+  because that is what PX4's `uxrce_dds_client` speaks — dictated by the peer,
+  not selected by us.
+
+So the fix is not to flatten these but to **rename the level to the axis it
+actually encodes**: `px4/cpp/firmware/…` and `px4/rust/companion/…`. Neither is
+an RMW token, so the checker's px4 structural exemption deletes itself, and the
+directory finally says what the code is instead of which backend it happens to
+speak.
+
+## The zephyr pair is a plain violation
+
+`zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` is distinguished by its **board**
+(aemv8r), not its backend. It belongs at `zephyr/{rust,cpp}/talker-aemv8r`
+under the existing variant-suffix convention (`-rtic`, `-async`, `-aemv8r`, …).
+The allowlist comment concedes the shape was accidental:
 
 > Both languages carve out — the rust sibling was **missed** when the cpp one
 > landed (same single-board reference shape).
 
-A carve-out that had to be extended because someone forgot it is a carve-out
-that is not carrying an argument.
+With both renames done, `allowed_roots` is empty and RFC-0026's rule is true as
+written, with no exceptions to explain.
 
-**Work:** `git mv` both, then update ~28 referencing files —
-`Cargo.toml`, `just/zephyr-setup.just`,
-`packages/testing/nros-tests/tests/examples_fixture_coverage.rs`,
-`scripts/check-example-matrix.sh` (drop both allowlist lines),
-`book/src/getting-started/arm-fvp.md`, RFC-0026, and the phase-217 /
-phase-275-276 roadmap notes. Mechanical, but the fixture-coverage test and the
-book page both pin the path, so it is not a pure rename.
+## Three complications found while scoping
 
-## Group 2 — px4: consolidating here reverses a deliberate decision
+**1. There is no uORB interop example to separate.** `nros-register-check` is
+not a demo — its own header says so:
 
-`px4/rust/xrce` and `px4/cpp/uorb` are exempt *structurally* — the whole
-platform is, so new px4 transport cases need no carve-out line. That exemption
-was argued, not defaulted. From archived issue 0295:
+> *"Trivial PX4 module: on launch, call `nros_rmw_uorb_register()` and log the
+> return code. The build itself is the validation."*
 
-> For PX4 this is a **false positive**: px4's directory axis is the *transport
-> integration case* (uORB vs XRCE — PX4's two native messaging surfaces), not
-> the retired RMW axis. … The dir is correct; the carve-out list is stale.
+That is a link/registration assertion, and CLAUDE.md puts non-example binaries
+under `packages/testing/`. So "separate the uORB interop examples" is really
+two jobs: move the check out of `examples/`, and **write** the interop demo (a
+nano-ros node exchanging with a stock PX4 app over uORB), which does not exist
+yet.
 
-The claim is that on PX4 these names denote something different from what they
-denote elsewhere. Off-platform, `xrce` names a nano-ros RMW backend selectable
-at build time. On PX4, uORB and XRCE are the airframe's own two messaging
-surfaces, and an example targets one or the other as an integration case —
-closer to a *platform* axis than an RMW axis.
+**2. A uORB bridge cannot look like the existing bridges.**
+`examples/bridges/` is already the right home and already states the rule — a
+bridge "spans transport slots" and so "does not belong to a single cell". But
+`tt-zenoh-to-xrce` and `tt-zenoh-to-cyclonedds` are POSIX Rust binaries, and
+uORB is an **in-process** bus: a uORB bridge must be a C++ PX4 module. The
+category still fits; the implicit "standalone POSIX binary" assumption does
+not.
 
-Two facts make this more than semantics:
+**3. PX4 already ships `uxrce_dds_client`,** which is precisely uORB →
+XRCE-DDS. A nano-ros uORB→DDS bridge would duplicate it. The non-duplicative
+framings are uORB→**Zenoh** (PX4 has nothing there), or a bridge whose point is
+the multi-RMW registry in-firmware rather than the translation itself.
+**Undecided** — this gates the bridge work item, not the renames.
 
-- **They are not the same example built two ways.** `px4/cpp/uorb` holds
-  `nros-register-check` plus a `src/modules/nros_register_check/` PX4 module
-  tree; `px4/rust/xrce` holds `offboard-companion`, `px4-probe` and `px4-stub`.
-  Disjoint sets of programs, not one role under two backends. Flattening yields
-  `px4/rust/{offboard-companion,px4-probe,px4-stub}` and
-  `px4/cpp/nros-register-check` — which loses the statement of which surface
-  each targets unless it moves into the name.
-- **`px4/cpp/uorb` is not shaped like an example.** It carries a nested
-  `src/modules/…/CMakeLists.txt` PX4 module tree, so it is not a standalone
-  copy-out project in the sense `examples/README.md` defines. Moving it is not
-  a rename; it needs a decision about what the copy-out contract means for a
-  PX4 module.
+## Also drifted
 
-So this half needs a decision recorded before any move:
+`examples/bridges/README.md` still describes the retired path form
+(`<plat>/<lang>/<rmw>/<example>`). Same drift class as the rest of this issue.
 
-1. Consolidate anyway, encoding the surface in the name
-   (`px4-offboard-companion-xrce`, `nros-register-check-uorb`, …), accepting
-   that 0295's distinction is real but preferring one layout rule with zero
-   exemptions.
-2. Keep the px4 exemption and instead make it *explicit in RFC-0026*, which
-   currently states the no-`<rmw>/` rule with no exceptions — the RFC and the
-   checker disagree today, and the checker is the one carrying the nuance.
+## Plan
 
-Option 2 is cheaper and is what the code already does; option 1 is what makes
-the rule true as written. Either is defensible, but the current state — an
-unconditional RFC plus an undocumented structural exemption — is the worst of
-both, because it is why the zephyr carve-out got extended by accident rather
-than questioned.
-
-## Fixed already (2026-07-28)
-
-Small things found while scoping this, corrected in the same commit:
-
-- **Two stale allowlist entries.** `examples/qemu-arm-baremetal/rust/dds` and
-  `examples/qemu-esp32-baremetal/rust/dds` were still listed after issue 0314
-  deleted them. Harmless (the allowlist only filters) but misleading — the same
-  drift phase-277 W7 had already pruned once. Removed.
-- **A dangling cross-reference.** The script cited
-  `docs/issues/archived/0051` for the px4 exemption; `0051-*` is the
-  deploy-target SSoT issue. The reasoning is in `archived/0295-*`. Both the
-  file-path comment and the `issue #51` inline comment now point there.
+Sequenced in **phase-316**, which implements RFC-0026. The renames (W1–W3) are
+independent of the undecided bridge question (W4), so they can land first.
 
 ## Acceptance
 
-- No `examples/<plat>/<lang>/<rmw-token>/` path remains, **or** RFC-0026 states
-  the px4 transport-axis exception explicitly and the checker's allowlist is
-  empty of everything else.
-- `scripts/check-example-matrix.sh` passes with no `allowed_roots` entries.
+- No `examples/<plat>/<lang>/<rmw-token>/` path remains.
+- `scripts/check-example-matrix.sh` passes with `allowed_roots` **empty** and
+  the px4 structural exemption in `is_allowed()` deleted.
+- RFC-0026 needs no "except" clause.
 - `just check` and the example-fixture coverage test green.

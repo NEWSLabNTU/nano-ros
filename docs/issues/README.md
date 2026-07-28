@@ -171,12 +171,14 @@ preorder; production code untouched; `m_size >= 48` passes. 16/16. Landed red wi
 and was never filed — `cyclonedds-ci` is in `just ci` but not `just check`. See `0319-*`. (2026-07-28)
 
 **#315** — after #314 swept the abandoned per-RMW trees, the only `<rmw>/` paths left in
-`examples/` are the checker's own carve-outs: `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` (a BOARD
-variant that should be `talker-aemv8r`) and px4's `rust/xrce` + `cpp/uorb`. The zephyr pair is a plain
-RFC-0026 violation whose carve-out was extended by accident; px4's is a deliberate exemption (archived
-#295: uORB/XRCE are PX4's own messaging surfaces, a transport-integration axis, not the retired RMW
-axis) that RFC-0026 does not mention — so the RFC and the checker disagree. Needs a decision, not just
-a move. See `0315-*`. (2026-07-28)
+`examples/` are the checker's own carve-outs. RESOLVED IN DESIGN: two of the three are not RMW levels
+at all. px4's `cpp/uorb` + `rust/xrce` encode WHERE THE CODE RUNS — in-firmware (shares PX4's uORB
+bus, skips serialization, interop with stock PX4 apps) vs companion (ordinary nano-ros nodes whose RMW
+is pinned by `uxrce_dds_client`) — so they become `cpp/firmware` + `rust/companion` and the checker's
+px4 exemption deletes itself. `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` is a plain violation (a
+BOARD variant) and flattens. Then `allowed_roots` is empty. Scoping also found there is no uORB
+interop example to separate — `nros-register-check` is a link assertion, not a demo — and that a uORB
+bridge can't be a POSIX binary. Sequenced in phase-316. See `0315-*`. (2026-07-28)
 
 Recently resolved: **#314** — `just zephyr build-examples` could not have worked in months: all four of
 its dependencies were broken. `build-c` had its loop deleted and reported `built successfully!` at rc=0
