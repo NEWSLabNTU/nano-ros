@@ -129,20 +129,57 @@ class Executor {
         return Result(nros_cpp_executor_ping(storage_, timeout_ms));
     }
 
-    /// Spin for a duration (blocking).
+    /// Spin until this executor is shut down (blocking) — `rclcpp::Executor::spin`.
+    ///
+    /// Issue 0338 — this verb used to mean the OPPOSITE here: `spin` was the
+    /// BOUNDED form and there was no way to say "spin forever" on an executor,
+    /// while `spin` blocks until shutdown in rclcpp, in the C API
+    /// (`nros_executor_spin`) and in Rust. A user porting rclcpp code wrote
+    /// `exec.spin()` and it did not compile; reaching for `spin(ms)` instead
+    /// silently returned early. The bounded form is now [`spin_for`].
+    ///
+    /// Exit condition: [`shutdown`] on THIS executor (the executor-scoped
+    /// analogue of rclcpp exiting when its context is shut down) — typically
+    /// from a signal handler or another thread. Returns the first non-success
+    /// `spin_once` result, or success after a clean shutdown.
+    ///
+    /// @param poll_ms  Individual spin_once timeout (default: 10ms).
+    Result spin(int32_t poll_ms = 10) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        Result last = Result::success();
+        while (initialized_) {
+            last = Result(nros_cpp_spin_once(storage_, poll_ms));
+            if (!last.ok()) return last;
+        }
+        return last;
+    }
+
+    /// Spin for a bounded duration (blocking) — rclcpp's
+    /// `spin_some(max_duration)`.
     ///
     /// Repeatedly calls `spin_once()` until `duration_ms` has elapsed.
     ///
     /// @param duration_ms  Total time to spin, in milliseconds.
     /// @param poll_ms      Individual spin_once timeout (default: 10ms).
     /// @return Result from the last spin_once call.
-    Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
+    Result spin_for(uint32_t duration_ms, int32_t poll_ms = 10) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         // Issue 0329 — the wall-clock budgeted loop (Phase 118.C: iteration-count
         // budgeting collapses when `spin_once` returns early on a signaled
         // condvar) now lives once, Rust-side, in `nros_cpp_spin_for`; forward to
         // it so this and `nros::spin()` share one implementation.
         return Result(nros_cpp_spin_for(storage_, duration_ms, poll_ms));
+    }
+
+    /// Deprecated alias for [`spin_for`] — issue 0338.
+    ///
+    /// Kept for one release so existing code compiles. The two-argument form is
+    /// unambiguous (the new `spin()` takes at most one argument), so this
+    /// overload only ever matches a call that meant the BOUNDED verb.
+    [[deprecated("bounded spin is now `spin_for(duration_ms, poll_ms)`; "
+                 "`spin()` blocks until shutdown, matching rclcpp (issue 0338)")]] Result
+    spin(uint32_t duration_ms, int32_t poll_ms) {
+        return spin_for(duration_ms, poll_ms);
     }
 
     /// Check if the executor is initialized.

@@ -201,10 +201,21 @@ inline Result executor_spin_once(Executor& exec, std::chrono::milliseconds timeo
     return exec.spin_once(static_cast<int32_t>(timeout.count()));
 }
 
-/// Executor spin (std::chrono overload, free function).
-inline Result executor_spin(Executor& exec, std::chrono::milliseconds duration,
-                            std::chrono::milliseconds poll = std::chrono::milliseconds(10)) {
-    return exec.spin(static_cast<uint32_t>(duration.count()), static_cast<int32_t>(poll.count()));
+/// Executor bounded spin (std::chrono overload, free function).
+///
+/// Issue 0338 — forwards to `spin_for`, the bounded verb; `Executor::spin()`
+/// now blocks until shutdown, as in rclcpp.
+inline Result executor_spin_for(Executor& exec, std::chrono::milliseconds duration,
+                                std::chrono::milliseconds poll = std::chrono::milliseconds(10)) {
+    return exec.spin_for(static_cast<uint32_t>(duration.count()),
+                         static_cast<int32_t>(poll.count()));
+}
+
+/// Deprecated alias for [`executor_spin_for`] — issue 0338.
+[[deprecated("bounded spin is now `executor_spin_for(...)` (issue 0338)")]] inline Result
+executor_spin(Executor& exec, std::chrono::milliseconds duration,
+              std::chrono::milliseconds poll = std::chrono::milliseconds(10)) {
+    return executor_spin_for(exec, duration, poll);
 }
 
 } // namespace nros

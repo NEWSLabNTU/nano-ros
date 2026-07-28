@@ -2013,6 +2013,18 @@ check-cpp: check-cpp-fmt
         -Ipackages/core/nros-c/include \
         -Ipackages/core/nros-platform-api/include \
         packages/core/nros-cpp/tests/compile/bind_service.cpp
+    # issue 0338 — `spin` verb SHAPE probe: `spin()` blocks until shutdown
+    # (rclcpp/C/Rust semantics) and the bounded verb is `spin_for(...)`. The
+    # defect was the shape of the API, so a compile-time assertion on which
+    # arities exist is what catches a regression.
+    echo "  - spin verb shape (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/core/nros-cpp/include \
+        -Ipackages/core/nros-c/include \
+        -Ipackages/core/nros-platform-api/include \
+        packages/core/nros-cpp/tests/compile/spin_verbs.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level

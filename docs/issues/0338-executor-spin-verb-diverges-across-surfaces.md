@@ -51,6 +51,44 @@ rename is not even internally consistent, so a C user cannot guess the verb.
    `register_*` as deprecated `static inline` aliases so existing C code still
    compiles, and mirror the chosen verb in the C++/Rust registration seams' doc text.
 
+## Part 1 LANDED (2026-07-28) — the C++ `spin` verb
+
+`Executor` now matches rclcpp, the C API and Rust:
+
+| verb | meaning |
+| --- | --- |
+| `spin(poll_ms = 10)` | blocks until this executor is shut down |
+| `spin_for(duration_ms, poll_ms = 10)` | the bounded form |
+| `spin(duration_ms, poll_ms)` | `[[deprecated]]` alias for `spin_for`, one release |
+
+The two-argument deprecated overload is unambiguous against the new one-argument
+`spin()`, so it only ever matches a call that meant the bounded verb — existing
+code compiles and gets a diagnostic naming the replacement.
+
+Exit condition for the new `spin()` is `shutdown()` on THIS executor — the
+executor-scoped analogue of rclcpp exiting when its context is shut down.
+`Executor` is the explicit (non-global) surface and deliberately does not depend
+on the global `nros::ok()`, which is what the free-function `nros::spin()` uses.
+
+`std_compat`'s `executor_spin(...)` chrono wrapper became `executor_spin_for`,
+with the old name deprecated the same way. Only ONE in-tree caller existed.
+
+**Guard:** `tests/compile/spin_verbs.cpp`, run by `just check-cpp`. It is a
+COMPILE-time probe because the defect was the SHAPE of the API — which arities
+exist and what they mean — so the assertion that catches a regression is that
+these calls type-check with these signatures. Mutation-checked: renaming the new
+`spin()` away fails it with `no matching function for call to
+'nros::Executor::spin()'`.
+
+## Part 2 NOT DONE — the C `add_*` / `register_*` spelling
+
+Unchanged: nine `nros_executor_register_*` verbs plus the odd
+`nros_executor_add_client`. The issue's prescription (settle on rclc's `add_*`,
+keep `register_*` as deprecated aliases) means renaming nine
+`#[unsafe(no_mangle)]` exports and adding nine forwarding shims so existing C
+objects still link — a broad ABI change that deserves its own pass and a
+callers sweep, not a tail-end edit. Left open for that.
+
 ## Relationship to #329
 
 #329 covers the bounded-spin *implementation* being duplicated four times across the
