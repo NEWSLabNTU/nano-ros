@@ -269,24 +269,38 @@ board-level session — the app opens its own executor.
 freertos, nuttx×2, esp32×2, mps2-an385, stm32f4). Plus a latent #292 fix
 (entity_counter → portable_atomic for riscv32imc).
 
-## Remaining — the finalization unit (cffi + orin-spe + dead-legacy sweep + W6)
-1. **cffi** — `nros-board-cffi` (the `nros_board_export!` C-ABI macro) + its two
-   tests still ride the legacy `Board`/`BoardEntry`/`DirectExec` traits to
-   dispatch kernel-spawn vs direct-exec behind the `nros_board_run` C symbol.
-   This is the one real API-surface change (config-carrying `run(cfg, closure)` →
-   the new form) — needs its own design pass, not a mechanical swap.
-2. **orin-spe** — vestigial: has the new `BoardEntry` already; the legacy
-   `impl nros_board_common::BoardInit` + the unused kernel-spawn free `run`
-   (node.rs, doc-only consumer) are dead. Deletion touches interlinked helpers
-   (`app_task_entry`, `AppContext`); **UNVERIFIABLE on this host** (Cortex-R5F /
-   NVIDIA FSP toolchain absent).
-3. **Dead family generic `run<B>`** in `nros-board-{freertos,threadx}/src/node.rs`
-   + the `pub use nros_board_common::{BoardExit,BoardInit,BoardPrint}` re-exports
-   — now UNCALLED (all boards moved to `run_bare`/`BoardEntry`; nuttx's
-   `run_generic` already gone). Delete with W6.
-4. **W6** — delete `nros-board-common::board_init` + add the `just ci` grep/lint
-   gate. Gated on 1–3 above (board_init cannot be removed while cffi/orin-spe
-   still impl its traits).
+## Finalization — DONE (2026-07-28). **Phase-313 COMPLETE.**
+
+The board API is now **two canonical surfaces, no `board_init`:**
+- **Rust:** `nros_platform::board` (`BoardInit`/`BoardPrint`/`BoardExit`/`BoardEntry`
+  + friends) — the session / executor-sizing / tiers-aware entry `nros::main!`
+  consumes. This is the canonical *internal* board API (legitimately Rust, because
+  board entry owns control-flow + compile-time sizing — not a leaf-primitive ABI).
+- **C:** `<nros/board.h>` (`nros-board-cffi`, RFC-0054 drift-gated) — the flat
+  cross-language SSoT for C/C++/any-language boards + C apps that manage their own
+  session. Emitted from a Rust board's plain fns via `nros_board_export!`.
+
+1. **cffi — DONE.** Rewrote `nros_board_export!` as a **fn-param** macro (design A):
+   a thin 1:1 mirror of the C ABI over the board's own functions (`config`/`init`/
+   `println`/`exit_*`/`run`), NO trait dependency. The `run` fn alone encodes the
+   family (direct-exec inline vs kernel-spawn task) — the old `DirectExec`/`BoardEntry`
+   split is gone. Dropped the `nros-board-common` dep. Both tests + the C-consumer
+   `c_abi` test PASS.
+2. **orin-spe — DONE** (UNVERIFIED, no Cortex-R5F/FSP host): deleted the vestigial
+   legacy `BoardInit` impl + the unused kernel-spawn free `run` + its orphaned
+   trampoline/externs. New `BoardEntry` is the sole entry.
+3. **Dead family `run<B>` — DONE:** deleted `nros-board-{freertos,threadx}/src/node.rs`
+   wholesale (entry.rs is independent) + the `mod node` / `pub use node::run` /
+   `pub use nros_board_common::{Board*}` re-exports.
+4. **W6 — DONE:** deleted `nros_board_common::board_init`; added the
+   `check-no-board-init` gate (`just check`). `ThreadxConfig` (a config trait, never
+   board_init) stays.
+
+**Verified:** nros-board-common + the freertos / threadx-riscv64 / threadx-linux
+smokes build; `logging_smoke_{freertos_mps2,threadx_riscv64,nuttx_qemu_arm,
+esp32_qemu,threadx_linux}` + `test_qemu_zenoh_large_publish` PASS; the gate reports
+board_init dead. **Unverified on this host** (no toolchain): esp32s3 (Xtensa),
+stm32f4 runtime (physical HW — compiles), orin-spe (Cortex-R5F).
 
 ### W3 — hosted / direct-exec boards
 Migrate `esp32-qemu`, `esp32s3`, `rtic-*`, `embassy-stm32f4`, `stm32f4`,
