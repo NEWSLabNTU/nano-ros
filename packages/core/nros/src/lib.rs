@@ -722,6 +722,18 @@ pub use nros_platform::DispatchStrategy;
 pub mod __macro_support {
     pub use ::nros_platform;
 
+    /// phase-314 — whether THIS `nros` build carries the parameter services.
+    ///
+    /// The `nros::main!` expansion const-asserts it when the system declares
+    /// `[param_services]`. A cfg in the entry crate cannot see this: the
+    /// feature belongs to `nros`, and the entry enables it through its
+    /// dependency, so only `nros` itself can report the answer.
+    ///
+    /// Without the assert the mismatch is SILENT — `apply_param_services` is a
+    /// no-op, the build succeeds, the image boots, and `ros2 param list`
+    /// returns nothing.
+    pub const PARAM_SERVICES_ENABLED: bool = cfg!(feature = "param-services");
+
     /// Issue 0257 — the build-time executor callback-table size
     /// (`NROS_EXECUTOR_MAX_CBS`, default 4). Re-exported so the `nros::main!`
     /// expansion can `const`-assert the model's entity count against the

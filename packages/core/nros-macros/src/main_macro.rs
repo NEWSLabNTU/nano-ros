@@ -1074,6 +1074,19 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             quote! { (#n, #v) }
         });
         quote! {
+            // phase-314 — the system DECLARED `[param_services]`, so the entry
+            // must carry the cargo feature. Without it `apply_param_services`
+            // is a no-op: the build succeeds, the image boots, and
+            // `ros2 param list` finds nothing. The declaration and the feature
+            // used to be kept in sync by hand, and nothing said when they
+            // weren't. This guard compiles in the ENTRY crate, so it sees the
+            // entry's own feature set.
+            const _: () = ::core::assert!(
+                ::nros::__macro_support::PARAM_SERVICES_ENABLED,
+                "this system declares `[param_services]` but this `nros` build does not \
+                 carry the `param-services` feature — the parameter services would be \
+                 silently dropped. Add it to this pkg's nros dependency features."
+            );
             runtime.apply_param_services(&[ #( #seed_lits ),* ]).map_err(
                 |_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister("param_services"),
             )?;

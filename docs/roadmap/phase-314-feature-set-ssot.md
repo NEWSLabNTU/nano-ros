@@ -226,13 +226,28 @@ recording: a gate whose heuristics are wrong teaches people to ignore it.
       (`scaffold_rust` already takes the edition as a parameter). *(gate-enforced)*
 - [ ] A capability declared in `system.toml` enables its feature on the C, C++
       **and Rust** paths alike.
-      **C and C++ done; RUST NOT DONE.** A Rust entry still hand-lists
+      **C and C++ done. Rust: the silent-failure half is closed, the
+      derivation half is not.** A Rust entry still hand-lists
       `param-services` in its own `Cargo.toml`
       (`examples/workspaces/ws-params-rust/src/native_entry`), so declaring
       `[param_services]` in `system.toml` does not enable the cargo feature —
-      the two are kept in sync by hand. Closing this means `nros sync` (or the
-      `nros::main!` bake) deriving the entry's feature list from the declared
-      capabilities, which is a Rust-side change this phase did not attempt.
+      the two are still kept in sync by hand.
+
+      What WAS closed is the dangerous part: the mismatch used to be silent.
+      `apply_param_services` is a no-op without the feature, so the build
+      succeeded, the image booted, and `ros2 param list` returned nothing.
+      `nros::main!` now const-asserts `__macro_support::PARAM_SERVICES_ENABLED`
+      when the system declares the axis, so a mismatch fails the build naming
+      the fix.
+
+      (A `#[cfg(not(feature = "param-services"))]` in the generated code does
+      NOT work: the feature belongs to `nros`, and the entry enables it through
+      its dependency, so only `nros` can report it. The first attempt failed on
+      a correctly-configured entry for exactly that reason.)
+
+      Deriving the entry's feature list from the declared capabilities — so the
+      two cannot disagree at all — remains open, and is a `nros sync` change
+      rather than a macro one.
 - [x] A gate in `just check` fails when the paths disagree.
 - [x] Issue 0311 closes.
 
