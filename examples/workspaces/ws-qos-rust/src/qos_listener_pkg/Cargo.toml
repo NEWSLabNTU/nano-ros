@@ -17,7 +17,6 @@ default_namespace = "/"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }
 # Re-uses the talker's `qos_profile()` so the two endpoints declare an identical

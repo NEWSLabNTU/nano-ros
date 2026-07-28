@@ -32,7 +32,6 @@ default_namespace = "/"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
 ] }
 
 [workspace]

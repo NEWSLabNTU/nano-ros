@@ -24,6 +24,5 @@ default_namespace = "/"
 nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }

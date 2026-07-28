@@ -33,7 +33,6 @@ default_namespace = "/"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }
 # Track D (A5) — a node logs via `nros_info!`; the posix board registers the default

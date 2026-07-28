@@ -31,6 +31,5 @@ type = "std_msgs/msg/Header"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }

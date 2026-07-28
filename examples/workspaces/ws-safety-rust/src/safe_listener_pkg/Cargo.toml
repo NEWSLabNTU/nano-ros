@@ -26,7 +26,6 @@ safety-e2e = []
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
     "safety-e2e",
 ] }
 std_msgs = { version = "*", default-features = false }
