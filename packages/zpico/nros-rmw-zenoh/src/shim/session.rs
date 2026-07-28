@@ -120,7 +120,12 @@ pub struct ZenohSession {
     /// an action server's five entities (3 services + feedback/status pubs)
     /// deduped to ONE and the action never assembled (`ros2 action list` empty).
     /// Starts at 1 (0 is the node's own id, `PROTO_VERSION_NODE = "0/0"`).
-    entity_counter: core::sync::atomic::AtomicU32,
+    ///
+    /// `portable_atomic::AtomicU32`, not `core`'s — riscv32imc (esp32-c3) has no
+    /// atomic-CAS ISA, so `core::sync::atomic::AtomicU32` lacks `fetch_add`;
+    /// portable-atomic supplies it (single-core fallback on the esp32 build,
+    /// native atomics everywhere else).
+    entity_counter: portable_atomic::AtomicU32,
 }
 
 impl ZenohSession {
@@ -261,7 +266,7 @@ impl ZenohSession {
             per_node_liveliness: heapless::Vec::new(),
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
-            entity_counter: core::sync::atomic::AtomicU32::new(1),
+            entity_counter: portable_atomic::AtomicU32::new(1),
         };
 
         if !config.node_name.is_empty() {
