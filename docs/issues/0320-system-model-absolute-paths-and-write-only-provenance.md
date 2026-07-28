@@ -148,3 +148,40 @@ only against being *newer* than `SCHEMA_VERSION`.
 5. Decide the self-containment question above and record it.
 
 Steps 3 + 4 are the ones that clear the existing data; 1 stops it recurring.
+
+## Progress — steps 3 + 4 done (2026-07-28)
+
+**Step 3 — content-addressed staleness. DONE.** `cmd/ws.rs` grew
+`model_provenance_stale(model, bringup_dir)`: it parses the committed model,
+re-hashes every `meta.inputs[].path` against the file on disk (same `sha256` of
+raw bytes the resolver records), and reports stale when a recorded hash no
+longer matches, a recorded input is missing, **or any recorded path is
+absolute**. `resolve_system_models` now regenerates on `mtime-stale OR
+provenance-stale`, so the mtime/hash input-set mismatch is closed and the
+non-portable legacy models — which are never mtime-stale — regenerate on their
+own. Four unit tests cover intact / changed-hash / absolute / missing.
+
+**Step 4 — regenerate + gate. DONE.** `nros ws sync` regenerated **67**
+committed models to current-resolver output: **43** under `examples/workspaces/`
+plus **24** standalone single-node examples (`qemu-arm-{baremetal,freertos,
+nuttx}`, `threadx-linux`, `templates/`) that carried the same absolute paths but
+fell outside the issue's original count. All 67 now use relative paths, drop the
+dead `record:` block, and match the format of the 33 models that were already
+clean. New gate `scripts/check-no-absolute-model-paths.sh` (wired into
+`check-fast`) fails on any absolute `path:` or machine home dir in a committed
+`*_model.yaml`. Receipt: `grep -rl /home examples --include='*_model.yaml'`
+returns 0; the gate passes; a temporarily-reinjected absolute path is caught.
+
+**Step 5 — self-containment. DECIDED: keep the relative pointer.** The macro
+only wants `[param_services]` out of `system.toml`, and the bringup package
+already travels as a unit; inlining a slice of `system.toml` into the generated
+model would duplicate state and add a new drift surface. `meta.inputs` stays a
+relative pointer into the package.
+
+**Still open — steps 1 + 2 (submodule, recurrence-stopper).** The resolver still
+infers the bringup root as the launch file's grandparent, so a relative or
+non-standard launch path can still emit absolute paths (the gate now *catches*
+that, but nothing prevents it structurally). Step 1 (explicit `--bringup-root`
+in `ros-launch-resolve`) + step 2 (drop `meta.record` from the schema) live in
+the vendored `packages/cli/third-party/ros-launch-resolve` submodule and are a
+separate follow-up.

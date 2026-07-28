@@ -1,24 +1,25 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-rclcpp/src/demo_bringup/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: c7cf84499ffd7717324dfc8d6d9ac114e769f5fe70b4911525d7f8279b595690
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-rclcpp/src/demo_bringup/system.toml
+  - path: system.toml
     sha256: 1ad7a567748fd45a258c6143764a9c6f512ef0e55b150792fdac56fc31ed2db1
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /ctrl_node:
-      scope: /
+      scope: system.launch.xml
       pkg: ctrl_pkg
       exec: ctrl
       node_name: ctrl_node
     /telem_node:
-      scope: /
+      scope: system.launch.xml
       pkg: telem_pkg
       exec: telem
       node_name: telem_node

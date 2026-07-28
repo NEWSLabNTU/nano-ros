@@ -1,11 +1,11 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/qemu-arm-freertos/rust/action-server-entry/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: 1a67dea174e80f21abf69e3b949f3c83a26c1781166e85a02904bb093f51c141
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
     system.launch.xml:

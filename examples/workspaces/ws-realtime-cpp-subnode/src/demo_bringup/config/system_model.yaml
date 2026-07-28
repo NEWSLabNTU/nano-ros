@@ -1,19 +1,20 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: cf0adad5e1ba8b071ba62df40b084d2df2d6b91ba15a123a9b182085b33913f0
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-subnode/src/demo_bringup/system.toml
+  - path: system.toml
     sha256: 8c8512a25923f6edf04c2dc49772e4800ba2e8ca3b98e37fbe1fd86b4152e0b8
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /sub_node:
-      scope: /
+      scope: system.launch.xml
       pkg: subnode_pkg
       exec: subnode
       node_name: sub_node

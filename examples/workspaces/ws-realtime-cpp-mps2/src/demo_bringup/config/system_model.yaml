@@ -1,29 +1,30 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-mps2/src/demo_bringup/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: 048d971aae2ee56baa8b3004ae8e2d24e1aad233b7d2d98fc29d697d22afbb38
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-realtime-cpp-mps2/src/demo_bringup/system.toml
+  - path: system.toml
     sha256: 044d4fe3b396c7e382467a4bf9328c3480eaafe35ae269eaca60238b6b90f245
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /aux_node:
-      scope: /
+      scope: system.launch.xml
       pkg: aux_pkg
       exec: aux
       node_name: aux_node
     /ctrl_node:
-      scope: /
+      scope: system.launch.xml
       pkg: ctrl_pkg
       exec: ctrl
       node_name: ctrl_node
     /telem_node:
-      scope: /
+      scope: system.launch.xml
       pkg: telem_pkg
       exec: telem
       node_name: telem_node
@@ -63,12 +64,6 @@ execution:
         priority: 10
       freertos:
         priority: 2
-        # phase-296 W5.11 — placement dim on FreeRTOS: pin the LOW (spawned)
-        # tier to core 0. The mps2-an385 target is uniprocessor (no
-        # configUSE_CORE_AFFINITY), so the board seam logs the LOUD "core pin
-        # FAILED" note and the tier runs unpinned (RFC-0052 fail-loud — before
-        # W5.11 this was a SILENT (void)task). An SMP build flips it to accept.
-        core: 0
     mid:
       spin_period_us: 50000
       posix:

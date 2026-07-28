@@ -1,27 +1,56 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/mixed/src/demo_bringup/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: d0ba599ad0fff59598d04f59ec65627a1bc8fc14d6df5dcb2d0ea96c190f4c7f
+  - path: system.toml
+    sha256: cb234e48d10587f4885c19576c36a94e328edd0a750f41e41e5ee8d08692845c
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /heartbeat:
-      scope: /
+      scope: system.launch.xml
       pkg: rust_heartbeat_pkg
       exec: heartbeat
       node_name: heartbeat
     /listener:
-      scope: /
+      scope: system.launch.xml
       pkg: cpp_listener_pkg
       exec: listener
       node_name: listener
     /talker:
-      scope: /
+      scope: system.launch.xml
       pkg: c_talker_pkg
       exec: talker
       node_name: talker
+execution:
+  deploy:
+    /heartbeat:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /listener:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /talker:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu

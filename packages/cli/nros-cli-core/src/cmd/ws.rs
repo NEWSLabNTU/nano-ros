@@ -29,6 +29,7 @@ use clap::{Args as ClapArgs, Subcommand, ValueEnum};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::Package;
 use rosidl_codegen::RosEdition;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -303,6 +304,39 @@ impl WsPkg {
 /// Multi-launch bringups also refresh per-launch `config/<name>_model.yaml`
 /// siblings that were previously committed (variant models stay opt-in:
 /// only refreshed, never created, for non-default launches).
+///
+/// Issue 0320 — content-addressed staleness. A committed model records a
+/// `sha256` for every input under `meta.inputs`. This re-hashes each recorded
+/// input against the file on disk and returns `Some(reason)` when the recorded
+/// provenance no longer holds: a non-portable absolute path (which regenerates
+/// the machine-specific legacy models on any checkout), a recorded input that
+/// no longer exists, or a hash that has changed (an input the mtime gate does
+/// not watch — a sibling include or the `--sched` platform file). `None` means
+/// the model's provenance is intact. A model that cannot be parsed returns
+/// `None` so the caller falls back to the mtime gate rather than force-churning.
+///
+/// Relative paths resolve against `bringup_dir` (the package root), matching
+/// how the resolver strips the launch file's grandparent as the base and how
+/// `main_macro` re-joins them.
+fn model_provenance_stale(model_path: &Path, bringup_dir: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(model_path).ok()?;
+    let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw).ok()?;
+    for input in &model.meta.inputs {
+        let recorded = Path::new(&input.path);
+        if recorded.is_absolute() {
+            return Some(format!("non-portable absolute input path `{}`", input.path));
+        }
+        let resolved = bringup_dir.join(recorded);
+        let Ok(bytes) = std::fs::read(&resolved) else {
+            return Some(format!("recorded input missing `{}`", input.path));
+        };
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        if digest != input.sha256 {
+            return Some(format!("input hash changed `{}`", input.path));
+        }
+    }
+    None
+}
 
 fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
@@ -415,7 +449,18 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
             }
         }
         for (launch, model) in targets {
-            if !stale(&model) {
+            // Issue 0320 — staleness is BOTH mtime AND content-addressed. The
+            // mtime gate watches only `launch/*.xml` + `system.toml`, but a
+            // committed model's `meta.inputs` hashes more (sibling includes, the
+            // `--sched` file) and can carry a non-portable absolute path from the
+            // machine that generated it. Re-hashing the recorded inputs catches
+            // both the wider input set (issue 0196 class) and the 43 legacy
+            // absolute-path models, which are otherwise never mtime-stale.
+            let provenance = model
+                .exists()
+                .then(|| model_provenance_stale(&model, &pkg.dir))
+                .flatten();
+            if !stale(&model) && provenance.is_none() {
                 continue;
             }
             let Some(pl) = &play_launch else {
@@ -425,10 +470,10 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool) -> Result<()> {
                     "  {} — {} is {} ({})",
                     pkg.name,
                     model.strip_prefix(&pkg.dir).unwrap_or(&model).display(),
-                    if model.exists() {
-                        "older than its inputs"
-                    } else {
-                        "missing"
+                    match (&provenance, model.exists()) {
+                        (Some(why), _) => why.as_str(),
+                        (None, true) => "older than its inputs",
+                        (None, false) => "missing",
                     },
                     launch
                         .file_name()
@@ -3531,6 +3576,79 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         assert!(
             cio.get("libc").is_some() && cio.get("nros-core").is_some(),
             "merge failed:\n{out}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    // Issue 0320 — content-addressed staleness for committed SystemModels.
+    use super::*;
+
+    fn sha(bytes: &[u8]) -> String {
+        format!("{:x}", Sha256::digest(bytes))
+    }
+
+    fn write_model(dir: &Path, inputs: Vec<(String, String)>) -> PathBuf {
+        let mut m = ros_launch_manifest_model::SystemModel::default();
+        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
+        m.meta.inputs = inputs
+            .into_iter()
+            .map(|(path, sha256)| ros_launch_manifest_model::InputHash { path, sha256 })
+            .collect();
+        let p = dir.join("system_model.yaml");
+        std::fs::write(&p, serde_yaml_ng::to_string(&m).unwrap()).unwrap();
+        p
+    }
+
+    #[test]
+    fn intact_provenance_is_not_stale() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let content = b"[system]\n";
+        std::fs::write(bringup.join("system.toml"), content).unwrap();
+        let model = write_model(bringup, vec![("system.toml".into(), sha(content))]);
+        assert_eq!(model_provenance_stale(&model, bringup), None);
+    }
+
+    #[test]
+    fn changed_hash_is_stale() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        std::fs::write(bringup.join("system.toml"), b"new\n").unwrap();
+        let model = write_model(bringup, vec![("system.toml".into(), sha(b"old\n"))]);
+        assert!(
+            model_provenance_stale(&model, bringup)
+                .unwrap()
+                .contains("hash changed")
+        );
+    }
+
+    /// The 43 legacy models: an absolute path is non-portable and must
+    /// regenerate even when the file it points at still exists and matches.
+    #[test]
+    fn absolute_path_is_stale_even_when_file_matches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let abs = bringup.join("system.toml");
+        std::fs::write(&abs, b"x\n").unwrap();
+        let model = write_model(bringup, vec![(abs.display().to_string(), sha(b"x\n"))]);
+        assert!(
+            model_provenance_stale(&model, bringup)
+                .unwrap()
+                .contains("absolute")
+        );
+    }
+
+    #[test]
+    fn missing_input_is_stale() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        let model = write_model(bringup, vec![("gone.toml".into(), sha(b"x"))]);
+        assert!(
+            model_provenance_stale(&model, bringup)
+                .unwrap()
+                .contains("missing")
         );
     }
 }

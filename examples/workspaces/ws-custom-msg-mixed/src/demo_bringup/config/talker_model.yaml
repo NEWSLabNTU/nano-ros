@@ -1,26 +1,23 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-mixed/src/demo_bringup/config/talker_model.record.json
-    sha256: 2481f2bb2199867757a0646959cec43e0941551914d2e0761ef70f61cd3432e2
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-mixed/src/demo_bringup/launch/talker.launch.xml
+  - path: launch/talker.launch.xml
     sha256: 3ae578f2b75543a4834aa1e00af3bab059bf25c7533e1e3e37547090e0174c1a
-  - path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-mixed/src/demo_bringup/system.toml
+  - path: system.toml
     sha256: 6e8a34ee7f631b2018cd88440aa811eb81ed482f1b11cf5c4d2ba3579a41a75d
   resolver:
-    tool: play_launch
-    version: 0.8.2
-  record:
-    path: /home/aeon/repos/nano-ros/examples/workspaces/ws-custom-msg-mixed/src/demo_bringup/config/talker_model.record.json
-    sha256: 2481f2bb2199867757a0646959cec43e0941551914d2e0761ef70f61cd3432e2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    talker.launch.xml:
+      file: talker.launch.xml
   nodes:
     /reading_talker:
-      scope: /
+      scope: talker.launch.xml
       pkg: reading_talker_pkg
       exec: reading_talker
+      node_name: reading_talker
 execution:
   deploy:
     /reading_talker:

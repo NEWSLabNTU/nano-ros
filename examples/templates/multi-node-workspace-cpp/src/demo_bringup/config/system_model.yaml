@@ -1,24 +1,25 @@
 meta:
   version: 1
   inputs:
-  - path: /home/aeon/repos/nano-ros/examples/templates/multi-node-workspace-cpp/src/demo_bringup/launch/system.launch.xml
+  - path: launch/system.launch.xml
     sha256: e6b64017dae99ad4782f70a1ba5375ff300c2b065d0164e663a1449d5b5a1dc3
-  - path: /home/aeon/repos/nano-ros/examples/templates/multi-node-workspace-cpp/src/demo_bringup/system.toml
+  - path: system.toml
     sha256: f34eecb58d1f0427540b99929def7a86c82193bb1e843311c042e99d91ba74d5
   resolver:
-    tool: play_launch
-    version: 0.8.2
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /listener:
-      scope: /
+      scope: system.launch.xml
       pkg: listener_pkg
       exec: listener
       node_name: listener
     /talker:
-      scope: /
+      scope: system.launch.xml
       pkg: talker_pkg
       exec: talker
       params:

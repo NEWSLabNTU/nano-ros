@@ -345,7 +345,7 @@ check-fast: \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-c-fmt check-cpp-fmt check-python \
-    check-ffi-struct-mirrors check-sizes-header-mirrors
+    check-ffi-struct-mirrors check-sizes-header-mirrors check-no-absolute-model-paths
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -570,6 +570,12 @@ check-no-allow-multiple-def:
 [private]
 check-no-board-init:
     @bash scripts/check-no-board-init.sh
+
+# Issue 0320 — committed SystemModels must be portable: no absolute host paths in
+# `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.
+[private]
+check-no-absolute-model-paths:
+    @bash scripts/check-no-absolute-model-paths.sh
 
 # Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
 # owned C/C++/asm file outside the audited allowlist
