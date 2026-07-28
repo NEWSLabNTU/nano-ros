@@ -5,6 +5,7 @@ status: open
 type: bug
 area: build
 related: [0304, phase-308, phase-313]
+fix_planned_in: phase-314
 ---
 
 ## Finding (phase-308 W1, 2026-07-28)
@@ -107,6 +108,9 @@ established for the metadata recorder and the slot accounting: one mechanism,
 several front-ends.
 
 ## Reconciliation path
+
+**Planned as [phase-314](../roadmap/phase-314-feature-set-ssot.md).** The wave
+breakdown there follows the order below.
 
 Order matters — collapsing first would change behaviour silently, since the
 three sites do not agree today.

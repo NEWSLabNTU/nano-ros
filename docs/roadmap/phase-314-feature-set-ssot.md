@@ -1,0 +1,144 @@
+# Phase 314 — one feature-set SSoT for every language
+
+**Status (2026-07-28): Draft.** Fixes issue 0311. Unblocks multi-edition ROS
+support and image-level selectable capabilities (`param-services`,
+`lifecycle-services`, `safety-e2e`).
+
+## Problem
+
+The cargo feature set for the runtime is assembled independently in three cmake
+sites, five `cmake/platform/*.cmake` files, and every Rust leaf `Cargo.toml`.
+Nothing checks that they agree.
+
+| site | edition | rmw | platform | capabilities |
+| --- | --- | --- | --- | --- |
+| `packages/core/nros-cpp/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain (+ `NANO_ROS_BOARD` threadx split) | param/lifecycle on posix, safety-e2e |
+| `packages/core/nros-c/CMakeLists.txt` | **hardcoded `ros-humble`** | inline copy | inline chain | — |
+| `cmake/NanoRosRuntimeCrate.cmake` | `ros-${_NRR_EDITION}` ✔ | `nros_rmw_dispatch()` SSoT ✔ | `_nros_runtime_platform_features()` | none |
+| every Rust leaf `Cargo.toml` | `"ros-humble"` by hand | — | — | per-leaf |
+
+Two consequences, both observed:
+
+**A non-humble build is a wire mismatch, not a build error.** RFC-0056 makes the
+edition drive the runtime keyexpr format so it matches the codegen-baked
+`type_hash`. Only the umbrella honours the configured edition (phase-304 W2b);
+the two direct paths compile the runtime as humble regardless. The image links,
+boots, and silently fails to interoperate.
+
+**Rust leaves make multi-edition impossible.** `nros/src/lib.rs:110` declares
+`ros-{humble,iron,jazzy}` mutually exclusive via `compile_error!`, and cargo
+features are ADDITIVE. A leaf saying `features = ["ros-humble"]` is not an
+overridable default — it adds `ros-humble` to the unified set. An entry
+selecting jazzy in a workspace of humble-naming leaves gets both and fails to
+compile. Every Rust node package in the tree names its edition today.
+
+And the trap that produced issue 0304: a consumer hook
+(`NROS_EXTRA_CPP_FEATURES`) added to one assembly silently does nothing on the
+others. The phase-308 probe linked a `libnros_cpp.a` with no
+`nros_cpp_metadata_dump` in it, and nothing reported that the feature had gone
+nowhere.
+
+## The reframe
+
+**The edition and the capabilities are IMAGE-level, not package-level.**
+
+Cargo feature unification already makes this true — a workspace resolves one
+feature set for one `nros` rlib, so a per-leaf edition is not a choice, it is a
+constraint on everyone else. The fix is not "thread the edition through more
+places"; it is to stop naming it in places that cannot own it.
+
+That is the same shape as phase-308's conclusion for the metadata recorder: one
+mechanism, several front-ends. Here the mechanism is the feature computation and
+the front-ends are C, C++ and Rust.
+
+## Waves
+
+### W1 — settle the divergences (decisions, not code)
+
+The three cmake assemblies do NOT agree today, so collapsing first would change
+behaviour silently. Each difference is decided on its merits:
+
+- **edition** — the direct paths must honour `NANO_ROS_ROS_EDITION` (it already
+  exists and drives codegen). A defect fix, not a preference.
+- **rmw** — `nros_rmw_dispatch()` is already the resolve_rmw SSoT; the inline
+  copies in `nros-c` / `nros-cpp` defer to it.
+- **platform** — the umbrella's `_nros_runtime_platform_features()` is WEAKER:
+  it has no `NANO_ROS_BOARD` disambiguation, so `threadx` cannot split
+  `threadx-linux` (std) from `riscv64-qemu` (no_std). Naive unification
+  REGRESSES it. The direct chain's logic is the one to keep.
+- **capabilities** — `param-services` / `lifecycle-services` / `safety-e2e`
+  exist only on the C++ direct path, gated on `NANO_ROS_PLATFORM STREQUAL
+  "posix"`. **Open question for whoever knows the intent:** is the umbrella's
+  omission deliberate (workspace entries opt in elsewhere) or an oversight? W2
+  cannot start until this is answered.
+
+**Done when:** each row above has a decision recorded in this doc, including the
+capabilities answer.
+
+### W2 — one computation, several callers
+
+A single cmake function taking `(edition, rmw, platform, board, capabilities)`
+and returning the feature list. `nros-c`, `nros-cpp` and `NanoRosRuntimeCrate`
+become callers. `NROS_EXTRA_CPP_FEATURES` then applies once, by construction.
+
+`cmake/platform/*.cmake` keep their platform-specific *toolchain* knowledge but
+stop carrying feature lists.
+
+**Done when:** exactly one `set(_features …)`-style assembly exists in the tree,
+and the phase-308 probe's `metadata-mode` works through it with no per-path hook.
+
+### W3 — the edition leaves the Rust leaves
+
+Node packages stop naming `ros-*` in their `Cargo.toml`. The entry (pure-cargo)
+or the synthesized umbrella (cmake/Zephyr) supplies it, and unification carries
+it to every dependent.
+
+`nros sync` should flag a leaf that still names an edition — the failure is
+otherwise a `compile_error!` far from the cause.
+
+Touches every Rust node package in `examples/` plus the templates and the
+scaffold that generates new ones, so the scaffold must land in the same wave or
+new packages reintroduce the problem immediately.
+
+**Done when:** no `Cargo.toml` under `examples/` names a `ros-*` feature, and a
+workspace builds with the edition selected only at the entry.
+
+### W4 — capabilities become explicit inputs
+
+`param-services` / `lifecycle-services` / `safety-e2e` become named arguments to
+the W2 function, driven by the system's declared capabilities (`system.toml`
+already carries `[param_services]`) rather than by a platform test.
+
+**Done when:** enabling a capability in `system.toml` is what turns the feature
+on, on every language path, and the posix-only special case is gone.
+
+### W5 — gate agreement
+
+Assert the C, C++ and umbrella paths produce the same list for the same inputs,
+and that no Rust leaf names an edition.
+
+This wave is the point of the phase. Every failure this issue is about was
+SILENT — a hook that did nothing, an edition that was ignored, a feature that
+never reached cargo. Without a gate they drift back, and the next symptom is
+again a wire mismatch or a link error a build away from the cause.
+
+**Done when:** the gate runs in `just check` and fails on a divergence.
+
+## Non-goals
+
+- **Changing what any feature means.** This phase moves where the list is
+  computed, not what the runtime does with it.
+- **Multi-edition CI lanes.** RFC-0058 / phase-309 own the test harness for
+  running against several editions; this phase only removes the blocker that
+  makes selecting one impossible.
+
+## Acceptance
+
+- [ ] `nros-c` and `nros-cpp` honour the configured ROS edition; no `ros-humble`
+      literal survives in cmake.
+- [ ] Exactly one feature-list computation, with the threadx board split intact.
+- [ ] No Rust leaf names a `ros-*` feature; the scaffold does not emit one.
+- [ ] A capability declared in `system.toml` enables its feature on the C, C++
+      and Rust paths alike.
+- [ ] A gate in `just check` fails when the paths disagree.
+- [ ] Issue 0311 closes.
