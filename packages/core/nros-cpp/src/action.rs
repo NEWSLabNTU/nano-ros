@@ -246,8 +246,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // Issue 0312 — an empty hash would land in the liveliness keyexpr as an
+    // empty segment, making the entity invisible to ROS 2 discovery.
     let hash_str = match unsafe { cstr_to_str(type_hash) } {
-        Some(s) => s,
+        Some(s) => crate::normalize_type_hash(s),
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
@@ -786,8 +788,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // Issue 0312 — an empty hash would land in the liveliness keyexpr as an
+    // empty segment, making the entity invisible to ROS 2 discovery.
     let hash_str = match unsafe { cstr_to_str(type_hash) } {
-        Some(s) => s,
+        Some(s) => crate::normalize_type_hash(s),
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
@@ -1861,8 +1865,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // Issue 0312 — an empty hash would land in the liveliness keyexpr as an
+    // empty segment, making the entity invisible to ROS 2 discovery.
     let hash_str = match unsafe { cstr_to_str(type_hash) } {
-        Some(s) => s,
+        Some(s) => crate::normalize_type_hash(s),
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     let node_name_str = core::str::from_utf8(&node_ref.name)
@@ -2251,8 +2257,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // Issue 0312 — an empty hash would land in the liveliness keyexpr as an
+    // empty segment, making the entity invisible to ROS 2 discovery.
     let hash_str = match unsafe { cstr_to_str(type_hash) } {
-        Some(s) => s,
+        Some(s) => crate::normalize_type_hash(s),
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     let node_name_str = core::str::from_utf8(&node_ref.name)

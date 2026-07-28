@@ -1124,6 +1124,30 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     NROS_CPP_RET_OK
 }
 
+/// Issue 0312 — the ROS 2 type-hash spelling used when a caller supplies none.
+///
+/// Upstream uses `RIHS01_<hex>` (Iron+) or the literal `TypeHashNotSupported`
+/// (Humble). An EMPTY string is neither, and it is what most in-tree C examples
+/// and the user-facing templates pass. That mattered invisibly: the field is a
+/// SEGMENT of the ROS 2 liveliness keyexpr, so an empty hash produced a token
+/// `rmw_zenoh_cpp` does not count — the entity delivered data normally while
+/// being absent from `ros2 topic info` / `ros2 node info`. Delivery does not use
+/// the hash, so nothing failed loudly.
+///
+/// Normalising here rather than rejecting keeps every existing caller working
+/// AND discoverable; a caller that knows its hash should still pass it, since
+/// the sentinel means "unknown", not "any".
+pub(crate) const TYPE_HASH_UNSPECIFIED: &str = "TypeHashNotSupported";
+
+/// Issue 0312 — map an empty type hash to [`TYPE_HASH_UNSPECIFIED`].
+pub(crate) fn normalize_type_hash(hash: &str) -> &str {
+    if hash.is_empty() {
+        TYPE_HASH_UNSPECIFIED
+    } else {
+        hash
+    }
+}
+
 /// Issue 0312 — encode an executor node index into the handle field, biased by
 /// one so `0` can keep meaning "unset". Pure `u8` (not `NodeId`) so it holds
 /// without the `rmw-cffi` feature and stays unit-testable.
@@ -2415,6 +2439,20 @@ mod qos_override_tests {
     /// so that value stays distinguishable from "no node registered"; before
     /// the bias, eight `node_id != 0` checks read a single-node entry's only
     /// node as absent.
+    /// Issue 0312 — an empty type hash becomes the documented "unknown"
+    /// spelling, because the raw empty string produces a liveliness keyexpr
+    /// ROS 2 discovery silently ignores.
+    #[test]
+    fn an_empty_type_hash_normalizes_to_the_unspecified_sentinel() {
+        assert_eq!(normalize_type_hash(""), TYPE_HASH_UNSPECIFIED);
+        // A real hash is passed through untouched.
+        assert_eq!(normalize_type_hash("RIHS01_abc"), "RIHS01_abc");
+        assert_eq!(
+            normalize_type_hash(TYPE_HASH_UNSPECIFIED),
+            TYPE_HASH_UNSPECIFIED
+        );
+    }
+
     #[test]
     fn node_id_zero_survives_the_handle_round_trip() {
         // Zero-initialised handle = no node registered.

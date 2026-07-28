@@ -43,6 +43,16 @@ store-failure-output = true
 # Ports are per-image since W4 (rtic pair 10200, service 10210, action
 # 10220; bsp/mixed/large-msg on the 10500/10510/10520 aux slots), so
 # the old serial `qemu-baremetal-shared` sub-group is retired.
+# issue 0312 — the three native QoS cells each spawn a talker+listener pair on
+# /chatter AND query a stock `ros2 topic info` peer for the ADVERTISED profile of
+# both endpoints (issue 0309). Discovery is the shared resource: run in parallel,
+# the peer intermittently fails to see one pair's SUBSCRIPTION within the settle
+# window, and WHICH cell fails rotates between runs. Each passes solo,
+# repeatedly. Serialize them rather than lengthening the sleep — the assertion is
+# about what is advertised, not about how fast.
+[test-groups.native-qos-discovery]
+max-threads = 1
+
 [test-groups.qemu-baremetal]
 max-threads = 3
 
@@ -279,6 +289,11 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(entry_e2e) and test(zephyr_rust_lifecycle)"
 slow-timeout = { period = "60s", terminate-after = 3 }
+
+# issue 0312 — see [test-groups.native-qos-discovery].
+[[profile.default.overrides]]
+filter = "binary(workspace_features_e2e) and test(qos)"
+test-group = "native-qos-discovery"
 
 # issue #141 — see [test-groups.zephyr-qos-port]. phase-295 W3.b —
 # qos_zephyr_entry_e2e consolidated into binary(entry_e2e); the baked-port

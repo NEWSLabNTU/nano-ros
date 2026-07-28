@@ -592,15 +592,19 @@ fn workspace_features(#[case] cell: Cell) {
                             cell.lang, cell.workload
                         )
                     });
-                // PUBLISHER only, deliberately. The C-family listener receives
-                // fine but `ros2 topic info` reports `Subscription count: 0`
-                // for it — its subscription is not visible to ROS 2 discovery
-                // (issue 0312). The Rust path does advertise both, and
-                // `qos_override_e2e` asserts both there; asserting the
-                // subscription here would fail on a bug this cell does not own.
-                // When 0312 is fixed, add "SUBSCRIPTION" to this list.
-                let blocks: Vec<(&str, Option<String>)> =
-                    vec![("PUBLISHER", topic_endpoint_block(&report, "PUBLISHER"))];
+                // Issue 0312 (fixed) — both endpoints are asserted. The
+                // subscription used to be absent from discovery entirely: these
+                // C examples pass an EMPTY type hash, which landed in the
+                // liveliness keyexpr as an empty segment, so `ros2 topic info`
+                // never counted the entity. Delivery was unaffected, so only a
+                // profile assertion like this one could see it.
+                let blocks: Vec<(&str, Option<String>)> = vec![
+                    ("PUBLISHER", topic_endpoint_block(&report, "PUBLISHER")),
+                    (
+                        "SUBSCRIPTION",
+                        topic_endpoint_block(&report, "SUBSCRIPTION"),
+                    ),
+                ];
                 for (kind, block) in blocks {
                     let block = block.unwrap_or_else(|| {
                         lis.kill();

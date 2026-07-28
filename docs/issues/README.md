@@ -154,11 +154,13 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 at eight call sites. Phase 268 fixed the adjacent half and left `0` overloaded. Now stored biased by
 one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (2026-07-28)
 
-**#312** — a C/C++ workspace listener receives fine but `ros2 topic info` reports `Subscription
-count: 0`: it is invisible to ROS 2 discovery, so interop tooling under-reports our subscriptions and
-a peer cannot QoS-check against them. The Rust path advertises both endpoints correctly. Found while
-strengthening the QoS proofs. See `0312-*`. (2026-07-28, renumbered from a duplicate #311 — two
-sessions reached the same renumbering independently)
+Recently resolved: **#312** — a C/C++ listener received fine but was INVISIBLE to ROS 2 discovery
+(`Subscription count: 0`). Root cause: the C examples pass `""` as the type hash, and that field is a
+SEGMENT of the liveliness keyexpr — an empty segment yields a token `rmw_zenoh_cpp` does not count.
+Delivery never uses the hash, so nothing failed. 8+ in-tree sources do this, including four
+user-facing TEMPLATES. Fixed at the seam: nros-cpp normalizes an empty hash to the documented
+`TypeHashNotSupported`. The QoS cells now assert both endpoints (serialized — discovery is a shared
+resource). See `0312-*`. (2026-07-28)
 
 **#315** — after #314 swept the abandoned per-RMW trees, the only `<rmw>/` paths left in
 `examples/` are the checker's own carve-outs: `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` (a BOARD

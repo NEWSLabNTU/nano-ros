@@ -1,7 +1,7 @@
 ---
 id: 312
 title: "A C/C++ workspace listener receives fine but is invisible to ROS 2 discovery — `ros2 topic info` reports `Subscription count: 0`"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: rmw, interop
@@ -36,6 +36,53 @@ carries one that reports its full profile correctly.
 The Rust path does not have this gap: `ws-qos-rust`'s entry shows
 `Subscription count: 1` with its declared `TRANSIENT_LOCAL` profile, asserted in
 `qos_override_e2e`.
+
+## ROOT CAUSE + FIX (2026-07-28) — an EMPTY type hash
+
+The C examples pass `""` as the type hash:
+
+```c
+nros_cpp_subscription_register(node, "/chatter",
+    std_msgs_msg_int32_get_type_name(), "",   /* <- type hash */ ...);
+```
+
+That field is a SEGMENT of the ROS 2 liveliness keyexpr
+(`…/<topic>/<type>/<hash>/<qos>`), so an empty string produced an empty segment
+and a token `rmw_zenoh_cpp` does not count. Delivery never uses the hash, so
+nothing failed: the entity received data normally while being absent from
+`ros2 topic info` and `ros2 node info`.
+
+The talker in the same workspace passes `std_msgs_msg_int32_get_type_hash()`,
+which is why the PUBLISHER was always visible and the SUBSCRIPTION never was —
+the asymmetry that made this look like a subscription-path bug.
+
+Confirmed by experiment: giving the listener the real hash made
+`Subscription count` go 0 -> 1 with nothing else changed.
+
+**This is not one example's mistake.** `""` is passed by 8+ in-tree C sources —
+including `examples/templates/{pure-c-workspace,c-and-cpp-mixed-workspace,
+multi-package-workspace,zephyr-byo}`, which users copy. Every one of those
+entities has been invisible to ROS 2 tooling.
+
+**Fix, at the seam rather than per file:** `nros-cpp` normalizes an empty hash to
+the documented "unknown" spelling `TypeHashNotSupported` (upstream's own Humble
+value) in the publisher / subscription / service / action intake paths.
+Verified: with the example REVERTED to `""`, the subscription is discovered.
+Normalising beats rejecting here — rejecting would break every template at
+runtime for something we can make correct automatically — but a caller that
+knows its hash should still pass it: the sentinel means "unknown", not "any".
+
+## Test
+
+The QoS cells now assert BOTH endpoints' advertised profile (issue 0309); the
+`"SUBSCRIPTION"` entry that had been commented out pending this fix is back.
+
+Serializing them was necessary: the three cells each spawn a pair on `/chatter`
+and query a discovery peer, and in parallel the peer intermittently missed one
+pair's subscription — with WHICH cell failing rotating between runs, while each
+passed solo repeatedly. `[test-groups.native-qos-discovery] max-threads = 1`.
+Serialized rather than sleeping longer, because the assertion is about what is
+advertised, not how fast.
 
 ## Investigated 2026-07-28 — one hypothesis eliminated
 
