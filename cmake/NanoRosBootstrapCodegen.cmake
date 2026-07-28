@@ -23,6 +23,13 @@
 
 include_guard(GLOBAL)
 
+# issue 0325 — included at FILE scope, not inside the function. Within a
+# function body `CMAKE_CURRENT_LIST_DIR` names the CALLER's file, so an
+# in-function include resolves against the wrong directory (and the
+# include-inside-a-function frame-pop trap in AGENTS.md CMake Pitfalls applies
+# too). At file scope it is this module's own directory.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+
 function(nros_bootstrap_codegen)
     if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
        AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "_NANO_ROS_CODEGEN_TOOL-NOTFOUND"
@@ -40,21 +47,20 @@ function(nros_bootstrap_codegen)
         unset(_NANO_ROS_CODEGEN_TOOL)
     endif()
 
-    find_program(_path_codegen nros
-        PATHS
-          "$ENV{NROS_HOME}/bin"
-          "$ENV{HOME}/.nros/bin"
-    )
-    if(_path_codegen)
-        set(_NANO_ROS_CODEGEN_TOOL "${_path_codegen}"
-            CACHE INTERNAL "Path to the host nros build tool")
-        return()
-    endif()
-
-    message(FATAL_ERROR
-        "nano-ros: host `nros` build tool not found on PATH or in ~/.nros/bin. "
-        "nano-ros builds the `nros` CLI in-tree from `packages/cli/` "
-        "(Phase 218 merge). Install it with:\n"
-        "  just setup-cli && source ./activate.sh\n"
-        "or pass -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros> to the cmake invocation.")
+    # issue 0325 — delegate to the shared resolver (issue 0219) rather than
+    # keeping a fifth bespoke `find_program`.
+    #
+    # The bespoke one cached into its own `_path_codegen` cache entry, while
+    # the stale re-detect above only unsets `_NANO_ROS_CODEGEN_TOOL`. After the
+    # CLI moved, `_path_codegen` still held the dead path from the previous
+    # configure, `if(_path_codegen)` was still true, and this function
+    # re-blessed a binary that no longer exists — defeating the very
+    # stale-path check directly above it.
+    #
+    # `nros_resolve_cli` owns the precedence ($NROS_CLI, then the codegen cache
+    # vars, then PATH with the store in PATHS) and its own stale-path drop, so
+    # there is nothing left here to get wrong.
+    nros_resolve_cli(_resolved_codegen CONTEXT "nros_bootstrap_codegen")
+    set(_NANO_ROS_CODEGEN_TOOL "${_resolved_codegen}"
+        CACHE INTERNAL "Path to the host nros build tool")
 endfunction()

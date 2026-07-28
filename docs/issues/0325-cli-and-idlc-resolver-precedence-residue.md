@@ -1,7 +1,7 @@
 ---
 id: 325
 title: "Tool-resolver residue after #219: an integrations shim uses HINTS (stale CLI shadows in-tree) and fails soft, a 5th bespoke nros resolver caches dead paths, and three idlc resolvers invert their own documented precedence"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build
@@ -73,3 +73,76 @@ One root cause (bespoke `find_program` per call site, HINTS-vs-PATHS confusion),
 one fix pattern (route through the shared resolver; `PATHS` for fallbacks), and
 #219 already established both. Filing them apart would re-fragment the thing
 #219 consolidated.
+
+## Resolved (2026-07-28)
+
+### P1a — `integrations/nano-ros/CMakeLists.txt`
+
+Replaced the bespoke `find_program(... HINTS "$ENV{HOME}/.nros/bin")` with
+`nros_resolve_cli(NROS_EXECUTABLE OPTIONAL CONTEXT "integrations/nano-ros")`.
+`OPTIONAL` preserves the existing fail-soft behaviour — the `if(NROS_EXECUTABLE
+...)` guard below already handles absence, and an ESP-IDF shim must still
+configure without a CLI.
+
+### P1b — `cmake/NanoRosBootstrapCodegen.cmake`
+
+Body replaced with a `nros_resolve_cli` call; `_path_codegen` is gone.
+
+Verified the actual failure mode rather than just the happy path: seeding
+`_NANO_ROS_CODEGEN_TOOL` with a dead path in `CMakeCache.txt` and
+reconfiguring now prints
+`Cached nros codegen tool no longer exists: /nonexistent/dead/nros;
+re-detecting` and resolves the live CLI. Previously `_path_codegen` still held
+the dead path from the prior configure, so `if(_path_codegen)` re-blessed it —
+defeating the stale-path check sitting directly above.
+
+One trap hit while doing this, worth recording: the first attempt put
+`include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")` INSIDE the
+function. Within a function body that variable names the CALLER's file, so the
+include resolved against the wrong directory and every consumer got a
+configure error. It is now at file scope.
+
+### P2 — the three idlc resolvers
+
+Only ONE of the three had the defect this issue describes, and the correction
+matters:
+
+- **`zephyr/cmake/nros_rmw_cyclonedds.cmake`** — genuinely inverted. Its own
+  comment documents "SDK store, host PATH …, then the legacy in-tree build
+  dirs … only a last-resort hint", but all four entries were in `HINTS`. The
+  store stays in `HINTS`; `build/cyclonedds/bin` and `build/install/bin` moved
+  to `PATHS`, so a stale Phase-140 idlc can no longer shadow a fresh SDK/ROS 2
+  one.
+- **The two copies in `NrosRmwCycloneddsTypeSupport.cmake`** — their `HINTS`
+  are `${CycloneDDS_DIR}/../../../bin`, `${CMAKE_INSTALL_PREFIX}/bin` and
+  `$ENV{CYCLONEDDS_INSTALL_DIR}/bin`: the idlc shipped WITH the Cyclone this
+  build links. Preferring those over an arbitrary PATH idlc is what keeps the
+  emitted descriptors ABI-matched to the linked `ddsc` — a version-mismatched
+  idlc is exactly the `find_descriptor() -> nullptr` failure this issue is
+  about. Moving them to `PATHS` would have *caused* the bug it warns of, so
+  they keep `HINTS`, now with that reasoning written down.
+
+The real defect there was the duplication the issue also names: one
+`_nros_find_idlc()` helper replaces both copies, so a future fix cannot land on
+one and miss the other.
+
+### Receipts
+
+- Bootstrap resolver: resolves, is idempotent across repeated calls, and
+  recovers from a dead cached path (shown above).
+- `just check-rmw-cyclonedds` → 16/16 with the collapsed helper.
+- `just check` green.
+
+### Unrelated breakage fixed to get there
+
+`just check`'s embedded clippy lane was RED on main from commit `b40b8a1e7`
+(`fix(#332)`), which inserted `first_missing_vtable_slot` BETWEEN a doc comment
+and the function it documents. The whole block — `Returns:`, the duplicate-
+registration note, `# Safety` — silently reattached to the private helper, and
+`nros_rmw_cffi_register_named` was left with no docs at all
+(`unsafe function's docs are missing a # Safety section`), plus a
+`doc_lazy_continuation` where the 0332 paragraph ran on from a list item.
+
+Moved the helper above the block so each doc sits on the item it describes: the
+0332 paragraph documents the helper (it always did), and the registration
+contract documents the registration function.

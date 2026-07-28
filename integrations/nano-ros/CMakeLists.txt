@@ -77,9 +77,19 @@ set(_nros_bringup_dir "${NROS_WORKSPACE_DIR}/${_nros_bringup_name}")
 set(_nros_system_out  "${CMAKE_BINARY_DIR}/nros-system")
 
 # Post-Phase-218 the `nros` CLI is built in-tree by `just setup-cli`;
-# `source ./activate.sh` puts it on PATH. `~/.nros/bin` stays as a
-# transitional fallback hint.
-find_program(NROS_EXECUTABLE nros HINTS "$ENV{HOME}/.nros/bin")
+# `source ./activate.sh` puts it on PATH.
+#
+# issue 0325 — this used `find_program(... HINTS "$ENV{HOME}/.nros/bin")`, and
+# HINTS are searched BEFORE PATH, so a stale provisioned CLI shadowed the
+# in-tree one that activate.sh exports (the precedence trap CLAUDE.md names
+# verbatim: "use PATHS for fallbacks"). Route through the shared resolver from
+# issue 0219 instead of keeping a fifth bespoke one: it puts the store in
+# PATHS, honours $NROS_CLI, and drops a cached path that no longer exists.
+#
+# OPTIONAL because this shim must still configure without a CLI — the
+# `if(NROS_EXECUTABLE ...)` guard below already fails soft.
+include("${_nros_root}/cmake/NanoRosCodegenCore.cmake")
+nros_resolve_cli(NROS_EXECUTABLE OPTIONAL CONTEXT "integrations/nano-ros")
 
 if(NROS_EXECUTABLE AND EXISTS "${_nros_bringup_dir}/system.toml")
     file(MAKE_DIRECTORY "${_nros_system_out}")

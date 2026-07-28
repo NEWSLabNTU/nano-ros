@@ -52,19 +52,9 @@ endif()
 # Locate idlc — Cyclone exports it as `CycloneDDS::idlc` when it's
 # installed alongside ddsc.
 if(NOT TARGET CycloneDDS::idlc)
-    # idlc is a HOST build tool (it runs on the build machine to emit C
-    # descriptors), so search the host even in a cross build —
-    # NO_CMAKE_FIND_ROOT_PATH ignores the toolchain's find-root mode
-    # (some set MODE_PROGRAM=ONLY, which would otherwise hide host idlc).
     # Phase 186.3: a self-provisioned build with no `just` step resolves idlc
     # from PATH (e.g. a ROS 2 install) or a pre-set IDLC_EXECUTABLE.
-    find_program(IDLC_EXECUTABLE idlc
-        HINTS
-            "${CycloneDDS_DIR}/../../../bin"
-            "${CMAKE_INSTALL_PREFIX}/bin"
-            "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
-        NO_CMAKE_FIND_ROOT_PATH
-        DOC "Cyclone DDS IDL compiler (host tool)")
+    _nros_find_idlc(IDLC_EXECUTABLE)
     if(NOT IDLC_EXECUTABLE)
         message(FATAL_ERROR
             "idlc (Cyclone DDS IDL compiler, a host tool) not found.\n"
@@ -113,12 +103,7 @@ if(NOT NROS_RMW_CYCLONEDDS_IDLC OR NOT EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
         if(IDLC_EXECUTABLE)
             set(_idlc_loc "${IDLC_EXECUTABLE}")
         else()
-            find_program(_idlc_found idlc
-                HINTS
-                    "${CycloneDDS_DIR}/../../../bin"
-                    "${CMAKE_INSTALL_PREFIX}/bin"
-                    "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
-                NO_CMAKE_FIND_ROOT_PATH)
+            _nros_find_idlc(_idlc_found)
             if(_idlc_found)
                 set(_idlc_loc "${_idlc_found}")
             endif()
@@ -226,6 +211,33 @@ endif()
 # one TYPE_NAME (single-type) or TYPE_NAMES (one per struct, all
 # registered) — both forms emit one constructor per name.
 #
+# issue 0325 — ONE definition of where a host idlc lives. This three-entry
+# search was copy-pasted twice inside this file; the copies were identical, but
+# a fix applied to one would have silently missed the other.
+#
+# These stay in HINTS (searched BEFORE the host PATH) deliberately, unlike the
+# retired in-tree dirs in zephyr/cmake/nros_rmw_cyclonedds.cmake which moved to
+# PATHS. They point at the idlc shipped WITH the Cyclone this build links
+# (`CycloneDDS_DIR`-relative, the install prefix, or an explicit
+# `CYCLONEDDS_INSTALL_DIR`), so preferring them over an arbitrary PATH idlc is
+# what keeps the emitted descriptors ABI-matched to the linked ddsc. A
+# version-mismatched idlc is precisely the `find_descriptor() -> nullptr`
+# failure the issue is about.
+#
+# idlc is a HOST build tool (it runs on the build machine to emit C
+# descriptors), so search the host even in a cross build —
+# NO_CMAKE_FIND_ROOT_PATH ignores the toolchain's find-root mode (some set
+# MODE_PROGRAM=ONLY, which would otherwise hide host idlc).
+function(_nros_find_idlc _out)
+    find_program(${_out} idlc
+        HINTS
+            "${CycloneDDS_DIR}/../../../bin"
+            "${CMAKE_INSTALL_PREFIX}/bin"
+            "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
+        NO_CMAKE_FIND_ROOT_PATH
+        DOC "Cyclone DDS IDL compiler (host tool)")
+endfunction()
+
 function(nros_rmw_cyclonedds_idlc_compile output_var)
     set(_options "")
     set(_one    IDL_FILE OUTPUT_DIR TYPE_NAME PKG_NAME)

@@ -261,10 +261,18 @@ else()
     else()
         file(GLOB _nros_idlc_store_hints "$ENV{HOME}/.nros/sdk/cyclonedds/*/bin")
     endif()
+    # issue 0325 — HINTS are searched BEFORE the host PATH, PATHS after. The
+    # comment above documents "SDK store, host PATH …, then the legacy in-tree
+    # build dirs … only a last-resort hint", but all four were in HINTS, so a
+    # stale Phase-140-era in-tree idlc shadowed a fresh ROS 2 / SDK one and
+    # emitted type-support from a museum compiler (the
+    # `find_descriptor() -> nullptr` class). Store stays in HINTS; the retired
+    # build dirs move to PATHS so they really are last resort.
     find_program(NROS_HOST_IDLC
         NAMES idlc
         HINTS
             ${_nros_idlc_store_hints}
+        PATHS
             "${NROS_REPO_DIR}/build/cyclonedds/bin"
             "${NROS_REPO_DIR}/build/install/bin"
         DOC "host Cyclone idlc (graph-types codegen)")

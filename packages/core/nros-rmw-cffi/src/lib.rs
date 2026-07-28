@@ -728,30 +728,6 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
 }
 
-/// Register a backend under a stable name. Multiple backends can
-/// coexist; consumers select via [`nros_rmw_cffi_lookup`] or the
-/// higher-level `Executor::node_builder(...).rmw(...)` path.
-///
-/// Names must be UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
-/// Reserved names today: `"zenoh"`, `"dds"`, `"xrce"`,
-/// `"cyclonedds"`, future `"uorb"`. The string `"default"` is the
-/// implicit name used by the legacy single-arg
-/// [`nros_rmw_cffi_register`] shim.
-///
-/// Returns:
-/// * `NROS_RMW_RET_OK` on success.
-/// * `NROS_RMW_RET_INVALID_ARGUMENT` if `name` / `vtable` is
-///   NULL, the name is empty, or exceeds 31 bytes.
-/// * `NROS_RMW_RET_ERROR` if the registry is full
-///   (`MAX_BACKENDS` reached without a matching entry).
-///
-/// Duplicate registration of the same name overwrites the
-/// previous vtable (idempotent for ctor-fires-twice cases).
-///
-/// # Safety
-///
-/// * `name` must be a valid NUL-terminated UTF-8 string.
-/// * `vtable` must remain valid for the program's lifetime.
 /// Issue 0332 — every vtable slot the runtime dispatches through is mandatory:
 /// the CFFI session/publisher/subscriber/service impls `.expect()` these slots
 /// on the hot path, so a `None` slot is a panic mid-spin — on a no_std target,
@@ -791,6 +767,30 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
     None
 }
 
+/// Register a backend under a stable name. Multiple backends can
+/// coexist; consumers select via [`nros_rmw_cffi_lookup`] or the
+/// higher-level `Executor::node_builder(...).rmw(...)` path.
+///
+/// Names must be UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
+/// Reserved names today: `"zenoh"`, `"dds"`, `"xrce"`,
+/// `"cyclonedds"`, future `"uorb"`. The string `"default"` is the
+/// implicit name used by the legacy single-arg
+/// [`nros_rmw_cffi_register`] shim.
+///
+/// Returns:
+/// * `NROS_RMW_RET_OK` on success.
+/// * `NROS_RMW_RET_INVALID_ARGUMENT` if `name` / `vtable` is
+///   NULL, the name is empty, or exceeds 31 bytes.
+/// * `NROS_RMW_RET_ERROR` if the registry is full
+///   (`MAX_BACKENDS` reached without a matching entry).
+///
+/// Duplicate registration of the same name overwrites the
+/// previous vtable (idempotent for ctor-fires-twice cases).
+///
+/// # Safety
+///
+/// * `name` must be a valid NUL-terminated UTF-8 string.
+/// * `vtable` must remain valid for the program's lifetime.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     name: *const core::ffi::c_char,
