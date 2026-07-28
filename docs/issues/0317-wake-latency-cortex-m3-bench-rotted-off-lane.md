@@ -72,8 +72,21 @@ and a vanilla zenohd router does not echo a sample back to the publishing
 session. So the bench's "route through zenohd, not local" design (main.rs top
 comment) cannot receive on embedded.
 
-**Direction:** either (a) add a per-fixture override to bake
-`Z_FEATURE_LOCAL_SUBSCRIBER 1` for this bench (accepting the size cost), or
-(b) redesign the bench as TWO images (separate publisher + subscriber) so the
-router genuinely routes between two sessions. This is a zpico-config / bench-
-design decision, distinct from the build rot above.
+**Investigated (2026-07-28): local loopback is the WRONG fix.** Baking
+`Z_FEATURE_LOCAL_SUBSCRIBER 1` (tried via a temporary `ZPICO_LOCAL_LOOPBACK` env
+override; verified the header flipped to 1) makes the same-session sub receive —
+but through the **in-process loopback path (`src/session/loopback.c`), NOT the
+transport-arrival path** that the probe hooks (`nros_rmw_runtime_wake_cb` /
+`dispatch_one`). So the wake-cb still never fires and the probe still captures 0
+samples. The bench's own top comment says it deliberately wants transport-arrival
+"not a local short-circuit" — local delivery defeats the measurement. The env
+override was reverted (no valid consumer).
+
+**Direction: redesign the bench as TWO images** — a separate publisher image and
+the subscriber-under-test image — so the zenohd router genuinely routes the
+sample between two distinct sessions, giving a real transport-arrival wake that
+fires the probe. (A single-session pub→sub through a vanilla router does not
+echo back to the publishing session.) That is a Phase-141-class bench rework,
+distinct from the build rot resolved above; the host runner
+`nros-tests::wake_latency_cortex_m3` + `QemuProcess` harness can drive two QEMU
+instances the way the freertos talker/listener interop tests already do.
