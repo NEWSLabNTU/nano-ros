@@ -344,6 +344,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
+    check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths
     @echo "Fast checks passed!"
@@ -496,6 +497,13 @@ check-string-conventions:
 [private]
 check-issue-ids:
     @scripts/ci/issue-ids-check.sh
+
+# issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
+# A pure grep, so it belongs in the source-free tier (see #337 for what happens
+# when a gate here needs more than the index).
+[private]
+check-absolute-paths:
+    @scripts/ci/absolute-path-check.sh
 
 # Per-platform (board, rmw) dependency-chain resolution — proves each cell's dep
 # chain resolves (nros setup --dry-run + codegen + cargo tree, no compile). The

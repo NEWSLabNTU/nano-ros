@@ -117,3 +117,40 @@ What IS true: **zero absolute paths remain in source code** under `examples/`
 or `packages/` — every survivor is a committed model (#320) or documentation
 prose. So the gate is still the right idea; it just needs its scope stated
 accurately before it can be switched on.
+
+
+## Follow-up done (2026-07-28): the gate is on
+
+Both stragglers regenerated with the current resolver:
+
+```
+nros-launch-resolve <pkg>/launch/system.launch.xml \
+    --bringup-root <pkg> -o <pkg>/config/system_model.yaml
+```
+
+`meta.inputs[].path` is now `launch/system.launch.xml`. Two details confirm the
+regeneration was faithful rather than merely different: the recorded `sha256` is
+**unchanged** (same input bytes), and the provenance stamp corrected itself from
+`play_launch 0.8.2` to `ros-launch-resolve 0.1.0` — these models predated
+RFC-0060 and had never been regenerated since.
+
+Verified by building the fixture, not just by reading the YAML:
+`entry_poc_compiles_via_nros_main_macro` and
+`entry_poc_boots_through_board_entry_run` both PASS, so `nros::main!()` consumes
+the relative-path model and the binary boots.
+
+### The gate
+
+`scripts/ci/absolute-path-check.sh`, wired into `check-fast` as
+`check-absolute-paths`. It is a pure `git grep`, so it belongs in the
+source-free tier — see issue 0337 for what happens when a gate placed there
+needs more than the index.
+
+Scope is **code and configuration only**; `.md` is excluded deliberately. The 13
+surviving doc hits are prose: `/home/user/project/...` placeholders in
+`CLI_REFERENCE.md` and roadmap notes referencing a retired checkout. Gating
+those would either force a false positive or invite an exclusion list that
+rots. Nothing a build consumes carries an absolute path.
+
+Mutation-checked: reintroducing an absolute `meta.inputs[].path` into
+`entry-poc`'s model makes the gate exit 1 and name the file.
