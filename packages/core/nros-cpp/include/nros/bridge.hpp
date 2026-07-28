@@ -12,6 +12,13 @@
  * in addition to its usual nros-cpp + per-backend libs.
  */
 
+// Issue 0332 — the multi-RMW bridge surface is hosted-only (it uses
+// `std::string`/`std::vector` throughout) and must gate on `NROS_CPP_STD`, not
+// `__STDC_HOSTED__`: a hosted compiler run `-nostdinc++` against Zephyr's
+// minimal libcpp has no `<string>`/`<vector>` (issue 0112 class). A no-op
+// without NROS_CPP_STD, so freestanding syntax checks pass.
+#ifdef NROS_CPP_STD
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -192,5 +199,7 @@ inline Expected<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string&
 
 } // namespace bridge
 } // namespace nros
+
+#endif // NROS_CPP_STD
 
 #endif // NROS_BRIDGE_HPP

@@ -13,12 +13,15 @@
  *   - `NROS_SOFTCHECK(call)` — non-fatal: log and continue.
  *
  * The macros log file:line, the literal call text, and the integer
- * return code via `printf`. Linkage to `printf` is the user's
- * responsibility (typically already pulled in by examples).
+ * return code. Issue 0332 — the default logger is `printf` ONLY on a hosted
+ * target (`__STDC_HOSTED__`) or when `NROS_CHECK_STDIO` is defined; on a
+ * freestanding embedded target it defaults to a no-op, so a no_std C node does
+ * not silently pull `<stdio.h>` into every TU.
  *
  * Override the log function by defining `NROS_CHECK_LOG(file, line, expr,
  * ret)` before including this header (e.g. to route through a board's
- * UART, RTT, or `nros-log` once Phase 88 lands).
+ * UART, RTT, or `nros-log`), or define `NROS_CHECK_STDIO` to force the `printf`
+ * form on a freestanding target.
  *
  * Copyright 2026 nros contributors
  * Licensed under Apache-2.0
@@ -30,9 +33,17 @@
 #include "nros/types.h"
 
 #ifndef NROS_CHECK_LOG
+#if defined(NROS_CHECK_STDIO) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__)
 #include <stdio.h>
 #define NROS_CHECK_LOG(file, line, expr, ret)                                                      \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
+#else
+/* Issue 0332 — freestanding default: no-op, no `<stdio.h>` pulled. Define
+   NROS_CHECK_STDIO for the printf form, or NROS_CHECK_LOG to route to a board
+   UART / RTT / nros-log. The `(void)` casts keep -Wunused quiet at the sites. */
+#define NROS_CHECK_LOG(file, line, expr, ret)                                                      \
+    ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#endif
 #endif
 
 /**

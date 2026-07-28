@@ -346,7 +346,8 @@ check-fast: \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
-    check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths
+    check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
+    check-cpp-freestanding-includes
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -619,6 +620,14 @@ check-no-board-init:
 [private]
 check-no-absolute-model-paths:
     @bash scripts/check-no-absolute-model-paths.sh
+
+# Issue 0332 — nros-cpp public headers must not include a hosted STL header
+# (`<string>`/`<vector>`/…) outside an `#ifdef NROS_CPP_STD` region. Source-level
+# gate: the `-ffreestanding` compile probe runs against the host's full
+# libstdc++ and cannot see the 0112 class.
+[private]
+check-cpp-freestanding-includes:
+    @bash scripts/check-cpp-freestanding-includes.sh
 
 # Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
 # owned C/C++/asm file outside the audited allowlist
