@@ -100,8 +100,18 @@ enum Proof {
     /// Talker-first pair; the listener must print ≥3 decoded
     /// `reading seq=` lines AND the `temp=` second field.
     CustomMsgFields,
-    /// Single entry; ≥3 lines carrying the per-lang log marker must reach
-    /// the entry's OWN stdout (process-local — no subscriber).
+    /// Single entry; ≥3 lines carrying the per-lang log marker must reach the
+    /// entry's OWN stdout (process-local — no subscriber), AND each of those
+    /// lines must carry the `[INFO]` level tag the logging facade adds.
+    ///
+    /// Issue 0309 — the marker alone is the message TEXT, so a bare
+    /// `printf("<marker> seq=%d")` would satisfy it: the proof could not tell
+    /// the facade from a direct write, nor notice the level/logger metadata
+    /// being lost. Every one of these nodes logs through
+    /// `nros_info!` / `NROS_LOG_INFO` → the default sink → the posix writer,
+    /// whose output is `[INFO] nros: <marker> seq=N`, so requiring the tag on
+    /// the SAME line makes the assertion about the facade rather than about
+    /// stdout.
     LoggingLines(&'static str),
     /// Talker-first pair with the non-default QoS profile in code on both
     /// endpoints: the late-joining listener must print ≥3 `Received:`, AND
@@ -150,6 +160,11 @@ struct Cell {
 // =============================================================================
 // Shared helpers
 // =============================================================================
+
+/// The level tag the nano-ros logging facade's posix sink writes ahead of every
+/// record (`[INFO] nros: <message>`). Issue 0309 — asserted alongside each
+/// logging marker so the proof cannot be satisfied by a direct `printf`.
+const LOG_LEVEL_TAG: &str = "[INFO]";
 
 /// Spawn a C-family custom-msg/qos entry (spins on its own; only the
 /// locator — the pre-consolidation shape).
@@ -510,10 +525,17 @@ fn workspace_features(#[case] cell: Cell) {
                 });
             proc.kill();
 
-            let n = nros_tests::count_pattern(&out, marker);
+            // Issue 0309 — count lines carrying the marker AND the level tag
+            // the facade emits, not merely the marker.
+            let n = out
+                .lines()
+                .filter(|l| l.contains(marker) && l.contains(LOG_LEVEL_TAG))
+                .count();
             assert!(
                 n >= 3,
-                "[{} {}] expected ≥3 node log lines on stdout, got {n}",
+                "[{} {}] expected ≥3 node log lines carrying `{LOG_LEVEL_TAG}` on stdout, got \
+                 {n}. A line with the marker but no level tag means the record bypassed the \
+                 logging facade (a direct write) or lost its metadata.\n{out}",
                 cell.lang,
                 cell.workload
             );
@@ -573,10 +595,10 @@ fn workspace_features(#[case] cell: Cell) {
                 // PUBLISHER only, deliberately. The C-family listener receives
                 // fine but `ros2 topic info` reports `Subscription count: 0`
                 // for it — its subscription is not visible to ROS 2 discovery
-                // (issue 0311). The Rust path does advertise both, and
+                // (issue 0312). The Rust path does advertise both, and
                 // `qos_override_e2e` asserts both there; asserting the
                 // subscription here would fail on a bug this cell does not own.
-                // When 0311 is fixed, add "SUBSCRIPTION" to this list.
+                // When 0312 is fixed, add "SUBSCRIPTION" to this list.
                 let blocks: Vec<(&str, Option<String>)> =
                     vec![("PUBLISHER", topic_endpoint_block(&report, "PUBLISHER"))];
                 for (kind, block) in blocks {

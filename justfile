@@ -2221,8 +2221,18 @@ setup-launch-resolve:
     fi
     # `find -newer` errors when the reference file is absent, and `set -e`
     # would abort the very first build — check existence before comparing.
+    #
+    # The probe MUST watch the vendored tree too, not just this crate: the
+    # binary compiles `third-party/ros-launch-resolve` (and its nested
+    # ros-launch-manifest) in, and those advance by SUBMODULE PIN. Watching only
+    # `$crate` meant a pin bump left the old binary in place — a fix that had
+    # landed upstream, with a regression test for it, kept failing here, and the
+    # symptom (`node '/listener' is not placed`) looked like a code regression on
+    # main rather than a museum binary. Same class as issue 0196: a build-side
+    # probe that misses an input the build consumes.
     if [ -x "$bin" ]; then
-        stale_src="$(find "$crate" -name target -prune -o \
+        stale_src="$(find "$crate" "$root/packages/cli/third-party/ros-launch-resolve" \
+            -name target -prune -o \
             \( -name '*.rs' -o -name 'Cargo.toml' \) -newer "$bin" -print -quit 2>/dev/null)"
         if [ -z "$stale_src" ]; then
             exit 0

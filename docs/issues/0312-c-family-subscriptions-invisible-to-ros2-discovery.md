@@ -1,5 +1,5 @@
 ---
-id: 311
+id: 312
 title: "A C/C++ workspace listener receives fine but is invisible to ROS 2 discovery — `ros2 topic info` reports `Subscription count: 0`"
 status: open
 type: bug

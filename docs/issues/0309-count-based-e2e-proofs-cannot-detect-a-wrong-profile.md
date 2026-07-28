@@ -86,18 +86,35 @@ never have.
 
 One new bug fell out of the strengthening: a C-family listener receives fine yet
 `ros2 topic info` reports `Subscription count: 0` — it is invisible to ROS 2
-discovery (issue 0311). The QoS cells therefore assert the PUBLISHER block only,
+discovery (issue 0312). The QoS cells therefore assert the PUBLISHER block only,
 with a comment pointing there; turning the subscription assertion on is a
-one-line change once 0311 is fixed.
+one-line change once 0312 is fixed.
 
-## Remaining (the rest of the matrix)
+## The rest of the matrix, audited (2026-07-28)
 
-The other cells were NOT audited. `CustomMsgFields`, `SafetyCrcCount` and
-`RemapWireName` already observe something specific to their feature (decoded
-field values, CRC-valid climbing counts, the remapped wire name plus silence on
-the unremapped one), so they are not obviously in this class. `LoggingLines` and
-`LifecycleActive` are worth the same question — "would this still pass with the
-feature removed?" — before this issue is considered closed for the whole matrix.
+Question applied to every remaining proof: *would this still pass if the feature
+it names were removed?*
+
+- **`LoggingLines` — WAS in this class, now fixed.** It grepped the log
+  MESSAGE TEXT only (`"c_talker logging"`). Every one of these nodes logs through
+  `nros_info!` / `NROS_LOG_INFO` → the default sink → the posix writer, which
+  emits `[INFO] nros: <marker> seq=N` — but a bare
+  `printf("c_talker logging seq=%d")` would have satisfied the assertion just as
+  well. The proof could not distinguish the facade from a direct write, nor
+  notice the level/logger metadata being dropped. It now requires the `[INFO]`
+  tag on the SAME line as the marker. All four cells (rust/c/cpp/mixed) pass, so
+  the facade does emit it.
+- **`LifecycleActive` — sound.** It polls `ros2 lifecycle get` for `active` on
+  the discovered managed node. With autostart removed the node stays
+  `unconfigured` and the poll times out, so the assertion is specific to the
+  feature it names.
+- **`CustomMsgFields`, `SafetyCrcCount`, `RemapWireName` — sound.** Each already
+  observes something only its feature produces: decoded `seq=`/`temp=` field
+  values, CRC-valid climbing counts, and the remapped wire name PLUS silence on
+  the unremapped expansion. The last is the strongest shape in the matrix — it
+  asserts both what must appear and what must not.
+
+That closes the audit for `workspace_features_e2e`.
 
 ## Direction (as filed)
 
