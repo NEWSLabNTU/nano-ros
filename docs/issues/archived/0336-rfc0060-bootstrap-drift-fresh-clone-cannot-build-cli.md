@@ -1,7 +1,7 @@
 ---
 id: 336
 title: "Post-RFC-0060 bootstrap drift: a fresh clone cannot build the CLI — bootstrap.sh, activate, AGENTS.md, doctor and 9 book pages still init the retired ros-launch-manifest submodule"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, docs
@@ -94,3 +94,54 @@ resolution shells out to the `play_launch_parser` binary.
 6. **Gate it:** `git grep -n 'third-party/ros-launch-manifest' -- ':!packages/cli/third-party'`
    must be empty. That single grep would have caught all nine doc copies and the
    bootstrap script.
+
+## Resolution (2026-07-28)
+
+All six surfaces fixed, plus the gate the issue asked for.
+
+1. **`scripts/bootstrap.sh`** — `ensure_cli_submodules()` now targets
+   `packages/cli/third-party/ros-launch-resolve`, guards on
+   `…/ros-launch-resolve/resolve/Cargo.toml`, and keeps the scoped
+   `--init --recursive` (required: the pin nests rlm + parser). Verified
+   mechanically: the target IS declared in `.gitmodules`, the guard file
+   resolves, and the init is recursive — the three properties whose absence made
+   the old function a silent no-op.
+2. **12 documented copies** of the dead command rewritten in one pass
+   (`README.md`, `activate.sh`, `activate.fish`, 8 book pages,
+   `book/src/reference/cli.md`, `docs/development/ci-conventions.md`,
+   `packages/cli/README.md`). The audit findings doc keeps its copy on purpose —
+   it is the record of what was broken.
+3. **`AGENTS.md`** — the "(NOT `--recursive`)" instruction is corrected and now
+   states explicitly why the scoped form must be recursive while the *unscoped*
+   landmine still stands, so the two lines stop contradicting each other.
+4. **`just doctor`** — new `[OK]/[MISSING] nros-launch-resolve` check (with a
+   distinct hint when the submodule itself is uninitialised), and
+   `play_launch_parser` demoted in the comments to the TEST-tier prereq it
+   actually is. Verified live: doctor reported `[MISSING] nros-launch-resolve` on
+   a tree that could not sync, then `[OK]` after `just setup-launch-resolve`.
+5. **Book** — `nros sync` is now the only user-facing verb; the copy-pasteable
+   `play_launch resolve …` blocks are gone and the text names
+   `nros-launch-resolve` as an absolute-path helper (issue 0285).
+6. **`packages/cli/CLAUDE.md` + `nros-cli-core/Cargo.toml`** — crate map gains an
+   `nros-launch-resolve` row, the nested-submodule line reflects the single pin,
+   and the Cargo comment stops claiming the CLI shells out to
+   `play_launch_parser` (nothing in `packages/cli/` spawns it).
+
+### The gate
+
+`scripts/check-retired-submodule-refs.sh`, wired into `just check-fast`. It fails
+on any live reference to a retired path (currently
+`packages/cli/third-party/{ros-launch-manifest,play_launch_parser}`), excluding
+the docs that legitimately *record* the drift and references that pass THROUGH
+the live pin. One grep would have caught all 21 sites at review time — this issue
+and the `.github` half of #337 are the same missed sweep.
+
+Extend `RETIRED[]` whenever a path is retired: a path is retired once, so a
+permanent entry costs microseconds and makes the next sweep un-partial.
+
+Verification: `just check-fast` green (gate included), `just doctor` green after
+setup, `bash -n` clean on both scripts.
+
+**Not fixed here** (belongs to #337, already resolved upstream): the eight
+`.github/` workflow references — verified clean on this tree, the workflows now
+init `ros-launch-resolve`.

@@ -24,7 +24,7 @@ this shell (nano-ros is a source distribution — no prebuilt `nros`).
 
 **B. Already have cargo** (equivalent — same build, same binary):
 ```sh
-git submodule update --init packages/cli/third-party/ros-launch-manifest
+git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
@@ -292,7 +292,7 @@ The `nros::main!` macro's `model =` argument names the bringup package:
 
 ```rust
 // Multi-node: bakes config/system_model.yaml from demo_bringup
-// (the SystemModel `play_launch resolve` emits from the launch file)
+// (the SystemModel `nros sync` resolves from the launch file)
 nros::main!(model = "demo_bringup");
 
 // Explicit model file within a bringup pkg

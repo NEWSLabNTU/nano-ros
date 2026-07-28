@@ -24,7 +24,7 @@ this shell (nano-ros is a source distribution — no prebuilt `nros`).
 
 **B. Already have cargo** (equivalent — same build, same binary):
 ```sh
-git submodule update --init packages/cli/third-party/ros-launch-manifest
+git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
@@ -94,7 +94,7 @@ nros::main!();
 // 2. Single-node, explicit board type.
 nros::main!(board = NativeBoard);
 
-// 3. Multi-node (CANONICAL): bake from a play_launch-resolved SystemModel
+// 3. Multi-node (CANONICAL): bake from a resolved SystemModel
 //    committed in the Bringup pkg. Reads
 //    `<bringup>/config/system_model.yaml` by default; pass an explicit
 //    relative path after `:`.
@@ -125,14 +125,13 @@ $ nros sync    # resolves/refreshes demo_bringup/config/system_model.yaml
 
 `nros sync` (the pre-build step every workflow already runs) materializes
 the model whenever a bringup's launch XML or `system.toml` is newer than
-it, using `play_launch` from PATH. Commit the result. The underlying
-command — for CI pipelines or explicit `KEY:=VALUE` bindings — is:
+it. Commit the result.
 
-```console
-$ play_launch resolve demo_bringup/launch/system.launch.xml \
-      --system demo_bringup/system.toml \
-      -o demo_bringup/config/system_model.yaml
-``` The macro reads `[package.metadata.nros.entry]` at compile
+`nros sync` is the only verb you need. Under the hood it runs the pinned
+`nros-launch-resolve` helper (RFC-0060 layer 2, built by
+`just setup-launch-resolve`) and invokes it by **absolute path** — never by a
+bare name on `$PATH`, because an unrelated ROS 2 `play_launch` on `PATH` used to
+win that race and break every platform's fixture build (issue 0285). The macro reads `[package.metadata.nros.entry]` at compile
 time to select the right board and executor backend; the same model resolves
 its tier table for whichever RTOS that board targets. On Embassy / RTIC targets it emits the
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body so your

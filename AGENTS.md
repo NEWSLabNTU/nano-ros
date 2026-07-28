@@ -282,12 +282,12 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 CLI install:
 
 * `~/.cargo/bin/nros` + `~/.nros/bin/nros` are STALE shadows from pre-Phase-218 install paths — remove if present.
-* Canonical install: `git submodule update --init packages/cli/third-party/<one-by-one as needed>` (NOT `--recursive`), then `just setup-cli`, then `source ./activate.sh`. PATH wires `nros`, `play_launch_parser`, `zenohd` from `~/.nros/sdk/*/bin/`.
-* `just doctor` FAILs (not warns) on stale shadows + missing `play_launch_parser`.
+* Canonical install: `git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve`, then `just setup-cli`, then `source ./activate.sh`. The `--recursive` is REQUIRED here and is not a contradiction of the landmine below: RFC-0060 makes the CLI's only pin `ros-launch-resolve`, which nests ros-launch-manifest + parser one level deeper, and the CLI's path deps resolve through them. The landmine is about the UNSCOPED form. PATH wires `nros`, `zenohd` from `~/.nros/sdk/*/bin/`; the launch helper `nros-launch-resolve` is built by `just setup-launch-resolve` and invoked by ABSOLUTE PATH, never via `$PATH` (issue 0285).
+* `just doctor` FAILs (not warns) on stale shadows + a missing `nros-launch-resolve`. `play_launch_parser` is a TEST-tier prereq only (the `launch_synth` / `self_bringup` / `orchestration_includes` PATH probes), not a CLI one.
 
 Agent-dispatch contract:
 
-* Every `just <plat>` invocation needs `source ./activate.sh` first; dispatch templates MUST source it. The pre-218 `export PATH="$HOME/.nros/bin:$PATH"` is INSUFFICIENT (misses `play_launch_parser`). CLAUDE.md “Practices” carries this.
+* Every `just <plat>` invocation needs `source ./activate.sh` first; dispatch templates MUST source it. The pre-218 `export PATH="$HOME/.nros/bin:$PATH"` is INSUFFICIENT (misses the SDK-provisioned tools). CLAUDE.md “Practices” carries this.
 
 Submodule init landmine:
 

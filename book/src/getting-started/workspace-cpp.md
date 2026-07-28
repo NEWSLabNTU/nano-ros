@@ -224,7 +224,7 @@ appends it to the target's sources, and auto-links every
 ### `MODEL` — the canonical resolved-artifact path
 
 `LAUNCH` re-parses the launch XML + `system.toml` at configure time. The
-**canonical** path is `MODEL`: bake from a play_launch-resolved
+**canonical** path is `MODEL`: bake from a resolved
 `system_model.yaml` committed in the Bringup pkg, so the same artifact drives
 the Linux runtime and every embedded image (contracts, tiers, QoS never drift).
 The two keywords are mutually exclusive:
@@ -239,7 +239,7 @@ nano_ros_add_executable(
     DEPLOY  native)
 ```
 
-Resolve the model once (`play_launch resolve … --system … -o
+Resolve the model once (`nros sync`, or explicitly `nros-launch-resolve … --system … -o
 config/system_model.yaml`) and commit it. The user's `main.cpp` is a single
 declarative line:
 
@@ -261,11 +261,9 @@ $ nros new my-entry --lang cpp --platform native
 ## Build + boot
 
 ```bash
+# `nros sync` resolves the SystemModel (via the pinned nros-launch-resolve
+# helper) whenever the launch XML or system.toml is newer than the model.
 nros sync
-# Canonical: resolve the model once, then bake from it.
-play_launch resolve src/demo_bringup/launch/system.launch.xml \
-    --system src/demo_bringup/system.toml \
-    -o src/demo_bringup/config/system_model.yaml
 nros codegen-system --bringup demo_bringup --model src/demo_bringup/config/system_model.yaml
 cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>
 cmake --build build

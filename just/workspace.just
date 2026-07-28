@@ -291,10 +291,34 @@ doctor:
         fail=1
     fi
 
-    # --- play_launch_parser (Phase 212.L.6 launch-graph resolver) ---
+    # --- nros-launch-resolve (RFC-0060 layer 2 — the CLI's launch resolver) ---
+    # Issue 0336: `nros ws sync` HARD-REQUIRES this binary (cmd/ws.rs bails
+    # without it), and `just setup` builds it unconditionally — but doctor never
+    # checked it, so doctor could report a green tree that cannot sync a
+    # workspace. Invoked by ABSOLUTE path, never via $PATH (issue 0285: an
+    # unrelated ROS 2 `play_launch` won the PATH race and broke every platform's
+    # fixture build), so this checks the file, not `command -v`.
+    nlr_bin="{{justfile_directory()}}/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+    if [ -x "$nlr_bin" ]; then
+        echo "  [OK] nros-launch-resolve (packages/cli/nros-launch-resolve/target/release)"
+    elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/ros-launch-resolve/resolve/Cargo.toml" ]; then
+        echo "  [MISSING] ros-launch-resolve submodule — nros ws sync cannot resolve SystemModels"
+        echo "            run: git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve"
+        fail=1
+    else
+        echo "  [MISSING] nros-launch-resolve (run: just setup-launch-resolve)"
+        fail=1
+    fi
+
+    # --- play_launch_parser (TEST-tier prereq only) ---
+    # Issue 0336: this is NOT a CLI prereq. The RFC-0060 CLI ships its own
+    # resolver (checked above) and never shells out to play_launch_parser — the
+    # `nros plan` claim below was true pre-RFC-0060 and is not any more. It stays
+    # a FAIL because the launch_synth / self_bringup / orchestration_includes
+    # gate tests probe it on PATH; if those move to an absolute-path lookup this
+    # whole block can become a warning.
     # Phase 220.J.2 — FAIL (not warn) on either missing install OR
-    # binary-not-on-PATH. `nros plan` shells out to `play_launch_parser`
-    # via PATH lookup; install-stamp alone is insufficient — agents
+    # binary-not-on-PATH; install-stamp alone is insufficient — agents
     # routinely hit the gap when a fresh worktree forgets `source
     # ./activate.sh` (the script that PATH-prepends
     # `~/.nros/sdk/play_launch_parser/bin/`). Tailored hints distinguish

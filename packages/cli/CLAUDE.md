@@ -35,13 +35,17 @@ too; this file only adds what is CLI-specific.
 | `rosidl-parser` / `rosidl-codegen` / `rosidl-bindgen` | ROS interface parsing + Rust/C/C++ message generation |
 | `nros-msg-to-idl` | msg → Cyclone IDL lowering |
 | `nros-pkg-index` | `nros-sdk-index.toml` model (boards → toolchain/SDK package sets) |
-| `nros-launch-parser` | launch-file → plan resolution (uses `third-party/play_launch_parser`) |
+| `nros-launch-parser` | launch-file → plan resolution (consumes the resolver's SystemModel; does NOT shell out to `play_launch_parser` — RFC-0060) |
+| `nros-launch-resolve` | the `nros-launch-resolve` binary: launch tree → SystemModel (RFC-0060 layer 2, wraps `third-party/ros-launch-resolve`). Built by `just setup-launch-resolve`; `nros ws sync` invokes it by ABSOLUTE path, never via `$PATH` (issue 0285) |
 | `nros-build` | build-script codegen library for Entry pkgs |
 | `cargo-nano-ros` | cargo subcommand front-end |
 | `colcon-cargo-ros2/` | the `colcon_nano_ros` Python colcon extension (pyproject; not a Rust member) |
 
-Nested submodules: `third-party/{play_launch_parser, ros-launch-manifest}`,
-`testing_workspaces/ros2_rust_examples`.
+Nested submodules: `third-party/ros-launch-resolve` (which itself nests
+`ros-launch-manifest` + `parser`, so a scoped init must be `--recursive`) and
+`testing_workspaces/ros2_rust_examples`. RFC-0060 retired the direct
+`third-party/{play_launch_parser, ros-launch-manifest}` pins — there is now ONE
+copy of the rlm spec, reached through the resolver.
 
 ## Design rules
 

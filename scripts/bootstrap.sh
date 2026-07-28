@@ -180,15 +180,20 @@ ensure_just() {
     fi
 }
 
-# Init the submodules the in-tree CLI build needs. Scoped to the CLI's
-# own third-party deps (e.g. ros-launch-manifest) — NOT a blanket
-# `--init --recursive` over the whole repo, which would drag in the
-# gitignored platform SDKs (zenoh, cyclonedds, …). Without this a fresh
-# clone fails: `failed to read packages/cli/third-party/ros-launch-manifest/types/Cargo.toml`.
+# Init the submodules the in-tree CLI build needs. Scoped to the CLI's own
+# third-party dep — NOT a blanket `--init --recursive` over the whole repo, which
+# would drag in the gitignored platform SDKs (zenoh, cyclonedds, …).
+#
+# RFC-0060 (issue 0336): the pin is `ros-launch-RESOLVE`, which itself nests
+# ros-launch-manifest + parser one level deeper, so the scoped init MUST stay
+# `--recursive` (the CLI's path deps resolve THROUGH the resolver — see
+# packages/cli/nros-cli-core/Cargo.toml). This function previously named the
+# retired `ros-launch-manifest` path and guarded on a file that can never appear,
+# so it silently did nothing and a fresh clone failed to build the CLI.
 ensure_cli_submodules() {
-    local sub="packages/cli/third-party/ros-launch-manifest"
-    # Already populated (has the types manifest the build reads)? No-op.
-    if [[ -f "${REPO_ROOT}/${sub}/types/Cargo.toml" ]]; then
+    local sub="packages/cli/third-party/ros-launch-resolve"
+    # Already populated (has the resolver manifest the build reads)? No-op.
+    if [[ -f "${REPO_ROOT}/${sub}/resolve/Cargo.toml" ]]; then
         return 0
     fi
     if ! command -v git >/dev/null 2>&1; then

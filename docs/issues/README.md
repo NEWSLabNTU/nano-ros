@@ -44,6 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved: **#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh` targeted the
+RETIRED `ros-launch-manifest` path and guarded on a file that can never appear, so it silently did
+nothing and a fresh clone could not build the CLI. Fixed at all six surfaces (bootstrap, 12 doc
+copies, AGENTS.md's wrong "NOT --recursive", `just doctor` now checking `nros-launch-resolve`, the
+book's 0285 PATH footgun, the CLI crate map) and gated by
+`scripts/check-retired-submodule-refs.sh` in `check-fast` — one grep that would have caught all 21
+sites, and the `.github` half of #337 too. See `archived/0336-*`. (2026-07-28)
+
 Recently resolved: **#267** — Cyclone descriptor mis-walked depth-2 nested types
 (`Control`/`PoseStamped`); corrected descriptor in `0a8f30ccb` — `archived/0267-*`.
 
@@ -249,12 +257,6 @@ coverage is unmodelled. See `0341-*`.
 `qemu-system-arm` command with no bypass rationale (while the next test in the same file uses
 the interpreter) and the only bare `start_slirp(7447)` among 14 call sites, inside the
 allocator's own window. See `0342-*`.
-
-**#336** — post-RFC-0060 bootstrap drift: `scripts/bootstrap.sh:189` inits the RETIRED
-`ros-launch-manifest` submodule path, so a **fresh clone cannot build the CLI** (it only works
-here because two retired worktrees remain on disk); 9 doc copies of the dead command,
-`AGENTS.md:285` says "NOT `--recursive`" (now required), `just doctor` checks the wrong prereq,
-and the book still teaches the 0285 PATH footgun. P1. See `0320-*`. (audit 2026-07-28)
 
 **#321** — `output_marker_gate` is **RED on main**: six inline marker literals in the
 ros-editions family. Landed unnoticed because `justfile:1174` excludes those binaries from the

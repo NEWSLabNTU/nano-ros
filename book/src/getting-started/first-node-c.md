@@ -19,7 +19,7 @@ this shell (nano-ros is a source distribution — no prebuilt `nros`).
 
 **B. Already have cargo** (equivalent — same build, same binary):
 ```sh
-git submodule update --init packages/cli/third-party/ros-launch-manifest
+git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```

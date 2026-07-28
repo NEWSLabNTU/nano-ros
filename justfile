@@ -345,7 +345,7 @@ check-fast: \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-c-fmt check-cpp-fmt check-python \
-    check-ffi-struct-mirrors check-sizes-header-mirrors check-no-absolute-model-paths
+    check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -566,6 +566,13 @@ check-ffi-struct-mirrors:
 [private]
 check-sizes-header-mirrors:
     @bash scripts/check-sizes-header-mirrors.sh
+
+# Issue 0336 — a retired submodule path must not survive anywhere that a user or
+# a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
+# doc copies and eight workflow refs; this grep would have caught all of them.
+[private]
+check-retired-submodule-refs:
+    @bash scripts/check-retired-submodule-refs.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
 # `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar

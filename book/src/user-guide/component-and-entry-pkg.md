@@ -117,7 +117,7 @@ pkg's own `Cargo.toml` and maps the board key
 (`"native"`/`"freertos"`/`"zephyr"`/…) to the right board crate
 via a small lookup table. The model forms reference a Bringup pkg by `<bringup>[:<relpath>]` — the
 Bringup pkg commits `config/system_model.yaml`, the SystemModel that
-`play_launch resolve` emits from the launch file (+ optional `--system`
+`nros sync` resolves from the launch file (+ optional `--system`
 config). The deprecated launch forms take `<bringup>[:<file>]` against
 `launch/<file>.launch.xml` + `system.toml [system] default_launch`.
 The `nros::main!()` expansion replaces the older

@@ -47,7 +47,7 @@ else if not set -q NROS_QUIET_ACTIVATE; and not command -v nros >/dev/null 2>&1
     echo "[nano-ros] CLI not built yet. Run:" >&2
     echo "  ./scripts/bootstrap.sh           (builds the CLI from source; installs rustup if needed)" >&2
     echo "  Equivalent, if you have cargo:" >&2
-    echo "  git submodule update --init packages/cli/third-party/ros-launch-manifest \\" >&2
+    echo "  git submodule update --init --recursive packages/cli/third-party/ros-launch-resolve \\" >&2
     echo "    && cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros" >&2
     echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 end
