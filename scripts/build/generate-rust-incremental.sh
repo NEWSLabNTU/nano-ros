@@ -67,12 +67,28 @@ nros_generate_rust_signature() {
     printf 'package_dir=%s\n' "$(realpath "$dir")"
     printf 'args=%q\n' "$@"
 
-    find "$dir" \
-        \( -path '*/target' -o -path '*/generated' \) -prune -o \
-        \( -name package.xml -o -path '*/msg/*.msg' -o -path '*/srv/*.srv' -o -path '*/action/*.action' \) \
-        -type f -print0 2>/dev/null \
-        | sort -z \
-        | xargs -0 sha1sum 2>/dev/null || true
+    # `git ls-files`, not `find`. These are all TRACKED inputs, and this runs
+    # once per package — 230+ times per `regenerate-bindings.sh` — so a walk per
+    # call is the worst shape available. `target/`/`generated/` need no pruning:
+    # gitignored, so never in the index.
+    local _rel="${dir#"$PWD"/}"
+    git ls-files "$_rel" \
+        | grep -E '(^|/)package\.xml$|/msg/[^/]+\.msg$|/srv/[^/]+\.srv$|/action/[^/]+\.action$' \
+        | sort \
+        | tr '\n' '\0' \
+        | xargs -0 -r sha1sum 2>/dev/null || true
+}
+
+# True iff `$1` holds at least one generated crate (`<out>/<pkg>/Cargo.toml`).
+#
+# A glob, not `find`: the output dir is gitignored so git cannot see it, but the
+# path shape is fixed and known — there is nothing to search for.
+nros_generated_has_crate() {
+    local _c
+    for _c in "$1"/*/Cargo.toml; do
+        if [ -f "$_c" ]; then return 0; fi
+    done
+    return 1
 }
 
 nros_generate_rust_if_needed() {
@@ -94,7 +110,7 @@ nros_generate_rust_if_needed() {
     local desired
     desired="$(nros_generate_rust_signature "$dir" "$nros" "$@")"
 
-    if [ "${NROS_GENERATE_BINDINGS_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ ! -d "$output_dir" ] || ! find "$output_dir" -mindepth 2 -name Cargo.toml -print -quit 2>/dev/null | grep -q . || [ "$(cat "$stamp")" != "$desired" ]; then
+    if [ "${NROS_GENERATE_BINDINGS_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ ! -d "$output_dir" ] || ! nros_generated_has_crate "$output_dir" || [ "$(cat "$stamp")" != "$desired" ]; then
         echo "  generate-rust: $dir"
         ( cd "$dir" && "$nros" generate-rust --force "$@" )
         mkdir -p "$output_dir"

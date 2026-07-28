@@ -38,7 +38,25 @@ TRACKED = r"package\.xml|Cargo\.toml|Cargo\.lock|\*\.rs|README\.md|\*\.msg|\*\.s
 # Roots whose subtrees contain build output, so a `find` rooted here pays the
 # walk. The optional quote matters: the two stale-CLI guards were written
 # `find "$root/packages/cli"` and slipped past an unquoted-only pattern.
-ROOT = r'"?(?:examples|packages|\$root|\$co_root|\$crate|\$PWD|\$\(pwd\))'
+# Any root INSIDE the repo. Originally an explicit list of literal dirs, which
+# missed `find "$dir"` in generate-rust-incremental.sh — a per-package scan that
+# ran 230+ times per invocation, the worst possible shape. Matching any variable
+# root is the safer default: an out-of-repo root (a ROS install prefix) is the
+# rare case, and it is excluded below by name rather than by omission.
+ROOT = r'"?(?:examples|packages|\$\{?\w+)'
+
+# Roots where git has NO index entry to consult, so `find` is the only option:
+# either outside the repo entirely (a ROS install prefix), or a build/staging
+# directory whose contents are copies rather than tracked files.
+#
+# `$staged` is the one that matters and the one this check first got wrong: the
+# idf/compile-check fixtures COPY an example into `build/<id>/` and rewrite the
+# path deps in the copy. Those `Cargo.toml`s are untracked by construction, so
+# flagging them was the gate telling someone to use a tool that cannot see the
+# files. A gate that demands an impossible fix gets disabled, so this list is
+# part of the rule, not an escape hatch.
+NO_INDEX = (r"\$prefix", r"\$ROS", r"/opt/ros", r"\$staged", r"\$out",
+            r"\$output_dir", r"\$BUILD_DIR", r"\$build_", r"\$log_dir")
 
 FILES = subprocess.run(
     ["git", "ls-files", "scripts", "just", "justfile"],
@@ -71,7 +89,7 @@ for f in FILES:
             # on find's OUTPUT, not a scan FOR that name.
             head = buf.split("|")[0]
             m = re.search(r"find\s+" + ROOT + r".*?(?:-name|-path)\s+'?\"?(" + TRACKED + ")", head)
-            if m:
+            if m and not any(re.search(o, head) for o in NO_INDEX):
                 bad.append(f"  {f}:{start+1}: searches for {m.group(1)}")
         i += 1
 

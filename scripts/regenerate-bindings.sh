@@ -99,9 +99,14 @@ for root in "${ws_roots[@]}"; do
     [ "$member_deps" -gt 0 ] || continue
     # Drop any stale PER-MEMBER `generated/` left by an older per-pkg pass; it is
     # gitignored + unreferenced (the shared root `generated/` is the source of truth).
-    if [ -d "$root/src" ]; then
-        find "$root/src" -mindepth 2 -maxdepth 2 -type d -name generated -exec rm -rf {} + 2>/dev/null || true
-    fi
+    #
+    # A glob, not `find`. These dirs are gitignored, so `git ls-files` cannot see
+    # them — but the path is a fixed shape (`<root>/src/<member>/generated`), and
+    # a glob expands it without walking anything. `find` would descend through
+    # every member's build output to rediscover a depth it was already told.
+    for _gen in "$root"/src/*/generated; do
+        if [ -d "$_gen" ]; then rm -rf "$_gen"; fi
+    done
     echo "  ws sync: ${root#"$PWD"/}"
     "$NROS" sync "$root" >/dev/null
 done
