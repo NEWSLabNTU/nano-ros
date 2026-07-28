@@ -264,17 +264,23 @@ int test_bsq_of_nested() {
 // Schema: { Nested n1; int32 trailing; } — the trailing primitive sits
 // at the slot that would have collided with the stray word.
 int test_ext_three_word_emission() {
+    // Preorder (see `kind_first_child`): a field's whole subtree precedes the
+    // next field, so "trailing" is kind index 2, not 1. This table used to
+    // spell the older flat layout (both top-level fields first, child
+    // appended); it built only because a depth-1 EXT never reaches the
+    // span-stepping walk. `validate_kind_table` now rejects it up front —
+    // issue 0319.
     NrosFieldKindDescriptor kinds[] = {
-        // kinds[0] — Nested (first child idx = 2, bound = 1)
-        {kKindNested, {0, 0, 0}, 1, 2, "test_msgs/msg/Inner"},
-        // kinds[1] — int32 (trailing field)
+        // kinds[0] — Nested (children start at 1, bound = 1)
+        {kKindNested, {0, 0, 0}, 1, 1, "test_msgs/msg/Inner"},
+        // kinds[1] — Inner.x (int32), the nested type's only member
         {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
-        // kinds[2] — Inner.x (int32)
+        // kinds[2] — int32 (trailing field)
         {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
     };
     NrosFieldDescriptor fields[] = {
         {"n1", 0, 0},
-        {"trailing", 16, 1},
+        {"trailing", 16, 2},
     };
 
     int err = 0;
@@ -463,6 +469,41 @@ int test_nested_sibling_span_preorder() {
     return 0;
 }
 
+// #0319 — a table that breaks the preorder rule must be REJECTED up front,
+// naming itself as malformed, instead of being half-walked and reported as an
+// unsupported field type from a bounds failure.
+//
+// This is the exact shape both tables in this file used to have: the older
+// flat layout, with the two top-level fields at [0],[1] and the nested type's
+// child appended afterwards. It is not merely unsupported — a preorder table
+// cannot express it, because a sibling is located by skipping the previous
+// sibling's subtree.
+int test_non_preorder_table_rejected() {
+    NrosFieldKindDescriptor kinds[] = {
+        // [0] Nested claiming its child lives at [2] — violates inner == idx+1
+        {kKindNested, {0, 0, 0}, 1, 2, "test_msgs/msg/Inner"},
+        // [1] a second top-level field
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
+        // [2] Inner.x
+        {kKindInt32, {0, 0, 0}, 0, 0, nullptr},
+    };
+    NrosFieldDescriptor fields[] = {
+        {"n1", 0, 0},
+        {"trailing", 16, 1},
+    };
+
+    int err = 0;
+    const void* raw = nros_cyclonedds_build_descriptor_from_schema(
+        "test_msgs/msg/BadTable", fields, 2, kinds, 3, 0u, &err);
+    EXPECT(raw == nullptr, "a non-preorder table must be rejected, got a descriptor");
+    // -1005 is NROS_BRIDGE_ERR_MALFORMED_KIND_TABLE. Asserting the SPECIFIC
+    // code is the point: the pre-0319 behaviour also failed, but as -1002
+    // (UnsupportedFieldType), which sent the reader looking at field kinds.
+    EXPECT(err == -1005, "expected -1005 malformed-table, got %d", err);
+    std::printf("OK non_preorder_table_rejected (err=%d)\n", err);
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -477,6 +518,8 @@ int main() {
     rc = test_nested_msize_covers_large_member();
     if (rc != 0) return rc;
     rc = test_nested_sibling_span_preorder();
+    if (rc != 0) return rc;
+    rc = test_non_preorder_table_rejected();
     if (rc != 0) return rc;
     std::printf("ALL OK\n");
     return 0;

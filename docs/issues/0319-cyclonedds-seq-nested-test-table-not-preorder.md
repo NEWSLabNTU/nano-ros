@@ -104,9 +104,62 @@ check` is what most work runs. A red landed in the heavier lane and sat there.
 Same shape as issue 0314: the gate that would have caught it is not in the loop
 people actually use.
 
-Worth noting for whoever revisits: the two conventions still coexist in
-`dynamic_type_builder.cpp`. `emit_nested_body` reading `k.inner` while
-`kind_span` assumes `idx + 1` is a latent trap — it is safe only because every
-producer happens to satisfy both. Making `kind_span` consult `inner`, or
-dropping `inner` in favour of the positional rule, would remove the ambiguity;
-neither is done here because this issue is about the red test, not a redesign.
+## Follow-up: the two conventions are now one (2026-07-28)
+
+The first fix left `emit_nested_body` reading `k.inner` while `kind_span`
+assumed `idx + 1` — safe only because every producer happened to satisfy both.
+That latent trap is now closed.
+
+### Why `inner` cannot be the authority
+
+The obvious unification — make everything trust `inner` — is impossible, and
+the reason is in the format rather than the code. An entry records a child
+COUNT (`bound`) and a FIRST-child index (`inner`), but never the index of child
+*i+1*. Locating child *i+1* therefore requires child *i*'s subtree SIZE, and a
+size is only well defined when the subtree is contiguous. An arbitrary `inner`
+is **unrepresentable, not merely unimplemented**.
+
+So preorder is forced by the format, and `inner` is redundant: it always equals
+`idx + 1`. That is exactly what `push_field_type` emits — and, confirmed while
+doing this, at the TOP level too: the caller loop appends each field's whole
+subtree before the next field, so a top-level field's kind index is *not* its
+ordinal.
+
+### What changed
+
+Deleting `inner` would be an ABI break across the hand-kept Rust/C++ mirror and
+every producer, so it stays — but it can no longer disagree:
+
+- `kind_first_child(idx)` is the single expression of the rule; `kind_span` and
+  both child-walking loops call it instead of spelling `idx + 1` or `k.inner`.
+- `validate_kind_table()` runs at the entry point, before any walk, and rejects
+  any aggregate whose `inner != idx + 1` with a NEW distinct code,
+  `NROS_BRIDGE_ERR_MALFORMED_KIND_TABLE` (-1005), mirrored into Rust as
+  `BridgeError::MalformedKindTable` / `BuildError::MalformedKindTable`. A
+  malformed table now says so instead of being reported as an unsupported field
+  type from a bounds failure deep in the walk.
+- A dead block in `emit_nested_body` went with it — a ternary whose two
+  branches both yielded `child_idx`, assigned to a variable immediately
+  discarded with `(void)`.
+
+### The validation immediately earned its keep
+
+Adding it turned a second test red: `test_ext_three_word_emission` carried the
+SAME obsolete flat layout (`[0]` nested claiming a child at `[2]`, the second
+top-level field at `[1]`). It had always built, because a depth-1 EXT never
+reaches the span-stepping walk — precisely the "leaf-only tables never exposed
+this" case `kind_span`'s comment predicted. Rewritten in preorder.
+
+Two of the three hand-built tables in this file were malformed, and one had
+been latent since long before #267.
+
+### Receipts
+
+- `just cyclonedds-ci` → rc=0, 16/16, with all six cases in this binary
+  reporting OK — including `nested_msize_covers_large_member (m_size=48 >= 48)`,
+  so #267's property still holds.
+- New `test_non_preorder_table_rejected` asserts the SPECIFIC code
+  (`err == -1005`), not merely that the build failed: the pre-0319 behaviour
+  also failed, but as -1002, which sent the reader looking at field kinds.
+- **Mutation-checked.** With the `validate_kind_table` call disabled, that test
+  FAILS; restored, 16/16. So the gate detects the thing it claims to.

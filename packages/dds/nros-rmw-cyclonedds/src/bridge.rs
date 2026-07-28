@@ -136,6 +136,11 @@ pub enum BridgeError {
     NullPointer = -1003,
     /// `count == 0` — empty schema rejected.
     EmptySchema = -1004,
+    /// #0319 — the `kinds[]` table breaks the preorder rule: some
+    /// aggregate's `inner` is not `idx + 1`. The bridge rejects the
+    /// table up front rather than misreading it as an unsupported
+    /// field type from a bounds failure deep in the walk.
+    MalformedKindTable = -1005,
 }
 
 unsafe extern "C" {

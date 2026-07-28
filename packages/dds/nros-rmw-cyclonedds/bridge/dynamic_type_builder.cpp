@@ -104,6 +104,9 @@ enum NrosBridgeError {
     NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE = -1002,
     NROS_BRIDGE_ERR_NULL_POINTER = -1003,
     NROS_BRIDGE_ERR_EMPTY_SCHEMA = -1004,
+    // #0319 — `kinds[]` violates the preorder rule (see
+    // `kind_first_child`): some aggregate's `inner` is not `idx + 1`.
+    NROS_BRIDGE_ERR_MALFORMED_KIND_TABLE = -1005,
 };
 
 // Mirror of `crate::bridge::FieldKind` (kept in sync by hand — the
@@ -446,6 +449,57 @@ constexpr uint32_t kMaxNestedSizeDepth = 16;
 // rooted at `idx` occupies, so sibling iteration can skip past a child's subtree.
 // (For leaf children span==1, which is why hand-built leaf-only tables — and the
 // 1-level top-level path that walks fields[] instead — never exposed this.)
+// #0319 — WHERE A NODE'S CHILDREN LIVE, in one place.
+//
+// `kinds[]` is a PREORDER table: a node's children (or a sequence/array's
+// element) occupy the entries immediately after it, and a sibling is reached
+// by skipping the previous sibling's whole subtree (`kind_span`).
+//
+// That is not a convention this walker chose — the format forces it. An entry
+// records a child COUNT (`bound`) and a FIRST-child index (`inner`), but never
+// the index of child i+1. Locating child i+1 therefore needs child i's subtree
+// SIZE, which is only well defined when a subtree is contiguous. An arbitrary
+// `inner` is unrepresentable, not merely unimplemented.
+//
+// So `inner` is redundant: it always equals `idx + 1`, which is exactly what
+// `dynamic_type.rs::push_field_type` emits (it allocates `my_idx`, then
+// immediately pushes the children). `validate_kind_table` enforces that before
+// any walk runs, so the two ways this file reached children — `k.inner` and
+// `idx + 1` — can no longer disagree. They did disagree for two days, and the
+// mismatch surfaced as a bogus `UnsupportedFieldType` from a bounds check
+// (issue 0319).
+inline uint32_t kind_first_child(uint32_t idx) { return idx + 1; }
+
+// Kinds that own a child/element subtree in `kinds[]`.
+inline bool kind_has_subtree(uint8_t kind) {
+    return kind == NROS_FIELD_KIND_NESTED || kind == NROS_FIELD_KIND_ARRAY ||
+           kind == NROS_FIELD_KIND_SEQUENCE || kind == NROS_FIELD_KIND_BOUNDED_SEQUENCE;
+}
+
+// Reject a table that breaks the preorder rule BEFORE walking it. Without
+// this, a violation surfaces deep inside `emit_nested_body` as
+// `UnsupportedFieldType`, which names neither the real problem nor the
+// offending entry — issue 0319 cost two days of a red `cyclonedds-ci` partly
+// for that reason.
+bool validate_kind_table(const NrosFieldKindDescriptor* kinds, uint32_t kind_count, int* out_err) {
+    for (uint32_t i = 0; i < kind_count; ++i) {
+        const auto& k = kinds[i];
+        if (!kind_has_subtree(k.kind)) continue;
+        // An empty aggregate owns no entries, so `inner` addresses one past
+        // its own slot and may legitimately sit at `kind_count`.
+        const bool empty_aggregate = (k.kind == NROS_FIELD_KIND_NESTED && k.bound == 0);
+        if (k.inner != kind_first_child(i)) {
+            if (out_err != nullptr) *out_err = NROS_BRIDGE_ERR_MALFORMED_KIND_TABLE;
+            return false;
+        }
+        if (!empty_aggregate && k.inner >= kind_count) {
+            if (out_err != nullptr) *out_err = NROS_BRIDGE_ERR_MALFORMED_KIND_TABLE;
+            return false;
+        }
+    }
+    return true;
+}
+
 uint32_t kind_span(uint32_t idx, const NrosFieldKindDescriptor* kinds, uint32_t kind_count,
                    uint32_t depth = 0) {
     if (depth >= kMaxNestedSizeDepth || idx >= kind_count) return 1;
@@ -453,7 +507,7 @@ uint32_t kind_span(uint32_t idx, const NrosFieldKindDescriptor* kinds, uint32_t 
     switch (k.kind) {
     case NROS_FIELD_KIND_NESTED: {
         uint32_t span = 1;
-        uint32_t child = idx + 1;
+        uint32_t child = kind_first_child(idx);
         for (uint32_t i = 0; i < k.bound; ++i) {
             uint32_t cs = kind_span(child, kinds, kind_count, depth + 1);
             span += cs;
@@ -464,8 +518,8 @@ uint32_t kind_span(uint32_t idx, const NrosFieldKindDescriptor* kinds, uint32_t 
     case NROS_FIELD_KIND_ARRAY:
     case NROS_FIELD_KIND_SEQUENCE:
     case NROS_FIELD_KIND_BOUNDED_SEQUENCE:
-        // The element type sits inline at idx+1; its subtree follows.
-        return 1 + kind_span(idx + 1, kinds, kind_count, depth + 1);
+        // The element type sits inline at the first-child slot; its subtree follows.
+        return 1 + kind_span(kind_first_child(idx), kinds, kind_count, depth + 1);
     default:
         return 1;
     }
@@ -482,7 +536,7 @@ uint32_t compute_nested_size(uint32_t kind_idx, const NrosFieldKindDescriptor* k
     uint32_t bound_count = k.bound;
     // #0267 — preorder table: advance to the next SIBLING by its subtree span,
     // never `first_child + i` (that lands inside the previous child's subtree).
-    uint32_t child_idx = k.inner;
+    uint32_t child_idx = kind_first_child(kind_idx);
     for (uint32_t i = 0; i < bound_count; ++i) {
         if (child_idx >= kind_count) return 0;
         const auto& c = kinds[child_idx];
@@ -582,7 +636,7 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
     // #0267 — preorder table: step to the next SIBLING by subtree span (see
     // `kind_span`); `first_child + i` would index into a prior child's subtree
     // (e.g. Pose's 2nd member Quaternion mis-read as Point's first f64).
-    uint32_t child_idx = k.inner;
+    uint32_t child_idx = kind_first_child(kind_idx);
     for (uint32_t i = 0; i < bound_count; ++i) {
         if (child_idx >= kind_count) {
             ctx.err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
@@ -656,19 +710,8 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
             }
             return false;
         }
-        // If the child was a nested struct, the emitter pushed an EXT
-        // op with a placeholder JSR. We need to record the patch so
-        // we can backfill once the nested body is emitted.
-        if (kinds[child_idx].kind == NROS_FIELD_KIND_NESTED) {
-            uint32_t inner_idx = kinds[child_idx].inner > 0
-                                     ? child_idx /* the child itself is the kind to emit */
-                                     : child_idx;
-            // The JSR patch was already recorded by emit_kind_block via
-            // ctx.patches (we add it here directly to keep that helper
-            // signature simple).
-            // No-op: emit_kind_block records the patch.
-            (void)inner_idx;
-        }
+        // A nested child's JSR patch is recorded by `emit_kind_block` via
+        // `ctx.patches`; nothing to do here.
         synth_offset += size;
         child_idx += kind_span(child_idx, kinds, kind_count);
     }
@@ -1032,6 +1075,13 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
     }
     if (field_count == 0 || kind_count == 0) {
         if (out_err != nullptr) *out_err = NROS_BRIDGE_ERR_EMPTY_SCHEMA;
+        return nullptr;
+    }
+    // #0319 — enforce the preorder rule before any walk, so a table whose
+    // `inner` disagrees with `idx + 1` is named as malformed here instead of
+    // surfacing as `UnsupportedFieldType` from a bounds check deep inside
+    // `emit_nested_body`.
+    if (!validate_kind_table(kinds, kind_count, out_err)) {
         return nullptr;
     }
 

@@ -147,6 +147,11 @@ pub enum BuildError {
     /// from [`crate::type_registry::TypeRegistry::get_or_build`] —
     /// kept on `BuildError` so the registry can share one error type.
     RegistryFull,
+    /// #0319 — the flattened `kinds[]` table breaks the preorder rule
+    /// the bridge requires (an aggregate's `inner` must be `idx + 1`).
+    /// Producers satisfy this by construction, so this surfaces only
+    /// for a hand-built table.
+    MalformedKindTable,
 }
 
 impl BuildError {
@@ -156,6 +161,7 @@ impl BuildError {
             x if x == BridgeError::UnsupportedFieldType as i32 => Self::UnsupportedFieldType,
             x if x == BridgeError::NullPointer as i32 => Self::InvalidTypeName,
             x if x == BridgeError::EmptySchema as i32 => Self::EmptySchema,
+            x if x == BridgeError::MalformedKindTable as i32 => Self::MalformedKindTable,
             other => Self::DdsError(other),
         }
     }
