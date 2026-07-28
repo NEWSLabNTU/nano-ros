@@ -44,7 +44,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved: **#346** — `borrowed` now works on srv/action payloads in both languages, so
+Recently resolved: **#348** — zpico supports only ONE zenoh session per process: `g_session` plus 51 file-scope
+statics (every registration table) are process globals, and the ~38 `zpico_*` entry points take no
+session handle, so multi-session means a breaking ABI change across 51 consuming files. Split out of
+#347, which made the second open FAIL loudly rather than silently wiping the first session. Nothing
+in-tree needs it — the bridge workspaces pair zenoh with a DIFFERENT backend — so this is a
+capability gap, not a live break. See `0348-*`. (2026-07-28)
+
+**#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
 #346). The design question this issue raised — "a borrowed response has nothing to borrow from" —
 was wrong: every payload has an owned WRITE side and a raw-buffer READ side, and the client reads

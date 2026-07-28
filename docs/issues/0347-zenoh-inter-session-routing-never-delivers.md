@@ -129,12 +129,13 @@ No in-tree configuration does this — checked every tracked `system.toml`; the
 bridge workspaces pair zenoh with a *different* backend, which is one zenoh
 session and unaffected.
 
-## Still open — real multi-session support
+## Still open — real multi-session support: **issue 0348**
 
-Supporting two zenoh sessions means moving `g_session` and every `g_*` table
-into a per-session context. That is a substantial shim refactor and is NOT done
-here; the honest contract until then is to refuse. If a multi-domain zenoh
-topology is ever needed, that refactor is the work.
+Supporting two zenoh sessions means moving `g_session` and every per-session
+`g_*` table into a context struct, and giving the ~38 `zpico_*` entry points a
+session handle — a breaking change across 51 consuming files. Filed separately
+as issue 0348 with the full inventory and options; the honest contract until
+then is to refuse.
 
 ## Verification note
 
