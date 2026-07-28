@@ -310,7 +310,10 @@ embedded path while registration never checks completeness. See `0332-*`.
 
 **#333** — `nros new` emits projects that don't run: for 4 of 8 documented platforms the board dep
 is interpolated as a TOML **comment** and vanishes silently; the template is the retired
-hand-rolled `no_mangle` entry shape instead of `nros::main!`. See `0333-*`.
+hand-rolled `no_mangle` entry shape instead of `nros::main!`. Defect 1 FIXED (8f81d2873): one
+validated `platform_spec` board-crate table, esp32 reconciled into the clap parser, real board dep
+for every platform. Defect 2 (runnable template) stays open — `nros::main!` reads the model at
+compile time so it cannot serve a from-nothing scaffold; needs its own design. See `0333-*`.
 
 **#334** — hardcoded build-host Zephyr-SDK path in the test harness (`zephyr.rs:417`), the last
 tracked absolute-path leak outside the SystemModels of **#320**; also a second SSoT for both the SDK
