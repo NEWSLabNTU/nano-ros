@@ -4,7 +4,7 @@ meta:
   - path: launch/multihost.launch.xml
     sha256: 4d922641296357912d4afdeaf56aa67d6cc633d3938e8fe737a9bc78f6f7600d
   - path: system.toml
-    sha256: 46225f9a407392e38125f04c8a678b0d2dfc87dbc46953b418d1033a8dd98b0e
+    sha256: 51317df55281ab822df0f3a67e042089ed463a334bc6f02b05c4ee7762efd4c0
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0

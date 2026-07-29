@@ -583,10 +583,45 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // play_launch resolve (Phase 46.1).
         use ros_launch_manifest_model::{ExtraValue, Target};
         let host_filter = args.host.as_deref();
+        // phase-315 — does the model place ANYTHING on this board?
+        //
+        // `execution.deploy` is a PARTITION: node -> one target. That is the
+        // right shape for machines (`machine="robot1"`), and the wrong shape for
+        // board build-variants, where every board runs every node and the map
+        // simply cannot say so.
+        //
+        // So a board the map never mentions is not "a board with nothing on it",
+        // it is a board the model has no opinion about — exactly the case the
+        // `(None, _) => true` arm below already handles per-NODE, lifted to the
+        // board level. Before the resolver emitted `execution.deploy` at all,
+        // every such entry took this path via the `is_empty()` fallback; adding
+        // one `[deploy.native]` block silently narrowed five embedded entries to
+        // zero nodes (`places no nodes on board `freertos``).
+        //
+        // A board the map DOES mention stays partitioned, so a genuine
+        // mis-placement is still caught.
+        let board_mentioned = model.execution.deploy.values().any(|d| match &d.target {
+            Some(Target::Linux) => matches!(board_key, "native" | "posix"),
+            Some(Target::Mcu { board: b }) => {
+                b == board_key
+                    || matches!(
+                        d.extra.get("kind"),
+                        Some(ExtraValue::Str(k)) if k == board_key
+                    )
+            }
+            None => false,
+        });
         let keep = |fqn: &str| -> bool {
             let Some(dep) = model.execution.deploy.get(fqn) else {
                 return model.execution.deploy.is_empty();
             };
+            if !board_mentioned {
+                // Unpartitioned for THIS board; the host filter below still applies.
+                return match host_filter {
+                    None => true,
+                    Some(h) => dep.host.as_deref().map(|dh| dh == h).unwrap_or(true),
+                };
+            }
             let board_ok = match (&dep.target, board_key) {
                 // Unplaced (launch-only model, e.g. a machine-derived deploy):
                 // the model names no board, so THIS entry's board decides —

@@ -59,6 +59,39 @@ target = "x86_64-unknown-linux-gnu"
 # `nros::main!(launch="demo_bringup:multihost.launch.xml", host="robot1")`)
 # builds robot1's binary, deployed via `[deploy.robot1]`. (RFC-0004 §4 home;
 # NOT a root nros.toml — see issue #51.)
+# phase-315 — the embedded BOARD BUILDS of this system.
+#
+# These are not placements. `kind = "self"` blocks (native/robot1/robot2) are
+# machines and PARTITION the nodes between them; a `kind = "embedded"` block is
+# the whole system compiled for another board, running every node. The resolver
+# excludes embedded blocks from placement for exactly this reason.
+#
+# They were missing while the workspace carried entries declaring them, and
+# nothing noticed: the pre-0.1.0 SystemModel had no `execution:` section at all,
+# so `nros::main!` placed every node on whatever board asked.
+#
+# Board ids come from the ws-realtime-c / ws-realtime-c-mps2 bringups and each
+# entry's fixtures.toml row.
+[deploy.zephyr]
+kind = "embedded"
+board = "native_sim/native/64"
+
+[deploy.freertos]
+kind = "embedded"
+board = "mps2-an385-freertos"
+
+[deploy.nuttx]
+kind = "embedded"
+board = "nuttx-qemu-arm"
+
+[deploy.threadx-linux]
+kind = "embedded"
+board = "threadx-linux"
+
+[deploy.esp32-qemu]
+kind = "embedded"
+board = "esp32-qemu"
+
 [deploy.robot1]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

@@ -1,50 +1,55 @@
 meta:
   version: 1
-# RFC-0052 / phase-296 R2 — resolved SystemModel for ws-realtime-c demo (C entries).
-# Hand-authored to mirror the equivalent `system.toml` (2 nodes, 2 tiers,
-# group→tier bindings); play_launch resolves tiers from a `--sched` platform
-# file, so this is the shape `play_launch resolve --sched <platform.yaml>`
-# emits. NO deploy layer: the system.toml's multi-[deploy.*] blocks pick the
-# BOARD per entry (cmake DEPLOY), not a per-node placement — the SAME nodes
-# build for every board, so every entry keeps all nodes and resolves the tier
-# table for its board's RTOS. The typed C++ path resolves each node's component class from the cmake
-# metadata by (pkg, exec); the model carries pkg + exec.
+  inputs:
+  - path: launch/system.launch.xml
+    sha256: 6b18a20f70c6a57aa9e0546c58ebb09badfcd8d0ba1bcb89e3663d86b3cc4eba
+  - path: system.toml
+    sha256: 8f64a54d344f2d58562683895545556f19c9d738462731a8818e9924906173e3
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.1.0
 structure:
   scopes:
-    /: {}
+    system.launch.xml:
+      file: system.launch.xml
   nodes:
     /ctrl_node:
-      scope: /
+      scope: system.launch.xml
       pkg: ctrl_pkg
       exec: ctrl
+      node_name: ctrl_node
     /telem_node:
-      scope: /
+      scope: system.launch.xml
       pkg: telem_pkg
       exec: telem
+      node_name: telem_node
 execution:
+  deploy:
+    /ctrl_node:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
+    /telem_node:
+      target: linux
+      domain: 0
+      rmw: zenoh
+      extra:
+        deploy_name: native
+        kind: self
+        target: x86_64-unknown-linux-gnu
   tiers:
-    # phase-296 W5.8 follow-up — kernel-EDF exercise for the C arm (see the
-    # ws-realtime-cpp/rust siblings): `high` is real_time with a
-    # ZEPHYR-SCOPED deadline_us; the Zephyr image's boot tier fires
-    # zephyr_apply_tier_deadline (k_thread_deadline_set + marker, only when
-    # CONFIG_SCHED_DEADLINE applied it). posix/nuttx lower to Fifo unchanged.
     high:
-      class: real_time
       spin_period_us: 10000
       posix:
         priority: 80
       zephyr:
         priority: 5
-        deadline_us: 10000
       nuttx:
         priority: 110
-        # phase-296 W5.9 — NUTTX-SCOPED sporadic policy: with class real_time
-        # this arms the kernel sporadic server (SCHED_SPORADIC) when the
-        # kernel has CONFIG_SCHED_SPORADIC, else the boot logs the loud
-        # "executor SchedContext only" note. Other platforms' bakes see no
-        # budget/period (sub-table scoped — no cooperative gating flips).
-        budget_us: 5000
-        period_us: 10000
     low:
       spin_period_us: 100000
       posix:

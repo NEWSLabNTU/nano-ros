@@ -4,7 +4,7 @@ meta:
   - path: launch/system.launch.xml
     sha256: f5a550aecbeb157bc731b831a051ba9bf3dd0158fdee9bb7e4869cf9531d697d
   - path: system.toml
-    sha256: 46225f9a407392e38125f04c8a678b0d2dfc87dbc46953b418d1033a8dd98b0e
+    sha256: 51317df55281ab822df0f3a67e042089ed463a334bc6f02b05c4ee7762efd4c0
   resolver:
     tool: ros-launch-resolve
     version: 0.1.0

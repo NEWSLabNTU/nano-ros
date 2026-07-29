@@ -2501,12 +2501,23 @@ setup-launch-resolve:
         # match nothing and make every pin bump look current. That is the exact
         # museum-binary failure this probe exists to catch, so it is checked
         # explicitly rather than assumed.
+        #
+        # `--recurse-submodules` is load-bearing for the same reason one level
+        # down: ros-launch-manifest is nested INSIDE ros-launch-resolve, and a
+        # plain `ls-files` on the outer tree lists only the inner gitlink. The
+        # first version of this conversion omitted it, so an edit to
+        # ros-launch-manifest's system_config.rs left a binary a full day older
+        # than its source and the probe called it fresh — the resolver fix
+        # appeared not to work, which reads as a code bug rather than a stale
+        # binary. `find` had this right by accident (it walks directories and
+        # neither knows nor cares about submodule boundaries); the index does
+        # not, so it must be asked.
         _res="$root/packages/cli/third-party/ros-launch-resolve"
         stale_src=""
         while IFS= read -r _f; do
             if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
         done < <( { git ls-files "$crate" | grep -E '\.rs$|Cargo\.toml$'
-                    git -C "$_res" ls-files | grep -E '\.rs$|Cargo\.toml$' \
+                    git -C "$_res" ls-files --recurse-submodules | grep -E '\.rs$|Cargo\.toml$' \
                         | sed "s|^|$_res/|" ; } )
         if [ -z "$stale_src" ]; then
             exit 0
