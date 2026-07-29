@@ -257,8 +257,10 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
 // ── zenoh lifecycle — matrix (Native, Rust, Zenoh, Lifecycle, Interop)
 #[case::zenoh_lifecycle_full_cycle(Cell {
     scenario: Scenario::ZenohLifecycle,
-    note: "the REP-2002 service surface driven end-to-end via `ros2 lifecycle …` \
-           (nodes/get/set configure/list) against an nros lifecycle node",
+    note: "the full REP-2002 cycle driven end-to-end via `ros2 lifecycle …` \
+           (nodes/get/list + set configure→activate→deactivate→cleanup) against an \
+           nros lifecycle node, asserting each transition, its on_* callback, and \
+           the resulting state",
 })]
 fn interop(#[case] cell: Cell) {
     require_cell_env(cell.scenario);
@@ -592,6 +594,67 @@ fn interop(#[case] cell: Cell) {
                     "ros2 lifecycle list missing `{marker}`:\n{list}"
                 );
             }
+
+            // E: set activate → Active + fires on_activate.
+            let activate = run_ros2(
+                &locator,
+                "lifecycle set --no-daemon --spin-time 0.1 /lifecycle_demo activate",
+            );
+            assert!(
+                activate.contains("Transitioning successful"),
+                "activate did not report success:\n{activate}"
+            );
+            node.wait_for_output_pattern("on_activate", Duration::from_secs(3))
+                .expect("on_activate never logged");
+            let active = poll_ros2_until(
+                &locator,
+                "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+                "active",
+                Duration::from_secs(5),
+            );
+            // `ros2 lifecycle get` prints just the current state (e.g. `active [3]`),
+            // so Active is "active" with no "inactive" substring.
+            assert!(
+                active.to_lowercase().contains("active")
+                    && !active.to_lowercase().contains("inactive"),
+                "expected Active after activate, got:\n{active}"
+            );
+
+            // F: set deactivate → back to Inactive + fires on_deactivate.
+            let deactivate = run_ros2(
+                &locator,
+                "lifecycle set --no-daemon --spin-time 0.1 /lifecycle_demo deactivate",
+            );
+            assert!(
+                deactivate.contains("Transitioning successful"),
+                "deactivate did not report success:\n{deactivate}"
+            );
+            node.wait_for_output_pattern("on_deactivate", Duration::from_secs(3))
+                .expect("on_deactivate never logged");
+
+            // G: set cleanup → back to Unconfigured + fires on_cleanup, closing the
+            // REP-2002 cycle end to end.
+            let cleanup = run_ros2(
+                &locator,
+                "lifecycle set --no-daemon --spin-time 0.1 /lifecycle_demo cleanup",
+            );
+            assert!(
+                cleanup.contains("Transitioning successful"),
+                "cleanup did not report success:\n{cleanup}"
+            );
+            node.wait_for_output_pattern("on_cleanup", Duration::from_secs(3))
+                .expect("on_cleanup never logged");
+            let final_state = poll_ros2_until(
+                &locator,
+                "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+                "unconfigured",
+                Duration::from_secs(5),
+            );
+            assert!(
+                final_state.to_lowercase().contains("unconfigured"),
+                "expected Unconfigured after cleanup, got:\n{final_state}"
+            );
+
             node.kill();
         }
     }

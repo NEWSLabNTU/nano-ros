@@ -91,6 +91,7 @@ fn main() {
     executor
         .register_lifecycle_node(&mut node)
         .expect("Failed to register lifecycle node");
+    nros_info!(&LOGGER, "Lifecycle services registered on /lifecycle_demo");
 
     nros_info!(
         &LOGGER,
