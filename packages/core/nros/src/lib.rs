@@ -337,6 +337,50 @@ pub use nros_macros::main;
 /// The macro is intended for `rust_cargo_application()` apps whose crate
 /// already invokes `nros::node!()`. It opens a Zephyr executor, registers
 /// the supplied component through [`ExecutorNodeRuntime`], and spins forever.
+/// Issue 0330 — force-link an RMW backend crate into a pure-Rust staticlib.
+///
+/// On a Rust-only image (Zephyr and friends) the Zephyr module emits a weak
+/// `nros_rmw_<name>_register` and calls it only if it resolves. The strong
+/// definition is the backend crate's `#[no_mangle]` export — and rustc's
+/// staticlib DCE drops it unless something in the crate being compiled into the
+/// staticlib references that crate. The symbol is then present in the rlib and
+/// absent from the `.a`, the weak call sees NULL, and the image comes up with no
+/// backend registered (issues 0155 / 0163).
+///
+/// This emits the reference, without naming any backend in nano-ros' own
+/// RMW-agnostic layers — the app crate names it, because the app crate is what
+/// selects an RMW:
+///
+/// ```ignore
+/// #[cfg(feature = "rmw-zenoh")]
+/// nros::force_link_backend!(nros_rmw_zenoh);
+/// #[cfg(feature = "rmw-xrce")]
+/// nros::force_link_backend!(nros_rmw_xrce_cffi);
+/// ```
+///
+/// It is an ANCHOR, not a registration call — the static is never executed
+/// (same class as `nros-c`'s `FORCE_LINK` and `nros-rmw-cffi`'s section anchor).
+/// Registration happens through `nros_app_register_backends`. Backends whose
+/// register entry lives in a C/C++ library the image already links (cyclonedds
+/// on Zephyr) need no anchor at all.
+///
+/// Invoke at module scope. Multiple invocations in one crate are fine — each
+/// expands inside its own anonymous const, so the static names cannot collide.
+#[macro_export]
+macro_rules! force_link_backend {
+    // `ident`, not `path`: a `path` fragment may not be followed by `::`, so
+    // `$backend::register()` fails to parse at the CALL site with a misleading
+    // "expected an operator". Backend crate names are single idents anyway.
+    ($backend:ident) => {
+        const _: () = {
+            #[used]
+            static __NROS_FORCE_LINK_BACKEND: fn() = || {
+                let _ = $backend::register();
+            };
+        };
+    };
+}
+
 // Phase 248 C7 (Method A) — gated on `rmw-cffi` only (needs `Executor`), NOT a
 // `platform-*` feature. This is a framework ENTRY macro (same category as
 // `nros::main!`'s zephyr `rust_main` codegen) — `#[macro_export]` so it emits
@@ -369,25 +413,23 @@ macro_rules! zephyr_component_main {
             }
             unsafe { nros_app_register_backends() };
             // Issue 0163 — a pure-Rust image has no `libnros_c.a`, so the
-            // zenoh/xrce backend must ride in THIS staticlib and be referenced
-            // from the app crate or rustc's staticlib DCE drops the whole
-            // backend closure (the `#[no_mangle]` C export included — the same
-            // hazard nros-c's FORCE_LINK anchor documents). These cfg's are
-            // evaluated against the EXPANDING app crate's features (`rmw-zenoh`
-            // / `rmw-xrce` forward to the real backend deps); the direct call
-            // is both the force-link reference and the registration, and is
-            // idempotent with the `nros_app_register_backends` hook above
-            // (duplicate named registration is an in-place overwrite).
-            // cyclonedds needs nothing here: its register entry lives in the
-            // Zephyr module's C++ lib and the hook above calls it.
-            #[cfg(feature = "rmw-zenoh")]
-            {
-                let _ = ::nros_rmw_zenoh::register();
-            }
-            #[cfg(feature = "rmw-xrce")]
-            {
-                let _ = ::nros_rmw_xrce_cffi::register();
-            }
+            // backend must ride in THIS staticlib and be referenced from the
+            // app crate, or rustc's staticlib DCE drops the whole backend
+            // closure (the `#[no_mangle]` C export included), leaving the
+            // module's weak `nros_rmw_<x>_register` resolving to NULL and the
+            // hook above registering nothing.
+            //
+            // Issue 0330 — that reference used to be a pair of hardcoded
+            // `::nros_rmw_zenoh::register()` / `::nros_rmw_xrce_cffi::register()`
+            // calls emitted RIGHT HERE, which named two concrete backends in
+            // the RMW-agnostic facade (and left cyclonedds handled asymmetrically
+            // through the C hook). It also forced every consumer to carry
+            // `rmw-zenoh` / `rmw-xrce` feature rows purely so these `cfg`s would
+            // resolve — the cyclonedds-only example carried both as inert
+            // placeholders. The anchor now lives in the app crate, which is the
+            // layer that legitimately selects an RMW: see
+            // [`nros::force_link_backend!`]. Registration itself is unchanged —
+            // the `nros_app_register_backends` hook above does it.
             // Locator: `default_const()` = EMPTY locator → zenoh-pico
             // multicast scouting, which native_sim NSOS can't satisfy.
             // Bake `NROS_LOCATOR` at compile time (the example `build.rs`

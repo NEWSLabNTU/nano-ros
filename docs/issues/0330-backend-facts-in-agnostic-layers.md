@@ -1,7 +1,7 @@
 ---
 id: 330
 title: "Backend facts in RMW-agnostic layers: the zenoh locator default is hardcoded in 4 places (two of them backend-blind), BoardConfig::zenoh_locator names a backend in a core API, and the façade macro hardcodes two register() calls"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: core
@@ -73,7 +73,7 @@ DEFAULT port and opens a client session with no locator and no
 nothing else exercised this rung. Mutation-checked: removing the substitution
 turns it red (`ConnectionFailed`).
 
-Part 2 is also resolved (below). Part 3 remains open.
+Parts 2 and 3 are also resolved (below).
 
 ### 2. A backend name in a core public trait
 
@@ -129,6 +129,47 @@ from the board/platform gate that already owns backend selection, so the façade
 stays name-free. (Note the force-link constraint from archived issues 0155/0163 —
 the anchor must keep a *direct* reference or rustc's staticlib DCE drops the
 backend's `#[no_mangle]` export.)
+
+#### Resolved (part 3)
+
+Investigation changed the shape of the fix. The two `register()` calls were
+**redundant as registration** — `nros_app_register_backends()`, called a dozen
+lines above them, already registers. They were load-bearing only as force-link
+anchors: on a Rust-only image the Zephyr module emits a WEAK
+`nros_rmw_<x>_register` and calls it if it resolves, and the strong definition
+is the backend crate's `#[no_mangle]` export, which staticlib DCE drops unless
+the crate being compiled into the staticlib references it.
+
+So the fix is not "make the facade register generically" — it is "move the
+anchor to the layer that legitimately names a backend". `nros` itself cannot
+host it (it has no backend deps by design); the app crate can, and does, via a
+new name-free `nros::force_link_backend!(<crate>)`. The facade macro now names
+no backend at all.
+
+Two things that fell out:
+
+- The cyclonedds-only example carried **inert `rmw-zenoh = []` / `rmw-xrce = []`
+  feature rows** whose only purpose was to satisfy the facade macro's per-backend
+  `cfg` checks under check-cfg (issue #216). Direct evidence the leak imposed a
+  cost on consumers. Both rows are deleted, and that example still builds.
+- `$backend:path` does not work as the macro's fragment: a `path` fragment may
+  not be followed by `::`, so `$backend::register()` fails to parse at the CALL
+  site with a misleading "expected an operator". It takes an `ident`.
+
+**A missing anchor is SILENT** — mutation-verified: deleting it from
+`examples/zephyr/rust/talker` still builds AND links, `nros_rmw_zenoh_register`
+simply vanishes from `librustapp.a`. No gate existed because, while the facade
+emitted the anchor, it could not go missing; moving it to the app crate makes it
+possible, so `just check-rmw-force-link-anchor`
+(`scripts/check-rmw-force-link-anchor.sh`, wired into `check-fast`) now requires
+an anchor from any Zephyr Rust example whose `rmw-*` feature forwards to a real
+backend dep. Mutation-tested in both directions.
+
+Verification: all six zenoh examples build; `rust/service-client` builds against
+xrce; the FVP cyclonedds Rust example builds with its inert rows gone; `nm`
+confirms `nros_rmw_zenoh_register` present in `librustapp.a` and `zephyr.exe`
+with the anchor and ABSENT without it; and the talker runs against a real
+zenohd, reaching the readiness marker and publishing.
 
 ## Checked and NOT findings
 

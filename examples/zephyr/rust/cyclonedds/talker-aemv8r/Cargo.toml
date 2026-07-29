@@ -32,12 +32,14 @@ default = ["rmw-cyclonedds"]
 # marker, kept so EXTRA_CARGO_ARGS `--features rmw-cyclonedds` still resolves;
 # it no longer forwards `nros rmw-*`. (#60 T5)
 rmw-cyclonedds = []
-# Issue #216 — inert rows so `zephyr_component_main!`'s cfg checks on the
-# other RMW features pass rustc's check-cfg (the macro cfg-gates a direct
-# `register()` per backend; a missing feature DECLARATION is a hard error
-# under `-D warnings`). Cyclone-only image: these link nothing.
-rmw-zenoh = []
-rmw-xrce = []
+# Issue 0330 — the inert `rmw-zenoh` / `rmw-xrce` rows that used to live here
+# are GONE. They existed only so `zephyr_component_main!`'s per-backend `cfg`
+# checks would pass rustc's check-cfg (a missing feature DECLARATION is a hard
+# error under `-D warnings`) — i.e. the facade macro's hardcoded backend names
+# leaked a requirement onto a Cyclone-only image that links neither. The macro
+# no longer names any backend; the force-link anchor moved to the app crates
+# that actually select one. This image needs no anchor: cyclonedds' register
+# entry lives in the Zephyr module's C++ lib.
 
 [dependencies]
 zephyr = "0.1.0"

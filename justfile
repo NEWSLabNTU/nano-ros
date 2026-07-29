@@ -346,6 +346,7 @@ check: check-fast check-build
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
+    check-rmw-force-link-anchor \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -624,6 +625,17 @@ check-no-allow-multiple-def:
 [private]
 check-no-board-init:
     @bash scripts/check-no-board-init.sh
+
+# Issue 0330 (class of 0155/0163) — a Zephyr Rust example whose `rmw-*` feature
+# forwards to a real backend dep must invoke `nros::force_link_backend!`, or
+# rustc's staticlib DCE drops the backend's `#[no_mangle]` register export and
+# the image boots with NO backend registered. Mutation-verified silent: removing
+# the anchor still builds AND links. The anchor used to be emitted by
+# `zephyr_component_main!` (so it could not go missing); 0330 moved it to the
+# app crate, which is what makes this gate necessary. Buildless.
+[private]
+check-rmw-force-link-anchor:
+    @bash scripts/check-rmw-force-link-anchor.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.
