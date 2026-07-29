@@ -2092,9 +2092,17 @@ pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path>
 pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_LIFECYCLE_MANAGED_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry(
+            // Issue 0257 — the managed bringup bakes a larger executor callback
+            // arena (NROS_EXECUTOR_MAX_CBS=8), which probes a DIFFERENT executor
+            // size than the sibling `workspace-cpp-native-lifecycle` row. They
+            // must NOT share `build-workspace-fixtures` (the per-build-tree
+            // `nros_config_generated.h` would disagree and trip the sizes-mirror
+            // guard), so `fixtures.toml` gives this row its own
+            // `build-workspace-fixtures-managed` — resolve the entry from there.
+            build_workspace_cmake_entry_in(
                 "workspace-cpp-native-lifecycle-managed",
                 "ws-lifecycle-cpp",
+                "build-workspace-fixtures-managed",
                 "native_managed_entry",
             )
         })
