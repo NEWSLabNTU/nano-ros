@@ -198,7 +198,7 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 | tier | name | scope | gate covers | budget | when |
 | --- | --- | --- | --- | --- | --- |
 | 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save |
-| 1 | `ci` | tier 0 + host build + **codegen golden diff** + an 18-cell native selection | native fixtures only | minutes | every commit, pre-push |
+| 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | every commit, pre-push |
 | 2 | `ci-matrix` | tier 1 + a **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | ~20 % of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
 | 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | nightly, pre-release, on demand |
 
@@ -247,7 +247,7 @@ fails on every platform.
 | tier | selection | cells | why |
 | --- | --- | --- | --- |
 | 0 | none — text invariants only | **0** | Comparisons of committed text: 0336, 0321, 0268's mirror gate, 0320/0334. No build ⇒ no fixture ⇒ no staleness. |
-| 1 | Native only: **1-wise(workload, kind) + pairwise(lang × rmw)** | **18** of 77 native | Every core code path runs once (where most P1s live), and every language meets every RMW — on the host, where a failure costs minutes, not a QEMU boot. |
+| 1 | Native only: **1-wise(workload, kind) + pairwise(lang × rmw)** | **16** of 77 native | Every core code path runs once (where most P1s live), and every language meets every RMW — on the host, where a failure costs minutes, not a QEMU boot. |
 | 2 | **pairwise(platform × lang × rmw × kind)** | **37** (20 %) | Exactly the interaction classes above. Deliberately excludes `workload`. |
 | 3 | everything: Runtime + BuildOnly | **182** + build-only | Thresholds, timing, emulator behaviour — irreducible. |
 

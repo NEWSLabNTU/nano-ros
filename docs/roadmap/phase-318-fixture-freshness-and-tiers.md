@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-28): W1 in progress.** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-29): W1 + W3 + W4 landed (W4.d deferred).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -17,7 +17,7 @@ The workspace-fixture signature hashes `sha256(packages/cli/target/release/nros)
 binaries are not reproducible across rebuilds, so the hash moves whenever the CLI
 is rebuilt, whether or not emitted bytes changed.
 
-- [ ] **W1.a** `scripts/build/codegen-fingerprint.sh` — run `nros` over a
+- [x] **W1.a** `scripts/build/codegen-fingerprint.sh` — run `nros` over a
       committed probe corpus (one msg per configurable shape, one srv, one
       action), hash the emitted bytes. Cache at
       `.nros-cache/codegen-fingerprint/<sha256-of-binary>`; one probe run per new
@@ -27,11 +27,11 @@ is rebuilt, whether or not emitted bytes changed.
       fixture inputs, so a signature blind to the resolver repeats #182 one layer
       down. Falls back to the resolver's binary hash when CPython is unavailable
       (degrade to today's over-approximation, never to "assume fresh").
-- [ ] **W1.c** `workspace-fixture-signature.sh`: `tool:nros <binary-hash>` →
+- [x] **W1.c** `workspace-fixture-signature.sh`: `tool:nros <binary-hash>` →
       `toolchain:<codegen_fp>[:<resolve_fp>]`, the resolver half included ONLY for
       records that declare a bringup. Signature version `v2` → `v3` (invalidates
       once, deliberately, never again for this reason).
-- [ ] **W1.d** Acceptance test: capture signatures → rebuild the CLI with a
+- [x] **W1.d** Acceptance test: capture signatures → rebuild the CLI with a
       comment-only change → re-capture → **diff must be empty**. Inverse: a
       template edit that changes emitted bytes must invalidate the affected
       fixtures.
@@ -47,22 +47,31 @@ is rebuilt, whether or not emitted bytes changed.
 
 ## W3 — tier selection computed from the matrix
 
-- [ ] **W3.a** `matrix::tier1_cells()` — `Native` ∩
-      [1-wise(workload, kind) + pairwise(lang × rmw)]. Measured: **18 cells** of 77 native.
-- [ ] **W3.b** `matrix::tier2_cells()` — pairwise(platform × lang × rmw × kind)
-      over all Runtime cells. Measured: **37 cells**, 20 % of 182.
-- [ ] **W3.c** Greedy set cover with a lexicographic tie-break so the chosen set is
+- [x] **W3.a** `ci_lane::cells(CiLane::Tier1)` — `Native` ∩
+      [1-wise(workload, kind) + pairwise(lang × rmw)]. Measured: **16 cells** of
+      77 native. (RFC-0061 says 18, from a Python prototype; the shipped greedy
+      tie-break finds a smaller cover for the same requirements — RFC updated.)
+      Named `ci_lane`, not `tier`, because `matrix::Tier` already means
+      Runtime / BuildOnly / CarveOut.
+- [x] **W3.b** `ci_lane::cells(CiLane::Tier2)` — pairwise(platform × lang × rmw ×
+      kind) over all Runtime cells. Measured: **37 cells**, 20 % of 182 — matching
+      the RFC exactly.
+- [x] **W3.c** Greedy set cover with a lexicographic tie-break so the chosen set is
       deterministic for a fixed cell table.
-- [ ] **W3.d** A test asserting each cover touches every declared value of every
+- [x] **W3.d** A test asserting each cover touches every declared value of every
       axis it pairs or singles — the regression that catches "someone added a
       platform and tier 2 silently skipped it".
 
 ## W4 — scope the staleness gate to the lane
 
-- [ ] **W4.a** `scripts/check-fixtures-stale.sh` takes a platform/cell filter.
-- [ ] **W4.b** Recipes: `ci` = tier 1, `ci-matrix` = tier 2, `ci-full` = today's
+- [x] **W4.a** `scripts/check-fixtures-stale.sh` takes a platform/cell filter.
+- [x] **W4.b** Recipes: `ci` = tier 1, `ci-matrix` = tier 2, `ci-full` = today's
       `ci`. Each gates only its own fixtures — a native-intent run must not be
       blocked by a stale ThreadX fixture (which is exactly what happened).
+- [ ] **W4.d** Wire the computed tier-2 cell set to the nextest filter. Today
+      `ci-matrix` runs the full lane and says so — the selection exists
+      (`nros_tests::ci_lane`) but nothing maps a cell to its test binary, so the
+      filter cannot yet be derived from it. That mapping is the real work.
 - [ ] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
       with tier 2 named for core/codegen/cmake changes. An instruction nobody can
       afford to follow gets followed selectively.
@@ -85,13 +94,20 @@ is rebuilt, whether or not emitted bytes changed.
 
 Per RFC-0061 §Acceptance. The load-bearing ones:
 
-- [ ] A `just setup-cli` that does not change emitted bytes invalidates **zero**
-      workspace fixtures.
+- [x] A `just setup-cli` that does not change emitted bytes invalidates **zero**
+      workspace fixtures. *(W1.d acceptance, both arms: no-op rebuild → 0 of 81
+      invalidated; one-line template edit → fingerprint moves and fixtures
+      invalidate.)*
 - [ ] A resolver rebuild that does not change emitted models invalidates zero;
       one that does invalidates the bringup-bearing fixtures and no others.
 - [ ] `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
-- [ ] Tier 1/2 covers are computed, not listed; adding a platform to
-      `matrix::CELLS` extends tier 2 with no second edit.
+      *(Scope reduction demonstrated — the gate drops from 81 to 65 workspace
+      records, excluding exactly the 16 freertos/nuttx/threadx ones that blocked
+      the 2026-07-28 run — but a full tier-1 run has not been timed yet.)*
+- [x] Tier 1/2 covers are computed, not listed; adding a platform to
+      `matrix::CELLS` extends tier 2 with no second edit. *(Gated by
+      `ci_lane::tests::lanes_touch_every_declared_value_of_every_axis_they_cover`
+      and `lane_filter_tokens_cover_every_non_native_platform`.)*
 
 ## Non-goals
 

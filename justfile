@@ -1258,6 +1258,13 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     # filter them OUT so they report `skipped`, not `failed` (`skip!` is a panic
     # ⇒ a nextest failure; only *filtering* yields a skip).
     env_exclude=()
+    # RFC-0061 / phase-318 W4 — scope the RUN to the lane. `NROS_TEST_SCOPE=native`
+    # (tier 1) drops every non-host binary; the exclusions are DERIVED from
+    # `PlatformId`, so adding a platform extends them with no second edit
+    # (ci_lane::tests::lane_filter_tokens_cover_every_non_native_platform gates it).
+    while IFS= read -r _lane_expr; do
+        [ -n "$_lane_expr" ] && env_exclude+=("$_lane_expr")
+    done < <(bash scripts/test/lane-filter.sh "${NROS_TEST_SCOPE:-all}")
     source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate (issue-0030 lockstep)
     nros_toolchain_present arm-none-eabi \
         || env_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
@@ -1401,9 +1408,34 @@ rust-rtos-link-check:
 # `rmw_cyclonedds_cpp`). Phase 146.3 adds the `rust-rtos-link-check`
 # gate ahead of `test-all` so the embedded-RTOS link-symbol
 # regression class surfaces immediately on `just ci`.
+# RFC-0061 / phase-318 W4 — the tier ladder. `ci` is TIER 1: the lane a developer
+# can afford to run per task. It gates only host fixtures and runs only host
+# binaries, so a stale ThreadX fixture cannot block it — which is exactly what
+# happened on 2026-07-28, when every code stage passed and 40 cross-platform
+# workspace fixtures failed the preflight of a native-intent run.
+#
+#   just ci         tier 1 — every commit / pre-push
+#   just ci-matrix  tier 2 — when the diff touches packages/core, codegen, cmake/
+#   just ci-full    tier 3 — nightly, pre-release, on demand (the former `ci`)
 [group("ci")]
-ci: check rust-rtos-link-check test-all
-    @echo "CI passed!"
+ci:
+    @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native just check rust-rtos-link-check test-all
+    @echo "CI passed (tier 1 — host only; platform coverage needs `just ci-matrix`)!"
+
+# Tier 2 — the 37-cell pairwise cover over platform x lang x rmw x kind
+# (`nros_tests::ci_lane`). Selection is computed from `matrix::CELLS`; wiring the
+# nextest filter to that computed set is phase-318 W4.d, so today this runs the
+# full matrix with the tier-2 FIXTURE scope and is honest about it.
+[group("ci")]
+ci-matrix:
+    @echo "NOTE: tier-2 cell selection is computed (nros_tests::ci_lane) but not yet"
+    @echo "      wired to the nextest filter (phase-318 W4.d) — running the full lane."
+    @just ci-full
+
+# Tier 3 — everything. The former `ci`.
+[group("ci")]
+ci-full: check rust-rtos-link-check test-all
+    @echo "CI passed (tier 3 — full matrix)!"
 
 # =============================================================================
 # CI reorg (step A) — local mirrors of the standalone CI workflows + a fast lane.

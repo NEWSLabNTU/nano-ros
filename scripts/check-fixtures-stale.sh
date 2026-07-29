@@ -18,9 +18,32 @@ if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
     exit 0
 fi
 
+# RFC-0061 / phase-318 W4 — scope the gate to the LANE that is running.
+#
+# This gate used to cover every platform unconditionally, which is how a
+# native-intent `just ci` came to be blocked by a stale ThreadX fixture
+# (2026-07-28: every code stage passed, then 40 cross-platform workspace
+# fixtures failed the preflight). A tier's gate must cover exactly that tier's
+# fixtures — otherwise the cheap lane inherits the expensive lane's cost and
+# stops being runnable per task, which is how `NROS_SKIP_FIXTURE_CHECK=1`
+# became routine.
+#
+#   NROS_FIXTURE_SCOPE=native   tier 1 — host fixtures only
+#   NROS_FIXTURE_SCOPE=all      tier 2/3 — everything (default, unchanged)
+SCOPE="${NROS_FIXTURE_SCOPE:-all}"
+scope_args=()
+case "$SCOPE" in
+    all) ;;
+    native) scope_args=(--platform native) ;;
+    *)
+        echo "ERROR: NROS_FIXTURE_SCOPE must be 'native' or 'all' (got '$SCOPE')" >&2
+        exit 2
+        ;;
+esac
+
 cmake_records() {
-    python3 scripts/build/fixtures-manifest.py list --for-probe --lang c
-    python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp
+    python3 scripts/build/fixtures-manifest.py list --for-probe --lang c "${scope_args[@]}"
+    python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp "${scope_args[@]}"
 }
 
 cmake_stale=()
@@ -43,7 +66,7 @@ fi
 
 rust_stale=()
 if command -v parallel >/dev/null 2>&1; then
-    python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust \
+    python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}" \
         | parallel --halt now,fail=1 --jobs "$(nproc)" \
         bash scripts/test/rust-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
         || probe_crash $?
@@ -52,7 +75,7 @@ else
     while IFS= read -r line; do
         out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
         [ -n "$out" ] && rust_stale+=("$out")
-    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust)
+    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}")
 fi
 if [ ${#rust_stale[@]} -gt 0 ]; then
     echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
@@ -92,7 +115,7 @@ while IFS= read -r line; do
     else
         echo "info: workspace fixture '$id' not required in preflight — cross toolchain absent (issue 0030)" >&2
     fi
-done < <(python3 scripts/build/fixtures-manifest.py list-workspaces --for-probe)
+done < <(python3 scripts/build/fixtures-manifest.py list-workspaces --for-probe "${scope_args[@]}")
 
 workspace_stale=()
 if [ ${#workspace_records[@]} -eq 0 ]; then
