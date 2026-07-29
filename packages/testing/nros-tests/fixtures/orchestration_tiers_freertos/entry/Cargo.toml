@@ -16,10 +16,17 @@ rmw = "zenoh"
 domain_id = 0
 # Issue #48 cause 1 — slirp addressing threaded into the firmware boot Config
 # via `Mps2An385::run_tiers` (multi-tier path): guest 10.0.2.15 / gateway 10.0.2.2,
-# dialing the host zenohd at the slirp alias 10.0.2.2:7447.
+# dialing the host zenohd at the slirp alias 10.0.2.2.
+#
+# Issue 0342 — the PORT is the allocator's slot for this cell:
+# `port_of(FreertosMps2, Rust, RealtimeTiers)` = 7891. It was a bare 7447, which
+# is not merely unallocated but sits inside ANOTHER platform's window, so it
+# could collide as the matrix grows. A baked literal cannot call the allocator,
+# so `orchestration_tiers_freertos.rs` asserts this file's port against
+# `port_of(...)` before booting — the mirror cannot drift silently.
 ip = "10.0.2.15"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7447"
+locator = "tcp/10.0.2.2:7891"
 
 [dependencies]
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false }
