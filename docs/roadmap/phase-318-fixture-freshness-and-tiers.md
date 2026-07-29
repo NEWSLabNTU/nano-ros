@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-29): W1 + W3 + W4 landed (W4.d deferred).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-29): W1, W2, W3, W4 landed (W4.c/W4.d + W5 open).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -22,7 +22,7 @@ is rebuilt, whether or not emitted bytes changed.
       action), hash the emitted bytes. Cache at
       `.nros-cache/codegen-fingerprint/<sha256-of-binary>`; one probe run per new
       binary, a file read thereafter.
-- [ ] **W1.b** `scripts/build/resolve-fingerprint.sh` — same for
+- [x] **W1.b** `scripts/build/resolve-fingerprint.sh` — same for
       `nros-launch-resolve` over a probe launch tree. Emitted SystemModels ARE
       fixture inputs, so a signature blind to the resolver repeats #182 one layer
       down. Falls back to the resolver's binary hash when CPython is unavailable
@@ -38,9 +38,15 @@ is rebuilt, whether or not emitted bytes changed.
 
 ## W2 — the probe corpus doubles as a codegen golden test
 
-- [ ] **W2.a** Commit the corpus + its expected output under
+- [x] **W2.a** Commit the corpus + its expected output under
       `packages/cli/rosidl-codegen/tests/`.
-- [ ] **W2.b** A test that regenerates and diffs. Seconds, no fixture, no
+- [x] **W2.b** `tests/codegen_golden.rs` regenerates and diffs, reading the SAME
+      `emit_corpus()` map the fingerprint hashes — a golden test covering
+      different bytes than the fingerprint could pass while the fingerprint moved
+      (or the reverse), and neither signal would be trustworthy. 28 golden files;
+      re-record with `NROS_UPDATE_GOLDEN=1`. Also fails on ORPHANED goldens, so a
+      file nothing emits any more cannot sit there asserting stale coverage.
+      Original wording: a test that regenerates and diffs. Seconds, no fixture, no
       toolchain. Used ad hoc during 0344–0346 this pattern caught a ser/deser
       macro swap and a trailing-newline change that would have rewritten every
       generated file in the tree.
@@ -98,8 +104,13 @@ Per RFC-0061 §Acceptance. The load-bearing ones:
       workspace fixtures. *(W1.d acceptance, both arms: no-op rebuild → 0 of 81
       invalidated; one-line template edit → fingerprint moves and fixtures
       invalidate.)*
-- [ ] A resolver rebuild that does not change emitted models invalidates zero;
+- [x] A resolver rebuild that does not change emitted models invalidates zero;
       one that does invalidates the bringup-bearing fixtures and no others.
+      *(W1.b acceptance: a no-op resolver rebuild moved the binary hash
+      `e042c59a…` → `dcfef93f…` while the fingerprint stayed `26ac1134…`; a
+      changed probe model moved it to `29cd5817…`. Scoping note: every workspace
+      record declares a bringup today, so the scope is a no-op in practice —
+      it is the right contract, not a current reduction.)*
 - [ ] `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
       *(Scope reduction demonstrated — the gate drops from 81 to 65 workspace
       records, excluding exactly the 16 freertos/nuttx/threadx ones that blocked

@@ -1,0 +1,18 @@
+<!--
+  RFC-0061 / phase-318 W1.b — the probe launch tree whose RESOLVED MODEL defines
+  the resolver fingerprint. Not a test workspace; nothing builds it. Its only job
+  is to exercise the resolve paths whose OUTPUT can change (nodes, namespaces,
+  remaps, parameters), so the fingerprint moves iff emitted SystemModels would.
+
+  Adding a construct here is cheap. REMOVING one narrows what the fingerprint can
+  notice — treat deletions like deleting a test.
+-->
+<launch>
+  <node pkg="probe_pkg" exec="talker" name="talker" namespace="probe">
+    <param name="count" value="7"/>
+    <remap from="chatter" to="probe_chatter"/>
+  </node>
+  <group>
+    <node pkg="probe_pkg" exec="listener" name="listener" namespace="probe"/>
+  </group>
+</launch>

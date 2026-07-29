@@ -34,7 +34,7 @@ use crate::{
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 const CORPUS: &str = "fingerprint-corpus";
 
@@ -73,96 +73,137 @@ fn hashes() -> ActionTypeHashes {
     }
 }
 
-/// Hash of every byte this build of the emitters produces for the corpus.
+/// Every artifact this build of the emitters produces for the corpus, keyed by a
+/// stable relative path.
 ///
-/// Stable across rebuilds that do not change emitted output; moves as soon as any
-/// emitted byte does. Errors are folded into the hash rather than propagated: a
-/// build whose emitters REJECT a corpus shape is a different tool than one that
-/// accepts it, and the signature must notice that too.
-pub fn codegen_fingerprint() -> String {
-    let mut h = Sha256::new();
-    h.update(b"nros-codegen-fingerprint-v1\0");
-
+/// One map, two consumers: [`codegen_fingerprint`] hashes it, and the golden test
+/// (phase-318 W2) diffs it against committed files. Sharing the map is the point
+/// — a golden test that covered different bytes than the fingerprint could pass
+/// while the fingerprint moved, or the reverse, and neither would be believable.
+///
+/// Errors are recorded as content rather than propagated: a build whose emitters
+/// REJECT a corpus shape is a different tool than one that accepts it, and both
+/// consumers must notice that.
+pub fn emit_corpus() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
     let deps: HashSet<String> = HashSet::new();
     let msgs = [("Shapes", SHAPES_MSG), ("Nested", NESTED_MSG)];
 
     for (mode, r) in resolvers() {
-        h.update(mode.as_bytes());
-        h.update(b"\0");
+        let mut put = |name: &str, res: Result<String, String>| {
+            let (tag, body) = match res {
+                Ok(s) => ("ok", s),
+                Err(e) => ("err", e),
+            };
+            out.insert(format!("{mode}/{name}"), format!("// emit:{tag}\n{body}"));
+        };
 
         for (name, src) in &msgs {
             let Ok(m) = parse_message(src) else {
-                h.update(b"parse-error\0");
+                put(&format!("{name}.parse"), Err("parse-error".into()));
                 continue;
             };
-            feed(&mut h, "msg-rust", |_| {
+            put(
+                &format!("{name}.nros.rs"),
                 generate_nros_message_package(CORPUS, name, &m, &deps, "0.0.0", "h", &r)
                     .map(|g| g.message_rs)
-            });
-            feed(&mut h, "msg-c-h", |_| {
-                generate_c_message_package(CORPUS, name, &m, "h", &r).map(|g| g.header)
-            });
-            feed(&mut h, "msg-c-c", |_| {
-                generate_c_message_package(CORPUS, name, &m, "h", &r).map(|g| g.source)
-            });
-            feed(&mut h, "msg-cpp", |_| {
-                generate_cpp_message_package(CORPUS, name, &m, "h", &r).map(|g| g.header)
-            });
+                    .map_err(|e| e.to_string()),
+            );
+            put(
+                &format!("{name}.h"),
+                generate_c_message_package(CORPUS, name, &m, "h", &r)
+                    .map(|g| g.header)
+                    .map_err(|e| e.to_string()),
+            );
+            put(
+                &format!("{name}.c"),
+                generate_c_message_package(CORPUS, name, &m, "h", &r)
+                    .map(|g| g.source)
+                    .map_err(|e| e.to_string()),
+            );
+            put(
+                &format!("{name}.hpp"),
+                generate_cpp_message_package(CORPUS, name, &m, "h", &r)
+                    .map(|g| g.header)
+                    .map_err(|e| e.to_string()),
+            );
         }
 
-        if let Ok(s) = parse_service(PROBE_SRV) {
-            feed(&mut h, "srv-rust", |_| {
-                generate_nros_service_package(
-                    CORPUS, "Probe", &s, &deps, "0.0.0", "h", "h", "h", &r,
-                )
-                .map(|g| g.service_rs)
-            });
-            feed(&mut h, "srv-c-h", |_| {
-                generate_c_service_package(CORPUS, "Probe", &s, "h", &r).map(|g| g.header)
-            });
-            feed(&mut h, "srv-c-c", |_| {
-                generate_c_service_package(CORPUS, "Probe", &s, "h", &r).map(|g| g.source)
-            });
+        match parse_service(PROBE_SRV) {
+            Ok(sv) => {
+                put(
+                    "Probe.srv.nros.rs",
+                    generate_nros_service_package(
+                        CORPUS, "Probe", &sv, &deps, "0.0.0", "h", "h", "h", &r,
+                    )
+                    .map(|g| g.service_rs)
+                    .map_err(|e| e.to_string()),
+                );
+                put(
+                    "Probe.srv.h",
+                    generate_c_service_package(CORPUS, "Probe", &sv, "h", &r)
+                        .map(|g| g.header)
+                        .map_err(|e| e.to_string()),
+                );
+                put(
+                    "Probe.srv.c",
+                    generate_c_service_package(CORPUS, "Probe", &sv, "h", &r)
+                        .map(|g| g.source)
+                        .map_err(|e| e.to_string()),
+                );
+            }
+            Err(_) => put("Probe.srv.parse", Err("parse-error".into())),
         }
 
-        if let Ok(a) = parse_action(PROBE_ACTION) {
-            feed(&mut h, "act-rust", |_| {
-                generate_nros_action_package(CORPUS, "Probe", &a, &deps, "0.0.0", &hashes(), &r)
+        match parse_action(PROBE_ACTION) {
+            Ok(ac) => {
+                put(
+                    "Probe.action.nros.rs",
+                    generate_nros_action_package(
+                        CORPUS,
+                        "Probe",
+                        &ac,
+                        &deps,
+                        "0.0.0",
+                        &hashes(),
+                        &r,
+                    )
                     .map(|g| g.action_rs)
-            });
-            feed(&mut h, "act-c-h", |_| {
-                generate_c_action_package(CORPUS, "Probe", &a, "h", &r).map(|g| g.header)
-            });
-            feed(&mut h, "act-c-c", |_| {
-                generate_c_action_package(CORPUS, "Probe", &a, "h", &r).map(|g| g.source)
-            });
+                    .map_err(|e| e.to_string()),
+                );
+                put(
+                    "Probe.action.h",
+                    generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
+                        .map(|g| g.header)
+                        .map_err(|e| e.to_string()),
+                );
+                put(
+                    "Probe.action.c",
+                    generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
+                        .map(|g| g.source)
+                        .map_err(|e| e.to_string()),
+                );
+            }
+            Err(_) => put("Probe.action.parse", Err("parse-error".into())),
         }
     }
-
-    format!("{:x}", h.finalize())
+    out
 }
 
-/// Fold one emitter's result into the hash. An `Err` contributes its message, so
-/// a change in WHICH shapes are rejected moves the fingerprint exactly as a change
-/// in emitted code does.
-fn feed<F, E>(h: &mut Sha256, tag: &str, f: F)
-where
-    F: FnOnce(()) -> Result<String, E>,
-    E: std::fmt::Display,
-{
-    h.update(tag.as_bytes());
-    h.update(b"\0");
-    match f(()) {
-        Ok(s) => {
-            h.update(b"ok\0");
-            h.update(s.as_bytes());
-        }
-        Err(e) => {
-            h.update(b"err\0");
-            h.update(e.to_string().as_bytes());
-        }
+/// Hash of every byte this build of the emitters produces for the corpus.
+///
+/// Stable across rebuilds that do not change emitted output; moves as soon as any
+/// emitted byte does.
+pub fn codegen_fingerprint() -> String {
+    let mut h = Sha256::new();
+    h.update(b"nros-codegen-fingerprint-v1\0");
+    for (path, body) in emit_corpus() {
+        h.update(path.as_bytes());
+        h.update(b"\0");
+        h.update(body.as_bytes());
+        h.update(b"\0");
     }
-    h.update(b"\0");
+    format!("{:x}", h.finalize())
 }
 
 #[cfg(test)]

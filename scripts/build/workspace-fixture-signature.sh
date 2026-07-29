@@ -7,7 +7,7 @@ record="${1:?usage: workspace-fixture-signature.sh <manifest-record>}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
-IFS=$'\x1f' read -r id _lang dir _bringup _entry _build_subdir _target_dir _codegen_out _defs <<< "$record"
+IFS=$'\x1f' read -r id _lang dir bringup _entry _build_subdir _target_dir _codegen_out _defs <<< "$record"
 [ -n "$id" ] && [ -n "$dir" ] || {
     echo "workspace fixture record is missing id/dir" >&2
     exit 2
@@ -55,6 +55,17 @@ workspace="$repo_root/$dir"
         printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'
+    fi
+
+    # phase-318 W1.b — the RESOLVER, for records that actually run it.
+    #
+    # `nros sync` shells out to `nros-launch-resolve` and the SystemModel it
+    # emits is a committed fixture INPUT, so a signature blind to it repeats
+    # #182 one layer down. Scoped to records with a bringup: a resolver rebuild
+    # then invalidates the fixtures that consume a resolved model and nothing
+    # else, which is much narrower than hashing it into everything.
+    if [ -n "${bringup:-}" ]; then
+        printf 'tool:resolve\0%s\0' "$(bash "$repo_root/scripts/build/resolve-fingerprint.sh" 2>/dev/null || echo resolver-error)"
     fi
     # phase-300 W2.1 — enumerate via the git index instead of walking: the
     # find-prune list omitted _deps/install/log, so cmake byproducts were
