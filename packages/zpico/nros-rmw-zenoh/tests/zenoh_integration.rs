@@ -562,11 +562,15 @@ fn absent_locator_normalizes_to_the_backend_default() {
         Some("tcp/1.2.3.4:1234")
     );
 
-    assert_eq!(effective_client_locator(None), DEFAULT_LOCATOR);
-    assert_eq!(effective_client_locator(Some("")), DEFAULT_LOCATOR);
+    // This is a hosted build (`target_os != "none"`), so the default applies.
+    // On an embedded image `effective_client_locator` yields `None` — dialling
+    // the board's own loopback would be strictly worse than zenoh-pico's
+    // multicast scouting, which is what "no endpoint" gets you.
+    assert_eq!(effective_client_locator(None), Some(DEFAULT_LOCATOR));
+    assert_eq!(effective_client_locator(Some("")), Some(DEFAULT_LOCATOR));
     assert_eq!(
         effective_client_locator(Some("tcp/1.2.3.4:1234")),
-        "tcp/1.2.3.4:1234",
+        Some("tcp/1.2.3.4:1234"),
         "an explicitly supplied locator must never be overridden"
     );
 }

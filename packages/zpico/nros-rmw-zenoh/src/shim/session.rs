@@ -32,14 +32,31 @@ pub fn normalize_locator(locator: Option<&str>) -> Option<&str> {
 }
 
 /// Issue 0330 — the client-mode locator this backend will actually dial:
-/// the caller's value when they supplied one, else [`crate::DEFAULT_LOCATOR`].
+/// the caller's value when they supplied one, else [`crate::DEFAULT_LOCATOR`]
+/// on HOSTED builds, else nothing.
 ///
 /// This is the ONLY place the zenoh default is applied. Agnostic layers must
 /// not pre-substitute it.
-pub fn effective_client_locator(locator: Option<&str>) -> &str {
+///
+/// The default is deliberately HOSTED-only. Every layer it replaced was hosted
+/// too — `nros-node`'s old `DEFAULT_LOCATOR` was `#[cfg(feature = "std")]`,
+/// and `node.hpp`'s rung sat behind `NROS_CPP_STD || __STDC_HOSTED__`. On an
+/// embedded image `tcp/127.0.0.1:7447` is the board's own loopback and dialling
+/// it is strictly worse than the established no-locator behaviour: no connect
+/// endpoint, so zenoh-pico falls back to multicast scouting. Returning `None`
+/// here is what preserves that.
+///
+/// The gate is `target_os = "none"`, matching `nros-rmw-cffi`'s registration
+/// seam — NOT `feature = "std"`, which this crate leaves off even on hosted
+/// builds (`--features platform-posix` alone), so a `std` gate would have
+/// silently disabled the default everywhere.
+pub fn effective_client_locator(locator: Option<&str>) -> Option<&str> {
     match normalize_locator(locator) {
-        Some(l) => l,
-        None => crate::DEFAULT_LOCATOR,
+        Some(l) => Some(l),
+        #[cfg(not(target_os = "none"))]
+        None => Some(crate::DEFAULT_LOCATOR),
+        #[cfg(target_os = "none")]
+        None => None,
     }
 }
 
@@ -175,9 +192,15 @@ impl ZenohSession {
         let supplied_locator = normalize_locator(config.locator);
 
         // Build the locator string with null terminator
-        let locator = match &config.mode {
-            SessionMode::Client => {
-                let loc = effective_client_locator(supplied_locator);
+        // `None` here means "dial nothing" — peer mode, or a no_std client with
+        // no locator supplied (multicast scouting).
+        let dial: Option<&str> = match &config.mode {
+            SessionMode::Client => effective_client_locator(supplied_locator),
+            SessionMode::Peer => None,
+        };
+
+        let locator = match dial {
+            Some(loc) => {
                 // Create null-terminated locator
                 let mut buf = [0u8; LOCATOR_BUFFER_SIZE];
                 let bytes = loc.as_bytes();
@@ -196,10 +219,7 @@ impl ZenohSession {
                 buf[len] = 0; // Null terminator
                 buf
             }
-            SessionMode::Peer => {
-                // Peer mode - pass null locator
-                [0u8; LOCATOR_BUFFER_SIZE]
-            }
+            None => [0u8; LOCATOR_BUFFER_SIZE],
         };
 
         // Build mode string
@@ -275,11 +295,10 @@ impl ZenohSession {
             }
         }
 
-        let locator_opt = if config.mode == SessionMode::Peer && supplied_locator.is_none() {
-            None
-        } else {
-            Some(locator.as_slice())
-        };
+        // Issue 0330 — nothing to dial (peer mode, or a no_std client that
+        // supplied no locator) must pass NO endpoint, never a bare `""`, which
+        // zpico would install as a real, broken CONNECT endpoint.
+        let locator_opt = dial.map(|_| locator.as_slice());
 
         let context = Context::with_config(locator_opt, mode, &c_props[..prop_count])
             .map_err(TransportError::from)?;
