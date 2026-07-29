@@ -1,7 +1,7 @@
 ---
 id: 349
 title: "The issue-0332 vtable completeness gate refuses the xrce backend outright — three OPTIONAL capability slots are on the required list, so nros_rmw_xrce_register() returns INVALID_ARGUMENT"
-status: open
+status: resolved
 type: bug
 severity: high
 area: core
@@ -86,3 +86,65 @@ what makes moving them safe or unsafe, and it must be checked, not presumed.
   still refused — mutation-checked in both directions, so the gate is not
   simply weakened into uselessness.
 - Every dispatch site of the three slots is confirmed to handle `None`.
+
+## Resolution (2026-07-29)
+
+The three slots are off the required list, and the change that MAKES that safe
+is at the point of use: `register_publisher_event`,
+`register_subscription_event` and `assert_publisher_liveliness` no longer
+`.expect()` their slot — they return `TransportError::Unsupported` when the
+backend did not provide one. That is the difference between an optional slot and
+a missing required one, and it is the refinement `first_missing_vtable_slot`'s
+own doc had deferred.
+
+`assert_liveliness`' dispatch site had documented the intended contract all
+along — *"NULL function pointer = backend doesn't support manual liveliness"* —
+directly above an `.expect()` that panicked on exactly that. The code
+contradicted its own comment.
+
+### The sweep
+
+Every remaining `.expect("rmw vtable: …")` in `nros-rmw-cffi` was enumerated:
+18 sites, corresponding 1:1 to the 17 required slots. No other optional slot is
+dispatched through an `.expect()`, so this was the whole class.
+
+Sweep command:
+
+```
+rg -n 'expect\("rmw vtable' packages/core/nros-rmw-cffi/src/lib.rs
+```
+
+### The gate
+
+That 1:1 correspondence is the real invariant, and it had already broken in both
+directions across two issues, so it is now enforced:
+`scripts/check-rmw-required-slots.sh` (`just check-rmw-required-slots`, wired
+into `check-fast`) extracts both sets and fails if they differ —
+
+- expect-ed but not required → registers cleanly, panics mid-spin (issue 0332);
+- required but not expect-ed → refuses working backends (this issue).
+
+Mutation-tested in both directions.
+
+### Coverage
+
+- `nros-rmw-xrce-cffi::register_smoke` passes — the end-to-end proof, since xrce
+  is the backend that was being refused.
+- `register_accepts_vtable_without_optional_capability_slots` asserts the gate
+  does not over-bite; `register_still_rejects_a_missing_required_slot` and the
+  pre-existing `register_rejects_incomplete_vtable` assert it still bites.
+  Keeping both directions is deliberate — dropping either turns the gate into a
+  one-way ratchet.
+- The "accepts" test asserts on `first_missing_vtable_slot` rather than calling
+  `nros_rmw_cffi_register_named`: the registry is a process global with no
+  removal, so a successful registration leaks a second backend into every other
+  test in the binary and turns single-backend resolution `Ambiguous`
+  (`typed_struct_roundtrip` went red). Noted in the test.
+
+### Not done
+
+Whether anything upstream treats `Unsupported` from these three as fatal was not
+exercised end to end — the runtime gates liveliness by `liveliness_kind` before
+calling, so the path should be unreachable for a backend that never advertises
+it, but that is reasoning, not a test.
+

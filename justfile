@@ -346,7 +346,7 @@ check: check-fast check-build
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-rmw-force-link-anchor \
+    check-rmw-force-link-anchor check-rmw-required-slots \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -636,6 +636,15 @@ check-no-board-init:
 [private]
 check-rmw-force-link-anchor:
     @bash scripts/check-rmw-force-link-anchor.sh
+
+# Issues 0332 + 0349 — the RMW vtable's required-slot list and its
+# `.expect("rmw vtable: …")` dispatch sites must be the SAME set. A slot
+# expect-ed but not required panics mid-spin on no_std (0332); a slot required
+# but not expect-ed refuses working backends (0349 — how xrce became
+# unregistrable). Checked both directions. Buildless.
+[private]
+check-rmw-required-slots:
+    @bash scripts/check-rmw-required-slots.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.

@@ -728,14 +728,31 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
 }
 
-/// Issue 0332 — every vtable slot the runtime dispatches through is mandatory:
-/// the CFFI session/publisher/subscriber/service impls `.expect()` these slots
-/// on the hot path, so a `None` slot is a panic mid-spin — on a no_std target,
-/// the worst place to discover an incomplete backend. Returns the name of the
-/// first missing slot so registration can reject the vtable loudly and early
-/// instead. (Supporting genuinely-partial backends — an optional slot as a typed
-/// error when *used* — is a deliberate future refinement, not the current
-/// contract: a registered backend must be complete.)
+/// Issue 0332 — a vtable slot the runtime `.expect()`s on the hot path is
+/// mandatory: a `None` there is a panic mid-spin, on a no_std target, the worst
+/// place to discover an incomplete backend. Returns the name of the first
+/// missing slot so registration can reject such a vtable loudly and early.
+///
+/// Issue 0349 — the list is CORE TRANSPORT only. It originally also required
+/// `register_publisher_event`, `register_subscription_event` and
+/// `assert_publisher_liveliness`, which refused the **xrce backend outright**:
+/// its vtable NULLs all three deliberately, alongside ~14 other optional
+/// capability slots this list correctly never required, so
+/// `nros_rmw_xrce_register()` returned INVALID_ARGUMENT and xrce could not
+/// register at all.
+///
+/// Those three are QoS-event and liveliness CAPABILITIES, not transport — and
+/// the slots are `Option<fn>` precisely because C nullability encodes "not
+/// provided" (RFC-0054). Requiring a slot whose type says it is optional was
+/// the contradiction. `assert_publisher_liveliness`' own dispatch site had
+/// documented "NULL function pointer = backend doesn't support manual
+/// liveliness" the whole time, while the code `.expect()`ed it.
+///
+/// The three now report `TransportError::Unsupported` when used and absent.
+/// That is the refinement this function's doc used to defer — the difference
+/// between an optional slot and a missing required one is that the optional one
+/// has a typed error at the point of use, which is exactly what makes dropping
+/// it from this list safe.
 fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
     macro_rules! require {
         ($($slot:ident),+ $(,)?) => {
@@ -760,10 +777,13 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
         send_reply,
         has_request,
         try_recv_request,
-        register_publisher_event,
-        register_subscription_event,
-        assert_publisher_liveliness,
     );
+    // NOT required (issue 0349) — optional capabilities with a typed
+    // `Unsupported` error at the point of use, exactly like the ~14 other
+    // nullable slots (`pub_loan`, `sub_borrow`, `next_deadline_ms`,
+    // `service_server_available`, …) this list has always allowed to be NULL:
+    //   register_publisher_event, register_subscription_event,
+    //   assert_publisher_liveliness
     None
 }
 
@@ -2114,18 +2134,13 @@ impl Publisher for CffiPublisher {
                 unsafe extern "C" fn(NrosRmwEventKind, *const NrosRmwEventPayload, *mut c_void),
             >(cb)
         });
-        let ret = unsafe {
-            (self
-                .vtable
-                .register_publisher_event
-                .expect("rmw vtable: register_publisher_event"))(
-                &mut view,
-                event_kind_to_c(kind),
-                deadline_ms,
-                cb,
-                user_ctx,
-            )
+        // Issue 0349 — a NULL slot means the backend does not implement this
+        // OPTIONAL capability (xrce NULLs all three). Report it as
+        // `Unsupported`; never panic, and never make it a registration error.
+        let Some(register) = self.vtable.register_publisher_event else {
+            return Err(TransportError::Unsupported);
         };
+        let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2139,12 +2154,13 @@ impl Publisher for CffiPublisher {
         // we just delegate.
         let view_ptr = self as *const _ as *mut Self;
         let mut view = unsafe { (*view_ptr).make_view() };
-        let ret = unsafe {
-            (self
-                .vtable
-                .assert_publisher_liveliness
-                .expect("rmw vtable: assert_publisher_liveliness"))(&mut view)
+        // Issue 0349 — a NULL slot means the backend does not implement this
+        // OPTIONAL capability (xrce NULLs all three). Report it as
+        // `Unsupported`; never panic, and never make it a registration error.
+        let Some(assert_liveliness) = self.vtable.assert_publisher_liveliness else {
+            return Err(TransportError::Unsupported);
         };
+        let ret = unsafe { assert_liveliness(&mut view) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2482,18 +2498,13 @@ impl nros_rmw::Subscription for CffiSubscription {
                 unsafe extern "C" fn(NrosRmwEventKind, *const NrosRmwEventPayload, *mut c_void),
             >(cb)
         });
-        let ret = unsafe {
-            (self
-                .vtable
-                .register_subscription_event
-                .expect("rmw vtable: register_subscription_event"))(
-                &mut view,
-                event_kind_to_c(kind),
-                deadline_ms,
-                cb,
-                user_ctx,
-            )
+        // Issue 0349 — a NULL slot means the backend does not implement this
+        // OPTIONAL capability (xrce NULLs all three). Report it as
+        // `Unsupported`; never panic, and never make it a registration error.
+        let Some(register) = self.vtable.register_subscription_event else {
+            return Err(TransportError::Unsupported);
         };
+        let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -3193,6 +3204,52 @@ mod tests {
         assert_eq!(first_missing_vtable_slot(&empty), Some("create_session"));
 
         let rc = unsafe { nros_rmw_cffi_register_named(c"incomplete_0332".as_ptr(), &empty) };
+        assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
+    }
+
+    // Issue 0349 — the other direction. The 0332 list used to include three
+    // OPTIONAL capability slots, which refused the xrce backend outright (its
+    // vtable NULLs all three deliberately). A backend that can publish,
+    // subscribe, serve and call is a working backend.
+    //
+    // This test is the pair to `register_rejects_incomplete_vtable` above: one
+    // asserts the gate still bites, this asserts it does not over-bite. Keep
+    // both — dropping either turns the gate into a one-way ratchet.
+    #[test]
+    fn register_accepts_vtable_without_optional_capability_slots() {
+        let mut vt = STUB_VTABLE;
+        vt.register_publisher_event = None;
+        vt.register_subscription_event = None;
+        vt.assert_publisher_liveliness = None;
+
+        assert_eq!(
+            first_missing_vtable_slot(&vt),
+            None,
+            "QoS-event and liveliness slots are capabilities, not core transport"
+        );
+
+        // Deliberately NOT calling `nros_rmw_cffi_register_named` here. The
+        // registry is a process global with no removal, so a successful
+        // registration leaks a second backend into every other test in this
+        // binary and turns single-backend resolution into `Ambiguous`
+        // (`typed_struct_roundtrip` goes red). `first_missing_vtable_slot` is
+        // the pure function that decides acceptance, so asserting on it tests
+        // the same decision without the shared state. The end-to-end
+        // "this really does register now" proof is
+        // `nros-rmw-xrce-cffi`'s `register_smoke`, which is exactly the
+        // backend this over-strict list was refusing.
+    }
+
+    // And a required slot must STILL be refused even when everything else is
+    // present — so the fix cannot be mistaken for "the gate was weakened".
+    #[test]
+    fn register_still_rejects_a_missing_required_slot() {
+        let mut vt = STUB_VTABLE;
+        vt.publish_raw = None;
+
+        assert_eq!(first_missing_vtable_slot(&vt), Some("publish_raw"));
+
+        let rc = unsafe { nros_rmw_cffi_register_named(c"no_publish_0349".as_ptr(), &vt) };
         assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
     }
 }

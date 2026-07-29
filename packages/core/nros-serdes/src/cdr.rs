@@ -860,6 +860,7 @@ mod tests {
     ///   - `rmw_fastrtps_cpp` (default): exactly these 19 bytes.
     ///   - `rmw_cyclonedds_cpp`: identical content + one trailing `00`
     ///     alignment pad (20 bytes) — decodes the same.
+    ///
     /// Both use encapsulation `00 01` (XCDR1), NO DHEADER: modern Jazzy STILL
     /// defaults to XCDR1 on the wire. So nano-ros (humble, or a jazzy build
     /// talking to a default peer) already interoperates byte-for-byte. XCDR2 +
