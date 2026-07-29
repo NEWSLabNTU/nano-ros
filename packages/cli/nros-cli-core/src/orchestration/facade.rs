@@ -153,7 +153,28 @@ pub fn write_facade(
     nros_features.sort();
     nros_features.dedup();
 
-    let board_features = vec![rmw.cargo_feature.to_string()];
+    // Only emit a feature the board crate actually DECLARES.
+    //
+    // W1 assumed "the board crate carries the RMW". That holds for 18 of the 23
+    // board crates and is false for five — `nros-board-zephyr` declares only
+    // `tiers` and `zephyr-edf`, because on Zephyr the RMW rides on the entry's
+    // own `[features] rmw-zenoh` plus a direct `nros-rmw-zenoh` dep instead.
+    // Emitting it unconditionally is not a silent mistake, it is a hard cargo
+    // error that killed the whole zephyr fixture lane:
+    //
+    //     package `zephyr_entry_nros_selection` depends on `nros-board-zephyr`
+    //     with feature `rmw-zenoh` but `nros-board-zephyr` does not have that
+    //     feature. available features: tiers, zephyr-edf
+    //
+    // When the board has no such feature the facade stays silent about the RMW
+    // for that dep — the entry's own selector is then the only one, which is
+    // correct rather than a fallback.
+    let board_features: Vec<String> = match deps.board.as_ref() {
+        Some((_, path)) if crate_declares_feature(path, rmw.cargo_feature) => {
+            vec![rmw.cargo_feature.to_string()]
+        }
+        _ => Vec::new(),
+    };
 
     // A direct backend dep gets the edition (and any capability the backend
     // itself implements, e.g. safety-e2e's CRC path), NOT the `rmw-*` selector
@@ -214,6 +235,24 @@ pub fn write_facade(
         },
         changed,
     }))
+}
+
+/// Does the crate at `dir` declare `feature` in its `[features]` table?
+///
+/// Read from the manifest rather than assumed from the crate's name: the board
+/// crates genuinely disagree about whether they own the RMW axis, and guessing
+/// from a naming convention is what produced the zephyr breakage.
+fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
+    let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+        // Unreadable manifest: emit nothing rather than emit something cargo
+        // will reject. A missing feature is a build the user can still fix; a
+        // bogus one fails resolution outright.
+        return false;
+    };
+    toml::from_str::<toml::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("features").and_then(|f| f.as_table()).cloned())
+        .is_some_and(|t| t.contains_key(feature))
 }
 
 /// Pull the `nros` and `nros-board-*` PATH deps out of the entry's manifest.
@@ -299,11 +338,16 @@ fn render_manifest(
         feat_list(nros_features),
     ));
     if let Some((name, path)) = board {
-        s.push_str(&format!(
-            "{name} = {{ path = {:?}, features = [{}] }}\n",
-            rel_from(facade_dir, path),
-            feat_list(board_features),
-        ));
+        // No features to contribute ⇒ omit the dep entirely. A bare path dep
+        // would add an edge that changes nothing, and the facade exists only to
+        // carry selection.
+        if !board_features.is_empty() {
+            s.push_str(&format!(
+                "{name} = {{ path = {:?}, features = [{}] }}\n",
+                rel_from(facade_dir, path),
+                feat_list(board_features),
+            ));
+        }
     }
     if let Some((name, path)) = backend {
         s.push_str(&format!(
