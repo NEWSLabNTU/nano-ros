@@ -34,7 +34,7 @@ pub enum nros_action_server_state_t {
     NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
     /// L2 callback-mode: initialized via `nros_action_server_init`;
     /// transport creation deferred to
-    /// `nros_executor_register_action_server`.
+    /// `nros_executor_add_action_server`.
     NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
@@ -81,10 +81,10 @@ pub struct nros_action_server_t {
     /// executor handle to (the goal-service slot; governs the action's callback
     /// dispatch). `0` = inherit the executor / Node default; set via
     /// `nros_action_server_init_with_options`. When non-zero,
-    /// `nros_executor_register_action_server` binds the handle after
+    /// `nros_executor_add_action_server` binds the handle after
     /// registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::nros_sched_context_id_t,
-    /// Internal state — set by `nros_executor_register_action_server`.
+    /// Internal state — set by `nros_executor_add_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
     /// Phase 122.3.c.6.b — inline opaque storage for the L1
@@ -335,7 +335,7 @@ pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_serve
 /// Initialize an action server.
 ///
 /// Stores metadata (name, type, callbacks). RMW entity creation is deferred
-/// to `nros_executor_register_action_server()`.
+/// to `nros_executor_add_action_server()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_init(
     server: *mut nros_action_server_t,
@@ -383,10 +383,10 @@ pub unsafe extern "C" fn nros_action_server_init(
 
     // Phase 193.4b — default to the services profile;
     // nros_action_server_init_with_qos overrides. Read at registration time by
-    // nros_executor_register_action_server.
+    // nros_executor_add_action_server.
     server.qos = crate::qos::nros_qos_t::default();
 
-    // RMW entity creation is deferred to nros_executor_register_action_server()
+    // RMW entity creation is deferred to nros_executor_add_action_server()
     server._internal = ActionServerInternal::invalid_default();
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 
@@ -438,7 +438,7 @@ pub struct nros_action_server_options_t {
     /// Scheduling-context slot to bind the action server's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_register_action_server` once the handle exists. No effect
+    /// `nros_executor_add_action_server` once the handle exists. No effect
     /// on the L1 polling path.
     pub sched_context: crate::executor::nros_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
@@ -453,7 +453,7 @@ pub extern "C" fn nros_action_server_get_default_options() -> nros_action_server
 
 /// Phase 189.M3.3.b — initialize an action server with custom QoS + named
 /// options. Like [`nros_action_server_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so [`nros_executor_register_action_server`]
+/// `options->sched_context` is stashed so [`nros_executor_add_action_server`]
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety

@@ -443,7 +443,7 @@ pub unsafe extern "C" fn nros_executor_set_semantics(
 /// namespace(...).sched(...).build()`. Materialises a Node inside the
 /// executor's node table and stores the returned NodeId in
 /// `node.node_id` so subsequent
-/// [`nros_executor_register_subscription`] / `_service` / `_client` /
+/// [`nros_executor_add_subscription`] / `_service` / `_client` /
 /// `_action_*` calls route through `register_*_on(NodeId, ...)`
 /// instead of the legacy single-Node path.
 ///
@@ -717,7 +717,7 @@ pub unsafe extern "C" fn nros_executor_trigger_one(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_subscription(
+pub unsafe extern "C" fn nros_executor_add_subscription(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
     invocation: nros_executor_invocation_t,
@@ -797,7 +797,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
             qos,
             callback,
             context,
-            None, // Phase 273 W3: group threading is via nros_executor_register_subscription_in_group
+            None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
         );
 
         match result {
@@ -844,7 +844,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
 /// generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
 /// struct): the callback signature differs from the plain
 /// [`nros_subscription_callback_t`], so this is its own entry point rather than
-/// a flag on `nros_executor_register_subscription`.
+/// a flag on `nros_executor_add_subscription`.
 ///
 /// `node` may be NULL (legacy single-Node path) or a Node created via
 /// `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
@@ -855,7 +855,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
 /// All non-NULL pointers must be valid; the C strings must be NUL-terminated
 /// UTF-8 valid for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_subscription_raw_with_info(
+pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
     executor: *mut nros_executor_t,
     node: *const nros_node_t,
     topic_name: *const c_char,
@@ -934,7 +934,7 @@ pub unsafe extern "C" fn nros_executor_register_subscription_raw_with_info(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_timer(
+pub unsafe extern "C" fn nros_executor_add_timer(
     executor: *mut nros_executor_t,
     timer: *mut nros_timer_t,
 ) -> nros_ret_t {
@@ -998,15 +998,15 @@ pub unsafe extern "C" fn nros_executor_register_timer(
 
 /// Phase 273 (RFC-0047) — register a subscription in a named callback group.
 ///
-/// Identical to `nros_executor_register_subscription` but additionally passes
+/// Identical to `nros_executor_add_subscription` but additionally passes
 /// the group name to the executor so the seeded `group_sched_table` can bind
 /// the callback to the group's `SchedContext`. `callback_group` may be NULL or
-/// an empty string — both behave identically to `nros_executor_register_subscription`.
+/// an empty string — both behave identically to `nros_executor_add_subscription`.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_subscription_in_group(
+pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
     invocation: nros_executor_invocation_t,
@@ -1107,15 +1107,15 @@ pub unsafe extern "C" fn nros_executor_register_subscription_in_group(
 
 /// Phase 273 (RFC-0047) — register a timer in a named callback group.
 ///
-/// Identical to `nros_executor_register_timer` but additionally passes the
+/// Identical to `nros_executor_add_timer` but additionally passes the
 /// group name so the seeded `group_sched_table` can bind the callback to the
 /// group's `SchedContext`. `callback_group` may be NULL or empty — both behave
-/// identically to `nros_executor_register_timer`.
+/// identically to `nros_executor_add_timer`.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_timer_in_group(
+pub unsafe extern "C" fn nros_executor_add_timer_in_group(
     executor: *mut nros_executor_t,
     timer: *mut nros_timer_t,
     callback_group: *const c_char,
@@ -1191,7 +1191,7 @@ pub unsafe extern "C" fn nros_executor_register_timer_in_group(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_service(
+pub unsafe extern "C" fn nros_executor_add_service(
     executor: *mut nros_executor_t,
     service: *mut nros_service_t,
 ) -> nros_ret_t {
@@ -1443,7 +1443,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_guard_condition(
+pub unsafe extern "C" fn nros_executor_add_guard_condition(
     executor: *mut nros_executor_t,
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
@@ -1504,7 +1504,7 @@ pub unsafe extern "C" fn nros_executor_register_guard_condition(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_action_server(
+pub unsafe extern "C" fn nros_executor_add_action_server(
     executor: *mut nros_executor_t,
     server: *mut nros_action_server_t,
 ) -> nros_ret_t {
@@ -1654,7 +1654,7 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
 /// # Safety
 /// * `executor` and `client` must be valid pointers to initialized structs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_action_client(
+pub unsafe extern "C" fn nros_executor_add_action_client(
     executor: *mut nros_executor_t,
     client: *mut nros_action_client_t,
 ) -> nros_ret_t {
@@ -2298,7 +2298,7 @@ fn convert_sched_context(
 /// # Safety
 /// `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_register_time_triggered_dispatcher(
+pub unsafe extern "C" fn nros_executor_add_time_triggered_dispatcher(
     executor: *mut nros_executor_t,
     major_frame_us: u32,
 ) -> nros_ret_t {

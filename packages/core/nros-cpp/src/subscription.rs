@@ -247,7 +247,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 /// Phase 189.M3.4 — register a **callback-style** subscription that also delivers
 /// the sample's wire **attachment**. The callback analogue of the poll-side
 /// `nros_cpp_subscription_try_recv_raw_with_attachment` (M3.4b), and the C++
-/// mirror of the C `nros_executor_register_subscription_raw_with_info`: same
+/// mirror of the C `nros_executor_add_subscription_raw_with_info`: same
 /// arena dispatch + sched binding as `nros_cpp_subscription_register`, but routed
 /// through `add_arena_subscription_c_info_callback` so the trampoline receives
 /// `(data, len, attachment, attachment_len, ctx)`. Cross-RMW bridges read the

@@ -28,7 +28,7 @@ pub type nros_subscription_callback_t =
 /// Subscription callback that also receives the sample's wire **attachment**
 /// (Phase 189.M3.4 — the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder path). Used by
-/// [`nros_executor_register_subscription_raw_with_info`].
+/// [`nros_executor_add_subscription_raw_with_info`].
 ///
 /// # Parameters
 /// * `data` / `len` — received CDR bytes.
@@ -53,7 +53,7 @@ pub enum nros_subscription_state_t {
     /// Not initialized
     NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /// Initialized for callback dispatch (Layer 2). Subscriber entity
-    /// creation is deferred to `nros_executor_register_subscription`.
+    /// creation is deferred to `nros_executor_add_subscription`.
     NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
@@ -95,7 +95,7 @@ pub struct nros_subscription_t {
     /// [`nros_subscription_init_with_options`]. `0` = inherit the
     /// executor / Node default (no explicit bind), matching the
     /// `nros_node_options_t::sched_context_id` convention. When non-zero,
-    /// `nros_executor_register_subscription` binds the freshly-created
+    /// `nros_executor_add_subscription` binds the freshly-created
     /// handle to this SC after registration. Has no effect on the L1
     /// polling path (no executor handle to bind).
     pub sched_context_id: crate::executor::nros_sched_context_id_t,
@@ -148,7 +148,7 @@ pub struct nros_subscription_options_t {
     /// bind), matching the `nros_node_options_t::sched_context_id`
     /// convention. A non-zero value must be an id previously returned
     /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_register_subscription` once the handle exists. Has
+    /// `nros_executor_add_subscription` once the handle exists. Has
     /// no effect on the L1 polling path.
     pub sched_context: crate::executor::nros_sched_context_id_t,
     /// Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
         *qos
     };
 
-    // Subscriber creation is deferred to nros_executor_register_subscription(),
+    // Subscriber creation is deferred to nros_executor_add_subscription(),
     // which calls nros_node::Executor::add_arena_subscription_c_callback().
     subscription.handle_id = usize::MAX;
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
@@ -287,7 +287,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
 /// Behaves exactly like [`nros_subscription_init_with_qos`] except that
 /// a non-zero `options->sched_context` is stashed on the subscription so
-/// that [`nros_executor_register_subscription`] binds the resulting
+/// that [`nros_executor_add_subscription`] binds the resulting
 /// executor handle to that scheduling context once the handle is known
 /// (entity creation is deferred to registration, so the handle does not
 /// exist at init time). `options->message_info` is RESERVED and ignored
@@ -339,7 +339,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
 
     // Stash the requested scheduling-context slot. The handle does not
     // exist yet (entity creation + handle assignment happen in
-    // `nros_executor_register_subscription`), so the actual
+    // `nros_executor_add_subscription`), so the actual
     // `bind_handle_to_sched_context` call is deferred to there. `0`
     // means "inherit the default" and is a no-op. `message_info` is
     // reserved (Phase 189.M3.4) and intentionally ignored.

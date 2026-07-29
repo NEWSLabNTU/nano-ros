@@ -30,13 +30,13 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 ///
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
-/// created by `nros_executor_register_action_client`.
+/// created by `nros_executor_add_action_client`.
 #[repr(C)]
 pub struct ActionClientInternal {
-    /// Arena entry index (set by nros_executor_register_action_client).
+    /// Arena entry index (set by nros_executor_add_action_client).
     /// -1 means not registered with executor.
     pub arena_entry_index: i32,
-    /// Pointer to the executor (set by nros_executor_register_action_client).
+    /// Pointer to the executor (set by nros_executor_add_action_client).
     pub executor_ptr: *mut core::ffi::c_void,
 }
 
@@ -81,7 +81,7 @@ pub enum nros_action_client_state_t {
     NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
     /// L2 callback-mode: initialized via `nros_action_client_init`;
     /// transport creation deferred to
-    /// `nros_executor_register_action_client`.
+    /// `nros_executor_add_action_client`.
     NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
@@ -121,7 +121,7 @@ pub struct nros_action_client_t {
     /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
     /// executor handle to. `0` = inherit the executor / Node default; set via
     /// `nros_action_client_init_with_options`. When non-zero,
-    /// `nros_executor_register_action_client` binds the handle after
+    /// `nros_executor_add_action_client` binds the handle after
     /// registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn nros_action_client_init(
     client.node = node;
 
     // Metadata only — no transport handles created here.
-    // Transport handles are created in nros_executor_register_action_client,
+    // Transport handles are created in nros_executor_add_action_client,
     // which places the ActionClientCore in the executor's arena.
     client._internal = ActionClientInternal::new();
 
@@ -221,7 +221,7 @@ pub struct nros_action_client_options_t {
     /// Scheduling-context slot to bind the action client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_register_action_client` once the handle exists. No effect
+    /// `nros_executor_add_action_client` once the handle exists. No effect
     /// on the L1 polling path.
     pub sched_context: crate::executor::nros_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
@@ -236,7 +236,7 @@ pub extern "C" fn nros_action_client_get_default_options() -> nros_action_client
 
 /// Phase 189.M3.3.b — initialize an action client with named options. Like
 /// [`nros_action_client_init`] except a non-zero `options->sched_context` is
-/// stashed so [`nros_executor_register_action_client`] binds the resulting
+/// stashed so [`nros_executor_add_action_client`] binds the resulting
 /// executor handle to that scheduling context once known.
 ///
 /// # Safety
@@ -328,7 +328,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
             return NROS_RET_NOT_INIT;
         }
         // Note: action clients store an opaque pointer into
-        // `executor._opaque` (see `nros_executor_register_action_client`),
+        // `executor._opaque` (see `nros_executor_add_action_client`),
         // not to the outer `nros_executor_t`, so we can't recover the
         // wrapper from `internal.executor_ptr`. Take `executor` as a
         // separate argument — same convention as

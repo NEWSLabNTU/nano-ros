@@ -4061,7 +4061,7 @@ impl<'s> Executor<'s> {
     /// ([`RawSubscriptionInfoCallback`]: `(data, len, attachment, att_len,
     /// context)`) — the C analog of the Rust
     /// `node.subscription(t).generic(..).message_info()` builder. Backs the C
-    /// FFI `nros_executor_register_subscription_raw_with_info`. Flat per-entry
+    /// FFI `nros_executor_add_subscription_raw_with_info`. Flat per-entry
     /// payload + attachment buffers (cap [`RAW_INFO_ATT_CAP`](super::arena::RAW_INFO_ATT_CAP));
     /// one sample per `spin_once`.
     #[allow(clippy::too_many_arguments)]

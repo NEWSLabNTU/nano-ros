@@ -1,7 +1,7 @@
 ---
 id: 338
 title: "`spin` means the opposite thing in C++ vs C/Rust/rclcpp, and the C executor registration verbs are half-renamed away from rclc"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: core, api
@@ -80,14 +80,35 @@ these calls type-check with these signatures. Mutation-checked: renaming the new
 `spin()` away fails it with `no matching function for call to
 'nros::Executor::spin()'`.
 
-## Part 2 NOT DONE — the C `add_*` / `register_*` spelling
+## Part 2 LANDED (2026-07-29) — the C `add_*` spelling
 
-Unchanged: nine `nros_executor_register_*` verbs plus the odd
-`nros_executor_add_client`. The issue's prescription (settle on rclc's `add_*`,
-keep `register_*` as deprecated aliases) means renaming nine
-`#[unsafe(no_mangle)]` exports and adding nine forwarding shims so existing C
-objects still link — a broad ABI change that deserves its own pass and a
-callers sweep, not a tail-end edit. Left open for that.
+Ten entity-registration verbs renamed to rclc's spelling, joining the
+already-correct `nros_executor_add_client`:
+
+`add_{subscription, subscription_raw_with_info, subscription_in_group, timer,
+timer_in_group, service, guard_condition, action_server, action_client,
+time_triggered_dispatcher}`.
+
+The old names survive one release as MACRO aliases in the hand-written
+`<nros/executor.h>` shim (guarded by
+`NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES`), not as extra exported symbols:
+no new ABI surface, and a recompile is all an in-tree or downstream consumer
+needs. Code compiled against the old SYMBOLS must be rebuilt — stated in the
+header.
+
+39 in-tree C sources migrated to the new spelling.
+
+**Deliberately NOT renamed:** `nros_executor_register_parameter_services` and
+`_register_lifecycle_services`. Those register a service SET — a capability, not
+an entity — and have no rclc counterpart, so C6's "additions are fine" applies
+and `register` is the honest verb. Renaming them for symmetry would have made
+the API less accurate, not more.
+
+**Guard:** `nros-c/tests/compile/executor_verb_aliases.c`, run by `just check-c`.
+It takes function POINTERS to both spellings and asserts the alias resolves to
+the SAME function, so a macro pointing at a nonexistent symbol fails at the gate
+rather than at some consumer's link step. Mutation-checked: deleting one alias
+fails with `'nros_executor_register_timer' undeclared`.
 
 ## Relationship to #329
 

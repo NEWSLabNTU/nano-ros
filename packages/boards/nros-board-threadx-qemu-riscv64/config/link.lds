@@ -33,7 +33,7 @@ SECTIONS
    * does it explicitly (board_threadx_qemu_riscv64.c), and the walk needs
    * these bounds. Previously the section landed as an ORPHAN (present in the
    * ELF, no symbols, never run) — descriptors stayed unregistered and
-   * `nros_executor_register_subscription` failed -1 at reader creation. */
+   * `nros_executor_add_subscription` failed -1 at reader creation. */
   .init_array : {
     . = ALIGN(8);
     PROVIDE(__init_array_start = .);

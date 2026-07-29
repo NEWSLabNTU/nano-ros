@@ -1948,6 +1948,16 @@ check-c: check-c-fmt
         -Ipackages/core/nros-c/include \
         -include packages/core/nros-c/include/nros/nros.h \
         -x c /dev/null
+    echo "  - executor verb spelling + deprecated aliases (issue 0338)"
+    # The entity-registration family is `nros_executor_add_*` (rclc's spelling);
+    # the old `register_*` names survive one release as macro aliases. The probe
+    # takes function POINTERS, so an alias naming a symbol that does not exist
+    # fails here rather than at some consumer's link step.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/core/nros-c/include \
+        -Ipackages/core/nros-platform-api/include \
+        packages/core/nros-c/tests/compile/executor_verb_aliases.c
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
     # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the

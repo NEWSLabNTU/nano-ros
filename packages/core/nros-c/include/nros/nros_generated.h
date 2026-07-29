@@ -344,7 +344,7 @@ typedef enum nros_action_client_state_t {
   /**
    * L2 callback-mode: initialized via `nros_action_client_init`;
    * transport creation deferred to
-   * `nros_executor_register_action_client`.
+   * `nros_executor_add_action_client`.
    */
   NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
   /**
@@ -424,7 +424,7 @@ typedef enum nros_action_server_state_t {
   /**
    * L2 callback-mode: initialized via `nros_action_server_init`;
    * transport creation deferred to
-   * `nros_executor_register_action_server`.
+   * `nros_executor_add_action_server`.
    */
   NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
   /**
@@ -559,7 +559,7 @@ typedef enum nros_subscription_state_t {
   NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
   /**
    * Initialized for callback dispatch (Layer 2). Subscriber entity
-   * creation is deferred to `nros_executor_register_subscription`.
+   * creation is deferred to `nros_executor_add_subscription`.
    */
   NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
   /**
@@ -639,7 +639,7 @@ typedef enum nros_service_state_t {
   NROS_SERVICE_STATE_UNINITIALIZED = 0,
   /**
    * L2 callback-mode: initialized via `nros_service_init`, transport
-   * creation deferred to `nros_executor_register_service`.
+   * creation deferred to `nros_executor_add_service`.
    */
   NROS_SERVICE_STATE_INITIALIZED = 1,
   /**
@@ -1245,16 +1245,16 @@ typedef uint8_t nros_sched_context_id_t;
  *
  * Lightweight — stores only the arena entry index and executor pointer.
  * The `ActionClientCore` (transport handles) lives in the executor's arena,
- * created by `nros_executor_register_action_client`.
+ * created by `nros_executor_add_action_client`.
  */
 typedef struct ActionClientInternal {
   /**
-   * Arena entry index (set by nros_executor_register_action_client).
+   * Arena entry index (set by nros_executor_add_action_client).
    * -1 means not registered with executor.
    */
   int32_t arena_entry_index;
   /**
-   * Pointer to the executor (set by nros_executor_register_action_client).
+   * Pointer to the executor (set by nros_executor_add_action_client).
    */
   void *executor_ptr;
 } ActionClientInternal;
@@ -1315,7 +1315,7 @@ typedef struct nros_action_client_t {
    * Phase 189.M3.3.b — scheduling-context slot to bind the action client's
    * executor handle to. `0` = inherit the executor / Node default; set via
    * `nros_action_client_init_with_options`. When non-zero,
-   * `nros_executor_register_action_client` binds the handle after
+   * `nros_executor_add_action_client` binds the handle after
    * registration. No effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context_id;
@@ -1367,7 +1367,7 @@ typedef struct nros_action_client_options_t {
    * Scheduling-context slot to bind the action client's executor handle to.
    * `0` = inherit the executor / Node default. A non-zero value must be an id
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_register_action_client` once the handle exists. No effect
+   * `nros_executor_add_action_client` once the handle exists. No effect
    * on the L1 polling path.
    */
   nros_sched_context_id_t sched_context;
@@ -1609,12 +1609,12 @@ typedef struct nros_action_server_t {
    * executor handle to (the goal-service slot; governs the action's callback
    * dispatch). `0` = inherit the executor / Node default; set via
    * `nros_action_server_init_with_options`. When non-zero,
-   * `nros_executor_register_action_server` binds the handle after
+   * `nros_executor_add_action_server` binds the handle after
    * registration. No effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context_id;
   /**
-   * Internal state — set by `nros_executor_register_action_server`.
+   * Internal state — set by `nros_executor_add_action_server`.
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
    */
   struct ActionServerInternal _internal;
@@ -1635,7 +1635,7 @@ typedef struct nros_action_server_options_t {
    * Scheduling-context slot to bind the action server's executor handle to.
    * `0` = inherit the executor / Node default. A non-zero value must be an id
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_register_action_server` once the handle exists. No effect
+   * `nros_executor_add_action_server` once the handle exists. No effect
    * on the L1 polling path.
    */
   nros_sched_context_id_t sched_context;
@@ -1712,7 +1712,7 @@ typedef struct nros_subscription_t {
    * [`nros_subscription_init_with_options`]. `0` = inherit the
    * executor / Node default (no explicit bind), matching the
    * `nros_node_options_t::sched_context_id` convention. When non-zero,
-   * `nros_executor_register_subscription` binds the freshly-created
+   * `nros_executor_add_subscription` binds the freshly-created
    * handle to this SC after registration. Has no effect on the L1
    * polling path (no executor handle to bind).
    */
@@ -1867,7 +1867,7 @@ typedef struct nros_node_options_t {
  * Subscription callback that also receives the sample's wire **attachment**
  * (Phase 189.M3.4 — the C analog of the Rust
  * `node.subscription(t).generic(..).message_info()` builder path). Used by
- * [`nros_executor_register_subscription_raw_with_info`].
+ * [`nros_executor_add_subscription_raw_with_info`].
  *
  * # Parameters
  * * `data` / `len` — received CDR bytes.
@@ -1924,7 +1924,7 @@ typedef struct nros_timer_t {
    */
   size_t handle_id;
   /**
-   * Opaque pointer to internal executor (set by nros_executor_register_timer)
+   * Opaque pointer to internal executor (set by nros_executor_add_timer)
    */
   void *_executor;
 } nros_timer_t;
@@ -2026,7 +2026,7 @@ typedef struct nros_service_t {
    * Phase 189.M3.3.a — scheduling-context slot to bind the service's
    * executor handle to. `0` = inherit the executor / Node default (no
    * explicit bind); set via `nros_service_init_with_options`. When non-zero,
-   * `nros_executor_register_service` binds the freshly-created handle to this
+   * `nros_executor_add_service` binds the freshly-created handle to this
    * SC after registration. No effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context_id;
@@ -2335,7 +2335,7 @@ typedef struct nros_service_options_t {
    * `0` = inherit the executor / Node default (no explicit bind). A non-zero
    * value must be an id previously returned from
    * `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_register_service` once the handle exists. No effect on the
+   * `nros_executor_add_service` once the handle exists. No effect on the
    * L1 polling path.
    */
   nros_sched_context_id_t sched_context;
@@ -2381,7 +2381,7 @@ typedef struct nros_subscription_options_t {
    * bind), matching the `nros_node_options_t::sched_context_id`
    * convention. A non-zero value must be an id previously returned
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_register_subscription` once the handle exists. Has
+   * `nros_executor_add_subscription` once the handle exists. Has
    * no effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context;
@@ -3138,7 +3138,7 @@ NROS_PUBLIC struct nros_action_client_options_t nros_action_client_get_default_o
 /**
  * Phase 189.M3.3.b — initialize an action client with named options. Like
  * [`nros_action_client_init`] except a non-zero `options->sched_context` is
- * stashed so [`nros_executor_register_action_client`] binds the resulting
+ * stashed so [`nros_executor_add_action_client`] binds the resulting
  * executor handle to that scheduling context once known.
  *
  * # Safety
@@ -3477,7 +3477,7 @@ NROS_PUBLIC struct nros_action_server_t nros_action_server_get_zero_initialized(
  * Initialize an action server.
  *
  * Stores metadata (name, type, callbacks). RMW entity creation is deferred
- * to `nros_executor_register_action_server()`.
+ * to `nros_executor_add_action_server()`.
  */
 NROS_PUBLIC
 nros_ret_t nros_action_server_init(struct nros_action_server_t *server,
@@ -3518,7 +3518,7 @@ NROS_PUBLIC struct nros_action_server_options_t nros_action_server_get_default_o
 /**
  * Phase 189.M3.3.b — initialize an action server with custom QoS + named
  * options. Like [`nros_action_server_init_with_qos`] except a non-zero
- * `options->sched_context` is stashed so [`nros_executor_register_action_server`]
+ * `options->sched_context` is stashed so [`nros_executor_add_action_server`]
  * binds the resulting executor handle to that scheduling context once known.
  *
  * # Safety
@@ -3955,7 +3955,7 @@ nros_ret_t nros_executor_set_semantics(struct nros_executor_t *executor,
  * namespace(...).sched(...).build()`. Materialises a Node inside the
  * executor's node table and stores the returned NodeId in
  * `node.node_id` so subsequent
- * [`nros_executor_register_subscription`] / `_service` / `_client` /
+ * [`nros_executor_add_subscription`] / `_service` / `_client` /
  * `_action_*` calls route through `register_*_on(NodeId, ...)`
  * instead of the legacy single-Node path.
  *
@@ -4057,9 +4057,9 @@ NROS_PUBLIC bool nros_executor_trigger_one(const bool *ready, size_t count, void
  * * All pointers must be valid and point to initialized objects
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_subscription(struct nros_executor_t *executor,
-                                               struct nros_subscription_t *subscription,
-                                               enum nros_executor_invocation_t invocation);
+nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
+                                          struct nros_subscription_t *subscription,
+                                          enum nros_executor_invocation_t invocation);
 
 /**
  * Phase 189.M3.4 — register a raw subscription whose callback also receives
@@ -4068,7 +4068,7 @@ nros_ret_t nros_executor_register_subscription(struct nros_executor_t *executor,
  * generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
  * struct): the callback signature differs from the plain
  * [`nros_subscription_callback_t`], so this is its own entry point rather than
- * a flag on `nros_executor_register_subscription`.
+ * a flag on `nros_executor_add_subscription`.
  *
  * `node` may be NULL (legacy single-Node path) or a Node created via
  * `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
@@ -4080,14 +4080,14 @@ nros_ret_t nros_executor_register_subscription(struct nros_executor_t *executor,
  * UTF-8 valid for the duration of the call.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_subscription_raw_with_info(struct nros_executor_t *executor,
-                                                             const struct nros_node_t *node,
-                                                             const char *topic_name,
-                                                             const char *type_name,
-                                                             const char *type_hash,
-                                                             const struct nros_qos_t *qos,
-                                                             nros_subscription_info_callback_t callback,
-                                                             void *context);
+nros_ret_t nros_executor_add_subscription_raw_with_info(struct nros_executor_t *executor,
+                                                        const struct nros_node_t *node,
+                                                        const char *topic_name,
+                                                        const char *type_name,
+                                                        const char *type_hash,
+                                                        const struct nros_qos_t *qos,
+                                                        nros_subscription_info_callback_t callback,
+                                                        void *context);
 
 /**
  * Add a timer to the executor.
@@ -4099,41 +4099,41 @@ nros_ret_t nros_executor_register_subscription_raw_with_info(struct nros_executo
  * * All pointers must be valid and point to initialized objects
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_timer(struct nros_executor_t *executor,
-                                        struct nros_timer_t *timer);
+nros_ret_t nros_executor_add_timer(struct nros_executor_t *executor,
+                                   struct nros_timer_t *timer);
 
 /**
  * Phase 273 (RFC-0047) — register a subscription in a named callback group.
  *
- * Identical to `nros_executor_register_subscription` but additionally passes
+ * Identical to `nros_executor_add_subscription` but additionally passes
  * the group name to the executor so the seeded `group_sched_table` can bind
  * the callback to the group's `SchedContext`. `callback_group` may be NULL or
- * an empty string — both behave identically to `nros_executor_register_subscription`.
+ * an empty string — both behave identically to `nros_executor_add_subscription`.
  *
  * # Safety
  * All non-NULL pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_subscription_in_group(struct nros_executor_t *executor,
-                                                        struct nros_subscription_t *subscription,
-                                                        enum nros_executor_invocation_t invocation,
-                                                        const char *callback_group);
+nros_ret_t nros_executor_add_subscription_in_group(struct nros_executor_t *executor,
+                                                   struct nros_subscription_t *subscription,
+                                                   enum nros_executor_invocation_t invocation,
+                                                   const char *callback_group);
 
 /**
  * Phase 273 (RFC-0047) — register a timer in a named callback group.
  *
- * Identical to `nros_executor_register_timer` but additionally passes the
+ * Identical to `nros_executor_add_timer` but additionally passes the
  * group name so the seeded `group_sched_table` can bind the callback to the
  * group's `SchedContext`. `callback_group` may be NULL or empty — both behave
- * identically to `nros_executor_register_timer`.
+ * identically to `nros_executor_add_timer`.
  *
  * # Safety
  * All non-NULL pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_timer_in_group(struct nros_executor_t *executor,
-                                                 struct nros_timer_t *timer,
-                                                 const char *callback_group);
+nros_ret_t nros_executor_add_timer_in_group(struct nros_executor_t *executor,
+                                            struct nros_timer_t *timer,
+                                            const char *callback_group);
 
 /**
  * Add a service to the executor.
@@ -4145,8 +4145,8 @@ nros_ret_t nros_executor_register_timer_in_group(struct nros_executor_t *executo
  * * All pointers must be valid and point to initialized objects
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_service(struct nros_executor_t *executor,
-                                          struct nros_service_t *service);
+nros_ret_t nros_executor_add_service(struct nros_executor_t *executor,
+                                     struct nros_service_t *service);
 
 /**
  * Add a service client to the executor (Phase 82).
@@ -4175,8 +4175,8 @@ nros_ret_t nros_executor_add_client(struct nros_executor_t *executor,
  * * All pointers must be valid and point to initialized objects
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_guard_condition(struct nros_executor_t *executor,
-                                                  struct nros_guard_condition_t *guard);
+nros_ret_t nros_executor_add_guard_condition(struct nros_executor_t *executor,
+                                             struct nros_guard_condition_t *guard);
 
 /**
  * Add an action server to the executor.
@@ -4188,8 +4188,8 @@ nros_ret_t nros_executor_register_guard_condition(struct nros_executor_t *execut
  * * All pointers must be valid and point to initialized objects
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_action_server(struct nros_executor_t *executor,
-                                                struct nros_action_server_t *server);
+nros_ret_t nros_executor_add_action_server(struct nros_executor_t *executor,
+                                           struct nros_action_server_t *server);
 
 /**
  * Register an action client with the executor for async (non-blocking) operation.
@@ -4207,8 +4207,8 @@ nros_ret_t nros_executor_register_action_server(struct nros_executor_t *executor
  * * `executor` and `client` must be valid pointers to initialized structs.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_action_client(struct nros_executor_t *executor,
-                                                struct nros_action_client_t *client);
+nros_ret_t nros_executor_add_action_client(struct nros_executor_t *executor,
+                                           struct nros_action_client_t *client);
 
 /**
  * Spin the executor once.
@@ -4296,8 +4296,8 @@ NROS_PUBLIC nros_sched_context_id_t nros_executor_default_sched_context_id(void)
  * `executor` must be a valid pointer to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_register_time_triggered_dispatcher(struct nros_executor_t *executor,
-                                                            uint32_t major_frame_us);
+nros_ret_t nros_executor_add_time_triggered_dispatcher(struct nros_executor_t *executor,
+                                                       uint32_t major_frame_us);
 
 /**
  * Register a new scheduling context with the executor. Phase 110.B.
@@ -5085,7 +5085,7 @@ NROS_PUBLIC struct nros_service_options_t nros_service_get_default_options(void)
  * Phase 189.M3.3.a — initialize a service server with custom QoS + named
  * options. Behaves like [`nros_service_init_with_qos`] except a non-zero
  * `options->sched_context` is stashed on the service so that
- * [`nros_executor_register_service`] binds the resulting executor handle to
+ * [`nros_executor_add_service`] binds the resulting executor handle to
  * that scheduling context once the handle is known (server creation is
  * deferred to registration, so the handle does not exist at init time).
  *
@@ -5222,7 +5222,7 @@ nros_ret_t nros_service_send_reply_raw(struct nros_service_t *service,
  * Take a service request (non-blocking).
  *
  * Currently not supported — service servers are callback-only through
- * the executor. Use `nros_executor_register_service()` with a callback instead.
+ * the executor. Use `nros_executor_add_service()` with a callback instead.
  *
  * # Returns
  * * `NROS_RET_NOT_INIT` always (manual poll not supported)
@@ -5647,7 +5647,7 @@ nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscript
  * default) and the non-QoS axes ride in `options` (NULL = defaults).
  * Behaves exactly like [`nros_subscription_init_with_qos`] except that
  * a non-zero `options->sched_context` is stashed on the subscription so
- * that [`nros_executor_register_subscription`] binds the resulting
+ * that [`nros_executor_add_subscription`] binds the resulting
  * executor handle to that scheduling context once the handle is known
  * (entity creation is deferred to registration, so the handle does not
  * exist at init time). `options->message_info` is RESERVED and ignored

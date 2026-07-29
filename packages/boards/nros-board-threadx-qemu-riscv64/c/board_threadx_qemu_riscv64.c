@@ -191,7 +191,7 @@ int nros_board_init_eth(void)
      * no crt0/__libc_init_array, so nothing walks .init_array; the Cyclone
      * message-descriptor registration TUs (`register_std_msgs_*`,
      * `__attribute__((constructor))`) never ran and every reader/writer create
-     * failed (`nros_executor_register_subscription -> -1`). The bounds come
+     * failed (`nros_executor_add_subscription -> -1`). The bounds come
      * from the board link.lds (.init_array KEEP block). Idempotence: this init
      * runs once per boot, before the app thread starts. */
     {

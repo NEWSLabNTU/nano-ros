@@ -123,7 +123,7 @@ pub enum nros_service_state_t {
     /// Not initialized
     NROS_SERVICE_STATE_UNINITIALIZED = 0,
     /// L2 callback-mode: initialized via `nros_service_init`, transport
-    /// creation deferred to `nros_executor_register_service`.
+    /// creation deferred to `nros_executor_add_service`.
     NROS_SERVICE_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_SERVICE_STATE_SHUTDOWN = 2,
@@ -164,7 +164,7 @@ pub struct nros_service_t {
     /// Phase 189.M3.3.a — scheduling-context slot to bind the service's
     /// executor handle to. `0` = inherit the executor / Node default (no
     /// explicit bind); set via `nros_service_init_with_options`. When non-zero,
-    /// `nros_executor_register_service` binds the freshly-created handle to this
+    /// `nros_executor_add_service` binds the freshly-created handle to this
     /// SC after registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
@@ -282,7 +282,7 @@ pub unsafe extern "C" fn nros_service_init(
     // overrides. (`register_service` reads this at registration time.)
     service.qos = crate::qos::nros_qos_t::default();
 
-    // Service server creation is deferred to nros_executor_register_service(),
+    // Service server creation is deferred to nros_executor_add_service(),
     // which calls nros_node::Executor::register_service_raw_sized().
     // Initialise the internal state (executor_ptr null until registration).
     service._internal = ServiceServerInternal::new();
@@ -329,7 +329,7 @@ pub struct nros_service_options_t {
     /// `0` = inherit the executor / Node default (no explicit bind). A non-zero
     /// value must be an id previously returned from
     /// `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_register_service` once the handle exists. No effect on the
+    /// `nros_executor_add_service` once the handle exists. No effect on the
     /// L1 polling path.
     pub sched_context: crate::executor::nros_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads the struct for ABI stability.
@@ -345,7 +345,7 @@ pub extern "C" fn nros_service_get_default_options() -> nros_service_options_t {
 /// Phase 189.M3.3.a — initialize a service server with custom QoS + named
 /// options. Behaves like [`nros_service_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed on the service so that
-/// [`nros_executor_register_service`] binds the resulting executor handle to
+/// [`nros_executor_add_service`] binds the resulting executor handle to
 /// that scheduling context once the handle is known (server creation is
 /// deferred to registration, so the handle does not exist at init time).
 ///
@@ -759,7 +759,7 @@ pub unsafe extern "C" fn nros_service_send_reply_raw(
 /// Take a service request (non-blocking).
 ///
 /// Currently not supported — service servers are callback-only through
-/// the executor. Use `nros_executor_register_service()` with a callback instead.
+/// the executor. Use `nros_executor_add_service()` with a callback instead.
 ///
 /// # Returns
 /// * `NROS_RET_NOT_INIT` always (manual poll not supported)

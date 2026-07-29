@@ -119,7 +119,7 @@ int nros_app_main(int argc, char** argv) {
         1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(nros_executor_register_timer(&app.executor, &app.timer), 1);
+    NROS_CHECK_RET(nros_executor_add_timer(&app.executor, &app.timer), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
