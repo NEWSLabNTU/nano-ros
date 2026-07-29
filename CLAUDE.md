@@ -46,7 +46,20 @@ Workspace: `packages/{core,zpico,xrce,dds,boards,drivers,interfaces,testing,veri
 crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0012.
 
 ## Practices
-- **Always `just ci` after a task.** **Never `sudo`** — tell the user.
+- **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).
+  **Never `sudo`** — tell the user.
+  - `just ci` — **tier 1**, minutes, host only. The default. Gates and runs only
+    native fixtures, so a stale ThreadX fixture cannot block it.
+  - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
+    or `cmake/`. That is where the platform×language and rmw×language interaction
+    classes live (0268/0245 sizes headers, 0332 freestanding headers, 0331 vtable
+    ABI) — tier 1 cannot see any of them.
+  - `just ci-full` — **tier 3**, the whole matrix. Nightly, pre-release, on demand.
+  Green tier 1 means "the logic and the seams are sound", never "it builds on the
+  targets". Say which tier you ran; do not report a tier-1 green as if it were a
+  sweep. The old single `just ci` WAS tier 3 — an instruction nobody could afford
+  per task, so it got followed selectively, which is worse than a smaller
+  instruction followed honestly.
 - **Fix the CLASS, not the reported site — then prove the sweep.** Every bug here that
   recurred did so because a fix landed only where the symptom was seen: the sizes-header
   mirror (0088→0114→0122→0123→0245→0268), the Zephyr unset-variable guard (#282 fixed 1
@@ -58,8 +71,8 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   covers the new site (issue-0196 rule) — audit 2026-07-28 found four gates whose
   coverage was narrower than the rule they enforce.
 - **Green CI locally BEFORE pushing — don't iterate on remote CI.** Run `just format`
-  then `just ci` (or at least `just check`) locally and fix every failure first, so the
-  push passes remote CI on the first try. `just ci` = `check` (fast + build, incl. embedded
+  then the tier your change earns (above) locally and fix every failure first, so the
+  push passes remote CI on the first try. `just ci-full` = `check` (fast + build, incl. embedded
   clippy + every per-feature/per-example clippy, and the per-component lanes `check-c` /
   `check-cpp` / `check-rmw-cyclonedds` / `check-cli-tests`) + `rust-rtos-link-check` +
   `test-all`. A backend's own test suite belongs in a `check-*` lane, never as a named step

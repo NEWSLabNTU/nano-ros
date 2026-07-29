@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-29): W1, W2, W3, W4 landed (W4.c/W4.d + W5 open).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-29): W1–W5 landed except W4.d (needs a cell→test-binary mapping).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -78,21 +78,33 @@ is rebuilt, whether or not emitted bytes changed.
       `ci-matrix` runs the full lane and says so — the selection exists
       (`nros_tests::ci_lane`) but nothing maps a cell to its test binary, so the
       filter cannot yet be derived from it. That mapping is the real work.
-- [ ] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
+- [x] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
       with tier 2 named for core/codegen/cmake changes. An instruction nobody can
       afford to follow gets followed selectively.
 
 ## W5 — operational corollaries (independent of W1–W4)
 
-- [ ] **W5.a** Tier 3 drops each family's artifacts after that family passes. A
-      full sweep needs ~800 GB and hit 11 MB free twice on 2026-07-28; the
-      artifacts are reproducible, the result is what needs keeping.
-- [ ] **W5.b** QEMU concurrency cap for tier 3 (287-W7: six NuttX lanes failed
-      in-sweep, passed solo). A tier whose reds are routinely noise trains people
-      to ignore reds.
-- [ ] **W5.c** Issue 0328's 24 `#[ignore]` tests get a tier or get deleted. Note
-      0345 repaired the rotted stubs, so a lane added now would be green —
-      before that it would have gone red on arrival, which is why nobody added one.
+- [x] **W5.a** `scripts/build/drop-family-artifacts.sh` + `just sweep-family
+      <platform> drop=1` — test one family, then free its manifest-declared build
+      dirs. Dry-run by default, and it refuses to drop after an unclean run
+      (you want those artifacts to debug). Measured on this tree: freertos alone
+      is 12 dirs / 12.6 GB. **Partial by design** — the recipe owns test+drop, not
+      build, because the per-platform build verbs differ (`just freertos
+      build-fixtures` vs `just native build-fixtures` vs none for threadx). Fully
+      interleaving the sweep means restructuring `build-test-fixtures`, which is
+      its own change.
+- [x] **W5.b** `.config/nextest.toml`: `qemu-emulated` test-group, `max-threads
+      = 4`, covering the freertos/nuttx/threadx/zephyr/esp32/fvp/stm32 binaries
+      (`qemu-baremetal` already capped its own family at 3). Verified accepted by
+      `cargo nextest show-config test-groups`. The filter is the manual twin of
+      `scripts/test/lane-filter.sh`'s derived tokens and must move with it.
+- [x] **W5.c** Done — but by a parallel session, not here. `e7e5b84a0` (#328's
+      fix) added `just test-ignored`; this phase wires it into `ci-full` so the
+      lane actually runs. A `test-ignored-codegen` recipe drafted here was DELETED
+      before commit: a second spelling of an existing verb is the exact
+      anti-pattern this repo keeps paying for (CLAUDE.md "Fix the CLASS… add ONE
+      shared helper rather than a second spelling"). Verified green: 12/12 in
+      rosidl-codegen.
 
 ---
 

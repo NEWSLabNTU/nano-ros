@@ -720,3 +720,27 @@ fail-fast = true
 [[profile.default.overrides]]
 filter = "binary(cmake_add_subdirectory) or binary(cmake_platform_matrix) or test(cpp_parameters_roundtrip)"
 slow-timeout = { period = "60s", terminate-after = 10 }
+
+# ── phase-318 W5.b — QEMU host-load cap (RFC-0061) ─────────────────────────────
+#
+# QEMU-bearing lanes flake under load, not because of the code but because of the
+# host: 287-W7 saw six NuttX lanes fail in-sweep and pass solo. A tier whose reds
+# are routinely noise trains people to ignore reds, which is how a REAL red hides
+# (issue 0337 sat red for 60+ runs). Capping concurrency is what makes tier 3's
+# result readable.
+#
+# This is a RESOURCE group in the issue-#141 sense — the resource is the host's
+# capacity to emulate, shared by every QEMU binary. `qemu-baremetal` above caps
+# its own family at 3; this catches the RTOS emulator lanes that had no cap.
+#
+# The filter mirrors the platform families in `PlatformId`
+# (see scripts/test/lane-filter.sh, which derives its tokens the same way).
+# `ci_lane::tests::lane_filter_tokens_cover_every_non_native_platform` gates the
+# script; this list is its manual twin and must move with it.
+[test-groups.qemu-emulated]
+max-threads = 4
+
+[[profile.default.overrides]]
+filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp) or binary(~stm32)"
+test-group = "qemu-emulated"
+

@@ -1453,9 +1453,58 @@ ci-matrix:
     @echo "      wired to the nextest filter (phase-318 W4.d) — running the full lane."
     @just ci-full
 
-# Tier 3 — everything. The former `ci`.
+# phase-318 W5.a — run ONE family's tests, then optionally free its artifacts.
+#
+# Tier 3 builds every family, then tests every family, so peak disk is the SUM of
+# all of them: ~800 GB, and it hit 11 MB free twice on 2026-07-28 — which ended
+# that run more decisively than any test failure. Interleaving
+# build -> test -> drop keeps peak disk at roughly one family.
+#
+#   just <platform> build-fixtures        # build verbs differ per platform,
+#   just sweep-family <platform> drop=1   # so the caller owns that step
+#
+# `drop=1` deletes that family's MANIFEST-DECLARED build dirs after its tests
+# pass — reproducible artifacts; the result is what needs keeping. Default drop=0,
+# and drop-family-artifacts.sh is dry-run by default: deleting build trees on a
+# typo costs hours.
 [group("ci")]
-ci-full: check rust-rtos-link-check test-all
+sweep-family platform drop="0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/test/nextest-profile.sh
+    echo "[sweep-family] testing {{platform}}"
+    # `skip!` is a panic, so a BARE nextest run reports skipped cells as
+    # FAILURES — the documented pitfall (CLAUDE.md). `test-all` rewrites them via
+    # the junit pass; mirror that here or every unavailable-toolchain family looks
+    # red. `|| true` on the run, then the rewrite decides.
+    rc=0
+    cargo nextest run $(nros_nextest_run_profile_args) -E 'binary(~{{platform}})' || rc=$?
+    just _rewrite-skipped-junit || true
+    if [ "$rc" -ne 0 ]; then
+        echo "[sweep-family] {{platform}} had failures (skips are rewritten in the junit;"
+        echo "               read it before treating this as a code red)"
+    fi
+    if [ "{{drop}}" = "1" ] && [ "$rc" -eq 0 ]; then
+        bash scripts/build/drop-family-artifacts.sh {{platform}} --confirm
+    elif [ "{{drop}}" = "1" ]; then
+        echo "[sweep-family] NOT dropping {{platform}} artifacts — the run was not clean;"
+        echo "               you will want them to debug."
+        exit "$rc"
+    else
+        bash scripts/build/drop-family-artifacts.sh {{platform}} || true
+        echo "[sweep-family] artifacts kept (pass drop=1 to free them)"
+    fi
+
+# Tier 3 — everything. The former `ci`.
+#
+# phase-318 W5.c — `test-ignored` (added by #328's fix, e7e5b84a0) joins the lane.
+# Those tests had NO lane at all: they rot invisibly and then block the day
+# someone enables them, which had already happened — the codegen compile-check
+# had been failing since phase-303 W4 added the XCDR2 DHEADER seam, found only
+# when 0345 ran it by hand and repaired the stubs. Green now, which is what makes
+# laning it worth doing today when it was not last week.
+[group("ci")]
+ci-full: check rust-rtos-link-check test-all test-ignored
     @echo "CI passed (tier 3 — full matrix)!"
 
 # =============================================================================
