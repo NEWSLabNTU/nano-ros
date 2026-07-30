@@ -3302,3 +3302,193 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"
 skip_probe = true
+
+# =============================================================================
+# Compile-check lane (phase-319 W2, issue 0351) — built by
+# `scripts/build/compile-check-fixtures.sh`.
+#
+# AGENTS.md:79: "If a test's intent is to verify that something compiles (a macro
+# form, a codegen output, an API shape), make it a fixture in the build step — add
+# a row to examples/fixtures.toml". These 26 lived in six hardcoded arrays inside
+# that script instead, each with its own colon-delimited format, which is exactly
+# why `check-fixtures-stale.sh` (which reads THIS file) could not see them.
+#
+# Not all of them are compile-only: ten are compile-intent checks with no runtime
+# artifact, the other sixteen produce binaries and JSON that tests read or
+# execute. What they share is the LANE and a non-default builder.
+#
+# `builder` selects the recipe; `output` names what a test resolves, relative to
+# the row's build root.
+# =============================================================================
+
+# --- cargo-check: stage the tree, `cargo check`, stamp `.compile-ok`. The
+#     compile IS the assertion (macro forms, dep resolution).
+[[compile_check_fixture]]
+id = "one_dep_component_pkg"
+builder = "cargo-check"
+dir = "packages/testing/nros-tests/fixtures/one_dep_component_pkg"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "n9_form1"
+builder = "cargo-check"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "n9_form2"
+builder = "cargo-check"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "n9_form3"
+builder = "cargo-check"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "n9_form4"
+builder = "cargo-check"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".compile-ok"
+
+# `cargo check` an EXISTING example dir for a cross target (no staging).
+[[compile_check_fixture]]
+id = "embassy_main_macro"
+builder = "cargo-check"
+dir = "examples/stm32f4/rust/talker-embassy"
+target = "thumbv7em-none-eabihf"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "embassy_main_macro_listener"
+builder = "cargo-check"
+dir = "examples/stm32f4/rust/listener-embassy"
+target = "thumbv7em-none-eabihf"
+output = ".compile-ok"
+
+# --- cargo-build: the binary is the point; tests run it.
+[[compile_check_fixture]]
+id = "orch_tiers_multi"
+builder = "cargo-build"
+dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+output = "target/debug/demo_entry"
+
+[[compile_check_fixture]]
+id = "orch_tiers_single"
+builder = "cargo-build"
+dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+output = "target/debug/demo_entry"
+
+[[compile_check_fixture]]
+id = "o4_pkg_index"
+builder = "cargo-build"
+dir = "packages/testing/nros-tests/fixtures/o4_pkg_index_workspace"
+output = ".compile-ok"
+
+[[compile_check_fixture]]
+id = "o5_nav2_compat"
+builder = "cargo-build"
+dir = "packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke"
+# The crate lives in a subdir; `pkg` defaults to demo_entry.
+manifest_dir = "demo_entry"
+output = "target/debug/demo_entry"
+
+[[compile_check_fixture]]
+id = "o3_board_agnostic"
+builder = "cargo-build"
+dir = "packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan"
+pkg = "posix_entry"
+manifest_dir = "posix_entry"
+output = "target/debug/posix_entry"
+
+# --- cmake-configure: configure (and build) into build/cmake-fixtures/<id>.
+#     Several also produce runnable binaries, not just nros-metadata.json.
+[[compile_check_fixture]]
+id = "cpp_robot_entry"
+builder = "cmake-configure"
+dir = "examples/templates/multi-node-workspace-cpp"
+output = "src/robot_entry/robot_entry"
+
+[[compile_check_fixture]]
+id = "c_mixed_workspace"
+builder = "cmake-configure"
+dir = "examples/templates/c-and-cpp-mixed-workspace"
+output = "nros-metadata.json"
+
+[[compile_check_fixture]]
+id = "pure_c_workspace"
+builder = "cmake-configure"
+dir = "examples/templates/pure-c-workspace"
+output = "nros-metadata.json"
+
+[[compile_check_fixture]]
+id = "shadowing"
+builder = "cmake-configure"
+dir = "examples/templates/workspace-shadowing"
+output = "src/consumer/consumer"
+
+[[compile_check_fixture]]
+id = "local_msg_pkg"
+builder = "cmake-configure"
+dir = "examples/templates/local-msg-package"
+output = "nros-metadata.json"
+
+[[compile_check_fixture]]
+id = "cmake_add_subdir"
+builder = "cmake-configure"
+dir = "packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"
+output = "smoke"
+
+[[compile_check_fixture]]
+id = "metadata_cpp"
+builder = "cmake-configure"
+dir = "examples/workspaces/cpp"
+output = "nros-metadata.json"
+
+[[compile_check_fixture]]
+id = "l9_register_cpp"
+builder = "cmake-configure"
+dir = "packages/testing/nros-tests/fixtures/l9_register_cpp"
+output = "nros-metadata.json"
+
+[[compile_check_fixture]]
+id = "l9_register_c"
+builder = "cmake-configure"
+dir = "packages/testing/nros-tests/fixtures/l9_register_c"
+output = "nros-metadata.json"
+
+# --- cross-build: firmware ELFs, booted in QEMU by their tests.
+[[compile_check_fixture]]
+id = "freertos_firmware"
+builder = "cross-build"
+dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos"
+manifest_dir = "firmware"
+pkg = "firmware"
+target = "thumbv7m-none-eabi"
+output = "target/thumbv7m-none-eabi/debug/firmware"
+
+[[compile_check_fixture]]
+id = "orch_tiers_freertos"
+builder = "cross-build"
+dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos"
+manifest_dir = "."
+pkg = "demo_entry"
+target = "thumbv7m-none-eabi"
+profiles = ["debug", "release"]
+output = "target/thumbv7m-none-eabi/debug/demo_entry"
+
+# --- cxx-syntax: `c++ -fsyntax-only` over a committed snippet. No artifact and
+#     no dir — the snippet is resolved by id.
+[[compile_check_fixture]]
+id = "rclcpp_node_options"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "subscription_with_info"
+builder = "cxx-syntax"
+
+[[compile_check_fixture]]
+id = "spin_until_future_complete"
+builder = "cxx-syntax"

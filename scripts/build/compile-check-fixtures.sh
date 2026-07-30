@@ -10,7 +10,7 @@
 # writes a `.compile-ok` stamp the test asserts (via
 # `nros_tests::fixtures::require_compile_check`).
 #
-# Add an entry to COMPILE_CHECK_FIXTURES (id : template-dir relative to repo).
+# Add a `[[compile_check_fixture]]` row to `examples/fixtures.toml` (phase-319 W2).
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,15 +24,6 @@ out_root="$repo_root/build/compile-check"
 mkdir -p "$out_root"
 
 # id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
-COMPILE_CHECK_FIXTURES=(
-    "one_dep_component_pkg:packages/testing/nros-tests/fixtures/one_dep_component_pkg"
-    # n9 `nros::main!()` positive forms — all stage the same n9_workspace
-    # template; `post_stage` writes the form-specific demo_entry/src/main.rs.
-    "n9_form1:packages/testing/nros-tests/fixtures/n9_workspace"
-    "n9_form2:packages/testing/nros-tests/fixtures/n9_workspace"
-    "n9_form3:packages/testing/nros-tests/fixtures/n9_workspace"
-    "n9_form4:packages/testing/nros-tests/fixtures/n9_workspace"
-)
 
 # Per-id staging hook: overwrite files in the staged tree before `cargo check`.
 # Used by the n9 forms — each is the same workspace with a different
@@ -50,8 +41,37 @@ post_stage() {
         n9_form4)
             printf '//! n9 form 4 (all explicit: board + explicit model file).\n//! (args= is a launch-arm concept — a resolved model is early-bound.)\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    model = "demo_bringup:config/system_model.yaml",\n);\n' > "$main_rs" ;;
         orch_tiers_single)
-            # Strip the `[tiers.*]` blocks from system.toml so the macro takes
-            # the legacy single-tier BoardEntry::run path (RFC-0032 §5 gate G.4).
+            # Strip the tier table so the macro takes the legacy single-tier
+            # BoardEntry::run path (RFC-0032 §5 gate G.4).
+            #
+            # phase-319 W2 — this used to strip `[tiers.*]` from system.toml, but
+            # the entry is `nros::main!(model = ...)` and phase-296 made the
+            # MODEL authoritative: the strip stopped doing anything, the fixture
+            # kept emitting multi-tier, and
+            # `single_tier_system_takes_the_legacy_boardentry_run_path` went red.
+            # Strip both — the model because it is what the macro reads, the
+            # system.toml because a stale copy there would be a second source of
+            # truth (issue 0351's theme one layer over).
+            local model="$staged/src/demo_bringup/config/system_model.yaml"
+            if [ -f "$model" ]; then
+                python3 - "$model" <<'PYSTRIP'
+import sys
+path = sys.argv[1]
+out, skip = [], False
+for line in open(path):
+    if line.startswith("  tiers:"):
+        skip = True
+        continue
+    if skip:
+        # The tier table ends at the next key at the same indent (e.g. bindings:).
+        if line.startswith("  ") and not line.startswith("   ") and line.strip():
+            skip = False
+        else:
+            continue
+    out.append(line)
+open(path, "w").writelines(out)
+PYSTRIP
+            fi
             local sys="$staged/src/demo_bringup/system.toml"
             if [ -f "$sys" ]; then
                 sed -n '0,/^\[tiers\./{/^\[tiers\./!p}' "$sys" > "$sys.tmp" && mv "$sys.tmp" "$sys"
@@ -64,30 +84,6 @@ post_stage() {
 # producing a runnable binary at build/compile-check/<id>/target/debug/demo_entry
 # that the test executes (e.g. boot/run-tier assertions). The compile is still
 # the build stage; the test runs the prebuilt binary.
-BUILD_FIXTURES=(
-    "orch_tiers_multi:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
-    # issue-0041 — O.4 pkg-index walk: `cargo build -p demo_entry` proves the
-    # macro's package.xml pkg-index discovered `demo_bringup` (no Cargo.toml).
-    # The test inspects the prebuilt node_{a,b,c} rlibs (pkg_index.rs).
-    "o4_pkg_index:packages/testing/nros-tests/fixtures/o4_pkg_index_workspace"
-    # issue-0041 — O.5 nav2-style launch.xml compat: build the Entry pkg's build.rs
-    # (drives `nros_build::generate_run_plan` via play_launch_parser) → emits
-    # run_plan.rs; the test inspects it (nav2_compat.rs). `demo_entry` is EXCLUDED
-    # from the fixture root workspace, so build via its own subdir manifest (3rd
-    # field). Needs play_launch_parser on PATH at build time (else build.rs writes
-    # the Placeholder stub → the test skips).
-    "o5_nav2_compat:packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke:demo_entry"
-    # issue-0041 — O.3 board-agnostic codegen: build the POSIX Entry pkg
-    # (`cargo build -p posix_entry` from the `posix_entry/` subdir, its own
-    # `[workspace]` root) → emits run_plan.rs from the shared launch.xml. The
-    # test (board_agnostic_run_plan.rs) inspects the prebuilt run_plan.rs +
-    # asserts byte-identical `posix_entry/build.rs` vs `freertos_entry/build.rs`
-    # (the operational def of board-agnostic emit). The FreeRTOS cross-build leg
-    # stays a gated run-time skip (Wave B cross-toolchain). 4th field names the
-    # pkg (`posix_entry`, not the default `demo_entry`).
-    "o3_board_agnostic:packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan:posix_entry:posix_entry"
-    "orch_tiers_single:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
-)
 
 stage_tree() {
     local id="$1" src="$2" staged="$3"
@@ -142,41 +138,6 @@ stage_and_build() {
 # executable — instead of running cmake at test time (issue 0034). The codegen
 # step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
-CMAKE_FIXTURES=(
-    # Phase 257 — the C++ multi-node entry, now TYPED-only (the legacy non-typed
-    # interpreter entry was retired): `nano_ros_entry(... TYPED)` shells `nros codegen
-    # entry --typed --metadata`, the generated TU constructs each component + calls
-    # `configure(node)` + `NativeBoard::run_components` (no register-symbol, no
-    # interpreter). The test inspects that shape.
-    "cpp_robot_entry:examples/templates/multi-node-workspace-cpp"
-    "c_mixed_workspace:examples/templates/c-and-cpp-mixed-workspace"
-    "pure_c_workspace:examples/templates/pure-c-workspace"
-    # workspace-over-AMENT shadowing: the build links the workspace `std_msgs`
-    # shadow (carrying Marker.msg) over the AMENT one; the test `nm`s the
-    # consumer to prove which won. Needs an AMENT std_msgs in the build env.
-    "shadowing:examples/templates/workspace-shadowing"
-    # phase-306 W1 (issue 0253) — two-interface-pkg C++ consumer via
-    # nros_workspace_interfaces (extra_msgs depends on local_msgs; the consumer
-    # links both). Gates the per-package FFI-crate split: the pre-305 superset
-    # crates made this link fail with hundreds of duplicate `nros_cpp_*`
-    # definitions, silently (the template wasn't fixture-gated).
-    "local_msg_pkg:examples/templates/local-msg-package"
-    # add_subdirectory(nano-ros) link smoke (a user project linking
-    # NanoRos::NanoRos via add_subdirectory).
-    "cmake_add_subdir:packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"
-    # cpp workspace cmake configure emits nros-metadata.json (the §212.L cmake fns
-    # component/application/deploy metadata) — the test inspects it.
-    "metadata_cpp:examples/workspaces/cpp"
-    # §212.L.9 cmake-fn metadata: each configures a tiny CMakeLists exercising
-    # nano_ros_node_register → nros-metadata.json (test inspects).
-    # (l9_deploy retired with nano_ros_deploy post-287 — deploy tuple in package.xml.)
-    "l9_register_cpp:packages/testing/nros-tests/fixtures/l9_register_cpp"
-    "l9_register_c:packages/testing/nros-tests/fixtures/l9_register_c"
-    # Phase 246 — the ThreadX `threadx_bringup`(+_rv64) NULL-context baker-audit
-    # fixtures are retired with `NanoRosThreadxSystemCodegen.cmake`. ThreadX C/C++
-    # is exercised by the typed-carrier examples (examples/threadx-linux/cpp/* +
-    # examples/qemu-riscv64-threadx/{c,cpp}/*).
-)
 cmake_out="$repo_root/build/cmake-fixtures"
 
 cmake_fixture_prereqs_ok() {
@@ -227,14 +188,6 @@ build_cmake_fixture() {
 # same tree, so a test can boot the -O0 debug ELF (fast link) OR the -O3 release
 # ELF (needed when a -O0 zenoh-pico is too slow to finish a session handshake in
 # budget — phase-281 W1 / the connected orch_tiers_freertos test).
-CROSS_BUILD_FIXTURES=(
-    "freertos_firmware:packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos:firmware:firmware:thumbv7m-none-eabi"
-    # multi-tier freertos firmware (228.G run_tiers): built from the staged root.
-    # BOTH profiles: the boot test reads target/.../debug/demo_entry; the connected
-    # slirp test reads target/.../release/demo_entry (phase-281 W1 — a debug
-    # zenoh-pico on the emulated M3 starves the handshake past the nextest budget).
-    "orch_tiers_freertos:packages/testing/nros-tests/fixtures/orchestration_tiers_freertos:.:demo_entry:thumbv7m-none-eabi:debug,release"
-)
 
 stage_and_cross_build() {
     local id="$1" src="$2" subdir="$3" pkg="$4" target="$5" profiles="${6:-debug}"
@@ -264,32 +217,45 @@ stage_and_cross_build() {
     echo "   built $staged/$subdir (target/$target; profiles: $profiles)"
 }
 
-for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
-    stage_and_check "${entry%%:*}" "${entry#*:}"
-done
-for entry in "${BUILD_FIXTURES[@]}"; do
-    IFS=':' read -r bf_id bf_src bf_mdir bf_pkg <<< "$entry"
-    stage_and_build "$bf_id" "$bf_src" "${bf_mdir:-.}" "${bf_pkg:-demo_entry}"
-done
-for entry in "${CROSS_BUILD_FIXTURES[@]}"; do
-    IFS=':' read -r cb_id cb_src cb_sub cb_pkg cb_tgt cb_profiles <<< "$entry"
-    stage_and_cross_build "$cb_id" "$cb_src" "$cb_sub" "$cb_pkg" "$cb_tgt" "${cb_profiles:-debug}"
-done
+# phase-319 W2 (issue 0351) — the fixture INVENTORY lives in
+# `examples/fixtures.toml`, not in arrays here. Six hardcoded colon-delimited
+# arrays used to sit at this spot; `check-fixtures-stale.sh` enumerates the
+# manifest, so it could not see any of them (issue 0350 hid there for three
+# days), and AGENTS.md:79 already said they belong in the manifest.
+#
+# The per-builder functions below are unchanged — only where the list comes from
+# moved. Record fields (\x1f-separated):
+#   id, builder, dir, pkg, manifest_dir, target, profiles, output
+#
+# `NROS_FIXTURE_ID=<id>` narrows to one row, matching workspace-fixtures-build.sh.
+id_filter="${NROS_FIXTURE_ID:-}"
+
+compile_check_records() {
+    python3 "$repo_root/scripts/build/fixtures-manifest.py" list-compile-checks \
+        --builder "$1" ${id_filter:+--id "$id_filter"}
+}
+
+# cargo-check. A row with a TARGET is an in-place cross-check of an existing
+# example dir; without one it is a staged `cargo check` whose stamp is the proof.
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    [ -n "$target" ] || stage_and_check "$id" "$dir"
+done < <(compile_check_records cargo-check)
+
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
+done < <(compile_check_records cargo-build)
+
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
+done < <(compile_check_records cross-build)
 # C++ syntax-only compile-checks (id : snippet.cpp under
 # packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
 # the snippet against the nros-cpp / nros-c / compat include set — a compile-only
 # proof the public C++ API headers type-check. Stamped into build/compile-check
 # (same resolver as the cargo compile-checks).
-CXX_SYNTAX_FIXTURES=(
-    "rclcpp_node_options"
-    # phase-277 W5 — create_subscription_with_info template instantiation
-    # (was an `if (false)` block inside examples/native/cpp/listener).
-    "subscription_with_info"
-    # issue 0339 — the canonical rclcpp service-client idiom
-    # (`spin_until_future_complete(...) == FutureReturnCode::SUCCESS`). It did
-    # not compile at all while the shim returned void.
-    "spin_until_future_complete"
-)
 snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
 
 cxx_syntax_check() {
@@ -329,10 +295,11 @@ cxx_syntax_check() {
 cmake_n=0
 if cmake_fixture_prereqs_ok; then
     mkdir -p "$cmake_out"
-    for entry in "${CMAKE_FIXTURES[@]}"; do
-        build_cmake_fixture "${entry%%:*}" "${entry#*:}"
+    while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+        [ -n "$id" ] || continue
+        build_cmake_fixture "$id" "$dir"
         cmake_n=$((cmake_n + 1))
-    done
+    done < <(compile_check_records cmake-configure)
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
     # leg is retired with `NanoRosThreadxSystemCodegen.cmake`; the bare-metal
     # riscv64 typed-carrier examples (examples/qemu-riscv64-threadx/{c,cpp}/*)
@@ -351,10 +318,11 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
     echo "== generating nros-cpp / nros-c config headers for cxx-syntax =="
     ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c --features nros-cpp/ros-humble ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
-    for id in "${CXX_SYNTAX_FIXTURES[@]}"; do
+    while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+        [ -n "$id" ] || continue
         cxx_syntax_check "$id"
         cxx_n=$((cxx_n + 1))
-    done
+    done < <(compile_check_records cxx-syntax)
 else
     echo "cxx-syntax: no C++ compiler — skipping" >&2
 fi
@@ -364,15 +332,11 @@ fi
 # examples that intentionally don't link standalone (e.g. talker-embassy lacks
 # the board memory layout). Stamped into build/compile-check (same resolver).
 # Gated on the rust target being installed; absent → no stamp → test skips.
-CARGO_CHECK_EXAMPLES=(
-    "embassy_main_macro:examples/stm32f4/rust/talker-embassy:thumbv7em-none-eabihf"
-    # Phase 275 W5 (#102 H6) — the listener-embassy sibling was fully uncovered.
-    # Same cargo-check-only mechanism (lacks the board memory layout to link).
-    "embassy_main_macro_listener:examples/stm32f4/rust/listener-embassy:thumbv7em-none-eabihf"
-)
 cargo_check_n=0
-for entry in "${CARGO_CHECK_EXAMPLES[@]}"; do
-    IFS=':' read -r id dir target <<< "$entry"
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    # Only the target-bearing cargo-check rows reach here; the staged ones ran above.
+    [ -n "$target" ] || continue
     [ -d "$repo_root/$dir" ] || { echo "cargo-check: example missing: $dir" >&2; continue; }
     if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
         echo "cargo-check: target $target not installed — skipping $id" >&2
@@ -388,7 +352,7 @@ for entry in "${CARGO_CHECK_EXAMPLES[@]}"; do
     else
         echo "   cargo-check FAILED for $id (no stamp)" >&2
     fi
-done
+done < <(compile_check_records cargo-check)
 
 # px4 xrce companion examples (#102 / #136 debt). Compile-check only: the
 # runtime needs PX4 SITL + a Micro-XRCE-DDS agent, but the generated CDR
@@ -428,4 +392,7 @@ else
     echo "px4: PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot) — skipping px4 compile-check" >&2
 fi
 
-echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n)."
+# phase-319 W2 — counts come from the manifest now, not from array lengths.
+check_n="$(compile_check_records cargo-check | wc -l)"
+build_n="$(compile_check_records cargo-build | wc -l)"
+echo "fixtures built (check=$check_n build=$build_n cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n)."

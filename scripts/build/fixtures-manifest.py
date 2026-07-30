@@ -44,6 +44,90 @@ def load_workspace_fixtures(path):
         return tomllib.load(f).get("workspace_fixture", [])
 
 
+# phase-319 W2 (issue 0351) — the compile-check lane's inventory.
+#
+# These are the fixtures `scripts/build/compile-check-fixtures.sh` builds. They
+# used to live in six hardcoded arrays inside that script, each with its own
+# colon-delimited positional format — which is why `check-fixtures-stale.sh`,
+# which enumerates THIS manifest, could not see them (issue 0350 hid there for
+# three days). AGENTS.md:79 already said they belong here.
+#
+# They are their own table rather than `[[fixture]]` rows because `list`'s record
+# format is per-language and consumed positionally by `fixtures-build.sh`;
+# overloading it would change that contract for 251 existing rows. The table is
+# named for the LANE, not for a claim about the rows: ten are compile-intent
+# checks with no runtime artifact, the other sixteen produce binaries and JSON
+# that tests read or execute.
+COMPILE_CHECK_BUILDERS = (
+    "cargo-check",       # stage the tree, `cargo check`, stamp `.compile-ok`
+    "cargo-build",       # stage the tree, `cargo build`, keep the binary
+    "cmake-configure",   # cmake configure (+ build) into build/cmake-fixtures/<id>
+    "cross-build",       # `cargo build --target <target>` for one or more profiles
+    "cxx-syntax",        # `c++ -fsyntax-only` over a snippet; no artifact
+)
+
+
+def load_compile_check_fixtures(path):
+    with open(path, "rb") as f:
+        return tomllib.load(f).get("compile_check_fixture", [])
+
+
+def validate_compile_check_fixture(entry):
+    """Shape-check one compile-check row. Raises ValueError via `_fail`."""
+    for key in ("id", "builder"):
+        if not entry.get(key):
+            _fail(entry, f"missing required key {key!r}")
+
+    builder = entry["builder"]
+    if builder not in COMPILE_CHECK_BUILDERS:
+        _fail(
+            entry,
+            f"unsupported builder {builder!r} "
+            f"(expected one of: {', '.join(COMPILE_CHECK_BUILDERS)})",
+        )
+
+    # `cxx-syntax` probes a snippet resolved by id, so it carries no dir; every
+    # other builder needs a source tree that exists.
+    if builder == "cxx-syntax":
+        if entry.get("dir"):
+            _fail(entry, "cxx-syntax rows take no 'dir' (the snippet is resolved by id)")
+    else:
+        if not entry.get("dir"):
+            _fail(entry, f"missing required key 'dir' for builder {builder!r}")
+        _require_dir(entry, Path(entry["dir"]), "fixture dir")
+
+    if builder == "cross-build" and not entry.get("target"):
+        _fail(entry, "missing required key 'target' for builder 'cross-build'")
+
+
+def validate_compile_check_fixtures(entries):
+    seen = {}
+    for e in entries:
+        validate_compile_check_fixture(e)
+        fid = e["id"]
+        if fid in seen:
+            _fail(e, f"duplicate compile-check fixture id {fid!r}")
+        seen[fid] = True
+    return len(seen)
+
+
+def compile_check_record(entry):
+    """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
+    profiles, output. Empty field = absent; the script defaults them."""
+    return SEP.join(
+        (
+            entry.get("id", ""),
+            entry.get("builder", ""),
+            entry.get("dir", ""),
+            entry.get("pkg", ""),
+            entry.get("manifest_dir", ""),
+            entry.get("target", ""),
+            ",".join(entry.get("profiles", [])),
+            entry.get("output", ""),
+        )
+    )
+
+
 def cargo_args(entry, *, include_target_dir=True):
     args = []
     if entry.get("no_default_features"):
@@ -327,7 +411,14 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument(
         "command",
-        choices=["list", "list-workspaces", "validate-workspaces"],
+        choices=[
+            "list",
+            "list-workspaces",
+            "validate-workspaces",
+            # phase-319 W2 — the compile-check lane's inventory.
+            "list-compile-checks",
+            "validate-compile-checks",
+        ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
     p.add_argument("--platform")
@@ -365,7 +456,36 @@ def main():
         help="only rows whose (platform,lang,rmw) appears in FILE (one triple per line)",
     )
     p.add_argument("--core-only", action="store_true")
+    # phase-319 W2 — narrow `list-compile-checks` to one builder, so the shell
+    # lane can keep its per-builder loops.
+    p.add_argument("--builder")
     a = p.parse_args()
+
+    if a.command in ("list-compile-checks", "validate-compile-checks"):
+        entries = []
+        for e in load_compile_check_fixtures(a.manifest):
+            if a.id and e.get("id") != a.id:
+                continue
+            if a.builder and e.get("builder") != a.builder:
+                continue
+            entries.append(e)
+
+        if a.command == "validate-compile-checks":
+            try:
+                # Validate the WHOLE table, not the filtered view — a filter must
+                # never hide a malformed row.
+                count = validate_compile_check_fixtures(
+                    load_compile_check_fixtures(a.manifest)
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"fixtures-manifest.py: {exc}\n")
+                sys.exit(1)
+            sys.stdout.write(f"validated {count} compile-check fixture(s)\n")
+            return
+
+        for e in entries:
+            sys.stdout.write(f"{compile_check_record(e)}\n")
+        return
 
     if a.command in ("list-workspaces", "validate-workspaces"):
         entries = []
