@@ -137,7 +137,7 @@ members = [
     # compiles per Phase 154's notes).
     "packages/xrce/nros-rmw-xrce-cffi-staticlib",
     # Phase 128.F — cross-RMW bridge primitives.
-    "packages/bridge/nros-bridge",
+    "packages/rmw/bridge",
     # Phase 212.N.2 — direct-exec family driver (Cortex-M / esp-hal
     # bare-metal). Per-board crates (mps2-an385, stm32f4, esp32) migrate
     # onto it in 212.N.3 / N.7; until then the crate stands alone.

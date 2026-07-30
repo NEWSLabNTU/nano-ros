@@ -181,6 +181,20 @@ Rationale, with the evidence for each:
 > per-platform sweeps) can run to completion, and where no parallel session is
 > editing the same trees — a rename touching 40% of the repo conflicts with
 > everything.
+>
+> **The measured counts UNDERCOUNT, found by moving `bridge` first as a canary.**
+> `packages/core/nros/Cargo.toml` depended on it as
+> `path = "../../bridge/nros-bridge"` — a RELATIVE path that contains no
+> `packages/bridge` substring, so every `rg "packages/bridge"` sweep missed it and
+> the workspace stopped resolving the moment the directory moved. There are
+> **150** such relative cross-group `path = "../../<group>/…"` deps in the tree.
+> Any migration script must rewrite both spellings, and `cargo metadata` is the
+> only cheap oracle that catches the relative half.
+>
+> This is exactly why the groups move ONE AT A TIME, smallest first: the canary
+> cost one broken resolve and a two-line fix. The same mistake inside a
+> 947-reference commit would have been found by a platform lane hours later, or
+> not at all.
 
 - [ ] **W2.d** Collapse `zpico/` + `xrce/` + `dds/` + `px4/` + `bridge/` into
       `rmw/`.

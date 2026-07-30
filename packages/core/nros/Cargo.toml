@@ -155,7 +155,7 @@ nros-rmw-cffi = { version = "0.5.0", path = "../nros-rmw-cffi", default-features
 # Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
 # only pulled in when the umbrella's `bridge` or `config` feature is
 # enabled.
-nros-bridge = { version = "0.5.0", path = "../../bridge/nros-bridge", default-features = false, optional = true }
+nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
 # `nros-rmw-zenoh`) removed. The umbrella consumes
 # only the generic vtable shim (`nros-rmw-cffi`); callers depend on
