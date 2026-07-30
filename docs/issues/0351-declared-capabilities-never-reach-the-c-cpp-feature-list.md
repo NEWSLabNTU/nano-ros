@@ -4,7 +4,7 @@ title: "No declared capability reaches the C/C++ build on the workspace path —
 status: open
 type: bug
 area: build
-related: [phase-315, issue-0311, phase-314, rfc-0004, issue-0118]
+related: [phase-323, phase-315, issue-0311, phase-314, rfc-0004, issue-0118]
 ---
 
 ## Finding (2026-07-31)
@@ -146,7 +146,13 @@ Rust side (phase-315's facade). Concretely:
 This is the same shape as issue 0311 / phase-314 — one axis, two sources that
 cannot disagree because only one is consulted.
 
-## Fix sketch
+## Fix
+
+Designed in [phase-323](../roadmap/phase-323-one-capability-derivation-for-every-language.md)
+— one derivation (`capability_enabled`), two generated emitters (the Rust facade,
+`NANO_ROS_FEATURES`), then delete BOTH masks in the same phase.
+
+## Fix sketch (superseded by phase-323)
 
 The lowering has to exist before the always-on can go. Options, in rough order
 of preference:
