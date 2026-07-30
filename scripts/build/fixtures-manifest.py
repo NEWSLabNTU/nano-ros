@@ -97,6 +97,32 @@ def workspace_record(entry):
     )
 
 
+_COORDS_CACHE = {}
+
+
+def _coords_for(path):
+    """Parse a lane-coords file into a set of (platform, lang, rmw) triples."""
+    if path not in _COORDS_CACHE:
+        coords = set()
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = [x.strip() for x in line.split(",")]
+                if len(parts) != 3:
+                    raise SystemExit(
+                        f"{path}: expected `platform,lang,rmw`, got {line!r}"
+                    )
+                coords.add(tuple(parts))
+        if not coords:
+            # An empty file would silently select NOTHING and the lane would look
+            # instant rather than broken.
+            raise SystemExit(f"{path}: no coordinates — refusing to select nothing")
+        _COORDS_CACHE[path] = coords
+    return _COORDS_CACHE[path]
+
+
 def matches_filters(entry, args, *, for_probe=False):
     # `skip_build` rows stay in the manifest for documentation/inventory but
     # are intentionally NOT built as fixtures (e.g. an incomplete example).
@@ -112,6 +138,15 @@ def matches_filters(entry, args, *, for_probe=False):
         return False
     if args.id and entry.get("id") != args.id:
         return False
+    coords_from = getattr(args, "coords_from", None)
+    if coords_from:
+        coord = (
+            entry.get("platform"),
+            entry.get("lang"),
+            entry.get("rmw"),
+        )
+        if coord not in _coords_for(coords_from):
+            return False
     # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
     # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
     if getattr(args, "core_only", False) and entry.get("target_dir"):
@@ -320,6 +355,15 @@ def main():
     # the RMW-specific lanes); the host-integration lane only needs the
     # default-RMW per-example fixtures + the workspace fixtures, so it builds
     # with `--core-only` and the variant-spawning tests `skip!` here.
+    # phase-318 W4.d — restrict to a CI lane's fixture coordinates. The file
+    # holds `platform,lang,rmw` lines (see `lane-coords`), so a lane's build, its
+    # staleness gate and its test selection all derive from ONE computation
+    # instead of three hand-kept lists.
+    p.add_argument(
+        "--coords-from",
+        metavar="FILE",
+        help="only rows whose (platform,lang,rmw) appears in FILE (one triple per line)",
+    )
     p.add_argument("--core-only", action="store_true")
     a = p.parse_args()
 
