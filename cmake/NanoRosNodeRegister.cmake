@@ -32,6 +32,21 @@
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
+# issue 0342-adjacent — the SPLIT spelling's other half.
+#
+# `nros_components_register_node` (below) attaches metadata to a library the
+# caller created with `nano_ros_auto_add_library`, which lives in
+# NanoRosVerbs.cmake. A consumer reaching this module through
+# `find_package(nano_ros)` gets both; one that includes it DIRECTLY — the
+# build-stage fixtures do, deliberately (issue 0041) — used to get only half the
+# spelling and failed at configure time with `Unknown CMake command
+# "nano_ros_auto_add_library"`. The 305-W2 sweep migrated 80 files to the split
+# verbs and this include did not follow.
+#
+# `NanoRosVerbs.cmake` is `include_guard(GLOBAL)`, so this is idempotent and
+# costs nothing on the find_package path.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosVerbs.cmake")
+
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
 endif()

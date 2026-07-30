@@ -212,6 +212,21 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 at eight call sites. Phase 268 fixed the adjacent half and left `0` overloaded. Now stored biased by
 one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (2026-07-28)
 
+Recently resolved: **#350** — `NanoRosNodeRegister.cmake` never included the module defining
+`nano_ros_auto_add_library`, so every DIRECT-include consumer failed at configure time with `Unknown
+CMake command` — and `compile-check-fixtures.sh` (a `build-test-fixtures` prerequisite) had been
+exiting 1 wholesale. The RFC-0057 split put the two verbs in two modules; `find_package(nano_ros)`
+users get both, direct-include users (the build-stage fixtures, deliberately — issue 0041) got half.
+Four fixtures had the shape, not one. Fixed in the MODULE, so a fifth cannot reproduce it.
+See `0350-*`. (2026-07-29)
+
+Recently resolved: **#342** — `orchestration_tiers_freertos` bypassed both sanctioned test seams: a
+hand-rolled `qemu-system-arm` invocation (the interpreter already covered the board — it just missed
+`-icount`, boot deadlines and log capture) and the only bare port literal among 14 `start_slirp` call
+sites. 7447 was not merely unallocated: it sat inside ANOTHER platform's window. Now
+`port_of(FreertosMps2, Rust, RealtimeTiers)`, with a guard asserting the firmware's BAKED locator
+matches — that mirror cannot call the allocator, so it was free to rot. See `0342-*`. (2026-07-29)
+
 Recently resolved: **#312** — a C/C++ listener received fine but was INVISIBLE to ROS 2 discovery
 (`Subscription count: 0`). Root cause: the C examples pass `""` as the type hash, and that field is a
 SEGMENT of the liveliness keyexpr — an empty segment yields a token `rmw_zenoh_cpp` does not count.
