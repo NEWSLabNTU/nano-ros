@@ -77,6 +77,15 @@ phase-296 R4 retired the launch bake (16 rows). The remaining 11 were genuinely 
 `check-fast` as `check-fixtures-manifest` (buildless, ~0.1s for 112 rows). The lesson worth
 sweeping for: **a validator with no caller is not coverage** — its staleness debt grows with every
 verb migration and is discovered only when someone finally tries to switch it on.
+
+**#355** — CycloneDDS ROS 2 → nano interop: the nano-cyclone RECEIVER gets 0 messages
+(`cyclone_pubsub_ros2_to_nano` + `cyclone_service_nano_server` in `interop_e2e`), while nano→ROS 2
+TX delivers (`cyclone_pubsub_nano_to_ros2` passes). Clean asymmetry — cyclone wire works one way,
+the nano reader never matches/receives the other. All zenoh interop (both dirs) + lifecycle pass;
+only the cyclone rx path is dark. Observed under `NROS_SKIP_FIXTURE_CHECK=1`, so step 1 is a TRUE
+fresh cyclone-fixture rebuild to rule out a stale `c_listener` ABI skew before treating it as a
+product bug (RxO/QoS mismatch #0146, domain pinning #0161, reader discovery are the leads if real).
+See `0355-*`. (2026-07-31)
 See `0354-*`. (2026-07-31)
 
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
