@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-29): W1–W5 landed except W4.d (needs a cell→test-binary mapping).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-30): W1–W5 landed; W4.d machinery landed, its SELECTION is an open operator decision (see W4.d).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -91,10 +91,49 @@ both files so the halves are read together.
 - [x] **W4.b** Recipes: `ci` = tier 1, `ci-matrix` = tier 2, `ci-full` = today's
       `ci`. Each gates only its own fixtures — a native-intent run must not be
       blocked by a stale ThreadX fixture (which is exactly what happened).
-- [ ] **W4.d** Wire the computed tier-2 cell set to the nextest filter. Today
-      `ci-matrix` runs the full lane and says so — the selection exists
-      (`nros_tests::ci_lane`) but nothing maps a cell to its test binary, so the
-      filter cannot yet be derived from it. That mapping is the real work.
+- [~] **W4.d** Wire the computed tier-2 cell set to the lane. **Machinery landed;
+      the selection it should carry is an open operator decision.**
+
+      Landed: `lane-coords <tier1|tier2>` prints a cover's distinct
+      `(platform, lang, rmw)` FIXTURE coordinates, and
+      `fixtures-manifest.py --coords-from FILE` restricts rows to them — so one
+      computation can drive a lane's build, its gate and its selection.
+
+      What the measurement says, and it undercuts this work item as specified:
+
+      | selection | cells | coords | cost |
+      | --- | --- | --- | --- |
+      | all (tier 3) | 182 | 46 | 100 % |
+      | 1-wise p,l,r,k | 11 | 11 | 24 % |
+      | pairwise p × l | 29 | 29 | 63 % |
+      | pairwise p × l × r | 29 | 29 | 63 % |
+      | **pairwise p × l × r × k (shipped tier 2)** | **37** | **32** | **70 %** |
+
+      Two consequences.
+
+      1. **Nextest filtering saves nothing.** The cover spans all ten platforms
+         *by construction* — W3.d's anti-rot test requires every declared value of
+         every covered axis to appear. A per-platform test filter therefore
+         excludes no platform. The saving was never in test SELECTION.
+      2. **The 20 % headline is in the wrong unit.** RFC-0061 counted cells;
+         cells share fixtures, and fixtures are what cost hours. In coordinates,
+         tier 2 is 70 % of tier 3 — a middle tier that costs 70 % of the sweep is
+         not much of a middle tier.
+
+      The floor is structural: pairwise(platform × lang) alone is 29 of the 46
+      coordinates, because each pair needs its own fixture built. Adding rmw and
+      kind pairing on top costs only 3 more (29 → 32) — those axes ride along
+      nearly free. So the whole question is whether tier 2 pairs platform × lang.
+      It cannot be tuned around; it is the definition of the tier.
+
+      - **Keep pairwise** — costs 70 %, catches the platform × lang class
+        (0268 freertos × C, 0245, 0332) that tier 2 exists for.
+      - **Drop to 1-wise** — 24 %, but it may pick freertos × Rust and never
+        build freertos × C, i.e. miss exactly that class.
+      - **Split** — 1-wise as a cheap pre-merge gate, pairwise nightly.
+
+      Not resolvable here: "pairwise for tier 2" was an operator decision, and
+      the cost it was approved under was measured in the wrong unit.
 - [x] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
       with tier 2 named for core/codegen/cmake changes. An instruction nobody can
       afford to follow gets followed selectively.
