@@ -11,7 +11,7 @@
 # `nros_tests::fixtures::require_compile_check`).
 #
 # Add a `[[compile_check_fixture]]` row to `examples/fixtures.toml` (phase-319 W2).
-set -euo pipefail
+set -Eeuo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
@@ -235,21 +235,102 @@ compile_check_records() {
         --builder "$1" ${id_filter:+--id "$id_filter"}
 }
 
+
+# phase-319 W3 (issue 0351) — record the build INPUTS after a successful build.
+#
+# `.compile-ok` says only THAT a build succeeded, never what from, so a source
+# edit left it valid-looking forever. `.inputsig` is the workspace lane's answer
+# (`workspace-fixture-signature.sh`): written only on success, recomputed and
+# compared by the staleness probe. A failed build leaves the OLD signature
+# untouched — but its `.compile-ok`/artifact was already removed by the builder,
+# so "failed" and "stale" both surface, never "fresh".
+# phase-319 W3 (issue 0351) — mark a fixture whose build FAILED, so the test-side
+# resolver can tell "broken" from "toolchain absent". Both used to present as a
+# missing artifact, and the light tier skipped on both — which is how issue 0350
+# stayed green while this whole lane was red.
+#
+# Cleared at the start of every attempt (same discipline as `.compile-ok`), so a
+# marker only ever describes the most recent run.
+clear_build_failed() {
+    rm -f "$1/.build-failed" 2>/dev/null || true
+}
+
+mark_build_failed() {
+    local stamp_dir="$1" id="$2" builder="$3"
+    mkdir -p "$stamp_dir"
+    printf 'fixture %s (builder %s) failed to build at %s\n' \
+        "$id" "$builder" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$stamp_dir/.build-failed"
+}
+
+# Run one builder, marking + re-raising on failure. `set -e` still aborts the
+# script afterwards (fail-fast is deliberate); the marker is what survives for
+# the resolver.
+#
+# The builder runs in a SUBSHELL with its own `set -e`, NOT as `if ! builder`.
+# Bash suppresses errexit for the entire body of a function invoked in a
+# condition context, so `if ! build_cmake_fixture …` let a failing `cmake -S`
+# fall through to the next line and the function returned its trailing `echo`'s
+# status — a broken fixture reported as built. Caught by this phase's own
+# acceptance test; the subshell keeps errexit live where the work happens and
+# still lets us handle the status.
+# Marking uses an ERR TRAP, not a status check, because bash disables errexit for
+# anything in a condition context — `if ! builder`, `builder || rc=$?`, AND a
+# `( set -e; builder )` subshell inside such a list all let a failing `cmake -S`
+# fall through to the next line, so the function returned its trailing `echo`'s
+# status and a broken fixture reported as BUILT. Both wrong shapes were caught by
+# this phase's own acceptance test before landing.
+#
+# With the trap there is no condition context: the builder is called bare, so
+# errexit still aborts the script (fail-fast is deliberate) and the trap records
+# WHICH fixture died on the way out. Needs `set -E` so functions inherit it.
+CURRENT_FIXTURE_STAMP_DIR=""
+CURRENT_FIXTURE_ID=""
+CURRENT_FIXTURE_BUILDER=""
+
+on_fixture_err() {
+    [ -n "$CURRENT_FIXTURE_STAMP_DIR" ] || return 0
+    mark_build_failed "$CURRENT_FIXTURE_STAMP_DIR" "$CURRENT_FIXTURE_ID" "$CURRENT_FIXTURE_BUILDER"
+}
+trap on_fixture_err ERR
+
+run_fixture() {
+    local stamp_dir="$1" id="$2" builder="$3"; shift 3
+    clear_build_failed "$stamp_dir"
+    CURRENT_FIXTURE_STAMP_DIR="$stamp_dir"
+    CURRENT_FIXTURE_ID="$id"
+    CURRENT_FIXTURE_BUILDER="$builder"
+    "$@"
+    CURRENT_FIXTURE_STAMP_DIR=""
+}
+
+write_compile_check_sig() {
+    local record="$1" stamp_dir="$2"
+    mkdir -p "$stamp_dir"
+    bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" \
+        > "$stamp_dir/.inputsig" 2>/dev/null || rm -f "$stamp_dir/.inputsig"
+}
+
 # cargo-check. A row with a TARGET is an in-place cross-check of an existing
 # example dir; without one it is a staged `cargo check` whose stamp is the proof.
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    [ -n "$target" ] || stage_and_check "$id" "$dir"
+    [ -n "$target" ] && continue
+    run_fixture "$out_root/$id" "$id" "$builder" stage_and_check "$id" "$dir"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
 done < <(compile_check_records cargo-check)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
+    run_fixture "$out_root/$id" "$id" "$builder" \
+        stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
 done < <(compile_check_records cargo-build)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
+    run_fixture "$out_root/$id" "$id" "$builder" \
+        stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
 done < <(compile_check_records cross-build)
 # C++ syntax-only compile-checks (id : snippet.cpp under
 # packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
@@ -297,7 +378,8 @@ if cmake_fixture_prereqs_ok; then
     mkdir -p "$cmake_out"
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
-        build_cmake_fixture "$id" "$dir"
+        run_fixture "$cmake_out/$id" "$id" "$builder" build_cmake_fixture "$id" "$dir"
+        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$cmake_out/$id"
         cmake_n=$((cmake_n + 1))
     done < <(compile_check_records cmake-configure)
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
@@ -320,7 +402,8 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
-        cxx_syntax_check "$id"
+        run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
+        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
         cxx_n=$((cxx_n + 1))
     done < <(compile_check_records cxx-syntax)
 else
@@ -348,6 +431,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     if ( cd "$repo_root/$dir" && cargo check --target "$target" ); then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
         echo "   stamped $out_root/$id/.compile-ok"
+        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
         cargo_check_n=$((cargo_check_n + 1))
     else
         echo "   cargo-check FAILED for $id (no stamp)" >&2

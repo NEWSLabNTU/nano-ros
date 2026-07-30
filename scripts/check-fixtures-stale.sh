@@ -161,3 +161,35 @@ if [ ${#workspace_stale[@]} -gt 0 ]; then
     echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     exit 1
 fi
+
+# phase-319 W3 (issue 0351) — the compile-check lane, which this gate could not
+# see at all: its inventory lived in hardcoded shell arrays until W2 moved it
+# into the manifest, so a lane that had stopped building entirely (issue 0350)
+# passed here for three days. Same probe shape as the workspace fan-out above.
+compile_check_records=()
+while IFS= read -r line; do
+    [ -n "$line" ] && compile_check_records+=("$line")
+done < <(python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null)
+
+compile_check_stale=()
+if [ ${#compile_check_records[@]} -eq 0 ]; then
+    :
+elif command -v parallel >/dev/null 2>&1; then
+    printf '%s\n' "${compile_check_records[@]}" \
+        | parallel --halt now,fail=1 --jobs "$(nproc)" \
+        bash scripts/test/compile-check-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
+        || probe_crash $?
+    mapfile -t compile_check_stale < "$PROBE_OUT"
+else
+    for line in "${compile_check_records[@]}"; do
+        out="$(bash scripts/test/compile-check-stale.sh "$line")"
+        [ -n "$out" ] && compile_check_stale+=("$out")
+    done
+fi
+if [ ${#compile_check_stale[@]} -gt 0 ]; then
+    echo "ERROR: ${#compile_check_stale[@]} compile-check fixture(s) are missing or stale:" >&2
+    printf '  %s\n' "${compile_check_stale[@]}" >&2
+    echo "  Run \`just build-test-fixtures\` before test-all." >&2
+    echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+    exit 1
+fi

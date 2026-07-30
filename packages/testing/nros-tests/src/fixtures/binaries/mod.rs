@@ -412,6 +412,35 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 /// invocations cooperatively instead of letting them race with the host's
 /// QEMU + zenohd test load. Builds inside test bodies historically
 /// stretched a 14 s test to 125 s on a saturated host.
+/// phase-319 W3 (issue 0351) — read the build stage's failure marker for a
+/// fixture artifact, if one was dropped.
+///
+/// `compile-check-fixtures.sh` writes `.build-failed` into the fixture's stamp
+/// directory when its build fails, recording which builder failed. The resolver
+/// walks up from the artifact because an artifact can sit several levels below
+/// the stamp dir (`<id>/target/debug/bin`, `<id>/src/entry/entry`); the search
+/// stops at the two known roots so it can never wander into an unrelated tree.
+fn build_failure_marker(binary_path: &Path) -> Option<String> {
+    let roots = [
+        project_root().join("build/compile-check"),
+        project_root().join("build/cmake-fixtures"),
+    ];
+    let mut cur = binary_path.parent()?;
+    loop {
+        // Only consider dirs beneath a known fixture root.
+        if roots.iter().any(|r| cur.starts_with(r)) {
+            let marker = cur.join(".build-failed");
+            if let Ok(body) = std::fs::read_to_string(&marker) {
+                return Some(body);
+            }
+        }
+        cur = cur.parent()?;
+        if roots.iter().any(|r| cur == r) || cur.as_os_str().is_empty() {
+            return None;
+        }
+    }
+}
+
 pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
     if binary_path.exists() {
         return Ok(binary_path.to_path_buf());
@@ -422,6 +451,28 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     // is an environment-conditional skip, not a failure — `skip!` ([SKIPPED]) so
     // the [SKIPPED]-aware recipe treats it as a skip. The FULL `test-all` tier
     // leaves the var unset and still hard-fails, surfacing any real fixture gap.
+    // phase-319 W3 (issue 0351) — a BROKEN fixture is not a skip in any tier.
+    //
+    // The light tier's skip is right for "this machine lacks the toolchain" and
+    // wrong for "the build stage ran and FAILED", and until now the resolver
+    // could not tell them apart: both present as a missing artifact. That is how
+    // issue 0350 stayed green — `compile-check-fixtures.sh` was failing wholesale
+    // while the lane people run locally reported skips.
+    //
+    // The build stage now drops a `.build-failed` marker beside the artifact when
+    // a fixture's build fails, so the two cases are distinguishable. A marker
+    // means the machine COULD build it and did not, which is a hard error
+    // everywhere.
+    if let Some(reason) = build_failure_marker(binary_path) {
+        return Err(TestError::BuildFailed(format!(
+            "Test fixture FAILED to build (not merely absent): {}\n\
+             {}\n\
+             This is a hard error in every tier — the build stage ran and could \
+             not produce it. Fix the build; do not re-run with the fixture missing.",
+            binary_path.display(),
+            reason.trim(),
+        )));
+    }
     if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
         crate::skip!(
             "fixture binary not prebuilt: {} (light tier; run `just build-test-fixtures` for full coverage)",
