@@ -20,7 +20,7 @@ This is the only build path that sees **real PX4 headers**:
 - `<px4_boardconfig.h>`, the per-board Kconfig output that exists only *during*
   a SITL build.
 
-The standalone smoke at `packages/px4/nros-rmw-uorb/tests/register_smoke.cpp`
+The standalone smoke at `packages/rmw/uorb/nros-rmw-uorb/tests/register_smoke.cpp`
 covers the pure data-plane against a mock uORB ABI, and cannot reach any of the
 above.
 
