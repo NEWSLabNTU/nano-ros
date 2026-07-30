@@ -1,6 +1,6 @@
 # Phase 315 — `system.toml` drives Rust selection too
 
-**Status (2026-07-28): W1, W2, W3, W5 landed; W4 open.** Finishes what phase-314 started: the RMW, the
+**Status (2026-07-30): W1, W2, W3, W5 landed and verified; W4 has ONE open decision.** Finishes what phase-314 started: the RMW, the
 ROS edition and the capability list are declared once, in `system.toml`, for
 **every** language. Closes phase-314's last open acceptance item and retires the
 hand-written Rust selection it was working around.
@@ -330,11 +330,57 @@ scoped to the deps the facade owns, with comments stripped.
 
 ## Acceptance
 
-- [ ] A Rust entry names no edition, capability or RMW feature.
-- [ ] `nros sync` writes no user-authored file.
-- [ ] Changing `ros_edition` in `system.toml` changes what the Rust entry
-      compiles against, with no manifest edit.
-- [ ] `cargo build --features ros-<edition>` selects an edition in a standalone
-      example without `--no-default-features`.
-- [ ] Retired paths are removed, or their reason to stay is written down.
-- [ ] The gate rejects an entry that restates a declared axis.
+- [x] **A Rust entry names no edition, capability or RMW feature** — on the deps
+      the facade owns (`nros`, `nros-board-*`, `nros-rmw-*`). 35 manifests
+      migrated; the W5 gate reports 0 violations.
+
+      Recorded exception: the **6 zephyr entries keep a local
+      `[features] default = ["rmw-zenoh"]`**. That is not a restatement — it is
+      the ONLY RMW selector for a board crate that has no `rmw-*` feature at all
+      (`nros-board-zephyr` declares `tiers` / `zephyr-edf` and nothing else), and
+      the west build passes `--no-default-features --features rmw-zenoh` on the
+      cargo line. W4 originally listed it for removal; doing so would have broken
+      every zephyr entry.
+- [x] **`nros sync` writes no user-authored file** — the facade is generated into
+      `<ws>/generated/nros-selection/<entry>/`, which is gitignored. The one line
+      the user writes is the dep on it.
+- [x] **Changing `ros_edition` changes what the Rust entry compiles against, with
+      no manifest edit** — set `ros_edition = "jazzy"`, re-ran sync, `cargo tree`
+      reports `FEATS=alloc,rmw-cffi,ros-jazzy,std` on `nros`.
+- [x] **`cargo build --features ros-<edition>` works without
+      `--no-default-features`** — verified on `examples/native/rust/talker`, and
+      verified in the negative: restoring the old default reproduces
+      `error: ros-{humble,iron,jazzy} are mutually exclusive`.
+- [ ] **Retired paths removed, or their reason to stay written down** — 3 of 4
+      resolved, all by evidence rather than inspection:
+      - `PARAM_SERVICES_ENABLED` **stays** — the facade only covers workspace
+        entries; a standalone entry has no `system.toml`, so the assert remains
+        the only guard there.
+      - `NANO_ROS_FEATURES` **stays** — generated for workspaces, but set BY HAND
+        in `examples/native/{c,cpp}/safety-listener`. It is the standalone
+        capability selector, the C/C++ twin of W3's Rust edition selector.
+      - the zephyr local `default` **stays**, per the exception above.
+      - **OPEN:** the `posix` always-on `param_services lifecycle` in
+        `NanoRosRuntimeCrate.cmake`. 9 workspaces declare a capability; ~26
+        receive these two without asking. The 9 that need them already declare
+        them, so it looks removable — but the failure mode is a capability
+        silently missing from an image, not a build error, so it needs a fixture
+        sweep to decide. That sweep is the blocker.
+- [x] **The gate rejects an entry that restates a declared axis** — W5 rule 5,
+      brace-balanced over facade-owned dep specs, comments stripped.
+
+## What the fixture sweep found (2026-07-28/29)
+
+The sweep was gated ahead of W4 deliberately, and it overturned two W4
+assumptions that would otherwise have shipped as breakage (the zephyr `default`
+and `NANO_ROS_FEATURES`, both above). It also surfaced three defects, two of them
+introduced by this phase:
+
+* **the facade emitted features the target crate does not declare** — fixed in
+  W1; 18 of 23 board crates carry `rmw-*`, five do not;
+* **`kind = "embedded"` deploy blocks were treated as placements** — fixed in the
+  resolver. Wider than this phase: `ws-realtime-c` and `ws-realtime-cpp` could not
+  be re-resolved at all, masked by pre-0.1.0 committed models (issue 0320);
+* **stale build dirs**, diagnosed to CLAUDE.md's documented wipe rule rather than
+  to a feature asymmetry — confirmed by wiping one workspace and watching the
+  failure move to the next unwiped one.
