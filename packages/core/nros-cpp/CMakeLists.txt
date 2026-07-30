@@ -24,11 +24,16 @@ set(_caps ${NANO_ROS_FEATURES})
 if(NANO_ROS_SAFETY_E2E)
     list(APPEND _caps safety)
 endif()
-# Hosted keeps param/lifecycle always-on (alloc-gated; the C++ executor headers
-# call the gated C entry points, so an example using them must link).
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    list(APPEND _caps param_services lifecycle)
-endif()
+# phase-323 W2 — capabilities come from the DECLARATION on every platform.
+#
+# posix used to get `param_services` + `lifecycle` unconditionally. That was not
+# a convenience: until W1 it was the ONLY route those axes took on hosted, since
+# `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0351). So
+# hosted could not fail when a declaration was missing, and the same
+# `system.toml` produced different runtimes depending on where it was built.
+#
+# W1 made `nano_ros_workspace()` resolve the axes from `SYSTEM` before the
+# import, so the declaration now arrives on its own and this can go.
 nros_feature_set(_cpp_features
     CRATE        cpp
     RMW          "${NANO_ROS_RMW}"

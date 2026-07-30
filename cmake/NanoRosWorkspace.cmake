@@ -173,6 +173,52 @@ function(nano_ros_workspace)
     set(NROS_RMW             "${_NRW_BACKEND}")
     set(NANO_ROS_ROS_EDITION "${_NRW_EDITION}")
 
+    # phase-323 W1 — the capability axes, BEFORE the import.
+    #
+    # `SYSTEM` already names the bringup; it was simply read too late. The
+    # metadata call below runs AFTER `_nros_import_once`, but `nros-c` /
+    # `nros-cpp` read `NANO_ROS_FEATURES` during the `add_subdirectory` body
+    # (`set(_caps ${NANO_ROS_FEATURES})`), so a value set afterwards is a value
+    # nobody sees. The workspace cache read `NANO_ROS_FEATURES:STRING=` and NO
+    # declared capability reached the C/C++ build — issue 0351.
+    #
+    # This is the same treatment `BACKEND` already gets a few lines up, and for
+    # the same reason: the axis has to be resolved before the import that
+    # consumes it.
+    #
+    # The list comes from the CLI rather than from parsing `system.toml` here,
+    # because `SystemToml::capability_enabled` is the SSoT accessor — it honours
+    # the generic `[system].features` list AND the deprecated typed blocks, and
+    # a cmake-side regex would be exactly the second source phase-314 spent its
+    # length removing.
+    if(_NRW_SYSTEM)
+        if(NOT NROS_BIN)
+            include("${_nros_root}/cmake/NanoRosCodegenCore.cmake")
+            nros_resolve_cli(NROS_BIN CONTEXT "nano_ros_workspace")
+        endif()
+        set(_caps_cmake "${CMAKE_BINARY_DIR}/nros_capabilities.cmake")
+        execute_process(
+            COMMAND "${NROS_BIN}" config show
+                    --workspace "${CMAKE_SOURCE_DIR}"
+                    --system "${_NRW_SYSTEM}"
+                    --format cmake
+            OUTPUT_FILE "${_caps_cmake}"
+            RESULT_VARIABLE _caps_rc
+            ERROR_VARIABLE  _caps_err)
+        if(NOT _caps_rc EQUAL 0)
+            # Fail loudly. A capability that silently fails to resolve is the
+            # defect this wave closes, and a warning here would recreate it.
+            message(FATAL_ERROR
+                "nano_ros_workspace: could not resolve the capability axes of "
+                "SYSTEM '${_NRW_SYSTEM}':\n${_caps_err}")
+        endif()
+        include("${_caps_cmake}")
+        # Re-configure when the declaration changes.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/src/${_NRW_SYSTEM}/system.toml")
+        set(NANO_ROS_FEATURES "${NANO_ROS_FEATURES}" PARENT_SCOPE)
+    endif()
+
     _nros_import_once("${_nros_root}")
 
     # Optional: workspace metadata for `nros plan` consumption. SYSTEM

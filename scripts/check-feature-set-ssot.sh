@@ -167,6 +167,49 @@ if [ -n "${entry_hits//[$'\n']/}" ]; then
     fail=1
 fi
 
+# 6. phase-323 W4 — no branch may APPEND `param_services` / `lifecycle` to the
+#    capability list.
+#
+#    posix carried `if(PLATFORM STREQUAL "posix") list(APPEND _caps
+#    param_services lifecycle)`, which until phase-323 W1 was the ONLY route
+#    those axes took on hosted (issue 0351): `NANO_ROS_FEATURES` was never
+#    populated on the workspace path. The effect was that hosted could not fail
+#    when a declaration was missing, so "forgot to declare" and "declared" were
+#    indistinguishable on the platform most people develop on.
+#
+#    `safety` is deliberately NOT matched here: `if(NANO_ROS_SAFETY_E2E)
+#    list(APPEND _caps safety)` is the option round-trip, which is how a
+#    STANDALONE project selects the axis with `-DNANO_ROS_SAFETY_E2E=ON`. That
+#    is a selector, not a platform default.
+cap_branch=$(git grep -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
+    -- 'cmake/*.cmake' 'packages/core/nros-c/CMakeLists.txt' \
+    'packages/core/nros-cpp/CMakeLists.txt' 2>/dev/null \
+    | grep -v ':[0-9]*:[[:space:]]*#' || true)
+if [ -n "$cap_branch" ]; then
+    echo "FAIL: a branch appends a capability instead of reading the declaration:"
+    printf '%s\n' "$cap_branch" | while IFS= read -r h; do note "$h"; done
+    note "Capabilities come from system.toml via NANO_ROS_FEATURES (phase-323 W1)."
+    fail=1
+fi
+
+# 7. phase-323 W4 — no fixture row may force a capability's cmake knob.
+#
+#    Four safety rows carried `cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }`,
+#    citing issue #118 for the missing wiring. 0118 was RESOLVED (phase-269) and
+#    was about the integrity readback API, not cmake lowering — so a temporary
+#    `-D` ended up defended by a closed ticket and outlived the bug it hid. A
+#    fixture that forces the knob tests something the user's declaration does
+#    not produce.
+fixture_forced=$(git grep -nE 'cmake_defs.*NANO_ROS_(SAFETY_E2E|FEATURES)' \
+    -- examples/fixtures.toml 2>/dev/null \
+    | grep -v ':[0-9]*:[[:space:]]*#' || true)
+if [ -n "$fixture_forced" ]; then
+    echo "FAIL: a fixture row forces a capability knob instead of declaring it:"
+    printf '%s\n' "$fixture_forced" | while IFS= read -r h; do note "$h"; done
+    note "Declare it in the bringup's system.toml; the workspace derives the rest."
+    fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
     echo "feature-set SSoT OK — one edition source, one platform mapping, no node-level"
     echo "editions, no default-list editions, no entry-level axis restatements."
