@@ -223,14 +223,13 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 at eight call sites. Phase 268 fixed the adjacent half and left `0` overloaded. Now stored biased by
 one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (2026-07-28)
 
-**#351** — build-stage fixture gates answer PRESENCE, not truth, which is how #350 hid for three
-days: `.fixtures-built` is cleared by NOTHING (so it means "did this EVER succeed?"), `.compile-ok`
-records that a build happened but not what from, and a missing artifact cannot be told apart from a
-broken one (tier-aware skip). The lane next door already solves all three — `.inputsig` signatures
-compared against current inputs, plus the shared `nros_toolchain_present` predicate that DECIDES
-absence instead of inferring it. Also drift from AGENTS.md:79: 10 of the 26 entries are compile-intent
-checks the rule says belong in `fixtures.toml`, and sit in a hardcoded shell array instead — which is
-exactly why the staleness probe cannot see them. See `0351-*`. (2026-07-29)
+Recently resolved: **#351** — build-stage fixture gates answered PRESENCE, not truth, which is how
+#350 hid for three days. Fixed by phase-319: the suite stamp is cleared before the attempt it
+certifies; the lane's 26 fixtures moved from six hardcoded shell arrays into `fixtures.toml`
+(AGENTS.md:79 compliance, which is what let the staleness probe see them at all); and each row now
+carries an `.inputsig` compared against current sources plus a `.build-failed` marker the resolver
+treats as a hard error in EVERY tier. Acceptance: breaking a fixture now turns the LIGHT tier red —
+the scenario #350 failed. See `0351-*`. (2026-07-30)
 
 Recently resolved: **#350** — `NanoRosNodeRegister.cmake` never included the module defining
 `nano_ros_auto_add_library`, so every DIRECT-include consumer failed at configure time with `Unknown

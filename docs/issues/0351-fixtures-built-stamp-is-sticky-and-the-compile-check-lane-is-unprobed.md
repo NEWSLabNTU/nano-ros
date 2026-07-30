@@ -1,7 +1,7 @@
 ---
 id: 351
 title: "Build-stage fixture gates answer PRESENCE, not truth — the compile-check lane has neither the input-signature nor the toolchain predicate the workspace lane already uses"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: build, testing
@@ -150,6 +150,37 @@ is missing.
 
 **Recommended: A now** (one line, independent, removes the sticky class), then
 **B → C** as one pass, since C is where presence finally becomes truth.
+
+## Resolved by phase-319 (2026-07-30)
+
+All three landed; the acceptance test is the scenario #350 failed — breaking a
+compile-check fixture now turns the LIGHT tier red, naming the fixture and
+builder, instead of reporting a skip.
+
+- **A** — the suite stamp is cleared before the attempt it certifies, in both
+  `build-test-fixtures` and `build-all`.
+- **B** — all 26 rows moved to a `[[compile_check_fixture]]` table in
+  `examples/fixtures.toml` (AGENTS.md:79 compliance), retiring six hardcoded
+  colon-delimited arrays. Their own table rather than `[[fixture]]` fields:
+  `list`'s record format is per-language and consumed positionally by
+  `fixtures-build.sh`, so overloading it would have changed that contract for 251
+  rows.
+- **C** — per-row `.inputsig` on the `workspace-fixture-signature.sh` model
+  (written only on success, recomputed and compared), plus a `.build-failed`
+  marker the resolver treats as a hard error in every tier. The marker turned out
+  to beat the planned toolchain predicate: the build stage already knows whether
+  it could run a builder, so recording the outcome it OBSERVED is better than
+  re-deriving it test-side.
+
+Two pre-existing defects surfaced on the way, both instances of this issue's own
+thesis — a marker certifying something it no longer affects:
+
+- `orch_tiers_single` stripped `[tiers.*]` from `system.toml` while the entry
+  reads the MODEL (phase-296 made it authoritative), so the overlay had stopped
+  doing anything and its test was RED on `main`.
+- `compile-check-fixtures.sh` swallowed builder failures wherever a builder was
+  called in a condition context — bash suppresses errexit there, so a failing
+  `cmake -S` fell through and the function returned its trailing `echo`'s status.
 
 ## The general shape
 
