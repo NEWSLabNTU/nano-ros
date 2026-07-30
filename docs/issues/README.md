@@ -67,6 +67,23 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
+**#356** — `px4_e2e.rs` builds SITL against `examples/px4/rust/uorb/{talker,listener}`, a tree
+phase-277 W7 retired — and whose retirement is recorded in prose in `just/px4.just`, 40 lines from
+the recipe that was migrated. The test asserts honestly (`assert!`, no silent pass), so nothing
+reads green; `just px4 test-sitl` simply cannot pass. Filed rather than fixed: the honest repairs
+are deleting it, or phase-316 W4.2 (a real uORB example), and W4.2 is blocked on deciding what a
+nano-ros uORB example is FOR given PX4 ships `uxrce_dds_client`. Retiring a path is a sweep, not an
+edit. See `0356-*`. (2026-07-31)
+
+**#315** — RESOLVED by phase-316 W1–W3: all three `<rmw>/` levels gone, `check-example-matrix.sh`'s
+allowlist **empty**, its `is_allowed()` px4 branch deleted. Two of the three named no RMW, so they
+were RENAMED, not flattened — `px4/rust/xrce/` → `px4/rust/companion/` (where the code RUNS; its
+RMW is pinned by `uxrce_dds_client` and was never a choice), `zephyr/*/cyclonedds/talker-aemv8r` →
+`zephyr/*/talker-aemv8r` (a board, already said by the suffix). The third, `px4/cpp/uorb/`, held one
+link-check module that is not an example at all → `packages/testing/nros-px4-register-check/`,
+dissolving a hoist+shim pair that existed only because PX4's required layout and the example tree's
+required layout could not both hold. See `0315-*`. (2026-07-31)
+
 **#354** — `fixtures-manifest.py`'s `validate-workspaces` / `validate-compile-checks` had **no
 caller** (`git grep` returns the script's own usage text and dispatch, nothing else), so they
 decayed unwatched until 74 of 86 workspace rows failed — every one on CHECKER staleness, not a

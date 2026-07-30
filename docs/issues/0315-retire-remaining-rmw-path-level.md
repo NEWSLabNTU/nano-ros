@@ -1,7 +1,7 @@
 ---
 id: 315
 title: "Three `<rmw>/` path levels survive in examples/ behind checker carve-outs; two of them encode deployment location, not RMW"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [issue-0314, issue-0295, issue-0319, rfc-0026, phase-316]
@@ -111,3 +111,33 @@ independent of the undecided bridge question (W4), so they can land first.
   the px4 structural exemption in `is_allowed()` deleted.
 - RFC-0026 needs no "except" clause.
 - `just check` and the example-fixture coverage test green.
+
+## Resolved by phase-316 W1–W3 (2026-07-31)
+
+All three levels are gone and `check-example-matrix.sh`'s allowlist is **empty**
+— along with its `is_allowed()` px4 branch, so no future px4 case can inherit a
+structural carve-out it never earned.
+
+This issue's own reading was right and worth restating: two of the three levels
+did not encode an RMW, so the fix was to RENAME rather than flatten — flattening
+would have destroyed real information.
+
+| was | is | what the level actually named |
+| --- | --- | --- |
+| `px4/rust/xrce/` | `px4/rust/companion/` | where the code RUNS — beside PX4, not in firmware. Its RMW is fixed by whatever `uxrce_dds_client` speaks, so it was never a choice, so it was never a variant axis. |
+| `px4/cpp/uorb/` | gone → `packages/testing/nros-px4-register-check/` | nothing. The tree held one link-check module whose own header says the build IS the validation — not an example, so CLAUDE.md puts it under `packages/testing/`. |
+| `zephyr/{cpp,rust}/cyclonedds/talker-aemv8r/` | `zephyr/{cpp,rust}/talker-aemv8r/` | a board, already stated by the `-aemv8r` suffix. |
+
+Moving the register-check out also dissolved a two-file indirection nobody would
+have chosen deliberately: PX4 requires
+`<EXTERNAL_MODULES_LOCATION>/src/modules/<name>/CMakeLists.txt` and the example
+tree required `<plat>/<lang>/<rmw>/<example>/`, so the real CMakeLists was
+hoisted to the example path and a shim at PX4's path `include()`d it back. Two
+layout rules over one directory, one served by an indirection. Outside
+`examples/` only PX4's applies.
+
+RFC-0026 now carries the table above, so a future reader does not "helpfully"
+flatten `companion/` back into `px4/rust/`.
+
+Filed on the way: **issue 0356** — `px4_e2e.rs` targets
+`examples/px4/rust/uorb/{talker,listener}`, retired by phase-277 W7.

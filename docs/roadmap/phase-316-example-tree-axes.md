@@ -1,8 +1,13 @@
 # Phase 316 — every example path level names a real axis
 
-**Status (2026-07-28): Draft.** Not started.
+**Status (2026-07-31): W1–W3 landed. W4 remains BLOCKED on its own decision.**
 **Implements:** RFC-0026 (example directory layout).
 **Closes:** issue 0315. **Informed by:** issues 0314, 0319, archived 0295.
+**Filed on the way:** issue 0356 (`px4_e2e.rs` targets a tree retired by
+phase-277 W7).
+
+`check-example-matrix.sh`'s `allowed_roots` is **empty** and its `is_allowed()`
+px4 branch is gone — the acceptance condition for W1+W2 together.
 
 ## Goal
 
@@ -29,46 +34,53 @@ mechanical and land first; W4 needs a decision recorded before any code.
 
 ## Work items
 
-### W1 — px4: rename the level to its axis
+### W1 — px4: rename the level to its axis — LANDED
 
-- **W1.1** `git mv examples/px4/cpp/uorb examples/px4/cpp/firmware`,
-  `git mv examples/px4/rust/xrce examples/px4/rust/companion`.
-- **W1.2** Update the ~29 referencing files: root `Cargo.toml` (exclude
+**Ordering correction:** the plan had W1.1 rename `cpp/uorb -> cpp/firmware` and
+W3.1 move `nros-register-check` out of `examples/`, not noticing that
+`cpp/uorb/` contained **only** that module — so W3.1 empties W1.1's target. Doing
+W3.1 first means no empty `firmware/` dir gets created for nobody to fill; W4.2
+can create it when it has content. Only `rust/xrce -> rust/companion` was a
+rename.
+
+- [x] **W1.1** `git mv examples/px4/rust/xrce examples/px4/rust/companion`.
+      (`cpp/uorb` dissolved via W3.1 instead — see above.)
+- [x] **W1.2** Update the ~29 referencing files: root `Cargo.toml` (exclude
   entries), `just/px4.just`, `scripts/build/compile-check-fixtures.sh`,
   `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`,
   `packages/testing/nros-px4-sitl-test/tests/px4_xrce_e2e.rs`,
   `docs/reference/px4-xrce-companion.md`, `book/src/getting-started/{px4,integration-px4}.md`,
   `integrations/px4/README.md`, `examples/px4/README.md`, `examples/README.md`.
-- **W1.3** Delete the px4 structural exemption from `is_allowed()` in
+- [x] **W1.3** Delete the px4 structural exemption from `is_allowed()` in
   `scripts/check-example-matrix.sh`, plus the explanatory comment block.
 
 **Acceptance:** `just px4 build-examples` and `just px4 build-fixtures` green;
 `check-example-matrix.sh` no longer needs the px4 branch.
 
-### W2 — zephyr: flatten the board variant
+### W2 — zephyr: flatten the board variant — LANDED
 
-- **W2.1** `git mv` both `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` up one
+- [x] **W2.1** `git mv` both `zephyr/{rust,cpp}/cyclonedds/talker-aemv8r` up one
   level to `zephyr/{rust,cpp}/talker-aemv8r`.
-- **W2.2** Update the ~28 referencing files: root `Cargo.toml`,
+- [x] **W2.2** Update the ~28 referencing files: root `Cargo.toml`,
   `just/zephyr-setup.just`,
   `packages/testing/nros-tests/tests/examples_fixture_coverage.rs`,
   `book/src/getting-started/arm-fvp.md`, RFC-0026, and the phase-217 /
   phase-275-276 notes.
-- **W2.3** Delete both `allowed_roots` lines.
+- [x] **W2.3** Delete both `allowed_roots` lines.
 
 **Acceptance:** `allowed_roots` is EMPTY and the script still passes; the
 aemv8r fixture still builds.
 
-### W3 — the non-example, and the drifted docs
+### W3 — the non-example, and the drifted docs — LANDED
 
-- **W3.1** Move `nros-register-check` out of `examples/`. Its own header says
+- [x] **W3.1** Move `nros-register-check` out of `examples/`. Its own header says
   *"the build itself is the validation"* — it is a link/registration assertion,
   and CLAUDE.md puts non-example binaries under `packages/testing/`. Decide
   between a testing fixture and an `examples/fixtures.toml` build-step
   assertion; either way it stops being an "example".
-- **W3.2** Fix `examples/bridges/README.md`, which still describes the retired
+- [x] **W3.2** Fix `examples/bridges/README.md` (and `examples/templates/README.md`, same drift), which still describes the retired
   `<plat>/<lang>/<rmw>/<example>` form.
-- **W3.3** RFC-0026: record that px4's level is a deployment axis, so a future
+- [x] **W3.3** RFC-0026: record that px4's level is a deployment axis, so a future
   reader does not "helpfully" flatten it back.
 
 **Acceptance:** `examples/` contains only examples; no doc describes the
@@ -120,3 +132,47 @@ app, and one bridge translating uORB to a networked backend.
 | W2 | `allowed_roots` empty; `check-example-matrix.sh` passes; aemv8r fixture builds |
 | W3 | `examples/` free of non-examples; no doc mentions `<plat>/<lang>/<rmw>/` |
 | W4 | interop demo runs against a stock PX4 app; bridge translates uORB → networked backend |
+
+## Receipts collected (2026-07-31)
+
+| Step | Receipt |
+| --- | --- |
+| W1 | `just px4 build-sitl-cpp` links `libmodules__nros_register_check.a` from the new `EXTERNAL_MODULES_LOCATION` (`nm` shows `nros_rmw_uorb_register`); `just px4 build-fixtures` green from `rust/companion/`; `is_allowed()`'s px4 branch deleted |
+| W2 | `allowed_roots` **empty**, `check-example-matrix.sh` passes; `just zephyr build-fvp-aemv8r-cyclonedds` and `-rust` both link `zephyr.elf` from the flattened paths |
+| W3 | `examples/` holds no non-examples; the retired `<plat>/<lang>/<rmw>/` form survives only in dated records |
+| W4 | not started — blocked on W4.1 |
+
+**Dated records were deliberately NOT rewritten.** `docs/roadmap/archived/`,
+`docs/issues/archived/`, `docs/development/audit-findings-*` and the completed
+phase-217 / phase-275-276 notes describe the tree as it was on their date;
+editing them would falsify a snapshot. Only live docs, code and recipes moved.
+
+## What the acceptance run turned up
+
+Running W2's acceptance is what found the rest of this, and none of it was in
+the plan:
+
+- **`examples_canonical_shape` was not failing — it was TIMING OUT** at nextest's
+  60 s. Its skip-list prefix-matched `build-` but exact-matched `target`, so it
+  walked into all 48 `target-<variant>/` trees a native RMW sweep leaves behind.
+  Green on a fresh checkout, red only on a machine that had done the work.
+- **Six walkers implemented that same skip rule in five spellings**, two of them
+  with real consequences beyond speed: `zephyr::collect_source_files` hashed
+  build output into the fixture *signature*, and zephyr's mtime staleness walker
+  descended into build dirs whose mtimes are newer than any cutoff by
+  construction — it could only ever answer "stale". Converged onto
+  `nros_tests::treewalk`.
+- **A second presence-vs-truth check in the same test**, masked until the timeout
+  was fixed: it flagged `metadata/*.json` by `is_file()` while its own message
+  said "must not be TRACKED". Those files are build output and gitignored. Now
+  asks `git ls-files`; mutation-tested both ways.
+- **Issue 0356**: `px4_e2e.rs` still builds SITL against
+  `examples/px4/rust/uorb/{talker,listener}`, retired by phase-277 W7 — whose
+  retirement is recorded in a comment 40 lines away in `just/px4.just`. Filed
+  rather than fixed: the honest repair is either deleting it or W4.2, and W4.2
+  is blocked.
+
+The through-line, and the reason this phase was worth doing: **a rule stated
+unconditionally but enforced with exceptions decays into its exceptions**, and a
+rule implemented six times decays into six different rules. Both were true here,
+one level apart.
