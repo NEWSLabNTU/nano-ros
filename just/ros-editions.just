@@ -124,25 +124,29 @@ ci distro="jazzy":
     just ros_editions build-e2e-fixtures {{distro}} xrce
     just ros_editions build-e2e-fixtures {{distro}} zenoh
     export NROS_ROS_EDITION={{distro}}
-    echo "== ros-editions harness lanes ({{distro}}) — codegen/bridge/cyclone =="
+    echo "== ros-editions harness lanes ({{distro}}) — codegen/bridge =="
     NROS_RMW=cyclone cargo test -p nros-tests \
         --test ros_editions_smoke \
         --test ros_editions_codegen \
         --test ros_editions_bridge \
         --test ros_editions_nano_interop \
-        --test ros_editions_e2e_pubsub \
-        --test ros_editions_e2e_service \
-        --test ros_editions_e2e_action \
+        -- --nocapture
+    # Issue 0327 — the pub/sub/service/action × direction interop cells for all
+    # three RMWs live in ONE parametrized binary (`ros_editions_e2e`); the RMW
+    # prefix on each case name selects the lane + its threading.
+    echo "== ros-editions harness lanes ({{distro}}) — cyclone interop (rmw_cyclonedds_cpp) =="
+    NROS_RMW=cyclone cargo test -p nros-tests \
+        --test ros_editions_e2e cyclone \
         -- --nocapture
     echo "== ros-editions harness lanes ({{distro}}) — XRCE (Agent + fastrtps) =="
     NROS_RMW=xrce cargo test -p nros-tests \
-        --test ros_editions_xrce \
+        --test ros_editions_e2e xrce \
         -- --nocapture --test-threads=1
     echo "== ros-editions harness lanes ({{distro}}) — Zenoh (rmw_zenohd + rmw_zenoh_cpp) =="
     # Serial: one host rmw_zenohd on tcp/7447 at a time. Skips loudly on editions
     # without rmw_zenoh_cpp (iron/humble); jazzy runs 5/6 (ROS→nano action server
     # is #0292, ignored). Interop key is the RIHS01 keyexpr, NOT a zenoh bump (#0291).
     NROS_RMW=zenoh cargo test -p nros-tests \
-        --test ros_editions_zenoh \
+        --test ros_editions_e2e zenoh \
         -- --nocapture --test-threads=1
     echo "ros_editions ci {{distro}}: PASS (cyclone + xrce + zenoh)"
