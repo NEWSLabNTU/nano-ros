@@ -223,6 +223,13 @@ build-example-extras:
 build-all:
     #!/usr/bin/env bash
     set -e
+    # phase-319 W1 (issue 0351) — CLEAR the success marker before the attempt it
+    # certifies. Written only on success and previously removed by nothing, the
+    # stamp answered "did this EVER succeed?": a run that failed left the OLD
+    # stamp in place and `_require-fixtures` waved `test-all` through on it.
+    # Same discipline `compile-check-fixtures.sh` already applies to each
+    # per-fixture `.compile-ok` one level down.
+    rm -f target/nextest/.fixtures-built
     if [ -z "${NROS_NO_JOBSERVER:-}" ] \
        && [ -x third-party/make/make ] \
        && third-party/make/make --version | head -1 | grep -q "4.4" \
@@ -1056,6 +1063,11 @@ test verbose="": build-zenohd
 build-test-fixtures: generate-bindings setup-launch-resolve build-zenoh-posix-fixture build-test-fixtures-leaves
     #!/usr/bin/env bash
     set -e
+    # phase-319 W1 (issue 0351) — clear the stamp BEFORE building, so a failed or
+    # interrupted run leaves none and `_require-fixtures` fails with its build
+    # hint. Previously the stamp survived a failure and certified a build stage
+    # that had stopped working (issue 0350 hid this way for three days).
+    rm -f target/nextest/.fixtures-built
     # Compile-check fixtures (issue 0034): build-stage `cargo check` of small
     # template crates whose tests only prove they compile — the test asserts the
     # `.compile-ok` stamp instead of running cargo at run time.
