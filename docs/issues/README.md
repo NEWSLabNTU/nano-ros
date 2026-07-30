@@ -366,10 +366,13 @@ See `0325-*`.
 **#326** — Zephyr guards keyed on the possibly-unset `NANO_ROS_PLATFORM` at 5 more sites (#282
 fixed one of six, and introduced a second idiom). Latent, not live. See `0326-*`.
 
-**#327** — the ROS-edition axis is outside the test matrix: `Cell` has no edition field, five
-per-cell `ros_editions_*` files bypass RFC-0051, ARCHITECTURE §2 still calls jazzy "planned"
-though it is the delivered default, and the humble/iron zenoh carve-out lives only in a code
-comment. See `0327-*`.
+(#327 RESOLVED — the ROS-edition axis sat outside the test matrix. Documented edition as a per-run
+global on `nros-tests::matrix::Cell` (not a per-cell axis — the code already treats it so); promoted
+jazzy to supported in ARCHITECTURE §2 and moved the humble/iron `rmw_zenoh_cpp` carve-out out of a
+code comment into ARCHITECTURE §2 + examples/README.md; collapsed the five per-cell `ros_editions_*`
+files into one `ros_editions_e2e.rs` rstest over (rmw × workload × direction) = 18 cells
+(live-verified cyclone pub/sub vs ROS 2 jazzy). See `archived/0327-*`. 2fabffd33 + eb520c046.
+(2026-07-30)
 
 **#328** — harness gaps: ~30 fixture resolvers in `binaries/mod.rs` still existence-only (#222's
 freshness fix never propagated), and all **24 `#[ignore]` tests are unreachable** — nothing passes

@@ -1,7 +1,7 @@
 ---
 id: 327
 title: "The ROS-edition axis sits outside the test matrix: Cell has no edition field, five per-cell ros_editions files bypass RFC-0051, and ARCHITECTURE §2 still calls jazzy 'planned'"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing, docs
@@ -83,3 +83,13 @@ gains an edition-axis section with the same carve-out.
 parametrized rstest. This is the same refactor that closes #341 defect 3 (binds
 cells to tests). Verifiable only through the docker per-edition lane
 (`just ros_editions ci <distro>`); a focused follow-up.
+
+**Defect 2 — DONE (eb520c046).** The five `ros_editions_*` per-cell files
+collapsed into one parametrized `ros_editions_e2e.rs` — an rstest over
+(rmw × workload × direction) = 18 cells, a `Lane` abstracting the per-RMW
+`e2e_setup{,_xrce,_zenoh}` seam + its bridge process, and a shared
+workload×direction dispatch. The recipe filters each lane by RMW-prefixed case
+name (preserving the serial xrce/zenoh phases). Live-verified: the cyclone
+pub/sub cells pass end to end against ROS 2 jazzy + real CycloneDDS.
+
+All four defects addressed → resolved.
