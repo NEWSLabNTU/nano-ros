@@ -1,6 +1,6 @@
 # Phase 321 — Package organization: cuts and the group reorganization
 
-**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-c landed; W2.d-f DEFERRED, see below. W3 open.** Split out of the original
+**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-c landed, W2.d-f DEFERRED. W3.b/W3.c landed, W3.a withdrawn.** Split out of the original
 combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
 (support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
@@ -193,18 +193,22 @@ Rationale, with the evidence for each:
 
 ## W3 — Documentation consolidation
 
-- [ ] **W3.a** `packages/core/nros-c/docs/` and `nros-cpp/docs/` each hold 7
-      files; five per side are prose duplicating the book (`c-api.md`,
-      `first-node-c.md`, `ros2-interop.md`, `environment-variables.md`,
-      `troubleshooting-first-10-min.md` and the C++ equivalents). Keep only
-      `mainpage.md` + `groups.dox` next to the headers — Doxygen requires that —
-      and de-duplicate the prose into `book/`. `nros-platform-cffi/docs/` and
-      `nros-rmw-cffi/docs/` are already at the right scale (one `mainpage.md`);
-      make the other two match.
-- [ ] **W3.b** Relocate `packages/xrce/nros-rmw-xrce/KNOWN-LIMITATIONS.md` and
-      `packages/cli/rosidl-codegen/PARSER_LIMITATIONS.md` into `docs/issues/`
-      per the CLAUDE.md docs convention.
-- [ ] **W3.c** Fix the stale FVP claims catalogued in W1.f, plus
+- [~] **W3.a WITHDRAWN — the premise was false.** The claim was that five prose
+      files per side "duplicate the book". Measured: `nros-c/docs/ros2-interop.md`
+      shares **5 of 37** unique lines with `book/.../ros2-interop.md`, and
+      `nros-c/docs/getting-started.md` shares **13 of 161** with
+      `book/.../first-node-c.md`. They are different documents about related
+      topics, not copies. They are also explicit `INPUT` entries in the Doxyfile,
+      so deleting them would strip content from the generated API docs that
+      exists nowhere else. Same-topic is not same-text.
+- [x] **W3.b** Relocated, but to `docs/reference/`, not `docs/issues/`. Each file
+      catalogues 7-8 separate limitations, so converting them would have meant
+      ~15 numbered issues with frontmatter — and they are reference catalogues,
+      not individually-tracked bugs. `docs/reference/cyclonedds-known-limitations.md`
+      already established that shape, so they follow it:
+      `xrce-known-limitations.md` and `rosidl-parser-limitations.md`. In-code
+      references updated.
+- [x] **W3.c** Fix the stale FVP claims catalogued in W1.f, plus
       `docs/reference/cyclonedds-known-limitations.md:229-238`, which still says
       the FVP and S32Z boards are "not yet implemented" and Cyclone "works on
       POSIX only" — contradicted by phase-292/298.
@@ -221,3 +225,30 @@ Rationale, with the evidence for each:
 - Every group in `packages/` holds exactly one role, and the RMW backends all
   live under one.
 - `just ci` green after each work item, not just at the end.
+
+---
+
+## Outcome (2026-07-31)
+
+Landed: W1.a-d and W1.f (cuts), W2.a-c (two moves by role), W3.b-c (docs).
+Withdrawn after verification: **W1.e**, **W3.a**. Deferred with measurements:
+**W2.d-f**.
+
+**Three of this phase's own work items did not survive contact with the tree**,
+and the pattern is worth naming: each came from a survey that inferred
+duplication or deadness from a plausible signal — a lockfile next to a crate, a
+README sentence, two files with the same topic — without checking the mechanism.
+`cargo metadata` said the lockfiles were live; the README sentence meant
+something else; `comm` said the "duplicate" docs share 5 of 37 lines. **A cut
+list needs the same evidence standard as the code it cuts.** The items that
+survived were the ones where the evidence was a *call graph* — `rg` for the
+symbol, `cargo metadata` for the dependency edge, a mutation that broke the
+build.
+
+**Verification note for W2.c**: the first two attempts to prove that move were
+vacuous — the C/C++ lanes never compile the shim, and a system
+`/opt/ros/humble/share/diagnostic_updater` shadowed the stub entirely. The third
+mutation also passed because the replacement had hit a comment rather than the
+code. Only the fourth run — ROS prefix ignored, `set(_du_dir ...)` broken —
+produced a failing build, and only that run is evidence.
+

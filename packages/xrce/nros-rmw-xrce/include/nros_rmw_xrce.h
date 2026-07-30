@@ -118,7 +118,7 @@ nros_rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
  * the slot at backend-init time.
  *
  * Requires the runtime to expose a C-callable
- * `nros_rmw_take_custom_transport()` symbol; see KNOWN-LIMITATIONS.md
+ * `nros_rmw_take_custom_transport()` symbol; see docs/reference/xrce-known-limitations.md
  * for the gap. v1 of K.2.4 returns `NROS_RMW_RET_UNSUPPORTED` until
  * the runtime side lands; callers can route around via
  * `nros_rmw_xrce_set_custom_transport_ops` directly.

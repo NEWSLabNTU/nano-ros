@@ -226,19 +226,26 @@ either:
 The smoke tests don't measure allocation pressure; profile before
 deploying on Cortex-R52 with strict heap budgets.
 
-## Boards (Phase 117.10 / 117.11)
+## Boards
 
-`nros-board-fvp-aemv8r-smp` and `nros-board-s32z270dc2-r52` are
-**not yet implemented**. Until they land:
+*(phase-321 W3.c — this section said `nros-board-fvp-aemv8r-smp` and
+`nros-board-s32z270dc2-r52` were "**not yet implemented**" and that the Cyclone
+backend "works on POSIX only". Both were overtaken by phase-292/298 and stayed
+wrong for months. Current status is generated, not asserted here — see
+[Board Support Tiers](../../book/src/reference/board-support-tiers.md), checked
+by `just check-board-tiers`.)*
 
-- Cyclone backend works on POSIX (Linux, macOS) only.
-- Zephyr Cortex-A / Cortex-R targets need:
-  - `aarch64-zephyr-elf` toolchain in the Zephyr SDK install
-    (Phase 117.B sub-fix to `scripts/zephyr/setup.sh`).
-  - ARM FVP `Base_RevC_AEMv8R` or NXP S32Z evaluation board for
-    runtime testing (separate downloads, license-gated).
-  - Cyclone DDS cross-compiled against the Zephyr toolchain
-    (untested; build flags need verification).
+- **`nros-board-fvp-aemv8r-smp` — tier 3, build-only.** The board exists and
+  Cyclone runs on it: phase-298 booted the two-tier workspace Entry on
+  `FVP_BaseR_AEMv8R`, brought up ethernet and published `/ctrl` + `/telem`. But
+  the model is license-gated, so no CI lane can boot it; the runtime gate is
+  maintainer-run via `just zephyr verify-fvp-runtime`.
+- **`nros-board-s32z270dc2-r52` — scaffold.** Config and skeleton only, zero
+  cargo consumers, and its one build recipe has no caller. Do not plan against
+  it without reading issue tracking first.
+- Zephyr Cortex-A / Cortex-R targets still need the `aarch64-zephyr-elf`
+  toolchain in the Zephyr SDK install, and hardware or the license-gated model
+  for any runtime claim.
 
 See `docs/roadmap/phase-117-cyclonedds-rmw.md` for the per-item
 breakdown.

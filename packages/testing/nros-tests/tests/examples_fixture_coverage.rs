@@ -73,10 +73,15 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     "qemu-arm-freertos/rust/service-client-entry",
     "qemu-arm-freertos/rust/action-server-entry",
     "qemu-arm-freertos/rust/action-client-entry",
-    // Cyclone-on-Zephyr aemv8r references — built by the FVP recipes
-    // `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}` and run by
-    // `fvp_runtime.rs` / `fvp_runtime_rust.rs`. The cpp leaf gained its
-    // package.xml in 287-W6 (ament shape), so it is a gated leaf now too.
+    // Cyclone-on-Zephyr aemv8r references — BUILT by the FVP recipes
+    // `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}`. phase-321 W3.c: this
+    // used to say they were "run by `fvp_runtime.rs` / `fvp_runtime_rust.rs`",
+    // two files phase-298 W4 DELETED. Nothing runs these two examples today —
+    // the runtime-verified FVP artifact is the workspace Entry
+    // (`fvp_runtime_ws.rs`), not these. A comment claiming a runner that does
+    // not exist is how a build-only lane reads as covered.
+    // The cpp leaf gained its package.xml in 287-W6 (ament shape), so it is a
+    // gated leaf now too.
     "zephyr/rust/cyclonedds/talker-aemv8r",
     "zephyr/cpp/cyclonedds/talker-aemv8r",
 ];
