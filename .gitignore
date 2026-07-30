@@ -116,3 +116,7 @@ packages/core/*/include/nros/.*.tmp.*
 
 # RFC-0061 / phase-318 W1 — per-binary codegen-fingerprint cache.
 .nros-cache/
+
+# Local agent tooling (phase-321: swept in by a `git add -A`, never project files)
+.agents/
+skills-lock.json
