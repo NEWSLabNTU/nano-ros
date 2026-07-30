@@ -113,7 +113,7 @@ pub fn resolve_system_tiers(
 mod tests {
     use super::*;
     use crate::orchestration::{
-        cargo_metadata_schema::{SystemComponentEntry, SystemToml, TierDef, TierRtosSpec},
+        cargo_metadata_schema::{SystemComponentEntry, SystemToml},
         nros_config::NrosConfig,
     };
 
