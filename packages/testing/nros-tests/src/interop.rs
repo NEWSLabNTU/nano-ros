@@ -295,6 +295,26 @@ pub fn coords_for(test: &str) -> std::collections::BTreeSet<Coord> {
         .collect()
 }
 
+/// The interop cell with this id, if any.
+pub fn by_id(id: &str) -> Option<&'static InteropCell> {
+    CELLS.iter().find(|ic| ic.id == id)
+}
+
+/// Does `test` declare a Runtime cell at coordinate `(p, l, r, w)`? The runtime
+/// per-case binding (issue 0352 / phase-324 W4.d): a test asserts, for each case
+/// it actually runs, that the coordinate that case exercises is declared for it
+/// in `interop::CELLS`. A case running a coordinate the SSoT does not list — the
+/// 0341 defect-2 drift, seen from the test side — fails the running case.
+pub fn test_covers(
+    test: &str,
+    p: PlatformId,
+    l: crate::matrix::Lang,
+    r: Rmw,
+    w: crate::matrix::Workload,
+) -> bool {
+    coords_for(test).contains(&(p.index(), l.port_index(), r.index(), w.port_offset()))
+}
+
 /// Bind an interop test to `interop::CELLS`: assert the coordinates its `#[case]`s
 /// exercise (`covered`, kept adjacent to the cases) are exactly those the list
 /// declares for `test` (issue 0352 / phase-324 W4). Adding/retiring/mutating an

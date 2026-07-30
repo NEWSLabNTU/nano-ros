@@ -53,7 +53,7 @@ use nros_tests::{
         listener_binary, require_ros2, require_ros2_cyclonedds, ros2_env_setup_with_locator,
         service_client_binary, service_server_binary, talker_binary,
     },
-    matrix::Workload,
+    matrix::{Lang, PlatformId, Rmw, Workload},
     output, skip,
 };
 use rstest::rstest;
@@ -109,6 +109,23 @@ impl Scenario {
                 | Scenario::CycloneServiceNanoServer
         )
     }
+}
+
+/// The `interop::CELLS` coordinate a scenario exercises — all native/rust; the
+/// rmw + workload come from the scenario. Direction and the stock-demo variant
+/// collapse onto the same coordinate (the binding is at coordinate level).
+fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
+    use Scenario::*;
+    let (rmw, workload) = match s {
+        ZenohPubsubNanoToRos2 | ZenohPubsubRos2ToNano | ZenohPubsubStockDemoToNano => {
+            (Rmw::Zenoh, Workload::Pubsub)
+        }
+        ZenohServiceNanoServer | ZenohServiceRos2Server => (Rmw::Zenoh, Workload::Service),
+        CyclonePubsubNanoToRos2 | CyclonePubsubRos2ToNano => (Rmw::Cyclonedds, Workload::Pubsub),
+        CycloneServiceNanoServer => (Rmw::Cyclonedds, Workload::Service),
+        ZenohLifecycle => (Rmw::Zenoh, Workload::Lifecycle),
+    };
+    (PlatformId::Native, Lang::Rust, rmw, workload)
 }
 
 /// One interop matrix cell.
@@ -263,6 +280,19 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
            the resulting state",
 })]
 fn interop(#[case] cell: Cell) {
+    // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
+    // runs must be declared for `interop_e2e` in `interop::CELLS`. Runs before
+    // the fixture gate, so it is exercised for every case even when the runtime
+    // dependency is absent (the case then skips). A case whose scenario drifts
+    // from what the SSoT declares fails here, not silently.
+    let (p, l, r, w) = scenario_coord(cell.scenario);
+    assert!(
+        nros_tests::interop::test_covers("interop_e2e", p, l, r, w),
+        "interop_e2e case {:?} runs coordinate ({p:?}, {l:?}, {r:?}, {w:?}) that \
+         interop::CELLS does not declare for `interop_e2e` — issue 0352 binding drift",
+        cell.scenario
+    );
+
     require_cell_env(cell.scenario);
 
     match cell.scenario {

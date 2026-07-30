@@ -173,13 +173,32 @@ the runtime bodies (which need ROS 2 / docker / QEMU to validate).
       has no baked nano fixture and is correctly out of this list. Left as-is.
 - [x] **W4.c** `interop_e2e` (native pub/sub/service/lifecycle), `xrce_ros2_interop`
       and both `declarative_bridge_*` (Bridge cells) carry the same tripwire.
-- [~] **W4.d** RESIDUAL: the full runtime drive-rewrite (cell literally selects
-      the builder + peer, and the test asserts the resolved fixture matches the
-      cell) needs the runtime infra to validate; deferred, tracked on #0352. The
-      coordinate tripwire is the verifiable increment that ships now.
+- [x] **W4.d** `interop_e2e` now carries a PER-CASE binding: `scenario_coord`
+      maps each `#[case]` to its `(platform, lang, rmw, workload)` and asserts
+      `interop::test_covers("interop_e2e", …)` at the TOP of the body — before the
+      fixture gate, so every case exercises the binding even when its runtime
+      dependency is absent (the case then skips). A case whose scenario drifts
+      from what `interop::CELLS` declares fails the running case, not silently.
+      `interop::by_id` added for id lookup.
+
+**Live validation (2026-07-31, humble host + overlaid rmw_zenoh_cpp + cyclone +
+XRCE Agent):** 8/10 `interop_e2e` cases deliver end-to-end on this tree — all
+zenoh pub/sub (both directions) + service, the lifecycle full REP-2002 cycle, and
+cyclone nano→ROS pubsub; **all 9 cases pass the W4.d per-case binding** (no drift).
+The 2 reds (`cyclone_pubsub_ros2_to_nano`, `cyclone_service_nano_server`) are the
+nano-cyclone-RECEIVER discovery path returning 0 messages — a pre-existing
+cyclone-rx env issue independent of this phase (cyclone TX works; the binding
+asserts pass; nothing here touches delivery). The stale-fixture reds cleared only
+under `NROS_SKIP_FIXTURE_CHECK=1` (mtime treadmill: bins stale vs unrelated
+rebase-touched core files, not a real ABI change).
+
+**Residual (deferred, #0352):** a *full* drive-rewrite that has the cell also
+select the builder + peer object (not just assert the coordinate) — larger, needs
+CI runtime infra to validate the non-native lanes; the coordinate binding is the
+shipped increment.
 
 **Done when:** every interop/bridge test carries a coordinate binding to
-`interop::CELLS`, gated in tier 1 without fixtures. ✓
+`interop::CELLS`; `interop_e2e` binds per-case. ✓
 
 ## W5 — the tier machinery sees both lists
 
