@@ -1,11 +1,12 @@
 ---
 id: 341
 title: "The test-matrix SSoT diverges from the supported axes: uORB cannot be expressed at all, and the zephyr Cpp/Cyclonedds Qos cell is satisfied by a Rust/Zenoh test"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing
-related: [issue-0327, rfc-0051]
+related: [issue-0327, issue-0352, rfc-0051]
+resolved_in: 2fabffd33
 ---
 
 ## Finding (deep audit C,E 2026-07-28 — E5/E6, lead-verified)
@@ -76,10 +77,14 @@ runs), with a CarveOut for the never-covered Cpp/Cyclonedds shape. Gated: the
 matrix injectivity/uniqueness/gap-reason unit tests + the matrix⊆⊇fixtures
 coverage gate pass with the new platform/rmw.
 
-**Defect 3 — REMAINING.** Strengthening the coverage gate to catch a cell whose
-declared (lang, rmw) disagrees with what its test *runs* needs a cell→test
-binding: `Kind::Interop`/`Bridge` cells use ephemeral peers, not fixtures.toml
-rows, so there is no coordinate to check them against. The real fix is the same
-as #327 defect 2 — make the interop/ros_editions runtime tests consume
-`matrix::CELLS` directly, so a cell's (lang, rmw) drives the fixture it builds
-and the drift class becomes unrepresentable. A follow-up refactor.
+**Defect 3 — SPUN OUT to #352, this issue RESOLVED (2026-07-31).** Strengthening
+the coverage gate to catch a cell whose declared (lang, rmw) disagrees with what
+its test *runs* needs a cell→test binding: `Kind::Interop`/`Bridge` cells use
+ephemeral peers (and nano sides built by the west leaves lane / `build-e2e-fixtures`,
+not fixtures.toml rows), so there is no coordinate to check them against. The real
+fix is the same as #327 defect 2 — make the interop/ros_editions runtime tests
+consume `matrix::CELLS` directly, so a cell's (lang, rmw) drives the fixture it
+builds and the drift class becomes unrepresentable. Confirmed the phase-318 /
+RFC-0061 `ci_lane` tier machinery does NOT shortcut it (`coords()` derives from the
+cell's own fields, so a lying cell emits a lying coord). That refactor is tracked as
+**#352**; defects 1+2 shipped in 2fabffd33, so #341 closes.

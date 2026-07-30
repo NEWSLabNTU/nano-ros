@@ -326,11 +326,19 @@ arena and recovers capacity via `reinterpret_cast<const uint64_t*>(ptr)[-1]` —
 pointer-identity contract with the C server that becomes an out-of-bounds read the moment the
 Rust side copies an array. See `0340-*`.
 
-**#341** — the test-matrix SSoT diverges from the supported axes: **uORB cannot be expressed
-at all** (`Rmw` enum lacks it, though ARCHITECTURE §2 claims it and a crate+example exist), and
-the declared `(ZephyrNativeSim, Cpp, Cyclonedds, Qos)` cell is "covered" by a test that boots
-the **Rust/Zenoh** image — so a Cpp/Cyclonedds cell is asserted-covered by nothing and the real
-coverage is unmodelled. See `0341-*`.
+**#341** — RESOLVED (2fabffd33): the test-matrix SSoT diverged from the supported axes — **uORB
+was unexpressible** (`Rmw` enum lacked it though ARCHITECTURE §2 claims it + a crate+example
+exist) and the declared `(ZephyrNativeSim, Cpp, Cyclonedds, Qos)` cell was "covered" by a
+**Rust/Zenoh** test. Defects 1+2 fixed (uORB expressible via `Rmw::Uorb`+`PlatformId::Px4`+carve-out;
+zephyr QoS cell corrected). Defect 3 (bind Interop/Bridge cells to the tests that run them) spun
+out to **#352**. See `archived/0341-*`. (2026-07-31)
+
+**#352** — Interop/Bridge matrix cells are not bound to the tests that run them: a cell's declared
+`(lang, rmw)` can silently disagree with the fixture its test builds (the #341-defect-2 drift
+class). No coordinate to gate them against — peers are ephemeral, nano sides built by the west
+leaves lane / `build-e2e-fixtures`, not `fixtures.toml`. Fix = the #327-defect-2-shaped refactor:
+interop/ros_editions/qos_zephyr tests consume `matrix::CELLS` directly so `(lang, rmw)` drives the
+builder. See `0352-*`. (2026-07-31)
 
 **#342** — `orchestration_tiers_freertos.rs` bypasses both harness seams: a hand-rolled
 `qemu-system-arm` command with no bypass rationale (while the next test in the same file uses
