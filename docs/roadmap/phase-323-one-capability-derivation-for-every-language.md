@@ -1,6 +1,6 @@
 # Phase 323 — one capability derivation, for every language
 
-**Status (2026-07-31): Draft.** Implements the premise phase-314 and phase-315
+**Status (2026-07-31): W1–W4 landed.** Implements the premise phase-314 and phase-315
 established and did not finish: `system.toml` is the single source of truth for
 the RMW, the ROS edition **and the capability list**, in every language.
 **Closes:** issue 0351. **Informed by:** issues 0311, 0118 (archived, resolved),
@@ -200,11 +200,35 @@ edition and the platform mapping.
 
 ## Acceptance
 
-- [ ] A declared capability reaches the C/C++ cargo feature list on the
-      workspace path, traceable to `system.toml`.
-- [ ] An undeclared capability does NOT reach it, on posix as on embedded.
-- [ ] No fixture row forces a capability knob; no platform branch appends one.
-- [ ] `nros config show` and the built feature list agree for all three axes
-      (the audit tool and the build stop disagreeing — cf. the phase-315 fix
-      where they did).
-- [ ] The gate rejects a reintroduced mask.
+All measured on real workspaces, with the posix always-on removed — so a
+capability appearing at all is proof the declaration reached the build.
+
+- [x] **A declared capability reaches the C/C++ cargo feature list**, traceable
+      to `system.toml`. `ws-params-cpp` (declares `[param_services]`) builds
+      `nros-cpp` with `...,platform-posix,param-services`.
+- [x] **An undeclared capability does NOT reach it, on posix as on embedded.**
+      Two proofs: `examples/workspaces/cpp` (declares nothing) builds with
+      `...,platform-posix` and neither capability; and `ws-params-cpp` gets
+      `param-services` but NOT `lifecycle-services`, which it never declared —
+      before W2 the freebie gave it both.
+- [x] **No fixture row forces a capability knob; no branch appends one.** Four
+      `cmake_defs` masks and three platform branches deleted; rules 6 and 7
+      gate their return.
+- [x] **`nros config show` and the built feature list agree** for all three
+      axes — `param_services` / `safety` / none, matching what each workspace
+      actually compiled.
+- [x] **The gate rejects a reintroduced mask.** Both rules verified to fail on
+      a re-added branch and a re-added `cmake_defs`, and to pass on restore.
+
+## Notes for later
+
+* `NrosPlan::capability_enabled` (`orchestration/plan.rs`) mirrors
+  `SystemToml::capability_enabled` but **omits `lifecycle`** — it returns
+  `false` for that axis. Nothing in this phase depends on it (W1 deliberately
+  went through the SystemToml accessor for exactly this reason), but it is the
+  same drift shape and will mislead the next reader of the plan JSON.
+* The `safety` axis keeps its `cmake_token` round-trip
+  (`if(NANO_ROS_SAFETY_E2E) list(APPEND _caps safety)`). That is not a leftover:
+  it is how a STANDALONE project selects the axis with `-D`, which is the
+  standalone half of the split phase-315 W3 settled. Rule 6 exempts it
+  deliberately.
