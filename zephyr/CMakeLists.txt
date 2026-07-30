@@ -162,7 +162,7 @@ if(CONFIG_NROS_C_API)
         # Phase 168.X gap 2.B — cyclonedds is now usable from the C
         # API too. The backend's `nros_rmw_cyclonedds_register`
         # entry point is declared with C linkage in
-        # `packages/dds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`,
+        # `packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`,
         # so the Phase 160.A strong stub below resolves it from the
         # standalone C++ library compiled by the RMW backend block
         # above (lines 196+). nros-c just needs the generic cffi

@@ -3,7 +3,7 @@
 //!
 //! Mirrors `nros-rmw-xrce-cffi`. Cyclone DDS's
 //! `nros_rmw_cyclonedds_register()` (declared in
-//! `packages/dds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`)
+//! `packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`)
 //! is `extern "C"` because the underlying C++ implementation
 //! deliberately exports a C ABI for the same kind of dispatch the
 //! XRCE / Zenoh paths already use.
@@ -12,7 +12,7 @@
 //! C / C++ sources itself. The Cyclone DDS C++ library, the `cyclonedds-cxx`
 //! layer, and the project's own register glue make the cmake build the
 //! canonical entry point. Both
-//! `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt` (standalone POSIX path) and
+//! `packages/rmw/cyclonedds/nros-rmw-cyclonedds/CMakeLists.txt` (standalone POSIX path) and
 //! `zephyr/CMakeLists.txt :: CONFIG_NROS_RMW_CYCLONEDDS` (Zephyr path) already
 //! compile it. This crate just declares the Rust-facing symbol so consumers
 //! (e.g. `nros-cpp`, future collapsed Rust examples) can link against the
@@ -60,8 +60,8 @@ use core::ffi::c_int;
 
 unsafe extern "C" {
     /// C entry point declared in
-    /// `packages/dds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`
-    /// — implemented in `packages/dds/nros-rmw-cyclonedds/src/`
+    /// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`
+    /// — implemented in `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/`
     /// (C++ source with `extern "C"` linkage). Returns
     /// `NROS_RMW_RET_OK` (0) on success.
     fn nros_rmw_cyclonedds_register() -> c_int;

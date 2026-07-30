@@ -62,7 +62,7 @@ Pair with:
 
 ## Wire backend
 
-Cyclone DDS C++ RMW from `packages/dds/nros-rmw-cyclonedds/`, pulled in
+Cyclone DDS C++ RMW from `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`, pulled in
 via the board crate's `default_rmw = "cyclonedds"` + this example's
 `prj-cyclonedds.conf` (`CONFIG_NROS_RMW_CYCLONEDDS=y` + `CONFIG_CPP=y`).
 The wire format on this binary is byte-equal with stock

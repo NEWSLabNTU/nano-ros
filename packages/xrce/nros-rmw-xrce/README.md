@@ -7,7 +7,7 @@ This is the C-native re-implementation of `nros-rmw-xrce` (Rust over
 defined in `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`
 and registers itself via `nros_rmw_cffi_register()`.
 
-Target architecture mirrors `packages/dds/nros-rmw-cyclonedds`:
+Target architecture mirrors `packages/rmw/cyclonedds/nros-rmw-cyclonedds`:
 a static library + a single public header carrying the
 `nros_rmw_xrce_register()` entry point.
 

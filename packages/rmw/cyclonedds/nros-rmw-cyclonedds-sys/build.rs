@@ -6,7 +6,7 @@
 //! declares `nros_rmw_cyclonedds_register`.
 //!
 //! When `vendored` is **on**, we compile the existing C++ backend
-//! (`packages/dds/nros-rmw-cyclonedds/src/*.cpp`) plus a small
+//! (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/*.cpp`) plus a small
 //! `rmw_dds_common_graph` descriptor (generated at build time via the
 //! host `idlc` shipped by the sibling `cyclonedds-sys` crate) into a
 //! single static library. The result is link-fed into the cargo
@@ -53,7 +53,7 @@ fn vendored_build() {
     println!("cargo:rerun-if-env-changed=DEP_DDSC_IDLC");
 
     let repo_root = nros_build_paths::repo_root();
-    let backend_dir = repo_root.join("packages/dds/nros-rmw-cyclonedds");
+    let backend_dir = repo_root.join("packages/rmw/cyclonedds/nros-rmw-cyclonedds");
     let backend_src = backend_dir.join("src");
     let backend_inc = backend_dir.join("include");
     let rmw_cffi_inc = repo_root.join("packages/core/nros-rmw-abi/include");
@@ -125,7 +125,7 @@ fn vendored_build() {
     // Phase 212.K.7.7 — bridge TUs that define the C++ entry points called
     // by the Rust `nros-rmw-cyclonedds` crate (descriptor builder + type
     // registry). The CMake target adds these too (see
-    // `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt:95`); without them
+    // `packages/rmw/cyclonedds/nros-rmw-cyclonedds/CMakeLists.txt:95`); without them
     // the vendored cargo build leaves the symbols undefined.
     let bridge_files = ["dynamic_type_builder.cpp"];
     let bridge_src = backend_dir.join("bridge");
@@ -179,7 +179,7 @@ fn vendored_build() {
 /// `(type_name, descriptor_symbol)` pair (one constructor each), and
 /// add both to `cc`. Matches the cmake helper
 /// `nros_rmw_cyclonedds_idlc_compile()` in
-/// `packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake`.
+/// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake`.
 #[cfg(feature = "vendored")]
 fn bake_descriptor(
     idlc: &std::path::Path,

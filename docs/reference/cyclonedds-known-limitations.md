@@ -191,7 +191,7 @@ release.
 
 ## Test rpath / `LD_LIBRARY_PATH`
 
-`packages/dds/nros-rmw-cyclonedds/tests/CMakeLists.txt` sets
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/CMakeLists.txt` sets
 `ENVIRONMENT "LD_LIBRARY_PATH=<prefix>/lib:..."` on every CTest
 target so the binaries resolve `libddsc.so.0` from `build/install/`
 instead of `/opt/ros/humble/lib/x86_64-linux-gnu/libddsc.so.0`. The

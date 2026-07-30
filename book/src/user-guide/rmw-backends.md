@@ -56,7 +56,7 @@ The XRCE-DDS backend uses [Micro-XRCE-DDS-Client](https://github.com/eProsima/Mi
 > known-limitations list:
 > [`docs/reference/cyclonedds-known-limitations.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-known-limitations.md).
 
-The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/dds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi`.
+The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi`.
 
 **How it works:**
 
@@ -77,13 +77,13 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 **Build:**
 ```bash
 just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
-just cyclonedds build-rmw   # build packages/dds/nros-rmw-cyclonedds
+just cyclonedds build-rmw   # build packages/rmw/cyclonedds/nros-rmw-cyclonedds
 just cyclonedds test        # run the CTest harness
 ```
 
 Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
 configure time; the root `CMakeLists.txt` add_subdirectory's
-`packages/dds/nros-rmw-cyclonedds/` and links the resulting target
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/` and links the resulting target
 into `NanoRos::NanoRos`. No `build/install/` prefix, no
 `find_package(NrosRmwCyclonedds)` deleted both.
 
@@ -189,7 +189,7 @@ nros-rmw-xrce-cffi = { path = "<...>/packages/xrce/nros-rmw-xrce-cffi",
 
 # Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
 # vtable; actual Cyclone wiring lives C++-side under
-# packages/dds/nros-rmw-cyclonedds/ and is selected at CMake
+# packages/rmw/cyclonedds/nros-rmw-cyclonedds/ and is selected at CMake
 # configure time via -DNANO_ROS_RMW=cyclonedds. The Rust
 # manifest only carries the `rmw-cffi` feature; no Rust shim dep.
 [dependencies]

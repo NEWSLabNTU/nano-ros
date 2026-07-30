@@ -8,4 +8,4 @@ std_msgs = { path = "generated/std_msgs" }  # nros-managed
 # `path` is relative to the package dir; `include` above is relative to .cargo/.
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }  # nros-managed
 nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi" }  # nros-managed
-nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys" }  # nros-managed
+nros-rmw-cyclonedds-sys = { path = "../../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }  # nros-managed

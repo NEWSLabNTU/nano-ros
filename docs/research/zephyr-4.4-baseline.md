@@ -479,7 +479,7 @@ Two compounding root causes, neither of which was the k_mutex runtime:
    Numeric `127.0.0.1` is required — NSOS `getaddrinfo` rejects the name
    `localhost` (`add_peer_addresses: localhost: not a valid address`).
 
-**Delivery:** `packages/dds/nros-rmw-cyclonedds/src/session.cpp` —
+**Delivery:** `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/session.cpp` —
 `kEmbeddedCycloneConfig` is now also defined and passed to `dds_create_domain`
 for `CONFIG_BOARD_NATIVE_SIM` (previously FreeRTOS/ThreadX only; native_sim
 fell through to `dds_create_participant(domain, nullptr)` with the default

@@ -1,7 +1,7 @@
 //! Phase 212.K.7 — Rust shim for the Cyclone DDS RMW backend.
 //!
 //! Co-located with the C++ implementation under
-//! `packages/dds/nros-rmw-cyclonedds/`: the C++ TUs (`src/*.cpp`) are
+//! `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`: the C++ TUs (`src/*.cpp`) are
 //! built by the sibling `CMakeLists.txt`; this crate adds the Rust
 //! side that replaces the per-msg-pkg `cyclonedds` Cargo feature
 //! pattern. See `docs/roadmap/phase-212-…-file-consolidation.md`
@@ -40,7 +40,7 @@
 //! K.7.6 ("wire pub/sub paths") is partially landed: the registry
 //! exposes [`type_registry::register`] as the public entry, but the
 //! existing C++ pub/sub paths
-//! (`packages/dds/nros-rmw-cyclonedds/src/publisher.cpp`,
+//! (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/publisher.cpp`,
 //! `subscriber.cpp`, `service.cpp`) still resolve descriptors through
 //! the static-init [`descriptors.cpp`](../descriptors.cpp) table.
 //! Wiring the Rust registry into the Rust-side `nros-node`

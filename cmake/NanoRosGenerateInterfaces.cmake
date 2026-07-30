@@ -651,7 +651,7 @@ function(nros_generate_interfaces target)
   # backend registry. `nros_generate_interfaces` only emits the CDR/C
   # message bindings, so generate + link the idlc descriptor +
   # static-init register TU here (the helper is defined globally once
-  # `add_subdirectory(packages/dds/nros-rmw-cyclonedds)` runs, which
+  # `add_subdirectory(packages/rmw/cyclonedds/nros-rmw-cyclonedds)` runs, which
   # the cyclonedds branch of the root CMake does).
   if(NANO_ROS_RMW STREQUAL "cyclonedds"
      AND COMMAND nros_rmw_cyclonedds_generate_from_msg)

@@ -67,7 +67,7 @@ So **service QoS is fixed at the RMW layer**, not caller-selectable:
    service-name/type metadata — a QoS field is the lower-churn option, but a
    param is the more honest mirror of the pub/sub signature).
 2. **Plumb it through every backend's `create_service`** — Cyclone
-   (`packages/dds/nros-rmw-cyclonedds`), zenoh-pico, XRCE — replacing the
+   (`packages/rmw/cyclonedds/nros-rmw-cyclonedds`), zenoh-pico, XRCE — replacing the
    hard-coded RELIABLE+VOLATILE with the caller's profile (keeping that as the
    *default*, since it is the stock-`rmw_cyclonedds_cpp`-interop requirement).
    Backends that can't honour a profile keep their fixed QoS + should surface

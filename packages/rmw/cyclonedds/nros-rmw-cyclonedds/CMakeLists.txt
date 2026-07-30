@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Phase 140 — install rules + Config.cmake.in template deleted.
-# Consumed in-tree via `add_subdirectory(packages/dds/nros-rmw-cyclonedds)`
+# Consumed in-tree via `add_subdirectory(packages/rmw/cyclonedds/nros-rmw-cyclonedds)`
 # from the root `CMakeLists.txt` cyclonedds branch. CycloneDDS itself
 # is still a third-party dependency surfaced via find_package(CycloneDDS)
 # — callers point CMAKE_PREFIX_PATH at its install prefix.
@@ -44,7 +44,7 @@ nros_provide_cyclonedds()
 # `nros_rmw_cffi_register()`. Path is exposed via cache var so callers
 # (or `find_package(NrosRmwCyclonedds)`) can override it for out-of-tree
 # builds.
-set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
+set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-rmw-abi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
 if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
     # A CACHE PATH survives a source-tree rename, so the usual cause is a build

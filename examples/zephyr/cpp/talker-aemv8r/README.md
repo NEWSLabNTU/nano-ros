@@ -58,7 +58,7 @@ Pair with:
 
 The example builds against the Zephyr nros module's Cyclone DDS
 backend (`CONFIG_NROS_RMW_CYCLONEDDS=y`). The Cyclone DDS RMW in
-`packages/dds/nros-rmw-cyclonedds/` is validated on POSIX (Phase
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/` is validated on POSIX (Phase
 117.12 stock-RMW interop end-to-end) and on Zephyr `native_sim`
 (Phase 11W / 171.0 — pub/sub + services); this FVP Cortex-A/R
 target reuses that build glue. The wire format on this binary is

@@ -57,7 +57,7 @@ Override-default pattern (a weak default, a board/app supplies the strong def):
   — `.weak _tx_initialize_low_level`; `board_threadx_qemu_riscv64.c` weak default.
 - `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` — `_z_*_serial_*`,
   `smoltcp_init`/`smoltcp_cleanup` (transport-alias stubs).
-- `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp:137` —
+- `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp:137` —
   `nros_rmw_cyclonedds_register_app_descriptors` weak no-op.
 - The `nros_app_register_backends()` weak no-op (nros-c weak stubs) overridden by
   the cmake-generated strong stub (`NanoRosLink.cmake`, `nros-build-helpers`,

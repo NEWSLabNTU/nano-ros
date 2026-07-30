@@ -435,7 +435,7 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
 
     // (a) Fetch the board's RMW source — index-driven, into nano-ros's own
     //     tree (the consumer links it via `nano_ros_use_board()` /
-    //     `add_subdirectory(packages/dds/...)`), same as `just zephyr setup`.
+    //     `add_subdirectory(packages/rmw/cyclonedds/...)`), same as `just zephyr setup`.
     if let Some(rmw_source) = meta.rmw_source.as_deref() {
         let index_path = if args.index.is_absolute() {
             args.index.clone()

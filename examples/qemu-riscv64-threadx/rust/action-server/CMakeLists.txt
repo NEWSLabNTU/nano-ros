@@ -30,7 +30,7 @@ set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
     "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
-include("${NANO_ROS_ROOT}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+include("${NANO_ROS_ROOT}/packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
 # Action role — resolve example_interfaces (Fibonacci.action) + its action_msgs /
 # unique_identifier_msgs / builtin_interfaces closure from package.xml, matching

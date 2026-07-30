@@ -52,7 +52,7 @@ and drop `_path_codegen`.
 ### P2 — three `idlc` resolvers, all with inverted precedence
 
 `zephyr/cmake/nros_rmw_cyclonedds.cmake:264` and
-`packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake:61`
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake:61`
 **and** `:116` (the same three-entry list copy-pasted twice inside one file).
 
 All three put the retired in-tree `build/cyclonedds/bin` / `build/install/bin` in

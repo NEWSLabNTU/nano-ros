@@ -132,6 +132,6 @@ landed here.
 
 `examples/native/c/listener/src/main.c:150`,
 `packages/core/nros-c/src/executor.rs::nros_executor_register_subscription`,
-`packages/dds/nros-rmw-cyclonedds/src/descriptors.cpp` (registration surface),
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/descriptors.cpp` (registration surface),
 `just/native.just::build-fixture-extras` (native-cyclonedds-cmake cell), issue #183
 (surfaced it), issue #175 (Cyclone descriptor registration).

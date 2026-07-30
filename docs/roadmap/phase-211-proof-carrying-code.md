@@ -273,7 +273,7 @@ the SDK store (same pattern as `~/.nros/bin/zenohd` from Phase 208.B).
 - `packages/zpico/zpico-sys/proofs/` + `nros-rmw-zenoh/proofs/spec/
   {session,publish,subscribe}.mlw`
 - `packages/xrce/nros-rmw-xrce/proofs/spec/{session,profile_udp}.mlw`
-- `packages/dds/nros-rmw-cyclonedds/proofs/spec/{participant,service}.mlw`
+- `packages/rmw/cyclonedds/nros-rmw-cyclonedds/proofs/spec/{participant,service}.mlw`
   (C side via Frama-C)
 - `packages/core/nros-bridge/proofs/spec/bridge.mlw` (cross-RMW invariant
   preservation)

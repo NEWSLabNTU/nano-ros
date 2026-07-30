@@ -50,7 +50,7 @@ use ros_launch_manifest_model::SystemModel;
 /// The `nros-rmw-cyclonedds` build-time default for `NROS_CYCLONEDDS_MAX_TYPES`
 /// (`type_registry::MAX_TYPES`). Mirrored here because the bake is HOST code that
 /// runs before the crate's compile. Keep in sync with
-/// `packages/dds/nros-rmw-cyclonedds/src/type_registry.rs`.
+/// `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/type_registry.rs`.
 pub const DEFAULT_MAX_TYPES: usize = 32;
 
 /// Distinct DDS type names one MESSAGE interface registers.

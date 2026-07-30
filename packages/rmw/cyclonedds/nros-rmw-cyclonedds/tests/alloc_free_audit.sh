@@ -11,7 +11,7 @@
 # Invoked from `tests/bare_metal_link.rs::bare_metal_no_alloc_symbols`
 # but also standalone-runnable for hand checks:
 #
-#   bash packages/dds/nros-rmw-cyclonedds/tests/alloc_free_audit.sh
+#   bash packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/alloc_free_audit.sh
 #
 # Exit codes:
 #   0  — clean (no alloc symbols)
@@ -22,9 +22,10 @@ set -euo pipefail
 TARGET="thumbv7m-none-eabi"
 
 # Resolve workspace root from this script's location:
-# packages/dds/nros-rmw-cyclonedds/tests/ → up 4 = workspace root.
+# packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ → up 5 = workspace root
+# (phase-321 W2.d moved the group one level deeper).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
 
 cd "$WORKSPACE_ROOT"
 

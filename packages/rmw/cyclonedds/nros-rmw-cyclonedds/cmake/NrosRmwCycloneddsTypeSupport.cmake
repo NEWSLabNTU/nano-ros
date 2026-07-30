@@ -151,11 +151,12 @@ if(NOT NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
             "${CMAKE_CURRENT_LIST_DIR}/../../../share/nros-rmw-cyclonedds"
             # phase-292 W2 (ASI wall #7) — Zephyr-module / source-tree
             # consumption: this file lives at
-            # packages/dds/nros-rmw-cyclonedds/cmake/, the converter at
-            # <repo>/scripts/cyclonedds/. Without this hint the descriptor
+            # packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/, the converter
+            # at <repo>/scripts/cyclonedds/, so it is FIVE levels up (phase-321
+            # W2.d moved the group one deeper). Without this hint the descriptor
             # codegen silently degrades to the legacy path and every
             # find_descriptor() fails at runtime (create_subscription -100).
-            "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/cyclonedds"
+            "${CMAKE_CURRENT_LIST_DIR}/../../../../../scripts/cyclonedds"
         DOC ".msg/.srv → Cyclone-shaped IDL converter"
     )
 endif()

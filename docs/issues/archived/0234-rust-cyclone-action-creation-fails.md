@@ -63,8 +63,8 @@ Files: `packages/cli/rosidl-codegen/templates/action_nros.rs.jinja`,
 `rmw-cyclonedds` feature / named dep, add `nros-rmw` dep);
 `packages/core/nros-node/src/executor/node.rs` (call `register_protocol_types`
 in both typed action paths);
-`packages/dds/nros-rmw-cyclonedds/src/service.cpp` +
-`packages/dds/nros-rmw-cyclonedds/src/descriptors.cpp` (idempotent infix).
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp` +
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/descriptors.cpp` (idempotent infix).
 
 Note (latent, not blocking): the runtime registry also stores garbage slash-form
 type-name keys because the Rust registry passes the non-NUL-terminated

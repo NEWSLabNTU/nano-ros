@@ -20,7 +20,7 @@ links = "cyclonedds"
 
 # Mirror of `nros-rmw-xrce-cffi`. Rust users call `register()` once
 # before any session creation; the underlying C++ Cyclone DDS
-# library (compiled by `packages/dds/nros-rmw-cyclonedds/`'s
+# library (compiled by `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`'s
 # standalone CMake project, or by the Zephyr module's
 # `CONFIG_NROS_RMW_CYCLONEDDS` branch, or — with the `vendored`
 # feature added by Phase 212.K.2 — by this crate's own `build.rs`)
@@ -68,7 +68,7 @@ std = []
 # symbols from their own platform port and keep this OFF.
 platform-posix = ["dep:nros-platform", "nros-platform/platform-posix"]
 # Phase 212.K.2 — compile the C++ backend
-# (`packages/dds/nros-rmw-cyclonedds/src/*.cpp`) + the bundled
+# (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/*.cpp`) + the bundled
 # `rmw_dds_common_graph` descriptor as part of this crate's build,
 # linking against `cyclonedds-sys`'s libddsc. Lets pure-cargo native
 # examples link Cyclone end-to-end without the CMake outer step.
@@ -89,7 +89,7 @@ host-only = true
 host-only-reason = "bindgen over CycloneDDS headers"
 
 [dependencies]
-nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false }
+nros-rmw-cffi = { version = "0.5.0", path = "../../../core/nros-rmw-cffi", default-features = false }
 # Phase 248 (C2) — Rust descriptor shim; backend init installs its
 # per-type descriptor registrar into the generic `nros_rmw` seam.
 nros-rmw-cyclonedds = { version = "0.5.0", path = "../nros-rmw-cyclonedds", default-features = false }
@@ -100,11 +100,11 @@ cyclonedds-sys = { version = "0.5.0", path = "../cyclonedds-sys", optional = tru
 # Phase 249 — only pulled in by the `platform-posix` feature (native). The
 # `__FORCE_LINK_PLATFORM_CFFI` re-anchor in src/lib.rs references its
 # `__FORCE_LINK_CFFI` to keep `libnros_platform_posix.a` in the link graph.
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, optional = true }
+nros-platform = { version = "0.5.0", path = "../../../core/nros-platform", default-features = false, optional = true }
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }
-nros-build-paths = { path = "../../core/nros-build-paths" }
+nros-build-paths = { path = "../../../core/nros-build-paths" }
 
 [lints]
 workspace = true

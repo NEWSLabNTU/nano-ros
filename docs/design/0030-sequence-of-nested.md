@@ -198,7 +198,7 @@ worth tightening alongside the change.
 
 ### K.7.4.b builder primitives we reuse
 
-From `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`:
+From `packages/rmw/cyclonedds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`:
 
 * `OpsBuilder::push(uint32_t w)` — append one word, bounded 4096.
 * `PatchTable` — `JsrPatch{ops_word, target_kind_idx}` ledger,
@@ -382,7 +382,7 @@ equality. If that holds, elem-size is correct.
 
 ### Bridge code integration
 
-Concrete edit list for `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`:
+Concrete edit list for `packages/rmw/cyclonedds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`:
 
 1. **New helper `compute_nested_size`** (~30 LOC) — extracts the
    synth-offset / sizeof-children loop from `emit_nested_body` lines
@@ -468,7 +468,7 @@ even if our tree has no in-vivo case.
 ## Tests
 
 Land alongside the bridge change in
-`packages/dds/nros-rmw-cyclonedds/tests/`:
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/`:
 
 ### Test 1 — bridge unit test: sequence-of-nested op-word audit
 
@@ -590,10 +590,10 @@ unlikely given the walker analysis above), Path B unblocks action
 e2e in ~½ day:
 
 Mirror the existing `rmw_dds_common_graph` precedent at
-`packages/dds/nros-rmw-cyclonedds-sys/build.rs:60-99`. Concretely:
+`packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs:60-99`. Concretely:
 
 1. Drop two .idl files into
-   `packages/dds/nros-rmw-cyclonedds/idl/`:
+   `packages/rmw/cyclonedds/nros-rmw-cyclonedds/idl/`:
    - `action_msgs/srv/CancelGoal.idl`
    - `action_msgs/msg/GoalStatusArray.idl`
 2. In `build.rs`, after the existing `bake_descriptor` call for

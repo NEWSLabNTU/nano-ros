@@ -44,7 +44,7 @@ nros = { path = "../../core/nros", default-features = false }
 # Phase 248 C5a (#60 T4) — board-owned Cyclone DDS linking. `default-features =
 # false` drops `vendored` (no in-tree libddsc/cc build) + `linkme-register`
 # (Zephyr is linkme-blind); the board registers explicitly in `init_hardware`.
-nros-rmw-cyclonedds-sys = { path = "../../dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 # Phase 121.3 — the Rust `nros-platform-zephyr` crate is gone; the
 # canonical `nros_platform_*` C symbols come from
 # `nros-platform-zephyr` (the C port at `packages/core/nros-platform-zephyr/`,

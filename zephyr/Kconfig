@@ -99,7 +99,7 @@ config NROS_RMW_CYCLONEDDS
       as the RMW transport backend. Wire-compatible with stock
       rmw_cyclonedds_cpp on the ROS 2 Humble peer side.
 
-      Implementation lives at packages/dds/nros-rmw-cyclonedds/ as a
+      Implementation lives at packages/rmw/cyclonedds/nros-rmw-cyclonedds/ as a
       standalone C++ project; the Zephyr module compiles the pinned
       Cyclone DDS submodule plus the nros-rmw-cyclonedds register
       glue into the app library. The register entry point

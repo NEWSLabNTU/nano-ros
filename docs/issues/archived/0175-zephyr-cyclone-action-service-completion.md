@@ -202,4 +202,4 @@ cause. This is a nano-ros action-layer bug, likely not native_sim-specific.
 `packages/testing/nros-tests/tests/zephyr.rs`
 (`test_zephyr_dds_*_action_e2e`, `test_zephyr_cpp_service_server_to_client_e2e`),
 issue #164 (re-triage), issue #157 (the earlier zephyr-cyclone service fix this
-builds on), `packages/dds/nros-rmw-cyclonedds/`.
+builds on), `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`.

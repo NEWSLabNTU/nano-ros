@@ -25,7 +25,7 @@
 //! (the build-script helper uses argv directly; `--args-file` exists for
 //! parity with the existing `nros codegen` shape).
 //!
-//! The K.2 baked-in defaults in `packages/dds/nros-rmw-cyclonedds-sys/build.rs`
+//! The K.2 baked-in defaults in `packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs`
 //! (std_msgs/Int32 + rmw_dds_common_graph) stay as universal fallbacks —
 //! this verb is purely additive (per-example descriptors layered on top).
 

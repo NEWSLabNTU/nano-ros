@@ -50,7 +50,7 @@ nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-po
 # boot calls its `register()` (no app-side backend ownership). The board's
 # explicit call replaces the linkme walk, so these omit `linkme-register`.
 nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 
 [features]
 # Default keeps the historic native zenoh wiring active so existing

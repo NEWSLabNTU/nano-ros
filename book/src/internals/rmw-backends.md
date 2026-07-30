@@ -298,7 +298,7 @@ the ones above.
   — Appendix D carries LOC sizing, port shapes, and risk notes.
 - [Custom Transport porting guide](../porting/custom-transport.md) —
   how the transport vtable composes with the RMW vtable.
-- `packages/dds/nros-rmw-cyclonedds/` — reference layout for the
+- `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` — reference layout for the
   C++ vtable consumer.
 - `packages/px4/nros-rmw-uorb/` — reference layout for the
   C++ vtable consumer with PX4 SDK integration.

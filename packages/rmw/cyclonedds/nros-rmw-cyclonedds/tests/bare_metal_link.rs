@@ -48,12 +48,12 @@ fn target_installed() -> bool {
 /// `nros-rmw-cyclonedds` crate dir) up to the workspace root that
 /// owns the unified target directory `cargo build` will populate.
 fn workspace_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR = packages/dds/nros-rmw-cyclonedds
+    // CARGO_MANIFEST_DIR = packages/rmw/cyclonedds/nros-rmw-cyclonedds
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     crate_dir
         .ancestors()
         .nth(3)
-        .expect("workspace root above packages/dds/nros-rmw-cyclonedds")
+        .expect("workspace root above packages/rmw/cyclonedds/nros-rmw-cyclonedds")
         .to_path_buf()
 }
 

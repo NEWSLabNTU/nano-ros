@@ -71,11 +71,11 @@ Each verified: zero consumers, or consumers that cannot work.
       `packages/core/nros-platform-posix/src/` whose names encode an absolute host
       path (`platform.c.home.aeon.repos.nano-ros.integrations.nuttx.o`, dated
       2026-05-30, plus a `_1` copy), and five in-source CMake `build/` dirs — the
-      largest, `packages/dds/nros-rmw-cyclonedds/build/`, holds a full vendored
+      largest, `packages/rmw/cyclonedds/nros-rmw-cyclonedds/build/`, holds a full vendored
       CycloneDDS object tree. All untracked and gitignored; nothing is committed.
       The `.gitignore` rule exists *because* the build was known to litter `src/`.
       **Done for the two stale `.o` files only.** The in-source `build/` trees
-      were deliberately left: `packages/dds/nros-rmw-cyclonedds/build/` alone is
+      were deliberately left: `packages/rmw/cyclonedds/nros-rmw-cyclonedds/build/` alone is
       45 MB of vendored CycloneDDS objects, and deleting a developer's build
       cache uninvited buys tidiness at the cost of a long rebuild. They are
       gitignored and harmless; clean them when convenient.

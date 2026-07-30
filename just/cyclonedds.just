@@ -90,10 +90,10 @@ build: build-rmw
 # removes the backend build tree + any legacy host install / build dirs.
 [group("main")]
 clean:
-    rm -rf packages/dds/nros-rmw-cyclonedds/build build/install build/cyclonedds
+    rm -rf packages/rmw/cyclonedds/nros-rmw-cyclonedds/build build/install build/cyclonedds
 
 # Build the `nros-rmw-cyclonedds` C++ backend on top of Cyclone DDS.
-# Standalone CMake project at packages/dds/nros-rmw-cyclonedds/.
+# Standalone CMake project at packages/rmw/cyclonedds/nros-rmw-cyclonedds/.
 # Phase 186.6.1 — self-provisions Cyclone from the pinned source
 # (nros_provide_cyclonedds()), so no `just cyclonedds setup` / `build/install`
 # prereq. Host flags mirror scripts/cyclonedds/build.sh (ENABLE_*/SHM off) +
@@ -103,7 +103,7 @@ clean:
 build-rmw:
     #!/usr/bin/env bash
     set -e
-    PROJ="packages/dds/nros-rmw-cyclonedds"
+    PROJ="packages/rmw/cyclonedds/nros-rmw-cyclonedds"
     SCRIPT="$PWD/scripts/cyclonedds/msg_to_cyclone_idl.py"
     # Pass the .msg → IDL converter as an absolute path so the
     # project never has to assume the layout above its own dir
@@ -127,7 +127,7 @@ build-rmw:
 # the POSIX E2E pub/sub interop harness against stock rmw_cyclonedds.
 [group("main")]
 test: build-rmw
-    ctest --test-dir packages/dds/nros-rmw-cyclonedds/build --output-on-failure
+    ctest --test-dir packages/rmw/cyclonedds/nros-rmw-cyclonedds/build --output-on-failure
 
 # Composite: build RMW backend (self-provisions Cyclone) + run tests. Wired
 # into top-level `just ci` via the `cyclonedds-ci` wrapper as of Phase 117.16.

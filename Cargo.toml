@@ -51,19 +51,19 @@ members = [
     # Phase 169.5 — Rust shim exposing the Cyclone DDS C++ backend's
     # C-linkage register entry (`nros_rmw_cyclonedds_register`).
     # The underlying library is built by the standalone
-    # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
+    # `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` CMake project or by the
     # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
-    "packages/dds/nros-rmw-cyclonedds-sys",
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys",
     # Phase 212.K.7 — Rust shim co-located with the Cyclone DDS C++
     # backend. `no_std`, alloc-free; provides the runtime descriptor
     # builder + bounded type registry that supersedes the per-msg-pkg
     # `cyclonedds` Cargo feature pattern. The C++ backend is still
     # built by the sibling CMake project.
-    "packages/dds/nros-rmw-cyclonedds",
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds",
     # Phase 212.K.1 — build-only sys crate that vendors Cyclone DDS via
     # the `cmake` build-script crate. Provides libddsc + idlc to
     # downstream crates via the `DEP_DDSC_*` metadata exports.
-    "packages/dds/cyclonedds-sys",
+    "packages/rmw/cyclonedds/cyclonedds-sys",
     # Phase 212.K.3 — pure-Rust `msg→IDL` port. The standalone copy under
     # `packages/codegen/` (a leftover of the retired out-of-tree nros-cli)
     # was removed; the canonical crate now lives in-tree at
@@ -557,7 +557,7 @@ nros-rmw-xrce-cffi = { version = "0.5.0", path = "packages/xrce/nros-rmw-xrce-cf
 # `cargo build` that pulls this crate gets the in-tree C++ backend
 # compiled. External CMake / Zephyr consumers that supply the symbols
 # elsewhere opt out via `default-features = false` at the dep-site.
-nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/dds/nros-rmw-cyclonedds-sys" }
+nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }
 nros-rmw-cffi = { version = "0.5.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }

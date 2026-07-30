@@ -90,7 +90,7 @@ largely the router's concern and needs a semantics decision before emission.
       `kEmbeddedCycloneConfig` / `CYCLONEDDS_URI` env) — this is a new path.
 - [ ] Wire `BoardTransportConfig::set_interfaces` (or the native equivalent) so it
       actually constrains Cyclone's NIC binding, not a no-op.
-- [ ] **Files:** generator Cyclone-config emission, `packages/dds/nros-rmw-cyclonedds/`
+- [ ] **Files:** generator Cyclone-config emission, `packages/rmw/cyclonedds/nros-rmw-cyclonedds/`
       (`session.cpp`), the native Cyclone build path (Phase 175.A).
 - [ ] **Acceptance:** the generated Cyclone config (URI/file) contains the declared
       NICs; a generate-test asserts the `<Interfaces>` emission. **Depends on 206.1.**

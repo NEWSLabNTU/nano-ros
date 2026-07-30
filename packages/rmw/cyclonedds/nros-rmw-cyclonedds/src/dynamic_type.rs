@@ -445,7 +445,7 @@ const fn cdr_struct_size(n: &NestedType) -> usize {
 //     int64_t  rmw_sequence_number;   // monotonic per-client
 //     /* user fields ... */
 //
-// (See `packages/dds/nros-rmw-cyclonedds/src/service.cpp` top-of-file
+// (See `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp` top-of-file
 // doc block + `cdds_request_header_t` in upstream
 // `rmw_cyclonedds_cpp/src/serdata.hpp:73-77`.)
 //

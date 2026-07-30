@@ -2018,10 +2018,13 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
             "nros-rmw-zenoh-staticlib",
             "packages/zpico/nros-rmw-zenoh-staticlib",
         ),
-        ("nros-rmw-cyclonedds", "packages/dds/nros-rmw-cyclonedds"),
+        (
+            "nros-rmw-cyclonedds",
+            "packages/rmw/cyclonedds/nros-rmw-cyclonedds",
+        ),
         (
             "nros-rmw-cyclonedds-sys",
-            "packages/dds/nros-rmw-cyclonedds-sys",
+            "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys",
         ),
         ("nros-rmw-xrce-cffi", "packages/xrce/nros-rmw-xrce-cffi"),
         (
@@ -2029,7 +2032,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
             "packages/xrce/nros-rmw-xrce-cffi-staticlib",
         ),
         // Transport / SDKs that consumers regularly reference as `version = "*"`
-        ("cyclonedds-sys", "packages/dds/cyclonedds-sys"),
+        ("cyclonedds-sys", "packages/rmw/cyclonedds/cyclonedds-sys"),
     ]
 }
 
@@ -3072,7 +3075,7 @@ nros-rmw-zenoh = { version = "*" }
         assert_eq!(got, vec!["nros-rmw-zenoh".to_string()]);
     }
 
-    /// `cyclonedds-sys` lives under `packages/dds/` and is intentionally
+    /// `cyclonedds-sys` lives under `packages/rmw/cyclonedds/` and is intentionally
     /// in the lookup table — it's the most common non-`nros-*`-prefixed
     /// runtime crate consumers reference registry-style.
     #[test]

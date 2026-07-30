@@ -5,7 +5,7 @@ function(nros_zephyr_configure_rmw_cyclonedds)
 # Compiles the pinned Cyclone DDS submodule (tag 0.10.5) plus the
 # standalone nros-rmw-cyclonedds C++ register glue directly into the
 # Zephyr app library. No nros-rmw-cyclonedds CMake subproject step —
-# the standalone project at packages/dds/nros-rmw-cyclonedds/ is a
+# the standalone project at packages/rmw/cyclonedds/nros-rmw-cyclonedds/ is a
 # POSIX-host build path; we replicate the relevant compile here.
 #
 # Foundation only. Iteration items deferred to first real build:
@@ -16,7 +16,7 @@ function(nros_zephyr_configure_rmw_cyclonedds)
 #   - ROM/RAM trimming for S32Z
 
 set(CYCLONEDDS_DIR ${NROS_REPO_DIR}/third-party/dds/cyclonedds)
-set(NROS_RMW_CDDS_DIR ${NROS_REPO_DIR}/packages/dds/nros-rmw-cyclonedds)
+set(NROS_RMW_CDDS_DIR ${NROS_REPO_DIR}/packages/rmw/cyclonedds/nros-rmw-cyclonedds)
 
 if(NOT EXISTS ${CYCLONEDDS_DIR}/src/ddsrt/include/dds/config.h.in)
     message(FATAL_ERROR
@@ -63,7 +63,7 @@ target_compile_options(nros PRIVATE ${_nros_cdds_ipv4_compat})
 # always-accepted `__asm__` form.
 zephyr_compile_options($<$<COMPILE_LANGUAGE:C>:-Dasm=__asm__>)
 
-# Phase 11W.2 — `packages/dds/nros-rmw-cyclonedds/src/*.cpp`
+# Phase 11W.2 — `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/*.cpp`
 # include `<cstdlib>` / `<cstring>` etc. Zephyr's
 # `lib/cpp/minimal/include` only ships `<cstddef>` / `<cstdint>`
 # / `<new>`. Project ships compat shims at `zephyr/cxx-compat/`

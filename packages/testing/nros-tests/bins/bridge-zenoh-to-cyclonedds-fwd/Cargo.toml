@@ -18,7 +18,7 @@ path = "src/main.rs"
 nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }
 nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
-nros-rmw-cyclonedds-sys = { path = "../../../../dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
+nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
 nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["std"] }
 nros-serdes = { path = "../../../../core/nros-serdes", default-features = false, features = ["std"] }
 log = "0.4"

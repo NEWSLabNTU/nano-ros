@@ -109,7 +109,7 @@ resolves the diagnostic gate without the live demo, and REFINES the fix:
   `@appendable` in `nros-msg-to-idl` is correct; it would break parity with both.
   The extensibility control is NOT in the `.idl` text.
 - **nano-ros's cyclone descriptor is FINAL by construction — located.** The
-  runtime builder `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`
+  runtime builder `packages/rmw/cyclonedds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`
   sets only `DDS_TOPIC_FIXED_SIZE` in `m_flagset` and emits no `DDS_OP_DLC`
   DHEADER op. That is the cyclone-path control point.
 - **The blocker's premise is dissolved by RFC-0056.** The gate was "we don't know

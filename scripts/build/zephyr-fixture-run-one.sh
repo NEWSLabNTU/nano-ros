@@ -184,7 +184,7 @@ actual_pristine="$eff_pristine"
 case "$build_dir" in
     *cyclonedds*)
         if [ -f "$build_dir/zephyr/zephyr.exe" ] && [ -n "$(find \
-                "$nros_root/packages/dds/nros-rmw-cyclonedds/src" \
+                "$nros_root/packages/rmw/cyclonedds/nros-rmw-cyclonedds/src" \
                 \( -name '*.cpp' -o -name '*.hpp' \) \
                 -newer "$build_dir/zephyr/zephyr.exe" -print -quit 2>/dev/null)" ]; then
             needs_west=1

@@ -188,7 +188,7 @@ direction and pinpoints the code:
 2. **nano-ros's cyclone descriptor is FINAL by construction — located.** The
    cyclone path does NOT compile the `.idl` via `idlc` at build time; it builds
    the `dds_topic_descriptor_t` at RUNTIME in
-   `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`. There,
+   `packages/rmw/cyclonedds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`. There,
    `m_flagset` (≈ line 1068) is set to ONLY `DDS_TOPIC_FIXED_SIZE` (or `0`) —
    never an appendable/XCDR2 flag — and the emitted ops array carries no
    `DDS_OP_DLC` (delimited/DHEADER) op. **⇒ nano-ros publishes a FINAL,

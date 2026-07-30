@@ -189,7 +189,7 @@ update`.
 - Example: `cyclonedds-src`.
 - Consumed by: `nros setup board` step (a) — `nros setup --source
   <name>` (provisioned into nano-ros's own tree, which the consumer
-  links via `nano_ros_use_board()` / `add_subdirectory(packages/dds/…)`).
+  links via `nano_ros_use_board()` / `add_subdirectory(packages/rmw/cyclonedds/…)`).
 
 ### `NROS_BOARD_RUST_SUPPORT_MODULE`
 
