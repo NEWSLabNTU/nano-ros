@@ -66,3 +66,20 @@ all.
 The ~40 older per-cell `realtime_tiers_*_e2e.rs` / `*_entry_e2e.rs` files share
 the E6 shape but are pre-existing debt that phase-295 W3 is still migrating;
 they are not part of this issue.
+
+
+## Progress (2026-07-30)
+**Defects 1, 3, 4 — FIXED (2fabffd33).** Edition is documented on
+`nros-tests::matrix::Cell` as a PER-RUN global (`NROS_ROS_EDITION`), not a Cell
+axis — the code already treats it that way; folding it into `Cell` would multiply
+every row ×N editions with no per-cell distinction. ARCHITECTURE §2 promotes
+jazzy to supported and records the humble/iron `rmw_zenoh_cpp` carve-out (moved
+out of the `ros_env.rs` code comment); `examples/README.md`'s coverage matrix
+gains an edition-axis section with the same carve-out.
+
+**Defect 2 — REMAINING.** Collapsing the five `ros_editions_*` files (18 tests =
+3 rmw × 3 workload × 2 direction, differing only by the
+`e2e_setup{,_xrce,_zenoh}` seam + marker constant) into one `matrix::CELLS`-driven
+parametrized rstest. This is the same refactor that closes #341 defect 3 (binds
+cells to tests). Verifiable only through the docker per-edition lane
+(`just ros_editions ci <distro>`); a focused follow-up.

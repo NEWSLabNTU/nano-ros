@@ -65,3 +65,21 @@ fixtures, not that a cell's declared (lang, rmw) matches what its test actually 
 #327 covers the **edition** axis being outside `Cell` entirely. This issue is about
 the axes that *are* in `Cell` disagreeing with reality. Same SSoT, different failure:
 #327 is a missing dimension, this is wrong data in the existing dimensions.
+
+
+## Progress (2026-07-30)
+**Defects 1 + 2 — FIXED (2fabffd33).** uORB is now expressible: `Rmw::Uorb` +
+`PlatformId::Px4` + a documented CarveOut cell (PX4-SITL only, no CI runner). The
+`(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop)` cell is corrected to
+`(ZephyrNativeSim, Rust, Zenoh, …)` (what `qos_zephyr_ros2_interop_e2e` actually
+runs), with a CarveOut for the never-covered Cpp/Cyclonedds shape. Gated: the
+matrix injectivity/uniqueness/gap-reason unit tests + the matrix⊆⊇fixtures
+coverage gate pass with the new platform/rmw.
+
+**Defect 3 — REMAINING.** Strengthening the coverage gate to catch a cell whose
+declared (lang, rmw) disagrees with what its test *runs* needs a cell→test
+binding: `Kind::Interop`/`Bridge` cells use ephemeral peers, not fixtures.toml
+rows, so there is no coordinate to check them against. The real fix is the same
+as #327 defect 2 — make the interop/ros_editions runtime tests consume
+`matrix::CELLS` directly, so a cell's (lang, rmw) drives the fixture it builds
+and the drift class becomes unrepresentable. A follow-up refactor.
