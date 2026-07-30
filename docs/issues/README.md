@@ -212,6 +212,14 @@ shadowed by the unrelated ROS 2 `play_launch`, and we never shadow it either.)
 at eight call sites. Phase 268 fixed the adjacent half and left `0` overloaded. Now stored biased by
 one. Found while investigating #312 — real, but NOT its cause. See `0313-*`. (2026-07-28)
 
+**#351** — `.fixtures-built` is written on success and cleared by NOTHING, so it answers "did this
+build stage EVER succeed?" A regression aborts the recipe under `set -e`, the OLD stamp survives, and
+`_require-fixtures` waves `test-all` through — which is how #350 hid for three days. Separately, the
+compile-check lane is outside `check-fixtures-stale.sh` (that reads `fixtures.toml`; those fixtures
+live in a hardcoded array), and its test SKIPS rather than fails under `NROS_FIXTURES_OPTIONAL`
+because a broken fixture and an absent toolchain both present as a missing artifact. Options ranked
+in the issue; one-line fix for the sticky half. See `0351-*`. (2026-07-29)
+
 Recently resolved: **#350** — `NanoRosNodeRegister.cmake` never included the module defining
 `nano_ros_auto_add_library`, so every DIRECT-include consumer failed at configure time with `Unknown
 CMake command` — and `compile-check-fixtures.sh` (a `build-test-fixtures` prerequisite) had been
