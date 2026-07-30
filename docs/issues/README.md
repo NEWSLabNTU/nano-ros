@@ -56,6 +56,17 @@ session handle, so multi-session means a breaking ABI change across 51 consuming
 in-tree needs it — the bridge workspaces pair zenoh with a DIFFERENT backend — so this is a
 capability gap, not a live break. See `0348-*`. (2026-07-28)
 
+**#351** — a declared `param_services`/`lifecycle` NEVER reaches the C/C++ cargo feature list. The
+bake writes `set(NANO_ROS_FEATURES "param_services")` into `system_config.cmake`, nothing includes it
+on the workspace path, and the cache reads `NANO_ROS_FEATURES:STRING=` — so `nros-c`/`nros-cpp`
+compile without it. Nobody noticed because the `posix` always-on in both CMakeLists IS the lowering:
+on hosted it is the only path those two axes ever take, so a workspace that forgot to declare is
+indistinguishable from one that did. Found by phase-315 W4 checking the removal first — the check
+said safe (both real callers declare), and removing it still broke `ws-params-cpp` with `undefined
+reference to nros_cpp_get_param_integer`, which is what exposed the disjoint paths. Reverted; main
+unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
+read. See `0351-*`. (2026-07-31)
+
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
 #346). The design question this issue raised — "a borrowed response has nothing to borrow from" —
