@@ -92,38 +92,71 @@ Nothing new is invented: both emitters exist, `nros_feature_set` is already the
 single feature computation, and `capability_enabled` is already the single
 accessor. The only missing edge is that the cmake emitter is never consumed.
 
-### The one open question — how `NANO_ROS_FEATURES` gets set
+### How `NANO_ROS_FEATURES` gets set — RESOLVED
 
-The bake already runs BEFORE cmake configure (`workspace-fixtures-build.sh:176`
-vs `:221`), so `system_config.cmake` exists in time. What is undecided is who
-reads it, and it must work for a hand-written workspace, not only for the
-fixture script.
+The ROS-shaped answer already exists in the tree, and the defect is an ordering
+bug three lines wide.
 
-* **(A) `-D` from the derivation.** Whoever configures the workspace passes
-  `-DNANO_ROS_FEATURES=…`, obtained from the CLI. Smallest change, matches how
-  `safety` is already forced — except derived instead of hand-written. Weakness:
-  a user running `cmake` by hand gets nothing, which is the same class of
-  silent-miss this phase is closing.
-* **(B) the entry's cmake includes the bake.** `nano_ros_add_executable` (or a
-  small `nros_use_system()` before `find_package`) includes
-  `<bake>/system_config.cmake`. Works for hand-written workspaces. Weakness:
-  ordering — `NANO_ROS_FEATURES` must be set before nano-ros is pulled in, so it
-  cannot be inside `nano_ros_add_executable`, which runs after.
-* **(C) `find_package(nano_ros)` resolves the bringup itself.** Zero user
-  ceremony. Weakness: cmake has to find the bringup, which means teaching it the
-  workspace layout.
+A workspace root already declares its system:
 
-(B) is the current preference — it is the only option that is both explicit and
-correct for a hand-written workspace, and standalone examples already do exactly
-this by hand (`set(NANO_ROS_FEATURES "safety")` before pulling nano-ros in), so
-it makes the workspace path match a shape that already works. **Decide before
-W1.**
+```cmake
+nano_ros_workspace(
+    BACKEND  zenoh
+    PLATFORM "${NANO_ROS_PLATFORM}"
+    SYSTEM   demo_bringup      # <- the declaration, already written
+    SUBDIRS  ${_ws_subdirs})
+```
+
+and `nano_ros_workspace()` already solves this exact problem FOR THE RMW. Its own
+comment says it owns the import because it "maps BACKEND→NANO_ROS_RMW *before*
+the add_subdirectory body runs". But `SYSTEM` is consumed after that import:
+
+```cmake
+set(NANO_ROS_RMW "${_NRW_BACKEND}")   # :172  RMW set before import   OK
+_nros_import_once("${_nros_root}")    # :176  add_subdirectory HERE
+if(_NRW_SYSTEM)                       # :181  SYSTEM consumed AFTER   too late
+    nano_ros_workspace_metadata(...)
+endif()
+```
+
+So the user has already declared the bringup; nano-ros reads it three lines after
+the import that needed it.
+
+**Decision: hoist the `SYSTEM`-derived capability lowering above
+`_nros_import_once`** — `set(NANO_ROS_FEATURES ...)` beside `set(NANO_ROS_RMW ...)`
+at :172, sourced from the bringup's declaration (the bake's `system_config.cmake`
+already exists by then; `workspace-fixtures-build.sh` runs the bake at :176 and
+configures at :221).
+
+The user writes NOTHING new. Capabilities ride the identical path the RMW already
+rides, keyed off a package name — which is the ament idiom, not a magic variable
+set before `find_package`.
+
+Rejected alternatives, for the record:
+
+* **`-D` on the command line** (`--cmake-args -DNANO_ROS_FEATURES=…`) — repeats a
+  declaration that already exists in `system.toml`, on every invocation, and
+  silently does nothing when forgotten. That is the failure mode this phase
+  closes, re-created as the fix.
+* **`set(NANO_ROS_FEATURES …)` in the entry before `find_package`** — works, but
+  it is the magic-variable-before-find_package idiom ament avoids, and it
+  duplicates what `SYSTEM` already states one level up.
+* **`find_package(nano_ros)` resolving the bringup itself** — no user ceremony,
+  but cmake would have to learn the workspace layout to locate it, and `SYSTEM`
+  already carries that answer.
+
+STANDALONE C/C++ is deliberately unchanged: no `system.toml` exists, so the build
+files ARE the declaration (`set(NANO_ROS_FEATURES "safety")`, `-DNANO_ROS_RMW=…`).
+That is the same split phase-315 W3 settled for standalone Rust — the workspace
+derives, the standalone selects.
 
 ## Work items
 
-### W1 — populate `NANO_ROS_FEATURES` on the workspace path
+### W1 — set `NANO_ROS_FEATURES` before the import, from `SYSTEM`
 
-Per the decision above. **Done when:** `ws-params-cpp` compiles `nros-cpp` with
+In `cmake/NanoRosWorkspace.cmake`: derive the capability list from the
+`SYSTEM` bringup and set it alongside `NANO_ROS_RMW` at :172, before
+`_nros_import_once`. **Done when:** `ws-params-cpp` compiles `nros-cpp` with
 `param-services`, traceable to its declaration, with no `cmake_defs` and no
 always-on.
 
