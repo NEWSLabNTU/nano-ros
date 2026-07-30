@@ -1,8 +1,8 @@
-# Phase 319 — Board support tiers, derived and gated
+# Phase 320 — Board support tiers, derived and gated
 
 **Status (2026-07-31): drafted, nothing landed.** Split out of the original
-combined draft. Sibling phases: [phase-320](phase-320-package-org-cuts-and-reorg.md)
-(cuts + directory reorganization), [phase-321](phase-321-board-crate-consolidation.md)
+combined draft. Sibling phases: [phase-321](phase-321-package-org-cuts-and-reorg.md)
+(cuts + directory reorganization), [phase-322](phase-322-board-crate-consolidation.md)
 (board crate merges, deferred).
 
 **Why now.** Support level is asserted in hand-written prose and has already

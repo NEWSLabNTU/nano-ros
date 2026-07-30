@@ -1,8 +1,8 @@
-# Phase 320 — Package organization: cuts and the group reorganization
+# Phase 321 — Package organization: cuts and the group reorganization
 
 **Status (2026-07-31): drafted, nothing landed.** Split out of the original
-combined draft. Sibling phases: [phase-319](phase-319-board-support-tiers.md)
-(support tiers), [phase-321](phase-321-board-crate-consolidation.md) (board crate
+combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
+(support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
 
 **Why now.** Two problems that share a cause:
@@ -26,7 +26,7 @@ packages that were deleted in phase-115.
 
 **Sequencing.** W1 (cuts) is independent and safe to land first. W2 (moves) is
 pure churn that conflicts with every parallel session — it wants a quiet window,
-and it must not block phase-319's honesty fixes.
+and it must not block phase-320's honesty fixes.
 
 ---
 

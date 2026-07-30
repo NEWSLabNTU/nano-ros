@@ -1,8 +1,8 @@
-# Phase 321 — Board crate consolidation
+# Phase 322 — Board crate consolidation
 
 **Status (2026-07-31): drafted, DEFERRED.** Deliberately sequenced after
-[phase-319](phase-319-board-support-tiers.md) (support tiers) and
-[phase-320](phase-320-package-org-cuts-and-reorg.md) (cuts + reorganization).
+[phase-320](phase-320-board-support-tiers.md) (support tiers) and
+[phase-321](phase-321-package-org-cuts-and-reorg.md) (cuts + reorganization).
 
 **Why deferred.** This is the largest and riskiest of the three: it rewrites
 board crates that several platforms boot from, and every merge needs its
@@ -119,7 +119,7 @@ of truth"), so a merge costs 1–3 string edits and breaks no Entry package.
 - [ ] **W1.h** `nros-board-bare-metal` — 161 lines of which **135 are doc comment**
       describing a `DirectExec` family driver **no board opted into**; `mps2-an385`,
       `stm32f4` and `esp32-qemu` each hand-roll `BoardEntry::run` instead. Either
-      delete it (phase-320 W1.g) or — higher value — make those three implement `DirectExec`,
+      delete it (phase-321 W1.g) or — higher value — make those three implement `DirectExec`,
       which absorbs the W1.d duplication too.
 
 ---
