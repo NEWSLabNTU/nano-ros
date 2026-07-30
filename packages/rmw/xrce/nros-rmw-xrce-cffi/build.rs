@@ -1,12 +1,12 @@
 //! Build script for `nros-rmw-xrce-cffi`.
 //!
-//! Compiles the K.2.0–K.2.4 C backend (`packages/xrce/nros-rmw-xrce/src/*.c`)
+//! Compiles the K.2.0–K.2.4 C backend (`packages/rmw/xrce/nros-rmw-xrce/src/*.c`)
 //! plus the vendored micro-XRCE-DDS-Client + micro-CDR sources directly
 //! into a single static archive, then exposes the
 //! `nros_rmw_xrce_register` symbol to the Rust side via `extern "C"`.
 //!
 //! phase-321 W1.d — this build script is now the SOLE Rust-side owner of the
-//! source list. It used to say "mirrors `packages/xrce/xrce-sys/build.rs` …
+//! source list. It used to say "mirrors `packages/rmw/xrce/xrce-sys/build.rs` …
 //! keep both lists in lockstep", i.e. it was a maintained duplicate of a build
 //! script belonging to a crate with zero dependents, excluded from every
 //! workspace build. That crate is deleted; only the DIRECTORY survives, because
@@ -26,14 +26,21 @@ const XRCE_SERIAL_MTU_DEFAULT: &str = "512";
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // phase-321 W2.d — FOUR parents, not three. The crate sits at
+    // packages/rmw/xrce/nros-rmw-xrce-cffi/, one level deeper than the old
+    // packages/xrce/nros-rmw-xrce-cffi/. With three the walk stopped at
+    // `packages/` and every vendored path came out doubled
+    // (`<repo>/packages/packages/rmw/xrce/...`). A `.parent()` chain is a
+    // relative path that no grep for "../" can find — only a build does.
     let workspace = manifest_dir
         .parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
         .expect("workspace root")
         .to_path_buf();
-    let xrce_sys = workspace.join("packages/xrce/xrce-sys");
-    let xrce_c = workspace.join("packages/xrce/nros-rmw-xrce");
+    let xrce_sys = workspace.join("packages/rmw/xrce/xrce-sys");
+    let xrce_c = workspace.join("packages/rmw/xrce/nros-rmw-xrce");
     let microcdr = xrce_sys.join("micro-cdr");
     let microxrce = xrce_sys.join("micro-xrce-dds-client");
 
@@ -48,17 +55,17 @@ fn main() {
         (
             "micro-xrce-dds-client",
             microxrce.join("src/c"),
-            "git submodule update --init packages/xrce/xrce-sys/micro-xrce-dds-client",
+            "git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client",
         ),
         (
             "micro-cdr",
             microcdr.join("src/c"),
-            "git submodule update --init packages/xrce/xrce-sys/micro-cdr",
+            "git submodule update --init packages/rmw/xrce/xrce-sys/micro-cdr",
         ),
         (
             "nros-rmw-xrce",
             xrce_c.join("src"),
-            "in-repo wrapper — expected at packages/xrce/nros-rmw-xrce/src",
+            "in-repo wrapper — expected at packages/rmw/xrce/nros-rmw-xrce/src",
         ),
     ] {
         let has_sources = std::fs::read_dir(&root)

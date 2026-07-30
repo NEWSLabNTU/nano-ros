@@ -54,7 +54,7 @@ host-only = true
 host-only-reason = "XRCE C FFI surface, built per-platform by cmake"
 
 [dependencies]
-nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false }
+nros-rmw-cffi = { version = "0.5.0", path = "../../../core/nros-rmw-cffi", default-features = false }
 
 [build-dependencies]
 cc = "1"

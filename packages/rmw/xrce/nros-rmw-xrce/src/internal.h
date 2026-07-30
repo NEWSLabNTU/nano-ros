@@ -9,7 +9,7 @@
  * `nros_rmw_session_t::backend_data`). Per-entity state lives in slots
  * inside that struct; entity shells get a pointer to the matching slot
  * via their `backend_data` field. Mirrors the design ground truth in
- * `packages/xrce/nros-rmw-xrce/src/lib.rs` but without the
+ * `packages/rmw/xrce/nros-rmw-xrce/src/lib.rs` but without the
  * module-static `XrceSessionState` it relies on.
  */
 
@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-/* ---- Tunables (must mirror packages/xrce/nros-rmw-xrce/build.rs
+/* ---- Tunables (must mirror packages/rmw/xrce/nros-rmw-xrce/build.rs
  *      defaults so the C backend behaves the same as the Rust one
  *      under nominal config). ---- */
 

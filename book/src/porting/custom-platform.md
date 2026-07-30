@@ -111,7 +111,7 @@ What you add is a **pure ABI marker** feature so each transport crate's
 [features]
 myos = []   # ABI marker only — no shim dependency
 
-# packages/xrce/xrce-sys/Cargo.toml  (rmw-xrce)
+# packages/rmw/xrce/xrce-sys/Cargo.toml  (rmw-xrce)
 [features]
 myos = []   # ABI marker only
 ```

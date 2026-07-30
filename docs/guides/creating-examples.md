@@ -420,8 +420,8 @@ nros-node = { path = "../../../../../packages/core/nros-node" }
 nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
 nros-params = { path = "../../../../../packages/core/nros-params" }
 nros-macros = { path = "../../../../../packages/core/nros-macros" }
-nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce" }
-xrce-sys = { path = "../../../../../packages/xrce/xrce-sys" }
+nros-rmw-xrce = { path = "../../../../../packages/rmw/xrce/nros-rmw-xrce" }
+xrce-sys = { path = "../../../../../packages/rmw/xrce/xrce-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```

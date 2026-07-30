@@ -35,7 +35,7 @@ implementation; the source is the worked example to copy.
 | Backend | Source | Notes |
 |---|---|---|
 | zenoh-pico | [`packages/rmw/zenoh/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh) | Default. C transport via zenoh-pico. Native zero-copy publish via `z_bytes_from_static_buf`. |
-| micro-XRCE-DDS-Client | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
+| micro-XRCE-DDS-Client | [`packages/rmw/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
 | Cyclone DDS | [`packages/rmw/cyclonedds/nros-rmw-cyclonedds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/cyclonedds/nros-rmw-cyclonedds) | C++ shim; standalone CMake project. |
 | PX4 uORB | [`packages/rmw/uorb/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/uorb/nros-rmw-uorb) | Typed-trampoline registry over PX4 uORB. |
 

@@ -453,7 +453,7 @@ config NROS_XRCE_STREAM_HISTORY
       Maps to NROS_XRCE_STREAM_HISTORY, read by nros-rmw-xrce-cffi/build.rs.
 
       Defaults to 16 to match XRCE_STREAM_HISTORY in
-      packages/xrce/nros-rmw-xrce/src/internal.h. This option was inert until
+      packages/rmw/xrce/nros-rmw-xrce/src/internal.h. This option was inert until
       issue 0316 (exported under a name nothing read), so the C default of 16
       is what Zephyr XRCE images have always compiled; a default of 4 here
       would have shrunk every reliable stream buffer 4x the moment the knob

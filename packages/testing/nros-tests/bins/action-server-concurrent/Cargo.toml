@@ -34,7 +34,7 @@ nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-featur
     "platform-posix",
     "ros-humble",
 ], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../xrce/nros-rmw-xrce-cffi", default-features = false, features = [
+nros-rmw-xrce-cffi = { path = "../../../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = [
     "std",
 ], optional = true }
 example_interfaces = { version = "*", default-features = false }

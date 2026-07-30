@@ -110,7 +110,7 @@ talker, agent, transport, and rmw.
 ### Exactly where it breaks (verified by instrumentation)
 
 Instrumented `xrce_topic_callback` / `xrce_subscriber_has_data` in
-`packages/xrce/nros-rmw-xrce/src/subscriber.c` and re-ran host-talker → native_sim-listener:
+`packages/rmw/xrce/nros-rmw-xrce/src/subscriber.c` and re-ran host-talker → native_sim-listener:
 
 1. `recvfrom` on the listener **receives** every `0x09` DATA submessage (values 0,1,2…).
 2. `xrce_topic_callback` **fires 7×**, matches the datareader slot, and **buffers** into
@@ -125,7 +125,7 @@ So: **data is received and buffered but never delivered to the subscription call
 
 Instrumenting further: the executor's readiness scan does run on `std`, but on the
 native_sim build `spin_once` is **entered once and never returns** — it blocks inside
-`xrce_session_drive_io` (`packages/xrce/nros-rmw-xrce/src/session.c`). That function
+`xrce_session_drive_io` (`packages/rmw/xrce/nros-rmw-xrce/src/session.c`). That function
 paces the spin by looping `uxr_run_session_time` until a relative deadline elapses:
 
 ```c

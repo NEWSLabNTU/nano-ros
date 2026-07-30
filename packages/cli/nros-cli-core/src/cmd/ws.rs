@@ -2026,10 +2026,10 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
             "nros-rmw-cyclonedds-sys",
             "packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys",
         ),
-        ("nros-rmw-xrce-cffi", "packages/xrce/nros-rmw-xrce-cffi"),
+        ("nros-rmw-xrce-cffi", "packages/rmw/xrce/nros-rmw-xrce-cffi"),
         (
             "nros-rmw-xrce-cffi-staticlib",
-            "packages/xrce/nros-rmw-xrce-cffi-staticlib",
+            "packages/rmw/xrce/nros-rmw-xrce-cffi-staticlib",
         ),
         // Transport / SDKs that consumers regularly reference as `version = "*"`
         ("cyclonedds-sys", "packages/rmw/cyclonedds/cyclonedds-sys"),

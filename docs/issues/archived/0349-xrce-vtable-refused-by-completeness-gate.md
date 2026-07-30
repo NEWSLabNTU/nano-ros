@@ -35,7 +35,7 @@ register_subscription_event,
 assert_publisher_liveliness,
 ```
 
-The xrce vtable (`packages/xrce/nros-rmw-xrce/src/vtable.c:56-58`) sets all
+The xrce vtable (`packages/rmw/xrce/nros-rmw-xrce/src/vtable.c:56-58`) sets all
 three to `NULL` — deliberately and explicitly, alongside ~14 other `NULL`
 capability slots (`pub_loan`, `sub_borrow`, `next_deadline_ms`,
 `service_server_available`, …) that the gate correctly does NOT require.

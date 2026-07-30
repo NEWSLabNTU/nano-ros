@@ -22,7 +22,7 @@ include(CMakePackageConfigHelpers)
 # `nros_rmw_cffi_register()`. Path is exposed via cache var so callers
 # (or `find_package(NrosRmwXrce)`) can override it for out-of-tree
 # builds. Mirrors `nros-rmw-cyclonedds`'s convention.
-set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
+set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-rmw-abi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
 if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
     message(FATAL_ERROR
@@ -30,7 +30,7 @@ if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
         "Set -DNROS_RMW_CFFI_DIR=<path-to-packages/core/nros-rmw-abi/include>.")
 endif()
 
-set(NROS_PLATFORM_CFFI_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-platform-api/include"
+set(NROS_PLATFORM_CFFI_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-platform-api/include"
     CACHE PATH "Path to the nros-platform-cffi public headers (platform.h, platform_net.h, …)")
 if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform_net.h")
     message(FATAL_ERROR
@@ -118,7 +118,7 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated/ucdr/config.h"
     @ONLY)
 
-# Source lists mirror packages/xrce/xrce-sys/build.rs (proven
+# Source lists mirror packages/rmw/xrce/xrce-sys/build.rs (proven
 # working set). Keeping these in lockstep is a 115.K.2 invariant —
 # if the Rust build.rs adds a file, this CMakeLists must add it too,
 # and vice versa.

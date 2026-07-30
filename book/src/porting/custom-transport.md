@@ -214,7 +214,7 @@ applied; the user vtable just sees raw bytes.
 
 ## Loopback test
 
-`packages/xrce/nros-rmw-xrce/tests/custom_transport.rs` exercises the
+`packages/rmw/xrce/nros-rmw-xrce/tests/custom_transport.rs` exercises the
 slot lifecycle + the XRCE bridge round-trip with stub callbacks (no
 real session). Run via:
 

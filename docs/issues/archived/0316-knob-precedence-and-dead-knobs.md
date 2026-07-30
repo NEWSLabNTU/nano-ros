@@ -66,7 +66,7 @@ set(ENV{XRCE_MAX_SUBSCRIBERS} "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
 set(ENV{XRCE_BUFFER_SIZE}     "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
 ```
 
-The only reader is `packages/xrce/nros-rmw-xrce-cffi/build.rs:238,258-274`,
+The only reader is `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:238,258-274`,
 which reads the **`NROS_`-prefixed** names. `xrce-sys/build.rs` reads only
 `XRCE_TRANSPORT_MTU` and `XRCE_MAX_SESSION_*`, and
 `zephyr/cmake/nros_rmw_xrce.cmake` sets no defines at all.

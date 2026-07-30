@@ -1116,11 +1116,11 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     }
     match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
         Some("cyclonedds") => candidates.push(root.join("packages/rmw/cyclonedds")),
-        Some("xrce") => candidates.push(root.join("packages/xrce")),
+        Some("xrce") => candidates.push(root.join("packages/rmw/xrce")),
         Some("zenoh") => candidates.push(root.join("packages/rmw/zenoh")),
         _ => {
             candidates.push(root.join("packages/rmw/cyclonedds"));
-            candidates.push(root.join("packages/xrce"));
+            candidates.push(root.join("packages/rmw/xrce"));
             candidates.push(root.join("packages/rmw/zenoh"));
         }
     }

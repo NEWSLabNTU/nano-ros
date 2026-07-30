@@ -287,7 +287,7 @@ _cmake-cargo-stale-guard build_dir:
     # either: it is gitignored, so it was never in the index.
     SRC_HASH=$(git ls-files \
         packages/core \
-        packages/xrce/nros-rmw-xrce \
+        packages/rmw/xrce/nros-rmw-xrce \
         packages/rmw/zenoh/nros-rmw-zenoh \
         | grep '\.rs$' \
         | sort \

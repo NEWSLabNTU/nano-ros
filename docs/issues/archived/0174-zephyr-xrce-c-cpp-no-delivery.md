@@ -60,4 +60,4 @@ deliver.
 
 `packages/testing/nros-tests/tests/zephyr.rs` (`test_zephyr_xrce_{c,cpp}_*`),
 issue #164 (re-triage), issue #163 (the Rust-side XRCE fix this does NOT cover),
-`packages/xrce/`.
+`packages/rmw/xrce/`.

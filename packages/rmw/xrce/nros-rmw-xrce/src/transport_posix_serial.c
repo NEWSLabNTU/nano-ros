@@ -8,7 +8,7 @@
  * (just an `int fd`). Multi-session safe — the trampolines reach the
  * fd via `uxrCustomTransport.args`.
  *
- * Reference: `packages/xrce/nros-rmw-xrce/src/platform_serial.rs`
+ * Reference: `packages/rmw/xrce/nros-rmw-xrce/src/platform_serial.rs`
  * (legacy Rust impl) — same termios + read/write pattern, just
  * routed through `nros-platform-posix::serial` there.
  */

@@ -37,7 +37,7 @@ uORB is fundamentally different from zenoh-pico and XRCE-DDS:
 Folding uORB into `nros-rmw-zenoh` or `nros-rmw-xrce` would force the
 network-shaped abstractions onto something that doesn't need them and
 loses critical perf properties (zero-copy in-process delivery). Same
-directory split as `packages/rmw/zenoh/` vs. `packages/xrce/`.
+directory split as `packages/rmw/zenoh/` vs. `packages/rmw/xrce/`.
 
 ## 2. Style B vs Style C entry points
 

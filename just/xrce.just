@@ -42,7 +42,7 @@ clean-agent:
 # what the root CMake xrce branch consumes; build it via cargo or
 # via the root cmake configure with NANO_ROS_RMW=xrce. The
 # header-only `nros-rmw-xrce` C++ project under
-# packages/xrce/nros-rmw-xrce/ keeps its CTest harness for ad-hoc
+# packages/rmw/xrce/nros-rmw-xrce/ keeps its CTest harness for ad-hoc
 # in-tree validation.
 
 # Run XRCE-DDS integration tests (requires: just xrce build-agent)
@@ -134,7 +134,7 @@ test-c verbose="":
 check-rust-rmw:
     #!/usr/bin/env bash
     set -e
-    cd packages/xrce/nros-rmw-xrce
+    cd packages/rmw/xrce/nros-rmw-xrce
     cargo check --quiet
 
 # Clean XRCE build artifacts

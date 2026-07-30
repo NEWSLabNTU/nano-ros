@@ -50,7 +50,7 @@ In every `set(_nros*_features …)` string:
 - `cffi-xrce-c` / `rmw-xrce-cffi` → drop, AND add a standalone
   `nros-rmw-xrce-cffi-staticlib` cargo-build block mirroring the zenoh one so
   `nros_rmw_xrce_register` resolves at link (the staticlib crate exists at
-  `packages/xrce/nros-rmw-xrce-cffi-staticlib`). Nuance to validate on real
+  `packages/rmw/xrce/nros-rmw-xrce-cffi-staticlib`). Nuance to validate on real
   no_std boards: the xrce staticlib needs a `panic-halt` strategy to compile
   standalone (the ESP-IDF path already does this), reconciled at the final link
   via the existing `-Wl,--allow-multiple-definition`.

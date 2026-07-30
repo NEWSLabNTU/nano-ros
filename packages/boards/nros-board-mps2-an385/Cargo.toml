@@ -55,7 +55,7 @@ cmsdk-uart = { path = "../../drivers/cmsdk-uart", optional = true }
 # Phase 207.2 — XRCE custom-transport callbacks (UART). Gated via the
 # `xrce-transport` feature so the type only enters the build when an XRCE
 # example asks for it.
-nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 # Phase 132 — `mps2-an385-pac` exposes the `Interrupt` enum so
 # `init_serial` can `NVIC::unmask(Interrupt::UARTTX0)` to enable
 # the TX-empty IRQ that backs the cmsdk-uart driver's `wfi`-loop.

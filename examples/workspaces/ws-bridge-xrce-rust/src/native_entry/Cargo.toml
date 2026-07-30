@@ -37,4 +37,4 @@ nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", fe
 # xrce egress backend — connects to a Micro-XRCE-DDS Agent. Lazy type
 # registration, so NO descriptor staging / msg-crate dep (unlike the cyclonedds
 # sibling): the macro emits `nros_rmw_xrce_cffi::register()` only.
-nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }

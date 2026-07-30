@@ -1,7 +1,7 @@
 /* Phase 115.K.2.4 — runtime custom-transport bridge.
  *
  * C-side equivalent of `nros-rmw-xrce::init_transport_from_custom_ops`
- * in `packages/xrce/nros-rmw-xrce/src/lib.rs:875`. Stores a vtable in
+ * in `packages/rmw/xrce/nros-rmw-xrce/src/lib.rs:875`. Stores a vtable in
  * file-scope storage (single registration per process — same shape
  * the Rust impl uses) and exposes four trampolines that XRCE's
  * `uxrCustomTransport` invokes on each open / close / write / read.

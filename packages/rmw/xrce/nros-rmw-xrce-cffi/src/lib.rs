@@ -23,12 +23,12 @@
 use core::ffi::{c_int, c_void};
 
 unsafe extern "C" {
-    /// C entry point exported by `packages/xrce/nros-rmw-xrce/src/vtable.c`.
+    /// C entry point exported by `packages/rmw/xrce/nros-rmw-xrce/src/vtable.c`.
     /// Calls `nros_rmw_cffi_register_named("xrce", &kVtable)` internally.
     fn nros_rmw_xrce_register() -> c_int;
 
     /// Phase 207.1 — C entry point exported by
-    /// `packages/xrce/nros-rmw-xrce/src/transport_custom.c`. Installs a
+    /// `packages/rmw/xrce/nros-rmw-xrce/src/transport_custom.c`. Installs a
     /// custom-transport vtable for the XRCE backend's `custom://` /
     /// `serial/...` locator path. After this call returns OK, the backend
     /// routes session I/O through the supplied callbacks instead of UDP /
@@ -45,7 +45,7 @@ unsafe extern "C" {
 /// Phase 207.1 / 115.K.2.4 — runtime transport vtable for the XRCE
 /// custom-transport bridge. Layout-identical to
 /// `nros_rmw_xrce_transport_ops_t` in
-/// `packages/xrce/nros-rmw-xrce/include/nros_rmw_xrce.h`. Pass to
+/// `packages/rmw/xrce/nros-rmw-xrce/include/nros_rmw_xrce.h`. Pass to
 /// [`set_custom_transport_ops`] (or, in `extern "C"` consumers, to
 /// `nros_rmw_xrce_set_custom_transport_ops` directly).
 ///

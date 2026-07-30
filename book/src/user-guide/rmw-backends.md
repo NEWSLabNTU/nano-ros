@@ -184,7 +184,7 @@ nros-rmw-zenoh = { path = "<...>/packages/rmw/zenoh/nros-rmw-zenoh",
 nros = { path = "<...>/packages/core/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-xrce-cffi = { path = "<...>/packages/xrce/nros-rmw-xrce-cffi",
+nros-rmw-xrce-cffi = { path = "<...>/packages/rmw/xrce/nros-rmw-xrce-cffi",
                        features = ["std"] }
 
 # Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI

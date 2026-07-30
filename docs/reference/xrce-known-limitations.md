@@ -3,7 +3,7 @@
 Phase 115.K.2.0 through 115.K.2.4 ship a deliberately minimal
 re-implementation of the Rust `nros-rmw-xrce` backend in pure C99.
 Each gap below is the difference vs. the Rust ground truth at
-`packages/xrce/nros-rmw-xrce/src/lib.rs`. Items are roughly ordered
+`packages/rmw/xrce/nros-rmw-xrce/src/lib.rs`. Items are roughly ordered
 by likely impact on real workloads.
 
 ## QoS XML profile path missing

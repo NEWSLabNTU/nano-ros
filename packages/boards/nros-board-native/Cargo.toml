@@ -49,7 +49,7 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["platfor
 # Entry pkg can select any RMW via the board's `rmw-<x>` feature and the board
 # boot calls its `register()` (no app-side backend ownership). The board's
 # explicit call replaces the linkme walk, so these omit `linkme-register`.
-nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
+nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 
 [features]

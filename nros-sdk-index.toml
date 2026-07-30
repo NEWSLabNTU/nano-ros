@@ -303,15 +303,15 @@ submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
 version = "2.4.3-nros1"
 git = "https://github.com/eProsima/Micro-XRCE-DDS-Client.git"
 ref = "bdfa28090efc8c0e89aa5c95cdf0878c8289a18b"
-dest = "packages/xrce/xrce-sys/micro-xrce-dds-client"
-submodule = "packages/xrce/xrce-sys/micro-xrce-dds-client"
+dest = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
+submodule = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 
 [source.micro-cdr]
 version = "2.0.x"
 git = "https://github.com/eProsima/Micro-CDR.git"
 ref = "99672492c5ef9fc378a8835b0bce9b2f7fa41306"
-dest = "packages/xrce/xrce-sys/micro-cdr"
-submodule = "packages/xrce/xrce-sys/micro-cdr"
+dest = "packages/rmw/xrce/xrce-sys/micro-cdr"
+submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
 
 # NetX Duo network stack (ThreadX boards link it; virtio-net-netx CMake + the
 # threadx board build.rs expect it checked out).
