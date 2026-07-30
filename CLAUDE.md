@@ -51,10 +51,13 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   - `just ci` — **tier 1**, minutes, host only. The default. Gates and runs only
     native fixtures, so a stale ThreadX fixture cannot block it.
   - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
-    or `cmake/`. That is where the platform×language and rmw×language interaction
-    classes live (0268/0245 sizes headers, 0332 freestanding headers, 0331 vtable
-    ABI) — tier 1 cannot see any of them.
-  - `just ci-full` — **tier 3**, the whole matrix. Nightly, pre-release, on demand.
+    or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once, ~26 % of a
+    sweep. It sees each platform and each language, but NOT their pairing.
+  - `just ci-matrix-nightly` — the pairwise cover (~70 %). Where the
+    platform×language and rmw×language classes actually surface (0268/0245 sizes
+    headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of
+    latency on those, which is the price of a middle tier anyone can afford.
+  - `just ci-full` — **tier 3**, the whole matrix. Pre-release, on demand.
   Green tier 1 means "the logic and the seams are sound", never "it builds on the
   targets". Say which tier you ran; do not report a tier-1 green as if it were a
   sweep. The old single `just ci` WAS tier 3 — an instruction nobody could afford

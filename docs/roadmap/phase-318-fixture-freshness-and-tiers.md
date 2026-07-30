@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-30): W1–W5 landed; W4.d machinery landed, its SELECTION is an open operator decision (see W4.d).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-30): COMPLETE — W1–W5 landed. W4.d's measurement split tier 2 into a 1-wise `ci-matrix` and a pairwise `ci-matrix-nightly` (RFC-0061 decision 3).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -88,52 +88,55 @@ both files so the halves are read together.
 ## W4 — scope the staleness gate to the lane
 
 - [x] **W4.a** `scripts/check-fixtures-stale.sh` takes a platform/cell filter.
-- [x] **W4.b** Recipes: `ci` = tier 1, `ci-matrix` = tier 2, `ci-full` = today's
-      `ci`. Each gates only its own fixtures — a native-intent run must not be
+- [x] **W4.b** Recipes: `ci` = tier 1, `ci-matrix` = tier 2, `ci-matrix-nightly`
+      = the pairwise cover (added in W4.d), `ci-full` = today's `ci`. Each gates only its own fixtures — a native-intent run must not be
       blocked by a stale ThreadX fixture (which is exactly what happened).
-- [~] **W4.d** Wire the computed tier-2 cell set to the lane. **Machinery landed;
-      the selection it should carry is an open operator decision.**
+- [x] **W4.d** Wire the computed lane selection to the lane. **Done — and the
+      measurement that came out of it split tier 2 in two.**
 
-      Landed: `lane-coords <tier1|tier2>` prints a cover's distinct
-      `(platform, lang, rmw)` FIXTURE coordinates, and
-      `fixtures-manifest.py --coords-from FILE` restricts rows to them — so one
-      computation can drive a lane's build, its gate and its selection.
+      | lane | selection | cells | coords | cost |
+      | --- | --- | --- | --- | --- |
+      | tier 1 | native, 1-wise(w,k) + pairwise(l × r) | 16 | 10 | 21 % |
+      | tier 2 `ci-matrix` | 1-wise(p, l, r, k) | 11 | 12 | 26 % |
+      | tier 2n `ci-matrix-nightly` | pairwise(p × l × r × k) | 37 | 33 | 70 % |
+      | tier 3 `ci-full` | everything | 182 | 47 | 100 % |
 
-      What the measurement says, and it undercuts this work item as specified:
+      The work item assumed the saving was in test SELECTION. It is not: every
+      cover touches all ten platforms by construction (W3.d's anti-rot gate
+      requires every declared value of every covered axis), so a per-platform
+      nextest filter excludes nothing. The saving is entirely in which FIXTURES
+      get built — hence coordinates, not cells, as the unit.
 
-      | selection | cells | coords | cost |
-      | --- | --- | --- | --- |
-      | all (tier 3) | 182 | 46 | 100 % |
-      | 1-wise p,l,r,k | 11 | 11 | 24 % |
-      | pairwise p × l | 29 | 29 | 63 % |
-      | pairwise p × l × r | 29 | 29 | 63 % |
-      | **pairwise p × l × r × k (shipped tier 2)** | **37** | **32** | **70 %** |
+      And in that unit RFC-0061's "tier 2 ≈ 20 % of a sweep" was 70 %: cells
+      share fixtures (the four threadx-linux C cyclonedds cells are one build), so
+      an 80 % cell reduction is a 30 % build reduction. The floor is structural —
+      pairwise(platform × lang) is 29 fixtures because there are 29 declared pairs
+      — so the only lever was whether tier 2 pairs platform × lang at all, which
+      is the class (0268, 0245, 0332) the tier exists to catch. Split rather than
+      chosen between: `ci-matrix` is the affordable 1-wise gate, `ci-matrix-nightly`
+      keeps the pairwise coverage a day later. RFC-0061 decision 3.
 
-      Two consequences.
+      Shipped:
+      - `lane-coords <tier1|tier2|tier2-nightly>` → the lane's `platform,lang,rmw`
+        coordinates; `--cells` for reading.
+      - `fixtures-manifest.py --coords-from FILE`; an empty/absent set is a hard
+        error, never a silent select-nothing (which would make a broken lane look
+        instant).
+      - `NROS_FIXTURE_SCOPE=coords` + `NROS_FIXTURE_COORDS` in
+        `check-fixtures-stale.sh`, and `just _lane-gate <lane>` feeding gate and
+        build from ONE `lane-coords` invocation so they cannot disagree.
+      - `PlatformId::fixture_tokens` / `from_fixture_token` in `matrix.rs` as the
+        SSoT for the fixtures.toml platform vocabulary, with a round-trip gate.
+        This mapping had existed only inside `tests/matrix_fixture_coverage.rs`;
+        writing `coords` produced a second, DISAGREEING copy of the forward
+        direction (`qemu-esp32-baremetal` attributed to `QemuBaremetal` instead of
+        `Esp32Qemu`) — caught by a new test on its first run, and consolidated
+        rather than corrected in place.
 
-      1. **Nextest filtering saves nothing.** The cover spans all ten platforms
-         *by construction* — W3.d's anti-rot test requires every declared value of
-         every covered axis to appear. A per-platform test filter therefore
-         excludes no platform. The saving was never in test SELECTION.
-      2. **The 20 % headline is in the wrong unit.** RFC-0061 counted cells;
-         cells share fixtures, and fixtures are what cost hours. In coordinates,
-         tier 2 is 70 % of tier 3 — a middle tier that costs 70 % of the sweep is
-         not much of a middle tier.
+      Verified: `just _lane-gate tier2` gates 12 coordinates and reports 5 stale
+      workspace fixtures, all inside the selection; the unscoped gate covers 81
+      records.
 
-      The floor is structural: pairwise(platform × lang) alone is 29 of the 46
-      coordinates, because each pair needs its own fixture built. Adding rmw and
-      kind pairing on top costs only 3 more (29 → 32) — those axes ride along
-      nearly free. So the whole question is whether tier 2 pairs platform × lang.
-      It cannot be tuned around; it is the definition of the tier.
-
-      - **Keep pairwise** — costs 70 %, catches the platform × lang class
-        (0268 freertos × C, 0245, 0332) that tier 2 exists for.
-      - **Drop to 1-wise** — 24 %, but it may pick freertos × Rust and never
-        build freertos × C, i.e. miss exactly that class.
-      - **Split** — 1-wise as a cheap pre-merge gate, pairwise nightly.
-
-      Not resolvable here: "pairwise for tier 2" was an operator decision, and
-      the cost it was approved under was measured in the wrong unit.
 - [x] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
       with tier 2 named for core/codegen/cmake changes. An instruction nobody can
       afford to follow gets followed selectively.

@@ -1435,23 +1435,64 @@ rust-rtos-link-check:
 # happened on 2026-07-28, when every code stage passed and 40 cross-platform
 # workspace fixtures failed the preflight of a native-intent run.
 #
-#   just ci         tier 1 — every commit / pre-push
-#   just ci-matrix  tier 2 — when the diff touches packages/core, codegen, cmake/
-#   just ci-full    tier 3 — nightly, pre-release, on demand (the former `ci`)
+#   just ci               tier 1 — every commit / pre-push
+#   just ci-matrix        tier 2 — when the diff touches packages/core, codegen, cmake/
+#   just ci-matrix-nightly       — the pairwise cover, nightly
+#   just ci-full          tier 3 — pre-release, on demand (the former `ci`)
 [group("ci")]
 ci:
     @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native just check rust-rtos-link-check test-all
     @echo "CI passed (tier 1 — host only; platform coverage needs `just ci-matrix`)!"
 
-# Tier 2 — the 37-cell pairwise cover over platform x lang x rmw x kind
-# (`nros_tests::ci_lane`). Selection is computed from `matrix::CELLS`; wiring the
-# nextest filter to that computed set is phase-318 W4.d, so today this runs the
-# full matrix with the tier-2 FIXTURE scope and is honest about it.
+# Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
+#
+# The selection is 1-wise over platform x lang x rmw x kind (`nros_tests::ci_lane`),
+# computed from `matrix::CELLS` and emitted by `lane-coords`. 12 of 47 coordinates.
+#
+# Why 1-wise and not pairwise, which is what this lane originally specified: cost
+# is COORDINATES, not cells, because cells share fixtures and fixtures are what
+# take hours. The pairwise cover is 37 of 182 cells (20 %) but 33 of 47
+# coordinates (70 %) — a middle tier costing 70 % of the sweep is one nobody runs,
+# which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
+# `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
+# the 0268 / 0245 / 0332 class lives.
+#
+# Note the gate and the BUILD read the same coordinate file, so they cannot
+# disagree about what this lane covers.
 [group("ci")]
 ci-matrix:
-    @echo "NOTE: tier-2 cell selection is computed (nros_tests::ci_lane) but not yet"
-    @echo "      wired to the nextest filter (phase-318 W4.d) — running the full lane."
-    @just ci-full
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _lane-gate tier2
+    just check rust-rtos-link-check test-all
+    echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
+
+# Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (33 of 47
+# coordinates). The interaction coverage `ci-matrix` gives up to stay affordable:
+# same class of defect, caught a day later instead of pre-merge.
+[group("ci")]
+ci-matrix-nightly:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _lane-gate tier2-nightly
+    just check rust-rtos-link-check test-all test-ignored
+    echo "CI passed (tier 2 nightly — pairwise cover)!"
+
+# Run the staleness gate over exactly one lane's fixture coordinates.
+# Separate recipe because `ci-matrix` and `ci-matrix-nightly` differ ONLY in which
+# lane they name — the shared helper, not a second spelling.
+[group("ci")]
+[private]
+_lane-gate lane:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    coords="$(mktemp)"
+    trap 'rm -f "$coords"' EXIT
+    cargo run -q -p nros-tests --bin lane-coords -- {{lane}} > "$coords"
+    echo "[{{lane}}] $(wc -l < "$coords") fixture coordinate(s):"
+    sed 's/^/  /' "$coords"
+    NROS_FIXTURE_SCOPE=coords NROS_FIXTURE_COORDS="$coords" \
+        bash scripts/check-fixtures-stale.sh
 
 # phase-318 W5.a — run ONE family's tests, then optionally free its artifacts.
 #

@@ -74,6 +74,46 @@ impl PlatformId {
         }
     }
 
+    /// The `platform = "..."` token(s) `examples/fixtures.toml` spells this
+    /// platform with — the SSoT for that vocabulary, in both directions
+    /// ([`PlatformId::from_fixture_token`] is its inverse, gated by
+    /// `fixture_token_mapping_round_trips`).
+    ///
+    /// It is one-to-MANY: `Esp32Qemu` covers both the RTOS lane (`esp32`) and the
+    /// bare-metal one (`qemu-esp32-baremetal`). Selecting the platform must select
+    /// both, so callers iterate the slice rather than taking a single token.
+    ///
+    /// One home on purpose. Before phase-318 W4.d this existed only as
+    /// `platform_from_str` inside `tests/matrix_fixture_coverage.rs`, and the
+    /// forward direction got hand-written a second time — with
+    /// `qemu-esp32-baremetal` attributed to the wrong platform. A second spelling
+    /// of a mapping is the recurring defect class in this repo (CLAUDE.md "add ONE
+    /// shared helper rather than a second spelling").
+    pub const fn fixture_tokens(self) -> &'static [&'static str] {
+        match self {
+            PlatformId::Native => &["native"],
+            PlatformId::ZephyrNativeSim => &["zephyr"],
+            PlatformId::FreertosMps2 => &["freertos"],
+            PlatformId::NuttxArm => &["nuttx"],
+            PlatformId::NuttxRiscv => &["nuttx-riscv"],
+            PlatformId::ThreadxLinux => &["threadx-linux"],
+            PlatformId::ThreadxRiscv64 => &["threadx-riscv64"],
+            PlatformId::Esp32Qemu => &["esp32", "qemu-esp32-baremetal"],
+            PlatformId::QemuBaremetal => &["qemu-arm-baremetal"],
+            PlatformId::Stm32F4 => &["stm32f4"],
+            PlatformId::Fvp => &["fvp"],
+        }
+    }
+
+    /// `examples/fixtures.toml` `platform` string → matrix platform. Inverse of
+    /// [`PlatformId::fixture_tokens`].
+    pub fn from_fixture_token(s: &str) -> Option<PlatformId> {
+        PlatformId::ALL
+            .iter()
+            .copied()
+            .find(|p| p.fixture_tokens().contains(&s))
+    }
+
     pub const ALL: &'static [PlatformId] = &[
         PlatformId::Native,
         PlatformId::ZephyrNativeSim,

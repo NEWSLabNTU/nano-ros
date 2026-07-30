@@ -199,8 +199,17 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 | --- | --- | --- | --- | --- | --- |
 | 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save |
 | 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | every commit, pre-push |
-| 2 | `ci-matrix` | tier 1 + a **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | ~20 % of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
-| 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | nightly, pre-release, on demand |
+| 2 | `ci-matrix` | tier 1 + an **11-cell 1-wise cover** (platform, lang, rmw, kind) | that subset's fixtures | **26 %** of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
+| 2n | `ci-matrix-nightly` | the **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | **70 %** of a full sweep | nightly |
+| 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | pre-release, on demand |
+
+**Tier 2 split in two (amended 2026-07-30, see §Cost is coordinates).** This RFC
+originally put the pairwise cover on `ci-matrix` at "~20 % of a full sweep". That
+number counted CELLS, and cells share fixtures: in fixture COORDINATES — the unit
+that drives build hours — the pairwise cover is 70 %, not 20 %. A middle tier
+costing 70 % of the sweep is one nobody runs, which is the failure mode this RFC
+exists to fix, so the affordable 1-wise cover became `ci-matrix` and the pairwise
+cover moved to a nightly lane rather than being dropped.
 
 Two rules make the ladder honest:
 
@@ -248,7 +257,8 @@ fails on every platform.
 | --- | --- | --- | --- |
 | 0 | none — text invariants only | **0** | Comparisons of committed text: 0336, 0321, 0268's mirror gate, 0320/0334. No build ⇒ no fixture ⇒ no staleness. |
 | 1 | Native only: **1-wise(workload, kind) + pairwise(lang × rmw)** | **16** of 77 native | Every core code path runs once (where most P1s live), and every language meets every RMW — on the host, where a failure costs minutes, not a QEMU boot. |
-| 2 | **pairwise(platform × lang × rmw × kind)** | **37** (20 %) | Exactly the interaction classes above. Deliberately excludes `workload`. |
+| 2 | **1-wise(platform, lang, rmw, kind)** | **11** | Every declared value of every axis at least once, at 26 % of the sweep. Gives up interaction coverage to stay affordable per change. |
+| 2n | **pairwise(platform × lang × rmw × kind)** | **37** | Exactly the interaction classes above. Deliberately excludes `workload`. Nightly, because it costs 70 % of the sweep. |
 | 3 | everything: Runtime + BuildOnly | **182** + build-only | Thresholds, timing, emulator behaviour — irreducible. |
 
 Measured alternatives, for the record:
@@ -261,6 +271,40 @@ Measured alternatives, for the record:
 | **pairwise platform × lang × rmw × kind** | **37** | **20 %** |
 | + 1-wise(workload) | 42 | 23 % |
 | full 5-axis pairwise | 73 | 40 % |
+
+### Cost is coordinates, not cells (measured 2026-07-30, phase-318 W4.d)
+
+Everything above counts cells. That is the wrong unit, and getting it wrong is
+what put "tier 2 ≈ 20 % of a sweep" in this document.
+
+A cell is a test lane. A **coordinate** is a distinct `(platform, lang, rmw)`
+fixture. Many cells share one fixture — the four threadx-linux C cyclonedds cells
+are one build — so what a tier costs in HOURS is its coordinate count, not its
+cell count. The matrix is 182 runtime cells over **47** coordinates.
+
+| lane | selection | cells | coords | cost |
+| --- | --- | --- | --- | --- |
+| tier 1 | native, 1-wise(w,k) + pairwise(l × r) | 16 | 10 | 21 % |
+| tier 2 | 1-wise(p, l, r, k) | 11 | 12 | 26 % |
+| tier 2n | pairwise(p × l × r × k) | 37 | 33 | 70 % |
+| tier 3 | everything | 182 | 47 | 100 % |
+
+The pairwise cover reduces cells by 80 % and fixtures by only 30 %. The floor is
+structural: pairwise(platform × lang) needs one fixture per declared pair and
+there are 29 of them, so no tuning reaches a cheap pairwise tier — the only lever
+is whether tier 2 pairs platform × lang at all.
+
+Two further consequences:
+
+- **Filtering the TEST run saves nothing.** Every cover here touches all ten
+  platforms by construction (the anti-rot gate requires every declared value of
+  every covered axis), so a per-platform nextest filter excludes no platform. The
+  saving is entirely in which FIXTURES get built, which is why `lane-coords`
+  emits coordinates and `fixtures-manifest.py --coords-from` consumes them.
+- **The ladder is not monotone in cells** — tier 1 selects 16, tier 2 selects 11 —
+  because tier 1's cells are all native and a native fixture is nearly free. Any
+  invariant about tier cost has to be stated in coordinates; the shipped one
+  (`the_ladder_is_monotone_in_fixture_cost`) is.
 
 ### Two calls that are not obvious
 
@@ -362,7 +406,22 @@ These do not depend on proposals 1–2 but bound the same cost:
    the runtime sweep on today's matrix. Full 5-axis pairwise (adding `workload`)
    was measured at 73 cells / 40 % and rejected as too heavy for a middle tier;
    no interaction defect found this session was workload-specific. Numbers and
-   method in Proposal 2.
+   method in Proposal 2. **Amended 2026-07-30 — see decision 3.**
+
+**Decided 2026-07-30 (maintainer):**
+
+3. **Tier 2 splits: 1-wise on `ci-matrix`, pairwise on `ci-matrix-nightly`.**
+   Decision 2's "~20 %" was measured in cells; in fixture coordinates the same
+   cover is **70 %** (§Cost is coordinates, not cells). The choice was between a
+   70 % middle tier, a 26 % one that gives up interaction coverage, and splitting.
+   Splitting was taken: the affordable cover gates every change, the pairwise
+   cover — which is where the 0268 / 0245 / 0332 class lives, so it cannot be
+   dropped — runs nightly. What tier 2 now trades away is not coverage but
+   LATENCY on the interaction classes: a day, instead of pre-merge.
+
+   The nightly lane keeps `rmw` and `kind` in the pairing rather than reducing to
+   platform × lang: it costs ~4 coordinates more and a lane off the critical path
+   should not trade coverage that cheap.
 
 ## Open questions
 

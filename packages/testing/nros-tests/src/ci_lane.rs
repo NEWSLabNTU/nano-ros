@@ -25,7 +25,39 @@
 //! ABI class (0331) is rmw × lang; entry/carrier wiring (0097, 0263) is
 //! platform × kind. Nothing in that catalogue needs workload × platform — an
 //! action-path bug fails on every platform, which is why [`CiLane::Tier1`] covers
-//! every workload once on native and [`CiLane::Tier2`] does not re-cover it.
+//! every workload once on native and the tier-2 lanes do not re-cover it.
+//!
+//! # Why tier 2 splits (2026-07-30)
+//!
+//! Cost is [`coords`], not cell count: cells share fixtures, and it is FIXTURES
+//! that take hours to build. Measured 2026-07-30 against 182 runtime cells and
+//! 47 coordinates:
+//!
+//! | lane | selection | cells | coords | cost |
+//! | --- | --- | --- | --- | --- |
+//! | [`CiLane::Tier1`] | native, 1-wise w,k + pairwise l × r | 16 | 10 | 21 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 12 | 26 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 33 | 70 % |
+//! | tier 3 | everything | 182 | 47 | 100 % |
+//!
+//! The pairwise cover reduces cells by 80 % and fixtures by only 30 %, and the
+//! floor is structural: pairwise(platform × lang) needs one fixture per pair and
+//! there are 29 declared pairs, so it cannot be tuned away. A middle tier costing
+//! 70 % of the sweep is one nobody runs — the failure mode RFC-0061 exists to fix
+//! — and pairwise(platform × lang) is also exactly the interaction the
+//! 0268 / 0245 / 0332 class lives in, so it cannot simply be dropped either.
+//!
+//! Hence two lanes: [`CiLane::Tier2`] is 1-wise and affordable per change,
+//! [`CiLane::Tier2Nightly`] is the pairwise cover on a nightly cadence. Cheap
+//! enough to run, thorough enough to catch the class — a day later rather than
+//! pre-merge. The nightly lane keeps rmw and kind in the pairing: over
+//! pairwise(platform × lang) alone it costs ~4 more coordinates, and a lane that
+//! is not on the critical path should not trade coverage that cheap.
+//!
+//! Note the ladder is not monotone in CELLS — tier 1 picks 16 and tier 2 picks 11
+//! — because tier 1's cells are all native and a native fixture is nearly free.
+//! Cell count is the wrong unit; `the_ladder_is_monotone_in_fixture_cost` asserts
+//! the ordering in coordinates so that confusion cannot come back.
 //!
 //! # Why a set cover and not a covering array
 //!
@@ -47,10 +79,18 @@ pub enum CiLane {
     /// RMW. What `just ci` should mean — minutes, on the host, where a failure is
     /// cheap to debug.
     Tier1,
-    /// Pairwise over platform × lang × rmw × kind across the whole matrix. The
-    /// build/ABI/link/wiring interactions, which is what a platform changes.
+    /// 1-wise over platform × lang × rmw × kind: every declared value of each
+    /// axis appears at least once, no pairing. What `just ci-matrix` runs — the
+    /// per-change gate that has to be affordable enough to actually get run.
     Tier2,
+    /// Pairwise over platform × lang × rmw × kind. What `just ci-matrix-nightly`
+    /// runs — the interaction coverage tier 2 gives up in exchange for being
+    /// cheap. See [`ALL`] for why the split exists.
+    Tier2Nightly,
 }
+
+/// Every computed lane, so tests and tooling iterate rather than enumerate.
+pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly];
 
 /// The axes, addressed positionally so requirements can be built generically.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -98,10 +138,16 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
             vec![Axis::Workload, Axis::Kind],
             vec![Axis::Lang, Axis::Rmw],
         ),
+        // 1-wise(platform, lang, rmw, kind) — every declared value once, no
+        // pairing. 11 of 46 coordinates.
+        CiLane::Tier2 => (
+            vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
+            vec![],
+        ),
         // pairwise(platform × lang × rmw × kind); workload deliberately absent —
         // tier 1 already ran every workload, and workload selects
         // platform-independent logic, so repeating it costs cells and buys nothing.
-        CiLane::Tier2 => (
+        CiLane::Tier2Nightly => (
             vec![],
             vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
         ),
@@ -113,7 +159,7 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
         CiLane::Tier1 => runtime_cells()
             .filter(|c| matches!(c.platform, PlatformId::Native))
             .collect(),
-        CiLane::Tier2 => runtime_cells().collect(),
+        CiLane::Tier2 | CiLane::Tier2Nightly => runtime_cells().collect(),
     }
 }
 
@@ -159,6 +205,30 @@ pub fn cells(lane: CiLane) -> Vec<&'static Cell> {
     chosen
 }
 
+/// The distinct `platform,lang,rmw` FIXTURE coordinates this lane needs, in the
+/// spelling `examples/fixtures.toml` uses.
+///
+/// This — not [`cells`]`.len()` — is what a lane costs, because cells share
+/// fixtures and a fixture build is the expensive part. Consumed by the
+/// `lane-coords` binary, `fixtures-manifest.py --coords-from` and
+/// `NROS_FIXTURE_COORDS`, so a lane's build, its staleness gate and its test
+/// selection all derive from one computation.
+pub fn coords(lane: CiLane) -> BTreeSet<String> {
+    cells(lane)
+        .iter()
+        .flat_map(|c| {
+            let (lang, rmw) = (
+                format!("{:?}", c.lang).to_lowercase(),
+                format!("{:?}", c.rmw).to_lowercase(),
+            );
+            c.platform
+                .fixture_tokens()
+                .iter()
+                .map(move |p| format!("{p},{lang},{rmw}"))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,7 +240,7 @@ mod tests {
 
     #[test]
     fn lanes_are_deterministic() {
-        for lane in [CiLane::Tier1, CiLane::Tier2] {
+        for lane in ALL {
             let a: Vec<_> = cells(lane).iter().map(|c| format!("{c:?}")).collect();
             let b: Vec<_> = cells(lane).iter().map(|c| format!("{c:?}")).collect();
             assert_eq!(a, b, "{lane:?} selection must not vary between calls");
@@ -191,7 +261,7 @@ mod tests {
     /// language) to the matrix must extend the lane, not be silently skipped.
     #[test]
     fn lanes_touch_every_declared_value_of_every_axis_they_cover() {
-        for lane in [CiLane::Tier1, CiLane::Tier2] {
+        for lane in ALL {
             let chosen = cells(lane);
             let available = pool(lane);
             let (s, p) = spec(lane);
@@ -209,14 +279,11 @@ mod tests {
     }
 
     #[test]
-    fn tier2_covers_every_declared_pair_it_claims_to() {
-        let chosen = cells(CiLane::Tier2);
-        let (_, p) = spec(CiLane::Tier2);
-        let want: BTreeSet<Req> = pool(CiLane::Tier2)
-            .iter()
-            .flat_map(|c| pairs(c, &p))
-            .collect();
-        let got: BTreeSet<Req> = chosen.iter().flat_map(|c| pairs(c, &p)).collect();
+    fn nightly_covers_every_declared_pair_it_claims_to() {
+        let lane = CiLane::Tier2Nightly;
+        let (_, p) = spec(lane);
+        let want: BTreeSet<Req> = pool(lane).iter().flat_map(|c| pairs(c, &p)).collect();
+        let got: BTreeSet<Req> = cells(lane).iter().flat_map(|c| pairs(c, &p)).collect();
         assert_eq!(
             want,
             got,
@@ -226,20 +293,72 @@ mod tests {
     }
 
     /// A lane that selected everything would pass every other test here while
-    /// defeating the point, so bound it: tier 2 must be a real reduction, and
-    /// tier 1 must be smaller still.
+    /// defeating the point, so bound the ladder.
+    ///
+    /// Measured in COORDINATES, not cells. In cells the ladder is not even
+    /// monotone — tier 1 picks 16 cells and 1-wise tier 2 picks 11 — because tier
+    /// 1's cells are all native and a native fixture is nearly free. Cell count is
+    /// the wrong unit for cost; asserting on it would encode the very confusion
+    /// that put "tier 2 is 20 % of the sweep" in RFC-0061.
     #[test]
-    fn lanes_are_a_real_reduction() {
-        let all = runtime_cells().count();
-        let t1 = cells(CiLane::Tier1).len();
-        let t2 = cells(CiLane::Tier2).len();
-        assert!(t1 > 0 && t2 > 0, "empty lane: t1={t1} t2={t2}");
+    fn the_ladder_is_monotone_in_fixture_cost() {
+        let all: BTreeSet<String> = runtime_cells()
+            .flat_map(|c| {
+                let (lang, rmw) = (
+                    format!("{:?}", c.lang).to_lowercase(),
+                    format!("{:?}", c.rmw).to_lowercase(),
+                );
+                c.platform
+                    .fixture_tokens()
+                    .iter()
+                    .map(move |p| format!("{p},{lang},{rmw}"))
+            })
+            .collect();
+        let t1 = coords(CiLane::Tier1).len();
+        let t2 = coords(CiLane::Tier2).len();
+        let tn = coords(CiLane::Tier2Nightly).len();
+
+        assert!(t1 > 0 && t2 > 0 && tn > 0, "empty lane: {t1}/{t2}/{tn}");
         assert!(
-            t2 * 2 < all,
-            "tier 2 ({t2}) should be well under half the matrix ({all})"
+            t1 <= t2 && t2 < tn && tn < all.len(),
+            "ladder must cost strictly more at each rung: \
+             tier1={t1} tier2={t2} nightly={tn} all={}",
+            all.len()
         );
-        assert!(t1 < t2, "tier 1 ({t1}) must be cheaper than tier 2 ({t2})");
+        // The point of splitting tier 2: the per-change gate has to be cheap
+        // enough that it gets run. If it ever creeps past a third of the sweep it
+        // has stopped being a middle tier.
+        assert!(
+            t2 * 3 <= all.len(),
+            "tier 2 ({t2}) must stay under a third of the sweep ({}) — \
+             it is the lane that runs on every core change",
+            all.len()
+        );
     }
+
+    /// Tier 2 gives up pairing to stay cheap; the nightly lane is where that
+    /// coverage comes back. If they ever computed the same set, the split would be
+    /// pure cost with no benefit.
+    #[test]
+    fn nightly_is_strictly_more_than_the_gate() {
+        let gate = coords(CiLane::Tier2);
+        let nightly = coords(CiLane::Tier2Nightly);
+        assert!(
+            gate.len() < nightly.len(),
+            "nightly ({}) must cover more than the gate ({})",
+            nightly.len(),
+            gate.len()
+        );
+    }
+
+    // Whether every coordinate a lane selects actually HAS a fixture row is not
+    // asserted here on purpose: `tests/matrix_fixture_coverage.rs` already owns
+    // that question in both directions, together with the exemption list naming
+    // each cell built outside the manifest (Fvp's `just zephyr build-fvp-*`, the
+    // zephyr west leaves, NuttxRiscv examples…). A second gate here would need a
+    // second copy of that list, and a copy that drifts narrower is the "gates
+    // narrower than the rule they enforce" defect (issue 0196).
+
     /// `scripts/test/lane-filter.sh` derives its exclusion tokens from
     /// `PlatformId`. If a platform is added whose family name the script cannot
     /// produce, the native lane would silently RUN that platform's binaries — the

@@ -29,14 +29,29 @@ fi
 # became routine.
 #
 #   NROS_FIXTURE_SCOPE=native   tier 1 — host fixtures only
-#   NROS_FIXTURE_SCOPE=all      tier 2/3 — everything (default, unchanged)
+#   NROS_FIXTURE_SCOPE=all      tier 3 — everything (default, unchanged)
+#   NROS_FIXTURE_SCOPE=coords   tier 2 — the coordinates the lane selected;
+#                               NROS_FIXTURE_COORDS names the file, produced by
+#                               `lane-coords <lane>` from the SAME computation the
+#                               build used, so gate and build cannot disagree
 SCOPE="${NROS_FIXTURE_SCOPE:-all}"
 scope_args=()
 case "$SCOPE" in
     all) ;;
     native) scope_args=(--platform native) ;;
+    coords)
+        if [ -z "${NROS_FIXTURE_COORDS:-}" ] || [ ! -s "${NROS_FIXTURE_COORDS}" ]; then
+            # Silently degrading to "check nothing" would report a lane green
+            # having verified none of it — the exact laundering this gate exists
+            # to prevent.
+            echo "ERROR: NROS_FIXTURE_SCOPE=coords needs NROS_FIXTURE_COORDS to name" >&2
+            echo "       a non-empty coordinate file (see: lane-coords <lane>)" >&2
+            exit 2
+        fi
+        scope_args=(--coords-from "$NROS_FIXTURE_COORDS")
+        ;;
     *)
-        echo "ERROR: NROS_FIXTURE_SCOPE must be 'native' or 'all' (got '$SCOPE')" >&2
+        echo "ERROR: NROS_FIXTURE_SCOPE must be 'native', 'coords' or 'all' (got '$SCOPE')" >&2
         exit 2
         ;;
 esac
