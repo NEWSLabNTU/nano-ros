@@ -346,7 +346,7 @@ check: check-fast check-build
 check-fast: \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-rmw-force-link-anchor check-rmw-required-slots \
+    check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-version-lockstep check-example-fmt check-cli-fmt \
     check-codegen-invocation check-string-conventions check-issue-ids \
     check-absolute-paths \
@@ -645,6 +645,16 @@ check-rmw-force-link-anchor:
 [private]
 check-rmw-required-slots:
     @bash scripts/check-rmw-required-slots.sh
+
+# phase-320 W2 — board support tiers must match the evidence, and every board
+# package must be enumerated. A tier that is merely asserted drifts: the book
+# claimed ARM FVP was "Tested" (legend: "boots in CI") for a license-walled
+# target, and matrix.rs carried FVP `Runtime` cells whose tests always skip.
+# Also checks the generated support table is not stale. Buildless.
+[private]
+check-board-tiers:
+    @python3 scripts/check-board-tiers.py
+    @python3 scripts/gen-board-support-table.py --check
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros ws sync`.

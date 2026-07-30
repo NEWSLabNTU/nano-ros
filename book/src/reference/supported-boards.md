@@ -8,10 +8,15 @@ booted by any CI lane (hardware or a license-gated model is
 required); **Untested** rows compile per the architecture support
 but no one has reported booting nano-ros on them.
 
-> This table is hand-maintained today and has drifted before — the ARM FVP row
+> **For in-tree board packages, see the generated
+> [Board Support Tiers](board-support-tiers.md)** — it is checked against the test
+> matrix, the fixture rows and the nightly lanes by `just check-board-tiers`.
+> This page stays hand-maintained because it also covers parts that have never had
+> a crate in this tree (Nordic, NXP, TI…), which the registry cannot express.
+>
+> It has drifted before — the ARM FVP row
 > claimed **Tested** while its model is license-walled and runs in no CI lane at
-> all. phase-320 W2 replaces it with a table generated from the board
-> descriptors, gated against the same evidence the tiers are derived from.
+> all.
 
 | Vendor       | Board                | MCU / SoC          | Arch       | Default RTOS  | Status   | Example / board crate                                            |
 |--------------|----------------------|--------------------|------------|---------------|----------|-------------------------------------------------------------------|

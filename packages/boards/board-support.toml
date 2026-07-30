@@ -1,0 +1,254 @@
+# Board support registry — phase-320 W2.
+#
+# ONE table listing every board package, its support tier, and its maintainers.
+# This is the SSoT the book's supported-boards table is generated from and the
+# `check-board-tiers` gate validates against evidence.
+#
+# Why a single registry instead of a `tier` field in each `nros-board.toml`:
+# only 12 of the 27 board directories have a descriptor at all, so a per-crate
+# field could not cover the set — and the completeness check (every board is
+# listed exactly once) is the whole point. This mirrors Rust's platform-support
+# table rather than its per-target spec files.
+#
+# Why not tier DIRECTORIES: tier is metadata, not layout. Rust keeps target
+# specs flat and the tier in target metadata precisely so a promotion is a
+# one-line edit rather than a path change rippling through ~200 references.
+#
+# ---------------------------------------------------------------------------
+# TIERS — each is a promise, and each is mechanically checkable.
+#
+#   1  Supported   `just ci` exercises it, it has asserted runtime coverage,
+#                  and a nightly lane builds it. A regression fails before
+#                  merge.
+#   2  Verified    Asserted runtime coverage + a nightly lane, but not in
+#                  `just ci`. Breakage is found within a day.
+#   3  Build-only  Compiles; NO CI lane can boot it (hardware or a
+#                  license-gated model is required). Nobody has booted it
+#                  recently unless a maintainer did so by hand.
+#   scaffold       Structurally incomplete. Explicitly NOT supported. Distinct
+#                  from tier 3: tier 3 is finished-but-unverified, scaffold is
+#                  unfinished. `embassy-stm32f4` is why this state exists — it
+#                  is actively committed to, which reads as support unless the
+#                  registry says otherwise.
+#   infra          Not a board: shared traits, family drivers, ABI mirrors,
+#                  PACs. Carries no platform and no tier promise.
+#
+# Gate predicates (scripts/check-board-tiers.py):
+#   - tier 1|2  => the platform has >=1 `Runtime` cell in matrix.rs
+#   - tier 3    => the platform has ZERO Runtime cells (build-only means it)
+#   - scaffold  => zero Runtime cells AND zero fixture rows
+#   - tier 1    => a nightly lane covers it (or it is the native host, which
+#                  `just ci` runs directly — stronger than a nightly build)
+#   - every board directory appears exactly once; every entry names a real one
+#
+# `maintainers` is recorded but NOT yet enforced — see the note at the bottom.
+# ---------------------------------------------------------------------------
+
+# ===== tier 1 — supported ==================================================
+
+[[board]]
+crate = "nros-board-native"
+matrix_platform = "Native"
+tier = 1
+maintainers = []
+notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs."
+
+[[board]]
+crate = "nros-board-posix"
+matrix_platform = "Native"
+tier = 1
+maintainers = []
+notes = "Family driver behind nros-board-native; `board_path_for` maps both keys to one ZST."
+
+[[board]]
+crate = "nros-board-zephyr"
+matrix_platform = "ZephyrNativeSim"
+nightly_token = "zephyr"
+tier = 1
+maintainers = []
+notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything."
+
+[[board]]
+crate = "nros-board-mps2-an385-freertos"
+matrix_platform = "FreertosMps2"
+nightly_token = "freertos"
+link_check_example = "examples/qemu-arm-freertos/rust/talker"
+tier = 1
+maintainers = []
+
+[[board]]
+crate = "nros-board-nuttx-qemu-arm"
+matrix_platform = "NuttxArm"
+nightly_token = "nuttx"
+link_check_example = "examples/qemu-arm-nuttx/rust/talker"
+tier = 1
+maintainers = []
+
+[[board]]
+crate = "nros-board-threadx-linux"
+matrix_platform = "ThreadxLinux"
+nightly_token = "threadx_linux"
+link_check_example = "examples/threadx-linux/rust/talker"
+tier = 1
+maintainers = []
+
+# ===== tier 2 — verified ===================================================
+
+[[board]]
+crate = "nros-board-threadx-qemu-riscv64"
+matrix_platform = "ThreadxRiscv64"
+nightly_token = "threadx_riscv64"
+tier = 2
+maintainers = []
+notes = "All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage."
+
+[[board]]
+crate = "nros-board-mps2-an385"
+matrix_platform = "QemuBaremetal"
+nightly_token = "qemu"
+tier = 2
+maintainers = []
+
+[[board]]
+crate = "nros-board-rtic-mps2-an385"
+matrix_platform = "QemuBaremetal"
+nightly_token = "qemu"
+tier = 2
+maintainers = []
+
+[[board]]
+crate = "nros-board-esp32-qemu"
+matrix_platform = "Esp32Qemu"
+nightly_token = "esp32"
+tier = 2
+maintainers = []
+notes = "Real two-way QEMU e2e (esp32_emulator.rs)."
+
+[[board]]
+crate = "nros-board-nuttx-qemu-riscv"
+matrix_platform = "NuttxRiscv"
+nightly_token = "nuttx"
+tier = 2
+maintainers = []
+notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly."
+
+# ===== tier 3 — build-only =================================================
+
+[[board]]
+crate = "nros-board-stm32f4"
+matrix_platform = "Stm32F4"
+tier = 3
+maintainers = []
+notes = "Hardware-gated (#221): needs a real NUCLEO-F429ZI; QEMU has no F4 ethernet model."
+
+[[board]]
+crate = "nros-board-rtic-stm32f4"
+matrix_platform = "Stm32F4"
+tier = 3
+maintainers = []
+notes = "RTIC runtime delivers (phase-289) but the hardware is not in CI."
+
+[[board]]
+crate = "nros-board-fvp-aemv8r-smp"
+matrix_platform = "Fvp"
+gated_sdk = "arm-fvp"
+tier = 3
+maintainers = []
+notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see."
+
+# ===== scaffold — explicitly not supported =================================
+
+[[board]]
+crate = "nros-board-embassy-stm32f4"
+tier = "scaffold"
+maintainers = []
+notes = "Issue 0248: no transport bringup, and a Deferred image signals callbacks into a channel nothing drains. Actively committed to, which is exactly why it must be labelled."
+
+[[board]]
+crate = "nros-board-esp32s3"
+tier = "scaffold"
+maintainers = []
+notes = "No recipe, no fixture, no test, no matrix cell. Needs an Xtensa toolchain absent from nros-sdk-index.toml. Serial-only; WiFi is a follow-up."
+
+[[board]]
+crate = "nros-board-s32z270dc2-r52"
+gated_sdk = "none-modelled"
+tier = "scaffold"
+maintainers = []
+notes = "Zero cargo consumers; `just zephyr build-s32z-board-import` has NO caller; its board_import_s32z fixture is not registered in WEST_FIXTURES. Either wire it up (cheap — the FVP twin exists) or delete."
+
+[[board]]
+crate = "nros-board-orin-spe"
+gated_sdk = "nv-spe-fsp"
+tier = "scaffold"
+maintainers = []
+notes = "Placeholder runtime; no fixture row; absent from PlatformId. orin_spe_mock_ivc.rs proves the IVC wire format on POSIX, NOT the board — do not count it as board coverage. Issue 0271 tracks a 256 KB BTCM overflow."
+
+# ===== infra — not boards ==================================================
+
+[[board]]
+crate = "nros-board-common"
+tier = "infra"
+maintainers = []
+notes = "Build-helper library plus one trait; 2180 of 2252 code lines are behind `build-helpers`."
+
+[[board]]
+crate = "nros-board-cffi"
+tier = "infra"
+maintainers = []
+notes = "Header ABI mirror with ZERO in-tree C consumers; kept alive by its own drift gate. Spec artifact, not a library."
+
+[[board]]
+crate = "nros-board-bare-metal"
+tier = "infra"
+maintainers = []
+notes = "Family driver NO board opted into — mps2-an385, stm32f4 and esp32-qemu each hand-roll BoardEntry::run instead. 135 of its 161 lines are doc comment. phase-322 W1.h decides delete-vs-adopt."
+
+[[board]]
+crate = "nros-board-freertos"
+tier = "infra"
+maintainers = []
+notes = "Real family driver: the MPS2 overlay is `pub use nros_board_freertos::Config` and carries zero config code. The pattern the forked boards should copy."
+
+[[board]]
+crate = "nros-board-nuttx"
+tier = "infra"
+maintainers = []
+notes = "Façade over the two NuttX boards; phase-322 W1.a absorbs it."
+
+[[board]]
+crate = "nros-board-threadx"
+tier = "infra"
+maintainers = []
+notes = "Real family driver: a 1120-line generic entry.py both ThreadX boards call into."
+
+[[board]]
+crate = "mps2-an385-pac"
+tier = "infra"
+maintainers = []
+notes = "IRQ enum only. Kept because RTIC's `#[rtic::app(device = ...)]` needs a nameable path."
+
+# ===== descriptor-only directories (no crate) ==============================
+
+[[board]]
+crate = "posix"
+tier = "infra"
+maintainers = []
+notes = "nros-board.toml descriptor directory, not a crate. phase-321 W2 moves these out of packages/boards/."
+
+[[board]]
+crate = "zephyr"
+tier = "infra"
+maintainers = []
+notes = "nros-board.toml descriptor directory, not a crate."
+
+# ---------------------------------------------------------------------------
+# `maintainers` is deliberately empty everywhere and NOT yet enforced.
+#
+# Rust's target-tier policy requires a named person per target and demotes
+# targets whose maintainer goes unreachable — that mechanism, not the directory
+# layout, is what actually collects abandoned targets. Recording an owner is the
+# point; inventing one would be worse than leaving it blank, so the field exists,
+# the gate reports how many boards are unowned, and enforcement (non-empty for
+# tier 2 and below, plus the demotion clause) turns on once owners are assigned.
+# ---------------------------------------------------------------------------

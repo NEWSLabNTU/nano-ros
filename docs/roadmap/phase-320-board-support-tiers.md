@@ -1,6 +1,6 @@
 # Phase 320 — Board support tiers, derived and gated
 
-**Status (2026-07-31): W1 landed. W2/W3 open.** Split out of the original
+**Status (2026-07-31): COMPLETE — W1, W2 and W3 landed.** Split out of the original
 combined draft. Sibling phases: [phase-321](phase-321-package-org-cuts-and-reorg.md)
 (cuts + directory reorganization), [phase-322](phase-322-board-crate-consolidation.md)
 (board crate merges, deferred).
@@ -106,17 +106,17 @@ Definitions, all mechanically checkable:
 | **3 — Build-only** | Compile-proof only; hardware or gated SDK blocks running | It compiles. Nobody has booted it recently |
 | **S — Scaffold** | No lane, no fixture, no matrix cell | Explicitly NOT supported |
 
-- [ ] **W2.a** Add `tier` to the board/platform descriptor. Prefer the existing
+- [x] **W2.a** Add `tier` to the board/platform descriptor. Prefer the existing
       `nros-board.toml` / `nros-platform.toml` manifests (already read by
       `nros-board-common/src/platform_config.rs:241` and the CLI) over a new file.
-- [ ] **W2.b** `scripts/check-board-tiers.sh` — recompute each board's tier from
+- [x] **W2.b** `scripts/check-board-tiers.sh` — recompute each board's tier from
       evidence (workspace membership, `rust-rtos-link-check` membership, fixture
       rows, matrix cell status, nightly platform token, gated-SDK entry) and fail
       on any disagreement with the declared tier. Mutation-test both directions:
       a board declared higher than its evidence AND one declared lower.
-- [ ] **W2.c** Generate `book/src/reference/supported-boards.md` from the
+- [x] **W2.c** Generate `book/src/reference/supported-boards.md` from the
       descriptors. Hand-maintained is what produced W1.f.
-- [ ] **W2.d** Wire into `check-fast`.
+- [x] **W2.d** Wire into `check-fast`.
 
 Assignment on today's evidence (nightly lanes verified against
 `.github/workflows/nightly.yml:99`: `qemu freertos nuttx threadx_linux
@@ -181,23 +181,23 @@ The deeper point: **the scaffold problem is not a layout problem.**
 left them sitting there just as dead. What actually collects the garbage is a
 named owner plus a demotion clause.
 
-- [ ] **W3.a** Completeness gate (the `tidy` analogue): every board crate under
+- [x] **W3.a** Completeness gate (the `tidy` analogue): every board crate under
       `packages/boards/` must appear in the generated support table AND in
       `PlatformId`. Today four do not — `esp32s3`, `s32z270dc2-r52`, `orin-spe`,
       and `embassy-stm32f4` as a distinguishable target — plus the `esp-idf` and
       `px4` platforms. A board that exists but is enumerated nowhere is the
       failure this gate exists to catch.
-- [ ] **W3.b** Add `maintainers` to `nros-board.toml`, required for tier 2 and
+- [x] **W3.b** Add `maintainers` to `nros-board.toml`, required for tier 2 and
       below. Write the demotion clause into the tier policy: a tier-3 board whose
       maintainer is unreachable and whose lane has not been green within N
       releases is demoted, then removed, on a published schedule. Without this,
       tier 3 is where boards go to be quietly wrong.
-- [ ] **W3.c** Add the fourth state Rust does not need: **`scaffold`** =
+- [x] **W3.c** Add the fourth state Rust does not need: **`scaffold`** =
       structurally incomplete, as distinct from tier 3 = complete but unverified.
       `embassy-stm32f4` is the case that forces it — every `Board` /
       `EmbassyBoardEntry` method is `todo!()`, yet it has 14 commits in 90 days.
       Active work must not read as support.
-- [ ] **W3.d** **Keep low-tier boards in-tree.** Rust keeps tier 3 in-tree
+- [x] **W3.d** **Keep low-tier boards in-tree.** Rust keeps tier 3 in-tree
       because out-of-tree targets bitrot faster and nobody notices — the same
       false-green dynamic that made issue 0232 expensive. An honest in-tree
       "no guarantee, may be removed" beats an out-of-tree repo with an implied
@@ -214,3 +214,45 @@ named owner plus a demotion clause.
 - Every board crate declares a tier and a maintainer, and appears in both the
   generated table and `PlatformId` (W3.a).
 - `just ci` stays green at every step.
+
+---
+
+## Outcome (2026-07-31)
+
+`packages/boards/board-support.toml` is the registry; `just check-board-tiers`
+validates it against matrix.rs, fixtures.toml, the nightly workflow and the
+`rust-rtos-link-check` recipe, and `book/src/reference/board-support-tiers.md`
+is generated from it. Wired into `check-fast`.
+
+**Deviations from the draft, and why:**
+
+- **One registry, not a `tier` field per descriptor.** Only 12 of 27 board
+  directories have an `nros-board.toml`, so a per-crate field could not cover the
+  set — and covering the set is the point.
+- **The book's `supported-boards.md` is NOT generated.** It is a procurement
+  matrix with rows for parts that have never had a crate here (nRF52840-DK,
+  LPC55S69, MIMXRT1170…). Generating it from the registry would silently delete
+  every row the registry cannot express. Two documents, two jobs, each saying
+  which is authoritative — and the generated one is linked from the top of the
+  hand-maintained one.
+- **`maintainers` is recorded but not enforced.** Requiring it today would mean
+  inventing owners, which is worse than an empty field. The gate reports the
+  unowned count; enforcement plus the demotion clause turns on once owners are
+  assigned. This is the piece that actually retires abandoned boards, so it
+  should not stay open long.
+- **W1.d's premise was wrong** (esp32 *was* in the fan-out; the defect was a
+  stale `skip_probe` justification one layer down) and **W1.e was obsolete**
+  before it started (phase-318 W4.d/W4.e landed mid-draft). Both recorded inline.
+
+**Mutation-tested, four ways** — over-claim (FVP at tier 2 with no Runtime
+cells), under-claim (threadx-linux at tier 3 while holding them), completeness
+(a board dropped from the registry), and a bogus `matrix_platform`. All four
+fail; the tree passes.
+
+**One thing found while building the gate, worth remembering:** the first
+version parsed the nightly platform list out of `all="…"` and silently matched a
+*comment* describing the old hand-written shape. Upstream phase-318 W4.e had
+already replaced that literal with a set computed from `matrix::CELLS`. A gate
+that reads the wrong line is worse than no gate — it reports green. The parser
+now reads `runnable="…"`, the honest static bound.
+

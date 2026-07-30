@@ -127,6 +127,7 @@
 - [Platform API](./reference/platform-api.md)
 - [Platform Differences](./reference/platform-differences.md)
 - [Supported Boards](./reference/supported-boards.md)
+- [Board Support Tiers](./reference/board-support-tiers.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
 - [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)

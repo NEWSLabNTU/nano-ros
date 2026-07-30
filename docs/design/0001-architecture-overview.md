@@ -197,8 +197,12 @@ platform-stm32f4  platform-orin-spe
 ```
 
 Note this axis mixes OS-level and board-level entries; phase-321 W2 addresses
-that. There is no `platform-bare-metal` — bare-metal images select a board crate
-instead.
+that. There is no `platform-bare-metal` **on this crate** — bare-metal images
+select a board crate instead. The name does exist elsewhere, on the zenoh
+backend (`nros-rmw-zenoh/platform-bare-metal`, selecting zpico's bare-metal
+port), which is a different axis instance on a different crate. The same spelling
+meaning different things on different crates is exactly why this section now says
+which crate each axis lives on.
 
 **ROS edition — on `nros`:** `ros-humble`, `ros-iron`, `ros-jazzy`.
 
