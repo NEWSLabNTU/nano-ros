@@ -1,7 +1,8 @@
 ---
 id: 287
 title: "A host-only workspace member silently breaks the embedded clippy lane through cargo feature unification"
-status: open
+status: resolved
+resolved_in: issue-0287-fix
 type: tech-debt
 area: build
 ---
@@ -26,6 +27,34 @@ Feature unification does not care what is reachable.
 Fixed by adding the crate to the recipe's `--exclude` list, alongside the
 other host-only members (`nros-orchestration-ir`, the build-script helpers,
 the `-sys` crates).
+
+## Fix (2026-07-31)
+
+The exclude list is DERIVED, not hand-written. Each host-only crate declares
+itself:
+
+```toml
+[package.metadata.nros]
+host-only = true
+host-only-reason = "bindgen + C build of zenoh-pico; needs a host toolchain"
+```
+
+and `scripts/build/host-only-members.sh` emits the `--exclude` flags. The reason
+now lives next to the crate, and adding a host-only crate is one edit in the
+file you are already editing.
+
+There were **two** byte-identical copies of the list —
+`check-workspace-embedded` and `build-workspace-embedded`. Both derive from the
+one source now; a member added to one and not the other would have failed in
+whichever lane was forgotten.
+
+The lane's failure is also self-diagnosing: it prints a hint that the named
+crate is a VICTIM of feature unification, not the cause, and shows the marker to
+add. Verified by reproduction — unmarking `nros-rmw-metadata` drops it from the
+derived list and the lane fails with the exact `E0463` above, hint attached.
+
+The derived list was checked byte-identical to the hand-written one (20 of 20)
+before the swap, so the mechanism changed and the behaviour did not.
 
 ## Why it is worth tracking
 
