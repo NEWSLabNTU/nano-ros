@@ -1,10 +1,10 @@
 ---
 id: 351
-title: "A declared `param_services` / `lifecycle` never reaches the C/C++ cargo feature list — the posix always-on IS the lowering, and it masks the missing wiring"
+title: "No declared capability reaches the C/C++ build on the workspace path — one broken mechanism, three different masks (posix always-on, per-fixture `-D`, and a closed issue cited as cover)"
 status: open
 type: bug
 area: build
-related: [phase-315, issue-0311, phase-314, rfc-0004]
+related: [phase-315, issue-0311, phase-314, rfc-0004, issue-0118]
 ---
 
 ## Finding (2026-07-31)
@@ -89,6 +89,49 @@ ParamTalker.cpp:(.text+0x44): undefined reference to `nros_cpp_get_param_integer
 which is the opposite of what "both declare" predicted, and is what exposed the
 disjoint paths. The change was reverted; main is unaffected.
 
+## All three axes share the mechanism — and all three are broken
+
+`safety`, `param_services` and `lifecycle` take the SAME path:
+`NANO_ROS_FEATURES` → `set(_caps ${NANO_ROS_FEATURES})` in nros-c/nros-cpp →
+`nros_feature_set(... CAPABILITIES ${_caps})` → cargo feature. The registry
+differs only in whether an axis also owns a cmake `option()`:
+
+| declared | nros_feature | c_define | cmake_token |
+| --- | --- | --- | --- |
+| `safety` | `safety-e2e` | `NROS_SYSTEM_SAFETY_E2E` | `NANO_ROS_SAFETY_E2E` |
+| `param_services` | `param-services` | `NROS_SYSTEM_PARAM_SERVICES` | — |
+| `lifecycle` | `lifecycle-services` | `NROS_SYSTEM_LIFECYCLE` | — |
+
+Since `NANO_ROS_FEATURES` is empty on the workspace path, none of the three
+arrives. They differ only in how that is MASKED, which is why it reads as three
+unrelated quirks instead of one bug:
+
+* **`param_services` / `lifecycle`** — masked implicitly by the posix always-on.
+* **`safety`** — masked explicitly, per fixture, in `examples/fixtures.toml`:
+
+  ```toml
+  cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }
+  ```
+
+  with the manifest saying so plainly: *"`[system].features = ["safety"]` in
+  system.toml declares the safety axis, but the cmake feature-lowering
+  (`nros_lower_system_features` → `NANO_ROS_SAFETY_E2E`) is not yet wired into
+  the per-entry `nano_ros_entry` build (issue #118). Pass the knob directly."*
+
+**That citation is stale.** Issue 0118 is `status: resolved` (phase-269) and was
+about the C/C++ executor-component integrity READBACK API, not about cmake
+lowering. The API landed; the wiring gap it was cited for never had an issue of
+its own. So the workaround now points at a closed ticket, which is how a
+temporary `-D` becomes permanent.
+
+A standalone example is not affected, and shows what the workspace path lacks —
+it sets the variable itself before pulling nano-ros in:
+
+```cmake
+# examples/native/{c,cpp}/safety-listener/CMakeLists.txt
+set(NANO_ROS_FEATURES "safety")
+```
+
 ## Consequence
 
 `system.toml` is not the SSoT for capabilities on the C/C++ side, only on the
@@ -114,11 +157,16 @@ of preference:
 2. **Resolve capabilities through the CLI at configure time** — the workspace
    cmake already shells out to `nros`, and `capability_enabled()` is the SSoT
    accessor (it honours both the typed blocks and `[system].features`).
-3. **Give `param_services` / `lifecycle` real `cmake_token`s** in
-   `NanoRosCapabilities.cmake`, matching `safety` → `NANO_ROS_SAFETY_E2E`. Most
-   uniform, but the Rust `Capability` registry is the SSoT for
-   `(declared, cmake_token)` and a drift test asserts they match, so the row
-   changes there too.
+3. ~~Give `param_services` / `lifecycle` real `cmake_token`s.~~ **Rejected on
+   inspection:** a `cmake_token` exists to flip a cmake `option()`, which
+   `safety` needs because it gates C/C++ CODE. These two need only a cargo
+   feature, and `nros_feature_set` already maps them (`param_services` →
+   `param-services`, `lifecycle` → `lifecycle-services`). Adding tokens changes
+   nothing while `NANO_ROS_FEATURES` is empty, and is redundant once it is not.
+
+Whichever lands must fix all THREE axes, and the safety fixtures' explicit
+`cmake_defs` should be deleted in the same change — otherwise the mask outlives
+the bug again, exactly as it did behind a resolved #118.
 
 Only after one of those lands can the posix always-on be removed — and at that
 point it must be, or the two paths drift again.
