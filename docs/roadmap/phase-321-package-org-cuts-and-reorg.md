@@ -1,6 +1,6 @@
 # Phase 321 — Package organization: cuts and the group reorganization
 
-**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-c landed, W2.d-f DEFERRED. W3.b/W3.c landed, W3.a withdrawn.** Split out of the original
+**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-d landed. W2.e/W2.f open. W3.b/W3.c landed, W3.a withdrawn.** Split out of the original
 combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
 (support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
@@ -196,7 +196,7 @@ Rationale, with the evidence for each:
 > 947-reference commit would have been found by a platform lane hours later, or
 > not at all.
 
-- [ ] **W2.d** Collapse `zpico/` + `xrce/` + `dds/` + `px4/` + `bridge/` into
+- [x] **W2.d** Collapse `zpico/` + `xrce/` + `dds/` + `px4/` + `bridge/` into
       `rmw/`.
 - [ ] **W2.e** Split `core/` into `core/` + `api/` + `platform/` + `tooling/`.
 - [ ] **W2.f** Retax `drivers/`: it currently mixes real hardware drivers,
@@ -204,6 +204,46 @@ Rationale, with the evidence for each:
       sockets shim (`nsos-netx`), and generic runtime support
       (`nros-baremetal-common`, `nros-transport-callbacks`) across two languages
       and two build systems. All 15 are alive; the problem is purely taxonomic.
+
+### W2.d outcome — the six path classes
+
+Landed as five commits, one group per commit, each with a real build:
+`bridge` (canary) -> `cyclonedds` -> `uorb` -> `zenoh` -> `xrce`.
+`packages/rmw/` now holds all four backends plus the bridge.
+
+**A path reference comes in six shapes, and only three are greppable:**
+
+| # | class | example | found by |
+| --- | --- | --- | --- |
+| 1 | absolute | `packages/dds/foo` | grep |
+| 2 | absolute, NO trailing slash | `root.join("packages/dds")` | grep — **if** the pattern does not require `/` |
+| 3 | relative Cargo dep | `path = "../../core/nros-rmw"` | `cargo metadata` |
+| 4 | relative in CMake / shell | `${CMAKE_CURRENT_LIST_DIR}/../../../..` | the platform build |
+| 5 | relative in a Rust string | `manifest_dir.join("../../platforms")` | the build only |
+| 6 | **`.parent()` chain** | `.parent().and_then(\|p\| p.parent())…` | the build only |
+
+Class 2 shipped a defect: the cyclonedds commit left two live
+`root.join("packages/dds")` calls in `nros-tests/src/zephyr.rs`, and `just check`
+plus 817 unit tests stayed green because that resolver path is only reached
+during a Zephyr fixture build. Now permanently gated — the four retired group
+paths are entries in `scripts/check-retired-submodule-refs.sh`, mutation-tested.
+
+Class 6 broke the xrce build outright: a three-`.parent()` walk to the repo root
+landed on `packages/` once the crate sat a level deeper, doubling every vendored
+path. No grep for `../` can see it.
+
+**Submodules were less trouble than expected.** `git mv` of the parent updated
+`path =` in `.gitmodules`, re-depthed each submodule's `.git` gitdir file, and
+fixed `core.worktree` in `.git/modules/*/config`. The `[submodule "<old path>"]`
+NAMES are deliberately left alone — a name maps to `.git/modules/<name>`, so
+renaming means relocating the gitdir for no gain. One manual step remained:
+`git submodule status` reported the xrce pair uninitialised despite intact
+worktrees and a working `rev-parse`; `git submodule init` cleared it.
+
+**Cost note for W2.e**: `just check` is ~10 minutes per group on this host, and
+the in-source cmake `build/` trees must be deleted before re-configuring —
+their `CMakeCache.txt` pins the old absolute source path and cmake refuses
+outright.
 
 ## W3 — Documentation consolidation
 
