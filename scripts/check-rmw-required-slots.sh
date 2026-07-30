@@ -29,16 +29,46 @@ expected="$(grep -oE 'expect\("rmw vtable: [a-z_]+"' "$SRC" \
     | sed -E 's/.*: ([a-z_]+)"/\1/' | sort -u)"
 
 # Slots listed in first_missing_vtable_slot's `require!(...)`.
+#
+# `[[:space:]]`, not `\s`: awk's ERE has no `\s`, so the terminator never
+# matched, `inlist` stayed set past the end of the macro and the extractor
+# scraped the REST OF THE FILE — yielding function parameter names (`domain_id`,
+# `topic_ptr`, `user_ctx`, …) as if they were required vtable slots. The gate then
+# failed permanently, in the direction that reads as "issue 0349 has regressed".
+# A gate that cannot pass gets bypassed, which costs more than the gate is worth.
 required="$(awk '
     /^fn first_missing_vtable_slot/ { infn = 1 }
     infn && /require!\(/ { inlist = 1; next }
-    inlist && /^\s*\);/ { inlist = 0; infn = 0 }
+    inlist && /^[[:space:]]*\);/ { inlist = 0; infn = 0 }
     inlist { print }
-' "$SRC" | grep -oE '^\s*[a-z_]+,' | tr -d ' ,' | sort -u)"
+' "$SRC" | grep -oE '^[[:space:]]*[a-z_]+,' | tr -d ' ,' | sort -u)"
 
 if [ -z "$expected" ] || [ -z "$required" ]; then
     echo "ERROR: could not extract slot lists from $SRC — has the shape changed?" >&2
     exit 1
+fi
+
+# Both lists are scraped by regex, so a scrape that silently goes wrong reports a
+# slot MISMATCH — a real-looking failure with a fictional cause. That already
+# happened once (awk has no `\s`, so the terminator never matched and the
+# extractor ran past the macro, reporting function parameter names as required
+# slots). Anchor the extraction against the vtable's actual fields: every name in
+# either list must BE a slot.
+VTABLE_SRC="packages/core/nros-rmw-cffi/src/generated.rs"
+if [ -f "$VTABLE_SRC" ]; then
+    slots="$(awk '
+        /^pub struct nros_rmw_vtable_t/ { instruct = 1; next }
+        instruct && /^}/ { instruct = 0 }
+        instruct { print }
+    ' "$VTABLE_SRC" | grep -oE '^[[:space:]]*pub [a-z_]+:' \
+        | sed -E 's/.*pub ([a-z_]+):/\1/' | sort -u)"
+    bogus="$(comm -23 <(printf '%s\n' "$expected" "$required" | sort -u) <(echo "$slots"))"
+    if [ -n "$bogus" ]; then
+        echo "ERROR: extraction is broken — name(s) that are not vtable fields at all:" >&2
+        echo "$bogus" | sed 's/^/       /' >&2
+        echo "       This is a bug in THIS SCRIPT's parsing, not a slot mismatch." >&2
+        exit 1
+    fi
 fi
 
 fail=0
