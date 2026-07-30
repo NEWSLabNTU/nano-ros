@@ -102,6 +102,11 @@ impl PlatformId {
             PlatformId::QemuBaremetal => &["qemu-arm-baremetal"],
             PlatformId::Stm32F4 => &["stm32f4"],
             PlatformId::Fvp => &["fvp"],
+            // Carried as a CarveOut (no CI runner builds PX4-SITL), so no row
+            // spells this today. The token is still declared: the vocabulary has
+            // to name every platform, or a lane that later gains PX4 fixtures
+            // selects nothing for them and looks fast rather than broken.
+            PlatformId::Px4 => &["px4"],
         }
     }
 
