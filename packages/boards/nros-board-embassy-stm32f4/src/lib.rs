@@ -224,9 +224,17 @@ fn parse_decimal_u32(s: &str) -> Option<u32> {
     if has_digit { Some(result) } else { None }
 }
 
-/// Embassy-flavored STM32F4 board. Phase 216.C.2 skeleton — every
-/// Board / EmbassyBoardEntry method is `todo!()`. The trait surface is
-/// what 216.C.3 macro routing needs.
+/// Embassy-flavored STM32F4 board.
+///
+/// phase-320 W1.c — this used to say "every Board / EmbassyBoardEntry method is
+/// `todo!()`", which is not true and has not been since the 216.C.2 follow-up:
+/// the methods have real bodies (`init_hardware` is a documented no-op because
+/// Embassy owns the entry point). Overstating the breakage is as misleading as
+/// understating it — it hides the ACTUAL defect.
+///
+/// What is genuinely incomplete (issue 0248): there is no transport bringup,
+/// and a Deferred image signals callbacks into the channel with nothing
+/// draining it. The trait surface is real; the runtime is not.
 pub struct EmbassyStm32F4;
 
 // ---- Board super-trait family (BoardInit + BoardPrint + BoardExit) ----

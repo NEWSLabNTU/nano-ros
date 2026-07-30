@@ -1,5 +1,5 @@
 ---
-id: 351
+id: 353
 title: "No declared capability reaches the C/C++ build on the workspace path — one broken mechanism, three different masks (posix always-on, per-fixture `-D`, and a closed issue cited as cover)"
 status: open
 type: bug

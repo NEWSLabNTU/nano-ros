@@ -549,8 +549,24 @@ pub const CELLS: &[Cell] = &[
          BuildOnly("hardware-gated (#221)")),
 
     // FVP — cyclone runtime (license-gated at run time), cpp + rust.
-    cell(Fvp, Cpp,  Cyclonedds, Pubsub, Example, Runtime),
-    cell(Fvp, Rust, Cyclonedds, Pubsub, Example, Runtime),
+    // Issue 0232 / phase-320 W1.a — these were `Runtime`, which the lane can
+    // never satisfy: the Base_RevC AEMv8-R model is license-walled
+    // (`[gated.arm-fvp]` in nros-sdk-index.toml, user-supplied via ARM_FVP_DIR),
+    // so `fvp_smoke` / `fvp_runtime_ws` skip on EVERY CI and dev host. Claiming
+    // Runtime here is the exact shape of 0232's false green — a lane that always
+    // skipped, so four walls "shipped invisible and were found by the ASI
+    // consumer". A gap reads as a gap; an overclaim reads as confidence.
+    //
+    // The maintainer-run runtime gate still exists and still matters
+    // (`just zephyr verify-fvp-runtime`); it is simply not coverage this matrix
+    // can promise. Note the runtime-verified FVP artifact is the two-tier
+    // workspace Entry, not these example cells.
+    cell(Fvp, Cpp,  Cyclonedds, Pubsub, Example,
+         BuildOnly("license-gated model; runtime needs ARM_FVP_DIR and is maintainer-run \
+                    via `just zephyr verify-fvp-runtime` (phase-298)")),
+    cell(Fvp, Rust, Cyclonedds, Pubsub, Example,
+         BuildOnly("license-gated model; runtime needs ARM_FVP_DIR and is maintainer-run \
+                    via `just zephyr verify-fvp-runtime` (phase-298)")),
     cell(Fvp, Cpp,  Zenoh,      Pubsub, Example,
          CarveOut("zenoh-pico needs POSIX API the FVP board conf doesn't enable (#217)")),
 

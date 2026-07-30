@@ -4,7 +4,7 @@ version = "0.4.0"
 publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Embassy STM32F4 board crate for nros (Phase 216.C.2 — skeleton)"
+description = "Embassy STM32F4 board crate for nros. INCOMPLETE: no transport bringup, and a Deferred image signals callbacks into the channel that nothing drains (issue 0248). Trait surface is real; the runtime is not."
 
 [lib]
 name = "nros_board_embassy_stm32f4"

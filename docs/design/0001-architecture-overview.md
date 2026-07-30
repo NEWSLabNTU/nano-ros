@@ -164,52 +164,63 @@ Dashed arrows indicate feature-gated optional dependencies. Solid arrows are unc
 
 ## Feature Axes
 
-nano-ros uses three orthogonal compile-time axes. Each axis is mutually exclusive, enforced by `compile_error!()` in the nano-ros façade crate. Zero features on an axis is valid (reduced functionality).
+nano-ros has three orthogonal compile-time axes — but they do **not** all live on
+the same crate, and the previous version of this section implied they did. It
+showed a single `nros` feature block containing `rmw-zenoh`, `rmw-xrce` and six
+`platform-*` features, and gave example manifests using them. None of those
+features exist on `nros`; the snippets would not have resolved (phase-320 W1.h).
 
-```mermaid
-graph LR
-    subgraph "RMW Backend (pick one)"
-        Z[rmw-zenoh]
-        X[rmw-xrce]
-        CF[rmw-cffi]
-    end
+**RMW backend — on the `nros` façade.**
 
-    subgraph "Platform (pick one)"
-        P1[platform-posix]
-        P2[platform-zephyr]
-        P3[platform-bare-metal]
-        P4[platform-freertos]
-        P5[platform-nuttx]
-        P6[platform-threadx]
-    end
-
-    subgraph "ROS Edition (pick one)"
-        R1[ros-humble]
-        R2[ros-iron]
-    end
-
-    subgraph "Cross-cutting (any combination)"
-        S1[std]
-        S2[alloc]
-        S3[safety-e2e]
-        S4[param-services]
-        S5[ffi-sync]
-    end
+```
+rmw-cffi        the generic C vtable seam (RFC-0054); the usual choice
+rmw-cyclonedds  links the Cyclone DDS backend
+rmw-lending     a CAPABILITY, not a backend (zero-copy loan/borrow)
 ```
 
-A typical embedded configuration:
+The concrete backends — zenoh, XRCE-DDS, uORB — are **not** façade features.
+They are selected by *linking the backend*: `target_link_libraries(…
+NanoRos::Rmw::<name>)` in CMake, or a direct crate reference in Rust. The
+runtime registers whatever was linked through `nros_app_register_backends`; on a
+pure-Rust image the app crate must also carry a force-link anchor
+(`nros::force_link_backend!`, issues 0155/0163/0330). This is why the façade
+names no backend: naming one there would put a transport fact in an
+RMW-agnostic layer.
 
-```toml
-[dependencies]
-nros = { features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"] }
+**Platform — on `nros-platform`**, not on `nros`:
+
 ```
+platform-posix  platform-zephyr  platform-nuttx  platform-freertos
+platform-threadx  platform-cffi
+platform-esp32-qemu  platform-esp32s3  platform-mps2-an385
+platform-stm32f4  platform-orin-spe
+```
+
+Note this axis mixes OS-level and board-level entries; phase-321 W2 addresses
+that. There is no `platform-bare-metal` — bare-metal images select a board crate
+instead.
+
+**ROS edition — on `nros`:** `ros-humble`, `ros-iron`, `ros-jazzy`.
+
+**Cross-cutting (any combination):** `std`, `alloc`, `safety-e2e`,
+`param-services`, `lifecycle-services`, `ffi-sync`, `bridge`, `stream`,
+`metadata-mode`.
+
+Mutual exclusivity within the RMW and edition axes is enforced by
+`compile_error!()` in the façade. Zero features on an axis is valid (reduced
+functionality).
 
 A desktop/test configuration:
 
 ```toml
 [dependencies]
-nros = { features = ["rmw-zenoh", "platform-posix", "ros-humble", "std"] }
+nros = { features = ["rmw-cffi", "ros-humble", "std"] }
+nros-platform = { features = ["platform-posix"] }
 ```
+
+An embedded configuration additionally links a board crate and a backend; see
+the per-platform examples under `examples/` for the exact shape, which differs
+by build system.
 
 ## RMW Abstraction
 

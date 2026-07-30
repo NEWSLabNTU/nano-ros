@@ -3,9 +3,15 @@
 Procurement-grade compatibility matrix. Each row lists a real
 vendor + board model and reports nano-ros's status on it. Rows
 marked **Tested** boot in CI; **Ready** rows compile and run but
-have no in-CI gate yet; **Untested** rows compile per the
-architecture support but no one has reported booting nano-ros on
-them.
+have no in-CI gate yet; **Build-only** rows compile but cannot be
+booted by any CI lane (hardware or a license-gated model is
+required); **Untested** rows compile per the architecture support
+but no one has reported booting nano-ros on them.
+
+> This table is hand-maintained today and has drifted before — the ARM FVP row
+> claimed **Tested** while its model is license-walled and runs in no CI lane at
+> all. phase-320 W2 replaces it with a table generated from the board
+> descriptors, gated against the same evidence the tiers are derived from.
 
 | Vendor       | Board                | MCU / SoC          | Arch       | Default RTOS  | Status   | Example / board crate                                            |
 |--------------|----------------------|--------------------|------------|---------------|----------|-------------------------------------------------------------------|
@@ -29,7 +35,7 @@ them.
 | QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-arm-nuttx/`                                         |
 | QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup qemu-riscv-nuttx`) |
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Ready (build-only, experimental) | `packages/boards/nros-board-orin-spe/`               |
-| Arm FVP      | `Base_RevC AEMv8R` (SMP) | Cortex-A SMP   | Armv8-R    | Zephyr 3.7    | Tested (build); license-gated runtime | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r{,-cyclonedds}` + `run-fvp-aemv8r{,-cyclonedds}` |
+| Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r-cyclonedds{,-rust}` + `run-fvp-aemv8r-cyclonedds{,-rust}`. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
 

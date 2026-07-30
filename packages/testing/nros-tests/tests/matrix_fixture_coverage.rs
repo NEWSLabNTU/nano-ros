@@ -105,7 +105,6 @@ fn every_runtime_cell_has_a_fixture_row() {
         // - ZephyrNativeSim examples + non-rust workspaces: the west
         //   leaves lane (scripts/build/zephyr-fixture-leaves.sh — its own
         //   staleness sig, fixtures.toml `skip_probe` note).
-        // - Fvp: `just zephyr build-fvp-*` recipes.
         // - NuttxRiscv examples: `just nuttx build-riscv-*` recipes.
         // - ThreadxRiscv64 cyclone: `just threadx_riscv64 build-fixtures`
         //   deploy-overlay lane (#214).
@@ -115,7 +114,6 @@ fn every_runtime_cell_has_a_fixture_row() {
         if matches!(c.platform, PlatformId::Native)
             || matches!(c.kind, Kind::Interop | Kind::Bridge)
             || west_lane_zephyr
-            || matches!(c.platform, PlatformId::Fvp)
             || (matches!(c.platform, PlatformId::NuttxRiscv) && matches!(c.kind, Kind::Example))
             || (matches!(c.platform, PlatformId::ThreadxRiscv64)
                 && matches!(c.rmw, Rmw::Cyclonedds))

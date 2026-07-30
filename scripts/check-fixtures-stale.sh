@@ -106,18 +106,25 @@ fi
 # test already `skip!`s at runtime on the absent binary. Mirror the
 # embedded-Cyclone gate in the `test-all` recipe (justfile): require a cross
 # workspace fixture only when its toolchain is present; otherwise drop it from
-# the required set with an info note. (esp32/nuttx are excluded entirely via
-# `skip_probe = true` — they are not in the build-test-fixtures fan-out.)
+# the required set with an info note.
+#
+# phase-320 W1.d — this used to say esp32 was "excluded entirely via
+# `skip_probe = true` … not in the build-test-fixtures fan-out". esp32 IS in the
+# fan-out (justfile `build-test-fixtures`), and has been for a while; the
+# skip_probe justification had simply never been revisited, so a fixture with a
+# real two-way QEMU e2e sat outside the staleness gate — the museum-binary class
+# (issues 0148/0164/0196). It now rides the toolchain-conditional path instead.
 # Only the cargo/cmake-lane workspace fixtures (freertos, threadx-linux, plus the
 # always-host native/c/cpp/mixed rows) reach this probe and write the
 # `.nros-workspace-fixture.*.inputsig` stamp the stale check demands.
-# zephyr/esp32/nuttx are `skip_probe = true` own-lane artifacts (west / esp /
-# nuttx machinery, each with its own sig) and never appear here.
+# zephyr/nuttx remain `skip_probe = true` own-lane artifacts (west / nuttx
+# machinery, each with its own sig) and never appear here.
 source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate
 workspace_toolchain_present() {
     case "$1" in
         workspace-rust-qemu-freertos) nros_toolchain_present arm-none-eabi ;;
         workspace-rust-threadx-linux) nros_toolchain_present threadx ;;
+        workspace-rust-esp32) nros_toolchain_present esp32 ;;
         *) return 0 ;;
     esac
 }

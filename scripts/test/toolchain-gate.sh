@@ -16,6 +16,11 @@ nros_toolchain_present() {
             command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 ;;
         threadx)
             [ -n "${THREADX_DIR:-}" ] || [ -d third-party/threadx/kernel ] ;;
+        esp32)
+            # phase-320 W1.d — the esp32 workspace Entry is a pure cargo build
+            # for riscv32imc; the Espressif QEMU fork is needed only to RUN it.
+            rustup target list --installed 2>/dev/null \
+                | grep -qx 'riscv32imc-unknown-none-elf' ;;
         *)
             echo "nros_toolchain_present: unknown toolchain key '$1'" >&2
             return 2 ;;

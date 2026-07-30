@@ -381,6 +381,12 @@ exclude = [
     # Board crates (embedded-only, require cross-compilation)
     "packages/boards/mps2-an385-pac",
     "packages/boards/nros-board-mps2-an385",
+    # phase-320 W1.b — this was in NEITHER `members` nor `exclude`, unlike every
+    # other board crate: cargo never errored because nothing in the workspace
+    # depends on it (the RTIC examples reach it through `.cargo/config.toml`
+    # path patches, and those examples are themselves excluded). Invisible to
+    # the workspace walk is not the same as deliberately excluded — list it.
+    "packages/boards/nros-board-rtic-mps2-an385",
     "packages/platforms/nros-platform-mps2-an385",
     "packages/platforms/nros-platform-stm32f4",
     "packages/platforms/nros-platform-esp32-qemu",

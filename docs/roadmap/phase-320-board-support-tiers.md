@@ -1,6 +1,6 @@
 # Phase 320 — Board support tiers, derived and gated
 
-**Status (2026-07-31): drafted, nothing landed.** Split out of the original
+**Status (2026-07-31): W1 landed. W2/W3 open.** Split out of the original
 combined draft. Sibling phases: [phase-321](phase-321-package-org-cuts-and-reorg.md)
 (cuts + directory reorganization), [phase-322](phase-322-board-crate-consolidation.md)
 (board crate merges, deferred).
@@ -25,7 +25,7 @@ moves, no deletions — those are phase-320, and they must not block this.
 
 No moves, no deletions. Each item is a lie the tree currently tells.
 
-- [ ] **W1.a** `packages/testing/nros-tests/src/matrix.rs:454-455` marks the two
+- [x] **W1.a** `packages/testing/nros-tests/src/matrix.rs:454-455` marks the two
       FVP Cyclone cells `Runtime`. FVP cannot run unattended: the model is
       license-walled (`[gated.arm-fvp]`, `nros-sdk-index.toml:375-378`), and
       `fvp_smoke.rs` / `fvp_runtime_ws.rs` open with `skip!` preconditions whose
@@ -35,36 +35,59 @@ No moves, no deletions. Each item is a lie the tree currently tells.
       matrix SSoT overstates reality, and overstating is exactly what made 0232
       expensive. Everything else in the matrix is honest: carve-out reasons are
       populated and `gap_tiers_carry_reasons` (`matrix.rs:657`) enforces them.
-- [ ] **W1.b** `nros-board-rtic-mps2-an385` appears **zero** times in the root
+      Follow-through: the `PlatformId::Fvp` exemption in
+      `matrix_fixture_coverage.rs::every_runtime_cell_has_a_fixture_row` existed
+      only to accommodate this overclaim, and is now dead code — removed, so a
+      future FVP Runtime cell must bring a fixture row like everyone else.
+- [x] **W1.b** `nros-board-rtic-mps2-an385` appears **zero** times in the root
       `Cargo.toml` — neither in `members` nor in `exclude`, unlike every other
       board crate. It is reachable only through `.cargo/config.toml` path patches
       from excluded RTIC examples, so cargo never errors. Add it to `exclude`.
-- [ ] **W1.c** `nros-board-rtic-stm32f4/Cargo.toml:7` describes the crate as
+- [x] **W1.c** `nros-board-rtic-stm32f4/Cargo.toml:7` describes the crate as
       "Skeleton … `init_hardware` body is `todo!()`"; `src/lib.rs:65` says
       "nothing is `todo!()`". One of them is wrong and it will mis-tier the board.
       Reconcile, and account for the one residual `todo!` in the file.
-- [ ] **W1.d** `nros-board-esp32-qemu` has a real two-way QEMU e2e
-      (`esp32_emulator.rs`, 8 tests) but sits **outside** the `build-test-fixtures`
-      fan-out (`justfile:1100-1101,1126`), so it silently escapes the fixture
-      staleness gate — the museum-binary class (issues 0148/0164/0196). Add it.
-- [ ] **W1.e** `just ci-matrix` prints a note and calls `just ci-full`
-      (`justfile:1451-1456`); tier-2 cell selection exists (`ci_lane.rs`) but is
-      not wired to the nextest filter (phase-318 W4.d). Until that lands, **any
-      published "tier 2" is aspirational** — say so in the tier doc rather than
-      implying a lane exists.
-- [ ] **W1.f** `book/src/reference/supported-boards.md` marks ARM FVP
+- [x] **W1.d** ~~esp32 is outside the `build-test-fixtures` fan-out~~ — **the
+      premise was wrong**: esp32 IS in the fan-out, at all four sites. The real
+      defect was one layer down: `workspace-rust-esp32` carried
+      `skip_probe = true` whose stated justification was *"esp32 is NOT in the
+      build-test-fixtures platform fan-out"* — true once, never revisited after
+      esp32 was added. So a fixture backing a real two-way QEMU e2e sat outside
+      the staleness gate anyway: the museum-binary class (0148/0164/0196) reached
+      through a stale *comment* rather than a stale list. Fixed by dropping
+      `skip_probe` and routing the row through `workspace_toolchain_present`
+      (new `esp32` predicate on the riscv32imc target), which drops it with an
+      info note when the toolchain is absent instead of hard-failing the suite —
+      the original worry, now handled properly.
+- [x] **W1.e** ~~tier 2 is aspirational because `ci-matrix` just calls
+      `ci-full`~~ — **obsolete**: phase-318 W4.d/W4.e landed upstream while this
+      phase was being drafted. `ci-matrix` is now a real lane (`_lane-gate tier2`)
+      with `ci-matrix-nightly` for the pairwise cover. Tier 2 can be published as
+      a lane that exists. No action.
+- [x] **W1.f** `book/src/reference/supported-boards.md` marks ARM FVP
       "Tested (build)" under a legend where **Tested = boots in CI**, and
       advertises `build-fvp-aemv8r` / `run-fvp-aemv8r`, retired in issue #217.
       Also `supported-boards.md` and `arm-fvp.md:84` claim the FVP run recipes
       "skip with a clear hint" when the model is absent — they **fail**
       (`scripts/west_commands/fvp.py:70-72` calls `self.die`, and the recipes run
-      under `set -e`). Fix the text or the recipes; W2 then generates this table.
-- [ ] **W1.g** `CLAUDE.md` router line says "`packages/drivers/` category split →
+      under `set -e`). **Fixed the recipes, not the prose** — the book described
+      the intended behaviour, and all four `run-fvp-*` recipes now pre-check with
+      the same `scripts/zephyr/resolve-fvp-bin.sh` the runner uses (one spelling
+      of "where is the FVP", not two) and skip with rc=0. W2 then generates the
+      table.
+- [x] **W1.g** `CLAUDE.md` router line says "`packages/drivers/` category split →
       RFC-0012". RFC-0012 is *board/BSP integration* and defines no such split,
       and no split is followed. Correct the line.
-- [ ] **W1.h** ARCHITECTURE §2's feature-axis diagram omits `rmw-cyclonedds`,
-      `rmw-uorb` and `platform-esp-idf`, all of which exist. Align it with W2's
-      generated axes rather than hand-editing again.
+- [x] **W1.h** ARCHITECTURE §2 was wrong more deeply than "a few missing axes":
+      it showed `rmw-zenoh` / `rmw-xrce` and six `platform-*` features **on the
+      `nros` façade**, and gave example manifests using them. The façade has no
+      `platform-*` features at all and no `rmw-zenoh`/`rmw-xrce` — only
+      `rmw-cffi`, `rmw-cyclonedds`, `rmw-lending`. The platform axis lives on
+      `nros-platform` (11 features, mixing OS-level and board-level), the edition
+      axis has three values not two, and `platform-bare-metal` does not exist. So
+      both example snippets would have failed to resolve. Section rewritten
+      against the real feature tables, including *why* the façade names no
+      backend (linking selects it — issues 0155/0163/0330).
 
 ## W2 — Support tiers, derived and gated
 

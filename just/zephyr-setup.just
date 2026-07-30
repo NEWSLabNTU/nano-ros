@@ -277,6 +277,15 @@ build-fvp-aemv8r-cyclonedds-rust:
 run-fvp-aemv8r-cyclonedds:
     #!/usr/bin/env bash
     set -e
+    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
+    # so its absence is a skip, not a failure. Without this the recipe reached
+    # `west fvp run`, whose `self.die()` (scripts/west_commands/fvp.py) turned
+    # into a hard `set -e` failure — while the book promised these recipes
+    # "skip with a clear hint". Same resolver the runner uses, so there is one
+    # spelling of "where is the FVP", not two.
+    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+    fi
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr/FVP-Cyclone run skip: west not found"; exit 0
     fi
@@ -303,6 +312,15 @@ run-fvp-aemv8r-cyclonedds:
 run-fvp-aemv8r-cyclonedds-rust:
     #!/usr/bin/env bash
     set -e
+    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
+    # so its absence is a skip, not a failure. Without this the recipe reached
+    # `west fvp run`, whose `self.die()` (scripts/west_commands/fvp.py) turned
+    # into a hard `set -e` failure — while the book promised these recipes
+    # "skip with a clear hint". Same resolver the runner uses, so there is one
+    # spelling of "where is the FVP", not two.
+    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone-Rust run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+    fi
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr/FVP-Cyclone-Rust run skip: west not found"; exit 0
     fi
@@ -332,6 +350,15 @@ run-fvp-aemv8r-cyclonedds-rust:
 run-fvp-ws-entry:
     #!/usr/bin/env bash
     set -e
+    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
+    # so its absence is a skip, not a failure. Without this the recipe reached
+    # `west fvp run`, whose `self.die()` (scripts/west_commands/fvp.py) turned
+    # into a hard `set -e` failure — while the book promised these recipes
+    # "skip with a clear hint". Same resolver the runner uses, so there is one
+    # spelling of "where is the FVP", not two.
+    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
+        echo "Zephyr/FVP ws-entry run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+    fi
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr/FVP-ws-entry run skip: west not found"; exit 0
     fi
@@ -423,6 +450,15 @@ build-fvp-board-import:
 run-fvp-board-import:
     #!/usr/bin/env bash
     set -e
+    # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
+    # so its absence is a skip, not a failure. Without this the recipe reached
+    # `west fvp run`, whose `self.die()` (scripts/west_commands/fvp.py) turned
+    # into a hard `set -e` failure — while the book promised these recipes
+    # "skip with a clear hint". Same resolver the runner uses, so there is one
+    # spelling of "where is the FVP", not two.
+    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
+        echo "Zephyr/FVP board-import run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+    fi
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr/FVP board-import run skip: west not found"; exit 0
     fi

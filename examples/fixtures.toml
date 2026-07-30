@@ -400,16 +400,18 @@ entry = "esp32_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/esp32"
 target = "riscv32imc-unknown-none-elf"
-# skip_probe = true (issue 0030): esp32 is NOT in the `build-test-fixtures`
-# platform fan-out (build-test-fixtures-leaves runs zephyr/native/qemu/freertos/
-# nuttx/threadx_linux/threadx_riscv64/stm32f4 — no esp32), so the standard
-# fixture build never produces this Entry. Like `workspace-rust-qemu-nuttx`,
-# it is built only by its own lane (`just esp32 build-fixtures` →
-# workspace-fixtures-build.sh esp32). Requiring it in the test-all preflight
-# would hard-fail the whole suite on every host (the esp32 e2e test already
-# skip!s at runtime on the absent binary). The stale-probe also can't replicate
-# the nightly + build-std + esp env.
-skip_probe = true
+# phase-320 W1.d — `skip_probe = true` was REMOVED here. Its stated reason was
+# "esp32 is NOT in the `build-test-fixtures` platform fan-out", which stopped
+# being true when esp32 was added to that fan-out; the justification was never
+# revisited. The consequence was a fixture backing a real two-way QEMU e2e
+# (`esp32_emulator.rs`) sitting outside the staleness gate, i.e. the
+# museum-binary class (issues 0148/0164/0196) — the sweep can "pass" on a
+# binary built before the change under test.
+#
+# The original worry (hard-failing the preflight on hosts without the esp
+# toolchain) is handled properly by `workspace_toolchain_present` in
+# scripts/check-fixtures-stale.sh, which drops the row with an info note when
+# the riscv32imc target is absent instead of failing the suite.
 # ZPICO_SUBSCRIBER_LARGE_SIZE: shrink the Phase 231 (RFC-0038) size-class large
 # receive buffer from the 16 KiB default to 4 KiB on esp32 (issue #24). The
 # static large-payload blocks are MAX_LARGE_SUBSCRIBERS(2) × RING_DEPTH(4) ×
