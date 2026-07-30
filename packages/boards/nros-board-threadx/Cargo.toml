@@ -52,7 +52,7 @@ nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64",
 # zenoh vtable → `resolve_backend` → NoBackend → `Executor::open` fails with
 # `Transport(ConnectionFailed)` before any wire I/O. Linked + registered only when
 # the overlay forwards `rmw-zenoh`; cyclonedds builds leave it off.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-threadx",
     "ros-humble",
 ], optional = true }

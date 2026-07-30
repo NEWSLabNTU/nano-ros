@@ -17,7 +17,7 @@ on:
       - "packages/core/nros-cpp/include/**"
       - "packages/core/nros-cpp/Doxyfile"
       - "book/rustdoc-driver/**"
-      - "packages/zpico/nros-rmw-zenoh/src/**"
+      - "packages/rmw/zenoh/nros-rmw-zenoh/src/**"
       - "packages/xrce/nros-rmw-xrce/src/**"
       - ".github/workflows/docs.yml"
 

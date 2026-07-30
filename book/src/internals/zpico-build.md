@@ -7,7 +7,7 @@ collapses that surface to one consumer + one data file.
 
 ## The manifest
 
-`packages/zpico/zpico-sys/zenoh_platforms.toml` declares every
+`packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` declares every
 per-platform datum the build needs. Two top-level table groups:
 
 - `[platform.<name>]` — one block per supported platform

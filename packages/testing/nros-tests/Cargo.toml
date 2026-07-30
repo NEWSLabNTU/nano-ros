@@ -85,7 +85,7 @@ nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "ros
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
 # loan E2E test. Optional so the default test build doesn't pull
 # zenoh-pico unnecessarily.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["lending", "platform-posix"], optional = true }
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["lending", "platform-posix"], optional = true }
 # Phase 169.2 — the retired Rust DDS backend and multi-RMW bridge test
 # were deleted alongside the Rust DDS examples.
 # Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E

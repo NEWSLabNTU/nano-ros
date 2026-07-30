@@ -62,7 +62,7 @@ Each verified: zero consumers, or consumers that cannot work.
       lockfiles belong to root-workspace members and are therefore inert. Checked
       against `cargo metadata`: `packages/drivers/cmsdk-uart`,
       `packages/drivers/nros-smoltcp`, `packages/verification/nros-verification`
-      and `packages/zpico/zpico-serial` are **not** workspace members, so their
+      and `packages/rmw/zenoh/zpico-serial` are **not** workspace members, so their
       lockfiles are live — they pin standalone and cross-compiled builds.
       Deleting them would have been a real regression dressed as cleanup. The
       inconsistent tracked-vs-ignored policy across siblings is still worth a

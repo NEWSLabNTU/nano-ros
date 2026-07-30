@@ -9,7 +9,7 @@ resolved_in: zpico-alloc
 ---
 
 All four bare-metal platform crates now share a single free-list allocator
-via the `zpico-alloc` crate (`packages/zpico/zpico-alloc/`). This replaced
+via the `zpico-alloc` crate (`packages/rmw/zenoh/zpico-alloc/`). This replaced
 the broken bump allocators on ESP32 / ESP32-QEMU / STM32F4 (no-op `z_free`,
 data-losing `z_realloc`) with the proven MPS2-AN385 first-fit free-list with
 address-ordered coalescing. Each platform's `memory.rs` is now a thin

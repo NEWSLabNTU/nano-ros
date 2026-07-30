@@ -65,7 +65,7 @@ nros = { path = "../../core/nros", default-features = false, features = ["alloc"
 # `.init_array`); the board crate now wraps that call inside
 # `init_hardware`. Phase 248 C1 (#60 T4) — optional behind `rmw-zenoh`
 # so the board can build DDS-/XRCE-only. Default-on (examples assume zenoh).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
 
 # Cortex-M runtime — Pac/Core associated types live in user space
 # but the board crate provides them concretely.

@@ -44,7 +44,7 @@ nros-board-posix = { version = "0.5.0", path = "../nros-board-posix" }
 # Phase 248 C1 (#60 T4) — optional behind the `rmw-zenoh` feature so the
 # board can build DDS-/XRCE-only. Default-on (existing native examples
 # assume zenoh) but droppable via `default-features = false`.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
 # Phase 249 P3.5b — the board owns all three native backends so a declarative
 # Entry pkg can select any RMW via the board's `rmw-<x>` feature and the board
 # boot calls its `register()` (no app-side backend ownership). The board's

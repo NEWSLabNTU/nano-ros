@@ -361,7 +361,7 @@ MIT license — fully permissive, no copyleft. **Note**: MIT does not include an
 ### New Crates Required
 
 ```
-packages/zpico/zpico-platform-threadx/     # FFI symbols backed by ThreadX APIs
+packages/rmw/zenoh/zpico-platform-threadx/     # FFI symbols backed by ThreadX APIs
 packages/boards/nros-<board>-threadx/       # User-facing board crate
 ```
 

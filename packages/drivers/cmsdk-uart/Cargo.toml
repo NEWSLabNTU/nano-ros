@@ -9,4 +9,4 @@ description = "CMSDK APB UART driver for ARM Cortex-M (MPS2-AN385 and similar)"
 name = "cmsdk_uart"
 
 [dependencies]
-zpico-serial = { path = "../../zpico/zpico-serial" }
+zpico-serial = { path = "../../rmw/zenoh/zpico-serial" }

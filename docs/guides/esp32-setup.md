@@ -87,7 +87,7 @@ packages/boards/
 packages/drivers/
 └── openeth-smoltcp/       # OpenCores Ethernet MAC driver for smoltcp
 
-packages/zpico/
+packages/rmw/zenoh/
 └── zpico-platform-esp32-qemu/ # QEMU FFI symbols
 
 examples/qemu-esp32-baremetal/rust/

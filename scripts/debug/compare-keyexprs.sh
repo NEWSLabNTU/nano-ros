@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TALKER="$PROJECT_ROOT/target/release/talker"
-Z_SUB="$PROJECT_ROOT/packages/zpico/zpico-sys/zenoh-pico/build/examples/z_sub"
+Z_SUB="$PROJECT_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico/build/examples/z_sub"
 
 # Unified log dir (matches the test fixtures' convention) instead of scattering
 # files across /tmp. Override with NROS_TEST_LOG_DIR.

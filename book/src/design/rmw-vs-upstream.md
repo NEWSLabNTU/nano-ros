@@ -806,5 +806,5 @@ entry point rather than the builder / per-message forms above.
   to writing a backend in C against this vtable.
 - [`<nros/rmw_vtable.h>` Doxygen](../api/rmw-cffi/index.html) — full
   C reference for every function pointer above.
-- [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh)
+- [`packages/rmw/zenoh/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh)
   — canonical reference port. Read the source for a worked example.

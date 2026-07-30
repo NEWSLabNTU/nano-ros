@@ -309,10 +309,10 @@ zephyr_compile_definitions(
 )
 
 # L4-readiness helper (same backend-agnostic helper dust-dds uses).
-zephyr_library_sources(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c)
+zephyr_library_sources(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/src/zpico_zephyr.c)
 zephyr_include_directories(
-    ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include
-    ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include
+    ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/include
+    ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/c/include
 )
 
 # ---- Phase 180.B — module exports for copy-out-clean examples ----------

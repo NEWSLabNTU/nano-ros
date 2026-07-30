@@ -21,8 +21,8 @@ host-only-reason = "host build-script helper for zenoh-pico"
 [dependencies]
 cbindgen = "0.29"
 cc = "1.0"
-nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
-nros-build-paths = { path = "../../core/nros-build-paths" }
+nros-board-common = { path = "../../../boards/nros-board-common", features = ["build-helpers"] }
+nros-build-paths = { path = "../../../core/nros-build-paths" }
 pkg-config = "0.3"
 
 [lints]

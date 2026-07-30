@@ -1,7 +1,7 @@
 # Phase 111.B.1 — crates.io metadata audit
 
 Goal of work item 111.B.1: every workspace crate in `packages/core/`,
-`packages/zpico/`, `packages/xrce/`, `packages/rmw/cyclonedds/`, and
+`packages/rmw/zenoh/`, `packages/xrce/`, `packages/rmw/cyclonedds/`, and
 `packages/codegen/` has the metadata fields crates.io requires before
 the first `cargo publish` (`authors`, `license`, `description`,
 `repository`, `homepage`, `documentation`, `readme`, `keywords`,
@@ -17,7 +17,7 @@ on 2026-05-11.
 | Tree                       | Count | Notes |
 |----------------------------|------:|-------|
 | `packages/core/`           |   19  | nros + nros-{core,serdes,macros,params,rmw,rmw-cffi,node,c,cpp,sizes-build,platform,platform-{api,cffi,posix,nuttx,freertos,threadx,zephyr}} |
-| `packages/zpico/`          |    6  | zpico-{sys,alloc,platform-shim,platform-custom,serial} + nros-rmw-zenoh |
+| `packages/rmw/zenoh/`          |    6  | zpico-{sys,alloc,platform-shim,platform-custom,serial} + nros-rmw-zenoh |
 | `packages/xrce/`           |    4  | xrce-{sys,platform-shim} + nros-rmw-xrce{,-cffi} |
 | `packages/rmw/cyclonedds/`            |    1  | nros-rmw-dds (dust-dds is a submodule fork — out of scope, has its own workspace + license) |
 | `packages/codegen/`        |    8  | nros-cli{,-core}, cargo-nano-ros, colcon-cargo-ros2 (crate name `colcon-nano-ros`), nros-codegen-c, rosidl-{bindgen,codegen,parser} (codegen is a submodule of `NEWSLabNTU/colcon-nano-ros`) |

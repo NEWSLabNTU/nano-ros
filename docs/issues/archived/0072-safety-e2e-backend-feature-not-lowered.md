@@ -51,10 +51,10 @@ integrity check never runs over the zenoh transport. Affects both the imperative
 The CRC-32 attach (publisher) and validate (subscriber) live behind the **zenoh backend's
 own** `safety-e2e` feature, in `nros-rmw-zenoh`:
 
-- `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs:313` — the 37-byte
+- `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/publisher.rs:313` — the 37-byte
   (`RMW_ATTACHMENT_SIZE_WITH_CRC`) attachment with the trailing CRC is `#[cfg(feature =
   "safety-e2e")]`; without it the publisher sends the 33-byte (seq-only) attachment.
-- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs:888,1253` — the
+- `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:888,1253` — the
   `try_recv_validated` override that recomputes + compares the CRC is the `safety-e2e`
   override; without it the trait default returns `crc_valid: None`.
 

@@ -150,7 +150,7 @@ jobs:
           filters: |
             core: &core
               - 'packages/core/**'
-              - 'packages/zpico/**'
+              - 'packages/rmw/zenoh/**'
               - 'just/**'
               - 'justfile'
               - 'cmake/**'

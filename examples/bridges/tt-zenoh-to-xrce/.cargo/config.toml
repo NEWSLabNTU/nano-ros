@@ -2,4 +2,4 @@ include = ["../../../../nros-patch.toml"]
 [patch.crates-io]
 nros-platform = { path = "../../../packages/core/nros-platform" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed

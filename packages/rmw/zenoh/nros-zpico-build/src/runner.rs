@@ -133,7 +133,7 @@ pub fn run() {
     let platforms_root = env::var_os("NROS_PLATFORMS_DIR")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("../../platforms"));
+        .unwrap_or_else(|| manifest_dir.join("../../../platforms"));
     let (platform_manifest, platforms_tree) = match legacy_file {
         Some(path) => {
             println!("cargo:rerun-if-changed={}", path.display());

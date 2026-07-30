@@ -14,7 +14,7 @@ Issue 0347 made a second `ZenohTransport::open()` in one process **fail loudly**
 registration tables and replacing its session handle. That fixed the silent
 corruption — it did not add the capability. This issue is the capability.
 
-`packages/zpico/zpico-sys/c/zpico/zpico.c` is single-session **by
+`packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c` is single-session **by
 construction**, and says so in passing (`zpico.rs:344`: *"zpico is
 single-session/global already"*).
 

@@ -811,7 +811,7 @@ Components with no existing infrastructure to reuse:
 - ros-launch-manifest: `~/repos/play_launch/src/ros-launch-manifest/docs/launch-manifest.md`
 - autoware-nano-ros sentinel: `~/repos/autoware-nano-ros/src/autoware_sentinel_linux/src/main.rs`
 - nano-ros executor: `packages/core/nros-node/src/executor/`
-- nano-ros `ffi-sync`: `packages/zpico/nros-rmw-zenoh/src/zpico.rs:38–45`, Phase 61 archive
+- nano-ros `ffi-sync`: `packages/rmw/zenoh/nros-rmw-zenoh/src/zpico.rs:38–45`, Phase 61 archive
 - nano-ros `PlatformYield` (Phase 79 abstraction pattern, mirror for mutex): `packages/core/nros-rmw/src/traits.rs`
 - nano-ros C++ template-static-member pattern (Phase 89.13 NuttX gotcha): `docs/roadmap/archived/phase-89.md` + memory `project_nuttx_cpp_pic_fix.md`
 - nano-ros scheduling-models (per-RTOS priority/scheduler/mutex): `book/src/internals/scheduling-models.md`

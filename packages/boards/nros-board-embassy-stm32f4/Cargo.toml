@@ -54,7 +54,7 @@ nros = { path = "../../core/nros", default-features = false, features = ["alloc"
 # wraps that call inside `init_hardware`. Mirrors the sibling RTIC
 # board crate (Phase 216.B.2 follow-up). Phase 248 C1 (#60 T4) — optional
 # behind `rmw-zenoh` so the board can build DDS-/XRCE-only. Default-on.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
 
 # Logging
 defmt = "0.3"

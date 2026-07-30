@@ -21,7 +21,7 @@
 //!
 //! The Rust framing helpers in this file mirror the C
 //! `__z_ivc_send_batch` / `__z_ivc_recv_batch` state machines in
-//! `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/ivc.c`. If
+//! `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/link/unicast/ivc.c`. If
 //! you change the wire spec, both sides + the bridge daemon move
 //! together.
 //!

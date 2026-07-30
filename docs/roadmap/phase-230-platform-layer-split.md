@@ -19,7 +19,7 @@ genuinely single system-access layer.
 **Depends on:** RFC-0034 (this phase implements it), RFC-0006 (C-ABI
 canonical + platform free-symbol model), [platform-c-abi.md](../../book/src/internals/platform-c-abi.md)
 (symbol contract + drift gate). Touches the vendored zenoh-pico fork
-(`packages/zpico/zpico-sys/zenoh-pico`) and `nros-zpico-build`.
+(`packages/rmw/zenoh/zpico-sys/zenoh-pico`) and `nros-zpico-build`.
 
 ## Overview
 

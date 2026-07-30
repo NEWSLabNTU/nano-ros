@@ -107,7 +107,7 @@ What you add is a **pure ABI marker** feature so each transport crate's
 `system/<rtos>/system.c`, gate the alias TU's network section to bare-metal):
 
 ```toml
-# packages/zpico/zpico-sys/Cargo.toml  (rmw-zenoh)
+# packages/rmw/zenoh/zpico-sys/Cargo.toml  (rmw-zenoh)
 [features]
 myos = []   # ABI marker only — no shim dependency
 

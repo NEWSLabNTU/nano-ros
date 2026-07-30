@@ -9,5 +9,5 @@ nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi" }  
 nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed

@@ -110,18 +110,18 @@ ros-iron = []
 ros-jazzy = []
 
 [dependencies]
-nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
+nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false }
 # Phase 115.M.3 — vtable register entry (previously shipped from
 # the retired `nros-rmw-zenoh-cffi` shim) now lives in this crate.
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
 # unconditionally (it boxes every entity handle).
-nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
+nros-rmw-cffi = { version = "0.5.0", path = "../../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
 nros-core = { workspace = true, default-features = false }
 # Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
 # for deadline / lifespan emulation. The façade crate gates the
 # ConcretePlatform pick on the same feature flags as the rest of
 # nros, so adding it here doesn't constrain platform selection.
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false }
+nros-platform = { version = "0.5.0", path = "../../../core/nros-platform", default-features = false }
 # issue 0270 — `default-features = false` so `platform-aliases` + `link-ip` are
 # NOT forced transitively; they arrive via nros-rmw-zenoh's `default` / the
 # non-orin-spe `platform-*` features instead, letting `platform-orin-spe` drop
@@ -134,12 +134,12 @@ log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
-nros-tests = { path = "../../testing/nros-tests" }
-nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-types" }
+nros-tests = { path = "../../../testing/nros-tests" }
+nros-ghost-types = { version = "0.5.0", path = "../../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
 # Workspace-context builds get this via feature unification from a board
 # crate; standalone `cargo test` here doesn't.
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", features = ["platform-posix"] }
+nros-platform = { version = "0.5.0", path = "../../../core/nros-platform", features = ["platform-posix"] }
 # Phase 227.3(B) — the Rust shim is now platform-agnostic and the
 # `--lib` unit-test binary references the zpico C-port symbols
 # unconditionally. Pin the posix C port (threading / mutex / task

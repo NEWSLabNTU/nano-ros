@@ -48,7 +48,7 @@ fn main() {
     let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
     let max_sc = env_usize("NROS_EXECUTOR_MAX_SC", 8);
     // Phase 214.C.3 — default coordinated with
-    // `packages/zpico/nros-rmw-zenoh/build.rs::ZPICO_SUBSCRIBER_BUFFER_SIZE`
+    // `packages/rmw/zenoh/nros-rmw-zenoh/build.rs::ZPICO_SUBSCRIBER_BUFFER_SIZE`
     // (also 1024). If you change one, change the other — they share the
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.

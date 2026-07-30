@@ -2013,10 +2013,10 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ),
         ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
         // RMW backends
-        ("nros-rmw-zenoh", "packages/zpico/nros-rmw-zenoh"),
+        ("nros-rmw-zenoh", "packages/rmw/zenoh/nros-rmw-zenoh"),
         (
             "nros-rmw-zenoh-staticlib",
-            "packages/zpico/nros-rmw-zenoh-staticlib",
+            "packages/rmw/zenoh/nros-rmw-zenoh-staticlib",
         ),
         (
             "nros-rmw-cyclonedds",
@@ -3097,7 +3097,7 @@ nros-foo-extension = { version = "*" }
         let body = r#"
 [dependencies]
 nros = { path = "../../../packages/core/nros" }
-nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
+nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 "#;
         let got = extract_consumer_registry_nros_deps(body);
         assert!(got.is_empty(), "expected no registry deps, got: {got:?}");
@@ -3214,7 +3214,7 @@ version = "*"
 default-features = false
 
 [dependencies.nros-rmw-zenoh]
-path = "../zpico/nros-rmw-zenoh"
+path = "../rmw/zenoh/nros-rmw-zenoh"
 
 [target.'cfg(target_os = "linux")'.dependencies.nros-core]
 version = "*"

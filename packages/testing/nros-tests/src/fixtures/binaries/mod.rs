@@ -545,7 +545,7 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 const REGENERATED_INPLACE_HEADERS: &[&str] = &[
     "packages/core/nros-c/include/nros/nros_generated.h",
     "packages/core/nros-cpp/include/nros/nros_cpp_ffi.h",
-    "packages/zpico/zpico-sys/c/include/zpico.h",
+    "packages/rmw/zenoh/zpico-sys/c/include/zpico.h",
 ];
 
 fn is_regenerated_inplace_header(path: &Path) -> bool {

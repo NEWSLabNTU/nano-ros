@@ -235,7 +235,7 @@ Ship one per kernel family with stock-source assumption:
 Each generic crate's `build.rs` consumes a TOML manifest analogous to
 Phase 136's `zenoh_platforms.toml` — declarative source + define +
 cflags data; one place to edit when SDK paths change. Reuse the
-manifest parser landed in `packages/zpico/zpico-sys/build/manifest.rs`.
+manifest parser landed in `packages/rmw/zenoh/zpico-sys/build/manifest.rs`.
 
 ### Layer 2.5 — vendor overlay crates
 
@@ -317,7 +317,7 @@ Suggest **Phase 152 — Board / BSP abstraction layer**:
 2. **148.2 — TOML manifest for board / RTOS data.**
    `nros-board-<kernel>/board_platforms.toml` mirrors Phase 136's
    `zenoh_platforms.toml`. Reuse the parser from
-   `packages/zpico/zpico-sys/build/manifest.rs`.
+   `packages/rmw/zenoh/zpico-sys/build/manifest.rs`.
 3. **148.3 — Overlay-crate template + docs.**
    Cookiecutter under `templates/overlay-board/`; book chapter under
    `book/src/porting/vendor-overlay.md`.

@@ -43,7 +43,10 @@ fn zenoh_vtable_monomorphised_with_every_slot() {
 // Pubsub round-trip via a one-shot zenohd fixture.
 // ----------------------------------------------------------------------------
 
-const ZENOHD_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../build/zenohd/zenohd");
+const ZENOHD_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../build/zenohd/zenohd"
+);
 
 fn router_locator() -> Option<String> {
     static ROUTER: OnceLock<Mutex<Option<RouterHandle>>> = OnceLock::new();
@@ -104,7 +107,7 @@ impl Drop for RouterHandle {
 /// `Subscriber::try_recv_raw` does not surface data on a
 /// single-session pub+sub pair, regardless of whether the call
 /// goes through the cffi adapter (this crate) or the Rust trait
-/// directly (`packages/zpico/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_loopback`,
+/// directly (`packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_loopback`,
 /// also `#[ignore]`). The `zpico-sys` C shim keeps entity slots
 /// in `static` arrays and the in-process topology fails to flow
 /// data from publisher → router → subscriber inside the same

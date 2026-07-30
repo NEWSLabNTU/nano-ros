@@ -269,7 +269,7 @@ def prerequisite_rows():
             "lang": "rust",
             "rmw": "zenoh",
             "role": "zenoh-staticlib",
-            "dir": "packages/zpico/nros-rmw-zenoh-staticlib",
+            "dir": "packages/rmw/zenoh/nros-rmw-zenoh-staticlib",
             "build_root": "target-zenoh-fixture-posix",
             "scheduler": "just build-test-fixtures -> just build-zenoh-posix-fixture",
             "shared_mutation": "target-zenoh-fixture-posix",

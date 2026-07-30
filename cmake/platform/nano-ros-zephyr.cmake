@@ -32,7 +32,7 @@ add_subdirectory(
 # (CONFIG_ZENOH_PICO + zephyr_library() guards). add_subdirectory'ing it
 # from a non-Zephyr parent is a no-op — fine, the file gates internally.
 add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/zpico/zpico-zephyr"
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/rmw/zenoh/zpico-zephyr"
     zpico_zephyr_build)
 
 add_library(nros_platform_zephyr_iface INTERFACE)

@@ -20,7 +20,7 @@ nros = { path = "../../../../core/nros", default-features = false, features = [
     "safety-e2e",
 ] }
 nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
-nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",
     "ros-humble",

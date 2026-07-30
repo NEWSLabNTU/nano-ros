@@ -16,7 +16,7 @@
 # the rosidl codegen toolchain.
 #
 # NOTE on the zenoh pin: RFC-0058 calls for the pinned zenoh 1.7.2 overlay to
-# wire-match `packages/zpico`. For the cyclone-based reference lane that pin is
+# wire-match `packages/rmw/zenoh`. For the cyclone-based reference lane that pin is
 # irrelevant, so this baseline installs apt `rmw_zenoh_cpp` where available and
 # leaves the source-built pin as a future opt-in layer (ARG WITH_ZENOH_PIN),
 # keeping the image an apt-only build (minutes, no source compile).

@@ -36,18 +36,18 @@ members = [
     # + `nros_board_export!` macro). Sibling to `nros-platform-cffi`.
     "packages/boards/nros-board-cffi",
     # Zenoh-pico FFI bindings
-    "packages/zpico/zpico-sys",
+    "packages/rmw/zenoh/zpico-sys",
     # Phase 221.A — pure build-script helper logic for zpico-sys.
-    "packages/zpico/nros-zpico-build",
+    "packages/rmw/zenoh/nros-zpico-build",
     # Free-list allocator for z_malloc/z_free on bare-metal
-    "packages/zpico/zpico-alloc",
+    "packages/rmw/zenoh/zpico-alloc",
     # XRCE-DDS FFI bindings
     # Zenoh RMW backend (shim + zpico wrapper)
-    "packages/zpico/nros-rmw-zenoh",
+    "packages/rmw/zenoh/nros-rmw-zenoh",
     # Phase 123.A.1.x.4.a — standalone staticlib wrapper. Emits
     # `libnros_rmw_zenoh_staticlib.a` separately from `libnros_c.a`
     # so the SDK matrix can ship them decoupled.
-    "packages/zpico/nros-rmw-zenoh-staticlib",
+    "packages/rmw/zenoh/nros-rmw-zenoh-staticlib",
     # Phase 169.5 — Rust shim exposing the Cyclone DDS C++ backend's
     # C-linkage register entry (`nros_rmw_cyclonedds_register`).
     # The underlying library is built by the standalone
@@ -121,8 +121,8 @@ members = [
     # forwarders carved out into `zpico-link-ivc`; every other
     # `z_*` / `_z_*` symbol now comes from `zpico-sys`'s default-on
     # `platform-aliases` C TU.
-    "packages/zpico/zpico-link-ivc",
-    "packages/zpico/zpico-platform-custom",
+    "packages/rmw/zenoh/zpico-link-ivc",
+    "packages/rmw/zenoh/zpico-platform-custom",
     # Phase 129.D.2 — `xrce-platform-shim` deleted. `uxr_millis` /
     # `uxr_nanos` symbols now come from
     # `nros-rmw-xrce/src/platform_aliases.c` compiled into
@@ -366,7 +366,7 @@ exclude = [
     # Zephyr POSIX socket bindings (requires ZEPHYR_BUILD_DIR)
     "packages/drivers/zephyr-posix-sys",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
-    "packages/zpico/zpico-serial",
+    "packages/rmw/zenoh/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
     "packages/drivers/cmsdk-uart",
     # STM32F4 USART driver (embedded-only, Cortex-M)
@@ -543,7 +543,7 @@ nros-macros = { version = "0.5.0", path = "packages/core/nros-macros" }
 nros-orchestration-ir = { version = "0.5.0", path = "packages/core/nros-orchestration-ir" }
 nros-params = { version = "0.5.0", path = "packages/core/nros-params", default-features = false }
 nros-rmw = { version = "0.5.0", path = "packages/core/nros-rmw", default-features = false }
-nros-rmw-zenoh = { version = "0.5.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
+nros-rmw-zenoh = { version = "0.5.0", path = "packages/rmw/zenoh/nros-rmw-zenoh", default-features = false }
 # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend.
 # Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
 # by example crates that opt into the cffi-via-C-backend path.
@@ -572,10 +572,10 @@ nros-platform-cffi = { version = "0.5.0", path = "packages/core/nros-platform-cf
 # link the C port via the board crate's build.rs (FreeRTOS, ThreadX)
 # or via the parent build
 # system (Zephyr west, NuttX make).
-zpico-link-ivc = { version = "0.5.0", path = "packages/zpico/zpico-link-ivc", default-features = false }
-zpico-platform-custom = { version = "0.5.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
-zpico-sys = { version = "0.5.0", path = "packages/zpico/zpico-sys", default-features = false }
-zpico-alloc = { version = "0.5.0", path = "packages/zpico/zpico-alloc" }
+zpico-link-ivc = { version = "0.5.0", path = "packages/rmw/zenoh/zpico-link-ivc", default-features = false }
+zpico-platform-custom = { version = "0.5.0", path = "packages/rmw/zenoh/zpico-platform-custom", default-features = false }
+zpico-sys = { version = "0.5.0", path = "packages/rmw/zenoh/zpico-sys", default-features = false }
+zpico-alloc = { version = "0.5.0", path = "packages/rmw/zenoh/zpico-alloc" }
 
 # no_std compatible
 heapless = "0.8"

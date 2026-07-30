@@ -178,7 +178,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **After clone, run ONE of** `direnv allow` / `source ./activate.sh` / `source ./activate.fish`
   else `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`. Activate files are the env/PATH SSoT.
 - **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico
-  from `packages/zpico/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+  from `packages/rmw/zenoh/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

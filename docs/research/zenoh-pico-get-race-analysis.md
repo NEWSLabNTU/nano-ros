@@ -241,19 +241,19 @@ synchronous handshake. Walk it back from the upstream proposal.
 
 ## Files referenced
 
-- `packages/zpico/zpico-sys/zenoh-pico/src/api/api.c:735`
+- `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/api/api.c:735`
   — `z_open` user-facing entry (blocks on handshake, *not* fire-and-forget).
-- `packages/zpico/zpico-sys/zenoh-pico/src/transport/unicast/transport.c:104`
+- `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/transport/unicast/transport.c:104`
   — `_z_unicast_handshake_open` (the synchronous four-message handshake).
-- `packages/zpico/zpico-sys/zenoh-pico/src/net/primitives.c:485`
+- `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/net/primitives.c:485`
   — `_z_query` and the `_z_send_n_msg` call site (Race 3).
-- `packages/zpico/zpico-sys/zenoh-pico/src/transport/common/tx.c:299`
+- `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/transport/common/tx.c:299`
   — `_z_transport_tx_send_n_msg` and the
   `_z_transport_tx_mutex_lock(ztc, cong_ctrl == Z_CONGESTION_CONTROL_BLOCK)`
   switch.
-- `packages/zpico/zpico-sys/zenoh-pico/src/session/query.c:61`
+- `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/session/query.c:61`
   — `_z_get_query_id` (Race 1) and register helpers (Race 2).
-- `packages/zpico/zpico-sys/c/zpico/zpico.c:600`
+- `packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c:600`
   — our `zpico_open` (calls `z_open` then spawns lease/read tasks).
-- `packages/zpico/nros-rmw-zenoh/src/shim/service.rs:459`
+- `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs:459`
   — our 800 ms retry loop.

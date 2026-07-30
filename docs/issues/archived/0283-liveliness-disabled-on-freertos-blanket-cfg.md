@@ -15,7 +15,7 @@ the per-node NN token and every entity token — behind a compile-time
 platform check:
 
 ```rust
-// packages/zpico/nros-rmw-zenoh/src/shim/session.rs
+// packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs
 fn should_declare_liveliness(&self) -> bool {
     // FreeRTOS QEMU/slirp peer-to-peer fixtures do not need ROS 2
     // discovery tokens for data routing, and current zenoh-pico FreeRTOS

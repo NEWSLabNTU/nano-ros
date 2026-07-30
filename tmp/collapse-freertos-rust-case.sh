@@ -84,7 +84,7 @@ nros-platform = { path = "../../../../packages/core/nros-platform", default-feat
 ${msg_dep} = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
 ${dds_dep_line}
 ${crit_dep_line}
 TOML

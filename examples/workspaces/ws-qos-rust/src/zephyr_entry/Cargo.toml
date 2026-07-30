@@ -76,7 +76,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # Issue #129 (C5b amendment) — the concrete zenoh backend, entry-owned on
 # Zephyr (see the `[features]` note). `zpico-sys/zephyr` consumes the west
 # build's INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["platform-zephyr"], optional = true }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", default-features = false, features = ["platform-zephyr"], optional = true }
 
 # The launch-named Node pkgs (platform/RMW-agnostic).
 reliable_talker_pkg = { path = "../reliable_talker_pkg", default-features = false }

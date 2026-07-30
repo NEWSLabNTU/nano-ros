@@ -21,7 +21,7 @@ cffi-export = ["dep:nros-platform-cffi"]
 [dependencies]
 nros-platform-api = { path = "../../core/nros-platform-api" }
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
-zpico-alloc = { path = "../../zpico/zpico-alloc" }
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32s3", "unstable"] }
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep). esp-hal already provides

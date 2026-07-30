@@ -28,7 +28,7 @@ trees the job will never read).
 - name: Init needed submodules
   run: git submodule update --init --recursive packages/codegen
   # add others a job actually builds, e.g.:
-  #   third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
+  #   third-party/dds/cyclonedds packages/rmw/zenoh/zpico-sys/zenoh-pico
 ```
 
 **The rule — build the in-tree `nros`, then provision via it; never hand

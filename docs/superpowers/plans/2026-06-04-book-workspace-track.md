@@ -583,7 +583,7 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
@@ -648,7 +648,7 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-board-posix = { path = "../../../../../packages/boards/nros-board-posix" }
 talker_pkg = { path = "../talker_pkg" }
 listener_pkg = { path = "../listener_pkg" }

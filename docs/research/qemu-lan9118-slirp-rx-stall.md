@@ -185,7 +185,7 @@ on its own to close 127.D.1/D.2. Pubsub continues to pass.
 ## 2026-05-17 reply-dispatch counter trace
 
 After landing the QEMU patch the failing path narrows precisely.
-Counters added inside `packages/zpico/zpico-sys/c/zpico/zpico.c`:
+Counters added inside `packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c`:
 
 | Counter | Meaning | Service-test observation |
 |---|---|---|

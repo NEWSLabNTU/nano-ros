@@ -34,7 +34,7 @@ nros-board-freertos = { path = "../nros-board-freertos" }
 # FreeRTOS, so the historical net-ABI clash that kept the full alias TU off
 # FreeRTOS does not apply. Combined with `nros-platform/global-allocator`
 # below, both the Rust and C heaps funnel through one `nros_platform_alloc`.
-zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["freertos", "platform-aliases"], optional = true }
+zpico-sys = { path = "../../rmw/zenoh/zpico-sys", default-features = false, features = ["freertos", "platform-aliases"], optional = true }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 # Phase 88 — Rust binding for `nros_platform_register_log_writer`.
 # The board crate hands a semihosting writer to the platform's

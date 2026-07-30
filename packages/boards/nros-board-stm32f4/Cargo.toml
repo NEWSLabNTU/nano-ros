@@ -28,7 +28,7 @@ nros-log = { path = "../../core/nros-log", default-features = false, optional = 
 # concrete zenoh backend directly (optional, behind `rmw-zenoh`) so the board
 # OWNS linking + registering it. Bare-metal (`target_os = "none"`) is linkme-blind,
 # so the board registers it explicitly in `entry::boot` (mirrors `nros-board-rtic-stm32f4`).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",
 ], optional = true }
@@ -55,7 +55,7 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 ] }
 
 # Serial link layer (serial only)
-zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+zpico-serial = { path = "../../rmw/zenoh/zpico-serial", optional = true }
 
 # STM32F4 USART driver (serial only)
 stm32f4-usart = { path = "../../drivers/stm32f4-usart", optional = true }

@@ -27,7 +27,7 @@ nros-platform-api = { path = "../../core/nros-platform-api" }
 # OWNS linking + registering it, instead of a pure marker that needs a consumer
 # to bring the backend. Bare-metal (`target_os = "none"`) is linkme-blind, so the
 # board registers it explicitly in `entry::boot` (mirrors `nros-board-rtic-mps2-an385`).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",
 ], optional = true }
@@ -49,7 +49,7 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 ] }
 
 # Serial link layer (serial only)
-zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+zpico-serial = { path = "../../rmw/zenoh/zpico-serial", optional = true }
 # CMSDK UART driver (serial only)
 cmsdk-uart = { path = "../../drivers/cmsdk-uart", optional = true }
 # Phase 207.2 — XRCE custom-transport callbacks (UART). Gated via the

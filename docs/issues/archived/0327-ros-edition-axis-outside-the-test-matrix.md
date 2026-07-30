@@ -39,7 +39,7 @@ inline marker literals in issue #321 had no gate covering them.
 §2 still lists supported editions as `ros-{humble,iron}` with "jazzy/rolling
 planned", but **jazzy is the delivered default** — `just/ros-editions.just:13,111`
 (`distro="jazzy"`), a real `ros-jazzy` cargo feature
-(`packages/core/nros/Cargo.toml:141`, `packages/zpico/nros-rmw-zenoh/Cargo.toml:110`),
+(`packages/core/nros/Cargo.toml:141`, `packages/rmw/zenoh/nros-rmw-zenoh/Cargo.toml:110`),
 and it is the only edition the zenoh interop lane can structurally run.
 
 The real carve-out is recorded **only as a code comment** at

@@ -296,7 +296,7 @@ The current `nano-ros-bsp-zephyr` is a **Zephyr-specific C convenience library**
 - Wraps zenoh handle management with user-friendly API
 - Has **zero nros-core dependency** (defines its own C structs)
 
-Classification: **`zpico-zephyr`** — it's a zenoh-pico integration for Zephyr's C ecosystem, analogous to how `nros-rmw-zenoh` is the Rust integration. It sits under `packages/zpico/`.
+Classification: **`zpico-zephyr`** — it's a zenoh-pico integration for Zephyr's C ecosystem, analogous to how `nros-rmw-zenoh` is the Rust integration. It sits under `packages/rmw/zenoh/`.
 
 ### What `nros-rmw-zenoh` contains
 

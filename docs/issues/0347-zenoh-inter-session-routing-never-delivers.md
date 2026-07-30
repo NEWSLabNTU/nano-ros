@@ -10,7 +10,7 @@ related: [issue-0328, issue-0135]
 
 ## Finding (2026-07-28, while un-ignoring the zenoh integration tests for issue 0328)
 
-`packages/zpico/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_separate_sessions`
+`packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_separate_sessions`
 opens two `ZenohTransport` client sessions against one zenohd, creates a
 subscriber on the first and a publisher on the second, publishes, and polls for
 2 s. Nothing arrives.
@@ -66,7 +66,7 @@ this issue.
 
 ## Root cause (2026-07-28)
 
-Not a routing bug. `packages/zpico/zpico-sys/c/zpico/zpico.c` holds
+Not a routing bug. `packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c` holds
 
 ```c
 static z_owned_session_t g_session;

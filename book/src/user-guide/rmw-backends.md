@@ -176,7 +176,7 @@ see below):
 nros = { path = "<...>/packages/core/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "<...>/packages/zpico/nros-rmw-zenoh",
+nros-rmw-zenoh = { path = "<...>/packages/rmw/zenoh/nros-rmw-zenoh",
                    features = ["std", "platform-posix", "ros-humble"] }
 
 # XRCE-DDS backend

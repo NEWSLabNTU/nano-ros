@@ -21,7 +21,7 @@ nros-cpp = { path = "../../../core/nros-cpp", features = [
 ] }
 # Phase 115.L.x — link cffi shim directly so `register()` is callable
 # from main.rs before app_main() jumps into C/C++ code.
-nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", features = ["platform-nuttx", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../rmw/zenoh/nros-rmw-zenoh", features = ["platform-nuttx", "ros-humble"] }
 
 [build-dependencies]
 # Phase 221.A.3 — NuttX FFI build helper; pulls repo path

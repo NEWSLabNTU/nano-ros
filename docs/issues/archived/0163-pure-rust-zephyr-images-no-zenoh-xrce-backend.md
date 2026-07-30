@@ -104,5 +104,5 @@ the lane. Check `tests/zephyr.rs`'s rust-zenoh service e2e
 
 `zephyr/CMakeLists.txt` (RUST-API weak stub + comment), `zephyr/cmake/`
 (`nros_rmw_zenoh.cmake`, `nros_rmw_xrce.cmake`),
-`packages/zpico/nros-rmw-zenoh/src/lib.rs` (`cffi_register`),
+`packages/rmw/zenoh/nros-rmw-zenoh/src/lib.rs` (`cffi_register`),
 `packages/xrce/nros-rmw-xrce/src/vtable.c`, archived issues 0155/0161.

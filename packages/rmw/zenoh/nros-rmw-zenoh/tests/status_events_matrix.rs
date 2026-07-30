@@ -35,7 +35,10 @@ use std::{
 };
 
 /// Project-tree zenohd binary (built by `just setup`).
-const ZENOHD_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../build/zenohd/zenohd");
+const ZENOHD_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../build/zenohd/zenohd"
+);
 
 /// One zenohd per test run, shared across tests via OnceLock + Mutex.
 /// Returns the locator string the tests should connect to. `None` if

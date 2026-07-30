@@ -29,7 +29,7 @@ nros = { path = "../../../../core/nros", default-features = false, features = [
 ] }
 nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", features = ["posix-c-port"] }
 nros-board-native = { path = "../../../../boards/nros-board-native", default-features = false }
-nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "std",
     "platform-posix",
     "ros-humble",

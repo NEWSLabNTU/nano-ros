@@ -69,7 +69,7 @@ nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = 
 # call `nros_rmw_zenoh::register()` explicitly (like the esp32 board does)
 # before `Executor::open`. Optional + feature-gated so non-zenoh NuttX
 # deployments don't pull the backend.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-nuttx",
     "ros-humble",
 ], optional = true }

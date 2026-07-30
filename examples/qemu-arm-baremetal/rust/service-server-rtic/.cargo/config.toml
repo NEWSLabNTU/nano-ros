@@ -18,6 +18,6 @@ mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }  # nros
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }  # nros-managed
 nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
 nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed
 

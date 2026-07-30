@@ -201,7 +201,7 @@ nros-log = { workspace = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
-zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", optional = true, default-features = false }
 paste = "1"
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on

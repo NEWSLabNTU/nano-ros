@@ -24,6 +24,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RETIRED=(
     "packages/cli/third-party/ros-launch-manifest|packages/cli/third-party/ros-launch-resolve (which nests it — a scoped init must be --recursive)"
     "packages/cli/third-party/play_launch_parser|the ros-launch-resolve pin (RFC-0060); play_launch_parser is a TEST-tier tool from ~/.nros/sdk"
+    # phase-321 W2.d — the RMW backends were regrouped under packages/rmw/.
+    # These are here because the cyclonedds move SHIPPED with two live stale
+    # refs (`root.join("packages/dds")` in nros-tests/src/zephyr.rs): the
+    # rewrite matched `packages/dds/` WITH a trailing slash, and `just check`
+    # plus 817 unit tests stayed green because that resolver path is only
+    # exercised by a Zephyr fixture build. A path can only be retired once, so
+    # a permanent entry costs nothing and closes the class.
+    "packages/zpico|packages/rmw/zenoh"
+    "packages/dds|packages/rmw/cyclonedds"
+    "packages/px4|packages/rmw/uorb"
+    "packages/bridge|packages/rmw/bridge"
 )
 
 # Paths that legitimately still mention a retired path:

@@ -288,7 +288,7 @@ _cmake-cargo-stale-guard build_dir:
     SRC_HASH=$(git ls-files \
         packages/core \
         packages/xrce/nros-rmw-xrce \
-        packages/zpico/nros-rmw-zenoh \
+        packages/rmw/zenoh/nros-rmw-zenoh \
         | grep '\.rs$' \
         | sort \
         | tr '\n' '\0' \
@@ -2009,7 +2009,7 @@ format-c:
     CF="$(nros_clang_format)"
     echo "Formatting C code... ($CF)"
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
-    "$CF" -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
+    "$CF" -i packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
     git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" -i
     echo "C code formatted."
 
@@ -2042,7 +2042,7 @@ check-c-fmt:
     echo "  - clang-format (nros-c headers)"
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" --dry-run --Werror
     echo "  - clang-format (zpico C)"
-    "$CF" --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
+    "$CF" --dry-run --Werror packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
     git ls-files -z 'examples/native/c/**/*.c' | xargs -0 "$CF" --dry-run --Werror
     echo "C formatting OK."
@@ -2482,8 +2482,8 @@ clean-zenohd: zenohd::clean
 [group("debug")]
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
-    cd packages/zpico/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
-    @echo "zenoh-pico built at: packages/zpico/zpico-sys/zenoh-pico/build"
+    cd packages/rmw/zenoh/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
+    @echo "zenoh-pico built at: packages/rmw/zenoh/zpico-sys/zenoh-pico/build"
 
 # =============================================================================
 # Benchmarks

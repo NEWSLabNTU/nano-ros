@@ -4,7 +4,7 @@ function(nros_zephyr_configure_rmw_zenoh)
 # -------------------------------------------------------------------------
 
 # Vendored zenoh-pico submodule (single source of truth for all builds)
-set(ZENOH_PICO_DIR ${NROS_REPO_DIR}/packages/zpico/zpico-sys/zenoh-pico)
+set(ZENOH_PICO_DIR ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/zenoh-pico)
 
 # --- zenoh-pico sources ---
 
@@ -20,7 +20,7 @@ file(GLOB_RECURSE _zenoh_pico_sources
     "${ZENOH_PICO_DIR}/src/system/common/*.c"
 )
 # Zephyr platform: system.c (clock/memory/sleep/random/threading/time)
-# is replaced by the alias TU (`packages/zpico/zpico-sys/c/zpico/
+# is replaced by the alias TU (`packages/rmw/zenoh/zpico-sys/c/zpico/
 # platform_aliases.c`) compiled inside the cargo-built Rust
 # staticlib (`librustapp.a` / `libnros_c.a`). That TU forwards each
 # `_z_*` to the canonical `nros_platform_*` ABI provided by
@@ -132,18 +132,18 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
 
 # zpico.c — the C API layer over zenoh-pico
 zephyr_library_sources(
-    ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/zpico/zpico.c
+    ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c
 )
 zephyr_library_sources(${NROS_ZEPHYR_DIR}/nros_zenoh_zephyr_system.c)
 
 # zpico_zephyr.c — Zephyr platform support (network wait, session init)
 zephyr_library_sources(
-    ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c
+    ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/src/zpico_zephyr.c
 )
 
 # Include directories for zpico and platform headers
-zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include)
-zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include)
+zephyr_include_directories(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/c/include)
+zephyr_include_directories(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/include)
 
 # -------------------------------------------------------------------------
 # Transport tuning: Kconfig → C preprocessor flags

@@ -78,7 +78,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # Zephyr (see the `[features]` note). `safety-e2e` = the CRC attach/validate
 # path (phase-263 B1); `zpico-sys/zephyr` consumes the west build's
 # INCLUDE_DIRS/INCLUDE_DEFINES env to compile zenoh-pico for Zephyr.
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["platform-zephyr"], optional = true }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", default-features = false, features = ["platform-zephyr"], optional = true }
 
 # The launch-named Node pkgs (platform/RMW-agnostic). `safety-e2e` on the
 # listener forwards `nros/safety-e2e`, putting `CallbackCtx::integrity()`

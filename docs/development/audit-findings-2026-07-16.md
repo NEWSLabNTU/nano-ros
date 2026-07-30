@@ -25,7 +25,7 @@ Classification: all **new** (no baseline).
   `init()` overloads, with the 232 domain-max inlined and malformed input
   silently collapsing to domain 0 · lift into the Rust core / one FFI helper;
   error on bad parse → **issue #206**
-- I3 · `packages/zpico/nros-zpico-build/src/runner.rs:956-980` · P2 ·
+- I3 · `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:956-980` · P2 ·
   `size_probe` compile failure warn-and-continues with hardcoded
   `SOCKET_SIZE=16`/`ENDPOINT_SIZE=8` — a guessed pass-by-value ABI for
   `_z_sys_net_socket_t` (the code's own comment calls it a foot-gun) ·

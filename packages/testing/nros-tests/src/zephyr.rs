@@ -1115,13 +1115,13 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         Err(_) => candidates.push(core_dir),
     }
     match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
-        Some("cyclonedds") => candidates.push(root.join("packages/dds")),
+        Some("cyclonedds") => candidates.push(root.join("packages/rmw/cyclonedds")),
         Some("xrce") => candidates.push(root.join("packages/xrce")),
-        Some("zenoh") => candidates.push(root.join("packages/zpico")),
+        Some("zenoh") => candidates.push(root.join("packages/rmw/zenoh")),
         _ => {
-            candidates.push(root.join("packages/dds"));
+            candidates.push(root.join("packages/rmw/cyclonedds"));
             candidates.push(root.join("packages/xrce"));
-            candidates.push(root.join("packages/zpico"));
+            candidates.push(root.join("packages/rmw/zenoh"));
         }
     }
     if let Some(conf_files) = conf_files_for_example(example_name) {

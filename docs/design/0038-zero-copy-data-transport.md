@@ -63,7 +63,7 @@ Network → zpico SUBSCRIBER_BUFFERS ring → arena BufferStrategy slot → mess
 ```
 
 - **Copy #1** is `try_recv_raw` copying the backend ring slot into the executor
-  arena buffer (`packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs:944`
+  arena buffer (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:944`
   `buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len])`), consumed by
   the arena dispatch (`packages/core/nros-node/src/executor/arena.rs:290`
   `drain_into_buffer` → arena.rs:318 `sub_buffered_try_process`).

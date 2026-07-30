@@ -3,7 +3,7 @@
 
 Each platform directory's `nros-platform.toml` carries the `[build.zenoh]`
 block relocated verbatim from the retired central
-`packages/zpico/zpico-sys/zenoh_platforms.toml` (phase-136.4 → phase-290).
+`packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` (phase-136.4 → phase-290).
 Original file header preserved below for the schema commentary:
 
 ```

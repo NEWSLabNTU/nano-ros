@@ -76,7 +76,7 @@ nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
 # zenoh-pico FFI. Its default-on `platform-aliases` C TU emits every
 # `z_*` / `_z_*` symbol zenoh-pico needs, forwarding to `nros_platform_*`.
 # (Phase 129 retired the separate `zpico-platform-shim` crate.)
-zpico-sys = { path = "../../zpico/zpico-sys", default-features = false }
+zpico-sys = { path = "../../rmw/zenoh/zpico-sys", default-features = false }
 
 # Ethernet transport (optional, gated by feature)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -86,7 +86,7 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 ] }
 
 # Serial transport (optional, gated by feature)
-zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+zpico-serial = { path = "../../rmw/zenoh/zpico-serial", optional = true }
 my-uart-driver = { path = "../../drivers/my-uart", optional = true }
 
 # Board-specific dependencies

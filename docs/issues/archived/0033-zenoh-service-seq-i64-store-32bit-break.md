@@ -14,7 +14,7 @@ resolved_in: "SeqScalar width cast (nros-rmw-zenoh/src/shim/{mod,service}.rs)"
 
 ```
 error[E0308]: mismatched types
-  --> packages/zpico/nros-rmw-zenoh/src/shim/service.rs:223:20
+  --> packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs:223:20
 223 |     slot.seq.store(seq, Ordering::Relaxed);
     |              ----- ^^^ expected `i32`, found `i64`
 ```

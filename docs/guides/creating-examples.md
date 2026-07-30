@@ -404,8 +404,8 @@ nros-node = { path = "../../../../../packages/core/nros-node" }
 nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
 nros-params = { path = "../../../../../packages/core/nros-params" }
 nros-macros = { path = "../../../../../packages/core/nros-macros" }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh" }
-zpico-sys = { path = "../../../../../packages/zpico/zpico-sys" }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh" }
+zpico-sys = { path = "../../../../../packages/rmw/zenoh/zpico-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```

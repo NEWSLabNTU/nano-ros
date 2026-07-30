@@ -28,7 +28,7 @@ nros-platform-api = { path = "../../core/nros-platform-api" }
 # consumer to pull the backend. Xtensa bare-metal (`target_os = "none"`) is
 # linkme-blind, so the board registers it explicitly in `Esp32S3::init_hardware`
 # (mirrors `nros-board-esp32-qemu`).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",
 ], optional = true }

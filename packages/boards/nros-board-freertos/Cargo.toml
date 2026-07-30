@@ -54,7 +54,7 @@ nros = { path = "../../core/nros", default-features = false, features = ["alloc"
 # (`freertos_boot_bringup` / `app_task_entry`). FreeRTOS is `target_os = "none"`
 # (linkme-blind + no `.init_array` walk), so the gated `register()` call — not a
 # `#[used]` static — is the correct mechanism (mirrors `nros-board-nuttx`).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-freertos",
     "ros-humble",
 ], optional = true }

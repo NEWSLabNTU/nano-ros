@@ -49,7 +49,7 @@ Default total static pre-allocation is therefore ≈ **~36 KB**. The dominant
 cost is `SUBSCRIBER_BUFFERS`: 8 slots × a depth-4 ring of buffers, all
 pre-allocated as a static array regardless of how many subscribers exist.
 The default `ZPICO_MAX_SUBSCRIBERS` / `ZPICO_MAX_QUERYABLES` is **8** and is
-env-configurable (`packages/zpico/nros-zpico-build/src/runner.rs:31`).
+env-configurable (`packages/rmw/zenoh/nros-zpico-build/src/runner.rs:31`).
 
 **Scaling problem**: If the buffer size is increased for large messages
 (e.g., `ZPICO_SUBSCRIBER_BUFFER_SIZE=65536` for 64 KB compressed images),

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-nano-ros is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live under `packages/core/`; RMW backends under `packages/zpico/`, `packages/xrce/`, and `packages/rmw/cyclonedds/`; board/platform support under `packages/boards/` and `packages/platforms/`; drivers under `packages/drivers/`; and reusable integration tests under `packages/testing/nros-tests/`. Shell and smoke fixtures live in `tests/`. Examples are standalone copy-out projects under `examples/`, with the canonical shape `examples/<platform>/<language>/<example>/`; the RMW is selected at build time.
+nano-ros is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live under `packages/core/`; RMW backends under `packages/rmw/zenoh/`, `packages/xrce/`, and `packages/rmw/cyclonedds/`; board/platform support under `packages/boards/` and `packages/platforms/`; drivers under `packages/drivers/`; and reusable integration tests under `packages/testing/nros-tests/`. Shell and smoke fixtures live in `tests/`. Examples are standalone copy-out projects under `examples/`, with the canonical shape `examples/<platform>/<language>/<example>/`; the RMW is selected at build time.
 
 **Supported hosts: Linux (primary) and *BSD (POSIX path). macOS is NOT supported** (dropped 2026-06-18, phase-260): no macOS CI runner means macOS-specific link/section paths ship un-run, so the project does not carry them. Do not add `APPLE`/`target_os = "macos"`/`*-apple-darwin` branches to nano-ros source, CMake, or CI; embedded RTOS targets + the Linux host are the supported surface.
 
@@ -178,7 +178,7 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 ### Platform Pitfalls
 
 - **After clone, run ONE of** `direnv allow` / `source ./activate.sh` / `source ./activate.fish` — else `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`.
-- **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+- **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico from `packages/rmw/zenoh/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an explicit call. A pure-Rust image needs the REAL backend dep (`rmw-zenoh = ["dep:nros-rmw-zenoh"]`) — and a direct reference, or rustc's staticlib DCE drops the dep's `#[no_mangle]` export (symbol in the rlib, absent from the `.a`).
 - **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on native. `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` — never pin it to a literal in confs (the phase-180 split-brain silently ran every cyclone image on domain 0). Cyclone fixture pairs bake distinct domains (50–58) for parallel SPDP.
@@ -265,7 +265,7 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
   `origin/main`'s highest issue id (including `archived/`) immediately before
   filing a `docs/issues/` entry; expect `docs/issues/README.md` rebase conflicts
   (merge both sides, renumber only your own files). Stash-wrap local-only files
-  (`packages/zpico/zpico-sys/c/include/zpico.h`-style) around every rebase.
+  (`packages/rmw/zenoh/zpico-sys/c/include/zpico.h`-style) around every rebase.
 - **Write full logs of background builds/tests to files** and grep afterwards;
   `cmd | tail -N` swallows the mid-log error that explains the failure.
 - **`pkill -f <pattern>` matches your OWN wrapper shell** when the pattern

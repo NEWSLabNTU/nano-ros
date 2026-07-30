@@ -46,7 +46,7 @@ only edition this axis touches today.
 
 ## Summary (original — premise since refuted)
 
-nano-ros pins **zenoh-pico 1.7.2** (`packages/zpico/zpico-sys/zenoh-pico/
+nano-ros pins **zenoh-pico 1.7.2** (`packages/rmw/zenoh/zpico-sys/zenoh-pico/
 version.txt`) and its vendored `rmw_zenoh` fork pins **zenoh-c/cpp 1.7.1**
 (`third-party/zenoh/rmw_zenoh/zenoh_cpp_vendor/CMakeLists.txt`: "VCS_VERSION to
 1.7.1 commits", pkg 0.1.8). But a modern ROS 2 distro ships a much newer

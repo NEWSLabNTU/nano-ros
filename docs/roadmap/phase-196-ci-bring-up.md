@@ -74,7 +74,7 @@ run live**. The first live runs failed 100%, in stacked layers (each CI pass
 5. **Submodules not initialized + a needless XRCE-agent build.**
    `actions/checkout` inits no submodules; the 3.7 cyclone patches need
    `third-party/dds/cyclonedds`, the zenoh build needs
-   `packages/zpico/zpico-sys/zenoh-pico`, and the setup recipe's common tail ran
+   `packages/rmw/zenoh/zpico-sys/zenoh-pico`, and the setup recipe's common tail ran
    `just xrce setup` (a Fast-DDS superbuild) on every job though the workflow
    only builds zenoh. Fix: init just the needed submodules; gate the agent build
    behind `NROS_ZEPHYR_SKIP_XRCE_AGENT` (set workflow-wide).

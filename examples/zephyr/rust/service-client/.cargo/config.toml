@@ -10,7 +10,7 @@ example_interfaces = { path = "generated/example_interfaces" }  # nros-managed
 nros-platform = { path = "../../../../packages/core/nros-platform" }  # nros-managed
 nros-rmw = { path = "../../../../packages/core/nros-rmw" }  # nros-managed
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 nros-zephyr-build = { path = "../../../../packages/core/nros-zephyr-build" }  # nros-managed
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }  # nros-managed
 

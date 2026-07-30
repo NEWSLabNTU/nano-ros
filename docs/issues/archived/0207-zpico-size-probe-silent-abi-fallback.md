@@ -10,7 +10,7 @@ related: [issue-0135]
 
 ## Problem (audit 2026-07-16, I3)
 
-`packages/zpico/nros-zpico-build/src/runner.rs:956-980`: when the
+`packages/rmw/zenoh/nros-zpico-build/src/runner.rs:956-980`: when the
 `size_probe` compile fails, the build warns and continues with hardcoded
 `SOCKET_SIZE=16` / `ENDPOINT_SIZE=8`. The code's own comment calls it a
 known foot-gun: a wrong `_z_sys_net_socket_t` size silently skews the

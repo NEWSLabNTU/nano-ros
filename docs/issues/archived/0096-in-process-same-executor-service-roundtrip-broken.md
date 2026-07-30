@@ -23,7 +23,7 @@ cross-process entries (the supported topology at the time).
 
 zenoh-pico's same-session loopback (publisher→local-subscriber and query→local-queryable) is a
 **compile-time** feature, `Z_FEATURE_LOCAL_SUBSCRIBER` / `Z_FEATURE_LOCAL_QUERYABLE`. The
-generated config header (`packages/zpico/nros-zpico-build/src/lib.rs`) hardcoded **both to 0**
+generated config header (`packages/rmw/zenoh/nros-zpico-build/src/lib.rs`) hardcoded **both to 0**
 for every target, so the loopback path (`src/session/loopback.c`) was compiled out and
 same-session callbacks never fired. Nothing in the Rust/C shim could compensate — zenoh-pico's
 C API does not expose locality at declaration time; same-session delivery is gated solely by

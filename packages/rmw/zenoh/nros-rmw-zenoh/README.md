@@ -5,7 +5,7 @@ example unless explicitly set otherwise.
 
 ## Role
 
-Implements the [`nros-rmw`](../../core/nros-rmw) trait surface
+Implements the [`nros-rmw`](../../../core/nros-rmw) trait surface
 (`Rmw`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`,
 `ServiceClientTrait`, plus the lending traits) over the C zenoh-pico
 client. Acts as the **canonical reference port**: every other RMW
@@ -43,5 +43,5 @@ without an extra copy. See the
 ## See also
 
 - [Custom RMW Backend porting guide](../../../book/src/porting/custom-rmw.md)
-- [`nros-rmw` trait surface](../../core/nros-rmw)
-- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh>
+- [`nros-rmw` trait surface](../../../core/nros-rmw)
+- Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh>

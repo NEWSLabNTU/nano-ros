@@ -31,7 +31,7 @@ Two related defects, found + verified investigating phase-266 (2026-06-27):
 
 1. **The node-level liveliness token is never declared on ANY path (C / C++ / Rust).**
    `ZenohSession::declare_node_liveliness(domain_id, namespace, node_name)` exists
-   (`packages/zpico/nros-rmw-zenoh/src/shim/session.rs:287`; keyexpr
+   (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs:287`; keyexpr
    `@ros2_lv/<domain>/<zid>/0/0/NN/%/<ns>/<node>` at `shim/mod.rs:394`) but has **no callers**.
    `Executor::open` only *stores* the identity via `set_node_identity`
    (`nros-node/src/executor/spin.rs:127`, `:1272`); it never declares the token. So a node

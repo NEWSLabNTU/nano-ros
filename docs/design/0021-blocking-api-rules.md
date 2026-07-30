@@ -89,6 +89,6 @@ Blocking helpers check this flag and return `NROS_RET_REENTRANT` (C) or
 
 ```bash
 # No remaining zpico_get calls in core/zpico paths
-grep -rn 'zpico_get\b' packages/core/ packages/zpico/nros-rmw-zenoh/
+grep -rn 'zpico_get\b' packages/core/ packages/rmw/zenoh/nros-rmw-zenoh/
 # Should return zero results outside zpico_get_start / zpico_get_check
 ```

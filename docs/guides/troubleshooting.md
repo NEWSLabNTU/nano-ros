@@ -249,7 +249,7 @@ git submodule update --init --recursive
 ```bash
 # Clean the zenoh-pico sys crate build cache
 cargo clean -p zpico-sys
-touch packages/zpico/zpico-sys/build.rs
+touch packages/rmw/zenoh/zpico-sys/build.rs
 cargo build
 ```
 

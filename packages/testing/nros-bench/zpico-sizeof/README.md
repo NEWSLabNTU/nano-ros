@@ -10,17 +10,17 @@ section of `docs/guides/embedded-tuning.md`.
 cd /home/aeon/repos/nano-ros
 
 # Public API handles + zpico.c entry-table structs.
-gcc -I packages/zpico/zpico-sys/zenoh-pico/include \
-    -I packages/zpico/zpico-sys/c/zpico \
-    -I packages/zpico/zpico-sys/c/platform \
+gcc -I packages/rmw/zenoh/zpico-sys/zenoh-pico/include \
+    -I packages/rmw/zenoh/zpico-sys/c/zpico \
+    -I packages/rmw/zenoh/zpico-sys/c/platform \
     -DZ_FEATURE_MULTI_THREAD=1 -DZENOH_LINUX -DZ_FEATURE_LINK_TCP=1 \
     -o /tmp/sizeof_probe packages/testing/nros-bench/zpico-sizeof/sizeof_probe.c
 /tmp/sizeof_probe
 
 # zenoh-pico internal struct sizes (heap-allocated per entity / session).
-gcc -I packages/zpico/zpico-sys/zenoh-pico/include \
-    -I packages/zpico/zpico-sys/c/zpico \
-    -I packages/zpico/zpico-sys/c/platform \
+gcc -I packages/rmw/zenoh/zpico-sys/zenoh-pico/include \
+    -I packages/rmw/zenoh/zpico-sys/c/zpico \
+    -I packages/rmw/zenoh/zpico-sys/c/platform \
     -DZ_FEATURE_MULTI_THREAD=1 -DZENOH_LINUX -DZ_FEATURE_LINK_TCP=1 \
     -o /tmp/internal_probe packages/testing/nros-bench/zpico-sizeof/internal_probe.c
 /tmp/internal_probe

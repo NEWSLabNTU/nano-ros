@@ -270,7 +270,7 @@ the SDK store (same pattern as `~/.nros/bin/zenohd` from Phase 208.B).
 
 **Files (RMW subphase, weeks 24-28)**
 
-- `packages/zpico/zpico-sys/proofs/` + `nros-rmw-zenoh/proofs/spec/
+- `packages/rmw/zenoh/zpico-sys/proofs/` + `nros-rmw-zenoh/proofs/spec/
   {session,publish,subscribe}.mlw`
 - `packages/xrce/nros-rmw-xrce/proofs/spec/{session,profile_udp}.mlw`
 - `packages/rmw/cyclonedds/nros-rmw-cyclonedds/proofs/spec/{participant,service}.mlw`

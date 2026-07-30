@@ -3,7 +3,7 @@
 //!
 //! The zenoh-pico C source `src/link/unicast/custom.c` (in our
 //! vendored fork at
-//! `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/custom.c`)
+//! `packages/rmw/zenoh/zpico-sys/zenoh-pico/src/link/unicast/custom.c`)
 //! calls `nros_zpico_custom_take(out)` from inside
 //! `_z_f_link_open_custom`. This crate is the Rust side of that
 //! symbol — it drains the slot populated by

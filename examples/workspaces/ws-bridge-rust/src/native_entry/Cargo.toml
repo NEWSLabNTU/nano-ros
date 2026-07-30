@@ -33,7 +33,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # The two RMW backends — linked here so they self-register on the native host
 # (`nros_rmw_register_backend!` .init_array ctor). The bridge opens one session
 # per backend via `Executor::open_multi`.
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix"] }
 nros-rmw-cyclonedds-sys = { path = "../../../../../packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
 # phase-267 (non-flat types) — the typed Cyclone descriptor staging
 # (`register::<M>()`) the macro emits for a non-flat forwarded type, + the msg

@@ -33,7 +33,7 @@ nros-platform = { path = "../../../../../packages/core/nros-platform", default-f
 # The two RMW backends — linked here so they self-register on the native host
 # (`nros_rmw_register_backend!` .init_array ctor). The bridge opens one session
 # per backend via `Executor::open_multi`.
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix"] }
 # xrce egress backend — connects to a Micro-XRCE-DDS Agent. Lazy type
 # registration, so NO descriptor staging / msg-crate dep (unlike the cyclonedds
 # sibling): the macro emits `nros_rmw_xrce_cffi::register()` only.

@@ -33,7 +33,7 @@ library TUs, introduced by the issue-0096 loopback fix (`8e6a5cf2a`).**
   session-local was exactly the leg the mismatch preserved; pub/sub was
   unaffected (no publisher-side struct field shifts).
 
-**Fix** (`packages/zpico/nros-zpico-build/src/runner.rs`):
+**Fix** (`packages/rmw/zenoh/nros-zpico-build/src/runner.rs`):
 `build_c_shim` now defines `ZENOH_GENERIC` and puts the OUT_DIR generated
 config first on the include path (posix additionally mirrors the manifest's
 `Z_FEATURE_MULTI_THREAD=1` / `ZENOH_DEBUG=0`); the stale pre-134.3

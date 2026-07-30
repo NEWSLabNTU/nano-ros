@@ -19,8 +19,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/qemu-zenoh-pico"
-ZENOH_PICO_DIR="$REPO_ROOT/packages/zpico/zpico-sys/zenoh-pico"
-C_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c"
+ZENOH_PICO_DIR="$REPO_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico"
+C_DIR="$REPO_ROOT/packages/rmw/zenoh/zpico-sys/c"
 PLATFORM_DIR="$C_DIR/platform"
 
 # Parse arguments

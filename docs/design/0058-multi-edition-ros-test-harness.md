@@ -75,7 +75,7 @@ surface; it never branches on host-vs-docker.
 
 One parametric `docker/ros-editions/Dockerfile` (`ARG DISTRO`, `FROM
 ros:${DISTRO}-ros-base`) bakes the pinned zenoh 1.7.2 + `rmw_zenoh_cpp` overlay
-(wire-compat with `packages/zpico`), `domain_bridge`, and the codegen toolchain.
+(wire-compat with `packages/rmw/zenoh`), `domain_bridge`, and the codegen toolchain.
 `just ros-edition-image <distro>` builds it locally (docker layer cache; the
 first build is slow — zenoh is a source build). No registry, no auth, no
 publish flow — matches the "build locally on demand" decision. CI that wants

@@ -35,7 +35,7 @@ nros = { path = "../../core/nros", default-features = false, features = [
     "rmw-cffi",
     "ros-humble",
 ], optional = true }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",
 ], optional = true }

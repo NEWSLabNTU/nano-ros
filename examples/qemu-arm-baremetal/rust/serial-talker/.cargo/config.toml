@@ -37,6 +37,6 @@ rustflags = [
 builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }  # nros-managed
 nros-log = { path = "../../../../packages/core/nros-log" }  # nros-managed
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }  # nros-managed
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }  # nros-managed
 std_msgs = { path = "generated/std_msgs" }  # nros-managed
 

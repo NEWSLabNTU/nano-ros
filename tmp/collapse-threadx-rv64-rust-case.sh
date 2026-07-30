@@ -69,7 +69,7 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 ${plat_dep}
 ${msg_dep} = { version = "*", default-features = false }
 
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
 ${dds_dep}
 ${crit_dep}
 TOML
