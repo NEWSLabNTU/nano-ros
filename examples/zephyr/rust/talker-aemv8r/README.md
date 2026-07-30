@@ -1,8 +1,8 @@
-# zephyr/rust/cyclonedds/talker-aemv8r
+# zephyr/rust/talker-aemv8r
 
 Phase 217.D.1 — nano-ros **Rust** pub/sub demo on the ARM FVP
 `Base_RevC AEMv8-R` Cortex-A SMP target under Zephyr 3.7. Rust-side
-sibling of `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`; same
+sibling of `examples/zephyr/cpp/talker-aemv8r/`; same
 `std_msgs/String` payload on `/chatter` so a single FVP run + peer
 listener exercises both languages.
 
@@ -26,7 +26,7 @@ cd zephyr-workspace
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-fvp-aemv8r-cyclonedds-rust-talker \
-    nano-ros/examples/zephyr/rust/cyclonedds/talker-aemv8r
+    nano-ros/examples/zephyr/rust/talker-aemv8r
 ```
 
 Board glue (BOARD / per-board prj.conf / DTS overlay / default RMW /

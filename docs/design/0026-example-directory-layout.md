@@ -37,7 +37,26 @@ RMW is selected **at build time**, not encoded in the path:
 
 So one `examples/zephyr/rust/talker/` builds against zenoh, xrce, or cyclonedds —
 there are no `<rmw>/` siblings. Phase 168.6.C deleted the legacy
-`<plat>/<lang>/<rmw>/<case>/` triples on Zephyr.
+`<plat>/<lang>/<rmw>/<case>/` triples on Zephyr, and phase-316 removed the last
+three levels that still looked like them, leaving
+`check-example-matrix.sh`'s allowlist **empty**.
+
+### A level that looks like an RMW may not be one
+
+Two of those last three were not RMW levels, and the fix was to *rename* them,
+not flatten them — flattening would have destroyed real information:
+
+| was | is | what the level actually names |
+| --- | --- | --- |
+| `px4/rust/xrce/` | `px4/rust/companion/` | **where the code runs** — beside PX4, on a host or peer MCU, rather than in firmware. Its RMW is fixed by whatever `uxrce_dds_client` speaks; it was never a choice, so it was never a variant axis. |
+| `px4/cpp/uorb/` | *(gone —* `packages/testing/nros-px4-register-check/` *)* | nothing: the tree held one link-check module, not an example. |
+| `zephyr/{cpp,rust}/cyclonedds/talker-aemv8r/` | `zephyr/{cpp,rust}/talker-aemv8r/` | a **board**, already stated by the `-aemv8r` suffix. |
+
+The px4 `companion/` level is deliberate and must not be "helpfully" collapsed
+back into `px4/rust/`: an in-firmware px4 example would be a sibling of it, and
+the two differ in deployment target, not in backend. The test is whether the
+level names something the leaf name does not — `-aemv8r` failed that test;
+`companion/` passes it.
 
 Each example directory is a **standalone copy-out template** (RFC, per its own
 "Examples = Standalone Projects" rules): its own `Cargo.toml` + `.cargo/config.toml`
@@ -107,9 +126,12 @@ Three README tiers, linted by `scripts/check-example-matrix.sh`:
 
 ## Carve-outs
 
-- `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` **and its Rust sibling**
-  `examples/zephyr/rust/cyclonedds/talker-aemv8r/` — one-board-one-RMW FVP
-  AEMv8-R references, intentionally **not** collapsed.
+- `examples/zephyr/{cpp,rust}/talker-aemv8r/` — FVP AEMv8-R references that
+  build against CycloneDDS only. They are a **board** variant, which the
+  `-aemv8r` suffix already states; phase-316 W2 removed the `cyclonedds/` path
+  level they used to sit under, along with the last two entries in
+  `check-example-matrix.sh`'s allowlist. Being single-RMW is a property of the
+  example, not a directory axis.
 - `examples/qemu-riscv-nuttx/` is a **partial platform**: it ships only
   `c/talker`, built by the separate `build-riscv-c` recipe in `just/nuttx.just`
   (own riscv toolchain/board lane, not the `qemu-arm-nuttx` path).
@@ -127,7 +149,7 @@ fixture rather than a user-facing template lives under
 
 ## Authority
 
-The authoritative matrix of which `<plat>/<lang>/<rmw>` triples exist lives in
+The authoritative matrix of which platform × language × RMW cells exist lives in
 `examples/README.md` ("Coverage matrix" + "Intentionally empty cells"). Phase 118
 lint blocks untriaged cells. Non-example binaries (tests/benches/smokes) live
 under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples/`.

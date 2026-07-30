@@ -179,5 +179,5 @@ stock-RMW interop contract.
   — the discovery contract.
 - [Zephyr (west module)](./integration-zephyr.md) — the parent
   Zephyr starter; the FVP is a board-target slice of it.
-- [`examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md)
+- [`examples/zephyr/cpp/talker-aemv8r/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/cpp/talker-aemv8r/README.md)
   — the example walk-through.

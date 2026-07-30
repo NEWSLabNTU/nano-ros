@@ -1,7 +1,7 @@
 //! Phase 217.D.1 — Rust talker on the ARM FVP `Base_RevC AEMv8-R`
 //! Cortex-A SMP target (Zephyr 3.7).
 //!
-//! Rust-side sibling of `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`:
+//! Rust-side sibling of `examples/zephyr/cpp/talker-aemv8r/`:
 //! same `std_msgs/String` payload (`Hello World: N`) on `/chatter` so the
 //! FVP runtime verification (Phase 217.A run recipes + Phase 217.C smoke)
 //! covers both languages from a single peer.

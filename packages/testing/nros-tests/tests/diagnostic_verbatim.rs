@@ -72,7 +72,7 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
             // would have populated them).
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name == "target" || name == "build" {
+            if nros_tests::treewalk::is_build_output_dir(&name) {
                 continue;
             }
             copy_tree(&from, &to)?;

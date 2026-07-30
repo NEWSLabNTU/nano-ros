@@ -53,10 +53,7 @@ fn walk_cpp(dir: &Path, out: &mut Vec<PathBuf>) {
     for ent in entries.flatten() {
         let p = ent.path();
         let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if matches!(name, "build" | "generated")
-            || name.starts_with("build-")
-            || name.starts_with("target")
-        {
+        if nros_tests::treewalk::is_skipped_dir(name) {
             continue;
         }
         if p.is_dir() {

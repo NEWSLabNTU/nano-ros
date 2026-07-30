@@ -31,6 +31,7 @@ pub mod process;
 pub mod qemu;
 pub mod ros2;
 pub mod ros_env;
+pub mod treewalk;
 pub mod zephyr;
 
 /// Skip the current test with a reason.

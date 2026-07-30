@@ -322,8 +322,8 @@ exclude = [
     "examples/zephyr/rust/action-client",
     # Phase 217.D.1 — Rust talker on the FVP AEMv8-R Cortex-A SMP
     # carve-out (one-board-one-RMW reference, mirroring the cpp side's
-    # `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`).
-    "examples/zephyr/rust/cyclonedds/talker-aemv8r",
+    # `examples/zephyr/cpp/talker-aemv8r/`).
+    "examples/zephyr/rust/talker-aemv8r",
     # Phase 225.P — Zephyr workspace Entry (a `west build` staticlib app).
     # It lives INSIDE the nested `examples/workspaces/rust` workspace but
     # is `exclude`d from it (built by west, not plain cargo) and carries

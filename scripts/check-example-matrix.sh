@@ -24,11 +24,18 @@ allowed_roots=(
   # Neither new path matches $rmw_names, so no exemption is needed — and a
   # future px4 case cannot inherit one it never earned.
 
-  # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
-  # Both languages carve out — the rust sibling was missed when the cpp one
-  # landed (same single-board reference shape).
-  "examples/zephyr/cpp/cyclonedds"
-  "examples/zephyr/rust/cyclonedds"
+  # phase-316 W2 emptied this array, and it is meant to STAY empty. The last two
+  # entries were `examples/zephyr/{cpp,rust}/cyclonedds`, holding one example
+  # each: `talker-aemv8r`. The `-aemv8r` suffix already says what varies — the
+  # BOARD — so the `cyclonedds/` level said nothing the leaf did not, while
+  # looking exactly like the retired per-RMW layout. Both flattened to
+  # `examples/zephyr/<lang>/talker-aemv8r`.
+  #
+  # An empty allowlist is the point: RFC-0026 states the rule unconditionally,
+  # and a rule enforced with exceptions is a rule whose exceptions outlive their
+  # reasons (the rust entry sat here only because the cpp one did). If you are
+  # about to add a line, the level you want is almost certainly a board, a
+  # deployment location, or a case — name it that instead.
 )
 
 is_allowed() {

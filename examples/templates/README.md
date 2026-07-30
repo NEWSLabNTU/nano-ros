@@ -1,8 +1,8 @@
 # examples/templates/
 
 Multi-platform copy-out templates — Pattern A workspace layouts
-and similar scaffolds that don't belong to a single
-`<plat>/<lang>/<rmw>/<example>` cell. Each subdirectory is a
+and similar scaffolds that span platforms, so they don't belong to a
+single `<plat>/<lang>/<example>` cell. Each subdirectory is a
 standalone project you can copy into your own tree and customize.
 
 For the promoted Node + Bringup + Entry workflow examples, use

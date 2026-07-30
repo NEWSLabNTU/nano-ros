@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Phase 217.D.1 — Rust talker on ARM FVP Base_RevC AEMv8-R (Cortex-A
 # SMP) under Zephyr. Rust-side sibling of
-# `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`.
+# `examples/zephyr/cpp/talker-aemv8r/`.
 #
 # Shape mirrors `examples/zephyr/rust/talker/Cargo.toml` (Phase 212.M.3
 # component pkg; `nros::node!()` exports node hooks and

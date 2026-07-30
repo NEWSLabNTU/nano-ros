@@ -80,11 +80,10 @@ fn walk(root: &Path, mut visit: impl FnMut(&Path)) {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or_default();
-            match name {
-                "target" | "build" | "generated" | ".cargo" | "node_modules" | ".git" => continue,
-                n if n.starts_with("build-") || n.starts_with("target-") => continue,
-                _ => stack.push(path),
+            if nros_tests::treewalk::is_skipped_dir(name) {
+                continue;
             }
+            stack.push(path);
         }
     }
 }

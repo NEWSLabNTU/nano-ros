@@ -2,9 +2,15 @@
 
 Cross-RMW gateway binaries. Each example bridges two RMW backends
 inside a single process — for instance, subscribing on a Zenoh
-session and republishing on a DDS session. Because a bridge spans
-transport slots, it does not belong to a single
-`<plat>/<lang>/<rmw>/<example>` cell and lives outside that tree.
+session and republishing on a DDS session.
+
+A bridge is the one thing the canonical tree genuinely cannot hold. There the
+path is `<plat>/<lang>/<example>` and the RMW is picked at BUILD time — one
+example, one backend per build. A bridge holds two backends open at once, so no
+build-time choice describes it; it needs a category of its own rather than a
+cell. (The retired `<plat>/<lang>/<rmw>/<example>` form this file used to cite
+was deleted for Zephyr by phase 168.6.C and finished off by phase-316 — see
+RFC-0026.)
 
 Bridge examples that *also* exercise a platform/language-specific
 feature may still live under the normal example tree; the canonical

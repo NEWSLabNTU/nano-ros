@@ -186,7 +186,7 @@ build-fvp-aemv8r-cyclonedds:
     # never arrive in budget without `=0`. Affects only the run target, not
     # the build smoke.
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
-    echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    echo "Building examples/zephyr/cpp/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     # phase-292 W2 — this example uses `find_package(Zephyr)` + `-b` directly
     # (the module-verb path, not `nano_ros_use_board`), so it never received
     # the cyclone RMW snippet Kconfig. Its image then built with no cyclone
@@ -197,7 +197,7 @@ build-fvp-aemv8r-cyclonedds:
     # duplication, no disturbance to the module-verb `nros_generate_interfaces`.
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
-        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
+        nano-ros/examples/zephyr/cpp/talker-aemv8r \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
         -DEXTRA_CONF_FILE="$nros_root/zephyr/snippets/nros-cyclonedds/cyclonedds.conf"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
@@ -236,7 +236,7 @@ build-fvp-aemv8r-cyclonedds-rust:
     # Phase 214.I.2 fail-loud prereq guard before `ws sync` (the codegen
     # Rust interface generation the example's `[patch.crates-io]` needs).
     nros_require_ws_sync "$codegen_tool"
-    src="$nros_root/examples/zephyr/rust/cyclonedds/talker-aemv8r"
+    src="$nros_root/examples/zephyr/rust/talker-aemv8r"
     source "$nros_root/scripts/build/codegen-stamp.sh"
     echo "  → ws sync: $src"
     NROS_REPO_DIR="$nros_root" nros_codegen_stamp_check_or_wipe "$src"
@@ -263,7 +263,7 @@ build-fvp-aemv8r-cyclonedds-rust:
     # recipe: the Rust FVP runtime lane asserts `Publishing:` (busy DDS path)
     # and needs fast-functional mode to reach it in budget.
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
-    echo "Building examples/zephyr/rust/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    echo "Building examples/zephyr/rust/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build \
         -d build-fvp-aemv8r-cyclonedds-rust-talker -p auto \
         "$src" \

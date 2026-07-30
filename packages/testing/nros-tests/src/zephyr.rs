@@ -1163,7 +1163,7 @@ fn collect_source_files(path: &Path, out: &mut Vec<PathBuf>) {
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
-        if matches!(name.to_string_lossy().as_ref(), "target" | "build" | ".git") {
+        if crate::treewalk::is_skipped_dir(name.to_string_lossy().as_ref()) {
             continue;
         }
         collect_source_files(&entry.path(), out);
@@ -1330,7 +1330,7 @@ fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
         let p = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if matches!(name.as_ref(), "target" | "build" | ".git") {
+        if crate::treewalk::is_skipped_dir(name.as_ref()) {
             continue;
         }
         if path_newer_than(&p, cutoff) {

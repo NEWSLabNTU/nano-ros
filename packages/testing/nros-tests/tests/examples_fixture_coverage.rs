@@ -82,8 +82,8 @@ const TEST_DRIVEN_BUILDERS: &[&str] = &[
     // not exist is how a build-only lane reads as covered.
     // The cpp leaf gained its package.xml in 287-W6 (ament shape), so it is a
     // gated leaf now too.
-    "zephyr/rust/cyclonedds/talker-aemv8r",
-    "zephyr/cpp/cyclonedds/talker-aemv8r",
+    "zephyr/rust/talker-aemv8r",
+    "zephyr/cpp/talker-aemv8r",
 ];
 
 /// Tracked exceptions: (dir relative to `examples/`, reason). A dir here must
@@ -107,9 +107,11 @@ fn collect_pkg_dirs(root: &Path) -> Vec<PathBuf> {
         // `target-fixtures/`, …) — descending them is the difference between a
         // sub-second walk and a 15-minute one once fixtures are built, and they
         // can carry vendored `package.xml` that would read as false leaves.
-        name.starts_with("build")
-            || name.starts_with("target")
-            || matches!(name, ".git" | "node_modules" | "generated" | ".cargo")
+        //
+        // This comment stated the cost precisely and stayed in this file, while
+        // `examples_canonical_shape.rs` went on to pay it. Hence the shared
+        // predicate: the rule is one thing, so it gets one implementation.
+        nros_tests::treewalk::is_skipped_dir(name)
     }
     fn walk(dir: &Path, acc: &mut Vec<PathBuf>) {
         let Ok(entries) = fs::read_dir(dir) else {
