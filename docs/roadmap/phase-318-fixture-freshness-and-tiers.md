@@ -17,11 +17,21 @@ The workspace-fixture signature hashes `sha256(packages/cli/target/release/nros)
 binaries are not reproducible across rebuilds, so the hash moves whenever the CLI
 is rebuilt, whether or not emitted bytes changed.
 
-- [x] **W1.a** `scripts/build/codegen-fingerprint.sh` — run `nros` over a
-      committed probe corpus (one msg per configurable shape, one srv, one
-      action), hash the emitted bytes. Cache at
+- [x] **W1.a** `nros codegen-fingerprint` (hidden verb) — hash the bytes this
+      build's emitters produce for a committed probe corpus (one msg per
+      configurable shape, one srv, one action). Read directly by
+      `workspace-fixture-signature.sh`, cached at
       `.nros-cache/codegen-fingerprint/<sha256-of-binary>`; one probe run per new
       binary, a file read thereafter.
+
+      *Shipped as a CLI verb, not the `scripts/build/codegen-fingerprint.sh` this
+      item originally named — there is no such script, and this line claimed one
+      until 2026-07-31.* The corpus is `include_str!`-compiled into
+      `rosidl-codegen`, so a shell wrapper would only have re-invoked the binary;
+      the verb also keeps the golden test and the fingerprint reading the same
+      `emit_corpus()` map (W2.b), which a separate script would not have. The
+      resolver half genuinely is a script (W1.b) because it must run a *different*
+      binary over an on-disk launch tree.
 - [x] **W1.b** `scripts/build/resolve-fingerprint.sh` — same for
       `nros-launch-resolve` over a probe launch tree. Emitted SystemModels ARE
       fixture inputs, so a signature blind to the resolver repeats #182 one layer

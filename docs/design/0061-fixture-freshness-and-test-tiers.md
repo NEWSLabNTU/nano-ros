@@ -166,7 +166,12 @@ reviewable in a diff.
 ### Migration
 
 1. Add `nros codegen-fingerprint` (or a `scripts/build/codegen-fingerprint.sh`
-   wrapper if the CLI should not learn about the corpus).
+   wrapper if the CLI should not learn about the corpus). **Shipped as the verb:**
+   the corpus is `include_str!`-compiled into `rosidl-codegen`, so a wrapper would
+   only have re-invoked the binary, and the verb lets the golden test and the
+   fingerprint read the same `emit_corpus()` map — which a separate script could
+   not. The resolver half (`resolve-fingerprint.sh`) genuinely is a script,
+   because it runs a DIFFERENT binary over an on-disk launch tree.
 2. Signature version bump: `nros-workspace-fixture-v2` → `v3`. The bump
    invalidates once, deliberately, and never again for the same reason.
 3. Keep the binary hash as a *fallback* when the fingerprint cannot be computed
@@ -350,6 +355,21 @@ platform must extend tier 2 without touching a second file.
 ## Operational corollaries
 
 These do not depend on proposals 1–2 but bound the same cost:
+
+- **The fingerprint makes invalidation CORRECT, not cheap.** Measured 2026-07-31
+  while running tier 1 for acceptance: a pull that advanced `packages/cli` moved
+  the codegen fingerprint (`fd00dd67` → `92069f05`), correctly invalidating all
+  81 workspace fixtures — those fixtures really were built by an emitter that
+  emits different bytes. Tier 1 then could not start until 65 of them were
+  rebuilt. So on a machine that has just pulled, tier 1's dominant cost is not the
+  run, it is the fixture rebuild the pull earns. W1 removes the SPURIOUS
+  invalidations (#182); it cannot remove the real ones, and a tier-1 budget quoted
+  as "minutes" is a budget for the second run of the day, not the first.
+
+  The same session showed the mechanism working in the other direction: two
+  distinct `nros` binaries (`0b93a2f0`, `e413ab08`) hashed to the SAME fingerprint
+  `fd00dd67`, so a rebuild between them invalidates nothing. That pair is the
+  clearest evidence the fingerprint does what the binary hash could not.
 
 - **Disk.** A full sweep needs ~800 GB and hit **11 MB free** twice on
   2026-07-28. Tier 3 must build → test → **drop that family's artifacts** →
