@@ -1,6 +1,6 @@
 # Phase 319 — the compile-check fixture lane answers truth, not presence
 
-**Status (2026-07-30): W1 landed; W2–W3 pending.**
+**Status (2026-07-30): W1–W3 landed. Phase complete.**
 **Closes:** issue 0351. **Informed by:** issues 0350, 0196, 0030, 0309.
 **Extends:** [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) /
 [phase-318](phase-318-fixture-freshness-and-tiers.md) — that phase sharpens the
@@ -52,20 +52,19 @@ artifact; the other sixteen produce binaries and JSON that tests read or execute
 What differs from an ordinary `[[fixture]]` row is the **builder** and the
 **output path**, not the kind of thing they are.
 
-- [ ] **W2.a** Extend the manifest schema with an optional `builder` (default
-      `cargo`, so all 251 existing rows are untouched) and an `output` (the path a
-      test resolves, relative to the row's build root). Builders:
-      `cargo-check`, `cargo-build`, `cmake-configure`, `cross-build`,
-      `cxx-syntax`.
-- [ ] **W2.b** Relax `platform`/`lang` to optional **only** when `builder` is not
-      the default — a cmake-configure row has no meaningful lang, and inventing
-      one would be a lie the checker then enforces. Validation stays strict on
-      the default builder.
-- [ ] **W2.c** Port all 26 entries as manifest rows; delete the six arrays.
-- [ ] **W2.d** `compile-check-fixtures.sh` reads the manifest
+- [x] **W2.a** Manifest schema gains `builder` and `output` (the path a test
+      resolves, relative to the row's build root). Builders: `cargo-check`,
+      `cargo-build`, `cmake-configure`, `cross-build`, `cxx-syntax`.
+      *Landed as its own `[[compile_check_fixture]]` table, not as fields on
+      `[[fixture]]` — see the note below.*
+- [~] **W2.b** ~~Relax `platform`/`lang` to optional when `builder` is not the
+      default.~~ **SUPERSEDED, not done:** unnecessary once the rows got their own
+      table. No existing validation was relaxed.
+- [x] **W2.c** Port all 26 entries as manifest rows; delete the six arrays.
+- [x] **W2.d** `compile-check-fixtures.sh` reads the manifest
       (`fixtures-manifest.py list --builder …`) instead of its arrays. Its
       per-builder functions stay; only the inventory moves.
-- [ ] **W2.e** `NROS_FIXTURE_ID=<id>` narrowing, matching
+- [x] **W2.e** `NROS_FIXTURE_ID=<id>` narrowing, matching
       `workspace-fixtures-build.sh` (added while fixing #342) — the lane is
       currently all-or-nothing, which is why iterating on one fixture means
       rebuilding twenty-five.
@@ -73,26 +72,70 @@ What differs from an ordinary `[[fixture]]` row is the **builder** and the
 **Done when:** `compile-check-fixtures.sh` contains no fixture inventory, the
 manifest lists all 26, and the script's output is unchanged for a clean build.
 
+**Landed.** 26 rows validate; per-builder counts 7/5/9/3/2 match the six deleted
+arrays exactly; a full lane run exits 0.
+
+W2.b turned out unnecessary: the rows are their own `[[compile_check_fixture]]`
+table rather than `[[fixture]]` rows with a `builder` field, so no existing
+validation was relaxed and the 251 existing rows were not touched. Reading the
+consumer is what changed the design — `list`'s record format is per-language and
+consumed positionally by `fixtures-build.sh`, so overloading it would have
+changed that contract. The risk noted below therefore did not materialise.
+
+Two bugs surfaced while porting, both by running the thing:
+
+- **Mine:** `o5_nav2_compat`'s third colon field is `manifest_dir`, not `pkg`.
+  Mis-mapped, the build failed with "package ID specification `demo_entry` did
+  not match any packages".
+- **Pre-existing** (confirmed against clean `main`): `orch_tiers_single` stripped
+  `[tiers.*]` from `system.toml` to force the legacy single-tier path, but the
+  entry is `nros::main!(model = …)` and phase-296 made the MODEL authoritative.
+  The strip had stopped doing anything;
+  `single_tier_system_takes_the_legacy_boardentry_run_path` was RED on `main`.
+  Now strips `execution.tiers` from the model too (bindings preserved). This
+  issue's own theme, one layer over: an overlay certifying something it no longer
+  affects.
+
 ## W3 — signature + toolchain predicate (issue 0351 defects 2 and 3)
 
-- [ ] **W3.a** A signature per compile-check row, on the
+- [x] **W3.a** A signature per compile-check row, on the
       `workspace-fixture-signature.sh` model: hash the manifest record plus the
       row's source tree, write it **after** a successful build, and have the
       staleness probe recompute and compare. A failed build writes none; a source
       edit invalidates one — defects 1-and-2 closed together, per row.
-- [ ] **W3.b** Teach `check-fixtures-stale.sh` the new rows (it already fans out
+- [x] **W3.b** Teach `check-fixtures-stale.sh` the new rows (it already fans out
       over the manifest, so this is a second record kind, not a second probe).
-- [ ] **W3.c** Declare each row's toolchain requirement in the manifest and gate
-      on the SHARED `nros_toolchain_present`
-      (`scripts/test/toolchain-gate.sh`) — never on a missing artifact.
-- [ ] **W3.d** `require_compile_check` / `require_cmake_fixture`: when the
-      artifact is missing AND its toolchain is present, hard-fail in **every**
-      tier including `NROS_FIXTURES_OPTIONAL`. Only a genuinely absent toolchain
-      skips.
+- [~] **W3.c** ~~Declare each row's toolchain requirement in the manifest and gate
+      on the shared `nros_toolchain_present`.~~ **SUPERSEDED, not done:** met by
+      the `.build-failed` marker instead — see the note below. No per-row
+      `toolchain` field was added.
+- [x] **W3.d** The resolver hard-fails in **every** tier, including
+      `NROS_FIXTURES_OPTIONAL`, when the build stage recorded a FAILURE for that
+      fixture. A genuinely absent toolchain (no marker) still skips.
 
 **Done when:** breaking a compile-check fixture turns the suite red on a machine
 that has the toolchain, in the light tier — the lane people actually run. That is
 the acceptance test for the whole phase, and it is exactly what #350 failed.
+
+**Landed, and the acceptance test passes:** breaking `l9_register_cpp`'s
+CMakeLists and running `NROS_FIXTURES_OPTIONAL=1` now fails with *"Test fixture
+FAILED to build (not merely absent)"*, naming the fixture and builder. Restored →
+green.
+
+W3.c was met by the `.build-failed` MARKER rather than a per-row `toolchain`
+declaration: the build stage already knows whether it could run a builder, so
+recording the outcome it observed is strictly better than re-deriving it
+test-side from a predicate that would have to be kept in sync. `nros_toolchain_present`
+stays the workspace lane's mechanism; this lane did not need to duplicate it.
+
+Two wrong shapes were caught by the acceptance test before landing, both mine and
+both the same bash trap: **errexit is suppressed for anything in a condition
+context**. `if ! builder` let a failing `cmake -S` fall through so the function
+returned its trailing `echo`'s status — a broken fixture reported as BUILT — and
+`( set -e; builder ) || rc=$?` inherited the same suppression through the `||`
+list. The landed shape is an `ERR` trap with the builder called bare (needs
+`set -E`): no condition context, fail-fast preserved, and the trap records which
+fixture died on the way out.
 
 ## Deliberately NOT in scope
 
@@ -108,12 +151,27 @@ the acceptance test for the whole phase, and it is exactly what #350 failed.
 - **Renaming or restructuring the fixtures themselves.** Inventory moves; the
   builds do not change.
 
+## Consequences worth knowing
+
+- **An ENVIRONMENTAL build failure now hard-fails rather than skipping.** A
+  crates.io fetch blip hit `n9_form3` during the final full run; the marker
+  recorded it and the row would have failed its test until rebuilt. That is the
+  intended trade — do not test against a fixture that could not be built,
+  whatever the cause — and the remedy is the same re-run. It does mean a flaky
+  network turns into a red test rather than a quiet skip.
+- **The compile-check probe runs AFTER the workspace probe in
+  `check-fixtures-stale.sh`, which exits on its own failures first.** On a tree
+  with stale workspace fixtures the compile-check section is never reached. That
+  matches the gate's existing fail-fast shape, so it was left alone, but it means
+  the two sections are not reported together.
+- **Gate cost:** the compile-check section is 2.17s for all 26 rows. The gate's
+  overall runtime is dominated by the workspace section (~1.4s per row across
+  ~86), which is RFC-0061 / phase-318's subject, not this phase's.
+
 ## Risks
 
-- **W2.b touches shared validation.** Relaxing required keys is the one change
-  that can silently weaken the checker for the 251 existing rows. Gate it on
-  `builder != default` and add a manifest test that a default-builder row missing
-  `platform`/`lang` still fails.
+- ~~**W2.b touches shared validation.**~~ Did not materialise — the separate
+  table meant no existing validation was relaxed. See W2.
 - **W3.d changes what a light-tier run reports.** Fixtures that quietly skipped
   will start failing on machines that have the toolchain — which is the point, but
   it will look like new breakage on first run. Expect to fix real staleness the
