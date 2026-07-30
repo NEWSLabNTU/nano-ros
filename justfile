@@ -1774,27 +1774,13 @@ build-workspace-embedded:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    # issue 0287 — same DERIVED exclude list as check-workspace-embedded. These
+    # two carried byte-identical 20-line hand-written copies; keeping one list
+    # in one place is the point, since a member added to one and not the other
+    # fails in whichever lane was forgotten, in an unrelated crate.
+    excludes="$(bash scripts/build/host-only-members.sh)"
     cargo build $cargo_profile_args --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zpico-sys \
-        --exclude nros-tests \
-        --exclude nros-c \
-        --exclude nros-cpp \
-        --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-sizes-build \
-        --exclude nros-build-profile \
-        --exclude nros-build-helpers \
-        --exclude nros-zephyr-build \
-        --exclude nros-zpico-build \
-        --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib \
-        --exclude nros-build-paths \
-        --exclude nros-orchestration-ir \
-        --exclude nros-rmw-metadata \
-        --exclude nros-board-native \
-        --exclude nros-board-posix \
-        --exclude cyclonedds-sys \
-        --exclude nros-rmw-cyclonedds-sys \
-        --exclude nros-rmw-cyclonedds
+        $excludes
 
 # Format workspace code.
 # #310 — PLAIN `cargo fmt` (never `--all`). Plain fmt stays inside the invoked
@@ -1886,28 +1872,34 @@ check-workspace:
 # host clippy — letting `check-workspace-all` run the two concurrently.
 [private]
 check-workspace-embedded:
-    @echo "Checking workspace for embedded target..."
-    CARGO_TARGET_DIR=target-embedded cargo clippy --quiet --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zpico-sys \
-        --exclude nros-tests \
-        --exclude nros-c \
-        --exclude nros-cpp \
-        --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-sizes-build \
-        --exclude nros-build-profile \
-        --exclude nros-build-helpers \
-        --exclude nros-zephyr-build \
-        --exclude nros-zpico-build \
-        --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib \
-        --exclude nros-build-paths \
-        --exclude nros-orchestration-ir \
-        --exclude nros-rmw-metadata \
-        --exclude nros-board-native \
-        --exclude nros-board-posix \
-        --exclude cyclonedds-sys \
-        --exclude nros-rmw-cyclonedds-sys \
-        --exclude nros-rmw-cyclonedds
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # issue 0287 — the exclude list is DERIVED, not hand-written.
+    #
+    # cargo unifies features across every workspace member when this builds the
+    # workspace for a thumb target, regardless of what firmware can reach. One
+    # host-only member therefore turns `std` on for everything and the lane dies
+    # in an unrelated crate (`can't find crate for `std`` in nros-serdes, which
+    # is merely the first no_std crate cargo reaches). The 20-line hand list
+    # that used to live here carried no reasons and nothing tied an entry to its
+    # crate; each crate now declares `[package.metadata.nros] host-only = true`
+    # with a reason, and the script below derives the flags.
+    echo "Checking workspace for embedded target..."
+    excludes="$(bash scripts/build/host-only-members.sh)"
+    if ! CARGO_TARGET_DIR=target-embedded cargo clippy --quiet --workspace \
+            --no-default-features --target thumbv7em-none-eabihf \
+            $excludes -- -D warnings; then
+        echo "" >&2
+        echo "[hint] If this failed with \`can't find crate for \\\`std\\\`\` in a crate you did" >&2
+        echo "       not touch, a NEW host-only member is leaking \`std\` through cargo" >&2
+        echo "       feature unification (issue 0287). The named crate is a victim, not" >&2
+        echo "       the cause. Declare the new crate host-only:" >&2
+        echo "" >&2
+        echo "         [package.metadata.nros]" >&2
+        echo "         host-only = true" >&2
+        echo "         host-only-reason = \"...\"" >&2
+        exit 1
+    fi
 
 # Run the host + embedded workspace clippy CONCURRENTLY. They share no
 # target-dir (host = `target/`, embedded = `target-embedded/`), so cargo's

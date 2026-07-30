@@ -7,6 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "phase-308 — the metadata-mode RMW backend: records declared entities instead of transporting them."
 
+# issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
+# workspace for a thumb target, and cargo unifies features across ALL members
+# regardless of what firmware can reach. A host-only member therefore turns
+# `std` on for everything and the lane dies in an unrelated crate
+# (`can't find crate for \`std\`` in nros-serdes). Declared here rather than
+# hand-listed in the justfile so the reason lives with the crate and the
+# exclude list is derived — see scripts/build/host-only-members.sh.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "host-only recording backend for the source-metadata probe (phase-308)"
+
 [dependencies]
 # The ONE recorder + schema emitter (phase-308's layer constraint). This crate
 # is an adapter; it must never serialize anything itself.

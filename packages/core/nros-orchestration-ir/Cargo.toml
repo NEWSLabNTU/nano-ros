@@ -7,6 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "Shared per-tier orchestration schema + resolver (RFC-0015), consumed by both the nros CLI codegen and the nros::main! proc-macro."
 
+# issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
+# workspace for a thumb target, and cargo unifies features across ALL members
+# regardless of what firmware can reach. A host-only member therefore turns
+# `std` on for everything and the lane dies in an unrelated crate
+# (`can't find crate for \`std\`` in nros-serdes). Declared here rather than
+# hand-listed in the justfile so the reason lives with the crate and the
+# exclude list is derived — see scripts/build/host-only-members.sh.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "host-side orchestration IR consumed by the CLI"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 # phase-307 — `sidecar_slots`, the ONE callback-slot accounting rule both bakes

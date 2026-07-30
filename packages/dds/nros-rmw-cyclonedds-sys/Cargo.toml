@@ -77,6 +77,17 @@ platform-posix = ["dep:nros-platform", "nros-platform/platform-posix"]
 # `default-features = false`.
 vendored = ["dep:cyclonedds-sys", "dep:cc"]
 
+# issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
+# workspace for a thumb target, and cargo unifies features across ALL members
+# regardless of what firmware can reach. A host-only member therefore turns
+# `std` on for everything and the lane dies in an unrelated crate
+# (`can't find crate for \`std\`` in nros-serdes). Declared here rather than
+# hand-listed in the justfile so the reason lives with the crate and the
+# exclude list is derived — see scripts/build/host-only-members.sh.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "bindgen over CycloneDDS headers"
+
 [dependencies]
 nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false }
 # Phase 248 (C2) — Rust descriptor shim; backend init installs its
