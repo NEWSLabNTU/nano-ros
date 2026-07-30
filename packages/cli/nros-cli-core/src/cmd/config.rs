@@ -228,7 +228,7 @@ fn resolve_bringup<'a>(
 /// so `NANO_ROS_FEATURES` is populated where `nros-c` / `nros-cpp` read it
 /// (`set(_caps ${NANO_ROS_FEATURES})`). Without it the workspace cache reads
 /// `NANO_ROS_FEATURES:STRING=` and NO declared capability reaches the C/C++
-/// build — issue 0351.
+/// build — issue 0353.
 ///
 /// Goes through `capability_enabled`, which honours both the generic
 /// `[system].features` list and the deprecated typed blocks. Emitting the

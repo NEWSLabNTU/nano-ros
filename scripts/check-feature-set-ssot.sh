@@ -172,7 +172,7 @@ fi
 #
 #    posix carried `if(PLATFORM STREQUAL "posix") list(APPEND _caps
 #    param_services lifecycle)`, which until phase-323 W1 was the ONLY route
-#    those axes took on hosted (issue 0351): `NANO_ROS_FEATURES` was never
+#    those axes took on hosted (issue 0353): `NANO_ROS_FEATURES` was never
 #    populated on the workspace path. The effect was that hosted could not fail
 #    when a declaration was missing, so "forgot to declare" and "declared" were
 #    indistinguishable on the platform most people develop on.

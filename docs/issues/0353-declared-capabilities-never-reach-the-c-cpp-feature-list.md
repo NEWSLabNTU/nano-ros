@@ -1,7 +1,8 @@
 ---
 id: 353
 title: "No declared capability reaches the C/C++ build on the workspace path — one broken mechanism, three different masks (posix always-on, per-fixture `-D`, and a closed issue cited as cover)"
-status: open
+status: resolved
+resolved_in: phase-323
 type: bug
 area: build
 related: [phase-323, phase-315, issue-0311, phase-314, rfc-0004, issue-0118]

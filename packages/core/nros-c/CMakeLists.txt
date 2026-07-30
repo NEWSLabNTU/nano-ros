@@ -42,7 +42,7 @@ endif()
 #
 # posix used to get `param_services` + `lifecycle` unconditionally. That was not
 # a convenience: until W1 it was the ONLY route those axes took on hosted, since
-# `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0351). So
+# `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0353). So
 # hosted could not fail when a declaration was missing, and the same
 # `system.toml` produced different runtimes depending on where it was built.
 #

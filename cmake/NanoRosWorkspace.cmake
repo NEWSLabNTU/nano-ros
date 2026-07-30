@@ -180,7 +180,7 @@ function(nano_ros_workspace)
     # `nros-cpp` read `NANO_ROS_FEATURES` during the `add_subdirectory` body
     # (`set(_caps ${NANO_ROS_FEATURES})`), so a value set afterwards is a value
     # nobody sees. The workspace cache read `NANO_ROS_FEATURES:STRING=` and NO
-    # declared capability reached the C/C++ build — issue 0351.
+    # declared capability reached the C/C++ build — issue 0353.
     #
     # This is the same treatment `BACKEND` already gets a few lines up, and for
     # the same reason: the axis has to be resolved before the import that

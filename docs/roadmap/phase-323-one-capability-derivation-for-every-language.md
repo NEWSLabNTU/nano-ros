@@ -3,7 +3,7 @@
 **Status (2026-07-31): W1–W4 landed.** Implements the premise phase-314 and phase-315
 established and did not finish: `system.toml` is the single source of truth for
 the RMW, the ROS edition **and the capability list**, in every language.
-**Closes:** issue 0351. **Informed by:** issues 0311, 0118 (archived, resolved),
+**Closes:** issue 0353. **Informed by:** issues 0311, 0118 (archived, resolved),
 phases 314 / 315.
 
 ## The state today
