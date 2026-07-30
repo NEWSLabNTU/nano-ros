@@ -21,7 +21,7 @@ The deep run did the cell-by-cell cross-read of ARCHITECTURE §2 × `matrix.rs` 
 
 But **uORB is claimed supported**: ARCHITECTURE §2 lists
 `rmw-{zenoh,xrce,cyclonedds,uorb}`, and there is a real crate
-(`packages/px4/nros-rmw-uorb`) plus a real example (`examples/px4/cpp/uorb`).
+(`packages/rmw/uorb/nros-rmw-uorb`) plus a real example (`examples/px4/cpp/uorb`).
 
 So no uORB cell can even be *written*, let alone covered — the axis is declared in
 the architecture doc and absent from the structure that is supposed to enumerate it.

@@ -152,7 +152,7 @@ build-fixtures:
 # phase-321 W1.c — `build` and `build-targets` are gone from this list because
 # they built `nros-rmw-uorb` and `nros-px4` as CARGO crates, and both were
 # deleted in phase-115.K.4. The surviving uORB backend is the C++ CMake project
-# at `packages/px4/nros-rmw-uorb`, which `build-examples` covers.
+# at `packages/rmw/uorb/nros-rmw-uorb`, which `build-examples` covers.
 [group("full-matrix")]
 build-all: build-examples build-fixtures
     @echo "PX4 build-all completed."

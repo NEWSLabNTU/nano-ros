@@ -53,7 +53,7 @@ PX4:
   `nros-rmw-uorb` + `px4-workqueue` directly — no extra nano-ros code
   is needed because `px4-workqueue` is style-agnostic.
 
-v1 ships Style B via [`nros_px4::run`](../../packages/px4/nros-px4/src/run.rs).
+v1 ships Style B via [`nros_px4::run`](../../packages/rmw/uorb/nros-px4/src/run.rs).
 Style C works today as long as the user is comfortable bypassing
 `nros-node`'s typed Node abstraction.
 
@@ -61,7 +61,7 @@ Style C works today as long as the user is comfortable bypassing
 
 ROS 2 topic strings (e.g. `/fmu/out/sensor_gyro`) → uORB topic
 identifiers (e.g. `sensor_gyro`) via a compile-time `phf::Map` generated
-from [`topics.toml`](../../packages/px4/nros-rmw-uorb/topics.toml) by
+from [`topics.toml`](../../packages/rmw/uorb/nros-rmw-uorb/topics.toml) by
 `build.rs`. The initial subset mirrors PX4-Autopilot's
 `src/modules/uxrce_dds_client/dds_topics.yaml`.
 

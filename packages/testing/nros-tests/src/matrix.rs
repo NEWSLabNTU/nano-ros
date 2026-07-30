@@ -165,7 +165,8 @@ impl PlatformId {
 ///
 /// Issue 0341 — `Uorb` is declared supported in ARCHITECTURE §2
 /// (`rmw-{zenoh,xrce,cyclonedds,uorb}`) with a real crate
-/// (`packages/px4/nros-rmw-uorb`) and example (`packages/testing/nros-px4-register-check`), so it
+/// (`packages/rmw/uorb/nros-rmw-uorb`) and example
+/// (`packages/testing/nros-px4-register-check`), so it
 /// must be *expressible* in the matrix. It carries a documented CarveOut cell
 /// rather than a Runtime lane: uORB runs inside a PX4-SITL build that no CI
 /// runner here provides. An expressible-but-carved-out axis is honest; an

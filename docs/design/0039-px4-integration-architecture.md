@@ -120,7 +120,7 @@ struct orb_metadata {
 
 In a real module build (`NROS_RMW_UORB_LINK_PX4=ON`) the backend uses PX4's own
 header (correct layout). The standalone fallback in
-`packages/px4/nros-rmw-uorb/src/uorb_abi.hpp` declares only a prefix and is the
+`packages/rmw/uorb/nros-rmw-uorb/src/uorb_abi.hpp` declares only a prefix and is the
 piece that must track this struct.
 
 ### Version strategy

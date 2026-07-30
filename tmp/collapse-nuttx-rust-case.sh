@@ -49,7 +49,7 @@ if [ "$has_dds" = "yes" ]; then
     # nros DDS uses `alloc` instead of `std` for the same target
     nros_features='["alloc", "rmw-cffi", "platform-nuttx", "ros-humble", "std"]'
     dds_feature='rmw-dds   = ["dep:nros-rmw-dds", "dep:critical-section"]'
-    dds_dep='nros-rmw-dds = { path = "../../../../packages/dds/nros-rmw-dds", features = ["platform-nuttx"], optional = true }'
+    dds_dep='nros-rmw-dds = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds", features = ["platform-nuttx"], optional = true }'
     crit_dep='critical-section = { version = "1.2", default-features = false, features = ["std"], optional = true }'
 fi
 

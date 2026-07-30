@@ -300,5 +300,5 @@ the ones above.
   how the transport vtable composes with the RMW vtable.
 - `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` — reference layout for the
   C++ vtable consumer.
-- `packages/px4/nros-rmw-uorb/` — reference layout for the
+- `packages/rmw/uorb/nros-rmw-uorb/` — reference layout for the
   C++ vtable consumer with PX4 SDK integration.

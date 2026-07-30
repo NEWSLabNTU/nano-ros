@@ -54,7 +54,7 @@ dds_dep_line=""
 crit_dep_line=""
 if [ "$has_dds" = "yes" ]; then
     dds_feature_line='rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section"]'
-    dds_dep_line='nros-rmw-dds   = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-freertos"], optional = true }'
+    dds_dep_line='nros-rmw-dds   = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds",    features = ["platform-freertos"], optional = true }'
     crit_dep_line='nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }'
 fi
 

@@ -204,7 +204,7 @@ elseif(NANO_ROS_RMW STREQUAL "zenoh")
 elseif(NANO_ROS_RMW STREQUAL "uorb")
     # Phase 140 — PX4 uORB backend (C++ port). Consumed via the
     # `integrations/px4/` shell which add_subdirectory's
-    # `packages/px4/nros-rmw-uorb` and exposes the `nros_rmw_uorb`
+    # `packages/rmw/uorb/nros-rmw-uorb` and exposes the `nros_rmw_uorb`
     # target. Mirrors the cyclonedds shape above.
     if(TARGET nros_rmw_uorb)
         target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_uorb)

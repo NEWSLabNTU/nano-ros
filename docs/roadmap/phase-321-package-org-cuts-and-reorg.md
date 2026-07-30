@@ -48,7 +48,7 @@ Each verified: zero consumers, or consumers that cannot work.
 - [x] **W1.c** Delete the dead `just/px4.just` cargo recipes (lines 89, 103, 106,
       109, 193, 194, 210, 240). They build / fmt / clippy / test `nros-rmw-uorb`
       and `nros-px4`, **neither of which exists as a cargo package** (both were
-      deleted in phase-115.K.4; `packages/px4/nros-rmw-uorb` is a C++ CMake
+      deleted in phase-115.K.4; `packages/rmw/uorb/nros-rmw-uorb` is a C++ CMake
       project). Line 240 `rm -rf`s `packages/rmw/…`, a directory that has never
       existed. Also fix the dead links in `docs/design/0011-px4-rmw-uorb.md:56,64`.
 - [x] **W1.d** Delete the `xrce-sys` **crate** (701 + 307 LoC, zero dependents,
@@ -123,7 +123,7 @@ Rationale, with the evidence for each:
 - **The four RMW backends live in four dirs named on four different
   principles**: `zpico/` (a vendor library), `xrce/` (a protocol), `dds/` (a
   protocol family), `px4/` (a consumer product) — and `bridge/`, one crate with
-  its own top-level group. `packages/px4/nros-rmw-uorb` is a CMake/C++ package,
+  its own top-level group. `packages/rmw/uorb/nros-rmw-uorb` is a CMake/C++ package,
   i.e. a backend hidden under a product name.
 - **`core/` is a junk drawer**: 23 packages, 143k LoC, six roles (agnostic
   runtime, language bindings, façade, build tooling, C platform impls,

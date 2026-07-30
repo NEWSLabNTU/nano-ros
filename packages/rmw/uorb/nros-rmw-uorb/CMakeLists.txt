@@ -14,12 +14,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Phase 140 — install rules + Config.cmake.in template deleted.
-# Consumed in-tree via `add_subdirectory(packages/px4/nros-rmw-uorb)`
+# Consumed in-tree via `add_subdirectory(packages/rmw/uorb/nros-rmw-uorb)`
 # from the PX4 integration shell (integrations/px4/module-template/).
 
 # ---- Dependencies ----------------------------------------------------------
 # nros-rmw-cffi C ABI: headers only (vtable + entity structs + ret codes).
-set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
+set(NROS_RMW_CFFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/nros-rmw-abi/include"
     CACHE PATH "Path to the nros-rmw-cffi public headers (rmw_vtable.h, rmw_ret.h, …)")
 if(NOT EXISTS "${NROS_RMW_CFFI_DIR}/nros/rmw_vtable.h")
     message(FATAL_ERROR

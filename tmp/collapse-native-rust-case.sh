@@ -66,7 +66,7 @@ log = "0.4"
 env_logger = "0.11"
 
 nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-dds      = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-posix"], optional = true }
+nros-rmw-dds      = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds",    features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 TOML
 

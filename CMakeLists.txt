@@ -254,7 +254,7 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         set(CYCLONEDDS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party/dds/cyclonedds"
             CACHE PATH "CycloneDDS source tree for self-provisioning (Phase 186)")
     endif()
-    add_subdirectory(packages/dds/nros-rmw-cyclonedds)
+    add_subdirectory(packages/rmw/cyclonedds/nros-rmw-cyclonedds)
     if(TARGET nros_rmw_cyclonedds)
         # The Linux/BSD link path below whole-archives the backend via a raw
         # linker flag so the registration object cannot be dropped. Raw

@@ -67,7 +67,7 @@ sweep for example dirs with no tracked files would collect them. Recorded in
 
 **Defect 1 — FIXED (b47f3d481).** The PX4-SITL weak `nros_rmw_cffi_register`
 stub moved out of the example into the uORB backend
-(`packages/px4/nros-rmw-uorb/src/register_fallback.c`) + weak-symbols allowlist.
+(`packages/rmw/uorb/nros-rmw-uorb/src/register_fallback.c`) + weak-symbols allowlist.
 
 **Defect 2 — FIXED (phase-317, 6b4032395 + 9e9915155).** Added the safe
 `nros::lifecycle::LifecycleCallbacks` trait (six defaulted `on_*(&mut self) ->

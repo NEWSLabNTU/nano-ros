@@ -36,7 +36,7 @@ dds_dep=""
 crit_dep=""
 if [ "$has_dds" = "yes" ]; then
     dds_feature='rmw-dds   = ["dep:nros-rmw-dds", "dep:critical-section", "nros/alloc"]'
-    dds_dep='nros-rmw-dds = { path = "../../../../packages/dds/nros-rmw-dds", features = ["platform-threadx"], optional = true }'
+    dds_dep='nros-rmw-dds = { path = "../../../../packages/rmw/cyclonedds/nros-rmw-dds", features = ["platform-threadx"], optional = true }'
     crit_dep='critical-section = { version = "1.2", default-features = false, features = ["std"], optional = true }'
 fi
 
