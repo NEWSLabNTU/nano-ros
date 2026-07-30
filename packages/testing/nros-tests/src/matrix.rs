@@ -345,6 +345,22 @@ const fn cell(
     }
 }
 
+/// A thing the test-tier tooling can treat as a matrix cell, whichever list it
+/// came from (issue 0352 / phase-324). `matrix::CELLS` holds baked
+/// self-contained cells; `crate::interop::CELLS` holds interop/bridge cells in
+/// their richer shape. Both expose their underlying [`Cell`] so `ci_lane`
+/// selection, coordinate derivation and coverage all iterate one type without
+/// caring which list a cell belongs to.
+pub trait TestCell {
+    fn cell(&self) -> &Cell;
+}
+
+impl TestCell for Cell {
+    fn cell(&self) -> &Cell {
+        self
+    }
+}
+
 // Shorthand used by the seed table below.
 use Kind::*;
 use Lang::*;
@@ -712,27 +728,12 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(Native, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
 
-    // ── Interop kind (nano ↔ real ROS 2; reduced workload set) ────────
-    cell(Native, Rust, Zenoh,      Pubsub,  Interop, Runtime),
-    cell(Native, Rust, Zenoh,      Service, Interop, Runtime),
-    cell(Native, Rust, Cyclonedds, Pubsub,  Interop, Runtime),
-    cell(Native, Rust, Cyclonedds, Service, Interop, Runtime),
-    cell(Native, Rust, Xrce,       Pubsub,  Interop, Runtime),
-    cell(Native, Rust, Xrce,       Service, Interop, Runtime),
-    // Issue 0341 — the only runtime test of this shape
-    // (`qos_zephyr_ros2_interop_e2e.rs`) boots the RUST `ws-qos-rust` zephyr
-    // entry over zenoh-pico → rmw_zenoh_cpp; the cell used to declare
-    // Cpp/Cyclonedds, which nothing ran. Model reality, and carve out the
-    // Cpp/Cyclonedds shape that was never covered.
-    cell(ZephyrNativeSim, Rust, Zenoh, Qos, Interop, Runtime),
-    cell(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop,
-        CarveOut("no zephyr Cpp/Cyclonedds QoS-interop lane; the QoS zephyr interop \
-                  test runs Rust/Zenoh (zenoh-pico). File a lane if wanted.")),
-    cell(Native, Rust, Zenoh, Lifecycle, Interop, Runtime),
-
-    // ── Bridge kind ────────────────────────────────────────────────────
-    cell(Native, Rust, Zenoh, Pubsub, Bridge, Runtime), // zenoh→cyclonedds
-    cell(Native, Rust, Xrce,  Pubsub, Bridge, Runtime), // zenoh→xrce
+    // ── Interop & Bridge kinds — issue 0352 / phase-324 ────────────────
+    // These cells carry a nano side that is BUILT plus an ephemeral PEER and a
+    // DIRECTION, a shape `Cell` cannot express. They live in `crate::interop`
+    // (`interop::CELLS`) in that formulation, joined to their build + test
+    // recipe by a `Binding` and gated by `tests/matrix_fixture_coverage.rs`.
+    // `matrix::CELLS` is baked/self-contained only.
 
     // ── uORB (PX4-SITL) — issue 0341 ───────────────────────────────────
     // uORB is a declared RMW (ARCHITECTURE §2) with a real crate

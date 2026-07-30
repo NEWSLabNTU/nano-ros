@@ -1,11 +1,12 @@
 ---
 id: 352
 title: "Interop/Bridge matrix cells are not bound to the tests that run them: a cell's declared (lang, rmw) can silently disagree with the fixture its test builds"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing
-related: [issue-0341, issue-0327, rfc-0051, rfc-0061]
+related: [issue-0341, issue-0327, rfc-0051, rfc-0061, phase-324]
+resolved_in: phase-324
 ---
 
 ## Finding (spun out of #341 defect 3, 2026-07-31)
@@ -82,3 +83,35 @@ its peer differently. That is why #341 shipped defects 1+2 and spun this out.
 - This issue is #341 defect 3, extracted so #341 can close.
 - Shares its "make the runtime test consume the matrix SSoT" fix shape with #327
   defect 2 (the edition axis); doing either first de-risks the other.
+
+## Resolution (phase-324, 2026-07-31)
+
+Delivered the two-list separation + correspondence SSoT + gates:
+
+- **`interop::CELLS`** (`packages/testing/nros-tests/src/interop.rs`) — the
+  interop/bridge cells moved out of `matrix::CELLS`, each an `InteropCell` (nano
+  `Cell` + `BuildChannel` + `Peer` + `Dir` + `test`). `trait TestCell` lets
+  `ci_lane` + coverage iterate both lists.
+- **`Binding`** — `{cell_id, build_recipe, test_recipe}` per cell; the row names
+  the channel, does not build (no `build_for` unifier; interop artifacts stay off
+  `fixtures.toml`).
+- **Gates G1–G4** in `matrix_fixture_coverage.rs` (replacing the blanket
+  `Kind::Interop | Kind::Bridge` fixture-coverage exemption): G1 every Runtime
+  cell names a real `tests/<test>.rs`; G2 build channel builds the cell's
+  platform; G3 recipe names its module; G4 peer rmw is consistent with the cell.
+  **Demonstrated:** flipping the zephyr QoS cell back to Cyclonedds (the 0341
+  defect-2 shape) with a zenoh peer turns **G4 RED**.
+- **`ci_lane`** pools both lists (`all_runtime_cells`), so moving interop out did
+  not drop tier-1 `Kind::Interop`/`Bridge` coverage.
+- **Per-test binding** — each interop test carries an
+  `interop::assert_test_bound(<test>, &[coords])` tripwire (no fixtures, tier 1):
+  `interop_e2e`, `xrce_ros2_interop`, `qos_zephyr_ros2_interop_e2e`, both
+  `declarative_bridge_*`.
+
+**Residual (W4.d, deferred):** the full runtime drive-rewrite — a cell literally
+*selecting* its builder + peer and the runtime body asserting the resolved fixture
+matches the cell — needs the ROS 2 / docker / QEMU runtime infra to validate, so
+it is not done blind. The coordinate tripwire is the verifiable increment; the
+remaining gap (a test's `covered` list vs what its `#[case]`s actually execute) is
+the same hand-tripwire class as `example_e2e_case_count_tracks_matrix`. If wanted,
+a follow-up can drive the builder from the cell once run on CI.

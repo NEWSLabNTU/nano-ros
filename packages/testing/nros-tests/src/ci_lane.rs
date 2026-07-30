@@ -68,7 +68,18 @@
 //! couple of hundred cells), and ties break on the cell's debug rendering so the
 //! chosen set is deterministic for a fixed table.
 
-use crate::matrix::{Cell, PlatformId, runtime_cells};
+use crate::matrix::{Cell, PlatformId};
+
+/// Every Runtime cell the tiers select over — baked cells (`matrix::CELLS`) AND
+/// interop/bridge cells (`crate::interop::CELLS`), issue 0352 / phase-324.
+///
+/// `Kind::Interop` and `Kind::Bridge` are values of the `kind` axis the tiers
+/// cover (tier 1 is 1-wise over kind), so moving the interop/bridge cells into
+/// their own list must not remove them from the selection pool — or tier 1 would
+/// silently stop covering the interop/bridge wiring it always did.
+fn all_runtime_cells() -> impl Iterator<Item = &'static Cell> {
+    crate::matrix::runtime_cells().chain(crate::interop::runtime_cells().map(|ic| &ic.cell))
+}
 use std::collections::BTreeSet;
 
 /// A CI lane. See RFC-0061 for the ladder (tier 0 runs no cells at all, tier 3
@@ -156,10 +167,10 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
 
 fn pool(lane: CiLane) -> Vec<&'static Cell> {
     match lane {
-        CiLane::Tier1 => runtime_cells()
+        CiLane::Tier1 => all_runtime_cells()
             .filter(|c| matches!(c.platform, PlatformId::Native))
             .collect(),
-        CiLane::Tier2 | CiLane::Tier2Nightly => runtime_cells().collect(),
+        CiLane::Tier2 | CiLane::Tier2Nightly => all_runtime_cells().collect(),
     }
 }
 
@@ -302,7 +313,7 @@ mod tests {
     /// that put "tier 2 is 20 % of the sweep" in RFC-0061.
     #[test]
     fn the_ladder_is_monotone_in_fixture_cost() {
-        let all: BTreeSet<String> = runtime_cells()
+        let all: BTreeSet<String> = all_runtime_cells()
             .flat_map(|c| {
                 let (lang, rmw) = (
                     format!("{:?}", c.lang).to_lowercase(),
@@ -380,7 +391,7 @@ mod tests {
             );
         }
         let filter = String::from_utf8_lossy(&out.stdout).to_lowercase();
-        for c in runtime_cells() {
+        for c in all_runtime_cells() {
             if matches!(c.platform, PlatformId::Native) {
                 continue;
             }

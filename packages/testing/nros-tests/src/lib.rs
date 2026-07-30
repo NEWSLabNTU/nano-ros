@@ -23,6 +23,7 @@ pub mod esp32;
 pub mod fixtures;
 // RFC-0061 / phase-318 W3 — CI lane selection computed from `matrix`.
 pub mod ci_lane;
+pub mod interop;
 pub mod matrix;
 pub mod output;
 pub mod platform;

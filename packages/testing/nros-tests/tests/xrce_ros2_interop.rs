@@ -615,3 +615,17 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     );
     eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
 }
+
+// Issue 0352 / phase-324 — bind this test to `interop::CELLS`. The coordinates
+// below must equal what the list declares for `xrce_ros2_interop`; adding/retiring an
+// interop cell for this test, or drifting a cell's coordinate (issue 0341
+// defect 2), turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound(
+        "xrce_ros2_interop",
+        &[(Native, Rust, Xrce, Pubsub), (Native, Rust, Xrce, Service)],
+    );
+}

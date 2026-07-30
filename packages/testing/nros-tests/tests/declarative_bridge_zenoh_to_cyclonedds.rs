@@ -245,3 +245,17 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
          (zenoh → declarative bridge → rmw_cyclonedds_cpp), got:\n{ros2_output}"
     );
 }
+
+// Issue 0352 / phase-324 — bind this test to `interop::CELLS`. The coordinates
+// below must equal what the list declares for `declarative_bridge_zenoh_to_cyclonedds`; adding/retiring an
+// interop cell for this test, or drifting a cell's coordinate (issue 0341
+// defect 2), turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound(
+        "declarative_bridge_zenoh_to_cyclonedds",
+        &[(Native, Rust, Zenoh, Pubsub)],
+    );
+}

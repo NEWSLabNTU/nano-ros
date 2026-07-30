@@ -659,3 +659,23 @@ fn interop(#[case] cell: Cell) {
         }
     }
 }
+
+// Issue 0352 / phase-324 — bind this test to `interop::CELLS`. The coordinates
+// below must equal what the list declares for `interop_e2e`; adding/retiring an
+// interop cell for this test, or drifting a cell's coordinate (issue 0341
+// defect 2), turns this RED. Needs no fixtures — runs in tier 1.
+#[test]
+fn cases_bound_to_interop_cells() {
+    #[allow(unused_imports)]
+    use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
+    nros_tests::interop::assert_test_bound(
+        "interop_e2e",
+        &[
+            (Native, Rust, Zenoh, Pubsub),
+            (Native, Rust, Zenoh, Service),
+            (Native, Rust, Cyclonedds, Pubsub),
+            (Native, Rust, Cyclonedds, Service),
+            (Native, Rust, Zenoh, Lifecycle),
+        ],
+    );
+}

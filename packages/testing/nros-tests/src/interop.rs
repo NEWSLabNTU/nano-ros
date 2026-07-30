@@ -1,0 +1,362 @@
+//! Issue 0352 / phase-324 — THE interop & bridge test-intent list.
+//!
+//! [`crate::matrix::CELLS`] enumerates baked, self-contained cells. Interop and
+//! bridge cells are a different shape: a nano side that is BUILT, plus an
+//! ephemeral PEER (a stock ROS 2 node, an XRCE Agent, another nano bridge) and a
+//! DIRECTION. `Cell` cannot carry a peer or a direction, so these cells live
+//! here in the formulation their shape needs — an [`InteropCell`] wrapping the
+//! nano [`Cell`] with `build` / `peer` / `dir` / `test`.
+//!
+//! The correspondence between what is TESTED (this list + `matrix::CELLS`), what
+//! is BUILT (each cell's [`BuildChannel`], recipe named not invoked — the three
+//! channels build DIFFERENTLY on purpose, issue 0352 non-goal: no unifier) and
+//! what RUNS (each cell's `test`) is one [`Binding`] per cell, gated in
+//! `tests/matrix_fixture_coverage.rs` (G1 coverage, G2 build-coord match, G3
+//! tier, G4 peer-decl). A cell whose declared `(lang, rmw)` disagrees with the
+//! fixture its test builds — the issue 0341 defect-2 drift class — is a gate
+//! failure, not a silent pass.
+//!
+//! NOT modelled here: the docker per-edition harness (`ros_editions_e2e.rs`).
+//! That is the ROS-edition axis (a per-run global, issue 0327), not a matrix
+//! cell — it has no baked nano fixture in this list.
+
+use crate::matrix::{Cell, Kind, PlatformId, Rmw, TestCell, Tier};
+
+/// Which build channel produces an interop/bridge cell's NANO side.
+///
+/// The channels build differently on purpose; a channel only declares which
+/// platform it can produce, so G2 can reject a cell pointed at a channel that
+/// cannot build its coordinate.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BuildChannel {
+    /// Native example / workspace-entry binaries (`just native build-fixtures`
+    /// families). Host platform only.
+    NativeFixtures,
+    /// Zephyr workspace entry via the west leaves lane
+    /// (`scripts/build/zephyr-fixture-leaves.sh`, driven by `just zephyr
+    /// build-fixtures`).
+    ZephyrWestLeaves,
+}
+
+impl BuildChannel {
+    /// The `just` recipe that builds this channel's artifacts — NAMED, not
+    /// invoked. Gated against the justfile by G2 the way `PlatformId::just_module`
+    /// is by `just_module_names_a_real_module`.
+    pub const fn build_recipe(self) -> &'static str {
+        match self {
+            BuildChannel::NativeFixtures => "just native build-fixtures",
+            BuildChannel::ZephyrWestLeaves => "just zephyr build-fixtures",
+        }
+    }
+
+    /// The `just` module the recipe lives under (what G2 checks exists).
+    pub const fn just_module(self) -> &'static str {
+        match self {
+            BuildChannel::NativeFixtures => "native",
+            BuildChannel::ZephyrWestLeaves => "zephyr",
+        }
+    }
+
+    /// Can this channel build the given platform? The G2 coord check: a cell
+    /// whose platform this channel cannot produce is a mis-declared binding.
+    pub const fn builds_platform(self, p: PlatformId) -> bool {
+        match self {
+            BuildChannel::NativeFixtures => matches!(p, PlatformId::Native),
+            BuildChannel::ZephyrWestLeaves => matches!(p, PlatformId::ZephyrNativeSim),
+        }
+    }
+}
+
+/// The ephemeral peer a cell runs against. DECLARED, never built. A bridge names
+/// BOTH endpoints.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Peer {
+    /// A stock ROS 2 node of the run's edition (`NROS_ROS_EDITION`), speaking
+    /// `rmw` (`rmw_zenoh_cpp` / `rmw_cyclonedds_cpp`).
+    RosEdition(Rmw),
+    /// nano XRCE client → micro-XRCE-DDS Agent → `rmw_fastrtps_cpp`.
+    XrceAgent,
+    /// nano declarative bridge: `ingress` rmw in → `egress` rmw out, then a ROS 2
+    /// peer on the egress side.
+    NanoBridge { ingress: Rmw, egress: Rmw },
+}
+
+impl Peer {
+    /// True if the peer is internally consistent for `cell` (G4). For a
+    /// single-RMW peer the rmw matches the cell; a bridge's `ingress` matches the
+    /// cell's declared rmw (the nano side dials the ingress).
+    pub fn consistent_with(self, cell: &Cell) -> bool {
+        match self {
+            Peer::RosEdition(rmw) => rmw == cell.rmw,
+            // The XRCE Agent bridges nano-XRCE ⇄ fastrtps; the cell's rmw is Xrce.
+            Peer::XrceAgent => matches!(cell.rmw, Rmw::Xrce),
+            // A bridge cell's rmw is the INGRESS the nano side speaks.
+            Peer::NanoBridge { ingress, egress } => ingress == cell.rmw && ingress != egress,
+        }
+    }
+}
+
+/// Which way data flows across the interop boundary.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Dir {
+    /// nano-ros node → ROS 2 peer (nano is source / client).
+    NanoToRos,
+    /// ROS 2 peer → nano-ros node (nano is sink / server).
+    RosToNano,
+    /// Both directions in one test.
+    BiDir,
+}
+
+/// One interop/bridge cell: the built nano side plus its peer, direction, build
+/// channel and the test that runs it.
+#[derive(Copy, Clone, Debug)]
+pub struct InteropCell {
+    /// Stable name, e.g. `"zephyr-qos-rust-zenoh"`. The `Binding` key.
+    pub id: &'static str,
+    /// The nano side. `cell.kind` is [`Kind::Interop`] or [`Kind::Bridge`];
+    /// `cell.platform/lang/rmw/workload/tier` describe the built artifact.
+    pub cell: Cell,
+    /// How the nano side is built.
+    pub build: BuildChannel,
+    /// The ephemeral peer it runs against.
+    pub peer: Peer,
+    /// Data-flow direction.
+    pub dir: Dir,
+    /// The test binary (`cargo test --test <name>`) that runs this cell. A
+    /// [`Tier::CarveOut`] cell that nothing runs carries [`NO_TEST`].
+    pub test: &'static str,
+}
+
+/// `test` sentinel for a carved-out cell no test runs.
+pub const NO_TEST: &str = "(carved-out — no runtime lane)";
+
+impl TestCell for InteropCell {
+    fn cell(&self) -> &Cell {
+        &self.cell
+    }
+}
+
+/// The correspondence row for one runnable test: which cell, built by which
+/// recipe, run by which test. The row NAMES the recipes — it does not build or
+/// run. This is the issue-0352 SSoT that ties BUILD and TEST together without
+/// unifying either.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Binding {
+    pub cell_id: &'static str,
+    pub build_recipe: &'static str,
+    pub test_recipe: &'static str,
+}
+
+impl InteropCell {
+    /// The binding row for this cell.
+    pub fn binding(&self) -> Binding {
+        Binding {
+            cell_id: self.id,
+            build_recipe: self.build.build_recipe(),
+            test_recipe: self.test,
+        }
+    }
+}
+
+const fn ic(
+    id: &'static str,
+    cell: Cell,
+    build: BuildChannel,
+    peer: Peer,
+    dir: Dir,
+    test: &'static str,
+) -> InteropCell {
+    InteropCell {
+        id,
+        cell,
+        build,
+        peer,
+        dir,
+        test,
+    }
+}
+
+// Shorthand for the seed table.
+use crate::matrix::{Lang::*, PlatformId::*, Rmw::*, Tier::*, Workload::*};
+use BuildChannel::*;
+use Dir::*;
+use Kind::{Bridge, Interop};
+use Peer::*;
+
+/// Build a nano `Cell` for an interop/bridge row inline — the interop list is
+/// the SSoT for these coordinates now, so it constructs its own cells rather
+/// than referencing rows removed from `matrix::CELLS`.
+const fn c(
+    platform: PlatformId,
+    lang: crate::matrix::Lang,
+    rmw: Rmw,
+    workload: crate::matrix::Workload,
+    kind: Kind,
+    tier: Tier,
+) -> Cell {
+    Cell {
+        platform,
+        lang,
+        rmw,
+        workload,
+        kind,
+        tier,
+    }
+}
+
+/// THE interop & bridge cells (issue 0352 / phase-324). Moved out of
+/// `matrix::CELLS` verbatim (the 6 native ROS-2 interop cells, the zephyr QoS
+/// interop pair, the native lifecycle interop cell, the 2 declarative bridge
+/// cells), now carrying their peer / direction / build channel / test.
+#[rustfmt::skip]
+pub const CELLS: &[InteropCell] = &[
+    // ── Native nano ↔ stock ROS 2 (host), zenoh + cyclone ───────────────
+    // tests/interop_e2e.rs — nano example bins vs `ros2 topic`/`ros2 service`.
+    ic("native-pubsub-rust-zenoh-n2r",
+       c(Native, Rust, Zenoh, Pubsub, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "interop_e2e"),
+    ic("native-service-rust-zenoh-r2n",
+       c(Native, Rust, Zenoh, Service, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+    ic("native-pubsub-rust-cyclone-n2r",
+       c(Native, Rust, Cyclonedds, Pubsub, Interop, Runtime),
+       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "interop_e2e"),
+    ic("native-service-rust-cyclone-r2n",
+       c(Native, Rust, Cyclonedds, Service, Interop, Runtime),
+       NativeFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
+
+    // ── Native nano XRCE ↔ Agent ↔ fastrtps ─────────────────────────────
+    // tests/xrce_ros2_interop.rs.
+    ic("native-pubsub-rust-xrce-n2r",
+       c(Native, Rust, Xrce, Pubsub, Interop, Runtime),
+       NativeFixtures, XrceAgent, NanoToRos, "xrce_ros2_interop"),
+    ic("native-service-rust-xrce-r2n",
+       c(Native, Rust, Xrce, Service, Interop, Runtime),
+       NativeFixtures, XrceAgent, BiDir, "xrce_ros2_interop"),
+
+    // ── Native nano lifecycle ↔ `ros2 lifecycle` ────────────────────────
+    ic("native-lifecycle-rust-zenoh",
+       c(Native, Rust, Zenoh, Lifecycle, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+
+    // ── Zephyr on-target QoS interop ────────────────────────────────────
+    // Issue 0341 — the ONLY runtime test of this shape
+    // (qos_zephyr_ros2_interop_e2e.rs) boots the RUST `ws-qos-rust` zephyr entry
+    // over zenoh-pico → rmw_zenoh_cpp. The matrix used to declare Cpp/Cyclonedds,
+    // which nothing ran (defect 2). Model reality here; carve the never-run shape.
+    ic("zephyr-qos-rust-zenoh",
+       c(ZephyrNativeSim, Rust, Zenoh, Qos, Interop, Runtime),
+       ZephyrWestLeaves, RosEdition(Zenoh), BiDir, "qos_zephyr_ros2_interop_e2e"),
+    ic("zephyr-qos-cpp-cyclone-CARVED",
+       c(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop,
+         CarveOut("no zephyr Cpp/Cyclonedds QoS-interop lane; the QoS zephyr \
+                   interop test runs Rust/Zenoh (zenoh-pico). File a lane if wanted.")),
+       ZephyrWestLeaves, RosEdition(Cyclonedds), BiDir, NO_TEST),
+
+    // ── Declarative cross-RMW bridges ───────────────────────────────────
+    // The nano bridge is a `ws-bridge-*-rust` native_entry; a ROS 2 peer sits on
+    // the egress side. cell.rmw = the INGRESS the nano side dials.
+    ic("bridge-zenoh-to-cyclone",
+       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
+       "declarative_bridge_zenoh_to_cyclonedds"),
+    ic("bridge-zenoh-to-xrce",
+       c(Native, Rust, Zenoh, Pubsub, Bridge, Runtime),
+       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Xrce }, NanoToRos,
+       "declarative_bridge_zenoh_to_xrce"),
+];
+
+/// Runtime interop/bridge cells only.
+pub fn runtime_cells() -> impl Iterator<Item = &'static InteropCell> {
+    CELLS
+        .iter()
+        .filter(|ic| matches!(ic.cell.tier, Tier::Runtime))
+}
+
+/// A nano coordinate `(platform, lang, rmw, workload)` — the granularity a test
+/// binds to. Directions collapse (a cell may be exercised by an N2R and an R2N
+/// case), so the binding is at coordinate level, not per-case.
+pub type Coord = (u16, u16, u16, u16);
+
+/// The distinct Runtime coordinates the given test's cells cover, per
+/// `interop::CELLS`.
+pub fn coords_for(test: &str) -> std::collections::BTreeSet<Coord> {
+    CELLS
+        .iter()
+        .filter(|ic| ic.test == test && matches!(ic.cell.tier, Tier::Runtime))
+        .map(|ic| {
+            (
+                ic.cell.platform.index(),
+                ic.cell.lang.port_index(),
+                ic.cell.rmw.index(),
+                ic.cell.workload.port_offset(),
+            )
+        })
+        .collect()
+}
+
+/// Bind an interop test to `interop::CELLS`: assert the coordinates its `#[case]`s
+/// exercise (`covered`, kept adjacent to the cases) are exactly those the list
+/// declares for `test` (issue 0352 / phase-324 W4). Adding/retiring/mutating an
+/// interop cell without tracking the test — or a test drifting from its cell's
+/// declared coordinate (issue 0341 defect 2) — turns this RED.
+///
+/// Call it from a `#[test]` in the test binary; it needs no fixtures, so it runs
+/// in tier 1 regardless of whether the runtime lane's ROS 2 / docker / QEMU
+/// dependencies are present.
+pub fn assert_test_bound(
+    test: &str,
+    covered: &[(
+        PlatformId,
+        crate::matrix::Lang,
+        Rmw,
+        crate::matrix::Workload,
+    )],
+) {
+    let declared = coords_for(test);
+    let actual: std::collections::BTreeSet<Coord> = covered
+        .iter()
+        .map(|(p, l, r, w)| (p.index(), l.port_index(), r.index(), w.port_offset()))
+        .collect();
+    assert_eq!(
+        actual, declared,
+        "interop test `{test}`: its #[case]s cover coordinates {actual:?}, but \
+         interop::CELLS declares {declared:?} for this test — keep the cases and \
+         interop::CELLS in sync (add/retire the row, or fix the drifted coordinate)"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every cell here is Interop or Bridge — the whole point of the split.
+    #[test]
+    fn only_interop_or_bridge_kinds() {
+        for c in CELLS {
+            assert!(
+                matches!(c.cell.kind, Kind::Interop | Kind::Bridge),
+                "non-interop/bridge cell in interop::CELLS: {c:?}"
+            );
+        }
+    }
+
+    /// Stable ids are unique — they are the `Binding` key.
+    #[test]
+    fn ids_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for c in CELLS {
+            assert!(seen.insert(c.id), "duplicate interop cell id: {}", c.id);
+        }
+    }
+
+    /// Every carve-out reason is non-empty (audit E5, mirrored from matrix.rs).
+    #[test]
+    fn gap_tiers_carry_reasons() {
+        for c in CELLS {
+            if let Tier::CarveOut(r) | Tier::BuildOnly(r) = c.cell.tier {
+                assert!(!r.is_empty(), "empty reason: {c:?}");
+            }
+        }
+    }
+}

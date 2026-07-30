@@ -151,6 +151,12 @@ is board/BSP integration and defines none; the dir is a flat bag of drivers, ker
   the fixture actually prints. → archived issues 0157/0164.
 - **Test names describe behavior, not phase numbers** (`zephyr_xrce_service_e2e`, not `phase212_n9_…`).
   Phases go stale; cross-ref a phase in a doc-comment, never the identifier. → AGENTS.md Testing.
+- **Two test-intent lists (RFC-0051 / phase-324):** `matrix::CELLS` = baked/self-contained;
+  interop & bridge cells live in `interop::CELLS` (nano `Cell` + peer + dir + build + test) —
+  they have NO `fixtures.toml` row (ephemeral peer, west-leaves/native nano side). Gated by
+  `matrix_fixture_coverage.rs` G1–G4; each interop test carries an `interop::assert_test_bound`
+  coordinate tripwire. Don't add an interop test that hand-picks a fixture without a matching
+  `interop::CELLS` row. `ros_editions_e2e` is the docker edition axis (#0327), not a cell.
 - **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES** — only `just test-all`'s
   junit rewrite makes them skips. Read the panic text before filing a bare-run red as a regression.
   And full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3 in-sweep, passed

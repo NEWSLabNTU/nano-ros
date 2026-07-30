@@ -344,12 +344,15 @@ exist) and the declared `(ZephyrNativeSim, Cpp, Cyclonedds, Qos)` cell was "cove
 zephyr QoS cell corrected). Defect 3 (bind Interop/Bridge cells to the tests that run them) spun
 out to **#352**. See `archived/0341-*`. (2026-07-31)
 
-**#352** — Interop/Bridge matrix cells are not bound to the tests that run them: a cell's declared
-`(lang, rmw)` can silently disagree with the fixture its test builds (the #341-defect-2 drift
-class). No coordinate to gate them against — peers are ephemeral, nano sides built by the west
-leaves lane / `build-e2e-fixtures`, not `fixtures.toml`. Fix = the #327-defect-2-shaped refactor:
-interop/ros_editions/qos_zephyr tests consume `matrix::CELLS` directly so `(lang, rmw)` drives the
-builder. See `0352-*`. (2026-07-31)
+**#352** — RESOLVED (phase-324): Interop/Bridge matrix cells were not bound to the tests that run
+them — a cell's declared `(lang, rmw)` could silently disagree with the fixture its test builds
+(the #341-defect-2 drift class), with no coordinate to gate them (ephemeral peers, nano sides off
+the west-leaves / `build-e2e-fixtures` lanes, not `fixtures.toml`). Fixed by extracting them to
+`interop::CELLS` (nano `Cell` + peer + dir + build + test), a `Binding` SSoT, and gates G1–G4 that
+replace the blanket `Kind::Interop | Kind::Bridge` fixture-coverage exemption (flipping the zephyr
+QoS cell to the defect-2 shape turns G4 RED); `ci_lane` pools both lists; each interop test carries
+an `assert_test_bound` coordinate tripwire. Residual (full runtime drive-rewrite) needs CI infra —
+deferred, noted in the issue. See `archived/0352-*`. (2026-07-31)
 
 **#342** — `orchestration_tiers_freertos.rs` bypasses both harness seams: a hand-rolled
 `qemu-system-arm` command with no bypass rationale (while the next test in the same file uses

@@ -17,7 +17,10 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use nros_tests::matrix::{CELLS, Kind, Lang, PlatformId, Rmw, Tier};
+use nros_tests::{
+    interop::{self, NO_TEST},
+    matrix::{CELLS, Kind, Lang, PlatformId, Rmw, TestCell, Tier},
+};
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -101,7 +104,10 @@ fn every_runtime_cell_has_a_fixture_row() {
         // real build channel (the W4 goal is shrinking this list by
         // folding the lanes into fixtures.toml or a sibling manifest):
         // - Native: `just build-test-fixtures` native family + ephemeral
-        //   isolation; Interop/Bridge: ros2 peers / bridge harness.
+        //   isolation.
+        // - Interop/Bridge cells are NO LONGER in `matrix::CELLS` (issue 0352 /
+        //   phase-324): they live in `interop::CELLS` and are gated by
+        //   `interop_bindings_*` below, not by a fixtures.toml coordinate.
         // - ZephyrNativeSim examples + non-rust workspaces: the west
         //   leaves lane (scripts/build/zephyr-fixture-leaves.sh — its own
         //   staleness sig, fixtures.toml `skip_probe` note).
@@ -112,7 +118,6 @@ fn every_runtime_cell_has_a_fixture_row() {
             && (matches!(c.kind, Kind::Example)
                 || (matches!(c.kind, Kind::Workspace) && !matches!(c.lang, Lang::Rust)));
         if matches!(c.platform, PlatformId::Native)
-            || matches!(c.kind, Kind::Interop | Kind::Bridge)
             || west_lane_zephyr
             || (matches!(c.platform, PlatformId::NuttxRiscv) && matches!(c.kind, Kind::Example))
             || (matches!(c.platform, PlatformId::ThreadxRiscv64)
@@ -208,4 +213,135 @@ fn every_just_module_is_declared_by_the_justfile() {
              would fail as `unknown recipe`, not as a matrix gap"
         );
     }
+}
+
+// ============================================================================
+// Issue 0352 / phase-324 — interop/bridge cell↔test binding gates.
+//
+// `matrix::CELLS` is baked-only; interop/bridge cells live in `interop::CELLS`
+// with a peer + direction + build channel + test. These four gates enforce the
+// correspondence the fixtures.toml coordinate cannot (there is no baked fixture
+// row for an interop cell — its nano side comes off the west leaves / native
+// example lane and its peer is ephemeral). Together they make the issue-0341
+// defect-2 drift class — a cell whose declared (platform, rmw) disagrees with
+// what its test builds/runs — a gate failure rather than a silent pass.
+// ============================================================================
+
+/// G1 — test coverage. Every Runtime interop/bridge cell names a real test
+/// binary (`tests/<test>.rs` exists); every carved-out cell names no test. A
+/// Runtime cell nothing runs, or a runnable cell pointed at a test file that
+/// does not exist, fails here.
+#[test]
+fn interop_bindings_g1_every_runtime_cell_names_a_real_test() {
+    let tests_dir = project_root().join("packages/testing/nros-tests/tests");
+    let mut bad = Vec::new();
+    for c in interop::CELLS {
+        match c.cell.tier {
+            Tier::Runtime => {
+                if c.test == NO_TEST {
+                    bad.push(format!("{}: Runtime but carries NO_TEST", c.id));
+                    continue;
+                }
+                if !tests_dir.join(format!("{}.rs", c.test)).is_file() {
+                    bad.push(format!(
+                        "{}: names test `{}` — no such tests/{}.rs",
+                        c.id, c.test, c.test
+                    ));
+                }
+            }
+            Tier::CarveOut(_) | Tier::BuildOnly(_) => {
+                if c.test != NO_TEST {
+                    bad.push(format!(
+                        "{}: non-Runtime cell must carry NO_TEST, has `{}`",
+                        c.id, c.test
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "interop G1 (test coverage) violations:\n{}",
+        bad.join("\n")
+    );
+}
+
+/// G2 — build-coord match. Every interop cell's build channel can actually build
+/// its platform, and the channel's `just` module matches the platform's. A cell
+/// pointed at a channel that cannot produce its coordinate — e.g. the zephyr QoS
+/// cell mis-declared to build via `NativeFixtures` (the shape issue 0341 defect 2
+/// took) — fails here.
+#[test]
+fn interop_bindings_g2_build_channel_matches_platform() {
+    let mut bad = Vec::new();
+    for c in interop::CELLS {
+        if !c.build.builds_platform(c.cell.platform) {
+            bad.push(format!(
+                "{}: build channel {:?} cannot build platform {:?}",
+                c.id, c.build, c.cell.platform
+            ));
+        }
+        if c.build.just_module() != c.cell.platform.just_module() {
+            bad.push(format!(
+                "{}: build channel module {:?} ≠ platform module {:?}",
+                c.id,
+                c.build.just_module(),
+                c.cell.platform.just_module()
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "interop G2 (build-coord) violations:\n{}",
+        bad.join("\n")
+    );
+}
+
+/// G3 — tier correspondence. Each cell's build recipe is `just <module> …` for
+/// the same module the channel declares, so the recipe a tier runs to BUILD the
+/// nano side names the module that owns it. (The runtime trigger — that the tier
+/// running the test also runs this build — is enforced by the recipe living in
+/// that module's fixture build, cross-ref phase-319 presence→truth.)
+#[test]
+fn interop_bindings_g3_build_recipe_names_its_module() {
+    let mut bad = Vec::new();
+    for c in interop::CELLS {
+        let prefix = format!("just {} ", c.build.just_module());
+        if !c.build.build_recipe().starts_with(&prefix) {
+            bad.push(format!(
+                "{}: build recipe {:?} does not start with {:?}",
+                c.id,
+                c.build.build_recipe(),
+                prefix
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "interop G3 (tier/recipe) violations:\n{}",
+        bad.join("\n")
+    );
+}
+
+/// G4 — peer declaration. Every cell's peer is internally consistent with its
+/// cell: a single-RMW peer's rmw matches the cell, a bridge's ingress matches the
+/// cell's rmw and differs from its egress. This is the check that catches an rmw
+/// drift — the zephyr QoS cell reverted to Cyclonedds while its peer stays a
+/// zenoh `RosEdition` fails here.
+#[test]
+fn interop_bindings_g4_peer_consistent_with_cell() {
+    let mut bad = Vec::new();
+    for c in interop::CELLS {
+        if !c.peer.consistent_with(c.cell()) {
+            bad.push(format!(
+                "{}: peer {:?} inconsistent with cell rmw {:?}",
+                c.id, c.peer, c.cell.rmw
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "interop G4 (peer-decl) violations:\n{}",
+        bad.join("\n")
+    );
 }

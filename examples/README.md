@@ -104,6 +104,17 @@ remain runtime-tested).
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board
 lane — not the `qemu-arm-nuttx` build path above).
 
+### Interop & bridge coverage (issue 0352 / phase-324)
+
+Interop (nano ↔ real ROS 2) and bridge cells are **not** in `matrix::CELLS` and
+have **no `fixtures.toml` row** — their nano side comes off the native-example /
+zephyr-west-leaves lane and their peer is an ephemeral ROS 2 node / XRCE Agent /
+router. They live in `packages/testing/nros-tests/src/interop.rs`
+(`interop::CELLS`) with their peer + direction + build channel + test, gated by
+`matrix_fixture_coverage.rs` G1–G4 so a cell cannot silently disagree with the
+fixture its test runs. `ros_editions_e2e` (docker per-edition) is the edition
+axis below, not one of these cells.
+
 ### ROS edition axis (issue 0327)
 
 Edition (`ros-{humble,iron,jazzy}`; RFC-0056) is **orthogonal** to the table

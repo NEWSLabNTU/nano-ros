@@ -72,6 +72,19 @@ pub struct Cell {
 }
 ```
 
+**Two lists since phase-324 (issue 0352).** `matrix::CELLS` holds baked,
+self-contained cells only. Interop and bridge cells carry a shape `Cell` cannot
+express — a nano side that is BUILT plus an ephemeral PEER and a DIRECTION — so
+they live in `crate::interop::CELLS` as `InteropCell`s (the nano `Cell` +
+`build`/`peer`/`dir`/`test`). Both types implement `trait TestCell` so `ci_lane`
+selection and coverage iterate one type. The correspondence between what is
+tested, built and run is a `Binding` per interop cell, gated by
+`tests/matrix_fixture_coverage.rs` G1–G4 — a cell whose declared coordinate
+disagrees with what its test builds (the 0341 defect-2 drift) is a gate failure,
+not the silent pass the pre-324 `Kind::Interop | Kind::Bridge` fixture-coverage
+exemption allowed. Build methods stay separate (no `build_for` unifier; interop
+artifacts are NOT moved into `fixtures.toml`).
+
 - The existing `rtos_e2e` `Platform`/`Lang` enums grow into this table; the
   three rstest functions become the single consumer pattern for EVERY
   runtime family (entry, workspace, tiers, roundtrip, multihost).
@@ -197,9 +210,10 @@ framework's, not ours:
 
 ## Open questions
 
-1. Interop axis placement: `Kind::Interop` cells pair a nano-ros node with
-   a real ROS 2 peer per RMW (zenoh/cyclone/fastrtps/xrce) — one workload
-   set or a reduced one (pubsub+service only)?
+1. ~~Interop axis placement~~ — RESOLVED (phase-324 / issue 0352): interop &
+   bridge cells live in `crate::interop::CELLS`, not `matrix::CELLS`, in a shape
+   that carries their peer + direction; the reduced workload set (pubsub +
+   service, plus lifecycle/qos where a lane exists) is enumerated there.
 2. Workspace `Mixed` lang — first-class axis value or a workload?
 3. How far to push cyclone/xrce runtime onto QEMU RTOS lanes vs declaring
    CarveOuts (cyclone needs POSIX+CPP; xrce needs an agent locator bake) —
