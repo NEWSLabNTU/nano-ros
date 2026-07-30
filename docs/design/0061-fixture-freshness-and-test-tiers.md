@@ -365,6 +365,16 @@ These do not depend on proposals 1–2 but bound the same cost:
   something no developer runs. Remote lanes should invoke the same named tier
   recipes, so "tier 1 is green locally" is a claim about the same thing CI checks.
 
+  Where a tier CANNOT be one remote job, the selection still has to be shared.
+  `ci-matrix-nightly` is the case: the fixture build scripts need per-platform
+  toolchain env that only the `just <module>` recipes export, and the cover spans
+  eight modules whose SDKs do not coexist on one runner. So `nightly.yml` computes
+  the cover with `lane-coords tier2-nightly`, DERIVES its platform matrix from it,
+  and adds a `lane-coverage` job asserting every module in the cover has a job
+  somewhere in the tier. Distributing a lane is fine; letting the remote copy of
+  the selection drift is not — and a coverage claim with nothing checking it is
+  how a platform joins the matrix, joins the lane, and is never built.
+
 ## Acceptance
 
 - A `just setup-cli` that does not change emitted bytes invalidates **zero**

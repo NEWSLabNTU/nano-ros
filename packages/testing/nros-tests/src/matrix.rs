@@ -110,6 +110,32 @@ impl PlatformId {
         }
     }
 
+    /// The `just` module that owns this platform's build/test verbs — the one a
+    /// CI job runs as `just <module> …`.
+    ///
+    /// A THIRD vocabulary after `PlatformId` and the fixtures.toml tokens, so it
+    /// lives here with the other two rather than being hand-listed in a workflow
+    /// yml, where nothing would notice it going stale. `nightly.yml`'s platform
+    /// list was hand-written exactly that way.
+    ///
+    /// Not injective: `NuttxArm` and `NuttxRiscv` share `nuttx` (which owns
+    /// `build-riscv-*`), and `Fvp` is built by `just zephyr build-fvp-*`. Callers
+    /// that need a job list must dedupe.
+    pub const fn just_module(self) -> &'static str {
+        match self {
+            PlatformId::Native => "native",
+            PlatformId::ZephyrNativeSim | PlatformId::Fvp => "zephyr",
+            PlatformId::FreertosMps2 => "freertos",
+            PlatformId::NuttxArm | PlatformId::NuttxRiscv => "nuttx",
+            PlatformId::ThreadxLinux => "threadx_linux",
+            PlatformId::ThreadxRiscv64 => "threadx_riscv64",
+            PlatformId::Esp32Qemu => "esp32",
+            PlatformId::QemuBaremetal => "qemu",
+            PlatformId::Stm32F4 => "stm32f4",
+            PlatformId::Px4 => "px4",
+        }
+    }
+
     /// `examples/fixtures.toml` `platform` string → matrix platform. Inverse of
     /// [`PlatformId::fixture_tokens`].
     pub fn from_fixture_token(s: &str) -> Option<PlatformId> {

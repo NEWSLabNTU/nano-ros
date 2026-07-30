@@ -137,6 +137,40 @@ both files so the halves are read together.
       workspace fixtures, all inside the selection; the unscoped gate covers 81
       records.
 
+- [x] **W4.e** `ci-matrix-nightly` wired into `.github/workflows/nightly.yml`
+      (07:00 cron). It cannot run as one CI job — the fixture build scripts need
+      per-platform toolchain env that only the `just <module>` recipes export, and
+      the cover spans eight modules whose SDKs do not coexist on one runner — so
+      it runs distributed:
+      - `lane` computes the cover and publishes `lane-coords.txt` /
+        `lane-modules.txt` as an artifact plus a job summary;
+      - `changes` DERIVES the platform matrix from it. That list was hand-written
+        (`all="qemu freertos …"`), so adding a platform to `matrix::CELLS` used to
+        extend the lane on paper and nothing on the runners — the exact rot
+        `ci_lane` exists to prevent, reintroduced one layer out in a workflow yml;
+      - `lane-coverage` asserts every lane module has a job SOMEWHERE in nightly
+        CI (`native` → host-tests.yml 03:00, `zephyr` → the 05:00 cron, the rest →
+        the platform matrix), and fails if `lane` itself failed — an empty
+        selection skips the sweep silently, and a nightly that ran nothing looks
+        exactly like one that passed.
+
+      Blast radius was the design constraint: `lane` is its own job rather than a
+      step in `changes`, because `changes` also gates the Zephyr cron and a cargo
+      failure must not take down jobs that never needed the lane. `lane-coverage`
+      is excluded on `pull_request`, where the matrix is deliberately path-narrowed
+      and so is SUPPOSED to be a subset — asserting there would fail every PR and
+      teach people to ignore the job.
+
+      Verified: YAML parses; job graph is `lane → changes → platform →
+      lane-coverage`; gating simulated for all four triggers (05:00 → lane and
+      platform skipped, Zephyr jobs run; 07:00 and dispatch → full set;
+      pull_request → lane-coverage off). Both shell blocks dry-run under bash
+      against real `lane-coords` output: 8 lane modules all resolve to a home, and
+      a simulated matrix that dropped freertos correctly reports the gap. The
+      `cargo build -p nros-tests --bin lane-coords` step was verified to work in a
+      cleaned environment with `FREERTOS_PORT` unset (80 s), and needs the nested
+      resolver submodule, which the job now inits.
+
 - [x] **W4.c** `CLAUDE.md` practice updated: "always `just ci`" points at tier 1,
       with tier 2 named for core/codegen/cmake changes. An instruction nobody can
       afford to follow gets followed selectively.

@@ -9,6 +9,19 @@
 #   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
 #                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
 #
+# The 07:00 cron is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
+# pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
+# the fixture build scripts need per-platform toolchain env that only the
+# `just <module>` recipes export and the cover spans eight modules whose SDKs do
+# not coexist on one runner:
+#   - `lane`          computes the cover (`lane-coords tier2-nightly`)
+#   - `changes`       derives the platform matrix from it, instead of a hand list
+#   - `lane-coverage` asserts every lane module actually has a job somewhere in
+#                     nightly CI — `native` in host-tests.yml, `zephyr` on the
+#                     05:00 cron, the rest in the platform matrix
+# Without that last job the coverage claim would be a sentence in an RFC: a new
+# platform could join the matrix, join the lane, and never be built by anything.
+#
 # PR (path-scoped, per-platform / zephyr-paths) + nightly + on-demand — NOT every
 # direct push to main (the 6-platform × 2-line load is the cadence explosion the
 # reorg removes; #57). `cancel-in-progress` only on PR. See
@@ -49,17 +62,88 @@ env:
   NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
 
 jobs:
+  # ===== tier-2 nightly lane (RFC-0061 / phase-318 W4.d) ================
+  # `just ci-matrix-nightly` is the pairwise cover over platform x lang x rmw x
+  # kind. It cannot run as ONE job: the fixture build scripts need per-platform
+  # toolchain env that only the `just <module>` recipes export, and the cover
+  # spans eight modules whose SDKs do not coexist on one runner. So the lane runs
+  # DISTRIBUTED — computed here, driving the `platform` matrix, and checked by
+  # `lane-coverage`.
+  #
+  # Computing it is the point. The platform list used to be hand-written as
+  # `all="qemu freertos …"`, so adding a platform to `matrix::CELLS` extended the
+  # lane on paper and nothing on the runners — the rot `ci_lane` exists to
+  # prevent, reintroduced one layer out in a workflow yml.
+  #
+  # Its OWN job, not a step in `changes`: `changes` gates the Zephyr cron too, and
+  # a cargo failure here must not take down jobs that never needed the lane.
+  # Skipped on the 05:00 cron together with `platform`, its only consumer.
+  lane:
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
+    name: tier-2 nightly lane selection
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.lane.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: lane-coords-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: lane-coords-${{ runner.os }}-
+      # `nros-tests` depends on `nros`, which pulls ros-launch-manifest from the
+      # NESTED resolver submodule — `actions/checkout` fetches neither by default,
+      # and the build fails at path resolution rather than anywhere informative.
+      # `--recursive` is load-bearing: the manifest sits inside the resolver.
+      - name: Fetch the resolver submodule (nros-tests -> nros -> rlm)
+        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-resolve
+
+      - id: lane
+        run: |
+          set -euo pipefail
+          # No `source ./activate.sh` needed: verified this target does not reach
+          # zpico-sys, whose build.rs panics on an unset FREERTOS_PORT.
+          cargo build --release -p nros-tests --bin lane-coords
+          bin=target/release/lane-coords
+          "$bin" tier2-nightly           > lane-coords.txt
+          "$bin" tier2-nightly --modules > lane-modules.txt
+          # An empty lane would select no platforms and the whole tier would go
+          # green having built nothing.
+          [ -s lane-coords.txt ] && [ -s lane-modules.txt ]
+          echo "modules=$(jq -Rcs 'split("\n") | map(select(length>0))' < lane-modules.txt)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### tier-2 nightly lane (\`ci-matrix-nightly\`)"
+            echo
+            echo "\`$(wc -l < lane-coords.txt)\` fixture coordinate(s), \`$(wc -l < lane-modules.txt)\` \`just\` module(s)."
+            echo
+            echo '```'
+            cat lane-coords.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tier2-nightly-lane
+          path: |
+            lane-coords.txt
+            lane-modules.txt
+
   # Per-platform path filter → a JSON list of platforms + a zephyr flag. On a PR,
   # only the platforms / lines whose code (or the shared core) changed; on
   # main/dispatch/schedule, all (the per-job `github.event.schedule` guard then
   # routes each cron to its own job set).
   changes:
+    needs: lane
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     outputs:
       platforms: ${{ steps.set.outputs.platforms }}
       zephyr: ${{ steps.set.outputs.zephyr }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dorny/paths-filter@v3
         id: f
         with:
@@ -94,9 +178,22 @@ jobs:
           THREADX_RISCV64: ${{ steps.f.outputs.threadx_riscv64 }}
           ESP32: ${{ steps.f.outputs.esp32 }}
           ZEPHYR: ${{ steps.f.outputs.zephyr }}
+          LANE_MODULES: ${{ needs.lane.outputs.modules }}
         run: |
           set -euo pipefail
-          all="qemu freertos nuttx threadx_linux threadx_riscv64 esp32"
+          # Modules THIS job can run. The lane also needs `native` and `zephyr`,
+          # which have their own homes in the tier (host-tests / the 05:00 cron) —
+          # `lane-coverage` asserts that, rather than this list quietly implying it.
+          runnable="qemu freertos nuttx threadx_linux threadx_riscv64 esp32"
+          # Derived from the lane, not listed: adding a platform to `matrix::CELLS`
+          # must extend the sweep with no second edit here. Empty when the `lane`
+          # job did not run (the 05:00 Zephyr cron) — the `platform` job is gated
+          # off on that cron anyway.
+          all=""
+          for m in $(jq -r ".[]?" <<<"${LANE_MODULES:-[]}"); do
+            case " $runnable " in *" $m "*) all="$all $m" ;; esac
+          done
+          echo "lane-derived platform set:$all"
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             sel="$all"
             zephyr="true"
@@ -207,6 +304,74 @@ jobs:
           # the workspace Entry build. Provision both (same as host-tests).
           nros setup --source px4-rs --source nuttx-libc
           just ${{ matrix.plat }} test
+
+  # Does the tier actually RUN the lane it claims to? Every module the tier-2
+  # nightly cover needs must have a home somewhere in nightly CI. Without this,
+  # "`ci-matrix-nightly` catches the platform x lang class" is a sentence in
+  # RFC-0061 with nothing behind it — and the way it would fail is silent: a new
+  # platform joins `matrix::CELLS`, joins the lane, and no job ever builds it.
+  #
+  # Cheap and always runs, including when the platform matrix went red: a
+  # coverage gap and a test failure are different facts and should not mask each
+  # other.
+  lane-coverage:
+    needs: [lane, changes, platform]
+    # Runs whenever the FULL sweep was expected, including when it did not
+    # happen. A failed `lane` leaves `platforms` empty, which skips the sweep
+    # silently — a nightly that ran nothing looks identical to a nightly that
+    # passed. This job is where that becomes a red.
+    #
+    # Not on pull_request: there the matrix is deliberately narrowed by path
+    # filters, so it is SUPPOSED to be a subset of the lane. Asserting coverage
+    # there would fail every PR and teach people to ignore this job.
+    if: ${{ always() && github.event_name != 'pull_request' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
+    name: tier-2 nightly lane coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every lane module has a home in nightly CI
+        env:
+          LANE_MODULES: ${{ needs.lane.outputs.modules }}
+          RAN: ${{ needs.changes.outputs.platforms }}
+          LANE_RESULT: ${{ needs.lane.result }}
+          PLATFORM_RESULT: ${{ needs.platform.result }}
+        run: |
+          set -euo pipefail
+          if [ "$LANE_RESULT" != "success" ]; then
+            echo "::error::lane selection did not succeed (result: $LANE_RESULT)."
+            echo "The platform matrix is derived from it, so an empty selection"
+            echo "skips the whole sweep — a nightly that ran nothing is not a pass."
+            exit 1
+          fi
+          # Homes OUTSIDE the platform matrix. Each entry names the lane that
+          # actually runs it, so a stale entry is legible rather than a bare
+          # allow-list. `native` also gates tier 1 on every commit.
+          declare -A elsewhere=(
+            [native]="host-tests.yml — cron 0 3, just test-unit + test-integration"
+            [zephyr]="nightly.yml zephyr-* jobs — cron 0 5"
+          )
+          ran="$(jq -r '.[]' <<<"$RAN" | tr '\n' ' ')"
+          missing=()
+          for m in $(jq -r '.[]' <<<"$LANE_MODULES"); do
+            case " $ran " in *" $m "*) echo "  $m -> platform matrix"; continue ;; esac
+            if [ -n "${elsewhere[$m]:-}" ]; then
+              echo "  $m -> ${elsewhere[$m]}"
+            else
+              missing+=("$m")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo
+            echo "::error::tier-2 nightly lane module(s) with NO job in nightly CI: ${missing[*]}"
+            echo "The lane is computed from nros_tests::matrix::CELLS. A module here"
+            echo "means a platform joined the matrix without joining any CI lane, so"
+            echo "the pairwise cover is claimed but not run. Either add it to the"
+            echo "platform matrix's \`runnable\` list, or record its real home in the"
+            echo "\`elsewhere\` map above."
+            exit 1
+          fi
+          echo
+          echo "All tier-2 nightly lane modules have a home (platform matrix result: $PLATFORM_RESULT)."
 
   # ===== Zephyr dual-line (cron 0 5) ====================================
   zephyr-example-matrix:

@@ -192,3 +192,22 @@ fn fixture_token_mapping_round_trips() {
         }
     }
 }
+
+/// Every `PlatformId::just_module` must name a module the justfile actually
+/// declares. A stale name does not fail loudly — a CI job runs `just <gone> build`
+/// and errors with "unknown recipe", which reads as infrastructure noise rather
+/// than as the matrix having drifted.
+#[test]
+fn every_just_module_is_declared_by_the_justfile() {
+    let Ok(justfile) = std::fs::read_to_string(project_root().join("justfile")) else {
+        return; // packaged crate — not a failure
+    };
+    for &p in PlatformId::ALL {
+        let m = p.just_module();
+        assert!(
+            justfile.contains(&format!("\nmod {m} ")),
+            "justfile declares no `mod {m}` (for {p:?}) — a CI job dispatching on it \
+             would fail as `unknown recipe`, not as a matrix gap"
+        );
+    }
+}
