@@ -106,6 +106,18 @@ idle timeouts. `interop_e2e` cyclone 6/7/8 + full 10/10 green; regression test
 `idle_spins_never_raise_session_io_failures`. See `archived/0355-*`. (2026-07-31)
 See `0354-*`. (2026-07-31)
 
+**#357** — Tier 1's FIXTURE gate scopes to native correctly (a tree with no ThreadX/NuttX/FreeRTOS/
+Zephyr build dirs at all runs `just ci` without one complaint about them — measured), but its TEST
+selection does not. `lane-filter.sh` excludes per-BINARY (`not binary(~threadx)`), which only works
+when a platform's tests live in a binary named after it; the matrix consumers do the opposite and
+put every platform's cases in one generically-named binary. `rtos_e2e` is entirely cross-platform
+and matches no token at all. Measured on a 2026-07-31 tier-1 run: **53 of 88 distinct failures were
+cross-platform tests the lane should never have selected**. The anti-rot test
+(`lane_filter_tokens_cover_every_non_native_platform`) passes and always would have — it asserts the
+TOKEN list is complete, never that the SELECTION is, so it is narrower than the rule it enforces
+(the issue-0196 class, in the work that introduced the rule; filed by the author).
+See `0357-*`. (2026-07-31)
+
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
 #346). The design question this issue raised — "a borrowed response has nothing to borrow from" —

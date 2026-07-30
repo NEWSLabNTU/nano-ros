@@ -1,6 +1,6 @@
 # Phase 318 — Fixture freshness by toolchain output, and the tier ladder
 
-**Status (2026-07-30): COMPLETE — W1–W5 landed. W4.d's measurement split tier 2 into a 1-wise `ci-matrix` and a pairwise `ci-matrix-nightly` (RFC-0061 decision 3).** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
+**Status (2026-07-31): COMPLETE — W1–W5 landed, every acceptance item measured. W4.d's measurement split tier 2 into a 1-wise `ci-matrix` and a pairwise `ci-matrix-nightly` (RFC-0061 decision 3); the tier-1 acceptance run also surfaced issue 0357, where the fixture gate scopes per-cell but the TEST filter still excludes per-binary.** Implements [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md).
 
 **Why now.** A `just ci` run on 2026-07-28 passed every code stage and was then
 blocked by 40 "stale" workspace fixtures, none of which were semantically stale —
@@ -226,10 +226,50 @@ Per RFC-0061 §Acceptance. The load-bearing ones:
       changed probe model moved it to `29cd5817…`. Scoping note: every workspace
       record declares a bringup today, so the scope is a no-op in practice —
       it is the right contract, not a current reduction.)*
-- [ ] `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
-      *(Scope reduction demonstrated — the gate drops from 81 to 65 workspace
-      records, excluding exactly the 16 freertos/nuttx/threadx ones that blocked
-      the 2026-07-28 run — but a full tier-1 run has not been timed yet.)*
+- [x] `just ci` (tier 1) runs to completion with a stale ThreadX fixture on disk.
+      **Met 2026-07-31, and more strongly than the item asks:** ThreadX, NuttX,
+      FreeRTOS and Zephyr had ZERO workspace build dirs on disk — maximally stale,
+      not merely stale — and the run produced **zero** cross-platform fixture
+      complaints. (The one grep hit for "zephyr…stale" is a passing unit test
+      named `content_aware_staleness_ignores_mtime_only_bumps`.) The lane reached
+      `test-all` and executed 1322 tests.
+
+      **Timing — `check` alone, not the tests, is the tier's cost, and cache state
+      dominates it.** Same stages, same machine:
+
+      | stage | cold (post-pull) | warm |
+      | --- | --- | --- |
+      | `check-fast` + feature checks | 409 s | 69–82 s |
+      | `check` complete | 1664 s | ~600 s |
+      | + `rust-rtos-link-check` | 2675 s | ~600 s |
+      | full lane | 3157 s (52 m) | **1215 s (20 m)** |
+
+      RFC-0061 budgets tier 1 as "minutes". Warm it is 20 minutes and cold it is
+      52, of which the test execution is 226 s. A tier-1 budget quoted as minutes
+      describes neither.
+
+      **Getting a freshly-pulled tree to tier-1-runnable took three rounds**, each
+      revealed only after the previous was fixed, because the gate reports the
+      FIRST unmet precondition rather than all of them: a stale `nros` CLI, then a
+      stale nested-submodule resolver plus poisoned incremental build dirs (the
+      phase-323 executor-layout change — 73 GB wiped, 44 min to rebuild), then 26
+      compile-check fixtures that had never been built. Worth stating in the RFC's
+      cost model: the tier's real first-run cost is the preconditions, not the run.
+
+      **The run was rc=1, and that is a separate defect — issue 0357.** Of 88
+      distinct failures, **53 were cross-platform tests tier 1 should never have
+      selected**: the FIXTURE gate scopes per-cell, but the TEST filter excludes
+      per-BINARY, and the matrix consumers put every platform's cases in one
+      generically-named binary (`rtos_e2e`, `entry_e2e`, `realtime_tiers_e2e`).
+      W3.d's `lane_filter_tokens_cover_every_non_native_platform` passes and always
+      would have — it asserts the TOKEN list is complete, never that the SELECTION
+      is. That is the issue-0196 class inside the work that introduced the rule.
+      The remaining 35 failures are unclassified here; several look
+      environment-dependent (XRCE agent, `zenohd`, a ROS 2 interop peer).
+
+      So: the acceptance item — cross-platform staleness does not block a native
+      lane — is MET. Tier 1 being *green* is not, and is tracked as 0357.
+
 - [x] Tier 1/2 covers are computed, not listed; adding a platform to
       `matrix::CELLS` extends tier 2 with no second edit. *(Gated by
       `ci_lane::tests::lanes_touch_every_declared_value_of_every_axis_they_cover`
