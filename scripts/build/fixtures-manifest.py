@@ -281,6 +281,12 @@ def _system_default_launch(entry, path):
 def _cmake_has_entry_target(text, entry_name):
     escaped = re.escape(entry_name)
     patterns = [
+        # RFC-0048 / phase-287 W3 — the CURRENT spelling. Every C/C++/mixed entry
+        # uses it; the detector knew only the older verbs, so all 47 of those rows
+        # failed validation while building fine. Same drift as issue 0350: a verb
+        # migration swept the CMakeLists and a checker that reads them did not
+        # follow.
+        rf"\bnano_ros_add_executable\s*\(\s*{escaped}\b",
         rf"\bnano_ros_entry\s*\([^)]*\bNAME\s+{escaped}\b",
         rf"\badd_executable\s*\(\s*{escaped}\b",
         rf"\badd_library\s*\(\s*{escaped}\b",
@@ -378,14 +384,27 @@ def validate_workspace_fixture(entry):
 
     system_toml = bringup_dir / "system.toml"
     _require_file(entry, system_toml, "bringup system.toml")
+    # A bringup declares its topology EITHER the launch way (`[system].
+    # default_launch` + that file) or the model way (`config/system_model.yaml`).
+    # phase-296 R4 retired the launch bake — `nros::main!(launch = …)` is a
+    # compile error — so demanding `default_launch` unconditionally required a
+    # pointer to a retired path, and failed every model-path bringup. Accept
+    # either; require at least one, so a bringup that declares NEITHER is still
+    # caught.
     default_launch = _system_default_launch(entry, system_toml)
-    if not default_launch:
-        _fail(entry, f"{system_toml}: missing [system].default_launch")
-    _require_file(
-        entry,
-        bringup_dir / "launch" / default_launch,
-        "default launch file",
-    )
+    model = bringup_dir / "config" / "system_model.yaml"
+    if default_launch:
+        _require_file(
+            entry,
+            bringup_dir / "launch" / default_launch,
+            "default launch file",
+        )
+    elif not model.is_file():
+        _fail(
+            entry,
+            f"{system_toml}: bringup declares neither [system].default_launch "
+            f"nor a resolved model at {model}",
+        )
 
     entry_dir = root / "src" / entry["entry"]
     _require_dir(entry, entry_dir, "entry dir")

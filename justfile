@@ -359,7 +359,7 @@ check-fast: \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes
+    check-cpp-freestanding-includes check-fixtures-manifest
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -707,6 +707,25 @@ check-weak-symbols-image:
 [private]
 check-example-matrix:
     @bash scripts/check-example-matrix.sh
+
+# The fixture manifest's own validators — every `[[workspace_fixture]]` and
+# `[[compile_check_fixture]]` row must name files that EXIST and a target the
+# CMakeLists/Cargo.toml actually defines.
+#
+# These validators shipped with no caller: `git grep validate-workspaces` found
+# only the script's own usage text and dispatch. Unrun, they drifted until 74 of
+# 86 workspace rows failed — the detector still looked for pre-RFC-0048 verbs and
+# demanded a `[system].default_launch` that phase-296 retired. Both were checker
+# staleness, not fixture breakage, and nothing could tell, because nothing ran.
+# That is the issue-0309 silent-lane class: a gate nobody wires in decays into
+# noise, then into a gate you cannot afford to turn on.
+#
+# Buildless and source-free (path existence + regex over tracked files), ~0.1s
+# for all 112 rows, so it belongs in the per-push fast tier.
+[private]
+check-fixtures-manifest:
+    @python3 scripts/build/fixtures-manifest.py validate-workspaces
+    @python3 scripts/build/fixtures-manifest.py validate-compile-checks
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the

@@ -67,6 +67,18 @@ reference to nros_cpp_get_param_integer`, which is what exposed the disjoint pat
 unaffected. Same shape as #0311: one axis, two sources that cannot disagree because only one is
 read. See `0353-*`. (2026-07-31)
 
+**#354** — `fixtures-manifest.py`'s `validate-workspaces` / `validate-compile-checks` had **no
+caller** (`git grep` returns the script's own usage text and dispatch, nothing else), so they
+decayed unwatched until 74 of 86 workspace rows failed — every one on CHECKER staleness, not a
+broken fixture: the entry-target detector never learned RFC-0048's `nano_ros_add_executable` (47
+rows, literally #350's shape one layer over), and `[system].default_launch` stayed mandatory after
+phase-296 R4 retired the launch bake (16 rows). The remaining 11 were genuinely missing entry
+`package.xml` files, written rather than excused. Both validators fixed, then wired into
+`check-fast` as `check-fixtures-manifest` (buildless, ~0.1s for 112 rows). The lesson worth
+sweeping for: **a validator with no caller is not coverage** — its staleness debt grows with every
+verb migration and is discovered only when someone finally tries to switch it on.
+See `0354-*`. (2026-07-31)
+
 **#346** — `borrowed` now works on srv/action payloads in both languages, so
 **all three RFC-0033 storage modes are supported end to end** (owned / heap #344+#345 / borrowed
 #346). The design question this issue raised — "a borrowed response has nothing to borrow from" —
