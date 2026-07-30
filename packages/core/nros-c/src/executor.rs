@@ -1906,39 +1906,51 @@ pub unsafe extern "C" fn nros_executor_spin(executor: *mut nros_executor_t) -> n
 
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
 
-    // Spin until shutdown, or until spin_some fails persistently.
+    // Spin until shutdown, or until the SESSION dies persistently.
     //
     // issue 0324 — this used `let _ = nros_executor_spin_some(...)`, so a
     // transport that had died kept the loop running forever and the blocking
     // spin still returned OK on shutdown: the C caller could not distinguish
     // "ran until you stopped me" from "spun uselessly against a dead session".
-    // A single non-OK code is not conclusive (a spin can fail transiently), so
-    // the loop tolerates a short run of them and then reports the last one.
-    let mut consecutive_err = 0u32;
+    //
+    // issue 0355 — dead-session detection reads the REAL `drive_io` health
+    // counter, NOT `spin_some`'s return. `spin_some` returns `NROS_RET_TIMEOUT`
+    // on every idle tick (`!any_work()`) against a perfectly LIVE transport, so
+    // counting those returns killed a healthy listener that simply idled before
+    // its publisher was discovered — normal DDS timing (the old
+    // `SPIN_ERROR_TOLERANCE * timeout` ≈ 1.6 s is shorter than SPDP). The
+    // executor's `session_io_failures()` counts only genuine `drive_io` errors
+    // (dead router, closed socket, expired lease) and resets on any successful
+    // drive, so a benign idle leaves it at 0. Same threshold, correct signal.
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
         let ret = nros_executor_spin_some(executor, executor_ref.timeout_ns);
-        if ret == NROS_RET_OK {
-            consecutive_err = 0;
-        } else {
-            consecutive_err += 1;
-            if consecutive_err >= SPIN_ERROR_TOLERANCE {
-                return ret;
-            }
+        if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
+            return if ret != NROS_RET_OK {
+                ret
+            } else {
+                NROS_RET_ERROR
+            };
         }
     }
 
     NROS_RET_OK
 }
 
-/// How many CONSECUTIVE failing `spin_some` calls a blocking spin tolerates
-/// before giving up and returning the last error (issue 0324).
+/// How many CONSECUTIVE `drive_io` failures (the executor's
+/// [`session_io_failures`](nros_node::Executor::session_io_failures) counter) a
+/// blocking spin tolerates before giving up and returning an error (issue 0324,
+/// corrected in issue 0355).
 ///
-/// Not 1: a spin can fail transiently (a momentary transport hiccup, or a
-/// backend returning non-OK for a benign poll timeout), and aborting on the
-/// first would turn a blip into a dead node. Not unbounded either — that was
-/// the bug: a `let _ =` let a dead session spin forever while the blocking
-/// call still returned OK on shutdown. Same "a few spins in a row" reasoning
-/// as the Rust-side health counter.
+/// Not 1: a drive can fail transiently (a momentary transport hiccup), and
+/// aborting on the first would turn a blip into a dead node. Not unbounded
+/// either — that was the 0324 bug: a `let _ =` let a dead session spin forever
+/// while the blocking call still returned OK on shutdown.
+///
+/// It gates the REAL health counter (which increments only on a genuine
+/// `drive_io` error and resets on any successful drive), NOT `spin_some`'s
+/// return — issue 0355: a live-but-idle transport returns `NROS_RET_TIMEOUT`
+/// every tick, so counting THOSE killed a healthy listener that idled before its
+/// publisher was discovered.
 const SPIN_ERROR_TOLERANCE: u32 = 16;
 
 /// Spin the executor with a fixed period.
@@ -1966,7 +1978,6 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
-    let mut consecutive_err = 0u32;
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
         // `period_ns` is an upper bound on how long `drive_io` will block.
         // The timer delta credited to spin_once is the *real* wall-clock
@@ -1974,17 +1985,18 @@ pub unsafe extern "C" fn nros_executor_spin_period(
         // available), not `period_ns` itself — transports like zenoh-pico's
         // condvar wake early on data arrival, and treating the requested
         // timeout as the delta would tick timers faster than wall-clock.
-        // issue 0324 — same tolerance as the blocking spin above: a dead
-        // transport must eventually reach the C caller instead of looping
-        // forever at the configured period.
         let ret = nros_executor_spin_some(executor, period_ns);
-        if ret == NROS_RET_OK {
-            consecutive_err = 0;
-        } else {
-            consecutive_err += 1;
-            if consecutive_err >= SPIN_ERROR_TOLERANCE {
-                return ret;
-            }
+        // issue 0355 — bail only on genuine SESSION death, read from the real
+        // `drive_io` health counter, NOT from `spin_some`'s idle
+        // `NROS_RET_TIMEOUT`. See `nros_executor_spin` for the full rationale:
+        // an idle tick against a live transport is expected while a publisher
+        // is still discovering, and must not count toward the tolerance.
+        if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
+            return if ret != NROS_RET_OK {
+                ret
+            } else {
+                NROS_RET_ERROR
+            };
         }
 
         // Accumulate next invocation time to prevent drift

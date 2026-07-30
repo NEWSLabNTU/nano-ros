@@ -22,6 +22,31 @@ fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::Spin
     executor.spin_once(core::time::Duration::from_millis(0))
 }
 
+/// Issue 0355 — a live-but-idle session (`MockSession::drive_io` returns
+/// `Ok(())` with no data) must NEVER accumulate `session_io_failures`, no matter
+/// how many idle spins elapse. The C spin loops
+/// (`nros_executor_spin`/`nros_executor_spin_period`) gate their dead-session
+/// bail on this counter; the bug was that they instead counted `spin_some`'s
+/// idle `NROS_RET_TIMEOUT`, so a healthy C listener that idled longer than
+/// `SPIN_ERROR_TOLERANCE * period` before its publisher was discovered got
+/// killed — the CycloneDDS ros2→nano 0-delivery defect. Only a genuine
+/// `drive_io` error may raise the counter.
+#[test]
+fn idle_spins_never_raise_session_io_failures() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    // Far more idle spins than the C-side SPIN_ERROR_TOLERANCE (16).
+    for _ in 0..64 {
+        let r = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(!r.any_work(), "an idle mock session must do no work");
+    }
+    assert_eq!(
+        executor.session_io_failures(),
+        0,
+        "idle spins over a live session must not accumulate io failures (issue 0355)"
+    );
+}
+
 #[test]
 fn test_error_conversion() {
     let transport_err = TransportError::ConnectionFailed;

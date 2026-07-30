@@ -78,14 +78,15 @@ phase-296 R4 retired the launch bake (16 rows). The remaining 11 were genuinely 
 sweeping for: **a validator with no caller is not coverage** — its staleness debt grows with every
 verb migration and is discovered only when someone finally tries to switch it on.
 
-**#355** — CycloneDDS ROS 2 → nano interop: the nano-cyclone RECEIVER gets 0 messages
-(`cyclone_pubsub_ros2_to_nano` + `cyclone_service_nano_server` in `interop_e2e`), while nano→ROS 2
-TX delivers (`cyclone_pubsub_nano_to_ros2` passes). Clean asymmetry — cyclone wire works one way,
-the nano reader never matches/receives the other. All zenoh interop (both dirs) + lifecycle pass;
-only the cyclone rx path is dark. Observed under `NROS_SKIP_FIXTURE_CHECK=1`, so step 1 is a TRUE
-fresh cyclone-fixture rebuild to rule out a stale `c_listener` ABI skew before treating it as a
-product bug (RxO/QoS mismatch #0146, domain pinning #0161, reader discovery are the leads if real).
-See `0355-*`. (2026-07-31)
+**#355** — RESOLVED: CycloneDDS ros2→nano interop 0-delivery (`cyclone_pubsub_ros2_to_nano` +
+`cyclone_service_nano_server`) while nano→ROS 2 TX delivered. Root cause was NOT the wire — the C
+executor's blocking spin loops (`nros_executor_spin`/`spin_period`) detected a "dead session" by
+counting `spin_some`'s idle `NROS_RET_TIMEOUT`, so a healthy C listener that idled >16×100ms≈1.6s
+before its publisher was discovered (normal DDS SPDP) got killed. Zenoh interop uses a Rust
+listener, so it never hit it. Fix: both loops now gate on the REAL `Executor::session_io_failures()`
+counter (genuine `drive_io` errors only, resets on idle — issue 0324's correct signal) instead of
+idle timeouts. `interop_e2e` cyclone 6/7/8 + full 10/10 green; regression test
+`idle_spins_never_raise_session_io_failures`. See `archived/0355-*`. (2026-07-31)
 See `0354-*`. (2026-07-31)
 
 **#346** — `borrowed` now works on srv/action payloads in both languages, so

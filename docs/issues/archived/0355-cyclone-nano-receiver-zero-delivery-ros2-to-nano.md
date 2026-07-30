@@ -1,11 +1,12 @@
 ---
 id: 355
 title: "CycloneDDS ROS 2 → nano interop: the nano-cyclone RECEIVER gets 0 messages (pubsub ros2→nano + service nano-server), while nano→ROS 2 TX delivers"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: rmw
-related: [phase-324, issue-0146]
+related: [phase-324, issue-0146, issue-0324]
+resolved_in: (nros-c executor spin loops)
 ---
 
 ## Observation (phase-324 live validation, 2026-07-31)
@@ -78,3 +79,38 @@ source /opt/ros/humble/setup.bash && source ./activate.sh
 cargo test -p nros-tests --test interop_e2e cyclone_pubsub_ros2_to_nano \
   -- --test-threads=1 --nocapture
 ```
+
+## Root cause + resolution (2026-07-31)
+
+NOT a stale fixture and NOT cyclone-rx wire: with a publisher present from t=0 the
+nano cyclone C listener receives every sample (verified: 50/50, 24/24). The defect
+is in the C executor's blocking spin loops.
+
+`nros_executor_spin` / `nros_executor_spin_period` (`packages/core/nros-c/src/executor.rs`)
+detected a "dead session" by counting consecutive non-`OK` returns from
+`nros_executor_spin_some`. But `spin_some` returns `NROS_RET_TIMEOUT` on **every
+idle tick** (`SpinOnceResult::any_work() == false`) against a perfectly LIVE
+transport. So a healthy listener that simply idled — the normal state before its
+publisher is discovered — accumulated `SPIN_ERROR_TOLERANCE` (16) idle returns and
+the loop bailed after ~16 × 100 ms ≈ 1.6 s, shorter than DDS SPDP discovery. It
+surfaced on cyclone ros2→nano because the test starts the listener 3 s before the
+ROS 2 publisher; zenoh interop uses a **Rust** listener (different spin path) and
+so was unaffected.
+
+The executor already tracks the CORRECT signal — `Executor::session_io_failures()`,
+incremented only on a genuine `drive_io` error and reset on any successful drive
+(issue 0324). Cyclone's `session_drive_io` returns `NROS_RMW_RET_OK` on idle
+(it owns its RX threads), so the counter stays 0 while idle. The C spin loops had
+reimplemented dead-session detection against the wrong proxy instead of reading it.
+
+**Fix:** both C spin loops now gate the dead-session bail on
+`get_executor(...).session_io_failures() >= SPIN_ERROR_TOLERANCE` — the real
+`drive_io` health counter — not on `spin_some`'s idle `NROS_RET_TIMEOUT`. Idle no
+longer counts; a genuinely dead transport (drive_io returning `Err` every tick,
+e.g. zenoh-pico's router gone) still trips the same threshold, preserving 0324.
+
+**Verified:** `interop_e2e` cyclone `case_6/7/8` all green (were 7/8 red);
+full `interop_e2e` 10/10; regression test
+`executor::tests::idle_spins_never_raise_session_io_failures` (nros-node, tier 1)
+proves 64 idle spins leave `session_io_failures()` at 0. nros-c 26 + nros-node
+executor 184 unit tests green.
