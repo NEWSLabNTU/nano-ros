@@ -107,6 +107,7 @@ fn rmw_str(r: Rmw) -> &'static str {
         Rmw::Zenoh => "zenoh",
         Rmw::Cyclonedds => "cyclonedds",
         Rmw::Xrce => "xrce",
+        Rmw::Uorb => "uorb",
     }
 }
 
@@ -125,6 +126,7 @@ fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
         (Lang::Cpp, Rmw::Zenoh) => format!("zephyr-cpp-{case}"),
         (Lang::Cpp, Rmw::Xrce) => format!("zephyr-xrce-cpp-{case}"),
         (Lang::Cpp, Rmw::Cyclonedds) => format!("zephyr-dds-cpp-{case}"),
+        (_, Rmw::Uorb) => unreachable!("uORB is PX4-SITL only; no zephyr example (issue 0341)"),
         (Lang::Mixed, _) => unreachable!("no mixed example cells"),
     };
     get_prebuilt_zephyr_example(&alias, ZephyrPlatform::NativeSim).unwrap_or_else(|e| {

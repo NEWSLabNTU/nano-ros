@@ -48,6 +48,9 @@ pub enum PlatformId {
     Stm32F4,
     /// ARM FVP Base_RevC AEMv8-R (license-gated model).
     Fvp,
+    /// PX4-SITL host (the uORB middleware). Issue 0341 — expressible so the
+    /// uORB axis has a home; carried as a CarveOut (no CI runner builds SITL).
+    Px4,
 }
 
 impl PlatformId {
@@ -67,6 +70,7 @@ impl PlatformId {
             PlatformId::QemuBaremetal => 8,
             PlatformId::Stm32F4 => 9,
             PlatformId::Fvp => 10,
+            PlatformId::Px4 => 11,
         }
     }
 
@@ -82,15 +86,25 @@ impl PlatformId {
         PlatformId::QemuBaremetal,
         PlatformId::Stm32F4,
         PlatformId::Fvp,
+        PlatformId::Px4,
     ];
 }
 
 /// RMW axis.
+///
+/// Issue 0341 — `Uorb` is declared supported in ARCHITECTURE §2
+/// (`rmw-{zenoh,xrce,cyclonedds,uorb}`) with a real crate
+/// (`packages/px4/nros-rmw-uorb`) and example (`examples/px4/cpp/uorb`), so it
+/// must be *expressible* in the matrix. It carries a documented CarveOut cell
+/// rather than a Runtime lane: uORB runs inside a PX4-SITL build that no CI
+/// runner here provides. An expressible-but-carved-out axis is honest; an
+/// inexpressible one hides the gap.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Rmw {
     Zenoh,
     Cyclonedds,
     Xrce,
+    Uorb,
 }
 
 impl Rmw {
@@ -99,6 +113,7 @@ impl Rmw {
             Rmw::Zenoh => 0,
             Rmw::Cyclonedds => 1,
             Rmw::Xrce => 2,
+            Rmw::Uorb => 3,
         }
     }
 }
@@ -219,6 +234,18 @@ pub enum Tier {
 }
 
 /// One cell of the matrix.
+///
+/// Issue 0327 — the ROS **edition** (ARCHITECTURE §2's third axis) is
+/// deliberately NOT a `Cell` field: it is a PER-RUN GLOBAL, not a per-cell
+/// dimension. A run targets one edition via `NROS_ROS_EDITION`
+/// (`ros_env::test_edition()`, default `jazzy`) and executes the whole matrix
+/// against it — there is no "jazzy pubsub" vs "humble pubsub" as distinct cells
+/// in one run, so folding edition into `Cell` would multiply every row ×N
+/// editions with no per-cell distinction. Edition coverage (which editions run,
+/// and the humble/iron `rmw_zenoh_cpp` carve-out) is documented in
+/// `examples/README.md`'s coverage matrix + ARCHITECTURE §2, not enumerated
+/// here. (The prior silence about which kind of axis edition was is what let the
+/// per-cell `ros_editions_*` files drift from RFC-0051.)
 #[derive(Copy, Clone, Debug)]
 pub struct Cell {
     pub platform: PlatformId,
@@ -605,12 +632,29 @@ pub const CELLS: &[Cell] = &[
     cell(Native, Rust, Cyclonedds, Service, Interop, Runtime),
     cell(Native, Rust, Xrce,       Pubsub,  Interop, Runtime),
     cell(Native, Rust, Xrce,       Service, Interop, Runtime),
-    cell(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop, Runtime),
+    // Issue 0341 — the only runtime test of this shape
+    // (`qos_zephyr_ros2_interop_e2e.rs`) boots the RUST `ws-qos-rust` zephyr
+    // entry over zenoh-pico → rmw_zenoh_cpp; the cell used to declare
+    // Cpp/Cyclonedds, which nothing ran. Model reality, and carve out the
+    // Cpp/Cyclonedds shape that was never covered.
+    cell(ZephyrNativeSim, Rust, Zenoh, Qos, Interop, Runtime),
+    cell(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop,
+        CarveOut("no zephyr Cpp/Cyclonedds QoS-interop lane; the QoS zephyr interop \
+                  test runs Rust/Zenoh (zenoh-pico). File a lane if wanted.")),
     cell(Native, Rust, Zenoh, Lifecycle, Interop, Runtime),
 
     // ── Bridge kind ────────────────────────────────────────────────────
     cell(Native, Rust, Zenoh, Pubsub, Bridge, Runtime), // zenoh→cyclonedds
     cell(Native, Rust, Xrce,  Pubsub, Bridge, Runtime), // zenoh→xrce
+
+    // ── uORB (PX4-SITL) — issue 0341 ───────────────────────────────────
+    // uORB is a declared RMW (ARCHITECTURE §2) with a real crate
+    // (nros-rmw-uorb) + example (examples/px4/cpp/uorb), but its runtime lane
+    // is a PX4-SITL build no CI runner here provides. Expressible + carved out,
+    // so the gap is visible rather than inexpressible.
+    cell(Px4, Cpp, Uorb, Pubsub, Example,
+         CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
+                   builds SITL. `examples/px4/cpp/uorb` is the source of truth.")),
 ];
 
 /// Runtime cells only — what the matrix consumers iterate.

@@ -104,6 +104,20 @@ remain runtime-tested).
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board
 lane — not the `qemu-arm-nuttx` build path above).
 
+### ROS edition axis (issue 0327)
+
+Edition (`ros-{humble,iron,jazzy}`; RFC-0056) is **orthogonal** to the table
+above — every cell is edition-parametric via the `ros-<edition>` cargo feature
+and regenerated per edition, so it is a PER-RUN global (`NROS_ROS_EDITION`,
+default `jazzy`), not a per-cell column. `just ros_editions ci <distro>` runs the
+whole set against one edition.
+
+Carve-out: **humble and iron ship no `rmw_zenoh_cpp` apt package**, so the zenoh
+ROS 2 interop lanes run **only on jazzy** — the two humble/iron zenoh-interop
+cells are permanently skipped (was recorded only as a code comment in
+`nros-tests::ros_env`; surfaced here per issue 0327). cyclonedds/xrce interop is
+edition-agnostic.
+
 Gap themes — see `docs/roadmap/archived/phase-118-example-matrix-coverage.md`
 for the plan that fills these:
 
