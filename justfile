@@ -2570,6 +2570,14 @@ setup-launch-resolve:
         # binary. `find` had this right by accident (it walks directories and
         # neither knows nor cares about submodule boundaries); the index does
         # not, so it must be asked.
+        #
+        # phase-318 W1.b builds `scripts/build/resolve-fingerprint.sh` on top of
+        # this probe: it hashes the MODELS this binary emits, cached by the
+        # binary's own sha256, to decide fixture freshness. That cache key makes
+        # a stale binary worse than unnoticed — it is LAUNDERED: stable hash,
+        # stable fingerprint, every fixture reported fresh indefinitely. This
+        # probe is the only thing standing between the two, so its blind spots
+        # become that mechanism's blind spots.
         _res="$root/packages/cli/third-party/ros-launch-resolve"
         stale_src=""
         while IFS= read -r _f; do

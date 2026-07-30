@@ -36,6 +36,23 @@ is rebuilt, whether or not emitted bytes changed.
       template edit that changes emitted bytes must invalidate the affected
       fixtures.
 
+### W1.b addendum (2026-07-30, phase-315 session)
+
+`resolve-fingerprint.sh` caches on `sha256(nros-launch-resolve)`, which makes
+binary freshness a PRECONDITION rather than something it can verify: a museum
+binary has a stable hash, so it emits a stable fingerprint and every fixture is
+reported fresh indefinitely. W1.b's own reasoning — "a signature blind to the
+resolver repeats #182 one layer down" — extends one layer further, to a probe
+blind to the resolver's SOURCES.
+
+That was live, briefly. `just setup-launch-resolve`'s staleness probe had been
+converted from `find` to `git ls-files`, and `git -C <outer> ls-files` lists
+only the inner gitlink for a NESTED submodule — ros-launch-manifest sits inside
+ros-launch-resolve. An edit there left a binary a full day older than its
+source with the probe reporting fresh; the symptom was a resolver fix that
+appeared not to work. Fixed with `--recurse-submodules`; cross-referenced in
+both files so the halves are read together.
+
 ## W2 — the probe corpus doubles as a codegen golden test
 
 - [x] **W2.a** Commit the corpus + its expected output under

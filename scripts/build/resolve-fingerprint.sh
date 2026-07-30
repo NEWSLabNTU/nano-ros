@@ -36,6 +36,19 @@ if [ ! -x "$bin" ]; then
     exit 0
 fi
 
+# PRECONDITION, and it is load-bearing: this assumes `$bin` is not itself
+# stale. The cache is keyed on the BINARY's hash, so a museum binary has a
+# stable hash, emits a stable fingerprint, and every fixture is reported FRESH
+# forever. This mechanism cannot see that and must not be asked to — keeping the
+# binary current is `just setup-launch-resolve`'s staleness probe.
+#
+# That probe has to walk the resolver's NESTED submodule (ros-launch-manifest
+# lives inside ros-launch-resolve), which `git ls-files` does not do without
+# `--recurse-submodules`. It briefly did not, and the result was exactly the
+# laundering described above: a binary a day older than its sources, reported
+# fresh. This comment exists so the two halves are read together — W1.b's own
+# note says a signature blind to the resolver repeats #182 one layer down, and
+# a probe blind to the resolver's SOURCES repeats it one layer further.
 bin_hash="$(sha256sum "$bin" | awk '{print $1}')"
 cache="$repo_root/.nros-cache/resolve-fingerprint/$bin_hash"
 
