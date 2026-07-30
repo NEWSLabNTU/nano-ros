@@ -351,7 +351,7 @@ exclude = [
     # Phase 169.2 — Zephyr rust/dds examples deleted.
     # No Cargo.toml in cpp/c examples (Zephyr cmake builds them)
     # Reference implementations (library, not an example)
-    "packages/reference/qemu-smoltcp-bridge",
+    "packages/testing/qemu-smoltcp-bridge",
     # smoltcp network provider (embedded-only, requires cross-compilation)
     "packages/drivers/nros-smoltcp",
     "packages/drivers/nros-transport-callbacks",

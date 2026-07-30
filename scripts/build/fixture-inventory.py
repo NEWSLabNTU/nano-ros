@@ -533,10 +533,10 @@ def hand_authored_rows():
             "lang": "rust",
             "rmw": "",
             "role": "qemu-smoltcp-bridge",
-            "dir": "packages/reference/qemu-smoltcp-bridge",
-            "build_root": "packages/reference/qemu-smoltcp-bridge/target",
+            "dir": "packages/testing/qemu-smoltcp-bridge",
+            "build_root": "packages/testing/qemu-smoltcp-bridge/target",
             "scheduler": "just qemu build-fixtures",
-            "shared_mutation": "packages/reference/qemu-smoltcp-bridge/target",
+            "shared_mutation": "packages/testing/qemu-smoltcp-bridge/target",
             "notes": "not covered by examples/fixtures.toml",
         },
         {

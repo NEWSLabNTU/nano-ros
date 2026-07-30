@@ -111,8 +111,8 @@ build:
         fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
-    # Also build qemu-smoltcp-bridge (library in packages/reference/)
-    (cd packages/reference/qemu-smoltcp-bridge && cargo build $cargo_profile_args)
+    # Also build qemu-smoltcp-bridge (test support, packages/testing/)
+    (cd packages/testing/qemu-smoltcp-bridge && cargo build $cargo_profile_args)
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
@@ -127,9 +127,9 @@ build-fixtures:
     fi
     echo "Building QEMU bare-metal test fixtures..."
     scripts/build/fixtures-build.sh qemu-arm-baremetal rust
-    # packages/reference/qemu-smoltcp-bridge remains ad-hoc until reference
+    # packages/testing/qemu-smoltcp-bridge remains ad-hoc until reference
     # package coverage moves into the fixture manifest.
-    (cd packages/reference/qemu-smoltcp-bridge && cargo build $cargo_profile_args --quiet)
+    (cd packages/testing/qemu-smoltcp-bridge && cargo build $cargo_profile_args --quiet)
 
 # Run all QEMU tests (non-networked)
 [group("main")]
@@ -457,7 +457,7 @@ clean: clean-zenoh-pico
         packages/testing/nros-bench/large-msg-baremetal; do
         rm -rf "$dir/target"
     done
-    rm -rf packages/reference/qemu-smoltcp-bridge/target
+    rm -rf packages/testing/qemu-smoltcp-bridge/target
     # Phase 226.D — shared fixture-only Cargo target dir.
     rm -rf build/fixtures-cargo/qemu-arm-baremetal
     echo "QEMU bare-metal build artifacts cleaned"

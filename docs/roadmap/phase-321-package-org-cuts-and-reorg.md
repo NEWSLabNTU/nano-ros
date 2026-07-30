@@ -1,6 +1,6 @@
 # Phase 321 — Package organization: cuts and the group reorganization
 
-**Status (2026-07-31): W1 landed (W1.e withdrawn). W2/W3 open.** Split out of the original
+**Status (2026-07-31): W1 landed (W1.e withdrawn). W2.a-c landed; W2.d-f DEFERRED, see below. W3 open.** Split out of the original
 combined draft. Sibling phases: [phase-320](phase-320-board-support-tiers.md)
 (support tiers), [phase-322](phase-322-board-crate-consolidation.md) (board crate
 merges, deferred).
@@ -140,18 +140,48 @@ Rationale, with the evidence for each:
   near-identical names. Phase-84 intended the OS-level crates to move here and
   only half landed; phase-290 then added a third, unrelated artifact class.
 
-- [ ] **W2.a** **Blocker, do first:** `nros-cli-core/src/cmd/config.rs:147` uses
-      the literal path `packages/platforms` as the **repo-root sentinel**.
-      Renaming that directory breaks `nros config` silently. Replace the sentinel.
-- [ ] **W2.b** Move `packages/reference/*` → `examples/`. Its own README says
-      "Most users should use the examples instead"; `stm32f4-porting/` is not a
-      workspace member and **nothing ever builds it** (`just/native.just:410`
-      only runs `size` on a prebuilt binary `|| echo "build failed"`).
-- [ ] **W2.c** Move `nros-diagnostic-updater` beside `cmake/compat/` — it is a
+- [x] **W2.a** **Not a blocker — the claim was imprecise.** The repo-root
+      sentinel is `nros-sdk-index.toml` (`find_platforms_root`), which is stable;
+      `packages/platforms` is only the *returned* path, so it moves with the
+      directory like any other constant. Nothing to do ahead of time; noted here
+      so the next reader does not re-derive the same false alarm.
+- [x] **W2.b** **Moved by ROLE, not to `examples/` — the draft misread two
+      things.** The README line "Most users should use the examples instead" means
+      *readers should look at examples*, not *this code belongs there*. And
+      `examples/` is enumerated by RFC-0026-shaped gates
+      (`examples_fixture_coverage`, `check-example-matrix`) that expect
+      `<platform>/<lang>/<name>`; dropping non-conforming directories in would
+      have meant adding tracked exceptions to a gate whose job is catching real
+      gaps. So: `qemu-smoltcp-bridge` → `packages/testing/` (it is test support —
+      `fixture-inventory.py` and the qemu-baremetal lane build it), leaving
+      `packages/reference/` holding exactly what its name claims. The remaining
+      `stm32f4-porting/{polling,rtic}` are unbuilt porting templates; that is now
+      stated at the top of its README rather than left to be discovered.
+- [x] **W2.c** Move `nros-diagnostic-updater` beside `cmake/compat/` — it is a
       C++-only `rclcpp` compat shim with 0 Rust LoC, loaded via
       `cmake/compat/stubs/Finddiagnostic_updater.cmake`. Unrelated to
       `nros-diagnostics` (the `no_std` reporter) despite the name; they meet only
       at the `/diagnostics` topic.
+> **W2.d, W2.e and W2.f are DEFERRED. Rationale, with numbers.**
+>
+> Measured blast radius (files / path references, excluding build output):
+> `zpico` 151/468, `xrce` 74/173, `dds` 86/245, `px4` 21/49, `bridge` 5/12 —
+> so W2.d is ~337 files and ~947 references. `core` alone is 537/2074, so W2.e is
+> larger still. `drivers` is 57/110.
+>
+> The moves themselves are mechanical. The problem is *verification*: almost all
+> of those references live in cmake board glue, `just` platform recipes and
+> per-board `.cargo` config for targets that need SDKs and emulators — Zephyr,
+> NuttX, ThreadX, FreeRTOS, ESP-IDF, FVP. `just check` and `just test-unit` would
+> stay green while an embedded lane is broken, because neither compiles those
+> targets. Landing a 3000-reference rename on that basis and calling it verified
+> is precisely the false-green pattern phase-320 exists to stamp out.
+>
+> These want a window where `just ci-full` (or at minimum `ci-matrix` plus the
+> per-platform sweeps) can run to completion, and where no parallel session is
+> editing the same trees — a rename touching 40% of the repo conflicts with
+> everything.
+
 - [ ] **W2.d** Collapse `zpico/` + `xrce/` + `dds/` + `px4/` + `bridge/` into
       `rmw/`.
 - [ ] **W2.e** Split `core/` into `core/` + `api/` + `platform/` + `tooling/`.
